@@ -35,6 +35,7 @@ acompanha a evolução de cada pessoa e escala quando é preciso.
 - [Conectar um banco de dados externo](#conectar-um-banco-de-dados-externo)
 - [Atualizar, produção e comandos](#atualizar-uma-instalação-existente)
 - [Desenvolvimento e testes](#desenvolvimento-e-testes)
+- [Publicar no GitHub](#publicar-no-github)
 - [Segurança](#segurança)
 - [Documentação](#documentação)
 
@@ -158,6 +159,7 @@ inia/
 │   ├── src/{queries,services,schemas,lib}/
 │   └── public/              ativos estáticos (inclui o modelo 3D do avatar)
 ├── scripts/install/         instalação: doctor, env:init, db:connect, run
+├── scripts/github/          publicação no GitHub sem o histórico local (github:publish)
 ├── docker/                  imagens dos bancos externos de exemplo
 ├── deploy/windows/          IIS e serviços do Windows (WinSW)
 ├── tools/                   pipeline do avatar (Blender/Python) e captura de fixtures de voz
@@ -442,6 +444,7 @@ PostgreSQL próprio não precisa de Docker.
 | `npm run build` / `npm start` | Compila e inicia em modo produção. |
 | `npm run examples:up` / `npm run examples:down` | Bancos externos de exemplo (PostgreSQL, MariaDB, MySQL) para a Central de Dados. |
 | `npm run examples:sqlserver:up` | SQL Server de exemplo (x86; em Apple Silicon, com Rosetta). |
+| `npm run github:publish` | Publica o código atual no repositório privado do GitHub, sem o histórico local (`-- --simular` só mostra o resumo). |
 
 ### Problemas comuns
 
@@ -491,6 +494,27 @@ de tempo por teste (20 s no backend, 15 s no frontend) para que um teste travado
 
 Convenções de código (camadas, nomes, onde fica cada coisa) estão em [CLAUDE.md](CLAUDE.md) e em
 [docs/dev/refatoracao-progressiva.md](docs/dev/refatoracao-progressiva.md).
+
+## Publicar no GitHub
+
+O repositório do GitHub recebe só o código atual, nunca o histórico local (que guarda manuais, fontes do avatar,
+transcrições e saídas de benchmark). Com a árvore de trabalho limpa e o `gh` autenticado (`gh auth login`), confira
+primeiro e depois publique:
+
+```bash
+npm run github:publish -- --simular
+```
+
+```bash
+npm run github:publish
+```
+
+O comando monta a cópia do `HEAD` sem o que lista [scripts/github/exclusoes.txt](scripts/github/exclusoes.txt), barra
+arquivos de segredo pelo nome, os valores dos `.env` locais e padrões de chave (AIza…, sk-…, ghp_…, chave privada,
+JWT), mostra o resumo (arquivos, tamanho e o que muda em relação ao `main` do GitHub) e pede confirmação. Cada envio
+vira um commit novo sobre o `main` do GitHub, enviado por URL com a credencial do `gh` e sem `--force` — o repositório
+local não tem remote. `-- --verificar` roda typecheck, lint e testes numa cópia do snapshot antes de perguntar. Testes
+do próprio comando: `node --test scripts/github/*.test.mjs`.
 
 ## Segurança
 

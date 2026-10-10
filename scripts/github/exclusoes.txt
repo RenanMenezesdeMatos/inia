@@ -1,0 +1,52 @@
+# O que NUNCA vai para o repositório privado do GitHub (RenanMenezesdeMatos/inia).
+#
+# `npm run github:publish` (scripts/github/publicar.mjs) publica a árvore do HEAD local MENOS os arquivos que casam com
+# as regras abaixo. O histórico local nunca é enviado; esta lista decide o que sai da cópia publicada.
+#
+# Sintaxe (glob no estilo do git, sempre a partir da raiz do repositório):
+#   - uma regra por linha; linhas vazias e linhas que começam com "#" são ignoradas (comentário só em linha própria);
+#   - "*" não atravessa "/"; "**/" é zero ou mais pastas; "pasta/**" (ou só "pasta") é tudo dentro da pasta;
+#     "?" é um caractere; "[1-4]" é um caractere da faixa;
+#   - "!" no início faz uma EXCEÇÃO: o arquivo continua publicado mesmo casando com uma regra. Toda exceção vale contra
+#     todas as regras, por isso escreva-a com o caminho completo.
+# O resumo do comando mostra quantos arquivos cada linha tirou ou manteve e avisa de linha que não casa com nada.
+
+# Fontes do avatar (Blender, texturas, relatórios do pipeline). A aplicação usa só o modelo já exportado em
+# frontend/public/models.
+assets/**
+
+# Modelo do avatar da POC antiga, derivado de um asset de terceiros sem licença confirmada para distribuição.
+frontend/public/models/inia-avatar-poc.glb
+
+# Instruções de trabalho (IT-INIA-*.docx/.pdf): documentos internos, distribuídos à parte.
+docs/manuais/**
+
+# Transcrições de chamadas reais.
+docs/CHAMADAS - *.rtf
+
+# Prompts de trabalho com o Claude.
+docs/prompt-claude-*.md
+
+# Auditoria do corpus de chamadas (amostras e métricas tiradas das transcrições).
+dev-audit/**
+
+# Configuração local do Claude Code.
+.claude/**
+
+# POCs, benchmarks cegos e holdout de avaliação: transcrições, gabaritos e respostas de modelos...
+backend/scripts/poc-tools/**
+# ...exceto o que os testes automatizados leem: o gabarito isolado da massa demo (ground-truth-isolation.test.ts) e o
+# prompt e as quatro respostas do Writer Gate (gemini-feedback-writer.test.ts).
+!backend/scripts/poc-tools/ground-truth/**
+!backend/scripts/poc-tools/holdout-v2/holdout-v149c-writer-gate-lib.ts
+!backend/scripts/poc-tools/holdout-v2/dev-regression-v152-writer-smoke/raw/SMOKE-0[1-4].json
+
+# Saídas das rodadas de avaliação do motor de feedback (respostas dos modelos, trechos de transcrição, custos)...
+backend/scripts/feedback-engine/**/results/**
+# ...exceto os manifestos de congelamento (o hash que prova que os scripts das rodadas pagas não mudaram; lidos por
+# backend/scripts/frozen-scripts.js) e a rodada que speech-execution-divergence.test.ts lê.
+!backend/scripts/feedback-engine/**/results/**/*-freeze.json
+!backend/scripts/feedback-engine/evaluation/larissa/results/round-v11-paid-2026-10-02T18-29-18-162Z.json
+
+# Saídas do cenário de desenvolvimento da Larissa.
+backend/scripts/dev/larissa-scenario/results/**

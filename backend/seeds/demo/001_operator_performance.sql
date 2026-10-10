@@ -9,7 +9,8 @@
 --
 -- AUTOSSUFICIENTE (hardening do seed:test): as pessoas são referenciadas por id fixo, então o
 -- `join people` garante que só entram linhas de pessoas que EXISTEM no banco alvo — num banco
--- recém-migrado (inia_test) o arquivo carrega 0 linhas em vez de estourar a FK; o runner
+-- recém-migrado só entram Ana Lima e Juliana Prado (as 2 que as migrations criam), as outras 9
+-- são puladas em vez de estourar a FK; o runner
 -- (run-demo-seed.ts) reporta a contagem. Fechamento oficial só existe para MÊS CIVIL COMPLETO:
 -- competências iguais ou posteriores ao mês corrente (calendário America/Fortaleza, o mesmo
 -- fallback do motor) nunca entram — o mês corrente é acompanhamento operacional, não fechamento.

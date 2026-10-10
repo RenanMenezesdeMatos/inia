@@ -21,6 +21,7 @@
     "admin:create": "npm --prefix backend run admin:create --",
     "dev": "node scripts/install/run.mjs dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
-    "start": "node scripts/install/run.mjs start"
+    "start": "node scripts/install/run.mjs start",
+    "github:publish": "node scripts/github/publicar.mjs"
   }
 }

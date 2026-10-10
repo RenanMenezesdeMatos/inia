@@ -1,0 +1,18 @@
+# Falsos positivos da busca por padrões de chave do `npm run github:publish` (scripts/github/publicar.mjs).
+#
+# Cada linha libera UMA ocorrência: o caminho e o sha256 (16 primeiros hex) do trecho que casou com o padrão. Outra
+# chave no mesmo arquivo, ou a mesma chave em outro arquivo, continua barrada. Quando o comando barra uma ocorrência,
+# ele imprime a linha pronta; só cole aqui depois de conferir que a chave é inventada (fixture de teste).
+# Esta lista nunca libera os valores dos .env locais nem arquivos de segredo pelo nome.
+
+# Testes de redação de segredos: chaves inventadas ("AIzaSyA123…", "sk-abcdef…") que precisam virar [REDIGIDO].
+backend/src/modules/qa-lab/application/run-workflow-simulation.test.ts sha256:5e8a6a8b9d10a937
+backend/src/modules/ai-management/domain/ai-routing-policy.test.ts sha256:6c2b82b5db2d55c4
+
+# Testes e provas dos provedores de IA: chaves falsas ("sk-test-…", "sk-qa-…") que nunca podem aparecer em resposta,
+# log ou banco.
+backend/src/modules/ai-management/infrastructure/adapters/adapters.test.ts sha256:15a63c72e125689d
+backend/src/modules/ai-management/testing/ai-providers-proof.test.ts sha256:dbd440154002cb77
+backend/src/modules/ai-management/testing/ai-providers-proof.test.ts sha256:2d5d15ab79d834fb
+backend/src/modules/conversational-delivery/testing/speech-synthesis-policy-proof.test.ts sha256:4b0f3cedae638d9a
+backend/src/modules/feedback-engine/testing/feedback-writer-policy-proof.test.ts sha256:0fa173b0f97cef6c

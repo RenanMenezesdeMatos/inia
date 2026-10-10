@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { seedDemoFromScratch } from "./seed-demo-from-scratch.js"
 import { runDemoSeed } from "./run-demo-seed.js"
+import { localToday } from "./demo-mass/daily-measurement-generator.js"
 import type pg from "pg"
 
 /**
@@ -50,11 +51,15 @@ describe("seed de demonstração — do zero num banco recém-migrado", () => {
       expect(proof.lateEvidence).toMatchObject({ unjustifiedAbsenceDays: 0, history: [{ classification: "UNJUSTIFIED_ABSENCE", supersededReason: "CONTRADICTED_BY_WORK_EVIDENCE" }] })
       expect(proof.lateEvidence.workedObservedDays).toBeGreaterThanOrEqual(4)
       // Seed legado 001: só as pessoas legadas que as MIGRATIONS criam existem num banco limpo
-      // (2 das 11 → 36 linhas de jul/ago); as outras 9 são puladas pelo `join people` em vez de
-      // estourar a FK. Nunca as 264 linhas do arquivo inteiro, nunca setembro (mês corrente).
+      // (Ana Lima, 002, e Juliana Prado, 009 — 2 das 11); as outras 9 são puladas pelo `join people`
+      // em vez de estourar a FK. Cada uma tem 8 indicadores + 1 PRV por competência, e o arquivo traz
+      // 2026-07..09, mas só entra competência FECHADA (anterior ao mês corrente): o total depende do
+      // relógio — 36 em setembro/2026 (jul/ago), 54 a partir de outubro/2026. Contagem exata, então
+      // duplicata ou join mais largo também quebram. Nunca as 288 linhas do arquivo, nunca o mês corrente.
+      const closedSeedPeriods = ["2026-07", "2026-08", "2026-09"].filter((period) => period < localToday().slice(0, 7)).length
       expect(result.first.sqlFiles.map((file) => file.name)).toEqual(["001_operator_performance.sql", "002_data_hub.sql"])
       expect(result.first.sqlFiles[0]!.rowsAffected).toBeGreaterThan(0)
-      expect(result.first.sqlFiles[0]!.rowsAffected).toBeLessThanOrEqual(36)
+      expect(result.first.sqlFiles[0]!.rowsAffected).toBe(2 * (8 + 1) * closedSeedPeriods)
       expect(result.counts.people).toBeGreaterThanOrEqual(2109)
       expect(result.counts.measurements).toBeGreaterThan(100_000)
       expect(result.counts.officialRowsCurrentMonth).toBe(0)

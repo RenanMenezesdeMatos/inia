@@ -11,7 +11,8 @@ import { assertDemoSeedAllowed, type DemoSeedEnvironment } from "./demo-seed-pol
  * recém-migrado, sem depender de NODE_ENV do processo), em duas etapas:
  *   1. backend/seeds/demo/*.sql, em ordem — cada arquivo idempotente por construção (`not exists`)
  *      e AUTOSSUFICIENTE: só referencia pessoas/indicadores que existem no banco alvo (o seed legado
- *      001 faz `join people` — num banco limpo ele carrega zero linhas em vez de estourar FK);
+ *      001 faz `join people` — num banco limpo só carrega as 2 pessoas legadas que as migrations criam,
+ *      em vez de estourar FK com as outras 9);
  *   2. a MASSA DEMO grande (demo-mass/), também idempotente (upsert por id determinístico).
  * Nada é registrado em schema_migrations: repetir a carga é seguro. Um erro em qualquer etapa
  * propaga (rollback do arquivo + throw) — nunca é engolido.
