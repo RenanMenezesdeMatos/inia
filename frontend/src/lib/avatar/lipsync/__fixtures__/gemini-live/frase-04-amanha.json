@@ -1,0 +1,440 @@
+{
+ "id": "frase-04-amanha",
+ "model": "models/gemini-2.5-flash-native-audio-latest",
+ "prompt": "Diga exatamente: \"Amanhã, às oito e meia, vamos revisar os próximos passos.\"",
+ "sampleRate": 24000,
+ "transcript": "Amanhã, às oito e meia, vamos revisar os próximos passos.",
+ "events": [
+  {
+   "t": 1491,
+   "transcript": "Amanhã, às"
+  },
+  {
+   "t": 2088,
+   "audioBytes": 46080,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2093,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2119,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2145,
+   "transcript": " oito"
+  },
+  {
+   "t": 2148,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2148,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2148,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2152,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2154,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2190,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2190,
+   "transcript": " e meia,"
+  },
+  {
+   "t": 2192,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2194,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2196,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2209,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2211,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2215,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2215,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2221,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2221,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2230,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2230,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2254,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2254,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2254,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2254,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2254,
+   "transcript": " vamos"
+  },
+  {
+   "t": 2254,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2255,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2255,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2267,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2267,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2269,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2271,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2274,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2276,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2277,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2282,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2282,
+   "transcript": " revisar"
+  },
+  {
+   "t": 2288,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2289,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2295,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2297,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2299,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2304,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2315,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2315,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2315,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2315,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2323,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2323,
+   "transcript": " os próximos"
+  },
+  {
+   "t": 2332,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2338,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2370,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2372,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2375,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2393,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2397,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2415,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2416,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2426,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2441,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2460,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2460,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2470,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2479,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2480,
+   "transcript": " passos."
+  },
+  {
+   "t": 2496,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2503,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2517,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2545,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2553,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2553,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2558,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2572,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2603,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2605,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2609,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2630,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2631,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2660,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2660,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2660,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2678,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2682,
+   "audioBytes": 1920,
+   "mime": "audio/pcm;rate=24000"
+  },
+  {
+   "t": 2701,
+   "generationComplete": true
+  },
+  {
+   "t": 5917,
+   "turnComplete": true
+  }
+ ]
+}

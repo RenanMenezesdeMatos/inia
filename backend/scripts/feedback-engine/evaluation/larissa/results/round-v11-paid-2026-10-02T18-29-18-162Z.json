@@ -1,0 +1,4007 @@
+{
+  "kind": "PAID_ROUND_V11",
+  "ranAt": "2026-10-02T18:29:18.163Z",
+  "model": "gemini-3.8-flash",
+  "globalBudget": {
+    "limits": {
+      "maxRequests": 17,
+      "maxUsd": 0.6
+    },
+    "before": {
+      "requests": 0,
+      "spentUsd": 0,
+      "blocked": 0
+    }
+  },
+  "reserve": {
+    "B": 4,
+    "C": 5
+  },
+  "groundTruth": {
+    "file": "round-v11-ground-truth.md",
+    "sha256": "2cbdc31859202ed52b19f339e2478b8c3912a3497ff5e2bdd02b7fff3e88e233",
+    "modifiedAt": "2026-10-02T18:27:40.791Z",
+    "facts": {
+      "file": "round-v9-ground-truth.md",
+      "sha256": "e7e84d030f45b32e501e34f7880e3ac196fa820c66f184fe6dcbe61e3a1a5446"
+    },
+    "registeredBeforeExecution": true,
+    "sentToEngine": false
+  },
+  "freeze": {
+    "file": "round-v11-freeze.json",
+    "manifestSha256": "b0c1c97cc8da644c40dfbea6715bf66bf5cd40323c610766e30a57815d65511c",
+    "files": 120
+  },
+  "versions": {
+    "analysisLogic": "CALL_ANALYSIS_LOGIC_V12",
+    "analysisPrompt": "CALL_ANALYSIS_PROMPT_V8",
+    "review": "OBLIGATION_REVIEW_V1",
+    "reviewPrompt": "OBLIGATION_REVIEW_PROMPT_V2",
+    "composition": "FEEDBACK_COMPOSITION_V6",
+    "compositionPrompt": "FEEDBACK_COMPOSITION_PROMPT_V9",
+    "verificationPrompt": "FEEDBACK_VERIFICATION_PROMPT_V8",
+    "investigation": "INDICATOR_INVESTIGATION_V7",
+    "investigationTools": "ENGINE_INVESTIGATION_TOOLS_V4",
+    "plannerPrompt": "ENGINE_INVESTIGATION_PLANNER_PROMPT_V6",
+    "closure": "INVESTIGATION_CLOSURE_V3"
+  },
+  "analysisReuse": {
+    "from": "results/round-v10-comparison-paid-2026-10-02T14-44-16-633Z.json",
+    "why": "a resposta paga da comparação V10 é a análise no contrato atual (prompt V8 congelado, mesma entrada, mesmas fontes por hash) — etapa reaproveitada; revisão, confirmação, redação e verificação rodam de novo com as instruções atuais"
+  },
+  "isolatedConfiguration": {
+    "capabilities": [
+      "INDICATOR_ANALYSIS",
+      "SEGMENTATION",
+      "INTERACTION_ANALYSIS",
+      "KNOWLEDGE"
+    ],
+    "persisted": "INTOCADO (perfil do agente substituído só na memória deste processo)"
+  },
+  "seeds": {
+    "A": {
+      "interactionId": "bf7e4baf-0efa-41a0-80c3-786730629e10",
+      "proposalKey": "cdaee325827cc4fb3042e50f9dc24d9591a5e49dc68ed07a1ae06874c112b950",
+      "analysisKey": "a9537429c77d03f0409edccad998d3268058b26022043299ddc207c513c400c1",
+      "comparisonResponseSha256": "9849503491a4698aeea3d1fc167615bafd94436ad9a0e07848261f9b61a879f4"
+    },
+    "B": {
+      "interactionId": "de00d005-3c0f-4727-8daf-2773140269e3",
+      "proposalKey": "375f149ca58fd39a1d1cb69c7f3056c77a674eec77fcb05c5e398fe8ce535df6",
+      "analysisKey": "6b4c5c7c062abbe6928f18f6fe6c7ec0db9aac848b7754046d44323d5696c48c",
+      "comparisonResponseSha256": "631539eefce0239ebb1947f3d3109b9b825202b400b0098759189d7cae100a87"
+    }
+  },
+  "A": {
+    "cap": 8,
+    "modelCalls": 6,
+    "generation": {
+      "kind": "PUBLISHABLE",
+      "messageId": "9771497d-2221-4c22-a6db-c959e771ee4c",
+      "message": {
+        "status": "PUBLISHABLE",
+        "abstainReason": null,
+        "heading": {
+          "title": "Contestação de cobrança",
+          "subtitle": "Atendimento de 21/08/2026",
+          "subjectSource": "CANONICAL"
+        },
+        "card": "Você validou a titularidade antes de acessar as informações da conta e localizou no histórico o cancelamento de 2 de julho ainda pendente.",
+        "text": "Antes de consultar os dados da linha, você validou a titularidade com a cliente pedindo o nome e a data de nascimento. Essa confirmação prévia resguarda o acesso a informações protegidas antes de avançar para a análise do caso. Para entender a cobrança, você perguntou qual era a fatura questionada, o valor que ela não reconhecia e confirmou se o pagamento já havia sido realizado.",
+        "brief": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "domain": "MONITORING",
+          "label": "Contestação de cobrança",
+          "heading": {
+            "title": "Contestação de cobrança",
+            "subtitle": "Atendimento de 21/08/2026",
+            "subjectSource": "CANONICAL"
+          },
+          "context": [
+            "Como a chamada chegou à análise: Avaliação real V11 (cenário A): contestação de cobrança após cancelamento.",
+            "Procedimento aplicado: Procedimento Operacional — Contestação de Contas Móvel",
+            "A versão do procedimento usada foi publicada depois desta chamada: o que ela aponta é orientação para as próximas chamadas, não descumprimento de uma regra que valia na época."
+          ],
+          "situation": "A cliente Sônia Barros entrou em contato para contestar a cobrança de mensalidade no valor de R$ 59,90 na fatura de agosto, cobrança esta gerada após solicitação prévia de cancelamento da linha.",
+          "scenarioQuotes": [
+            {
+              "speaker": "OPERATOR",
+              "text": "Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.",
+              "turn": "T7"
+            },
+            {
+              "speaker": "CUSTOMER",
+              "text": "Já paguei, sim.",
+              "turn": "T10"
+            }
+          ],
+          "readerNotes": [
+            "Este retorno usa a versão atual do procedimento, publicada depois desta chamada: vale como orientação para as próximas chamadas.",
+            "O que é feito em sistemas, fora da conversa, não aparece na gravação e não foi avaliado neste retorno."
+          ],
+          "coverageLimits": [
+            {
+              "title": "Corrigir o status",
+              "reason": "OUTSIDE_CONVERSATION",
+              "executionClaim": "NONE",
+              "role": "CENTRAL",
+              "criterionKey": "KC-489454e6ae37"
+            },
+            {
+              "title": "Abrir análise quando: existir cobrança após cancelamento não concluído",
+              "reason": "OUTSIDE_CONVERSATION",
+              "executionClaim": "DECLARED",
+              "role": "CENTRAL",
+              "criterionKey": "KC-07e403fb20a0"
+            }
+          ],
+          "developments": [],
+          "strengths": [
+            {
+              "ref": "S1",
+              "findingKey": "CALL:bf7e4baf-0efa-41a0-80c3-786730629e10:KC-b6d7f0bcdebd",
+              "kind": "STRENGTH",
+              "origin": "CRITERION",
+              "title": "Antes de consultar o detalhamento, o operador deverá validar o titular",
+              "materiality": "HIGH",
+              "status": "MET",
+              "observed": "Esta etapa foi cumprida nesta chamada.",
+              "reading": "A operadora solicitou a confirmação de titularidade e a data de nascimento antes de prosseguir com a verificação da conta.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Bem-vinda, Sônia. Vou verificar isso com você. Pra eu seguir, a linha está no seu nome? E qual é a sua data de nascimento?",
+                  "turn": "T3"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "Antes de consultar o detalhamento, o operador deverá validar o titular.\nA validação poderá incluir:\n- Nome completo;\n- Data de nascimento;\nAntes de acessar ou alterar informações protegidas, o operador deve explicar a necessidade da validação.",
+                  "section": "Validação de segurança",
+                  "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+                  "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+                  "leadIn": null
+                }
+              ],
+              "guidance": null,
+              "whyItMatters": null,
+              "history": null,
+              "criterionKeys": [
+                "KC-b6d7f0bcdebd"
+              ],
+              "stats": [],
+              "sameList": [
+                {
+                  "text": "Confirmar titularidade / nome",
+                  "status": "MET"
+                },
+                {
+                  "text": "Data de nascimento",
+                  "status": "MET"
+                }
+              ],
+              "notAssessedInSameList": [
+                "- CPF ou CNPJ;",
+                "- Número da linha;",
+                "- Código enviado ao canal seguro;",
+                "- Informações adicionais previstas no sistema."
+              ],
+              "role": "CENTRAL"
+            },
+            {
+              "ref": "S2",
+              "findingKey": "CALL:bf7e4baf-0efa-41a0-80c3-786730629e10:KC-1dbeda97c06e",
+              "kind": "STRENGTH",
+              "origin": "CRITERION",
+              "title": "O operador deverá permitir que o cliente explique: qual conta está questionando; qual c…",
+              "materiality": "HIGH",
+              "status": "MET",
+              "observed": "Esta etapa foi cumprida nesta chamada.",
+              "reading": "A operadora perguntou expressamente qual era o valor contestado, a fatura de referência e confirmou se a conta já havia sido paga.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Pronto, confirmado. Qual é o valor que você não reconhece e em qual fatura ele veio?",
+                  "turn": "T5"
+                },
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Entendi. E essa fatura de agosto já foi paga?",
+                  "turn": "T9"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "O operador deverá permitir que o cliente explique:\n- Qual conta está questionando;\n- Qual cobrança não reconhece;\n- Qual valor foi faturado;\n- Se a conta já foi paga;",
+                  "section": "Escuta e identificação da solicitação",
+                  "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+                  "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+                  "leadIn": null
+                }
+              ],
+              "guidance": null,
+              "whyItMatters": null,
+              "history": null,
+              "criterionKeys": [
+                "KC-1dbeda97c06e"
+              ],
+              "stats": [],
+              "sameList": [
+                {
+                  "text": "Qual conta está questionando",
+                  "status": "MET"
+                },
+                {
+                  "text": "Qual cobrança não reconhece e valor faturado",
+                  "status": "MET"
+                },
+                {
+                  "text": "Se a conta já foi paga",
+                  "status": "MET"
+                }
+              ],
+              "notAssessedInSameList": [
+                "- Qual valor esperava;",
+                "- Quando percebeu a diferença;",
+                "- Se já houve contato anterior;",
+                "- Se a cobrança continua ocorrendo;",
+                "- Se existe ameaça de bloqueio ou negativação;",
+                "- Se há suspeita de fraude."
+              ],
+              "role": "CENTRAL"
+            },
+            {
+              "ref": "S3",
+              "findingKey": "CALL:bf7e4baf-0efa-41a0-80c3-786730629e10:KC-c3ee764a4cd3",
+              "kind": "STRENGTH",
+              "origin": "CRITERION",
+              "title": "Verificar: data da solicitação; falha na conclusão",
+              "materiality": "HIGH",
+              "status": "MET",
+              "observed": "Esta etapa foi cumprida nesta chamada.",
+              "reading": "A operadora consultou o histórico e identificou na ligação que a solicitação de cancelamento datava de 02 de julho e não havia sido concluída.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.",
+                  "turn": "T7"
+                },
+                {
+                  "speaker": "CUSTOMER",
+                  "text": "Apareceu uma cobrança de mensalidade após o cancelamento na minha conta que eu não reconheço.",
+                  "turn": "T2"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "Verificar:\n- Data da solicitação;\n- Falha na conclusão;\nSe o cancelamento não tiver sido concluído por falha interna:",
+                  "section": "Cobrança após cancelamento",
+                  "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+                  "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+                  "leadIn": null
+                }
+              ],
+              "guidance": null,
+              "whyItMatters": null,
+              "situational": true,
+              "history": null,
+              "criterionKeys": [
+                "KC-c3ee764a4cd3"
+              ],
+              "stats": [],
+              "sameList": [],
+              "notAssessedInSameList": [
+                "- Data efetiva;",
+                "- Produto cancelado;",
+                "- Protocolos;",
+                "- Valores proporcionais;",
+                "- Serviços adicionais;",
+                "- Parcelas de aparelho;",
+                "- Equipamentos não devolvidos;",
+                "- Cobranças posteriores.",
+                "- Contestar cobranças posteriores;",
+                "- Informar prazo."
+              ],
+              "role": "CENTRAL"
+            }
+          ],
+          "limitations": [
+            "Não é possível verificar ações em sistemas internos da operadora (como correção efetiva do cancelamento pendente e inclusão do chamado no sistema de faturamento), pois apenas a transcrição do diálogo está disponível."
+          ],
+          "materials": [],
+          "officialLines": [],
+          "indicatorName": null,
+          "tone": "RECOGNITION",
+          "suppressed": [],
+          "rulePerspective": "CURRENT_RULE_REEVALUATION"
+        },
+        "composition": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "promptVersion": "FEEDBACK_COMPOSITION_PROMPT_V9",
+          "verificationPromptVersion": "FEEDBACK_VERIFICATION_PROMPT_V8",
+          "coherencePromptVersion": "FEEDBACK_COHERENCE_PROMPT_V1",
+          "attempts": {
+            "writer": 2,
+            "verifier": 2,
+            "coherence": 1
+          },
+          "errors": [],
+          "decisions": [
+            {
+              "id": "F1",
+              "stance": "RECOGNITION",
+              "refs": [
+                "S1"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "F2",
+              "stance": "VALUE",
+              "refs": [
+                "S1"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "F3",
+              "stance": "RECOGNITION",
+              "refs": [
+                "S2"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "F4",
+              "stance": "RECOGNITION",
+              "refs": [
+                "S3"
+              ],
+              "kept": false,
+              "reasons": [
+                "UNSUPPORTED_ADDITION"
+              ]
+            },
+            {
+              "id": "CARD",
+              "stance": "CONTEXT",
+              "refs": [
+                "S1",
+                "S3"
+              ],
+              "kept": true,
+              "reasons": []
+            }
+          ],
+          "verdicts": [
+            {
+              "id": "F1",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "F2",
+              "verdict": "GENERALIZATION",
+              "specific": null,
+              "repeats": null
+            },
+            {
+              "id": "F3",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "F4",
+              "verdict": "UNSUPPORTED_ADDITION",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "CARD",
+              "verdict": "SUPPORTED",
+              "specific": null,
+              "repeats": null
+            }
+          ],
+          "analysis": [],
+          "trusted": {
+            "guidance": {},
+            "why": {}
+          },
+          "usefulness": {
+            "primaryRef": "S1",
+            "primaryCovered": true,
+            "missingGuidance": [],
+            "missingRecognition": false,
+            "missingContext": false,
+            "missingValue": null
+          },
+          "coherence": {
+            "required": true,
+            "checked": true,
+            "coherent": true,
+            "problems": [],
+            "danglingAfterRemoval": []
+          },
+          "communicatedRefs": [
+            "S1",
+            "S2"
+          ],
+          "notCommunicated": [
+            "S3"
+          ],
+          "leaksRemoved": [],
+          "outcome": "MESSAGE",
+          "reason": null,
+          "messageAssessment": {
+            "conveysPrimary": true,
+            "valueBeyondNarration": true,
+            "note": null
+          },
+          "lostInformation": []
+        }
+      }
+    },
+    "analysis": {
+      "outcome": "PARTIAL",
+      "outcomeReasons": [
+        "SOME_CONCLUSIONS_UNCONFIRMED"
+      ],
+      "scenario": {
+        "customerNeed": "A cliente Sônia Barros entrou em contato para contestar a cobrança de mensalidade no valor de R$ 59,90 na fatura de agosto, cobrança esta gerada após solicitação prévia de cancelamento da linha.",
+        "conditions": [
+          {
+            "text": "A cliente solicitou cancelamento previamente, o qual constava em aberto desde 02/07 sem conclusão sistêmica.",
+            "evidence": [
+              {
+                "turn": "T7",
+                "speaker": "OPERADOR",
+                "quote": "Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.",
+                "timestamp": null
+              }
+            ]
+          },
+          {
+            "text": "A fatura questionada de agosto já havia sido paga pela cliente.",
+            "evidence": [
+              {
+                "turn": "T10",
+                "speaker": "CLIENTE",
+                "quote": "Já paguei, sim.",
+                "timestamp": null
+              }
+            ]
+          }
+        ],
+        "procedure": "Procedimento Operacional — Contestação de Contas Móvel",
+        "rulePerspective": "CURRENT_RULE_REEVALUATION",
+        "declaredPath": "PARTIALLY_CORRECT",
+        "proposedPath": "PARTIALLY_CORRECT",
+        "pathAssessment": "UNDETERMINED",
+        "pathConfirmation": "CONFIRMED",
+        "pathCompleteness": {
+          "status": "LIMITED",
+          "applicable": 10,
+          "outsideConversation": 2,
+          "notAssessed": 0,
+          "unconfirmed": 0,
+          "applicabilityUncertain": 0,
+          "otherNotObservable": 2
+        },
+        "pathTaken": "Etapas verificadas na conversa, em ordem: “A abertura deve identificar a empresa, o operador e o cliente” — cumprida em parte; “Antes de consultar o detalhamento, o operador deverá validar o titular” — cumprida; “O operador deverá permitir que o cliente explique: qual conta está questionando; qual c…” — cumprida; “Verificar: data da solicitação; falha na conclusão” — cumprida; “Abrir análise quando: existir cobrança após cancelamento não concluído” — declarada na conversa (execução em sistema, não verificável pela gravação); “Antes de encerrar, informar: valor; ação realizada; prazo; canal de retorno; protocolo” — cumprida; “Perguntar: “As informações ficaram claras?”” — cumprida.",
+        "pathRationale": "Avaliação vigente: caminho não determinado. Desvio(s) de baixa materialidade (não sustentam desvio de caminho sozinhos): “A abertura deve identificar a empresa, o operador e o cliente”. Etapa(s) cumprida(s) com evidência na conversa: 5. Não verificável pela gravação (execução em sistema): “Corrigir o status”; “Abrir análise quando: existir cobrança após cancelamento não concluído”. Conclusão(ões) da análise que não se sustentaram e ficaram fora do diagnóstico: “Quando o cliente já tiver pago a cobrança contestada, avaliar: crédito em conta futura;…”."
+      },
+      "argumentScripts": [
+        {
+          "handle": "G1",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a02",
+          "name": "Bloqueio após pagamento",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A cliente não informou que os serviços estavam bloqueados nem solicitou desbloqueio.",
+          "downgrade": null
+        },
+        {
+          "handle": "G2",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a01",
+          "name": "Contas em atraso",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "Não houve menção a contas em atraso; a fatura contestada já havia sido paga.",
+          "downgrade": null
+        },
+        {
+          "handle": "G3",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a06",
+          "name": "Fim da franquia de dados",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A chamada não tratou de término ou consumo de franquia de dados móveis.",
+          "downgrade": null
+        },
+        {
+          "handle": "G4",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a03",
+          "name": "Pagamento com cartão (serviço bloqueado)",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A cliente não relatou serviços bloqueados com necessidade de pagamento com cartão.",
+          "downgrade": null
+        },
+        {
+          "handle": "G5",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a05",
+          "name": "Problema técnico no serviço fixo",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "Não se trata de suporte técnico a serviço fixo.",
+          "downgrade": null
+        },
+        {
+          "handle": "G6",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a04",
+          "name": "Segunda via",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A cliente não solicitou envio de segunda via de conta ou parcelamento.",
+          "downgrade": null
+        }
+      ],
+      "coverage": {
+        "requiredLines": [
+          "O1",
+          "O2",
+          "O3",
+          "O4",
+          "O5",
+          "O6",
+          "O7",
+          "O8",
+          "O9",
+          "R2"
+        ],
+        "closingSections": [],
+        "missing": [],
+        "repairAttempted": true,
+        "status": "COMPLETE",
+        "byStatus": {
+          "assessed": 6,
+          "notApplicable": 0,
+          "notVerifiable": 4,
+          "notAssessed": 0
+        },
+        "occurrences": {
+          "adverseRules": 1,
+          "adverseOccurrences": 1,
+          "metRules": 5,
+          "metOccurrences": 5
+        },
+        "listItems": {
+          "found": 57,
+          "shownToReview": 57,
+          "raisedByReview": 0
+        }
+      },
+      "coverageLimits": {
+        "outsideConversation": 2,
+        "applicabilityUncertain": 0,
+        "declaredExecutions": 1,
+        "intendedExecutions": 0
+      },
+      "review": {
+        "version": "OBLIGATION_REVIEW_V1",
+        "attempted": true,
+        "available": true,
+        "error": null,
+        "claims": 7,
+        "confirmed": 6,
+        "unconfirmed": 1,
+        "refuted": 0,
+        "linesAssessed": 1,
+        "path": "CONFIRMED",
+        "violations": [],
+        "coverage": {
+          "requested": 0,
+          "answered": 0,
+          "unanswered": 0,
+          "withheld": 0
+        },
+        "occurrenceLinks": {
+          "accepted": 0,
+          "rejected": 0
+        },
+        "discoveries": {
+          "found": 0,
+          "pending": 0,
+          "confirmed": 0,
+          "refuted": 0,
+          "unconfirmed": 0,
+          "notRun": 0,
+          "notPrioritized": 0,
+          "duplicatesOfAnalysis": 1,
+          "confirmation": null
+        }
+      },
+      "contractViolations": [
+        "R1:DUPLICATE_OBLIGATION"
+      ],
+      "auditNotes": [
+        "O único desvio confirmado no caminho é de baixa materialidade: não sustenta, sozinho, um desvio de caminho.",
+        "1 conclusão(ões) não foram confirmadas e ficam fora do diagnóstico."
+      ],
+      "limitations": [
+        "Não é possível verificar ações em sistemas internos da operadora (como correção efetiva do cancelamento pendente e inclusão do chamado no sistema de faturamento), pois apenas a transcrição do diálogo está disponível."
+      ],
+      "criteria": [
+        {
+          "handle": "O1",
+          "origin": "ANALYSIS",
+          "title": "A abertura deve identificar a empresa, o operador e o cliente",
+          "sources": [
+            "L786",
+            "L790",
+            "L791",
+            "L792",
+            "L793"
+          ],
+          "action": "Realizar apresentação inicial cumprimentando conforme o horário, informando o primeiro nome, mencionando a marca Vivo e perguntando o nome do cliente",
+          "condition": null,
+          "items": [
+            {
+              "text": "Cumprimentar conforme o horário",
+              "line": "L790",
+              "status": "DONE"
+            },
+            {
+              "text": "Informar o primeiro nome de forma clara",
+              "line": "L791",
+              "status": "DONE"
+            },
+            {
+              "text": "Mencionar a Vivo",
+              "line": "L792",
+              "status": "NOT_DONE"
+            },
+            {
+              "text": "Perguntar o nome do cliente",
+              "line": "L793",
+              "status": "DONE"
+            }
+          ],
+          "itemsMode": "ALL",
+          "declared": "PARTIAL",
+          "proposed": "PARTIAL",
+          "final": "PARTIAL",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A operadora utilizou o nome de fantasia Conecta e omitiu a marca Vivo na saudação inicial."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T1 OPERADOR [CONDUCT]: Conecta, bom dia, aqui é a Larissa. Com quem eu falo?"
+          ],
+          "opportunityTurn": "T1",
+          "materiality": "LOW",
+          "role": "ROUTINE",
+          "downgrades": [],
+          "rationale": "A operadora cumprimentou, disse seu nome e perguntou o nome da cliente, mas não mencionou a marca Vivo, saudando com 'Conecta'."
+        },
+        {
+          "handle": "O2",
+          "origin": "ANALYSIS",
+          "title": "Antes de consultar o detalhamento, o operador deverá validar o titular",
+          "sources": [
+            "L86",
+            "L87",
+            "L88",
+            "L90",
+            "L855"
+          ],
+          "action": "Realizar a validação de segurança do titular antes de consultar o detalhamento da conta",
+          "condition": null,
+          "items": [
+            {
+              "text": "Confirmar titularidade / nome",
+              "line": "L88",
+              "status": "DONE"
+            },
+            {
+              "text": "Data de nascimento",
+              "line": "L90",
+              "status": "DONE"
+            }
+          ],
+          "itemsMode": "ANY",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "ALTERNATIVES",
+            "issues": [],
+            "note": "A titularidade e a data de nascimento foram confirmadas antes do acesso ao detalhamento."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T3 OPERADOR [CONDUCT]: Bem-vinda, Sônia. Vou verificar isso com você. Pra eu seguir, a linha está no seu nome? E qual é a sua data de nascimento?"
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora solicitou a confirmação de titularidade e a data de nascimento antes de prosseguir com a verificação da conta."
+        },
+        {
+          "handle": "O3",
+          "origin": "ANALYSIS",
+          "title": "O operador deverá permitir que o cliente explique: qual conta está questionando; qual cobrança não reconhece; qual valor foi faturado; se a conta já foi paga",
+          "sources": [
+            "L71",
+            "L72",
+            "L73",
+            "L75",
+            "L77"
+          ],
+          "action": "Identificar a conta questionada, o lançamento não reconhecido, o valor faturado e se a conta já foi paga",
+          "condition": null,
+          "items": [
+            {
+              "text": "Qual conta está questionando",
+              "line": "L72",
+              "status": "DONE"
+            },
+            {
+              "text": "Qual cobrança não reconhece e valor faturado",
+              "line": "L73",
+              "status": "DONE"
+            },
+            {
+              "text": "Se a conta já foi paga",
+              "line": "L77",
+              "status": "DONE"
+            }
+          ],
+          "itemsMode": "ALL",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A atendente coletou a fatura, o valor não reconhecido e o status de pagamento."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T5 OPERADOR [CONDUCT]: Pronto, confirmado. Qual é o valor que você não reconhece e em qual fatura ele veio?",
+            "T9 OPERADOR [CONDUCT]: Entendi. E essa fatura de agosto já foi paga?"
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora perguntou expressamente qual era o valor contestado, a fatura de referência e confirmou se a conta já havia sido paga."
+        },
+        {
+          "handle": "O4",
+          "origin": "ANALYSIS",
+          "title": "Verificar: data da solicitação; falha na conclusão",
+          "sources": [
+            "L311",
+            "L312",
+            "L320",
+            "L322"
+          ],
+          "action": "Verificar a data da solicitação de cancelamento e se houve falha na conclusão",
+          "condition": "Quando a contestação envolver cobrança após cancelamento",
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A operadora identificou que o cancelamento de 02/07 estava aberto e pendente de conclusão."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T7 OPERADOR [CONDUCT]: Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído."
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora consultou o histórico e identificou na ligação que a solicitação de cancelamento datava de 02 de julho e não havia sido concluída."
+        },
+        {
+          "handle": "O5",
+          "origin": "ANALYSIS",
+          "title": "Corrigir o status",
+          "sources": [
+            "L323",
+            "L324",
+            "L326"
+          ],
+          "action": "Corrigir o status do cancelamento, preservar a data da manifestação e registrar a falha sistêmica",
+          "condition": "Se o cancelamento não tiver sido concluído por falha interna",
+          "items": [
+            {
+              "text": "Corrigir o status",
+              "line": "L323",
+              "status": "NOT_VERIFIABLE"
+            },
+            {
+              "text": "Preservar a data da manifestação",
+              "line": "L324",
+              "status": "NOT_VERIFIABLE"
+            },
+            {
+              "text": "Registrar a falha",
+              "line": "L326",
+              "status": "NOT_VERIFIABLE"
+            }
+          ],
+          "itemsMode": "ALL",
+          "declared": "NOT_OBSERVABLE",
+          "proposed": "NOT_OBSERVABLE",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": "OUTSIDE_CONVERSATION",
+          "executionClaim": "NONE",
+          "evidenceKind": "NONE",
+          "evidence": [],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A correção do cancelamento em sistema e o registro de falha operacional interna ocorrem fora da conversa e não constam no áudio/transcrição."
+        },
+        {
+          "handle": "O6",
+          "origin": "ANALYSIS",
+          "title": "Abrir análise quando: existir cobrança após cancelamento não concluído",
+          "sources": [
+            "L425",
+            "L435",
+            "L499",
+            "L504"
+          ],
+          "action": "Abrir análise de faturamento para cobrança após cancelamento não concluído e informar o prazo de até cinco dias úteis com retorno por SMS",
+          "condition": "Existir cobrança após cancelamento não concluído",
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "UNCONFIRMED",
+          "reasons": [
+            "EXECUTION_OUTSIDE_CONVERSATION"
+          ],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "STATEMENT_ABOUT_ACTION",
+            "outsideDependency": true,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A abertura da análise foi informada com prazo de cinco dias úteis e canal de retorno por SMS."
+          },
+          "observability": "OUTSIDE_CONVERSATION",
+          "executionClaim": "DECLARED",
+          "evidenceKind": "DECLARED_ACTION",
+          "evidence": [
+            "T11 OPERADOR [CONDUCT]: Certo. Registrei a contestação dos R$ 59,90 pra equipe de faturamento analisar.",
+            "T12 OPERADOR [CONDUCT]: A equipe tem até cinco dias úteis pra concluir a análise, e o retorno vem por SMS aqui na sua linha."
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [
+            "UNCONFIRMED:EXECUTION_OUTSIDE_CONVERSATION"
+          ],
+          "rationale": "A operadora abriu a análise informando o prazo de até cinco dias úteis e o canal de retorno por SMS."
+        },
+        {
+          "handle": "O7",
+          "origin": "ANALYSIS",
+          "title": "Quando o cliente já tiver pago a cobrança contestada, avaliar: crédito em conta futura; estorno; transferência bancária, quando prevista",
+          "sources": [
+            "L486",
+            "L487",
+            "L488",
+            "L490"
+          ],
+          "action": "Avaliar opções de ressarcimento em caso de conta já paga (estorno, transferência bancária ou crédito)",
+          "condition": "Quando o cliente já tiver pago a cobrança contestada",
+          "items": [
+            {
+              "text": "Avaliar crédito em conta futura",
+              "line": "L487",
+              "status": "DONE"
+            },
+            {
+              "text": "Avaliar estorno / transferência bancária quando cabível",
+              "line": "L488",
+              "status": "NOT_DONE"
+            }
+          ],
+          "itemsMode": "UNCLEAR",
+          "declared": "PARTIAL",
+          "proposed": "NOT_OBSERVABLE",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T12 OPERADOR [CONDUCT]: Como a fatura já foi paga, se a contestação for aprovada o valor volta como crédito na próxima fatura."
+          ],
+          "opportunityTurn": "T12",
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [
+            "ITEMS_COMBINATION_UNCLEAR",
+            "REVIEW_ALSO_LISTED_AS_MISSED:R1:NOT_MET"
+          ],
+          "rationale": "A operadora mencionou devolução exclusivamente na forma de crédito em próxima fatura, ignorando que se trata de uma linha cancelada (onde não haverá faturas futuras regulares), sem avaliar opções cabíveis como estorno ou transferência bancária."
+        },
+        {
+          "handle": "O8",
+          "origin": "ANALYSIS",
+          "title": "Antes de encerrar, informar: valor; ação realizada; prazo; canal de retorno; protocolo",
+          "sources": [
+            "L610",
+            "L613",
+            "L614",
+            "L618",
+            "L619",
+            "L620",
+            "L1015",
+            "L1017",
+            "L1361",
+            "L1362",
+            "L1363"
+          ],
+          "action": "Recapitular as informações do atendimento (ação realizada, valor, prazo, canal de retorno e protocolo)",
+          "condition": null,
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A recapitulação cobriu o valor, a ação registrada, o prazo, o meio de retorno e o protocolo."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T14 OPERADOR [CONDUCT]: Resumindo, Sônia: registrei a contestação dos R$ 59,90, e a análise leva até cinco dias úteis, com retorno por SMS. O protocolo deste atendimento é 202608010721."
+          ],
+          "opportunityTurn": null,
+          "materiality": "MEDIUM",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora realizou a recapitulação contendo o resumo da contestação, o valor, o prazo, a forma de retorno e o número do protocolo."
+        },
+        {
+          "handle": "O9",
+          "origin": "ANALYSIS",
+          "title": "Perguntar: “As informações ficaram claras?”",
+          "sources": [
+            "L623",
+            "L624",
+            "L1024",
+            "L1365"
+          ],
+          "action": "Confirmar se as informações ficaram claras ou se restaram dúvidas antes de encerrar",
+          "condition": null,
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "ALTERNATIVES",
+            "issues": [],
+            "note": "A atendente checou a clareza das informações e questionou se restava alguma dúvida."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T16 OPERADOR [CONDUCT]: Ficou claro pra você? Ficou alguma dúvida?"
+          ],
+          "opportunityTurn": null,
+          "materiality": "LOW",
+          "role": "ROUTINE",
+          "downgrades": [],
+          "rationale": "A operadora questionou expressamente se tudo ficou claro e se havia alguma dúvida antes do término da ligação."
+        },
+        {
+          "handle": "R2",
+          "origin": "REVIEW_REPAIR",
+          "title": "Se o cancelamento não tiver sido concluído por falha interna: corrigir o status",
+          "sources": [
+            "L322",
+            "L323"
+          ],
+          "action": "Corrigir o status do cancelamento quando não concluído por falha interna",
+          "condition": "Se o cancelamento não tiver sido concluído por falha interna",
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "NOT_MET",
+          "proposed": "NOT_OBSERVABLE",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "DECLARED_ACTION",
+          "evidence": [
+            "T7 OPERADOR [DECLARATION]: Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído."
+          ],
+          "opportunityTurn": "T11",
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [
+            "DECLARATION_DOES_NOT_PROVE_CONDUCT"
+          ],
+          "rationale": "A operadora identificou que a solicitação de cancelamento de julho permaneceu aberta, mas apenas abriu contestação da conta de agosto, deixando de tratar a conclusão do cancelamento."
+        }
+      ]
+    }
+  },
+  "B": {
+    "cap": 12,
+    "modelCalls": 6,
+    "generation": {
+      "kind": "PUBLISHABLE",
+      "messageId": "ded560b1-4392-43b8-b981-dcdbf2d6423a",
+      "message": {
+        "status": "PUBLISHABLE",
+        "abstainReason": null,
+        "heading": {
+          "title": "Dúvida sobre fatura e segunda via de conta com falha no aplicativo",
+          "subtitle": "Atendimento de 10/08/2026",
+          "subjectSource": "RECORDED"
+        },
+        "card": "Você detalhou muito bem a fatura e explicou o motivo da transferência. Nas próximas chamadas, lembre-se de informar o protocolo ao cliente antes de transferir ou encerrar.",
+        "text": "Ao analisar a fatura com a cliente, você detalhou os valores de forma bastante clara, explicando a mensalidade, o serviço adicional e a diferença proporcional pela mudança de plano no meio do ciclo.\n\nVocê também teve o cuidado de explicar o motivo de direcionar o atendimento para o setor de faturamento. Nas próximas chamadas, quando for transferir ou encerrar a ligação, passe também o número do protocolo para o cliente antes de efetivar o encaminhamento.",
+        "brief": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "domain": "MONITORING",
+          "label": "Dúvida sobre fatura e segunda via de conta com falha no aplicativo",
+          "heading": {
+            "title": "Dúvida sobre fatura e segunda via de conta com falha no aplicativo",
+            "subtitle": "Atendimento de 10/08/2026",
+            "subjectSource": "RECORDED"
+          },
+          "context": [
+            "Caminho: o indicado para o cenário, com etapas faltando.",
+            "Como a chamada chegou à análise: Avaliação real V11 (cenário B): segunda via com argumentário aplicável.",
+            "Procedimento aplicado: Procedimento Operacional Segunda Via de Conta",
+            "A versão do procedimento usada foi publicada depois desta chamada: o que ela aponta é orientação para as próximas chamadas, não descumprimento de uma regra que valia na época.",
+            "Argumentários usados numa REAVALIAÇÃO pela regra atual (não estavam vigentes na data desta chamada): o que eles apontam é orientação para as próximas chamadas, não descumprimento da época."
+          ],
+          "situation": "A cliente contatou para entender o aumento no valor da fatura de julho (de R$ 85,40 para R$ 165,40) e solicitar a segunda via da conta que não recebeu por e-mail e que apresentou erro ao tentar emitir pelo aplicativo.",
+          "scenarioQuotes": [
+            {
+              "speaker": "CUSTOMER",
+              "text": "Minha conta veio mais cara esse mês. Eu pago R$ 85,40 e agora veio R$ 165,40. Não entendi o que é isso.",
+              "turn": "T9"
+            },
+            {
+              "speaker": "OPERATOR",
+              "text": "Estou vendo a fatura de julho aqui. Ela tem o valor do plano Pós 50GB e mais um lançamento de serviço adicional.",
+              "turn": "T13"
+            },
+            {
+              "speaker": "CUSTOMER",
+              "text": "Eu tentei pelo app mas dava erro na hora de abrir a fatura.",
+              "turn": "T44"
+            },
+            {
+              "speaker": "CUSTOMER",
+              "text": "Alguma coisa de \"serviço indisponível\".",
+              "turn": "T46"
+            }
+          ],
+          "readerNotes": [
+            "Este retorno usa a versão atual do procedimento, publicada depois desta chamada: vale como orientação para as próximas chamadas.",
+            "O que é feito em sistemas, fora da conversa, não aparece na gravação e não foi avaliado neste retorno."
+          ],
+          "coverageLimits": [
+            {
+              "title": "Exceções autorizadas",
+              "reason": "OUTSIDE_CONVERSATION",
+              "executionClaim": "DECLARED",
+              "role": "CENTRAL",
+              "criterionKey": "KC-a01fd5b90a18"
+            }
+          ],
+          "developments": [
+            {
+              "ref": "A1",
+              "findingKey": "CALL:de00d005-3c0f-4727-8daf-2773140269e3:KC-b2ebc8da60b6",
+              "kind": "DEVELOPMENT",
+              "origin": "CRITERION",
+              "title": "Antes de transferir: informar o motivo; informar protocolo",
+              "materiality": "HIGH",
+              "status": "PARTIAL",
+              "observed": "Esta etapa foi feita só em parte nesta chamada.",
+              "reading": "A operadora explicou o motivo e a área de destino da transferência, mas não informou o número do protocolo à cliente antes de transferir.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Esse tipo de ajuste é feito pelo setor de faturamento. Vou transferir a senhora agora, já passei o contexto no protocolo.",
+                  "turn": "T85"
+                },
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Só um instante, transferindo.",
+                  "turn": "T88"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "Antes de transferir:\n- Informar o motivo;\n- Informar protocolo;\nAntes de transferir, o operador deve:\n- Explicar o motivo;",
+                  "section": "Transferência",
+                  "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+                  "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+                  "leadIn": null
+                }
+              ],
+              "guidance": {
+                "moment": "Em T85-T88, ao anunciar a transferência para o setor de faturamento",
+                "condition": "Houver necessidade de transferir o atendimento para outra equipe",
+                "action": "Ditar de forma clara o número de protocolo do atendimento para a cliente antes de efetivar a transferência na linha."
+              },
+              "whyItMatters": null,
+              "history": null,
+              "criterionKeys": [
+                "KC-b2ebc8da60b6"
+              ],
+              "stats": [],
+              "sameList": [
+                {
+                  "text": "Informar o motivo da transferência",
+                  "status": "MET"
+                },
+                {
+                  "text": "Informar o protocolo",
+                  "status": "NOT_MET"
+                }
+              ],
+              "notAssessedInSameList": [
+                "- Registrar o contexto;",
+                "- Repassar valores e lançamentos;",
+                "- Evitar que o cliente repita a solicitação.",
+                "- Informar para qual área o cliente será direcionado;",
+                "- Registrar o resumo;",
+                "- Repassar o contexto disponível;",
+                "- Evitar que o cliente repita informações;",
+                "- Confirmar que a transferência é o caminho correto."
+              ],
+              "ruleBasis": "CURRENT_RULE_REEVALUATION",
+              "role": "CENTRAL"
+            },
+            {
+              "ref": "A2",
+              "findingKey": "CALL:de00d005-3c0f-4727-8daf-2773140269e3:KC-de9af08a588c",
+              "kind": "DEVELOPMENT",
+              "origin": "CRITERION",
+              "title": "Antes de encerrar qualquer chamada: informe o número do protocolo",
+              "materiality": "HIGH",
+              "status": "NOT_MET",
+              "observed": "A conduta nesta chamada não seguiu o que esta etapa pede.",
+              "reading": "A chamada foi transferida/finalizada em T88 sem que o número do protocolo fosse informado em nenhum momento da conversa.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Só um instante, transferindo.",
+                  "turn": "T88"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "Antes de encerrar qualquer chamada:\n(2) informe o número do protocolo;",
+                  "section": null,
+                  "documentId": "00000000-0000-4000-8000-000000000051",
+                  "documentTitle": "Checklist de Encerramento de Chamada",
+                  "leadIn": null
+                }
+              ],
+              "guidance": {
+                "moment": "Em T85 ou T87, antes de efetivar a transferência",
+                "condition": null,
+                "action": "Passar o número do protocolo para a cliente anotar, garantindo a rastreabilidade do atendimento."
+              },
+              "whyItMatters": null,
+              "history": null,
+              "criterionKeys": [
+                "KC-de9af08a588c"
+              ],
+              "stats": [],
+              "sameList": [],
+              "notAssessedInSameList": [
+                "(1) confirme a solução aplicada;",
+                "(3) explique o próximo passo e o prazo;",
+                "(4) confirme se o cliente tem mais alguma dúvida."
+              ],
+              "ruleBasis": "CURRENT_RULE_REEVALUATION",
+              "role": "ROUTINE"
+            }
+          ],
+          "strengths": [
+            {
+              "ref": "S1",
+              "findingKey": "CALL:de00d005-3c0f-4727-8daf-2773140269e3:KC-e46763fb8a51",
+              "kind": "STRENGTH",
+              "origin": "CRITERION",
+              "title": "Leitura da conta",
+              "materiality": "HIGH",
+              "status": "MET",
+              "observed": "Esta etapa foi cumprida nesta chamada.",
+              "reading": "A operadora explicou claramente a composição dos valores faturados, diferenciando plano, serviço adicional e cobrança proporcional.",
+              "quotes": [
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Também tem uma cobrança proporcional: como o plano mudou no meio do ciclo, o sistema cobra os dias do plano antigo e os dias do novo.",
+                  "turn": "T16"
+                },
+                {
+                  "speaker": "OPERATOR",
+                  "text": "Vou detalhar linha a linha pra a senhora: plano, R$ 119,90; serviço adicional, R$ 29,90; e a diferença proporcional.",
+                  "turn": "T22"
+                },
+                {
+                  "speaker": "CUSTOMER",
+                  "text": "Minha conta veio mais cara esse mês. Eu pago R$ 85,40 e agora veio R$ 165,40. Não entendi o que é isso.",
+                  "turn": "T9"
+                }
+              ],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [
+                {
+                  "text": "O operador deverá explicar:\nA explicação deverá ser feita em linguagem simples.\n“A diferença de R$ 34,20 é composta por R$ 19,90 de um pacote adicional e R$ 14,30 de cobrança proporcional após a mudança de plano.”",
+                  "section": "Leitura da conta",
+                  "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+                  "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+                  "leadIn": null
+                }
+              ],
+              "guidance": null,
+              "whyItMatters": null,
+              "situational": true,
+              "history": null,
+              "criterionKeys": [
+                "KC-e46763fb8a51"
+              ],
+              "stats": [],
+              "sameList": [],
+              "notAssessedInSameList": [
+                "- Nome do lançamento;",
+                "- Período de referência;",
+                "- Data do evento;",
+                "- Valor;",
+                "- Forma de contratação ou origem;",
+                "- Recorrência;",
+                "- Impostos, quando aplicáveis;",
+                "- Descontos;",
+                "- Créditos;",
+                "- Valores proporcionais;"
+              ],
+              "role": "CENTRAL"
+            }
+          ],
+          "limitations": [
+            "Não é possível verificar telas internas de sistemas, ferramentas de faturamento ou registros de protocolo cadastrados fora da transcrição."
+          ],
+          "materials": [
+            {
+              "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+              "documentVersion": null,
+              "title": "Procedimento Operacional — Contestação de Contas Móvel",
+              "sections": [
+                "Transferência"
+              ],
+              "reason": "Sustenta o ajuste em: Antes de transferir: informar o motivo; informar protocolo (seções: Transferência).",
+              "criterionKeys": [
+                "KC-b2ebc8da60b6"
+              ],
+              "usedIn": [
+                "Antes de transferir: informar o motivo; informar protocolo"
+              ]
+            },
+            {
+              "documentId": "00000000-0000-4000-8000-000000000051",
+              "documentVersion": null,
+              "title": "Checklist de Encerramento de Chamada",
+              "sections": [],
+              "reason": "Sustenta o ajuste em: Antes de encerrar qualquer chamada: informe o número do protocolo.",
+              "criterionKeys": [
+                "KC-de9af08a588c"
+              ],
+              "usedIn": [
+                "Antes de encerrar qualquer chamada: informe o número do protocolo"
+              ]
+            }
+          ],
+          "officialLines": [],
+          "indicatorName": null,
+          "tone": "MIXED",
+          "suppressed": [],
+          "rulePerspective": "CURRENT_RULE_REEVALUATION"
+        },
+        "composition": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "promptVersion": "FEEDBACK_COMPOSITION_PROMPT_V9",
+          "verificationPromptVersion": "FEEDBACK_VERIFICATION_PROMPT_V8",
+          "coherencePromptVersion": "FEEDBACK_COHERENCE_PROMPT_V1",
+          "attempts": {
+            "writer": 2,
+            "verifier": 2,
+            "coherence": 0
+          },
+          "errors": [],
+          "decisions": [
+            {
+              "id": "F1",
+              "stance": "RECOGNITION",
+              "refs": [
+                "S1"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "F2",
+              "stance": "RECOGNITION",
+              "refs": [
+                "A1"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "F3",
+              "stance": "GUIDANCE",
+              "refs": [
+                "A1",
+                "A2"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "CARD",
+              "stance": "CONTEXT",
+              "refs": [
+                "S1",
+                "A1",
+                "A2"
+              ],
+              "kept": true,
+              "reasons": []
+            }
+          ],
+          "verdicts": [
+            {
+              "id": "F1",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "F2",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "F3",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "CARD",
+              "verdict": "GENERALIZATION",
+              "specific": null,
+              "repeats": null
+            }
+          ],
+          "analysis": [
+            {
+              "id": "G-A1",
+              "accepted": false,
+              "verdict": "UNSUPPORTED_ADDITION",
+              "note": null
+            },
+            {
+              "id": "G-A2",
+              "accepted": false,
+              "verdict": "UNSUPPORTED_ADDITION",
+              "note": null
+            }
+          ],
+          "trusted": {
+            "guidance": {},
+            "why": {}
+          },
+          "usefulness": {
+            "primaryRef": "A1",
+            "primaryCovered": true,
+            "missingGuidance": [],
+            "missingRecognition": false,
+            "missingContext": false,
+            "missingValue": null
+          },
+          "coherence": {
+            "required": false,
+            "checked": false,
+            "coherent": null,
+            "problems": [],
+            "danglingAfterRemoval": []
+          },
+          "communicatedRefs": [
+            "S1",
+            "A1",
+            "A2"
+          ],
+          "notCommunicated": [],
+          "leaksRemoved": [],
+          "outcome": "MESSAGE",
+          "reason": null,
+          "messageAssessment": {
+            "conveysPrimary": true,
+            "valueBeyondNarration": true,
+            "note": null
+          },
+          "lostInformation": []
+        }
+      }
+    },
+    "analysis": {
+      "outcome": "PARTIAL",
+      "outcomeReasons": [
+        "COVERAGE_PARTIAL",
+        "SOME_CONCLUSIONS_UNCONFIRMED"
+      ],
+      "scenario": {
+        "customerNeed": "A cliente contatou para entender o aumento no valor da fatura de julho (de R$ 85,40 para R$ 165,40) e solicitar a segunda via da conta que não recebeu por e-mail e que apresentou erro ao tentar emitir pelo aplicativo.",
+        "conditions": [
+          {
+            "text": "A fatura de julho veio com valor superior ao habitual devido a mudança de plano no meio do ciclo (proporcional) e serviços/pacotes adicionais.",
+            "evidence": [
+              {
+                "turn": "T9",
+                "speaker": "CLIENTE",
+                "quote": "Minha conta veio mais cara esse mês. Eu pago R$ 85,40 e agora veio R$ 165,40. Não entendi o que é isso.",
+                "timestamp": null
+              },
+              {
+                "turn": "T13",
+                "speaker": "OPERADOR",
+                "quote": "Estou vendo a fatura de julho aqui. Ela tem o valor do plano Pós 50GB e mais um lançamento de serviço adicional.",
+                "timestamp": null
+              }
+            ]
+          },
+          {
+            "text": "A cliente relatou falha no aplicativo ao tentar acessar a fatura ('serviço indisponível'), caracterizando exceção de falha na ferramenta para envio assistido.",
+            "evidence": [
+              {
+                "turn": "T44",
+                "speaker": "CLIENTE",
+                "quote": "Eu tentei pelo app mas dava erro na hora de abrir a fatura.",
+                "timestamp": null
+              },
+              {
+                "turn": "T46",
+                "speaker": "CLIENTE",
+                "quote": "Alguma coisa de \"serviço indisponível\".",
+                "timestamp": null
+              }
+            ]
+          },
+          {
+            "text": "A cliente informou alteração de endereço de e-mail cadastrado durante o atendimento.",
+            "evidence": [
+              {
+                "turn": "T38",
+                "speaker": "CLIENTE",
+                "quote": "Não, esse eu não uso mais. Por isso não chega.",
+                "timestamp": null
+              },
+              {
+                "turn": "T40",
+                "speaker": "CLIENTE",
+                "quote": "O novo é priscila.bastos@gmail.com.",
+                "timestamp": null
+              }
+            ]
+          }
+        ],
+        "procedure": "Procedimento Operacional Segunda Via de Conta",
+        "rulePerspective": "CURRENT_RULE_REEVALUATION",
+        "declaredPath": "PARTIALLY_CORRECT",
+        "proposedPath": "PARTIALLY_CORRECT",
+        "pathAssessment": "PARTIALLY_CORRECT",
+        "pathConfirmation": "CONFIRMED",
+        "pathCompleteness": {
+          "status": "LIMITED",
+          "applicable": 9,
+          "outsideConversation": 1,
+          "notAssessed": 1,
+          "unconfirmed": 3,
+          "applicabilityUncertain": 0,
+          "otherNotObservable": 1
+        },
+        "pathTaken": "Etapas verificadas na conversa, em ordem: “Leitura da conta” — cumprida; “Exceções autorizadas” — declarada na conversa (execução em sistema, não verificável pela gravação); “Antes de transferir: informar o motivo; informar protocolo” — cumprida em parte; “Antes de encerrar qualquer chamada: informe o número do protocolo” — não cumprida.",
+        "pathRationale": "Avaliação vigente: caminho indicado, com etapas materiais faltando ou fora de ordem. Desvio(s) confirmado(s) no caminho: “Antes de transferir: informar o motivo; informar protocolo” (cumprida em parte); “Antes de encerrar qualquer chamada: informe o número do protocolo” (não cumprida). Etapa(s) cumprida(s) com evidência na conversa: 1. Não verificável pela gravação (execução em sistema): “Exceções autorizadas”. Conclusão(ões) da análise que não se sustentaram e ficaram fora do diagnóstico: “É proibido: enviar a conta para e-mail ou telefone informado durante o atendimento sem…”."
+      },
+      "argumentScripts": [
+        {
+          "handle": "G1",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a02",
+          "name": "Bloqueio após pagamento",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A cliente não informou que os serviços estavam bloqueados após pagamento nem solicitou desbloqueio.",
+          "downgrade": null
+        },
+        {
+          "handle": "G2",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a01",
+          "name": "Contas em atraso",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [
+            {
+              "turn": "T78",
+              "speaker": "OPERADOR",
+              "quote": "Consta uma fatura de abril paga com 5 dias de atraso, mas quitada. Nada em aberto além da atual.",
+              "timestamp": null
+            }
+          ],
+          "rationale": "Apesar de mencionada uma fatura antiga paga com atraso, a conta já se encontrava quitada, não havendo débitos pendentes em aberto ou necessidade de parcelamento.",
+          "downgrade": null
+        },
+        {
+          "handle": "G3",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a06",
+          "name": "Fim da franquia de dados",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A cliente não informou fim da franquia de dados ou falta de internet móvel.",
+          "downgrade": null
+        },
+        {
+          "handle": "G4",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a03",
+          "name": "Pagamento com cartão (serviço bloqueado)",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [],
+          "rationale": "A linha não estava com bloqueio por inadimplência.",
+          "downgrade": null
+        },
+        {
+          "handle": "G5",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a05",
+          "name": "Problema técnico no serviço fixo",
+          "version": 1,
+          "declaredApplicability": "DOES_NOT_APPLY",
+          "applicability": "DOES_NOT_APPLY",
+          "situation": null,
+          "evidence": [
+            {
+              "turn": "T62",
+              "speaker": "CLIENTE",
+              "quote": "Aproveitando, o Wi-Fi da casa é o mesmo nome de sempre? Meu vizinho disse que não achava.",
+              "timestamp": null
+            },
+            {
+              "turn": "T64",
+              "speaker": "CLIENTE",
+              "quote": "Não precisa, era só pra confirmar.",
+              "timestamp": null
+            }
+          ],
+          "rationale": "A cliente apenas perguntou o nome da rede Wi-Fi residencial para conferência, sem relatar defeito técnico ou solicitar suporte de reparo.",
+          "downgrade": null
+        },
+        {
+          "handle": "G6",
+          "scriptId": "00000000-0000-4000-8000-0000000c7a04",
+          "name": "Segunda via",
+          "version": 1,
+          "declaredApplicability": "APPLIES",
+          "applicability": "APPLIES",
+          "situation": null,
+          "evidence": [
+            {
+              "turn": "T31",
+              "speaker": "CLIENTE",
+              "quote": "Eu preciso da segunda via da minha conta. Não chegou no e-mail esse mês.",
+              "timestamp": null
+            }
+          ],
+          "rationale": "A cliente solicitou expressamente a segunda via da conta em T31, acionando as diretrizes de orientação do aplicativo e confirmação da solicitação.",
+          "downgrade": null
+        }
+      ],
+      "coverage": {
+        "requiredLines": [
+          "O1",
+          "O2",
+          "O3",
+          "O4",
+          "O5",
+          "L1390",
+          "L1391",
+          "L1392",
+          "L1393",
+          "N1",
+          "N2"
+        ],
+        "closingSections": [],
+        "missing": [
+          "L1390",
+          "N1",
+          "N2"
+        ],
+        "repairAttempted": true,
+        "status": "PARTIAL",
+        "byStatus": {
+          "assessed": 3,
+          "notApplicable": 0,
+          "notVerifiable": 5,
+          "notAssessed": 3
+        },
+        "occurrences": {
+          "adverseRules": 2,
+          "adverseOccurrences": 2,
+          "metRules": 1,
+          "metOccurrences": 1
+        },
+        "listItems": {
+          "found": 28,
+          "shownToReview": 28,
+          "raisedByReview": 0
+        }
+      },
+      "coverageLimits": {
+        "outsideConversation": 1,
+        "applicabilityUncertain": 0,
+        "declaredExecutions": 1,
+        "intendedExecutions": 0
+      },
+      "review": {
+        "version": "OBLIGATION_REVIEW_V1",
+        "attempted": true,
+        "available": true,
+        "error": null,
+        "claims": 7,
+        "confirmed": 3,
+        "unconfirmed": 3,
+        "refuted": 1,
+        "linesAssessed": 3,
+        "path": "CONFIRMED",
+        "violations": [],
+        "coverage": {
+          "requested": 4,
+          "answered": 4,
+          "unanswered": 0,
+          "withheld": 0
+        },
+        "occurrenceLinks": {
+          "accepted": 0,
+          "rejected": 0
+        },
+        "discoveries": {
+          "found": 1,
+          "pending": 0,
+          "confirmed": 0,
+          "refuted": 1,
+          "unconfirmed": 0,
+          "notRun": 0,
+          "notPrioritized": 2,
+          "duplicatesOfAnalysis": 1,
+          "confirmation": {
+            "attempted": true,
+            "available": true,
+            "reason": null,
+            "error": null
+          }
+        }
+      },
+      "contractViolations": [
+        "R1:DUPLICATE_OBLIGATION"
+      ],
+      "auditNotes": [
+        "4 conclusão(ões) não foram confirmadas e ficam fora do diagnóstico.",
+        "1 achado(s) encontrado(s) só pela revisão: 0 confirmado(s) na confirmação focal, 1 refutado(s), 0 incerto(s), 0 sem confirmação (inconclusivo).",
+        "3 obrigação(ões)/item(ns) aplicáveis sem avaliação — a análise é parcial."
+      ],
+      "limitations": [
+        "Não é possível verificar telas internas de sistemas, ferramentas de faturamento ou registros de protocolo cadastrados fora da transcrição."
+      ],
+      "criteria": [
+        {
+          "handle": "O1",
+          "origin": "ANALYSIS",
+          "title": "Exceções autorizadas",
+          "sources": [
+            "L20",
+            "L21",
+            "L22",
+            "L23",
+            "L24",
+            "L27"
+          ],
+          "action": "Aplicar a exceção de envio assistido após confirmar a tentativa de acesso do cliente no canal digital, verificar indisponibilidade e registrar a mensagem de erro relatada",
+          "condition": "Houver indisponibilidade, erro ou falha comprovada no canal digital necessário para baixar a conta",
+          "items": [
+            {
+              "text": "Confirmar que o cliente tentou acessar o canal indicado",
+              "line": "L23",
+              "status": "DONE"
+            },
+            {
+              "text": "Verificar se existe indisponibilidade conhecida",
+              "line": "L24",
+              "status": "DONE"
+            },
+            {
+              "text": "Registrar a mensagem de erro ou comportamento apresentado",
+              "line": "L27",
+              "status": "DONE"
+            }
+          ],
+          "itemsMode": "ALL",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "UNCONFIRMED",
+          "reasons": [
+            "EXECUTION_OUTSIDE_CONVERSATION"
+          ],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": true,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A validação da falha e da mensagem ocorreu na chamada, mas o registro sistêmico da mensagem depende de tela operacional."
+          },
+          "observability": "OUTSIDE_CONVERSATION",
+          "executionClaim": "DECLARED",
+          "evidenceKind": "DECLARED_ACTION",
+          "evidence": [
+            "T44 CLIENTE [CONDITION]: Eu tentei pelo app mas dava erro na hora de abrir a fatura.",
+            "T45 OPERADOR [CONDUCT]: Qual era a mensagem?",
+            "T47 OPERADOR [CONDUCT]: Tivemos uma instabilidade no app ontem. Já está normalizando, mas eu envio por aqui mesmo."
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [
+            "UNCONFIRMED:EXECUTION_OUTSIDE_CONVERSATION"
+          ],
+          "rationale": "A operadora questionou a mensagem de erro apresentada e confirmou a instabilidade do aplicativo antes de efetuar o envio assistido."
+        },
+        {
+          "handle": "O2",
+          "origin": "ANALYSIS",
+          "title": "É proibido: enviar a conta para e-mail ou telefone informado durante o atendimento sem validação adicional",
+          "sources": [
+            "L40",
+            "L41"
+          ],
+          "action": "Não enviar a conta para e-mail ou telefone informado durante o atendimento sem validação adicional",
+          "condition": null,
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "PARTIAL",
+          "proposed": "NOT_OBSERVABLE",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "DECLARED_ACTION",
+          "evidence": [
+            "T39 OPERADOR [INTENTION]: Entendi, então vou atualizar o e-mail e reenviar.",
+            "T50 OPERADOR [DECLARATION]: O SMS foi enviado. O e-mail, por conta da instabilidade, pode levar até 24 horas pra chegar."
+          ],
+          "opportunityTurn": "T39",
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [
+            "DECLARATION_DOES_NOT_PROVE_CONDUCT",
+            "REVIEW_ALSO_LISTED_AS_MISSED:R1:NOT_MET"
+          ],
+          "rationale": "A operadora aceitou o novo endereço de e-mail fornecido na chamada sem realizar qualquer validação de segurança adicional antes de informar o reenvio."
+        },
+        {
+          "handle": "O3",
+          "origin": "ANALYSIS",
+          "title": "Leitura da conta",
+          "sources": [
+            "L241",
+            "L253",
+            "L255"
+          ],
+          "action": "Explicar os lançamentos, valores proporcionais e serviços adicionais em linguagem simples",
+          "condition": "Cliente solicitar esclarecimento sobre valor faturado",
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A operadora explicou linha a linha os valores cobrados, diferenciando o plano, os adicionais e o valor proporcional."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T16 OPERADOR [CONDUCT]: Também tem uma cobrança proporcional: como o plano mudou no meio do ciclo, o sistema cobra os dias do plano antigo e os dias do novo.",
+            "T22 OPERADOR [CONDUCT]: Vou detalhar linha a linha pra a senhora: plano, R$ 119,90; serviço adicional, R$ 29,90; e a diferença proporcional."
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora explicou claramente a composição dos valores faturados, diferenciando plano, serviço adicional e cobrança proporcional."
+        },
+        {
+          "handle": "O4",
+          "origin": "ANALYSIS",
+          "title": "Antes de transferir: informar o motivo; informar protocolo",
+          "sources": [
+            "L682",
+            "L683",
+            "L686",
+            "L1074",
+            "L1075"
+          ],
+          "action": "Informar o motivo da transferência e fornecer o número de protocolo ao cliente antes de realizar a transferência",
+          "condition": "Houver necessidade de transferir o atendimento para outra equipe",
+          "items": [
+            {
+              "text": "Informar o motivo da transferência",
+              "line": "L683",
+              "status": "DONE"
+            },
+            {
+              "text": "Informar o protocolo",
+              "line": "L686",
+              "status": "NOT_DONE"
+            }
+          ],
+          "itemsMode": "ALL",
+          "declared": "PARTIAL",
+          "proposed": "PARTIAL",
+          "final": "PARTIAL",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "CUMULATIVE",
+            "issues": [],
+            "note": "A operadora informou o motivo e o destino da transferência, mas não repassou o protocolo antes da execução."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T85 OPERADOR [CONDUCT]: Esse tipo de ajuste é feito pelo setor de faturamento. Vou transferir a senhora agora, já passei o contexto no protocolo.",
+            "T88 OPERADOR [CONDUCT]: Só um instante, transferindo."
+          ],
+          "opportunityTurn": "T85",
+          "materiality": "HIGH",
+          "role": "CENTRAL",
+          "downgrades": [],
+          "rationale": "A operadora explicou o motivo e a área de destino da transferência, mas não informou o número do protocolo à cliente antes de transferir."
+        },
+        {
+          "handle": "O5",
+          "origin": "ANALYSIS",
+          "title": "Antes de encerrar qualquer chamada: informe o número do protocolo",
+          "sources": [
+            "L1361",
+            "L1363"
+          ],
+          "action": "Informar o número do protocolo ao cliente antes de encerrar ou transferir a chamada",
+          "condition": null,
+          "items": [],
+          "itemsMode": "NONE",
+          "declared": "NOT_MET",
+          "proposed": "NOT_MET",
+          "final": "NOT_MET",
+          "confirmation": "CONFIRMED",
+          "reasons": [],
+          "reviewReading": {
+            "verdict": "CONFIRMED",
+            "evidenceReading": "ABSENCE_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "NOT_A_LIST",
+            "issues": [],
+            "note": "O número do protocolo não foi vocalizado em nenhum momento da chamada antes da transferência/encerramento."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T88 OPERADOR [CONDUCT]: Só um instante, transferindo."
+          ],
+          "opportunityTurn": "T85",
+          "materiality": "HIGH",
+          "role": "ROUTINE",
+          "downgrades": [],
+          "rationale": "A chamada foi transferida/finalizada em T88 sem que o número do protocolo fosse informado em nenhum momento da conversa."
+        },
+        {
+          "handle": "L1390",
+          "origin": "COVERAGE_GAP",
+          "title": "Verificar se a solicitação é referente à segunda via da fatura ou do parcelamento. Após a confirmação, orientar o client",
+          "sources": [],
+          "action": null,
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "NOT_OBSERVABLE",
+          "proposed": "NOT_ASSESSED",
+          "final": "NOT_ASSESSED",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": null,
+          "executionClaim": null,
+          "evidenceKind": "NONE",
+          "evidence": [],
+          "opportunityTurn": null,
+          "materiality": "MEDIUM",
+          "role": null,
+          "downgrades": [
+            "NOT_A_REQUIREMENT_BY_REVIEW"
+          ],
+          "rationale": "Trata-se de orientação geral de conduta (guidance) cujo desdobramento obrigatório está fixado no ponto de fala L1391."
+        },
+        {
+          "handle": "L1391",
+          "origin": "REVIEW_REPAIR",
+          "title": "Confirmar se a solicitação é de segunda via da fatura ou do parcelamento antes de orientar o acesso pelo aplicativo.",
+          "sources": [],
+          "action": null,
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "NOT_MET",
+          "proposed": "NOT_MET",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "REFUTED",
+          "reasons": [
+            "REVIEW_REFUTED",
+            "COUNTER_EVIDENCE_VERIFIED"
+          ],
+          "reviewReading": {
+            "verdict": "REFUTED",
+            "evidenceReading": "ACTION_IN_CALL",
+            "outsideDependency": false,
+            "listReading": "ALTERNATIVES",
+            "issues": [
+              "ACTION_FOUND_IN_CALL"
+            ],
+            "note": "A operadora confirmou expressamente em T33 que a solicitação tratava-se da segunda via da fatura antes da explicação sobre o app em T71."
+          },
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "OMISSION",
+          "evidence": [],
+          "opportunityTurn": "T32",
+          "materiality": "MEDIUM",
+          "role": null,
+          "downgrades": [
+            "REFUTED:REVIEW_REFUTED+COUNTER_EVIDENCE_VERIFIED"
+          ],
+          "rationale": "A cliente pediu a segunda via e a operadora não questionou se era fatura ou parcelamento antes de dar andamento."
+        },
+        {
+          "handle": "L1392",
+          "origin": "REVIEW_REPAIR",
+          "title": "Não encerrar o atendimento sem tratar a necessidade apresentada pelo cliente.",
+          "sources": [],
+          "action": null,
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "UNCONFIRMED",
+          "reasons": [
+            "REVIEW_DISCOVERY_NOT_PRIORITIZED"
+          ],
+          "reviewReading": null,
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "CONDUCT_OBSERVED",
+          "evidence": [
+            "T48 OPERADOR: Enviei o código de barras por SMS pro número final 8078. Chegou?",
+            "T49 CLIENTE: Deixa eu ver... chegou sim."
+          ],
+          "opportunityTurn": null,
+          "materiality": "HIGH",
+          "role": null,
+          "downgrades": [
+            "UNCONFIRMED:REVIEW_DISCOVERY_NOT_PRIORITIZED"
+          ],
+          "rationale": "A necessidade de segunda via foi tratada e o código de barras foi disponibilizado e confirmado pela cliente."
+        },
+        {
+          "handle": "L1393",
+          "origin": "REVIEW_REPAIR",
+          "title": "Não mencionar nomes de sistemas internos.",
+          "sources": [],
+          "action": null,
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "MET",
+          "proposed": "MET",
+          "final": "NOT_OBSERVABLE",
+          "confirmation": "UNCONFIRMED",
+          "reasons": [
+            "REVIEW_DISCOVERY_NOT_PRIORITIZED"
+          ],
+          "reviewReading": null,
+          "observability": "IN_CONVERSATION",
+          "executionClaim": null,
+          "evidenceKind": "COMPLIANCE_BY_ABSENCE",
+          "evidence": [],
+          "opportunityTurn": null,
+          "materiality": "MEDIUM",
+          "role": null,
+          "downgrades": [
+            "UNCONFIRMED:REVIEW_DISCOVERY_NOT_PRIORITIZED"
+          ],
+          "rationale": "A operadora não citou nomes de ferramentas ou sistemas internos corporativos ao longo do atendimento."
+        },
+        {
+          "handle": "N1",
+          "origin": "COVERAGE_GAP",
+          "title": "O protocolo deve conter: motivo da solicitação; canal digital inicialmente indicado; resultado da tentativa de autosserviço; exceção aplicada; evidência ou relato que justificou a exceção; validações realizadas; canal utilizado para envio; data e horário; resultado final",
+          "sources": [
+            "L55",
+            "L56",
+            "L57",
+            "L58",
+            "L59",
+            "L60",
+            "L61",
+            "L62",
+            "L63",
+            "L64"
+          ],
+          "action": "Inserir todos os campos obrigatórios de registro no protocolo do sistema",
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "NOT_OBSERVABLE",
+          "proposed": "NOT_ASSESSED",
+          "final": "NOT_ASSESSED",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": null,
+          "executionClaim": null,
+          "evidenceKind": "NONE",
+          "evidence": [],
+          "opportunityTurn": null,
+          "materiality": "LOW",
+          "role": null,
+          "downgrades": [
+            "DECLARED_NOT_ASSESSED_BY_ANALYSIS"
+          ],
+          "rationale": "Execução sistêmica fora da conversa (OUTSIDE_CONVERSATION), não auditável pela transcrição de voz."
+        },
+        {
+          "handle": "N2",
+          "origin": "COVERAGE_GAP",
+          "title": "Identificar o motivo do contato",
+          "sources": [
+            "L1237",
+            "L1238",
+            "L1239"
+          ],
+          "action": "Executar fluxo de negociação de débito",
+          "condition": null,
+          "items": null,
+          "itemsMode": null,
+          "declared": "NOT_OBSERVABLE",
+          "proposed": "NOT_ASSESSED",
+          "final": "NOT_ASSESSED",
+          "confirmation": "NOT_A_CLAIM",
+          "reasons": [],
+          "reviewReading": null,
+          "observability": null,
+          "executionClaim": null,
+          "evidenceKind": "NONE",
+          "evidence": [],
+          "opportunityTurn": null,
+          "materiality": "LOW",
+          "role": null,
+          "downgrades": [
+            "DECLARED_NOT_ASSESSED_BY_ANALYSIS"
+          ],
+          "rationale": "Não aplicável ao caso, visto que não houve solicitação ou elegibilidade de negociação ou parcelamento de dívida ativa."
+        }
+      ]
+    }
+  },
+  "C": {
+    "remainingAtStart": 5,
+    "newCallAnalysesAllowed": 0,
+    "planningRoundsAllowed": 2,
+    "modelCalls": 3,
+    "thirdCallSelections": [],
+    "investigation": {
+      "refs": {
+        "investigations": [
+          {
+            "runId": "ac85b93c-5024-42a7-9d08-8c0e0a20f4d4",
+            "investigationId": "ced8d71b-6e43-433f-ac9d-ec418b185f75",
+            "reused": false,
+            "indicatorCode": "TMA",
+            "periodLabel": "agosto/2026",
+            "conclusion": "CHANGE_LOCATED_NOT_EXAMINED"
+          }
+        ],
+        "skippedReason": null
+      },
+      "stored": [
+        {
+          "logicVersion": "INDICATOR_INVESTIGATION_V7",
+          "official": {
+            "indicatorId": "00000000-0000-4000-8000-000000000300",
+            "code": "TMA",
+            "name": "Tempo Médio de Atendimento",
+            "unit": "SECONDS",
+            "direction": "LOWER",
+            "sourceKind": "OFFICIAL_CLOSING",
+            "sourceRef": "de0006a0-23ed-420f-8809-28f28c9205c6",
+            "value": 357,
+            "target": 400,
+            "withinTarget": true,
+            "gapToTarget": null,
+            "periodStart": "2026-08-01",
+            "periodEnd": "2026-08-31",
+            "periodLabel": "agosto/2026",
+            "referencePeriod": "2026-08",
+            "previous": {
+              "value": 382,
+              "periodLabel": "julho/2026",
+              "withinTarget": true
+            },
+            "movement": "IMPROVED",
+            "quartile": "Q1",
+            "previousQuartile": "Q2"
+          },
+          "localization": {
+            "proxy": {
+              "kind": "DURATION_SECONDS",
+              "label": "a duração média registrada das chamadas",
+              "description": "aproximação pela duração registrada das chamadas, não o valor oficial do indicador."
+            },
+            "windows": {
+              "current": {
+                "start": "2026-08-01",
+                "end": "2026-08-31",
+                "label": "01/08 a 31/08"
+              },
+              "previous": {
+                "start": "2026-07-01",
+                "end": "2026-07-31",
+                "label": "01/07 a 31/07"
+              }
+            },
+            "overall": {
+              "current": {
+                "n": 13,
+                "value": 596.3076923076923
+              },
+              "previous": {
+                "n": 1,
+                "value": 1385
+              },
+              "change": -788.6923076923077,
+              "direction": "UNKNOWN"
+            },
+            "officialAgreement": "UNKNOWN",
+            "decomposition": null,
+            "segments": [
+              {
+                "key": "Cobrança após pedido de cancelamento e ameaça de reclamação e segunda via de fatura",
+                "label": "Cobrança após pedido de cancelamento e ameaça de reclamação e segunda via de fatura",
+                "current": {
+                  "n": 1,
+                  "value": 1157
+                },
+                "previous": null,
+                "shareCurrent": 0.07692307692307693,
+                "sharePrevious": 0,
+                "withinContribution": null,
+                "mixContribution": -17.53846153846154,
+                "change": null,
+                "relativeChange": null,
+                "changeDirection": "UNKNOWN",
+                "sufficient": false
+              },
+              {
+                "key": "contestacao",
+                "label": "Contestação de cobrança",
+                "current": {
+                  "n": 10,
+                  "value": 533.8
+                },
+                "previous": null,
+                "shareCurrent": 0.7692307692307693,
+                "sharePrevious": 0,
+                "withinContribution": null,
+                "mixContribution": -654.7692307692308,
+                "change": null,
+                "relativeChange": null,
+                "changeDirection": "UNKNOWN",
+                "sufficient": false
+              },
+              {
+                "key": "Dúvida sobre fatura e segunda via de conta com falha no aplicativo",
+                "label": "Dúvida sobre fatura e segunda via de conta com falha no aplicativo",
+                "current": {
+                  "n": 1,
+                  "value": 658
+                },
+                "previous": null,
+                "shareCurrent": 0.07692307692307693,
+                "sharePrevious": 0,
+                "withinContribution": null,
+                "mixContribution": -55.92307692307693,
+                "change": null,
+                "relativeChange": null,
+                "changeDirection": "UNKNOWN",
+                "sufficient": false
+              },
+              {
+                "key": "plano",
+                "label": "Plano",
+                "current": {
+                  "n": 1,
+                  "value": 599
+                },
+                "previous": null,
+                "shareCurrent": 0.07692307692307693,
+                "sharePrevious": 0,
+                "withinContribution": null,
+                "mixContribution": -60.46153846153847,
+                "change": null,
+                "relativeChange": null,
+                "changeDirection": "UNKNOWN",
+                "sufficient": false
+              },
+              {
+                "key": "Informação sobre plano e segunda via de conta com falha no aplicativo",
+                "label": "Informação sobre plano e segunda via de conta com falha no aplicativo",
+                "current": null,
+                "previous": {
+                  "n": 1,
+                  "value": 1385
+                },
+                "shareCurrent": 0,
+                "sharePrevious": 1,
+                "withinContribution": null,
+                "mixContribution": 0,
+                "change": null,
+                "relativeChange": null,
+                "changeDirection": "UNKNOWN",
+                "sufficient": false
+              }
+            ],
+            "daily": {
+              "available": true,
+              "points": [
+                {
+                  "date": "2026-08-03",
+                  "value": 368
+                },
+                {
+                  "date": "2026-08-04",
+                  "value": 378
+                },
+                {
+                  "date": "2026-08-05",
+                  "value": 356
+                },
+                {
+                  "date": "2026-08-06",
+                  "value": 365
+                },
+                {
+                  "date": "2026-08-07",
+                  "value": 346
+                },
+                {
+                  "date": "2026-08-10",
+                  "value": 349
+                },
+                {
+                  "date": "2026-08-11",
+                  "value": 354
+                },
+                {
+                  "date": "2026-08-12",
+                  "value": 351
+                },
+                {
+                  "date": "2026-08-13",
+                  "value": 364
+                },
+                {
+                  "date": "2026-08-14",
+                  "value": 343
+                },
+                {
+                  "date": "2026-08-17",
+                  "value": 349
+                },
+                {
+                  "date": "2026-08-18",
+                  "value": 375
+                },
+                {
+                  "date": "2026-08-19",
+                  "value": 349
+                },
+                {
+                  "date": "2026-08-20",
+                  "value": 360
+                },
+                {
+                  "date": "2026-08-21",
+                  "value": 352
+                },
+                {
+                  "date": "2026-08-24",
+                  "value": 363
+                },
+                {
+                  "date": "2026-08-25",
+                  "value": 345
+                },
+                {
+                  "date": "2026-08-26",
+                  "value": 343
+                },
+                {
+                  "date": "2026-08-27",
+                  "value": 361
+                },
+                {
+                  "date": "2026-08-28",
+                  "value": 362
+                },
+                {
+                  "date": "2026-08-31",
+                  "value": 353
+                }
+              ],
+              "outliers": [],
+              "weekdays": [
+                {
+                  "weekday": 1,
+                  "label": "segunda-feira",
+                  "mean": 356.4,
+                  "n": 5
+                },
+                {
+                  "weekday": 2,
+                  "label": "terça-feira",
+                  "mean": 363,
+                  "n": 4
+                },
+                {
+                  "weekday": 3,
+                  "label": "quarta-feira",
+                  "mean": 349.75,
+                  "n": 4
+                },
+                {
+                  "weekday": 4,
+                  "label": "quinta-feira",
+                  "mean": 362.5,
+                  "n": 4
+                },
+                {
+                  "weekday": 5,
+                  "label": "sexta-feira",
+                  "mean": 350.75,
+                  "n": 4
+                }
+              ],
+              "median": 354
+            },
+            "focus": [],
+            "limitations": []
+          },
+          "evidence": [
+            {
+              "sliceRef": "R1",
+              "filters": [
+                {
+                  "dimension": "DAY",
+                  "value": "2026-08-04",
+                  "label": "04/08"
+                }
+              ],
+              "scope": "Nas chamadas do recorte dia 04/08",
+              "origin": {
+                "kind": "TOOL",
+                "ref": "F2",
+                "tool": "detect_anomalies",
+                "round": 1
+              },
+              "pendingReview": 0,
+              "segmentKey": "DAY=2026-08-04",
+              "segmentLabel": "dia 04/08",
+              "focusReason": "ATYPICAL_DAY",
+              "universe": 1,
+              "analyzedCalls": 0,
+              "reusedCalls": 0,
+              "newlyAnalyzed": 0,
+              "sampleBasis": "LONGEST_DURATION",
+              "sampleNote": "0 de 1 chamadas do recorte dia 04/08 no período têm análise, escolhidas entre as mais longas (amostra dirigida: mostra o que acontece nessas chamadas, não a taxa de todas); só conclusões confirmadas entram nas contagens.",
+              "patterns": [],
+              "pathIncorrect": 0,
+              "pathAssessed": 0,
+              "quality": {
+                "usable": 0,
+                "partial": 0,
+                "confirmedCalls": 0
+              }
+            }
+          ],
+          "reference": null,
+          "questions": [
+            {
+              "id": "WHERE",
+              "question": "Em quais cenários o resultado piorou ou melhorou?",
+              "answered": true,
+              "summary": "dia 04/08 (dia fora do padrão)"
+            },
+            {
+              "id": "CALLS",
+              "question": "O que se observa nas chamadas desse recorte?",
+              "answered": false,
+              "summary": "0 chamada(s) com conclusões confirmadas nos recortes investigados"
+            },
+            {
+              "id": "PROCEDURE",
+              "question": "O que o procedimento orienta nesse cenário?",
+              "answered": false,
+              "summary": "0 critério(s) da base avaliados"
+            },
+            {
+              "id": "REFERENCE",
+              "question": "O que faz o grupo de melhor desempenho comparável?",
+              "answered": false,
+              "summary": "não consultado"
+            },
+            {
+              "id": "ACTION",
+              "question": "Qual mudança concreta é indicada?",
+              "answered": false,
+              "summary": "nenhuma mudança sustentada pela evidência"
+            }
+          ],
+          "conclusion": "CHANGE_LOCATED_NOT_EXAMINED",
+          "limitations": [
+            "Volume de chamadas insuficiente para comparar os períodos (1 no anterior, 13 no atual): não é possível dizer em quais assuntos o resultado mudou.",
+            "As chamadas do recorte dia 04/08 não foram examinadas nesta investigação (o limite de análises da execução acabou): nada foi concluído sobre o que aconteceu nelas."
+          ],
+          "budget": {
+            "maxCallAnalyses": 0,
+            "callAnalyses": 0,
+            "reusedCalls": 0,
+            "stoppedBy": null
+          },
+          "strategy": {
+            "versionId": "c708e092-fda3-4738-82b8-520ce7ad918a",
+            "configured": true,
+            "mode": "UNDECLARED",
+            "prohibitedClaims": [],
+            "noDiagnosisBehavior": "FACTUAL_ONLY"
+          },
+          "teamId": "de006e47-4ec0-4b54-8a7e-8bd28f7cc6e0",
+          "subteamId": "de003187-930c-4686-88af-7a9a2e802a4e",
+          "tools": {
+            "version": "ENGINE_INVESTIGATION_TOOLS_V4",
+            "mode": "AUTONOMOUS",
+            "capabilities": {
+              "capabilities": [
+                "INDICATOR_ANALYSIS",
+                "SEGMENTATION",
+                "INTERACTION_ANALYSIS",
+                "KNOWLEDGE"
+              ],
+              "source": "AGENT",
+              "agentCapabilities": [
+                "INDICATOR_ANALYSIS",
+                "SEGMENTATION",
+                "INTERACTION_ANALYSIS",
+                "KNOWLEDGE"
+              ],
+              "workflowAllowed": null,
+              "removedByWorkflow": []
+            },
+            "availability": [
+              {
+                "tool": "get_indicator_snapshot",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "compare_periods",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "inspect_indicator_composition",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "validate_data_quality",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "detect_anomalies",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "get_employee_history",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "get_available_dimensions",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "segment_indicator",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "compare_population",
+                "available": false,
+                "reason": "capacidade OPERATIONAL_COMPARISON não permitida nesta execução"
+              },
+              {
+                "tool": "inspect_work_context",
+                "available": false,
+                "reason": "capacidade WORK_CONTEXT não permitida nesta execução"
+              },
+              {
+                "tool": "find_interactions",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "get_interaction_context",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "get_interaction_flags",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "find_comparable_interactions",
+                "available": false,
+                "reason": "comparação com pares desligada na estratégia"
+              },
+              {
+                "tool": "query_knowledge",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "read_call_memory",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "analyze_calls",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "inspect_result",
+                "available": true,
+                "reason": null
+              },
+              {
+                "tool": "reference_practices",
+                "available": false,
+                "reason": "capacidade OPERATIONAL_COMPARISON não permitida nesta execução"
+              }
+            ],
+            "ledger": [
+              {
+                "ref": "F1",
+                "round": 1,
+                "question": "WHERE",
+                "requestedArgs": {
+                  "dimension": "SUBJECT",
+                  "window": "CURRENT"
+                },
+                "cached": false,
+                "signals": null,
+                "via": "PLANNER",
+                "scope": {
+                  "kind": "PERIOD"
+                },
+                "tool": "segment_indicator",
+                "summary": "SUBJECT (duração registrada das interações (segundos)): 4 bucket(s) — contestacao=534 (n=10), Cobrança após pedido de cancelamento e ameaça de reclamação e segunda via de fatura=1157 (n=1), Dúvida sobre fatura e segunda via de conta com falha no aplicativo=658 (n=1), plano=599 (n=1)",
+                "quality": {
+                  "status": "SUFFICIENT",
+                  "note": null,
+                  "sampleCount": 13
+                },
+                "provenance": {
+                  "period": "2026-08-01 a 2026-08-31",
+                  "population": "interações do colaborador",
+                  "dataSource": "INTERACTIONS (duração registrada)"
+                },
+                "status": "OK",
+                "error": null
+              },
+              {
+                "ref": "F2",
+                "round": 1,
+                "question": "WHERE",
+                "requestedArgs": {
+                  "window": "CURRENT"
+                },
+                "cached": false,
+                "signals": {
+                  "seriesPattern": "ISOLATED_SPIKES"
+                },
+                "via": "PLANNER",
+                "scope": {
+                  "kind": "PERIOD"
+                },
+                "tool": "detect_anomalies",
+                "summary": "ISOLATED_SPIKES — baseline 354.31, 1 ponto(s) fora em 21 dia(s) (4.80%): 2026-08-04=377.81 (WORSE)",
+                "quality": {
+                  "status": "SUFFICIENT",
+                  "note": null,
+                  "sampleCount": 21
+                },
+                "provenance": {
+                  "period": "2026-08-01 a 2026-08-31",
+                  "population": "colaborador",
+                  "dataSource": "MEASUREMENT (série diária)"
+                },
+                "status": "OK",
+                "error": null,
+                "slices": [
+                  "R1"
+                ]
+              },
+              {
+                "ref": "F3",
+                "round": 1,
+                "question": "WHERE",
+                "requestedArgs": {
+                  "window": "CURRENT"
+                },
+                "cached": false,
+                "signals": null,
+                "via": "PLANNER",
+                "scope": {
+                  "kind": "PERIOD"
+                },
+                "tool": "inspect_indicator_composition",
+                "summary": "SUPPORTED: total (seconds)=254086, volume (contatos/avaliações)=712",
+                "quality": {
+                  "status": "SUFFICIENT",
+                  "note": null,
+                  "sampleCount": 21
+                },
+                "provenance": {
+                  "period": "2026-08-01 a 2026-08-31",
+                  "population": "colaborador",
+                  "dataSource": "MEASUREMENT (operacional diário)"
+                },
+                "status": "OK",
+                "error": null
+              }
+            ],
+            "planner": {
+              "status": "USED",
+              "rounds": 1,
+              "proposals": [
+                {
+                  "round": 1,
+                  "calls": [
+                    {
+                      "tool": "segment_indicator",
+                      "question": "WHERE",
+                      "accepted": true,
+                      "reason": null
+                    },
+                    {
+                      "tool": "detect_anomalies",
+                      "question": "WHERE",
+                      "accepted": true,
+                      "reason": null
+                    },
+                    {
+                      "tool": "inspect_indicator_composition",
+                      "question": "WHERE",
+                      "accepted": true,
+                      "reason": null
+                    }
+                  ],
+                  "stop": null,
+                  "violations": []
+                }
+              ]
+            },
+            "stopReason": "BUDGET",
+            "openQuestions": [
+              {
+                "id": "WHERE",
+                "kind": "WHERE",
+                "sliceRef": null,
+                "question": "Mesmo com o resultado dentro da meta (ou melhor), há algum recorte do período — assunto, dia, horário — materialmente pior que o restante, que mereça olhar?",
+                "status": "ANSWERED",
+                "material": false,
+                "answered": true,
+                "reason": "recorte pior encontrado (pergunta própria do recorte)",
+                "candidateTools": []
+              },
+              {
+                "id": "CALLS:R1",
+                "kind": "CALLS",
+                "sliceRef": "R1",
+                "question": "O que aconteceu nas chamadas do recorte dia 04/08, confrontado com o procedimento?",
+                "status": "BUDGET",
+                "material": false,
+                "answered": false,
+                "reason": "o limite de análises/IA da execução acabou",
+                "candidateTools": [
+                  "read_call_memory",
+                  "get_interaction_flags",
+                  "get_interaction_context",
+                  "analyze_calls"
+                ],
+                "progress": {
+                  "confirmed": 0,
+                  "needed": 1,
+                  "universe": 1,
+                  "pendingReview": 0
+                },
+                "context": [
+                  "o resultado oficial do período está dentro da meta ou melhorou — contexto do mês: não mostra que o recorte deixou de ter problema"
+                ]
+              },
+              {
+                "id": "RECOGNITION",
+                "kind": "RECOGNITION",
+                "sliceRef": null,
+                "question": "Que conduta concreta sustenta o resultado (para reconhecer com especificidade)?",
+                "status": "NOT_MATERIAL",
+                "material": false,
+                "answered": false,
+                "reason": "sem recorte que melhorou localizado: o reconhecimento é do resultado",
+                "candidateTools": []
+              }
+            ],
+            "budget": {
+              "maxToolCalls": 10,
+              "toolCalls": 3,
+              "maxPlanningRounds": 2
+            },
+            "contract": {
+              "source": "STRATEGY",
+              "localization": {
+                "allowed": true,
+                "reason": null
+              },
+              "callAnalysis": {
+                "allowed": true,
+                "reason": null
+              },
+              "reference": {
+                "allowed": false,
+                "reason": "comparação com pares desligada na estratégia"
+              }
+            },
+            "plan": "PLANNER",
+            "planReason": "INVESTIGATION_TOOLS",
+            "questionHistory": [
+              {
+                "round": 0,
+                "after": [],
+                "questions": [
+                  {
+                    "id": "WHERE",
+                    "status": "OPEN",
+                    "material": true
+                  },
+                  {
+                    "id": "RECOGNITION",
+                    "status": "NOT_MATERIAL",
+                    "material": false
+                  }
+                ]
+              },
+              {
+                "round": 1,
+                "after": [
+                  "F1",
+                  "F2",
+                  "F3"
+                ],
+                "questions": [
+                  {
+                    "id": "WHERE",
+                    "status": "ANSWERED",
+                    "material": false
+                  },
+                  {
+                    "id": "CALLS:R1",
+                    "status": "BUDGET",
+                    "material": false
+                  },
+                  {
+                    "id": "RECOGNITION",
+                    "status": "NOT_MATERIAL",
+                    "material": false
+                  }
+                ]
+              }
+            ],
+            "closureVersion": "INVESTIGATION_CLOSURE_V3",
+            "dispositions": [],
+            "plannerQuestions": [],
+            "resultView": "TOOL_RESULT_VIEW_V2"
+          },
+          "signals": {
+            "attribution": "UNKNOWN",
+            "dataQuality": null,
+            "seriesPattern": "ISOLATED_SPIKES",
+            "facts": [
+              {
+                "ref": "F1",
+                "text": "aproximação pelas chamadas (2026-08-01 a 2026-08-31): SUBJECT (duração registrada das interações (segundos)): 4 bucket(s) — contestacao=534 (n=10), Cobrança após pedido de cancelamento e ameaça de reclamação e segunda via de fatura=1157 (n=1), Dúvida sobre fatura e segunda via de conta com falha no aplicativo=658 (n=1), plano=599 (n=1)",
+                "source": "CALL_PROXY"
+              },
+              {
+                "ref": "F2",
+                "text": "medição operacional (2026-08-01 a 2026-08-31): ISOLATED_SPIKES — baseline 354.31, 1 ponto(s) fora em 21 dia(s) (4.80%): 2026-08-04=377.81 (WORSE)",
+                "source": "OPERATIONAL"
+              },
+              {
+                "ref": "F3",
+                "text": "medição operacional (2026-08-01 a 2026-08-31): SUPPORTED: total (seconds)=254086, volume (contatos/avaliações)=712",
+                "source": "OPERATIONAL"
+              }
+            ],
+            "limitations": []
+          },
+          "slices": [
+            {
+              "filters": [
+                {
+                  "dimension": "DAY",
+                  "value": "2026-08-04",
+                  "label": "04/08"
+                }
+              ],
+              "reason": "ATYPICAL_DAY",
+              "adverse": true,
+              "origin": {
+                "kind": "TOOL",
+                "ref": "F2",
+                "tool": "detect_anomalies",
+                "round": 1
+              },
+              "observation": "Dia 04/08 atípico na medição diária: 378 s contra a base de 354 s (+6,6%). Chamadas gravadas com transcrição nesse dia: 1; volume medido pelo indicador no dia: 31.",
+              "ref": "R1",
+              "key": "DAY=2026-08-04",
+              "label": "dia 04/08",
+              "scope": "Nas chamadas do recorte dia 04/08",
+              "corroboratedBy": []
+            }
+          ],
+          "completeness": {
+            "status": "COMPLETE",
+            "pendingReviews": 0,
+            "note": null
+          },
+          "readerNotes": [
+            "No recorte dia 04/08 o resultado ficou fora do seu padrão, mas as chamadas desse recorte não foram examinadas: este retorno não diz o que aconteceu nelas."
+          ]
+        }
+      ]
+    },
+    "generation": {
+      "kind": "PUBLISHABLE",
+      "messageId": "e3df7712-d6d1-41ad-bdf7-2f82fdeb06ce",
+      "message": {
+        "status": "PUBLISHABLE",
+        "abstainReason": null,
+        "heading": {
+          "title": "Tempo Médio de Atendimento",
+          "subtitle": "agosto/2026"
+        },
+        "card": "Seu Tempo Médio de Atendimento em agosto fechou em 357 segundos, dentro da meta de 400 segundos e melhor que o resultado de 382 segundos em julho.",
+        "text": "Em agosto, seu Tempo Médio de Atendimento ficou em 357 segundos, dentro da meta de 400 segundos e com melhora em relação aos 382 segundos registrados em julho.",
+        "brief": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "domain": "INDICATOR",
+          "label": "Tempo Médio de Atendimento · agosto/2026",
+          "heading": {
+            "title": "Tempo Médio de Atendimento",
+            "subtitle": "agosto/2026"
+          },
+          "context": [
+            "Dia 04/08 atípico na medição diária: 378 s contra a base de 354 s (+6,6%). Chamadas gravadas com transcrição nesse dia: 1; volume medido pelo indicador no dia: 31.",
+            "Aproximação pelas chamadas (2026-08-01 a 2026-08-31): SUBJECT (duração registrada das interações (segundos)): 4 bucket(s) — contestacao=534 (n=10), Cobrança após pedido de cancelamento e ameaça de reclamação e segunda via de fatura=1157 (n=1), Dúvida sobre fatura e segunda via de conta com falha no aplicativo=658 (n=1), plano=599 (n=1).",
+            "Medição operacional (2026-08-01 a 2026-08-31): ISOLATED_SPIKES — baseline 354.31, 1 ponto(s) fora em 21 dia(s) (4.80%): 2026-08-04=377.81 (WORSE).",
+            "Medição operacional (2026-08-01 a 2026-08-31): SUPPORTED: total (seconds)=254086, volume (contatos/avaliações)=712."
+          ],
+          "developments": [],
+          "strengths": [
+            {
+              "ref": "S1",
+              "findingKey": "IND:TMA:2026-08-01:2026-08-31:RESULT",
+              "kind": "STRENGTH",
+              "origin": "INDICATOR_RESULT",
+              "title": "Resultado de Tempo Médio de Atendimento",
+              "materiality": "HIGH",
+              "status": "RESULT",
+              "observed": "O resultado oficial de Tempo Médio de Atendimento em agosto/2026 foi 357 s, dentro da meta de 400 s, melhor que 382 s em julho/2026.",
+              "reading": null,
+              "quotes": [],
+              "absence": null,
+              "declaredOnly": false,
+              "rules": [],
+              "guidance": null,
+              "whyItMatters": null,
+              "history": null,
+              "criterionKeys": [],
+              "stats": []
+            }
+          ],
+          "limitations": [
+            "Volume de chamadas insuficiente para comparar os períodos (1 no anterior, 13 no atual): não é possível dizer em quais assuntos o resultado mudou.",
+            "As chamadas do recorte dia 04/08 não foram examinadas nesta investigação (o limite de análises da execução acabou): nada foi concluído sobre o que aconteceu nelas."
+          ],
+          "readerNotes": [
+            "No recorte dia 04/08 o resultado ficou fora do seu padrão, mas as chamadas desse recorte não foram examinadas: este retorno não diz o que aconteceu nelas."
+          ],
+          "materials": [],
+          "officialLines": [
+            {
+              "label": "Resultado oficial",
+              "value": "357 s (agosto/2026)"
+            },
+            {
+              "label": "Meta",
+              "value": "400 s — dentro da meta"
+            },
+            {
+              "label": "Período anterior",
+              "value": "382 s (julho/2026)"
+            }
+          ],
+          "indicatorName": "Tempo Médio de Atendimento",
+          "tone": "RECOGNITION",
+          "suppressed": []
+        },
+        "composition": {
+          "version": "FEEDBACK_COMPOSITION_V6",
+          "promptVersion": "FEEDBACK_COMPOSITION_PROMPT_V9",
+          "verificationPromptVersion": "FEEDBACK_VERIFICATION_PROMPT_V8",
+          "coherencePromptVersion": "FEEDBACK_COHERENCE_PROMPT_V1",
+          "attempts": {
+            "writer": 1,
+            "verifier": 1,
+            "coherence": 0
+          },
+          "errors": [],
+          "decisions": [
+            {
+              "id": "F1",
+              "stance": "RECOGNITION",
+              "refs": [
+                "S1"
+              ],
+              "kept": true,
+              "reasons": []
+            },
+            {
+              "id": "CARD",
+              "stance": "CONTEXT",
+              "refs": [
+                "S1"
+              ],
+              "kept": true,
+              "reasons": []
+            }
+          ],
+          "verdicts": [
+            {
+              "id": "F1",
+              "verdict": "SUPPORTED",
+              "specific": true,
+              "repeats": null
+            },
+            {
+              "id": "CARD",
+              "verdict": "SUPPORTED",
+              "specific": null,
+              "repeats": null
+            }
+          ],
+          "analysis": [],
+          "trusted": {
+            "guidance": {},
+            "why": {}
+          },
+          "usefulness": {
+            "primaryRef": "S1",
+            "primaryCovered": true,
+            "missingGuidance": [],
+            "missingRecognition": false,
+            "missingContext": false,
+            "missingValue": null
+          },
+          "coherence": {
+            "required": false,
+            "checked": false,
+            "coherent": null,
+            "problems": [],
+            "danglingAfterRemoval": []
+          },
+          "communicatedRefs": [
+            "S1"
+          ],
+          "notCommunicated": [],
+          "leaksRemoved": [],
+          "outcome": "MESSAGE",
+          "reason": null,
+          "messageAssessment": {
+            "conveysPrimary": true,
+            "valueBeyondNarration": true,
+            "note": null
+          },
+          "lostInformation": []
+        }
+      }
+    }
+  },
+  "isolation": {
+    "otherCollaboratorsAnalyzed": 0,
+    "analyses": [
+      {
+        "interactionId": "bf7e4baf-0efa-41a0-80c3-786730629e10",
+        "current": true
+      },
+      {
+        "interactionId": "de00d005-3c0f-4727-8daf-2773140269e3",
+        "current": true
+      }
+    ],
+    "messages": 3,
+    "persisted": "NONE (banco somente leitura; memória e mensagens em RAM)"
+  },
+  "meter": {
+    "version": "ENGINE_BUDGET_V2",
+    "limits": {
+      "maxModelCalls": 17,
+      "maxInputTokens": 1500000,
+      "maxOutputTokens": 500000,
+      "maxCostUsd": 0.6,
+      "maxDurationMs": 900000,
+      "transientRetries": 1,
+      "compositionReserve": {
+        "calls": 2,
+        "inputTokens": 24000,
+        "outputTokens": 16384
+      }
+    },
+    "calls": 15,
+    "failed": 0,
+    "refused": 0,
+    "retries": 0,
+    "inputTokens": 120972,
+    "outputTokens": 6477,
+    "unknownUsage": 0,
+    "costUsd": 0.115018,
+    "byStage": {
+      "CALL_REVIEW": {
+        "calls": 2,
+        "inputTokens": 77785,
+        "outputTokens": 3448
+      },
+      "COMPOSITION": {
+        "calls": 5,
+        "inputTokens": 17948,
+        "outputTokens": 1543
+      },
+      "VERIFICATION": {
+        "calls": 6,
+        "inputTokens": 17742,
+        "outputTokens": 1058
+      },
+      "CALL_CONFIRMATION": {
+        "calls": 1,
+        "inputTokens": 3239,
+        "outputTokens": 268
+      },
+      "INVESTIGATION_PLANNING": {
+        "calls": 1,
+        "inputTokens": 4258,
+        "outputTokens": 160
+      }
+    },
+    "exhausted": null,
+    "entries": [
+      {
+        "stage": "CALL_REVIEW",
+        "tag": "review:obligations",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 38921,
+        "outputTokens": 1610,
+        "usageKnown": true,
+        "reservedInputTokens": 39942,
+        "reservedOutputTokens": 12288,
+        "costUsd": 0.03522825,
+        "durationMs": 26084,
+        "error": null
+      },
+      {
+        "stage": "COMPOSITION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3597,
+        "outputTokens": 312,
+        "usageKnown": true,
+        "reservedInputTokens": 4392,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00386775,
+        "durationMs": 10694,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3165,
+        "outputTokens": 191,
+        "usageKnown": true,
+        "reservedInputTokens": 3687,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00309,
+        "durationMs": 6177,
+        "error": null
+      },
+      {
+        "stage": "COMPOSITION",
+        "tag": "repair",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3827,
+        "outputTokens": 347,
+        "usageKnown": true,
+        "reservedInputTokens": 4721,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.0041715,
+        "durationMs": 9037,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "repair",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3344,
+        "outputTokens": 213,
+        "usageKnown": true,
+        "reservedInputTokens": 3913,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00330675,
+        "durationMs": 10181,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "coherence",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 1840,
+        "outputTokens": 16,
+        "usageKnown": true,
+        "reservedInputTokens": 2137,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00144,
+        "durationMs": 2252,
+        "error": null
+      },
+      {
+        "stage": "CALL_REVIEW",
+        "tag": "review:obligations",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 38864,
+        "outputTokens": 1838,
+        "usageKnown": true,
+        "reservedInputTokens": 39993,
+        "reservedOutputTokens": 12288,
+        "costUsd": 0.0360405,
+        "durationMs": 17644,
+        "error": null
+      },
+      {
+        "stage": "CALL_CONFIRMATION",
+        "tag": "confirmation:obligations",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3239,
+        "outputTokens": 268,
+        "usageKnown": true,
+        "reservedInputTokens": 3486,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00343425,
+        "durationMs": 8405,
+        "error": null
+      },
+      {
+        "stage": "COMPOSITION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3846,
+        "outputTokens": 399,
+        "usageKnown": true,
+        "reservedInputTokens": 4643,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00438075,
+        "durationMs": 7800,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3536,
+        "outputTokens": 279,
+        "usageKnown": true,
+        "reservedInputTokens": 4041,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00369825,
+        "durationMs": 12623,
+        "error": null
+      },
+      {
+        "stage": "COMPOSITION",
+        "tag": "repair",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 4042,
+        "outputTokens": 325,
+        "usageKnown": true,
+        "reservedInputTokens": 4935,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.00425025,
+        "durationMs": 6337,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "repair",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 3578,
+        "outputTokens": 244,
+        "usageKnown": true,
+        "reservedInputTokens": 4139,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.0035985,
+        "durationMs": 10674,
+        "error": null
+      },
+      {
+        "stage": "INVESTIGATION_PLANNING",
+        "tag": "plan:1",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 4258,
+        "outputTokens": 160,
+        "usageKnown": true,
+        "reservedInputTokens": 4988,
+        "reservedOutputTokens": 4096,
+        "costUsd": 0.0037935,
+        "durationMs": 3708,
+        "error": null
+      },
+      {
+        "stage": "COMPOSITION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 2636,
+        "outputTokens": 160,
+        "usageKnown": true,
+        "reservedInputTokens": 3095,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.002577,
+        "durationMs": 3965,
+        "error": null
+      },
+      {
+        "stage": "VERIFICATION",
+        "tag": "draft",
+        "attempt": 1,
+        "status": "OK",
+        "inputTokens": 2279,
+        "outputTokens": 115,
+        "usageKnown": true,
+        "reservedInputTokens": 2530,
+        "reservedOutputTokens": 8192,
+        "costUsd": 0.0021405,
+        "durationMs": 4984,
+        "error": null
+      }
+    ]
+  },
+  "budget": {
+    "ledger": [
+      {
+        "index": 1,
+        "label": "V11 A · CALL_REVIEW:review:obligations",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.07829775,
+        "spentUsd": 0.051207,
+        "usageKnown": true,
+        "promptTokens": 38921,
+        "outputTokens": 1610,
+        "thoughtsTokens": 4261,
+        "totalTokens": 44792,
+        "status": 200,
+        "durationMs": 26079
+      },
+      {
+        "index": 2,
+        "label": "V11 A · COMPOSITION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.034353,
+        "spentUsd": 0.01211775,
+        "usageKnown": true,
+        "promptTokens": 3597,
+        "outputTokens": 312,
+        "thoughtsTokens": 2200,
+        "totalTokens": 6109,
+        "status": 200,
+        "durationMs": 10690
+      },
+      {
+        "index": 3,
+        "label": "V11 A · VERIFICATION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.033873,
+        "spentUsd": 0.00697125,
+        "usageKnown": true,
+        "promptTokens": 3165,
+        "outputTokens": 191,
+        "thoughtsTokens": 1035,
+        "totalTokens": 4391,
+        "status": 200,
+        "durationMs": 6163
+      },
+      {
+        "index": 4,
+        "label": "V11 A · COMPOSITION:repair",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.03460275,
+        "spentUsd": 0.010689,
+        "usageKnown": true,
+        "promptTokens": 3827,
+        "outputTokens": 347,
+        "thoughtsTokens": 1738,
+        "totalTokens": 5912,
+        "status": 200,
+        "durationMs": 9034
+      },
+      {
+        "index": 5,
+        "label": "V11 A · VERIFICATION:repair",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.03404925,
+        "spentUsd": 0.011718,
+        "usageKnown": true,
+        "promptTokens": 3344,
+        "outputTokens": 213,
+        "thoughtsTokens": 2243,
+        "totalTokens": 5800,
+        "status": 200,
+        "durationMs": 10161
+      },
+      {
+        "index": 6,
+        "label": "V11 A · VERIFICATION:coherence",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.0325695,
+        "spentUsd": 0.00248625,
+        "usageKnown": true,
+        "promptTokens": 1840,
+        "outputTokens": 16,
+        "thoughtsTokens": 279,
+        "totalTokens": 2135,
+        "status": 200,
+        "durationMs": 2248
+      },
+      {
+        "index": 7,
+        "label": "V11 B · CALL_REVIEW:review:obligations",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.07819125,
+        "spentUsd": 0.046158,
+        "usageKnown": true,
+        "promptTokens": 38864,
+        "outputTokens": 1838,
+        "thoughtsTokens": 2698,
+        "totalTokens": 43400,
+        "status": 200,
+        "durationMs": 17640
+      },
+      {
+        "index": 8,
+        "label": "V11 B · CALL_CONFIRMATION:confirmation:obligations",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.0338175,
+        "spentUsd": 0.00868425,
+        "usageKnown": true,
+        "promptTokens": 3239,
+        "outputTokens": 268,
+        "thoughtsTokens": 1400,
+        "totalTokens": 4907,
+        "status": 200,
+        "durationMs": 8395
+      },
+      {
+        "index": 9,
+        "label": "V11 B · COMPOSITION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.0345525,
+        "spentUsd": 0.008262,
+        "usageKnown": true,
+        "promptTokens": 3846,
+        "outputTokens": 399,
+        "thoughtsTokens": 1035,
+        "totalTokens": 5280,
+        "status": 200,
+        "durationMs": 7796
+      },
+      {
+        "index": 10,
+        "label": "V11 B · VERIFICATION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.0341595,
+        "spentUsd": 0.0119895,
+        "usageKnown": true,
+        "promptTokens": 3536,
+        "outputTokens": 279,
+        "thoughtsTokens": 2211,
+        "totalTokens": 6026,
+        "status": 200,
+        "durationMs": 12620
+      },
+      {
+        "index": 11,
+        "label": "V11 B · COMPOSITION:repair",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.03477375,
+        "spentUsd": 0.007899,
+        "usageKnown": true,
+        "promptTokens": 4042,
+        "outputTokens": 325,
+        "thoughtsTokens": 973,
+        "totalTokens": 5340,
+        "status": 200,
+        "durationMs": 6336
+      },
+      {
+        "index": 12,
+        "label": "V11 B · VERIFICATION:repair",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.03422775,
+        "spentUsd": 0.011601,
+        "usageKnown": true,
+        "promptTokens": 3578,
+        "outputTokens": 244,
+        "thoughtsTokens": 2134,
+        "totalTokens": 5956,
+        "status": 200,
+        "durationMs": 10664
+      },
+      {
+        "index": 13,
+        "label": "V11 C · INVESTIGATION_PLANNING:plan:1",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.019851,
+        "spentUsd": 0.00546975,
+        "usageKnown": true,
+        "promptTokens": 4258,
+        "outputTokens": 160,
+        "thoughtsTokens": 447,
+        "totalTokens": 4865,
+        "status": 200,
+        "durationMs": 3707
+      },
+      {
+        "index": 14,
+        "label": "V11 C · COMPOSITION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.033291,
+        "spentUsd": 0.00495825,
+        "usageKnown": true,
+        "promptTokens": 2636,
+        "outputTokens": 160,
+        "thoughtsTokens": 635,
+        "totalTokens": 3431,
+        "status": 200,
+        "durationMs": 3963
+      },
+      {
+        "index": 15,
+        "label": "V11 C · VERIFICATION:draft",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "reservedUsd": 0.032913,
+        "spentUsd": 0.004503,
+        "usageKnown": true,
+        "promptTokens": 2279,
+        "outputTokens": 115,
+        "thoughtsTokens": 630,
+        "totalTokens": 3024,
+        "status": 200,
+        "durationMs": 4983
+      }
+    ],
+    "globalAfter": {
+      "requests": 15,
+      "spentUsd": 0.204714,
+      "blocked": 0
+    }
+  },
+  "requests": [
+    {
+      "phase": "A",
+      "stage": "CALL_REVIEW",
+      "tag": "review:obligations",
+      "chars": 119828,
+      "estimatedInputTokens": 39943
+    },
+    {
+      "phase": "A",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "chars": 13176,
+      "estimatedInputTokens": 4392
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "chars": 11061,
+      "estimatedInputTokens": 3687
+    },
+    {
+      "phase": "A",
+      "stage": "COMPOSITION",
+      "tag": "repair",
+      "chars": 14165,
+      "estimatedInputTokens": 4722
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "repair",
+      "chars": 11741,
+      "estimatedInputTokens": 3914
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "coherence",
+      "chars": 6411,
+      "estimatedInputTokens": 2137
+    },
+    {
+      "phase": "B",
+      "stage": "CALL_REVIEW",
+      "tag": "review:obligations",
+      "chars": 119979,
+      "estimatedInputTokens": 39993
+    },
+    {
+      "phase": "B",
+      "stage": "CALL_CONFIRMATION",
+      "tag": "confirmation:obligations",
+      "chars": 10459,
+      "estimatedInputTokens": 3487
+    },
+    {
+      "phase": "B",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "chars": 13931,
+      "estimatedInputTokens": 4644
+    },
+    {
+      "phase": "B",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "chars": 12123,
+      "estimatedInputTokens": 4041
+    },
+    {
+      "phase": "B",
+      "stage": "COMPOSITION",
+      "tag": "repair",
+      "chars": 14805,
+      "estimatedInputTokens": 4935
+    },
+    {
+      "phase": "B",
+      "stage": "VERIFICATION",
+      "tag": "repair",
+      "chars": 12418,
+      "estimatedInputTokens": 4140
+    },
+    {
+      "phase": "C",
+      "stage": "INVESTIGATION_PLANNING",
+      "tag": "plan:1",
+      "chars": 14966,
+      "estimatedInputTokens": 4989
+    },
+    {
+      "phase": "C",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "chars": 9286,
+      "estimatedInputTokens": 3096
+    },
+    {
+      "phase": "C",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "chars": 7590,
+      "estimatedInputTokens": 2530
+    }
+  ],
+  "responses": [
+    {
+      "phase": "A",
+      "stage": "CALL_REVIEW",
+      "tag": "review:obligations",
+      "text": "{\n  \"claims\": [\n    {\n      \"id\": \"O1\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A operadora utilizou o nome de fantasia Conecta e omitiu a marca Vivo na saudação inicial.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O2\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"ALTERNATIVES\",\n      \"note\": \"A titularidade e a data de nascimento foram confirmadas antes do acesso ao detalhamento.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O3\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A atendente coletou a fatura, o valor não reconhecido e o status de pagamento.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O4\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T2\",\n          \"quote\": \"Apareceu uma cobrança de mensalidade após o cancelamento na minha conta que eu não reconheço.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A operadora identificou que o cancelamento de 02/07 estava aberto e pendente de conclusão.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O6\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"STATEMENT_ABOUT_ACTION\",\n      \"outsideDependency\": true,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T7\",\n          \"quote\": \"Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A abertura da análise foi informada com prazo de cinco dias úteis e canal de retorno por SMS.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O8\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A recapitulação cobriu o valor, a ação registrada, o prazo, o meio de retorno e o protocolo.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O9\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"ALTERNATIVES\",\n      \"note\": \"A atendente checou a clareza das informações e questionou se restava alguma dúvida.\",\n      \"sameConductAs\": null\n    }\n  ],\n  \"missed\": [\n    {\n      \"sources\": [\"L486\", \"L487\", \"L488\", \"L490\"],\n      \"action\": \"Avaliar modalidade adequada de devolução do valor pago em cobrança contestada\",\n      \"condition\": \"Quando o cliente já tiver pago a cobrança contestada\",\n      \"where\": \"IN_CONVERSATION\",\n      \"finding\": \"NOT_MET\",\n      \"evidence\": [\n        {\n          \"turn\": \"T12\",\n          \"quote\": \"Como a fatura já foi paga, se a contestação for aprovada o valor volta como crédito na próxima fatura.\",\n          \"role\": \"CONDUCT\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"materiality\": \"HIGH\",\n      \"role\": \"CENTRAL\",\n      \"rationale\": \"Tratando-se de linha com pedido de cancelamento pendente, a devolução não poderia ser limitada a crédito em fatura futura sem avaliar estorno ou transferência.\",\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T10\",\n          \"quote\": \"Já paguei, sim.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"conditionHolds\": \"YES\",\n      \"opportunityTurn\": \"T12\"\n    },\n    {\n      \"sources\": [\"L322\", \"L323\"],\n      \"action\": \"Corrigir o status do cancelamento quando não concluído por falha interna\",\n      \"condition\": \"Se o cancelamento não tiver sido concluído por falha interna\",\n      \"where\": \"IN_CONVERSATION\",\n      \"finding\": \"NOT_MET\",\n      \"evidence\": [\n        {\n          \"turn\": \"T7\",\n          \"quote\": \"Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.\",\n          \"role\": \"DECLARATION\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"materiality\": \"HIGH\",\n      \"role\": \"CENTRAL\",\n      \"rationale\": \"A operadora identificou que a solicitação de cancelamento de julho permaneceu aberta, mas apenas abriu contestação da conta de agosto, deixando de tratar a conclusão do cancelamento.\",\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T7\",\n          \"quote\": \"Encontrei aqui. O pedido de cancelamento está aberto desde o dia 2 de julho, mas não foi concluído.\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"conditionHolds\": \"YES\",\n      \"opportunityTurn\": \"T11\"\n    }\n  ],\n  \"path\": {\n    \"verdict\": \"CONFIRMED\",\n    \"issues\": [],\n    \"note\": \"A análise sintetiza com precisão o trajeto do atendimento e aponta com acerto a inconsistência de oferecer crédito em fatura subsequente para um serviço cancelado.\"\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 38921,
+        "outputTokens": 1610,
+        "totalTokens": 44792
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "A",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "text": "{\n  \"sentences\": [\n    {\n      \"text\": \"Antes de consultar os dados da linha, você validou a titularidade com a cliente pedindo o nome e a data de nascimento.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"S1\"\n      ],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Para entender a cobrança, você perguntou qual era a fatura questionada, o valor que ela não reconhecia e confirmou se o pagamento já havia sido realizado.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"S2\"\n      ],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Você também verificou o histórico e identificou diretamente na ligação que o cancelamento solicitado em 2 de julho permanecia em aberto.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"S3\"\n      ],\n      \"paragraph\": 1\n    }\n  ],\n  \"card\": {\n    \"text\": \"Você validou a titularidade antes de consultar a linha, detalhou a fatura contestada e identificou que o cancelamento de julho não havia sido concluído.\",\n    \"refs\": [\n      \"S1\",\n      \"S2\",\n      \"S3\"\n    ]\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3597,
+        "outputTokens": 312,
+        "totalTokens": 6109
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "text": "{\n  \"verdicts\": [\n    {\n      \"id\": \"F1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F2\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F3\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"CARD\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": null\n    }\n  ],\n  \"message\": {\n    \"conveysPrimary\": true,\n    \"valueBeyondNarration\": false,\n    \"note\": \"A mensagem apenas narra as etapas executadas sem explicar a relevância ou o impacto delas no atendimento.\"\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3165,
+        "outputTokens": 191,
+        "totalTokens": 4391
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "A",
+      "stage": "COMPOSITION",
+      "tag": "repair",
+      "text": "{\n  \"sentences\": [\n    {\n      \"text\": \"Antes de consultar os dados da linha, você validou a titularidade com a cliente pedindo o nome e a data de nascimento.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\"S1\"],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Essa confirmação prévia resguarda o acesso a informações protegidas antes de avançar para a análise do caso.\",\n      \"stance\": \"VALUE\",\n      \"refs\": [\"S1\"],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Para entender a cobrança, você perguntou qual era a fatura questionada, o valor que ela não reconhecia e confirmou se o pagamento já havia sido realizado.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\"S2\"],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Você também verificou o histórico e identificou diretamente na ligação que o cancelamento solicitado em 2 de julho permanecia em aberto, localizando o motivo da fatura indevida.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\"S3\"],\n      \"paragraph\": 1\n    }\n  ],\n  \"card\": {\n    \"text\": \"Você validou a titularidade antes de acessar as informações da conta e localizou no histórico o cancelamento de 2 de julho ainda pendente.\",\n    \"refs\": [\"S1\", \"S3\"]\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3827,
+        "outputTokens": 347,
+        "totalTokens": 5912
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "repair",
+      "text": "{\n  \"verdicts\": [\n    {\n      \"id\": \"F1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F2\",\n      \"verdict\": \"GENERALIZATION\",\n      \"specific\": null\n    },\n    {\n      \"id\": \"F3\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F4\",\n      \"verdict\": \"UNSUPPORTED_ADDITION\",\n      \"specific\": true  \n    },\n    {\n      \"id\": \"CARD\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": null\n    }\n  ],\n  \"message\": {\n    \"conveysPrimary\": true,\n    \"valueBeyondNarration\": true,\n    \"note\": \"\"\n  },\n  \"lostInformation\": []\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3344,
+        "outputTokens": 213,
+        "totalTokens": 5800
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "A",
+      "stage": "VERIFICATION",
+      "tag": "coherence",
+      "text": "{\n  \"coherent\": true,\n  \"problems\": []\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 1840,
+        "outputTokens": 16,
+        "totalTokens": 2135
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "CALL_REVIEW",
+      "tag": "review:obligations",
+      "text": "{\n  \"claims\": [\n    {\n      \"id\": \"O1\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": true,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T44\",\n          \"quote\": \"Eu tentei pelo app mas dava erro na hora de abrir a fatura.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A validação da falha e da mensagem ocorreu na chamada, mas o registro sistêmico da mensagem depende de tela operacional.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O3\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T9\",\n          \"quote\": \"Minha conta veio mais cara esse mês. Eu pago R$ 85,40 e agora veio R$ 165,40. Não entendi o que é isso.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A operadora explicou linha a linha os valores cobrados, diferenciando o plano, os adicionais e o valor proporcional.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O4\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T85\",\n          \"quote\": \"Esse tipo de ajuste é feito pelo setor de faturamento. Vou transferir a senhora agora, já passei o contexto no protocolo.\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"counterEvidence\": [],\n      \"listReading\": \"CUMULATIVE\",\n      \"note\": \"A operadora informou o motivo e o destino da transferência, mas não repassou o protocolo antes da execução.\",\n      \"sameConductAs\": null\n    },\n    {\n      \"id\": \"O5\",\n      \"verdict\": \"CONFIRMED\",\n      \"issues\": [],\n      \"evidenceReading\": \"ABSENCE_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [],\n      \"counterEvidence\": [],\n      \"listReading\": \"NOT_A_LIST\",\n      \"note\": \"O número do protocolo não foi vocalizado em nenhum momento da chamada antes da transferência/encerramento.\",\n      \"sameConductAs\": null\n    }\n  ],\n  \"linesToAssess\": [\n    {\n      \"id\": \"L1390\",\n      \"status\": \"NOT_A_REQUIREMENT\",\n      \"applicability\": \"APPLIES\",\n      \"evidence\": [\n        {\n          \"turn\": \"T31\",\n          \"quote\": \"Eu preciso da segunda via da minha conta. Não chegou no e-mail esse mês.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"evidenceKind\": \"CUSTOMER_CONTEXT\",\n      \"materiality\": \"LOW\",\n      \"observability\": \"IN_CONVERSATION\",\n      \"opportunityTurn\": null,\n      \"rationale\": \"Trata-se de orientação geral de conduta (guidance) cujo desdobramento obrigatório está fixado no ponto de fala L1391.\"\n    },\n    {\n      \"id\": \"L1391\",\n      \"status\": \"NOT_MET\",\n      \"applicability\": \"APPLIES\",\n      \"evidence\": [],\n      \"evidenceKind\": \"OMISSION\",\n      \"materiality\": \"MEDIUM\",\n      \"observability\": \"IN_CONVERSATION\",\n      \"opportunityTurn\": \"T32\",\n      \"rationale\": \"A cliente pediu a segunda via e a operadora não questionou se era fatura ou parcelamento antes de dar andamento.\"\n    },\n    {\n      \"id\": \"L1392\",\n      \"status\": \"MET\",\n      \"applicability\": \"APPLIES\",\n      \"evidence\": [\n        {\n          \"turn\": \"T48\",\n          \"quote\": \"Enviei o código de barras por SMS pro número final 8078. Chegou?\",\n          \"speaker\": \"OPERADOR\"\n        },\n        {\n          \"turn\": \"T49\",\n          \"quote\": \"Deixa eu ver... chegou sim.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"evidenceKind\": \"CONDUCT_OBSERVED\",\n      \"materiality\": \"HIGH\",\n      \"observability\": \"IN_CONVERSATION\",\n      \"opportunityTurn\": null,\n      \"rationale\": \"A necessidade de segunda via foi tratada e o código de barras foi disponibilizado e confirmado pela cliente.\"\n    },\n    {\n      \"id\": \"L1393\",\n      \"status\": \"MET\",\n      \"applicability\": \"APPLIES\",\n      \"evidence\": [],\n      \"evidenceKind\": \"COMPLIANCE_BY_ABSENCE\",\n      \"materiality\": \"MEDIUM\",\n      \"observability\": \"IN_CONVERSATION\",\n      \"opportunityTurn\": null,\n      \"rationale\": \"A operadora não citou nomes de ferramentas ou sistemas internos corporativos ao longo do atendimento.\"\n    }\n  ],\n  \"missed\": [\n    {\n      \"sources\": [\n        \"L40\",\n        \"L41\"\n      ],\n      \"action\": \"Não enviar a conta para e-mail ou telefone informado durante o atendimento sem validação adicional\",\n      \"condition\": \"Cliente informar novo e-mail ou telefone durante o atendimento para envio de segunda via\",\n      \"where\": \"IN_CONVERSATION\",\n      \"finding\": \"NOT_MET\",\n      \"evidence\": [\n        {\n          \"turn\": \"T38\",\n          \"quote\": \"Não, esse eu não uso mais. Por isso não chega.\",\n          \"role\": \"CONDITION\",\n          \"speaker\": \"CLIENTE\"\n        },\n        {\n          \"turn\": \"T39\",\n          \"quote\": \"Entendi, então vou atualizar o e-mail e reenviar.\",\n          \"role\": \"CONDUCT\",\n          \"speaker\": \"OPERADOR\"\n        },\n        {\n          \"turn\": \"T40\",\n          \"quote\": \"O novo é priscila.bastos@gmail.com.\",\n          \"role\": \"CONDITION\",\n          \"speaker\": \"CLIENTE\"\n        },\n        {\n          \"turn\": \"T50\",\n          \"quote\": \"O SMS foi enviado. O e-mail, por conta da instabilidade, pode levar até 24 horas pra chegar.\",\n          \"role\": \"CONDUCT\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"materiality\": \"HIGH\",\n      \"role\": \"CENTRAL\",\n      \"rationale\": \"A norma veda expressamente o envio de conta para e-mail informado no contato sem validação adicional de segurança, o que foi descumprido.\",\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T40\",\n          \"quote\": \"O novo é priscila.bastos@gmail.com.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"conditionHolds\": \"YES\",\n      \"opportunityTurn\": \"T39\"\n    }\n  ],\n  \"path\": {\n    \"verdict\": \"CONFIRMED\",\n    \"issues\": [],\n    \"note\": \"A avaliação de conformidade parcial do caminho está correta diante das falhas de protocolo na transferência e ausência de validação para novo canal de envio.\"\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 38864,
+        "outputTokens": 1838,
+        "totalTokens": 43400
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "CALL_CONFIRMATION",
+      "tag": "confirmation:obligations",
+      "text": "{\n  \"claims\": [\n    {\n      \"id\": \"L1391\",\n      \"verdict\": \"REFUTED\",\n      \"issues\": [\n        \"ACTION_FOUND_IN_CALL\"\n      ],\n      \"evidenceReading\": \"ACTION_IN_CALL\",\n      \"outsideDependency\": false,\n      \"conditionEvidence\": [\n        {\n          \"turn\": \"T31\",\n          \"quote\": \"Eu preciso da segunda via da minha conta. Não chegou no e-mail esse mês.\",\n          \"speaker\": \"CLIENTE\"\n        }\n      ],\n      \"counterEvidence\": [\n        {\n          \"turn\": \"T33\",\n          \"quote\": \"Só pra eu confirmar se entendi: a senhora precisa da segunda via da fatura de julho porque não recebeu, correto?\",\n          \"speaker\": \"OPERADOR\"\n        }\n      ],\n      \"listReading\": \"ALTERNATIVES\",\n      \"note\": \"A operadora confirmou expressamente em T33 que a solicitação tratava-se da segunda via da fatura antes da explicação sobre o app em T71.\",\n      \"sameConductAs\": null\n    }\n  ]\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3239,
+        "outputTokens": 268,
+        "totalTokens": 4907
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "text": "{\n  \"sentences\": [\n    {\n      \"text\": \"Ao analisar a fatura com a cliente, você detalhou os valores de forma bastante clara, explicando a mensalidade, o serviço adicional e a diferença proporcional pela mudança de plano no meio do ciclo.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"S1\"\n      ],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Você também teve o cuidado de explicar o motivo de direcionar o atendimento para o setor de faturamento.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"A1\"\n      ],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Nas próximas chamadas, quando for transferir ou encerrar a ligação, passe também o número do protocolo para o cliente antes de efetivar o encaminhamento.\",\n      \"stance\": \"GUIDANCE\",\n      \"refs\": [\n        \"A1\",\n        \"A2\"\n      ],\n      \"paragraph\": 2\n    },\n    {\n      \"text\": \"Informar o protocolo permite que o cliente tenha o registro da solicitação em mãos caso precise acompanhar o andamento com a outra área.\",\n      \"stance\": \"VALUE\",\n      \"refs\": [\n        \"A1\",\n        \"A2\"\n      ],\n      \"paragraph\": 2\n    }\n  ],\n  \"card\": {\n    \"text\": \"Você explicou com clareza a cobrança e o motivo do direcionamento. Nas próximas chamadas, informe também o número do protocolo para a cliente antes de transferir a ligação.\",\n    \"refs\": [\n      \"S1\",\n      \"A1\",\n      \"A2\"\n    ]\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3846,
+        "outputTokens": 399,
+        "totalTokens": 5280
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "text": "{\n  \"verdicts\": [\n    {\n      \"id\": \"F1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F2\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F3\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F4\",\n      \"verdict\": \"UNSUPPORTED_ADDITION\",\n      \"specific\": null\n    },\n    {\n      \"id\": \"CARD\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": null\n    },\n    {\n      \"id\": \"G-A1\",\n      \"verdict\": \"UNSUPPORTED_ADDITION\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"G-A2\",\n      \"verdict\": \"UNSUPPORTED_ADDITION\",\n      \"specific\": true\n    }\n  ],\n  \"message\": {\n    \"conveysPrimary\": true,\n    \"valueBeyondNarration\": true\n  },\n  \"lostInformation\": []\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3536,
+        "outputTokens": 279,
+        "totalTokens": 6026
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "COMPOSITION",
+      "tag": "repair",
+      "text": "{\n  \"sentences\": [\n    {\n      \"text\": \"Ao analisar a fatura com a cliente, você detalhou os valores de forma bastante clara, explicando a mensalidade, o serviço adicional e a diferença proporcional pela mudança de plano no meio do ciclo.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"S1\"\n      ],\n      \"paragraph\": 1\n    },\n    {\n      \"text\": \"Você também teve o cuidado de explicar o motivo de direcionar o atendimento para o setor de faturamento.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\n        \"A1\"\n      ],\n      \"paragraph\": 2\n    },\n    {\n      \"text\": \"Nas próximas chamadas, quando for transferir ou encerrar a ligação, passe também o número do protocolo para o cliente antes de efetivar o encaminhamento.\",\n      \"stance\": \"GUIDANCE\",\n      \"refs\": [\n        \"A1\",\n        \"A2\"\n      ],\n      \"paragraph\": 2\n    }\n  ],\n  \"card\": {\n    \"text\": \"Você detalhou muito bem a fatura e explicou o motivo da transferência. Nas próximas chamadas, lembre-se de informar o protocolo ao cliente antes de transferir ou encerrar.\",\n    \"refs\": [\n      \"S1\",\n      \"A1\",\n      \"A2\"\n    ]\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 4042,
+        "outputTokens": 325,
+        "totalTokens": 5340
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "B",
+      "stage": "VERIFICATION",
+      "tag": "repair",
+      "text": "{\n  \"verdicts\": [\n    {\n      \"id\": \"F1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F2\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"F3\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"CARD\",\n      \"verdict\": \"GENERALIZATION\",\n      \"specific\": null\n    },\n    {\n      \"id\": \"G-A1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"G-A2\",\n      \"verdict\": \"OVERREACH\",\n      \"specific\": true\n    }\n  ],\n  \"message\": {\n    \"conveysPrimary\": true,\n    \"valueBeyondNarration\": true,\n    \"note\": \"\"\n  },\n  \"lostInformation\": []\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 3578,
+        "outputTokens": 244,
+        "totalTokens": 5956
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "C",
+      "stage": "INVESTIGATION_PLANNING",
+      "tag": "plan:1",
+      "text": "{\n  \"calls\": [\n    {\n      \"tool\": \"segment_indicator\",\n      \"args\": {\n        \"dimension\": \"SUBJECT\",\n        \"window\": \"CURRENT\"\n      },\n      \"question\": \"WHERE\"\n    },\n    {\n      \"tool\": \"detect_anomalies\",\n      \"args\": {\n        \"window\": \"CURRENT\"\n      },\n      \"question\": \"WHERE\"\n    },\n    {\n      \"tool\": \"inspect_indicator_composition\",\n      \"args\": {\n        \"window\": \"CURRENT\"\n      },\n      \"question\": \"WHERE\"\n    }\n  ],\n  \"newQuestions\": [],\n  \"stop\": null\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 4258,
+        "outputTokens": 160,
+        "totalTokens": 4865
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "C",
+      "stage": "COMPOSITION",
+      "tag": "draft",
+      "text": "{\n  \"sentences\": [\n    {\n      \"text\": \"Em agosto, seu Tempo Médio de Atendimento ficou em 357 segundos, dentro da meta de 400 segundos e com melhora em relação aos 382 segundos registrados em julho.\",\n      \"stance\": \"RECOGNITION\",\n      \"refs\": [\"S1\"],\n      \"paragraph\": 1\n    }\n  ],\n  \"card\": {\n    \"text\": \"Seu Tempo Médio de Atendimento em agosto fechou em 357 segundos, dentro da meta de 400 segundos e melhor que o resultado de 382 segundos em julho.\",\n    \"refs\": [\"S1\"]\n  }\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 2636,
+        "outputTokens": 160,
+        "totalTokens": 3431
+      },
+      "finishReason": "STOP"
+    },
+    {
+      "phase": "C",
+      "stage": "VERIFICATION",
+      "tag": "draft",
+      "text": "{\n  \"verdicts\": [\n    {\n      \"id\": \"F1\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": true\n    },\n    {\n      \"id\": \"CARD\",\n      \"verdict\": \"SUPPORTED\",\n      \"specific\": null\n    }\n  ],\n  \"message\": {\n    \"conveysPrimary\": true,\n    \"valueBeyondNarration\": true,\n    \"note\": \"\"\n  },\n  \"lostInformation\": []\n}",
+      "error": null,
+      "usage": {
+        "inputTokens": 2279,
+        "outputTokens": 115,
+        "totalTokens": 3024
+      },
+      "finishReason": "STOP"
+    }
+  ]
+}

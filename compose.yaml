@@ -1,0 +1,125 @@
+# INIA — serviços de apoio via Docker Compose.
+#
+# DOIS PAPÉIS DIFERENTES DE BANCO, nunca confundidos:
+#   * `postgres` = BANCO INTERNO DA INIA (onde a aplicação guarda tudo). É o `DATABASE_URL` do backend.
+#     Sobe com `npm run db:up` (ou `docker compose up -d postgres`).
+#   * `example-*` = BANCOS EXTERNOS DE EXEMPLO (simulam o banco de um cliente) para experimentar a Central de Dados
+#     › "Conectar banco de dados". Opcionais, perfil `external-examples`:
+#       docker compose --profile external-examples up -d
+#     A INIA só LÊ esses bancos, com um usuário somente leitura (`inia_leitura`). Nada aqui é usado em produção.
+#     O SQL Server de exemplo tem perfil próprio (`external-example-sqlserver`, npm run examples:sqlserver:up): ele só
+#     existe para x86_64 e, em Mac com Apple Silicon, precisa do Rosetta no Docker.
+#
+# O backend e o frontend rodam com Node.js na máquina (npm run dev / npm start) — ver README.md, "Instalação".
+# Portas publicadas só em 127.0.0.1. Valores vêm do arquivo `.env` da raiz (criado por `npm run env:init`).
+name: inia
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${INIA_POSTGRES_USER:-inia}
+      POSTGRES_PASSWORD: ${INIA_POSTGRES_PASSWORD:?Defina INIA_POSTGRES_PASSWORD no .env da raiz (npm run env:init gera um valor aleatório)}
+      POSTGRES_DB: ${INIA_POSTGRES_DB:-inia}
+    ports:
+      - "127.0.0.1:${INIA_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - inia-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---------------------------------------------------------------------------------------------
+  # Bancos EXTERNOS de exemplo (perfil external-examples) — banco `inia_exemplo`, usuário somente leitura
+  # `inia_leitura` (dados fictícios; só para avaliação local). Senhas no .env da raiz, nunca aqui:
+  # INIA_EXAMPLES_READER_PASSWORD (inia_leitura) e INIA_EXAMPLES_ADMIN_PASSWORD (superusuário do contêiner) — geradas
+  # por `npm run env:init` (ou pelo próprio `npm run examples:up`). Opcionais (`:-`) para não travar o `postgres` interno.
+  # ---------------------------------------------------------------------------------------------
+  example-postgres:
+    # O script de exemplo vai DENTRO da imagem (contexto de build) — funciona mesmo quando o Docker não compartilha a
+    # pasta do projeto com os contêineres (Colima só compartilha a pasta do usuário, por exemplo).
+    build: ./docker/external-examples/postgres
+    image: inia-example-postgres:local
+    profiles: ["external-examples"]
+    environment:
+      POSTGRES_USER: exemplo_admin
+      POSTGRES_PASSWORD: ${INIA_EXAMPLES_ADMIN_PASSWORD:-}
+      POSTGRES_DB: inia_exemplo
+      INIA_EXAMPLES_READER_PASSWORD: ${INIA_EXAMPLES_READER_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${INIA_EXAMPLE_POSTGRES_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exemplo_admin -d inia_exemplo"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  example-mariadb:
+    build: ./docker/external-examples/mariadb
+    image: inia-example-mariadb:local
+    profiles: ["external-examples"]
+    environment:
+      MARIADB_ROOT_PASSWORD: ${INIA_EXAMPLES_ADMIN_PASSWORD:-}
+      MARIADB_DATABASE: inia_exemplo
+      INIA_EXAMPLES_READER_PASSWORD: ${INIA_EXAMPLES_READER_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${INIA_EXAMPLE_MARIADB_PORT:-53306}:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  example-mysql:
+    build: ./docker/external-examples/mysql
+    image: inia-example-mysql:local
+    profiles: ["external-examples"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${INIA_EXAMPLES_ADMIN_PASSWORD:-}
+      MYSQL_DATABASE: inia_exemplo
+      INIA_EXAMPLES_READER_PASSWORD: ${INIA_EXAMPLES_READER_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${INIA_EXAMPLE_MYSQL_PORT:-53307}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # SQL Server só existe para x86_64: em Mac com Apple Silicon precisa do Rosetta 2 no Docker/Colima
+  # (`colima start --vm-type vz --vz-rosetta`). Ao subir este serviço você aceita a licença do SQL Server
+  # Developer (uso de desenvolvimento/teste): https://go.microsoft.com/fwlink/?linkid=857698
+  example-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    profiles: ["external-example-sqlserver"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${INIA_EXAMPLES_ADMIN_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${INIA_EXAMPLE_SQLSERVER_PORT:-51433}:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q 'select 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  example-sqlserver-init:
+    build: ./docker/external-examples/sqlserver
+    image: inia-example-sqlserver-init:local
+    platform: linux/amd64
+    profiles: ["external-example-sqlserver"]
+    depends_on:
+      example-sqlserver:
+        condition: service_healthy
+    # -v: a senha do inia_leitura entra no init.sql como variável do sqlcmd, $(READER_PASSWORD).
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "example-sqlserver", "-U", "sa", "-P", "${INIA_EXAMPLES_ADMIN_PASSWORD:-}", "-b", "-v", "READER_PASSWORD=${INIA_EXAMPLES_READER_PASSWORD:-}", "-i", "/init.sql"]
+    restart: "no"
+
+volumes:
+  inia-postgres-data:

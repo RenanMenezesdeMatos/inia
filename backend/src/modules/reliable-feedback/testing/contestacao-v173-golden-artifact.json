@@ -1,0 +1,3064 @@
+{
+  "items": [
+    {
+      "kind": "MONITORING_DEVELOPMENT_POINT",
+      "slot": null,
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T17",
+            "rawSha256": "4d9f0cc9f3e5cc853e64af2904b70fe2dd2f7ec0dcb826ffc32c107764082fdc"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Recapitulando, Tiago: cancelei a renovação do Música Plus, registrei a contestação dos R$ 16,90, a análise leva até 7 dias úteis e a resposta vem por SMS. Se for aprovada, o valor sai da fatura e você paga só o restante da conta.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 0,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "NOT_FOLLOWED",
+        "behavior": {
+          "code": "RECAPITULATE_INTERACTION",
+          "title": "Recapitulação obrigatória",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Recapitulação obrigatória",
+        "requirement": "Antes de encerrar, informar: Conta analisada, Lançamento contestado, Valor, Ação realizada, Serviço cancelado, quando aplicável, Conta ajustada, Valor a pagar, Prazo, Canal de retorno, Protocolo.",
+        "completeness": {
+          "absent": [
+            "conta ajustada",
+            "valor a pagar",
+            "protocolo"
+          ],
+          "family": "INFORM",
+          "status": "PARTIAL",
+          "unknown": [],
+          "observed": [
+            "conta analisada",
+            "lançamento contestado",
+            "valor",
+            "ação realizada",
+            "serviço cancelado, quando aplicável",
+            "prazo",
+            "canal de retorno"
+          ],
+          "elsewhere": [],
+          "conditional": []
+        },
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C2",
+        "sourceCheckpoint": {
+          "ref": "CP-08ba2d72ba",
+          "kind": "COMPOSITE_LIST",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "REQUIRED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "OPPORTUNITY",
+      "claimRef": "P1.C2",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "NEGATIVE",
+      "priority": {
+        "rank": 1,
+        "basis": [
+          "DEVELOPMENT_FIRST",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "quote": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
+        "detail": {
+          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
+          "heading": "46. Recapitulação obrigatória",
+          "version": 1,
+          "chunkIndex": 62,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "leadIn": null,
+        "heading": "46. Recapitulação obrigatória",
+        "version": 1,
+        "chunkIndex": 62,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "sectionExamples": [
+          "**Exemplo:**",
+          "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184."
+        ],
+        "applicabilityBasis": "LEXICAL_ANCHOR"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial não cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": false,
+      "withheldFacts": 0,
+      "wordingSource": "SYSTEM",
+      "guidanceSource": "COACHING_SUGGESTION",
+      "proposedWording": {
+        "observed": "Em “Recapitulação obrigatória”, você fez parte do que o procedimento prevê, incluindo “Conta analisada”, “Lançamento contestado”, “Valor”, “Ação realizada”, “Serviço cancelado”, “Prazo” e “Canal de retorno”, mas não todos os itens previstos. Nesta chamada não apareceram “Conta ajustada”, “Valor a pagar” e “Protocolo”.",
+        "whatYouCanDo": "Na próxima chamada, antes de encerrar, informe: conta analisada, lançamento contestado, valor, ação realizada, serviço cancelado, quando aplicável, conta ajustada, valor a pagar, prazo, canal de retorno e protocolo.",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": []
+    },
+    {
+      "kind": "MONITORING_DEVELOPMENT_POINT",
+      "slot": "ITEM_1",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T21",
+            "rawSha256": "2db565203e337176deaef8d1ec7317aab96d4bdd1d0ae5b31155c9f46f853a47"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Então é isso. Obrigada por ligar, Tiago, tenha uma boa tarde!",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 1,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "NOT_FOLLOWED",
+        "behavior": {
+          "code": "PROVIDE_PROTOCOL",
+          "title": "Protocolo",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Forneci protocolo",
+        "requirement": "Forneci protocolo?",
+        "evidenceType": "VERIFIED_OMISSION",
+        "checkpointRef": "P1.C9",
+        "sourceCheckpoint": {
+          "ref": "CP-0ae8a37ae1",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "OPPORTUNITY",
+      "claimRef": "P1.C9",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "NEGATIVE",
+      "priority": {
+        "rank": 2,
+        "basis": [
+          "DEVELOPMENT_FIRST",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Forneci protocolo?",
+        "quote": "- [ ] Forneci protocolo?",
+        "detail": {
+          "quote": "Seu protocolo é 202609130184.",
+          "heading": "48. Encerramento",
+          "version": 1,
+          "chunkIndex": 64,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "VERIFIED_OMISSION"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa obrigatória do processo oficial que não aconteceu nesta interação (processo aplicável, janela completa, houve oportunidade e nenhuma fala do operador a cumpriu); a fala do operador mostra o momento em que ela caberia",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "COACHING_SUGGESTION",
+      "proposedWording": {
+        "observed": "Ao encerrar o atendimento, você não forneceu o número do protocolo ao cliente.",
+        "whatYouCanDo": "Antes de se despedir, informe claramente o número do protocolo gerado para a solicitação.",
+        "whyItMatters": "A informação do número de protocolo é necessária para que o cliente tenha um registro de referência do atendimento."
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        },
+        {
+          "codes": [],
+          "field": "whyItMatters",
+          "action": "KEPT"
+        },
+        {
+          "codes": [],
+          "field": "whatYouCanDo",
+          "action": "KEPT"
+        },
+        {
+          "codes": [
+            "EXAMPLE_CONTENT_AS_FACT",
+            "PRIVACY_DATA"
+          ],
+          "field": "suggestedResponse",
+          "action": "DROPPED"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_2",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T13",
+            "rawSha256": "92b92aa604c7f8f27e347fb467821bafb894b4df2f27649f270f80138b9f1317"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Agora vou registrar a contestação dos R$ 16,90 pra equipe de faturamento analisar.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 2,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "REGISTER_DISPUTE",
+          "title": "Registro da contestação",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Registrar contestação",
+        "requirement": "2. Registrar contestação",
+        "evidenceType": "OBSERVED_DECLARATION",
+        "checkpointRef": "P1.C1",
+        "sourceCheckpoint": {
+          "ref": "CP-a91b89a0e2",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C1",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 3,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Registrar contestação;",
+        "quote": "2. Registrar contestação;",
+        "detail": {
+          "quote": "Como você não reconhece a assinatura, vou cancelar a renovação, registrar a contestação do valor e consultar a possibilidade de bloquear novas assinaturas desse tipo.",
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": 1,
+          "chunkIndex": 26,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "leadIn": "Se o cliente não reconhecer:",
+        "heading": "15. Serviços digitais não reconhecidos",
+        "version": 1,
+        "chunkIndex": 26,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "sectionExamples": [
+          "**Exemplo:**",
+          "Como você não reconhece a assinatura, vou cancelar a renovação, registrar a contestação do valor e consultar a possibilidade de bloquear novas assinaturas desse tipo."
+        ],
+        "applicabilityBasis": "LEXICAL_ANCHOR"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você comunicou ao cliente que realizaria o registro da contestação do valor para análise pelo setor responsável.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_3",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T3",
+            "rawSha256": "9329168135baac67860ea6bd910f57673cf0497c6d861c2cb169fad284b1954c"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Claro, vou verificar pra você. Antes, me confirma se a linha está no seu nome e a sua data de nascimento, por favor?",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 3,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "VALIDATE_HOLDER",
+          "title": "Validação do titular",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Validei o titular",
+        "requirement": "Validei o titular?",
+        "evidenceType": "OBSERVED_DECLARATION",
+        "checkpointRef": "P1.C3",
+        "sourceCheckpoint": {
+          "ref": "CP-625767c002",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C3",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 4,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Validei o titular?",
+        "quote": "- [ ] Validei o titular?",
+        "detail": null,
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "CHECKPOINT_SELECTION"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você solicitou a confirmação do nome do titular e da data de nascimento antes de prosseguir com a verificação da linha.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_4",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T7",
+            "rawSha256": "1187dbc68bc05ff15a5e861c98f7aef54ea5396d8095e37be4f7600e398edc0f"
+          },
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T7",
+            "rawSha256": "552d642e99feb85ad60b226d7a05af06baef14f8ca5338b235cb5cd82ed1930d"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Deixa eu localizar",
+          "masked": false,
+          "truncated": false
+        },
+        {
+          "role": "OPERADOR",
+          "text": "Encontrei. É um serviço de música por streaming, ativado no dia 2 de setembro por uma mensagem de oferta respondida pelo celular da linha. É a primeira vez que ele aparece na sua fatura.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 4,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "IDENTIFY_CHARGE",
+          "title": "Identificação da cobrança",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Identifiquei lançamento, valor e período",
+        "requirement": "Identifiquei lançamento, valor e período?",
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C4",
+        "sourceCheckpoint": {
+          "ref": "CP-a01fa173ce",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C4",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 5,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Identifiquei lançamento, valor e período?",
+        "quote": "- [ ] Identifiquei lançamento, valor e período?",
+        "detail": null,
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "CHECKPOINT_SELECTION"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você localizou e informou ao cliente a origem da cobrança, especificando o serviço, a data de ativação e o histórico do lançamento na fatura.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_5",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T9",
+            "rawSha256": "d2c8bf20ade4f155332f260921144c1518221eecd9316b625745f0ebd796ada5"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Entendi. E essa fatura de setembro, você já pagou?",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 5,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "CHECK_PAYMENT",
+          "title": "Verificação do pagamento",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Verifiquei se a conta foi paga",
+        "requirement": "Verifiquei se a conta foi paga?",
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C5",
+        "sourceCheckpoint": {
+          "ref": "CP-e851b1e1bc",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C5",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 6,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Verifiquei se a conta foi paga?",
+        "quote": "- [ ] Verifiquei se a conta foi paga?",
+        "detail": null,
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "CHECKPOINT_SELECTION"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você perguntou diretamente ao cliente se a fatura de setembro já havia sido paga.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_6",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T11",
+            "rawSha256": "9d6aa66a340f9db6c3dc1badeed50e875061216642979f816273948aae47b69b"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Certo. Acabei de cancelar a renovação do Música Plus, então ele não volta a ser cobrado nas próximas faturas.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 6,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "CANCEL_RECURRING_SERVICE",
+          "title": "Cancelamento da recorrência",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Cancelei eventual recorrência indevida",
+        "requirement": "Cancelei eventual recorrência indevida?",
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C6",
+        "sourceCheckpoint": {
+          "ref": "CP-693fff04d2",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C6",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 7,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Cancelei eventual recorrência indevida?",
+        "quote": "- [ ] Cancelei eventual recorrência indevida?",
+        "detail": {
+          "quote": "1. Cancelar a recorrência, quando permitido;",
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": 1,
+          "chunkIndex": 26,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "RULE_CONTENT"
+        },
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "ACTION_STEP"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você declarou que efetuou o cancelamento da renovação do serviço, evitando novas cobranças.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_7",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T13",
+            "rawSha256": "92b92aa604c7f8f27e347fb467821bafb894b4df2f27649f270f80138b9f1317"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Agora vou registrar a contestação dos R$ 16,90 pra equipe de faturamento analisar.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 7,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "OPEN_ANALYSIS",
+          "title": "Abertura de análise",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Abri análise quando necessário",
+        "requirement": "Abri análise quando necessário?",
+        "evidenceType": "OBSERVED_DECLARATION",
+        "checkpointRef": "P1.C7",
+        "sourceCheckpoint": {
+          "ref": "CP-e98ab112b3",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C7",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 8,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Abri análise quando necessário?",
+        "quote": "- [ ] Abri análise quando necessário?",
+        "detail": null,
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "CHECKPOINT_SELECTION"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você informou que registraria a contestação para que a equipe de faturamento realize a análise.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_8",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T15",
+            "rawSha256": "ac0811a5bae50e564f687c3984f925f180e2171a65f5778df110d212358baf54"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "A análise leva até 7 dias úteis, e o resultado chega pra você por SMS neste número.",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 8,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "INFORM_DEADLINE",
+          "title": "Prazo da análise",
+          "facets": [
+            "DEADLINE",
+            "RETURN_CHANNEL"
+          ],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Informei prazo e canal de retorno",
+        "requirement": "Informei prazo e canal de retorno?",
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C8",
+        "evidencePolarity": {
+          "behavior": "INFORM_DEADLINE",
+          "conflict": null,
+          "evidence": "FULFILLED"
+        },
+        "sourceCheckpoint": {
+          "ref": "CP-10d7ac926a",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C8",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 9,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Informei prazo e canal de retorno?",
+        "quote": "- [ ] Informei prazo e canal de retorno?",
+        "detail": {
+          "quote": "A contestação foi registrada hoje e será analisada em até cinco dias úteis. O retorno será enviado por SMS.",
+          "heading": "35. Prazo da análise",
+          "version": 1,
+          "chunkIndex": 51,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "BEHAVIOR_FULFILLED"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você especificou o prazo de até 7 dias úteis para a conclusão da análise e confirmou que o retorno seria enviado via SMS.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    },
+    {
+      "kind": "MONITORING_STRENGTH",
+      "slot": "ITEM_9",
+      "audit": {
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T19",
+            "rawSha256": "9a3cab5d6f3a2e97ea167a00e18c0c9d09b79062a0f34a1c9cf7191acfe7efcc"
+          }
+        ],
+        "rejectedUnits": []
+      },
+      "facts": [
+        {
+          "role": "OPERADOR",
+          "text": "Ficou alguma dúvida sobre o que eu te expliquei?",
+          "masked": false,
+          "truncated": false
+        }
+      ],
+      "index": 9,
+      "domain": "MONITORING",
+      "process": {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "status": "FOLLOWED",
+        "behavior": {
+          "code": "CONFIRM_UNDERSTANDING",
+          "title": "Confirmação de entendimento",
+          "facets": [],
+          "sources": [],
+          "conflict": false
+        },
+        "stepTitle": "Confirmei se restaram dúvidas",
+        "requirement": "Confirmei se restaram dúvidas?",
+        "evidenceType": "OBSERVED_ACTION",
+        "checkpointRef": "P1.C10",
+        "sourceCheckpoint": {
+          "ref": "CP-1268946e2c",
+          "kind": "LIST_ITEM",
+          "origin": "MODEL",
+          "quoteMatch": "EXACT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "analyticReadiness": {
+          "status": "VERIFIED",
+          "reasons": [],
+          "eligible": true
+        }
+      },
+      "section": "STRENGTH",
+      "claimRef": "P1.C10",
+      "decision": {
+        "reasons": [
+          "AUTONOMY_CRITERIA_MET"
+        ],
+        "structural": "STRUCTURALLY_EMITTABLE",
+        "disposition": "READY",
+        "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+        "autonomyBlockers": [],
+        "autonomyEligible": true
+      },
+      "polarity": "POSITIVE",
+      "priority": {
+        "rank": 10,
+        "basis": [
+          "STRENGTH",
+          "RULE_VERIFIED",
+          "PROCEDURE_ORDER"
+        ],
+        "policy": "PROCESS_ITEM_ORDER_V1"
+      },
+      "grounding": "OFFICIAL_PROCEDURE",
+      "knowledge": {
+        "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "step": "Confirmei se restaram dúvidas?",
+        "quote": "- [ ] Confirmei se restaram dúvidas?",
+        "detail": {
+          "quote": "Ficou alguma dúvida sobre o valor que deve ser pago?",
+          "heading": "47. Confirmação de entendimento",
+          "version": 1,
+          "chunkIndex": 63,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "leadIn": "Antes de finalizar:",
+        "heading": "55. Checklist do operador",
+        "version": 1,
+        "chunkIndex": 71,
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "contentKind": "RULE_CONTENT",
+        "applicability": "VERIFIED",
+        "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "applicabilityBasis": "STRUCTURED_ANCHOR",
+        "structuredAnchorBasis": "UNDERSTANDING_CHECK"
+      },
+      "ownership": "AGENT",
+      "safeMeaning": "etapa do processo oficial cumprida nesta interação, sustentada por fala literal do operador e pela regra da base",
+      "analysisUsed": true,
+      "withheldFacts": 0,
+      "wordingSource": "WRITER",
+      "guidanceSource": "REINFORCEMENT",
+      "proposedWording": {
+        "observed": "Você questionou se o cliente possuía alguma dúvida sobre as explicações fornecidas.",
+        "whatYouCanDo": "",
+        "whyItMatters": ""
+      },
+      "structuralBlock": null,
+      "writerViolations": [],
+      "analysisConflicts": [],
+      "writerFieldValidation": [
+        {
+          "codes": [],
+          "field": "observed",
+          "action": "KEPT"
+        }
+      ]
+    }
+  ],
+  "label": "Atendimento de 28/09/2026 · Contestação de cobrança",
+  "domain": "MONITORING",
+  "writer": {
+    "error": null,
+    "invoked": true,
+    "promptVersion": "WORKFLOW_MONITORING_FEEDBACK_WRITER_PROMPT_V6",
+    "skippedReason": null
+  },
+  "subject": {
+    "interactionId": "b43f6eb2-9973-4457-9396-a274a284cf5e",
+    "collaboratorId": "de00ae6a-c8c9-490a-816b-e3cc8cf18986",
+    "indicatorMeasurementId": null
+  },
+  "contract": "RELIABLE_FEEDBACK_ARTIFACT_V1",
+  "findings": {
+    "blocked": 0,
+    "detected": 10,
+    "rejected": 0,
+    "reliable": 10,
+    "heldForQa": 0,
+    "inFeedback": 10,
+    "notApplicable": 0,
+    "notObservable": 0,
+    "collapsedDuplicates": 0
+  },
+  "sourceType": "ORCHESTRATOR",
+  "presentation": {
+    "version": "FEEDBACK_PRESENTATION_V1",
+    "recipient": {
+      "firstName": "Larissa"
+    },
+    "writerDraft": {
+      "closing": "Você realizou um excelente trabalho ao validar os dados, identificar a cobrança e conduzir as etapas de contestação e cancelamento. Para as próximas chamadas, lembre-se apenas de recapitular os pontos tratados e fornecer o número do protocolo ao encerrar o atendimento.",
+      "introduction": "Analisei o seu atendimento sobre contestação de cobrança. Você conduziu com êxito o registro da contestação, a validação do titular, a identificação da cobrança, a verificação do pagamento, o cancelamento da recorrência, a abertura de análise, o prazo da análise e a confirmação de entendimento. Identifiquei oportunidade de melhoria apenas na recapitulação obrigatória e na informação do protocolo, pontos que apresentarei a seguir."
+    },
+    "writerViolations": [
+      "PRESENTATION_UNSUPPORTED_CLAIM"
+    ]
+  },
+  "sourceNodeId": "922e9da5-2299-4dfe-9840-9af449c4ae84",
+  "blockedReason": null,
+  "policyVersion": "RELIABLE_FEEDBACK_POLICY_AUTONOMOUS_V1",
+  "uncertainties": [],
+  "processAssessment": {
+    "summary": {
+      "FOLLOWED": 8,
+      "NOT_FOLLOWED": 2,
+      "NOT_APPLICABLE": 0,
+      "NOT_OBSERVABLE": 0,
+      "compositePartial": 1,
+      "compositeUnknown": 0,
+      "statusDowngrades": 0,
+      "behaviorConflicts": 0,
+      "compositeComplete": 0,
+      "knowledgeVerified": 10,
+      "verifiedOmissions": 1,
+      "unverifiedOmissions": 0,
+      "contractInvalidItems": 0,
+      "knowledgeLiteralOnly": 0,
+      "knowledgeNotVerified": 0,
+      "notCheckpointEligible": 0,
+      "applicabilityDowngrades": 0,
+      "behaviorSupportingSources": 0
+    },
+    "version": "PROCESS_ASSESSMENT_VERIFICATION_V1",
+    "coverage": {
+      "audits": [
+        {
+          "status": "COMPLETE",
+          "version": "ASSESSMENT_COVERAGE_V1",
+          "repairCalls": 0,
+          "repairError": null,
+          "mustAssessRefs": [
+            "CP-a91b89a0e2",
+            "CP-08ba2d72ba",
+            "CP-625767c002",
+            "CP-a01fa173ce",
+            "CP-e851b1e1bc",
+            "CP-693fff04d2",
+            "CP-e98ab112b3",
+            "CP-10d7ac926a",
+            "CP-0ae8a37ae1",
+            "CP-1268946e2c"
+          ],
+          "repairRejected": [],
+          "mustAssessCount": 10,
+          "repairTriggered": false,
+          "missingAfterRepair": [],
+          "missingAfterInitial": [],
+          "repairAssessmentCount": 0,
+          "initialAssessmentCount": 10
+        }
+      ],
+      "required": 1,
+      "mustAssess": 9,
+      "assessedByModel": 1,
+      "missingUnresolved": [],
+      "mustAssessCovered": 9,
+      "completedDeterministically": 0
+    },
+    "behaviors": [
+      {
+        "refs": [
+          "P1.C1"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "REGISTER_DISPUTE",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C1",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C2"
+        ],
+        "facets": [],
+        "status": "NOT_FOLLOWED",
+        "behavior": "RECAPITULATE_INTERACTION",
+        "conflict": false,
+        "composite": true,
+        "primaryRef": "P1.C2",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C3"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "VALIDATE_HOLDER",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C3",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C4"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "IDENTIFY_CHARGE",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C4",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C5"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "CHECK_PAYMENT",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C5",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C6"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "CANCEL_RECURRING_SERVICE",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C6",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C7"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "OPEN_ANALYSIS",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C7",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C8"
+        ],
+        "facets": [
+          "DEADLINE",
+          "RETURN_CHANNEL"
+        ],
+        "status": "FOLLOWED",
+        "behavior": "INFORM_DEADLINE",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C8",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C9"
+        ],
+        "facets": [],
+        "status": "NOT_FOLLOWED",
+        "behavior": "PROVIDE_PROTOCOL",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C9",
+        "compositeResolved": false
+      },
+      {
+        "refs": [
+          "P1.C10"
+        ],
+        "facets": [],
+        "status": "FOLLOWED",
+        "behavior": "CONFIRM_UNDERSTANDING",
+        "conflict": false,
+        "composite": false,
+        "primaryRef": "P1.C10",
+        "compositeResolved": false
+      }
+    ],
+    "processes": [
+      {
+        "title": "Procedimento Operacional — Contestação de Contas Móvel",
+        "product": null,
+        "siblings": [],
+        "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+        "applicabilityRef": null,
+        "applicabilityMode": "JUDGED"
+      }
+    ],
+    "checkpoints": [
+      {
+        "ref": "P1.C1",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-a91b89a0e2",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "15. Serviços digitais não reconhecidos",
+          "position": 2,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "2. Registrar contestação;",
+          "quoteMatch": "EXACT",
+          "sourceText": "2. Registrar contestação;",
+          "primaryProcess": true,
+          "canonicalBehavior": "REGISTER_DISPUTE",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T13",
+            "rawSha256": "92b92aa604c7f8f27e347fb467821bafb894b4df2f27649f270f80138b9f1317"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Registro da contestação",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "REGISTER_DISPUTE",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C1"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "PROCEDURE_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C1"
+        },
+        "knowledge": {
+          "quote": "2. Registrar contestação;",
+          "leadIn": "Se o cliente não reconhecer:",
+          "failure": null,
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": 1,
+          "segments": [
+            {
+              "end": 25,
+              "role": "RULE",
+              "text": "2. Registrar contestação;",
+              "start": 0,
+              "documentOffset": 9028
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [
+            "conte",
+            "regis"
+          ],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 9028,
+          "structuredAnchor": null,
+          "applicabilityBasis": "LEXICAL_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "2. Registrar contestação",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_DECLARATION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "AMBIGUOUS_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "contestacao"
+          ],
+          "candidateSections": [
+            "Procedimento Operacional — Contestação de Contas Móvel",
+            "Contestação parcialmente procedente",
+            "Contestação improcedente após análise",
+            "Contestação repetida"
+          ]
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "Como você não reconhece a assinatura, vou cancelar a renovação, registrar a contestação do valor e consultar a possibilidade de bloquear novas assinaturas desse tipo.",
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": 1,
+          "chunkIndex": 26,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "ORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "UNKNOWN",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C2",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-08ba2d72ba",
+          "kind": "COMPOSITE_LIST",
+          "facets": [],
+          "heading": "46. Recapitulação obrigatória",
+          "position": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "Antes de encerrar, informar: - Conta analisada; - Lançamento contestado; - Valor; - Ação realizada; - Serviço cancelado, quando aplicável; - Conta ajustada; - Valor a pagar; - Prazo; - Canal de retorno; - Protocolo.",
+          "quoteMatch": "EXACT",
+          "sourceText": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
+          "primaryProcess": true,
+          "canonicalBehavior": "RECAPITULATE_INTERACTION",
+          "processRequirement": "REQUIRED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "NOT_FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T17",
+            "rawSha256": "4d9f0cc9f3e5cc853e64af2904b70fe2dd2f7ec0dcb826ffc32c107764082fdc"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Recapitulação",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "RECAPITULATE_INTERACTION",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C2"
+          ],
+          "precedence": [
+            "COMPOSITE_AUTHORITATIVE",
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "PROCEDURE_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C2"
+        },
+        "knowledge": {
+          "quote": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
+          "leadIn": null,
+          "failure": null,
+          "heading": "46. Recapitulação obrigatória",
+          "version": 1,
+          "segments": [
+            {
+              "end": 216,
+              "role": "RULE",
+              "text": "Antes de encerrar, informar:\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
+              "start": 0,
+              "documentOffset": 22916
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [
+            "anali",
+            "cance",
+            "conta",
+            "conte",
+            "valor"
+          ],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 22916,
+          "structuredAnchor": null,
+          "applicabilityBasis": "LEXICAL_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Antes de encerrar, informar: Conta analisada, Lançamento contestado, Valor, Ação realizada, Serviço cancelado, quando aplicável, Conta ajustada, Valor a pagar, Prazo, Canal de retorno, Protocolo.",
+        "uncertainty": null,
+        "completeness": {
+          "items": [
+            {
+              "kind": "ACCOUNT",
+              "text": "conta analisada",
+              "terms": [
+                "conta",
+                "anali"
+              ],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "CONTESTED_ITEM",
+              "text": "lançamento contestado",
+              "terms": [
+                "lanca",
+                "conte"
+              ],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "VALUE",
+              "text": "valor",
+              "terms": [
+                "valor"
+              ],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "ACTION_TAKEN",
+              "text": "ação realizada",
+              "terms": [],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "CANCELED_SERVICE",
+              "text": "serviço cancelado, quando aplicável",
+              "terms": [
+                "servi",
+                "cance"
+              ],
+              "agency": "OPERATOR_ACTION",
+              "status": "OBSERVED",
+              "conditional": true,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "ADJUSTED_ACCOUNT",
+              "text": "conta ajustada",
+              "terms": [
+                "conta",
+                "ajust"
+              ],
+              "status": "VERIFIED_ABSENT",
+              "conditional": false,
+              "observedTurns": []
+            },
+            {
+              "kind": "AMOUNT_DUE",
+              "text": "valor a pagar",
+              "terms": [
+                "valor",
+                "pagar"
+              ],
+              "status": "VERIFIED_ABSENT",
+              "conditional": false,
+              "observedTurns": []
+            },
+            {
+              "kind": "DEADLINE",
+              "text": "prazo",
+              "terms": [
+                "prazo"
+              ],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "RETURN_CHANNEL",
+              "text": "canal de retorno",
+              "terms": [
+                "canal",
+                "retor"
+              ],
+              "status": "OBSERVED",
+              "conditional": false,
+              "observedTurns": [
+                "T17"
+              ]
+            },
+            {
+              "kind": "PROTOCOL",
+              "text": "protocolo",
+              "terms": [
+                "proto"
+              ],
+              "status": "VERIFIED_ABSENT",
+              "conditional": false,
+              "observedTurns": []
+            }
+          ],
+          "counts": {
+            "UNKNOWN": 0,
+            "OBSERVED": 7,
+            "CONDITIONAL": 0,
+            "NOT_VERIFIABLE": 0,
+            "VERIFIED_ABSENT": 3,
+            "OBSERVED_ELSEWHERE": 0
+          },
+          "family": "INFORM",
+          "status": "PARTIAL",
+          "version": "COMPOSITE_CHECKPOINT_V1"
+        },
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NOT_A_LIST_STEP",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "NOT_FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184.",
+          "heading": "46. Recapitulação obrigatória",
+          "version": 1,
+          "chunkIndex": 62,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "46. Recapitulação obrigatória",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "NONE",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "PROCEDURE_STEP",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C3",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-625767c002",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 2,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Validei o titular?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Validei o titular?",
+          "primaryProcess": true,
+          "canonicalBehavior": "VALIDATE_HOLDER",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T3",
+            "rawSha256": "9329168135baac67860ea6bd910f57673cf0497c6d861c2cb169fad284b1954c"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Validação do titular",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "VALIDATE_HOLDER",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C3"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C3"
+        },
+        "knowledge": {
+          "quote": "- [ ] Validei o titular?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 24,
+              "role": "RULE",
+              "text": "- [ ] Validei o titular?",
+              "start": 0,
+              "documentOffset": 27259
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27259,
+          "structuredAnchor": {
+            "basis": "CHECKPOINT_SELECTION",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": "valid",
+              "operatorTurns": [
+                "T3"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": "OPERATOR_ACTION",
+                "family": "VERIFY",
+                "related": true,
+                "verbForms": [
+                  "verificar"
+                ],
+                "stateForms": [],
+                "stepObjects": [
+                  "HOLDER"
+                ],
+                "objectClasses": [
+                  "HOLDER"
+                ],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:e2ee1d5dbeb9e467",
+              "stepText": "Validei o titular?",
+              "stepPosition": 2
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Validei o titular?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_DECLARATION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "titular"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": null,
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C4",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-a01fa173ce",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 4,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Identifiquei lançamento, valor e período?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Identifiquei lançamento, valor e período?",
+          "primaryProcess": true,
+          "canonicalBehavior": "IDENTIFY_CHARGE",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T7",
+            "rawSha256": "1187dbc68bc05ff15a5e861c98f7aef54ea5396d8095e37be4f7600e398edc0f"
+          },
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T7",
+            "rawSha256": "552d642e99feb85ad60b226d7a05af06baef14f8ca5338b235cb5cd82ed1930d"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Identificação da cobrança",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "IDENTIFY_CHARGE",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C4"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C4"
+        },
+        "knowledge": {
+          "quote": "- [ ] Identifiquei lançamento, valor e período?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 47,
+              "role": "RULE",
+              "text": "- [ ] Identifiquei lançamento, valor e período?",
+              "start": 0,
+              "documentOffset": 27309
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27309,
+          "structuredAnchor": {
+            "basis": "CHECKPOINT_SELECTION",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": "identific",
+              "operatorTurns": [
+                "T7",
+                "T7"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": "OPERATOR_ACTION",
+                "family": "VERIFY",
+                "related": true,
+                "verbForms": [
+                  "localizar",
+                  "encontrei"
+                ],
+                "stateForms": [],
+                "stepObjects": [],
+                "objectClasses": [],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:76c7b13c868be128",
+              "stepText": "Identifiquei lançamento, valor e período?",
+              "stepPosition": 4
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Identifiquei lançamento, valor e período?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "lancamento",
+            "valor",
+            "periodo"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": null,
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C5",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-e851b1e1bc",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 5,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Verifiquei se a conta foi paga?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Verifiquei se a conta foi paga?",
+          "primaryProcess": true,
+          "canonicalBehavior": "CHECK_PAYMENT",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T9",
+            "rawSha256": "d2c8bf20ade4f155332f260921144c1518221eecd9316b625745f0ebd796ada5"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Verificação do pagamento",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "CHECK_PAYMENT",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C5"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C5"
+        },
+        "knowledge": {
+          "quote": "- [ ] Verifiquei se a conta foi paga?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 37,
+              "role": "RULE",
+              "text": "- [ ] Verifiquei se a conta foi paga?",
+              "start": 0,
+              "documentOffset": 27351
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27351,
+          "structuredAnchor": {
+            "basis": "CHECKPOINT_SELECTION",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": "verific",
+              "operatorTurns": [
+                "T9"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": null,
+                "family": "VERIFY",
+                "related": true,
+                "verbForms": [],
+                "stateForms": [],
+                "stepObjects": [
+                  "PAYMENT"
+                ],
+                "objectClasses": [
+                  "PAYMENT"
+                ],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:60ddbf1f2aaf096b",
+              "stepText": "Verifiquei se a conta foi paga?",
+              "stepPosition": 5
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Verifiquei se a conta foi paga?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "conta",
+            "paga"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": null,
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C6",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-693fff04d2",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 10,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Cancelei eventual recorrência indevida?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Cancelei eventual recorrência indevida?",
+          "primaryProcess": true,
+          "canonicalBehavior": "CANCEL_RECURRING_SERVICE",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T11",
+            "rawSha256": "9d6aa66a340f9db6c3dc1badeed50e875061216642979f816273948aae47b69b"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Cancelamento da recorrência",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "CANCEL_RECURRING_SERVICE",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C6"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C6"
+        },
+        "knowledge": {
+          "quote": "- [ ] Cancelei eventual recorrência indevida?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 45,
+              "role": "RULE",
+              "text": "- [ ] Cancelei eventual recorrência indevida?",
+              "start": 0,
+              "documentOffset": 27502
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [
+            "cance"
+          ],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27502,
+          "structuredAnchor": {
+            "basis": "ACTION_STEP",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": "cancel",
+              "operatorTurns": [
+                "T11"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": "OPERATOR_ACTION",
+                "family": "CANCEL",
+                "related": true,
+                "verbForms": [
+                  "cancelar"
+                ],
+                "stateForms": [],
+                "stepObjects": [
+                  "RECURRENCE"
+                ],
+                "objectClasses": [
+                  "RECURRENCE"
+                ],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:de8fe2c1661cfa73",
+              "stepText": "Cancelei eventual recorrência indevida?",
+              "stepPosition": 10
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Cancelei eventual recorrência indevida?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "eventual",
+            "recorrencia",
+            "indevida"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "1. Cancelar a recorrência, quando permitido;",
+          "heading": "15. Serviços digitais não reconhecidos",
+          "version": 1,
+          "chunkIndex": 26,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "RULE_CONTENT"
+        },
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C7",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-e98ab112b3",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 13,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Abri análise quando necessário?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Abri análise quando necessário?",
+          "primaryProcess": true,
+          "canonicalBehavior": "OPEN_ANALYSIS",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T13",
+            "rawSha256": "92b92aa604c7f8f27e347fb467821bafb894b4df2f27649f270f80138b9f1317"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Abertura de análise",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "OPEN_ANALYSIS",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C7"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C7"
+        },
+        "knowledge": {
+          "quote": "- [ ] Abri análise quando necessário?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 37,
+              "role": "RULE",
+              "text": "- [ ] Abri análise quando necessário?",
+              "start": 0,
+              "documentOffset": 27614
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [
+            "anali"
+          ],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27614,
+          "structuredAnchor": {
+            "basis": "CHECKPOINT_SELECTION",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": null,
+              "operatorTurns": [
+                "T13"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": "OPERATOR_ACTION",
+                "family": "REGISTER",
+                "related": true,
+                "verbForms": [
+                  "registrar"
+                ],
+                "stateForms": [],
+                "stepObjects": [],
+                "objectClasses": [],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:77d8e217037c26dd",
+              "stepText": "Abri análise quando necessário?",
+              "stepPosition": 13
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Abri análise quando necessário?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_DECLARATION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "abri",
+            "analise",
+            "necessario"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": null,
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C8",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-10d7ac926a",
+          "kind": "LIST_ITEM",
+          "facets": [
+            "DEADLINE",
+            "RETURN_CHANNEL"
+          ],
+          "heading": "55. Checklist do operador",
+          "position": 16,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Informei prazo e canal de retorno?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Informei prazo e canal de retorno?",
+          "primaryProcess": true,
+          "canonicalBehavior": "INFORM_DEADLINE",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T15",
+            "rawSha256": "ac0811a5bae50e564f687c3984f925f180e2171a65f5778df110d212358baf54"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Prazo da análise",
+          "facets": [
+            "DEADLINE",
+            "RETURN_CHANNEL"
+          ],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "INFORM_DEADLINE",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C8"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C8"
+        },
+        "knowledge": {
+          "quote": "- [ ] Informei prazo e canal de retorno?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 40,
+              "role": "RULE",
+              "text": "- [ ] Informei prazo e canal de retorno?",
+              "start": 0,
+              "documentOffset": 27719
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27719,
+          "structuredAnchor": {
+            "basis": "BEHAVIOR_FULFILLED",
+            "proof": {
+              "polarity": {
+                "behavior": "INFORM_DEADLINE",
+                "evidence": "FULFILLED",
+                "fulfilledTurns": [
+                  "T15",
+                  "T17"
+                ]
+              },
+              "itemTerms": [],
+              "actionStem": "inform",
+              "operatorTurns": [
+                "T15"
+              ],
+              "processAnchor": "SUBJECT",
+              "actionRelation": {
+                "agency": null,
+                "family": "INFORM",
+                "related": false,
+                "verbForms": [],
+                "stateForms": [],
+                "stepObjects": [
+                  "DEADLINE"
+                ],
+                "objectClasses": [],
+                "objectMismatch": false,
+                "mismatchedObjects": []
+              },
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:4977f97a95235a2c",
+              "stepText": "Informei prazo e canal de retorno?",
+              "stepPosition": 16
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Informei prazo e canal de retorno?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "prazo",
+            "canal",
+            "retorno"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "A contestação foi registrada hoje e será analisada em até cinco dias úteis. O retorno será enviado por SMS.",
+          "heading": "35. Prazo da análise",
+          "version": 1,
+          "chunkIndex": 51,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "evidencePolarity": {
+          "behavior": "INFORM_DEADLINE",
+          "conflict": null,
+          "evidence": "FULFILLED",
+          "evidenceUnits": [
+            {
+              "turnRef": "T15",
+              "polarity": "FULFILLED",
+              "mentioned": true
+            }
+          ],
+          "fulfilledTurns": [
+            "T15",
+            "T17"
+          ]
+        },
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C9",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-0ae8a37ae1",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 18,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Forneci protocolo?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Forneci protocolo?",
+          "primaryProcess": true,
+          "canonicalBehavior": "PROVIDE_PROTOCOL",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "NOT_FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T21",
+            "rawSha256": "2db565203e337176deaef8d1ec7317aab96d4bdd1d0ae5b31155c9f46f853a47"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": {
+          "checks": {
+            "opportunity": true,
+            "windowComplete": true,
+            "noMatchingAction": true,
+            "processApplicable": true,
+            "checkpointRequired": true
+          },
+          "failure": null,
+          "signals": {
+            "matchingTurns": [],
+            "windowEndTurn": "T22",
+            "predecessorTurn": "T3",
+            "windowStartTurn": "T3",
+            "distinctiveTerms": [],
+            "sectionAnchorTerms": [],
+            "subjectAnchorTerms": [
+              "conte"
+            ],
+            "successorPerformed": false,
+            "siblingFollowedVerified": true
+          },
+          "verified": true
+        },
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Protocolo",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "PROVIDE_PROTOCOL",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C9"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C9"
+        },
+        "knowledge": {
+          "quote": "- [ ] Forneci protocolo?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 24,
+              "role": "RULE",
+              "text": "- [ ] Forneci protocolo?",
+              "start": 0,
+              "documentOffset": 27780
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27780,
+          "structuredAnchor": null,
+          "applicabilityBasis": "VERIFIED_OMISSION"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Forneci protocolo?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "VERIFIED_OMISSION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "protocolo"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "NOT_FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "Seu protocolo é 202609130184.",
+          "heading": "48. Encerramento",
+          "version": 1,
+          "chunkIndex": 64,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      },
+      {
+        "ref": "P1.C10",
+        "origin": "MODEL",
+        "source": {
+          "ref": "CP-1268946e2c",
+          "kind": "LIST_ITEM",
+          "facets": [],
+          "heading": "55. Checklist do operador",
+          "position": 20,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "modelQuote": "- [ ] Confirmei se restaram dúvidas?",
+          "quoteMatch": "EXACT",
+          "sourceText": "- [ ] Confirmei se restaram dúvidas?",
+          "primaryProcess": true,
+          "canonicalBehavior": "CONFIRM_UNDERSTANDING",
+          "processRequirement": "NOT_DECLARED",
+          "assessmentRequirement": "MUST_ASSESS"
+        },
+        "status": "FOLLOWED",
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "turnRef": "T19",
+            "rawSha256": "9a3cab5d6f3a2e97ea167a00e18c0c9d09b79062a0f34a1c9cf7191acfe7efcc"
+          }
+        ],
+        "guidance": {
+          "declared": "OFFICIAL_PROCEDURE",
+          "grounding": "OFFICIAL_PROCEDURE",
+          "downgradeReason": null
+        },
+        "omission": null,
+        "canonical": {
+          "role": "PRIMARY",
+          "title": "Confirmação de entendimento",
+          "facets": [],
+          "version": "BEHAVIOR_CONVERGENCE_V1",
+          "behavior": "CONFIRM_UNDERSTANDING",
+          "conflict": false,
+          "groupRefs": [
+            "P1.C10"
+          ],
+          "precedence": [
+            "PROCESS_SPECIFIC_DOCUMENT",
+            "CHECKLIST_SECTION",
+            "RULE_VERIFIED"
+          ],
+          "primaryRef": "P1.C10"
+        },
+        "knowledge": {
+          "quote": "- [ ] Confirmei se restaram dúvidas?",
+          "leadIn": "Antes de finalizar:",
+          "failure": null,
+          "heading": "55. Checklist do operador",
+          "version": 1,
+          "segments": [
+            {
+              "end": 36,
+              "role": "RULE",
+              "text": "- [ ] Confirmei se restaram dúvidas?",
+              "start": 0,
+              "documentOffset": 27821
+            }
+          ],
+          "citedQuote": null,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "anchorTerms": [
+            "duvid"
+          ],
+          "contentKind": "RULE_CONTENT",
+          "applicability": "VERIFIED",
+          "contentSha256": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "documentOffset": 27821,
+          "structuredAnchor": {
+            "basis": "UNDERSTANDING_CHECK",
+            "proof": {
+              "itemTerms": [],
+              "actionStem": null,
+              "operatorTurns": [
+                "T19"
+              ],
+              "processAnchor": "SUBJECT",
+              "otherStepStems": [],
+              "situationTerms": [],
+              "stepTermsInSpeech": []
+            },
+            "failure": null,
+            "version": "STRUCTURED_ANCHOR_V3",
+            "anchored": true,
+            "checkpoint": {
+              "leadIn": "Antes de finalizar:",
+              "heading": "55. Checklist do operador",
+              "identity": "CP:53ef650d0a98add6",
+              "stepText": "Confirmei se restaram dúvidas?",
+              "stepPosition": 20
+            }
+          },
+          "applicabilityBasis": "STRUCTURED_ANCHOR"
+        },
+        "ownership": "AGENT",
+        "completion": null,
+        "requirement": "Confirmei se restaram dúvidas?",
+        "uncertainty": null,
+        "completeness": null,
+        "evidenceType": "OBSERVED_ACTION",
+        "processTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+        "ruleBackfill": {
+          "status": "NO_MATCHING_SECTION",
+          "version": "CHECKPOINT_RULE_BACKFILL_V1",
+          "objectTerms": [
+            "restaram",
+            "duvidas"
+          ],
+          "candidateSections": []
+        },
+        "operativeRule": null,
+        "rejectedUnits": [],
+        "declaredStatus": "FOLLOWED",
+        "knowledgeDetail": {
+          "quote": "Ficou alguma dúvida sobre o valor que deve ser pago?",
+          "heading": "47. Confirmação de entendimento",
+          "version": 1,
+          "chunkIndex": 63,
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "contentKind": "EXAMPLE_CONTENT"
+        },
+        "evidencePolarity": null,
+        "checkpointEligibility": {
+          "reason": null,
+          "heading": "55. Checklist do operador",
+          "version": "CHECKPOINT_ELIGIBILITY_V1",
+          "eligible": true,
+          "listKind": "UNORDERED",
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "sectionRole": "CHECKLIST",
+          "segmentRole": "RULE",
+          "documentVersion": 1,
+          "sectionRoleVersion": "SECTION_PROCESS_ROLE_V1"
+        },
+        "statusDowngradeReason": null
+      }
+    ],
+    "applicability": []
+  },
+  "indicatorDiagnosis": null,
+  "excludedForMateriality": []
+}

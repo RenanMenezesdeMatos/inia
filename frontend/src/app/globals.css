@@ -1,0 +1,629 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-topbar: var(--topbar);
+  --color-topbar-foreground: var(--topbar-foreground);
+
+  --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-heading: var(--font-sans);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@keyframes inia-breathe { 0%,100% { transform: scale(1) translateY(0) } 50% { transform: scale(1.008,1.015) translateY(-1px) } }
+@keyframes inia-head-idle { 0%,100% { transform: rotateZ(-.35deg) translateY(0) } 50% { transform: rotateZ(.45deg) translateY(-1px) } }
+@keyframes inia-head-listen { 0%,100% { transform: rotateZ(-1deg) } 50% { transform: rotateZ(1.8deg) translateY(1px) } }
+@keyframes inia-head-talk { 0%,100% { transform: rotateZ(-.6deg) translateY(0) } 35% { transform: rotateZ(1deg) translateY(-1px) } 70% { transform: rotateZ(-.2deg) translateY(1px) } }
+@keyframes inia-head-yes { 0%,100% { transform: rotateX(0deg) translateY(0) } 50% { transform: rotateX(5deg) translateY(2px) } }
+@keyframes inia-head-no { 0%,100% { transform: rotateY(-3deg) } 50% { transform: rotateY(3deg) } }
+@keyframes inia-blink { 0%,45%,48%,100% { opacity: 0; transform: scaleY(.1) } 46%,47% { opacity: .94; transform: scaleY(1) } }
+@keyframes inia-hand-left { 0%,100% { transform: rotate(-1deg) translate(0) } 50% { transform: rotate(4deg) translate(2px,-3px) } }
+@keyframes inia-hand-right { 0%,100% { transform: rotate(1deg) translate(0) } 50% { transform: rotate(-4deg) translate(-2px,-3px) } }
+
+@keyframes inia-accordion-open {
+  from { height: 0; opacity: 0; transform: translateY(-4px); }
+  to { height: var(--radix-accordion-content-height); opacity: 1; transform: translateY(0); }
+}
+
+@keyframes inia-accordion-close {
+  from { height: var(--radix-accordion-content-height); opacity: 1; transform: translateY(0); }
+  to { height: 0; opacity: 0; transform: translateY(-4px); }
+}
+
+[data-slot="accordion-content"][data-state="open"] {
+  animation: inia-accordion-open 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-slot="accordion-content"][data-state="closed"] {
+  animation: inia-accordion-close 220ms ease-in;
+}
+
+.inia-rich-editor:empty::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.inia-rich-editor h2 { font-family: var(--font-sans); font-size: 1.25rem; font-weight: 600; margin-block: .5rem; }
+.inia-rich-editor ul { list-style: disc; padding-left: 1.25rem; }
+.inia-rich-editor img { border-radius: .75rem; display: block; margin-block: .75rem; max-height: 16rem; max-width: 100%; object-fit: cover; }
+.inia-rich-content h2, .inia-rich-content h3 { color: var(--foreground); font-family: var(--font-sans); font-size: 1.1rem; font-weight: 600; margin-block: .5rem; }
+.inia-rich-content ul { list-style: disc; padding-left: 1.25rem; }
+.inia-rich-content img { border-radius: .75rem; display: block; margin-block: .75rem; max-height: 20rem; max-width: 100%; object-fit: cover; }
+
+:root {
+  --radius: 0.375rem;
+
+  --background: #faf9f7;
+  --foreground: #1c1a17;
+
+  --card: #ffffff;
+  --card-foreground: #1c1a17;
+  --popover: #ffffff;
+  --popover-foreground: #1c1a17;
+
+  --primary: #660099;
+  --primary-foreground: #ffffff;
+
+  /* Cabeçalho global: o roxo da marca nos dois temas (o primário do escuro é rosa). */
+  --topbar: #660099;
+  --topbar-foreground: #ffffff;
+
+  --secondary: #81d300;
+  --secondary-foreground: #102200;
+
+  --muted: #f2f0eb;
+  --muted-foreground: #6b6660;
+
+  --accent: #eb3c7d;
+  --accent-foreground: #ffffff;
+
+  --destructive: #dc2626;
+
+  --border: #e6e2d9;
+  --input: #e6e2d9;
+  --ring: #660099;
+
+  --chart-1: #660099;
+  --chart-2: #eb3c7d;
+  --chart-3: #81d300;
+  --chart-4: #b266d9;
+  --chart-5: #f59abb;
+
+  --sidebar: #fcfbfd;
+  --sidebar-foreground: #171717;
+  --sidebar-primary: #660099;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f7f4fa;
+  --sidebar-accent-foreground: #660099;
+  --sidebar-border: #e8e1ef;
+  --sidebar-ring: #660099;
+}
+
+.dark {
+  --background: #16140f;
+  --foreground: #f4f2ec;
+
+  --card: #1d1b16;
+  --card-foreground: #f4f2ec;
+  --popover: #1f1d17;
+  --popover-foreground: #f4f2ec;
+
+  --primary: #eb3c7d;
+  --primary-foreground: #ffffff;
+
+  --topbar: #3a1152;
+  --topbar-foreground: #f7f1fb;
+
+  --secondary: #81d300;
+  --secondary-foreground: #0f1a00;
+
+  --muted: #27241d;
+  --muted-foreground: #9a9488;
+
+  --accent: #660099;
+  --accent-foreground: #ffffff;
+
+  --destructive: #f87171;
+
+  --border: #322f27;
+  --input: #3a362c;
+  --ring: #eb3c7d;
+
+  --chart-1: #eb3c7d;
+  --chart-2: #660099;
+  --chart-3: #81d300;
+  --chart-4: #d38cf0;
+  --chart-5: #ff8fb7;
+
+  --sidebar: #131210;
+  --sidebar-foreground: #f4f2ec;
+  --sidebar-primary: #eb3c7d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #27241d;
+  --sidebar-accent-foreground: #f4f2ec;
+  --sidebar-border: #322f27;
+  --sidebar-ring: #eb3c7d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply h-full font-sans antialiased;
+  }
+
+  body {
+    @apply min-h-full bg-background font-sans text-foreground;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-bold tracking-tight;
+  }
+}
+
+.inia-chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.75) transparent;
+}
+
+.inia-chat-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.inia-chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.inia-chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.75);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.inia-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.95);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.inia-chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.85);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.inia-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 1);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+
+.inia-chat-fade-bottom {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 93%,
+    rgba(0, 0, 0, 0.97) 97%,
+    rgba(0, 0, 0, 0.88) 98.6%,
+    rgba(0, 0, 0, 0.7) 99.4%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 93%,
+    rgba(0, 0, 0, 0.97) 97%,
+    rgba(0, 0, 0, 0.88) 98.6%,
+    rgba(0, 0, 0, 0.7) 99.4%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+@keyframes inia-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.inia-caret {
+  animation: inia-caret-blink 0.9s step-end infinite;
+}
+
+.inia-header-glow {
+  background:
+    radial-gradient(circle at center, rgba(99, 102, 241, 0.22) 0%, rgba(99, 102, 241, 0.12) 38%, rgba(99, 102, 241, 0) 72%),
+    radial-gradient(circle at center, rgba(236, 72, 153, 0.18) 0%, rgba(236, 72, 153, 0.08) 42%, rgba(236, 72, 153, 0) 76%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+@keyframes inia-tooltip-genie-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scaleX(0.35) scaleY(0.18);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(-1px) scaleX(1.06) scaleY(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes inia-tooltip-genie-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scaleX(0.45) scaleY(0.2);
+  }
+}
+
+@keyframes inia-menu-genie-in {
+  0% { opacity: 0; transform: scaleX(0.45) scaleY(0.18); }
+  68% { opacity: 1; transform: scaleX(1.035) scaleY(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes inia-menu-genie-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scaleX(0.55) scaleY(0.2); }
+}
+
+.inia-menu-genie[data-state="open"] {
+  animation: inia-menu-genie-in 190ms cubic-bezier(0.2, 0.9, 0.3, 1.12);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+
+.inia-menu-genie[data-state="closed"] {
+  animation: inia-menu-genie-out 110ms ease-in;
+}
+
+@keyframes inia-seal-genie-in {
+  0% { transform: translateX(10px) scaleX(0.25) scaleY(0.45); }
+  72% { transform: translateX(-1px) scaleX(1.08) scaleY(0.96); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+@keyframes inia-seal-genie-out {
+  from { transform: translateX(0) scale(1); }
+  to { transform: translateX(8px) scaleX(0.2) scaleY(0.4); }
+}
+
+.inia-seal-genie-in { animation: inia-seal-genie-in 170ms cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+.inia-seal-genie-out { animation: inia-seal-genie-out 120ms ease-in; }
+
+@keyframes inia-gold-smoke {
+  0%, 100% {
+    opacity: 0.28;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.16);
+  }
+}
+
+@keyframes inia-gold-ring-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(251, 191, 36, 0.3), 0 0 7px rgba(245, 158, 11, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 7px rgba(251, 191, 36, 0.72), 0 0 13px rgba(245, 158, 11, 0.34);
+  }
+}
+
+.inia-seal-gold {
+  animation: inia-gold-ring-pulse 1.55s ease-in-out infinite;
+  isolation: isolate;
+  position: relative;
+}
+
+.inia-seal-gold::before {
+  animation: inia-gold-smoke 1.55s ease-in-out infinite;
+  background:
+    radial-gradient(circle, transparent 48%, rgba(253, 224, 71, 0.82) 51%, rgba(251, 191, 36, 0.5) 58%, transparent 62%),
+    radial-gradient(circle, transparent 66%, rgba(245, 158, 11, 0.38) 69%, transparent 74%);
+  border-radius: 9999px;
+  content: "";
+  filter: blur(2px);
+  inset: -5px;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+@keyframes inia-tab-genie-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scaleX(0.9) scaleY(0.72);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(1px) scaleX(1.01) scaleY(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.inia-tab-content[data-state="active"] {
+  animation: inia-tab-genie-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.08);
+  transform-origin: top center;
+}
+
+.inia-tooltip-genie[data-state="instant-open"],
+.inia-tooltip-genie[data-state="delayed-open"] {
+  animation: inia-tooltip-genie-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+
+.inia-tooltip-genie[data-state="closed"] {
+  animation: inia-tooltip-genie-out 100ms ease-in;
+}
+
+.inia-scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, black 24px, black calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
+/*
+ * Sinal de percurso em edges do React Flow (components/flow/flow-travel-signal.ts): a edge em
+ * viagem usa o `animated` nativo da biblioteca — a MESMA marcha de traços da conexão
+ * Orquestrador → Agente — em cor de destaque; `reverse` inverte o sentido da marcha. O editor de
+ * Orquestradores não usa estas classes.
+ */
+.react-flow__edge.inia-flow-travel path.react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.react-flow__edge.inia-flow-travel.inia-flow-travel-reverse path.react-flow__edge-path {
+  animation-direction: reverse;
+}
+/* Caminho persistente ("leva até você"): a mesma marcha em loop; com reduced motion, traço estático diferenciado — a orientação não some. */
+.react-flow__edge.inia-flow-path path.react-flow__edge-path {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+.react-flow__edge.inia-flow-path-static path.react-flow__edge-path {
+  stroke-dasharray: 6 3;
+  animation: none !important;
+}
+
+/* Destaque de chegada num node do organograma: um anel que se dissolve, uma vez só. */
+@keyframes inia-flow-arrival {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px color-mix(in oklab, var(--primary) 0%, transparent); }
+}
+.inia-flow-arrival {
+  animation: inia-flow-arrival 0.9s ease-out 1;
+}
+
+/* Rolagem com bordas que "somem": o conteúdo fica transparente perto da borda SÓ quando há mais conteúdo além dela
+   (data-fade-top / data-fade-bottom, ligados por quem rola). Leve de propósito; as variáveis registradas deixam o fade
+   aparecer e sumir suavemente. */
+@property --inia-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --inia-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.inia-scroll-fade {
+  --inia-fade-top: 0px;
+  --inia-fade-bottom: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--inia-fade-top), #000 calc(100% - var(--inia-fade-bottom)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--inia-fade-top), #000 calc(100% - var(--inia-fade-bottom)), transparent);
+  transition: --inia-fade-top 180ms ease-out, --inia-fade-bottom 180ms ease-out;
+}
+.inia-scroll-fade[data-fade-top] {
+  --inia-fade-top: 20px;
+}
+.inia-scroll-fade[data-fade-bottom] {
+  --inia-fade-bottom: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inia-tooltip-genie,
+  .inia-menu-genie,
+  .inia-seal-genie-in,
+  .inia-seal-genie-out,
+  .inia-seal-gold,
+  .inia-seal-gold::before,
+  .inia-tab-content,
+  .react-flow__edge.inia-flow-travel path.react-flow__edge-path,
+  .react-flow__edge.inia-flow-path path.react-flow__edge-path,
+  .inia-flow-arrival {
+    animation: none !important;
+  }
+  .inia-scroll-fade {
+    transition: none;
+  }
+}
+
+html.a11y-text-large {
+  font-size: 106%;
+}
+
+html.a11y-text-extra-large {
+  font-size: 115%;
+}
+
+html.a11y-text-huge {
+  font-size: 128%;
+}
+
+html.a11y-high-contrast {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --muted: 0 0% 92%;
+  --muted-foreground: 0 0% 18%;
+  --border: 0 0% 20%;
+  --ring: 262 83% 58%;
+}
+
+html.dark.a11y-high-contrast {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 88%;
+  --border: 0 0% 70%;
+  --ring: 262 83% 70%;
+}
+
+html.a11y-enhanced-focus :focus-visible {
+  outline: 3px solid hsl(var(--ring));
+  outline-offset: 3px;
+}
+
+html.a11y-reduce-motion {
+  scroll-behavior: auto;
+}
+
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.a11y-text-large {
+  font-size: 106%;
+}
+
+.a11y-text-extra-large {
+  font-size: 114%;
+}
+
+.a11y-high-contrast {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --muted: 210 40% 94%;
+  --muted-foreground: 215 25% 25%;
+  --border: 222.2 47.4% 30%;
+  --ring: 222.2 84% 4.9%;
+}
+
+.dark.a11y-high-contrast {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 14%;
+  --muted-foreground: 210 40% 88%;
+  --border: 210 40% 80%;
+  --ring: 210 40% 98%;
+}
+
+.a11y-reduce-motion *,
+.a11y-reduce-motion *::before,
+.a11y-reduce-motion *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+.a11y-enhanced-focus :focus-visible {
+  outline: 3px solid hsl(var(--ring)) !important;
+  outline-offset: 3px !important;
+}
+
+/*
+ * Balão da INIA no palco da aplicação de feedback (stage-speech-bubble.tsx): entra com um pulo de quadrinho; cada palavra da fala
+ * surge desfocada e assenta (no ritmo da voz); as linhas antigas somem no topo do balão.
+ */
+@keyframes inia-bubble-pop {
+  0% { opacity: 0; transform: scale(0.82) rotate(-1.2deg); }
+  60% { opacity: 1; transform: scale(1.03) rotate(0.4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-0.3deg); }
+}
+.inia-bubble-pop {
+  animation: inia-bubble-pop 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes inia-word-in {
+  from { opacity: 0; filter: blur(6px); transform: translateY(0.3em); }
+  to { opacity: 1; filter: blur(0); transform: none; }
+}
+.inia-word {
+  display: inline-block;
+  animation: inia-word-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.inia-stream-window[data-overflow] {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.6rem);
+}
+@media (prefers-reduced-motion: reduce) {
+  .inia-bubble-pop,
+  .inia-word {
+    animation: none;
+  }
+}

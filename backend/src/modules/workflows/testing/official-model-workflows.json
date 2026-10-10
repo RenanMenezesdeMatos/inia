@@ -1,0 +1,4530 @@
+[
+  {
+    "key": "01",
+    "id": "7261287e-4592-4eb4-859b-daa6b7ed090c",
+    "name": "Modelo · 01 · Rechamada recorrente",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "60c9cda8-63de-4443-b6b6-7f7c66e91931"
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-review",
+          "source": "feedback",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Gatilho",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Rechamada confirmada?",
+          "config": {
+            "comparator": "EQUALS",
+            "thresholdBoolean": true
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Experiência do Cliente",
+          "config": {
+            "agentId": "f18c813b-2557-4181-b35e-66667e45353b",
+            "actionType": "CALL_AGENT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme se o feedback de experiência tem evidência literal e é justo antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "02",
+    "id": "aa8d1795-ce1a-45f5-b152-b1f886ba3ae9",
+    "name": "Modelo · 02 · Detrator de URA",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "383e42c6-898c-4c35-b94c-6e40ff696ab5"
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-critico-true-review",
+          "source": "critico",
+          "target": "review",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-critico-false-output",
+          "source": "critico",
+          "target": "output",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-feedback-always-critico",
+          "source": "feedback",
+          "target": "critico",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Gatilho",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Nota da URA ≤ 2?",
+          "config": {
+            "comparator": "LTE",
+            "thresholdNumeric": 2
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Experiência do Cliente",
+          "config": {
+            "agentId": "f18c813b-2557-4181-b35e-66667e45353b",
+            "actionType": "CALL_AGENT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "critico",
+          "type": "condition",
+          "label": "Nota crítica (≤ 1)?",
+          "config": {
+            "comparator": "LTE",
+            "thresholdNumeric": 1
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor (crítico)",
+          "config": {
+            "instruction": "Nota 1 na URA: revise o feedback antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 1150
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "03",
+    "id": "6ca594e1-6355-43fa-a715-5f17e199782d",
+    "name": "Modelo · 03 · Q4 recorrente",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 5,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Q4 em 3 dos últimos 3 fechamentos?",
+          "config": {
+            "comparator": "GTE",
+            "performanceQuery": {
+              "kind": "EMPLOYEE_PERFORMANCE",
+              "metric": "PRV_QUARTILE",
+              "recurrence": {
+                "periods": 3,
+                "matchQuartile": "Q4"
+              }
+            },
+            "thresholdNumeric": 3
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Performance Individual",
+          "config": {
+            "agentId": "510a3593-87e9-4233-a297-5e43365b81b9",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 3
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o diagnóstico de recorrência em Q4 antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "04",
+    "id": "52c53923-f728-4a05-a203-be5328d15e6c",
+    "name": "Modelo · 04 · Maiores quedas por Subgrupo",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 3,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output-operador",
+          "source": "review",
+          "target": "output-operador",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-join",
+          "source": "review",
+          "target": "join",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-escalar-always-join",
+          "source": "escalar",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output-gestor",
+          "source": "orq",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "2 maiores quedas de PRV por Subgrupo",
+          "config": {
+            "ranking": {
+              "count": 2,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "selection": "DECLINED",
+              "aggregation": "AVERAGE",
+              "partitionBy": "SUBTEAM",
+              "rankingBasis": "CHANGE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Performance Individual",
+          "config": {
+            "agentId": "510a3593-87e9-4233-a297-5e43365b81b9",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 2
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o diagnóstico da queda antes de publicar ao operador e consolidar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou o diagnóstico individual.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "CONTINUE",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1150
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Sintetize os diagnósticos individuais das maiores quedas de PRV por Subgrupo: padrões, prioridades e próximos passos para a gestão."
+          },
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Resumo executivo ao Diretor",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "DIRECTOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 2070
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "05",
+    "id": "bc6c600d-7333-4abb-94cf-86523c931c5c",
+    "name": "Modelo · 05 · Piores em Qualidade por Grupo",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 3,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output-operador",
+          "source": "review",
+          "target": "output-operador",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-join",
+          "source": "review",
+          "target": "join",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-escalar-always-join",
+          "source": "escalar",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output-gestor",
+          "source": "orq",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "3 piores em Qualidade por Grupo",
+          "config": {
+            "ranking": {
+              "count": 3,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "MEASUREMENT",
+              "selection": "WORST",
+              "aggregation": "WEIGHTED_AVERAGE",
+              "partitionBy": "TEAM",
+              "rankingBasis": "VALUE",
+              "indicatorCode": "MONITORIA_QUALIDADE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Qualidade de Atendimento",
+          "config": {
+            "agentId": "2e5d735f-98b1-4640-9ec9-a5c65b56efeb",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "INDICATOR",
+              "period": "MONTH",
+              "indicatorCode": "MONITORIA_QUALIDADE"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o feedback de qualidade antes de publicar ao operador e consolidar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou o diagnóstico individual.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "CONTINUE",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1150
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Monte o panorama de Qualidade por Grupo a partir dos feedbacks individuais dos piores resultados: o que se repete entre Grupos, o que é isolado e quais prioridades a liderança deve acompanhar."
+          },
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Panorama de Qualidade ao Diretor",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "DIRECTOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 2070
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "06",
+    "id": "bba2bcbf-002c-4cb7-ad77-d726d90da6c0",
+    "name": "Modelo · 06 · PRV baixo recorrente",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 5,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "PRV médio (3 fechamentos) < 80%?",
+          "config": {
+            "comparator": "LT",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "kind": "CLOSURES",
+                "unit": "MONTH",
+                "count": 3
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "aggregation": "AVERAGE"
+            },
+            "thresholdNumeric": 80
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de PRV",
+          "config": {
+            "agentId": "0d35c1db-e3ab-478b-8e3e-2e178fbe9069",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 3
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme a explicação do PRV antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "07",
+    "id": "cd3bdd0f-8178-41e9-95d5-94d0f33821e9",
+    "name": "Modelo · 07 · TMA fora do esperado",
+    "trigger": {
+      "kind": "indicator",
+      "indicatorCode": "TMA"
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-output",
+          "source": "feedback",
+          "target": "output",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Nova medição de TMA",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "TMA médio (7 dias) acima da meta?",
+          "config": {
+            "comparator": "GT",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "days": 7,
+                "kind": "ROLLING_DAYS"
+              },
+              "source": "MEASUREMENT",
+              "compareTo": {
+                "kind": "GOAL"
+              },
+              "aggregation": "WEIGHTED_AVERAGE",
+              "indicatorCode": "TMA"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Eficiência Operacional",
+          "config": {
+            "agentId": "b302f984-e9fe-4cff-ad96-2f10dfc6232a",
+            "actionType": "CALL_AGENT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Orientação ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "08",
+    "id": "f8aeb5e3-f026-4584-b352-cbd6222ffe87",
+    "name": "Modelo · 08 · Contestação multidomínio",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "de009d6c-decd-4a03-87cb-fbc7052289b0"
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-orq",
+          "source": "cond",
+          "target": "orq",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-orq-always-feedback",
+          "source": "orq",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-review",
+          "source": "feedback",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Flag de contestação",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Contestação confirmada?",
+          "config": {
+            "comparator": "EQUALS",
+            "thresholdBoolean": true
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "orq",
+          "type": "orchestrator",
+          "label": "Orquestrador · Atendimento multidomínio",
+          "config": {
+            "instruction": "Analise esta chamada de contestação. Identifique os domínios realmente presentes na ligação (faturamento, retenção/cancelamento, suporte técnico, cadastro, experiência do cliente) e acione APENAS os especialistas desses domínios — nunca todos por padrão. Sintetize um único feedback ao operador com evidência literal da transcrição, procedimento relacionado e recomendação.",
+            "orchestratorId": "71c306e5-3d8a-47da-8069-f2bda486e937"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "orq",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Chamada multidomínio: confirme se a síntese usou só os especialistas necessários e se a evidência é literal antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "09",
+    "id": "6bc327a5-8c2a-46b3-b038-bf2fa62c07c5",
+    "name": "Modelo · 09 · TMA bom + Qualidade ruim",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "type": "WEEKLY",
+        "weekdays": [
+          "MON"
+        ]
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-tma",
+          "source": "trigger",
+          "target": "tma",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-tma-true-qual",
+          "source": "tma",
+          "target": "qual",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-tma-false-end",
+          "source": "tma",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-tma-no_data-end",
+          "source": "tma",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-qual-true-agent",
+          "source": "qual",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-qual-false-end",
+          "source": "qual",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-qual-no_data-end",
+          "source": "qual",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda semanal",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "tma",
+          "type": "condition",
+          "label": "TMA médio (30 dias) ≤ meta?",
+          "config": {
+            "comparator": "LTE",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "days": 30,
+                "kind": "ROLLING_DAYS"
+              },
+              "source": "MEASUREMENT",
+              "compareTo": {
+                "kind": "GOAL"
+              },
+              "aggregation": "WEIGHTED_AVERAGE",
+              "indicatorCode": "TMA"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "qual",
+          "type": "condition",
+          "label": "Qualidade média (30 dias) < meta?",
+          "config": {
+            "comparator": "LT",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "days": 30,
+                "kind": "ROLLING_DAYS"
+              },
+              "source": "MEASUREMENT",
+              "compareTo": {
+                "kind": "GOAL"
+              },
+              "aggregation": "WEIGHTED_AVERAGE",
+              "indicatorCode": "MONITORIA_QUALIDADE"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Qualidade (2 chamadas do mês)",
+          "config": {
+            "agentId": "2e5d735f-98b1-4640-9ec9-a5c65b56efeb",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "MONITORING",
+              "period": "MONTH",
+              "sampleSize": 2
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o feedback de monitoria antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1150
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "10",
+    "id": "c5582644-c5b8-4f52-aed7-31ae20dd9a1f",
+    "name": "Modelo · 10 · Disponibilidade / Aderência",
+    "trigger": {
+      "kind": "indicator",
+      "indicatorCode": "ADERENCIA"
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-output",
+          "source": "feedback",
+          "target": "output",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Nova medição de Aderência",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Aderência média (mês) abaixo da meta?",
+          "config": {
+            "comparator": "LT",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH",
+                "phase": "CURRENT"
+              },
+              "source": "MEASUREMENT",
+              "compareTo": {
+                "kind": "GOAL"
+              },
+              "aggregation": "WEIGHTED_AVERAGE",
+              "indicatorCode": "ADERENCIA"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Disponibilidade Operacional",
+          "config": {
+            "agentId": "eb4a6b11-9ec5-4f15-9452-bd908da6a4a1",
+            "actionType": "CALL_AGENT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Orientação ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "11",
+    "id": "208882ef-824c-4261-be6c-0bfdee420768",
+    "name": "Modelo · 11 · Reconhecimento dos melhores",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 2,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-output-operador",
+          "source": "agent",
+          "target": "output-operador",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output-gestor",
+          "source": "orq",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "Melhor PRV por Subgrupo",
+          "config": {
+            "ranking": {
+              "count": 1,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "selection": "BEST",
+              "aggregation": "AVERAGE",
+              "partitionBy": "SUBTEAM",
+              "rankingBasis": "VALUE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Reconhecimento",
+          "config": {
+            "agentId": "ba01f07b-c2ed-422a-9af3-d911b4f50cde",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 1
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Reconhecimento ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Monte a visão consolidada dos destaques do mês (melhor PRV de cada Subgrupo): quem se destacou, o que explica o resultado e como a liderança pode reconhecer e replicar boas práticas."
+          },
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Destaques do mês ao Diretor",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "DIRECTOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "12",
+    "id": "b31cc414-fbd7-4892-8584-5976913e3244",
+    "name": "Modelo · 12 · Maiores evoluções",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 2,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-output",
+          "source": "agent",
+          "target": "output",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "2 maiores evoluções de PRV por Subgrupo",
+          "config": {
+            "ranking": {
+              "count": 2,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "selection": "IMPROVED",
+              "aggregation": "AVERAGE",
+              "partitionBy": "SUBTEAM",
+              "rankingBasis": "CHANGE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Reconhecimento",
+          "config": {
+            "agentId": "ba01f07b-c2ed-422a-9af3-d911b4f50cde",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 2
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Reconhecimento ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "13",
+    "id": "9acf3766-c9e2-4b53-a0a6-7cad13f90c6c",
+    "name": "Modelo · 13 · Monitoramento operacional do dia",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "RELATIVE_TO_SHIFT",
+      "relative": {
+        "anchor": "PERCENTAGE",
+        "percentage": 50
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-output",
+          "source": "cond",
+          "target": "output",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "50% do expediente (medição do dia)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "TMA de hoje acima da meta?",
+          "config": {
+            "comparator": "GT",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "DAY",
+                "phase": "CURRENT"
+              },
+              "source": "MEASUREMENT",
+              "compareTo": {
+                "kind": "GOAL"
+              },
+              "aggregation": "WEIGHTED_AVERAGE",
+              "indicatorCode": "TMA"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "TMA acima da meta hoje — aviso ao supervisor",
+          "config": {
+            "source": "nodeOutputs.trigger",
+            "target": {
+              "type": "SUPERVISOR_OF_OPERATOR"
+            },
+            "surfaces": [
+              "NOTIFICATION"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "14",
+    "id": "7984fc41-253f-45cc-bec4-37feb99a4f51",
+    "name": "Modelo · 14 · Qualidade + PRV",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 4,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output-operador",
+          "source": "review",
+          "target": "output-operador",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-join",
+          "source": "review",
+          "target": "join",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-escalar-always-join",
+          "source": "escalar",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-select-prv",
+          "source": "trigger",
+          "target": "select-prv",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-prv-always-select-qualidade",
+          "source": "select-prv",
+          "target": "select-qualidade",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-qualidade-always-apply",
+          "source": "select-qualidade",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output-gestor",
+          "source": "orq",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select-prv",
+          "type": "select_employees",
+          "label": "PRV abaixo de 80%",
+          "config": {
+            "criterion": {
+              "comparator": "LT",
+              "performanceQuery": {
+                "kind": "EMPLOYEE_PERFORMANCE",
+                "metric": "PRV_ACHIEVEMENT"
+              },
+              "thresholdNumeric": 80
+            },
+            "selectionMode": "CONDITION"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "select-qualidade",
+          "type": "select_employees",
+          "label": "3 piores em Qualidade",
+          "config": {
+            "ranking": {
+              "count": 3,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "MEASUREMENT",
+              "selection": "WORST",
+              "aggregation": "WEIGHTED_AVERAGE",
+              "partitionBy": "NONE",
+              "rankingBasis": "VALUE",
+              "indicatorCode": "MONITORIA_QUALIDADE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Qualidade (1 chamada do mês)",
+          "config": {
+            "agentId": "2e5d735f-98b1-4640-9ec9-a5c65b56efeb",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "MONITORING",
+              "period": "MONTH",
+              "sampleSize": 1
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme a análise da chamada antes de publicar ao operador e consolidar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou o diagnóstico individual.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "CONTINUE",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1380
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Sintetize os casos críticos (PRV abaixo de 80% e pior Qualidade): o que as chamadas analisadas têm em comum, quem merece atenção individual e quais prioridades a liderança deve acompanhar."
+          },
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Casos críticos de Qualidade + PRV ao Diretor",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "DIRECTOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 2070
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 2300
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "15",
+    "id": "10ec6634-deb8-4360-9041-4127ca42e31e",
+    "name": "Modelo · 15 · Maior queda entre críticos",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 4,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "DIRECTOR_STRUCTURE",
+      "directorId": "de00c01c-9c24-4fe0-8a71-5851b0e2b201"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output-operador",
+          "source": "review",
+          "target": "output-operador",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-join",
+          "source": "review",
+          "target": "join",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-escalar-always-join",
+          "source": "escalar",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-select-q4",
+          "source": "trigger",
+          "target": "select-q4",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-q4-always-select-queda",
+          "source": "select-q4",
+          "target": "select-queda",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-queda-always-apply",
+          "source": "select-queda",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-output-gestor",
+          "source": "join",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Consolidado)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select-q4",
+          "type": "select_employees",
+          "label": "Colaboradores em Q4 de PRV",
+          "config": {
+            "criterion": {
+              "comparator": "EQUALS",
+              "thresholdText": "Q4",
+              "performanceQuery": {
+                "kind": "EMPLOYEE_PERFORMANCE",
+                "metric": "PRV_QUARTILE"
+              }
+            },
+            "selectionMode": "CONDITION"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "select-queda",
+          "type": "select_employees",
+          "label": "3 maiores quedas de PRV",
+          "config": {
+            "ranking": {
+              "count": 3,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "selection": "DECLINED",
+              "aggregation": "AVERAGE",
+              "partitionBy": "NONE",
+              "rankingBasis": "CHANGE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Performance Individual",
+          "config": {
+            "agentId": "510a3593-87e9-4233-a297-5e43365b81b9",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 2
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o diagnóstico antes de publicar ao operador e consolidar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou o diagnóstico individual.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "CONTINUE",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1380
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Lista consolidada ao Diretor",
+          "config": {
+            "source": "nodeOutputs.join",
+            "target": {
+              "role": "DIRECTOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 2070
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "16",
+    "id": "cc708d26-5e32-42f5-a59a-a1b89dddbdcc",
+    "name": "Modelo · 16 · Resumo mensal do Supervisor",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "08:00"
+      ],
+      "frequency": {
+        "day": 1,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "SUPERVISOR_TEAM",
+      "supervisorId": "de00f387-7ae8-4484-8d87-65171a920ca8"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-join",
+          "source": "agent",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output",
+          "source": "orq",
+          "target": "output",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Equipe do Supervisor)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "PRV abaixo de 100%",
+          "config": {
+            "criterion": {
+              "comparator": "LT",
+              "performanceQuery": {
+                "kind": "EMPLOYEE_PERFORMANCE",
+                "metric": "PRV_ACHIEVEMENT"
+              },
+              "thresholdNumeric": 100
+            },
+            "selectionMode": "CONDITION"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Performance Individual",
+          "config": {
+            "agentId": "510a3593-87e9-4233-a297-5e43365b81b9",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 1
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Produza o resumo mensal da equipe para o Supervisor: visão geral, padrões, casos que merecem atenção e prioridades."
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Resumo mensal ao Supervisor",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "SUPERVISOR",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "17",
+    "id": "8fcd1e38-08fe-49de-8a72-e427af534f5d",
+    "name": "Modelo · 17 · Padrões recorrentes no grupo",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 6,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "TEAM",
+    "teamId": "de00bd0e-a9dd-4892-800a-e386b35ff623",
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "TEAM",
+      "teamId": "de00bd0e-a9dd-4892-800a-e386b35ff623"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-join",
+          "source": "agent",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output",
+          "source": "orq",
+          "target": "output",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Grupo de Retenção)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "Qualidade abaixo da meta",
+          "config": {
+            "criterion": {
+              "comparator": "LT",
+              "historicalQuery": {
+                "kind": "INDICATOR_THRESHOLD_COUNT",
+                "period": {
+                  "kind": "CALENDAR",
+                  "unit": "MONTH"
+                },
+                "source": "MEASUREMENT",
+                "compareTo": {
+                  "kind": "GOAL"
+                },
+                "aggregation": "WEIGHTED_AVERAGE",
+                "indicatorCode": "MONITORIA_QUALIDADE"
+              }
+            },
+            "selectionMode": "CONDITION"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Retenção (1 chamada do mês)",
+          "config": {
+            "agentId": "c7936be7-e0cd-4c69-b24b-a185bc2886fd",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "MONITORING",
+              "period": "MONTH",
+              "sampleSize": 1
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Encontre padrões recorrentes entre as análises de chamadas de retenção do grupo: quais etapas do procedimento se repetem como desvio e o que recomendar ao Gerente."
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Padrões recorrentes ao Gerente",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "18a",
+    "id": "481c8c48-600b-46a7-8086-21e09768db1f",
+    "name": "Modelo · 18a · Auditoria de conformidade — Faturamento",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "60c9cda8-63de-4443-b6b6-7f7c66e91931"
+    },
+    "scopeType": "TEAM",
+    "teamId": "de005151-4fcf-4702-8bbe-457eb3048f97",
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-review",
+          "source": "feedback",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Gatilho",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Rechamada confirmada?",
+          "config": {
+            "comparator": "EQUALS",
+            "thresholdBoolean": true
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Faturamento — Conformidade de processo",
+          "config": {
+            "agentId": "a2beb78c-280d-4ee0-b688-10be1d0a6eeb",
+            "actionType": "CALL_AGENT",
+            "outputContract": "PROCESS_AUDIT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Auditoria de conformidade: revise as etapas marcadas como não conformes (com evidência) antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "18b",
+    "id": "77f5d76d-d5af-4ffc-bafc-9022159189e4",
+    "name": "Modelo · 18b · Auditoria de conformidade — Retenção e Cancelamento",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "60c9cda8-63de-4443-b6b6-7f7c66e91931"
+    },
+    "scopeType": "TEAM",
+    "teamId": "de00bd0e-a9dd-4892-800a-e386b35ff623",
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-review",
+          "source": "feedback",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Gatilho",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Rechamada confirmada?",
+          "config": {
+            "comparator": "EQUALS",
+            "thresholdBoolean": true
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Retenção — Conformidade de processo",
+          "config": {
+            "agentId": "c7936be7-e0cd-4c69-b24b-a185bc2886fd",
+            "actionType": "CALL_AGENT",
+            "outputContract": "PROCESS_AUDIT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Auditoria de conformidade: revise as etapas marcadas como não conformes (com evidência) antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "18c",
+    "id": "8a41f865-332c-4a57-b20b-db3c8e5bd343",
+    "name": "Modelo · 18c · Auditoria de conformidade — Suporte Técnico",
+    "trigger": {
+      "kind": "channel_flag",
+      "channelFlagId": "60c9cda8-63de-4443-b6b6-7f7c66e91931"
+    },
+    "scopeType": "TEAM",
+    "teamId": "de001384-7932-436c-80c7-ec9543d4cae9",
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output",
+          "source": "review",
+          "target": "output",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-end",
+          "source": "review",
+          "target": "end",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-agent",
+          "source": "cond",
+          "target": "agent",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-agent-always-feedback",
+          "source": "agent",
+          "target": "feedback",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-feedback-always-review",
+          "source": "feedback",
+          "target": "review",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Gatilho",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Rechamada confirmada?",
+          "config": {
+            "comparator": "EQUALS",
+            "thresholdBoolean": true
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Suporte Técnico — Conformidade de processo",
+          "config": {
+            "agentId": "73ae9889-f46d-4e22-9bd1-a80626232b6b",
+            "actionType": "CALL_AGENT",
+            "outputContract": "PROCESS_AUDIT"
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "feedback",
+          "type": "action",
+          "label": "Gerar feedback",
+          "position": {
+            "x": 260,
+            "y": 460
+          },
+          "config": {
+            "actionType": "GENERATE_FEEDBACK",
+            "sourceNodeId": "agent",
+            "feedbackDomain": "AUTO"
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Auditoria de conformidade: revise as etapas marcadas como não conformes (com evidência) antes de publicar.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.feedback",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou a revisão deste feedback.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "END_BRANCH",
+            "contentSource": "nodeOutputs.feedback"
+          },
+          "position": {
+            "x": 340,
+            "y": 920
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "19",
+    "id": "7c08aaeb-292b-4163-9190-fdbc5ec9a2f8",
+    "name": "Modelo · 19 · Ausência de dados",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 7,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": null,
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-trigger-always-cond",
+          "source": "trigger",
+          "target": "cond",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-cond-true-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "true"
+        },
+        {
+          "id": "e-cond-false-end",
+          "source": "cond",
+          "target": "end",
+          "sourceHandle": "false"
+        },
+        {
+          "id": "e-cond-no_data-output",
+          "source": "cond",
+          "target": "output",
+          "sourceHandle": "no_data"
+        },
+        {
+          "id": "e-output-always-end",
+          "source": "output",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "cond",
+          "type": "condition",
+          "label": "Há PRV nos últimos 2 fechamentos?",
+          "config": {
+            "comparator": "GTE",
+            "historicalQuery": {
+              "kind": "INDICATOR_THRESHOLD_COUNT",
+              "period": {
+                "kind": "CLOSURES",
+                "unit": "MONTH",
+                "count": 2
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "aggregation": "AVERAGE"
+            },
+            "thresholdNumeric": 0
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "output",
+          "type": "output",
+          "label": "Sem PRV nos últimos 2 fechamentos — verificar cadastro",
+          "config": {
+            "source": "nodeOutputs.trigger",
+            "target": {
+              "type": "SUPERVISOR_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        }
+      ]
+    }
+  },
+  {
+    "key": "20",
+    "id": "03a6aa94-e308-4c0f-84a4-48d571886462",
+    "name": "Modelo · 20 · Plano consolidado de ação",
+    "trigger": {
+      "kind": "schedule",
+      "mode": "CALENDAR",
+      "times": [
+        "09:00"
+      ],
+      "frequency": {
+        "day": 8,
+        "mode": "DAY_OF_MONTH",
+        "type": "MONTHLY"
+      },
+      "anchorDate": "2026-09-16",
+      "intervalDays": 1
+    },
+    "scopeType": "ALL_TEAMS",
+    "teamId": null,
+    "subteamId": null,
+    "consolidatedStructure": {
+      "kind": "MANAGER_STRUCTURE",
+      "managerId": "de003ade-638e-4aee-8cc5-ee7d53b6083d"
+    },
+    "populationFilter": null,
+    "graph": {
+      "edges": [
+        {
+          "id": "e-review-approved-output-operador",
+          "source": "review",
+          "target": "output-operador",
+          "sourceHandle": "approved"
+        },
+        {
+          "id": "e-review-rejected-join",
+          "source": "review",
+          "target": "join",
+          "sourceHandle": "rejected"
+        },
+        {
+          "id": "e-review-escalated-escalar",
+          "source": "review",
+          "target": "escalar",
+          "sourceHandle": "escalated"
+        },
+        {
+          "id": "e-output-operador-always-join",
+          "source": "output-operador",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-escalar-always-join",
+          "source": "escalar",
+          "target": "join",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-trigger-always-select",
+          "source": "trigger",
+          "target": "select",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-select-always-apply",
+          "source": "select",
+          "target": "apply",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-apply-always-agent",
+          "source": "apply",
+          "target": "agent",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-agent-always-review",
+          "source": "agent",
+          "target": "review",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-join-always-orq",
+          "source": "join",
+          "target": "orq",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-orq-always-output-gestor",
+          "source": "orq",
+          "target": "output-gestor",
+          "sourceHandle": "always"
+        },
+        {
+          "id": "e-output-gestor-always-end",
+          "source": "output-gestor",
+          "target": "end",
+          "sourceHandle": "always"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "trigger",
+          "type": "trigger",
+          "label": "Agenda mensal (Estrutura do Gerente)",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "select",
+          "type": "select_employees",
+          "label": "3 maiores quedas de PRV por Grupo",
+          "config": {
+            "ranking": {
+              "count": 3,
+              "period": {
+                "kind": "CALENDAR",
+                "unit": "MONTH"
+              },
+              "source": "PRV_ACHIEVEMENT",
+              "selection": "DECLINED",
+              "aggregation": "AVERAGE",
+              "partitionBy": "TEAM",
+              "rankingBasis": "CHANGE"
+            },
+            "selectionMode": "RANKING"
+          },
+          "position": {
+            "x": 0,
+            "y": 230
+          }
+        },
+        {
+          "id": "apply",
+          "type": "apply_individually",
+          "label": "Aplicar individualmente",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 460
+          }
+        },
+        {
+          "id": "agent",
+          "type": "action",
+          "label": "Especialista de Performance Individual",
+          "config": {
+            "agentId": "510a3593-87e9-4233-a297-5e43365b81b9",
+            "actionType": "CALL_AGENT",
+            "scheduledDataSource": {
+              "kind": "PERFORMANCE",
+              "closures": 2
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 690
+          }
+        },
+        {
+          "id": "review",
+          "type": "human_review",
+          "label": "Revisão do supervisor",
+          "config": {
+            "instruction": "Confirme o diagnóstico antes de publicar ao operador e consolidar no plano de ação.",
+            "reviewTarget": {
+              "role": "SUPERVISOR",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 0,
+            "y": 920
+          }
+        },
+        {
+          "id": "output-operador",
+          "type": "output",
+          "label": "Feedback ao operador",
+          "config": {
+            "source": "nodeOutputs.agent",
+            "target": {
+              "type": "CURRENT_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1150
+          }
+        },
+        {
+          "id": "escalar",
+          "type": "action",
+          "label": "Escalonar ao Gerente",
+          "config": {
+            "reason": "O supervisor escalou o diagnóstico individual.",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE_OF_OPERATOR"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ],
+            "actionType": "ESCALATE",
+            "continuation": "CONTINUE",
+            "contentSource": "nodeOutputs.agent"
+          },
+          "position": {
+            "x": 340,
+            "y": 1150
+          }
+        },
+        {
+          "id": "join",
+          "type": "consolidate_results",
+          "label": "Consolidar resultados",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 1380
+          }
+        },
+        {
+          "id": "orq",
+          "type": "action",
+          "label": "Agente · Síntese gerencial",
+          "config": {
+            "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
+            "actionType": "CALL_AGENT",
+            "instruction": "Monte o plano consolidado de ação para o Gerente: padrões entre as quedas, prioridades por impacto e próximos passos de acompanhamento — sem decisão disciplinar."
+          },
+          "position": {
+            "x": 0,
+            "y": 1610
+          }
+        },
+        {
+          "id": "output-gestor",
+          "type": "output",
+          "label": "Plano de ação ao Gerente",
+          "config": {
+            "source": "nodeOutputs.orq",
+            "target": {
+              "role": "MANAGER",
+              "type": "ROLE"
+            },
+            "surfaces": [
+              "FOLLOW_UP"
+            ]
+          },
+          "position": {
+            "x": 0,
+            "y": 1840
+          }
+        },
+        {
+          "id": "end",
+          "type": "end",
+          "label": "Fim",
+          "config": {},
+          "position": {
+            "x": 0,
+            "y": 2070
+          }
+        }
+      ]
+    }
+  }
+]

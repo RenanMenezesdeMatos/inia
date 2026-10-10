@@ -1,0 +1,437 @@
+{
+  "source": {
+    "corpus": "inia_demo_90_v1",
+    "sha256": "f55e1b254fadb6db2650bd7e4f40392d9e8000bbd05bb54ec15f2d410de8f28a"
+  },
+  "target": {
+    "corpus": "inia_demo_90_v3",
+    "sha256": "57a380da6d9dcc835ed4bb493968cbb39dbcde454a5009196866e2b28658f532"
+  },
+  "rule": "só o token de data muda: 'previsto para' = data V2 + 2 dias; 'registrado em' = data V2 do contato anterior vinculado; protocolos preservados",
+  "revisedInteractions": 26,
+  "occurrences": 30,
+  "revisions": [
+    {
+      "interactionId": "INIA-DEMO-C-002",
+      "oldTranscriptHash": "9542344c6981def40bc17aee1ad40e9573e250fee1a2454e66729018005cc7e8",
+      "newTranscriptHash": "54647cc9e9c4fe583f8ead5f473b799cc10d33aee3303ee09f01b9ec9fab7201",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-002",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-06-03",
+          "before": "previsto para 04/06/2026",
+          "after": "previsto para 05/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-003",
+      "oldTranscriptHash": "451725e7217393cf1fbcbb063d03a86d26372f13ade4adcf6f388a734150a8d0",
+      "newTranscriptHash": "c51b9ca8510e6459dc4e11021612edbc0a75134673b756ad2803a2014264797e",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-003",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-06-08",
+          "before": "previsto para 05/06/2026",
+          "after": "previsto para 10/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-004",
+      "oldTranscriptHash": "fffe1ab021001a442ddbc670c2f5de91a043ede4d2a3579092790fd5b6836314",
+      "newTranscriptHash": "741ccbb94c13b4589b971cabeb37fae88864952cc79a2ceb8a635cb7b1a0cca0",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-004",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-06-10",
+          "before": "previsto para 06/06/2026",
+          "after": "previsto para 12/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-006",
+      "oldTranscriptHash": "21a849fcd37f0652e0e84fbc32361f9d1a35a28c6b85f67060da18188d548824",
+      "newTranscriptHash": "fee48b5d21cdc7f363838c4291ec6e3bae6c08921ca0c00c2b588fbb14b33ecd",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-006",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-06-17",
+          "before": "previsto para 08/06/2026",
+          "after": "previsto para 19/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-007",
+      "oldTranscriptHash": "2901f7fb97db33b32415860280145ff4bde9360691ede4c298702b575577969b",
+      "newTranscriptHash": "14e98272a6f33f9e83b27b41381558d0f207f1a3a39c01c8952d5f4093331e5a",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-007",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-06-19",
+          "before": "previsto para 09/06/2026",
+          "after": "previsto para 21/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-007",
+      "oldTranscriptHash": "b40f0ffb4ba638455bbbdb0c10b83fd6a53b063b4bf4a14fd12c4c63f36fc95e",
+      "newTranscriptHash": "8d19e1d737e18d73a767631b0034a668148724052024642b6f3420eca9d80c36",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-007",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-06-19",
+          "before": "previsto para 09/06/2026",
+          "after": "previsto para 21/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-007",
+      "oldTranscriptHash": "7f2b3ec0b4945628f9de6d165d66e1015bf59c4631a2cfdb9049cf7d3f4309c6",
+      "newTranscriptHash": "6cf0c1e575d8eea7a3534ca3f0c2124dd57262b7183134bc1b02864de8802632",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-007",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-06-19",
+          "before": "previsto para 09/06/2026",
+          "after": "previsto para 21/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-008",
+      "oldTranscriptHash": "e48f6d35b433d0e93f488bdb49467589ce08032da6b1ad489ea20296f6d03313",
+      "newTranscriptHash": "fbaec1f90cdf5067db604bcdf718e9923968c8db397ee642c8776700382d834e",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-008",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-06-23",
+          "before": "previsto para 10/06/2026",
+          "after": "previsto para 25/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-008",
+      "oldTranscriptHash": "8946b9ee83a338028ba8ec2ae391694938409db0ac92fede9d5a10fb05b6b8e5",
+      "newTranscriptHash": "a3004aa8dc1c8f408bbf5e59e1567124684bf2bc9c9ddab46f184704b250a125",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-008",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-06-23",
+          "before": "previsto para 10/06/2026",
+          "after": "previsto para 25/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-009",
+      "oldTranscriptHash": "8b8f400c1c71bdb959d4886a62a98424256754d125a7d003a4c3fe465610dbcc",
+      "newTranscriptHash": "7112204adc3ee4d66800ad9d8259d240731b3c8dd327aea2b376a110c2502662",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-009",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-06-26",
+          "before": "previsto para 11/06/2026",
+          "after": "previsto para 28/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-009",
+      "oldTranscriptHash": "bc89d76ce68a4853ab3f8ad7502a48a63864a9d08233f91ae151b5bebad91f9f",
+      "newTranscriptHash": "a4f8485f2dc3710ad0909f9c0f55ba1eb02d3113381ba5a66a409ff1c6213b11",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-009",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-06-26",
+          "before": "previsto para 11/06/2026",
+          "after": "previsto para 28/06/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-011",
+      "oldTranscriptHash": "0be2532aed2cfe8c54923124563da2fab0905acc9b4ac48b42e2a1f79e7b8b76",
+      "newTranscriptHash": "c28621bf44973cff1c17e39f139bb7d2e25422937333ef9e970e626c758feedc",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-011",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-07-01",
+          "before": "registrado em 07/06",
+          "after": "registrado em 19/06",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-R-007)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-011",
+      "oldTranscriptHash": "8d73e11372f5c73e42618957caa411fcb05386bfa6f810746a87e30631f94a88",
+      "newTranscriptHash": "b18b555178cb7466b905b4aa93a8b0b5464d5c883a2ace5310c7f5ff84f32fb6",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-011",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-07-01",
+          "before": "previsto para 13/06/2026",
+          "after": "previsto para 03/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-014",
+      "oldTranscriptHash": "283f2f2fdcdc876c2c718487d8be7f0d91d2ffb7c5f41a3907207f670e5527e2",
+      "newTranscriptHash": "47380195efcd3766daae3bf4a304d73fa9817e1c379157c40fa258a9dd5b80e7",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-014",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-07-10",
+          "before": "previsto para 16/06/2026",
+          "after": "previsto para 12/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-014",
+      "oldTranscriptHash": "368650ad45df72e60dce3585535ee46d7c7cb4526d793ba53775cbb60f58daad",
+      "newTranscriptHash": "49c80da3b58d28f251c6598f935931052bec691b4e5dcf856152e41516865028",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-014",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-07-10",
+          "before": "previsto para 16/06/2026",
+          "after": "previsto para 12/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        },
+        {
+          "interactionId": "INIA-DEMO-C-014",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-07-10",
+          "before": "registrado em 03/06",
+          "after": "registrado em 08/06",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-C-003)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-016",
+      "oldTranscriptHash": "9f88b11eb20bd988203c076207c86f5e9f71e526fdae3cc291be10fce95d057d",
+      "newTranscriptHash": "449807adaa93da4baa6443ca121c0be5cee0cdec98af2e8fe221e882d51abb76",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-016",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-07-17",
+          "before": "previsto para 18/06/2026",
+          "after": "previsto para 19/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-017",
+      "oldTranscriptHash": "d6a8b2acc14d74079288fd8242fc79d9a41b566b8908df330abd0a02fba9bba4",
+      "newTranscriptHash": "82ef8f40ce34a0eb2733e63a431de737b710a1e863577d8c91098bf8e0e5673a",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-017",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-07-22",
+          "before": "previsto para 19/06/2026",
+          "after": "previsto para 24/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-019",
+      "oldTranscriptHash": "3d007fd4d2c9a67031ca2e12e1e3717d9390f64f690af0bd82f47b5afa88ac05",
+      "newTranscriptHash": "4066be23207187a881d180c4b4ff81b1dcd556428fc52098ce518236ee8ed50e",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-019",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-07-29",
+          "before": "previsto para 21/06/2026",
+          "after": "previsto para 31/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        },
+        {
+          "interactionId": "INIA-DEMO-C-019",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-07-29",
+          "before": "registrado em 07/06",
+          "after": "registrado em 19/06",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-C-007)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-019",
+      "oldTranscriptHash": "60702f7ad0123f6a54a91ff533ad50e16bb54b94f8e26b2128082242bf8ebfee",
+      "newTranscriptHash": "2ff3b61ff68ca5d48f0a315b38f0265bc73c41f760234ecc4e9408f9b9bb236c",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-019",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-07-29",
+          "before": "previsto para 21/06/2026",
+          "after": "previsto para 31/07/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-021",
+      "oldTranscriptHash": "bb369e2ba5f3a888cc7e8c3a2926c91b31f936b6dfc11fafabe04106295be208",
+      "newTranscriptHash": "8f1692b0e7eafd90eb90d7bf9ac0c73f4ae018ea8900a3f84441ff2565a77b80",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-021",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-08-03",
+          "before": "registrado em 16/06",
+          "after": "registrado em 17/07",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-R-016)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-021",
+      "oldTranscriptHash": "e49608b3d733660a388a90aa04730878ad035f56131b466f6551d3082d35354f",
+      "newTranscriptHash": "7c215996ab845187479df30af79b56ce9ef46b99d26bc6cfbfad48ef30e704d4",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-021",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-08-03",
+          "before": "previsto para 23/06/2026",
+          "after": "previsto para 05/08/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-022",
+      "oldTranscriptHash": "3a6968a3670acadd701dcc9f7e3e83ad5f76d11b1dec545b1e81af68f65d2ae2",
+      "newTranscriptHash": "e42e3daa4d8b79a5a6ea7d9ea1814ec53622c4c713673996a6acd6cb48cfa6a8",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-022",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-08-05",
+          "before": "previsto para 24/06/2026",
+          "after": "previsto para 07/08/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        },
+        {
+          "interactionId": "INIA-DEMO-C-022",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-08-05",
+          "before": "registrado em 06/06",
+          "after": "registrado em 17/06",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-C-006)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-M-022",
+      "oldTranscriptHash": "b69f04c8e6f100dd66b9cb9d5af8bab1ab339c880dd98444f9709b5cec713f56",
+      "newTranscriptHash": "ce6c9f0b066bca2850373ce796e950a7feac9159d40bee59afcd8d4dcfac8231",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-M-022",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-08-05",
+          "before": "previsto para 24/06/2026",
+          "after": "previsto para 07/08/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        },
+        {
+          "interactionId": "INIA-DEMO-M-022",
+          "operator": "Mariana Alves",
+          "v2Date": "2026-08-05",
+          "before": "registrado em 08/06",
+          "after": "registrado em 23/06",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-M-008)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-R-022",
+      "oldTranscriptHash": "be45aecd3c0d1cd6328d88106abfb79b37beb145ec005b2f7ce377b600a199f5",
+      "newTranscriptHash": "c8ca3388987e8383a81a1194cce817bf0de5a7792f8c8d2c0d60ffc49479bafb",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-R-022",
+          "operator": "Rafael Cardoso",
+          "v2Date": "2026-08-05",
+          "before": "registrado em 13/06",
+          "after": "registrado em 08/07",
+          "reason": "TEMPORAL_ARTIFACT: data citada ≠ data V2 do contato anterior vinculado (INIA-DEMO-R-013)"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-024",
+      "oldTranscriptHash": "0f7c6818b458836e0541eacbd7cfef6bf99296fe8e0d90bdb2cc0f5dd9c0abc3",
+      "newTranscriptHash": "0293f312457c2d0f0da88e2ea9076373b6d3526e51d13201092efc8b5056e776",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-024",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-08-12",
+          "before": "previsto para 26/06/2026",
+          "after": "previsto para 14/08/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    },
+    {
+      "interactionId": "INIA-DEMO-C-026",
+      "oldTranscriptHash": "1b2ffc3050a02f3e47d70c6324edb07a7f75d41caddfb089d829125e79cb1d76",
+      "newTranscriptHash": "f61f03637865248b31f83c0948a98933d0c43e902c4a471b92adf53186b5be31",
+      "changes": [
+        {
+          "interactionId": "INIA-DEMO-C-026",
+          "operator": "Camila Fonseca",
+          "v2Date": "2026-08-18",
+          "before": "previsto para 28/06/2026",
+          "after": "previsto para 20/08/2026",
+          "reason": "TEMPORAL_ARTIFACT: prazo de retorno anterior/igual à data V2 da chamada; convenção da fonte = chamada + 2 dias"
+        }
+      ]
+    }
+  ]
+}

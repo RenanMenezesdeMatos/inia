@@ -1,0 +1,331 @@
+import type { Database } from "../../../infrastructure/database/pool.js"
+import { chunkKnowledgeDocument, type KnowledgeChunk } from "../domain/knowledge-chunking.js"
+import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { selectPrimaryProcessDocument, type PrimaryProcessSelection } from "../domain/primary-process.js"
+import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRolesOf, type ClosingSectionRole, type SectionProcessRole } from "../domain/section-roles.js"
+import { applyCheckpointGovernance, buildProcessCheckpointCatalog, publicCatalogOf, renderExcerptWithCheckpoints, type CheckpointGovernanceSnapshot, type ProcessCheckpointCatalog } from "../../reliable-feedback/domain/checkpoint-catalog.js"
+import { loadCheckpointGovernance } from "../../checkpoint-registry/application/checkpoint-governance-loader.js"
+import { DEFAULT_RETRIEVAL_BUDGET, documentAnchors, estimateTokens, rankChunks, selectWithinBudget, tokenize, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
+import { expandAcronyms, type AcronymExpansion, type GlossaryAcronym } from "../domain/query-acronyms.js"
+
+
+/**
+ * Base AUTORIZADA ≠ conteúdo colocado no prompt. Um agente pode consultar N bases (as vinculadas
+ * em `agent_knowledge_documents`); numa request específica só entram os trechos pertinentes à
+ * pergunta/transcrição daquela chamada. Esta é a única porta de entrada de conteúdo de KB num
+ * prompt — `buildSystemPrompt` nunca lê `knowledge_versions` diretamente.
+ *
+ * Isolamento por código, não por prompt: a query só enxerga documentos vinculados a ESTE agente,
+ * publicados, não excluídos e da organização — uma base que existe no sistema mas não foi
+ * autorizada para o agente é invisível aqui, independentemente do que o modelo peça.
+ */
+export type AuthorizedKnowledgeDocument = { id: string; title: string; chars: number }
+
+export type RetrievedKnowledgeExcerpt = {
+  documentId: string
+  documentTitle: string
+  heading: string
+  excerpt: string
+  score: number
+  /** V1.7.1d — posição do trecho no documento (proveniência por trecho; ausente em rastros anteriores). */
+  chunkIndex?: number
+}
+
+export type KnowledgeRetrievalMode =
+  /** Nenhuma base autorizada para o agente. */
+  | "NONE"
+  /** Bases pequenas o suficiente para caber inteiras no orçamento — recuperação seria só custo. */
+  | "FULL"
+  /** Só os trechos pertinentes à consulta entraram no prompt. */
+  | "RETRIEVAL"
+  /** Havia bases, mas nenhum trecho passou do limiar de relevância — o prompt sai sem conteúdo
+   * de KB (e diz isso ao modelo), nunca com um documento "aleatório" para preencher. */
+  | "NO_MATCH"
+
+export type KnowledgeTrace = {
+  mode: KnowledgeRetrievalMode
+  authorizedDocuments: AuthorizedKnowledgeDocument[]
+  retrieved: RetrievedKnowledgeExcerpt[]
+  /** Caracteres de KB efetivamente colocados no prompt. */
+  injectedChars: number
+  /** Estimativa (≈ chars / 3,5) — o número oficial vem do `usageMetadata` do modelo. */
+  estimatedTokens: number
+  /** Soma de caracteres de TODAS as bases autorizadas — o que seria injetado sem retrieval. */
+  authorizedChars: number
+  budget: RetrievalBudget
+  /** Siglas do Glossário geral encontradas na pergunta e expandidas para a busca (ex.: PJ → Pessoa jurídica). */
+  queryExpansion?: AcronymExpansion[]
+  /** Processos (documentos) cujo TÍTULO casou com o assunto da pergunta — a busca procurou o detalhe dentro deles. */
+  anchoredDocuments?: { documentId: string; documentTitle: string }[]
+  /** Mais de um processo pode ser o assunto da pergunta e nada no texto decide: a resposta deve perguntar qual antes de orientar. */
+  ambiguousProcesses?: { documentId: string; documentTitle: string }[]
+  /** V1.7.1d — o que o PLANO DE COBERTURA acrescentou além do ranking (ausente quando não foi pedido). */
+  coverage?: KnowledgeCoverageTrace
+  /** V1.7.1n — etapas avaliáveis marcadas no prompt ([CP-…]) para a avaliação de processo (ausente fora dela). */
+  checkpointCatalog?: ProcessCheckpointCatalog
+  /** Checkpoint Registry — o que o registry governou nesta execução (documentos governados, etapas ATIVAS). Persistido: a
+   * verificação em "Gerar feedback" aplica exatamente o mesmo recorte. Ausente = nenhum documento governado. */
+  checkpointGovernance?: CheckpointGovernanceSnapshot
+  /** V1.7.1n — resumo do catálogo no rastro persistido (o catálogo completo não é gravado). */
+  /** Resumo persistido do catálogo. `required`/`requiredRefs` = obrigatórias NO PROCESSO; V1.7.3: `mustAssess`/`mustAssessRefs` = plano da avaliação. */
+  checkpointSummary?: { version: string; presented: number; required: number; optional: number; supportOnly: number; requiredRefs: string[]; mustAssess?: number; mayAssess?: number; mustAssessRefs?: string[]; coveragePlan?: boolean }
+}
+
+/**
+ * V1.7.1d — PLANO DE COBERTURA (determinístico, com orçamento próprio — nunca "a base inteira"). O ranking lexical escolhe os
+ * trechos parecidos com a conversa; o plano garante que, numa chamada que chega à FASE DE FECHAMENTO, o especialista também veja
+ * as seções que avaliam essa fase:
+ *   1. o PROCESSO identificado → todas as suas seções de fechamento (checklist, recapitulação, confirmação de entendimento,
+ *      encerramento). V1.7.1m: o processo é o DOCUMENTO PRIMÁRIO (`primary-process.ts`: assunto estruturado da interação
+ *      ancorado no título — nunca o maior score do ranking, que no smoke V1.7.1l elegeu a diretriz transversal "Jeito Vivo" e
+ *      deixou de fora a "Recapitulação obrigatória" do procedimento específico); 2+ ancorados = ambíguo, todos entram (nenhum
+ *      escolhido em silêncio); nenhum = só as checklists;
+ *   2. as CHECKLISTS das outras bases vinculadas ao especialista (diretrizes transversais: Jeito de Atender, Checklist de
+ *      Encerramento…), que valem por estrutura do atendimento e não por coincidência de palavras.
+ * Nada é acrescentado quando o ranking já trouxe o trecho; o orçamento de cobertura para o resto.
+ */
+export const KNOWLEDGE_COVERAGE_VERSION = "KNOWLEDGE_COVERAGE_V1" as const
+export type KnowledgeCoveragePhase = "CLOSING"
+export type KnowledgeCoverageRequest = { phases: readonly KnowledgeCoveragePhase[]; /** V1.7.1m — assunto estruturado da interação (motivo registrado): identifica o documento primário do processo. */ subject?: string | null }
+export const DEFAULT_COVERAGE_BUDGET = { maxChunks: 6, maxChars: 6_000 } as const
+export type KnowledgeCoverageTrace = {
+  version: typeof KNOWLEDGE_COVERAGE_VERSION
+  /** V1.7.1m — como o documento primário foi (ou não) escolhido; ausente em rastros anteriores. */
+  primaryProcess?: PrimaryProcessSelection
+  phases: KnowledgeCoveragePhase[]
+  processDocument: { documentId: string; documentTitle: string } | null
+  added: { documentId: string; documentTitle: string; heading: string; chunkIndex: number; role: ClosingSectionRole; reason: "PROCESS_CLOSING_SECTION" | "TRANSVERSAL_CHECKLIST" }[]
+  skippedForBudget: number
+}
+
+export type KnowledgeRetrievalResult = {
+  /** Bloco pronto para o prompt (títulos exatos após `###`, um trecho por seção). */
+  promptBlock: string
+  trace: KnowledgeTrace
+}
+
+/** `organizationId`: a organização do Agent (do registro) — a base só entra quando é da mesma organização dele. */
+type PublishedDocumentRow = { id: string; title: string; content: string; version: number; organizationId: string }
+
+async function loadAuthorizedPublishedDocuments(db: Database, agentId: string): Promise<PublishedDocumentRow[]> {
+  const result = await db.query<PublishedDocumentRow>(
+    `select kd.id, kd.title, kv.content, kv.version, a.organization_id "organizationId"
+     from agent_knowledge_documents akd
+     join knowledge_documents kd on kd.id = akd.knowledge_document_id
+     join agents a on a.id = akd.agent_id
+     join lateral (
+       select content, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1
+     ) kv on true
+     where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null
+     order by kd.title`,
+    [agentId],
+  )
+  return result.rows
+}
+
+/**
+ * V1.7.1l — ESPAÇO DE CANDIDATOS da avaliação de processo: com `markProcessRoles`, o trecho de seção NÃO executável (objetivo,
+ * abrangência, conceitos, resultado esperado, referência, exemplos — `section-roles.ts`) chega ao especialista rotulado como
+ * CONTEXTO DO PROCEDIMENTO. O conteúdo continua no prompt (o especialista pode saber qual é o objetivo do procedimento); ele só
+ * não é oferecido como etapa. Seções executáveis e desconhecidas saem exatamente como antes.
+ */
+const CONTEXT_ROLE_LABEL: Partial<Record<SectionProcessRole, string>> = {
+  OBJECTIVE: "objetivo do procedimento",
+  SCOPE: "abrangência",
+  CONTEXT: "conceitos",
+  RESULT_EXPECTATION: "resultado esperado",
+  REFERENCE: "referência",
+  EXAMPLE_SECTION: "exemplos",
+}
+/** `governanceSubjectPersonId`: colaborador da execução — o registry aplica o ESCOPO das definições (Grupo/Subgrupo). */
+export type KnowledgePresentationOptions = { markProcessRoles?: boolean; governanceSubjectPersonId?: string | null }
+
+type CheckpointMarks = ReturnType<typeof buildProcessCheckpointCatalog>
+function formatExcerpt(chunk: RankedChunk, role: SectionProcessRole | null = null, marks: CheckpointMarks | null = null): string {
+  const context = role && !isExecutableSectionRole(role) ? ` · CONTEXTO DO PROCEDIMENTO (${CONTEXT_ROLE_LABEL[role]}) — explica o processo, não é etapa avaliável` : ""
+  const section = chunk.heading ? `[Seção: ${chunk.heading}${context}]\n` : context ? `[${context.slice(3)}]\n` : ""
+  // V1.7.1n — etapas avaliáveis marcadas no próprio trecho ("[CP-…] - [ ] Forneci protocolo?"): a identidade é do sistema.
+  const text = marks ? renderExcerptWithCheckpoints({ documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, chunkIndex: chunk.index }, marks) : chunk.text
+  return `${section}${text}`
+}
+
+/** Agrupa por documento preservando a ordem original dos trechos — a IA lê "### Título" uma vez
+ * e, abaixo, as seções pertinentes na ordem em que aparecem no documento. */
+function formatPromptBlock(selected: RankedChunk[], roleOf: ((chunk: RankedChunk) => SectionProcessRole) | null = null, marks: CheckpointMarks | null = null): string {
+  const byDocument = new Map<string, RankedChunk[]>()
+  for (const chunk of selected) {
+    const list = byDocument.get(chunk.documentId) ?? []
+    list.push(chunk)
+    byDocument.set(chunk.documentId, list)
+  }
+  return [...byDocument.values()]
+    .map((chunks) => {
+      const ordered = [...chunks].sort((left, right) => left.index - right.index)
+      return `### ${ordered[0]!.documentTitle}\n${ordered.map((chunk) => formatExcerpt(chunk, roleOf ? roleOf(chunk) : null, marks)).join("\n\n")}`
+    })
+    .join("\n\n")
+}
+
+export async function retrieveKnowledgeForAgent(
+  db: Database,
+  agentId: string,
+  query: string,
+  budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET,
+  coverage: KnowledgeCoverageRequest | null = null,
+  presentation: KnowledgePresentationOptions = {},
+): Promise<KnowledgeRetrievalResult> {
+  const documents = await loadAuthorizedPublishedDocuments(db, agentId)
+  const rolesByDocument = new Map(documents.map((document) => [document.id, sectionProcessRolesOf(document.content, document.title)]))
+  const roleOf = presentation.markProcessRoles ? (chunk: RankedChunk) => rolesByDocument.get(chunk.documentId)?.(chunk.heading) ?? "UNKNOWN" : null
+  const authorizedDocuments = documents.map((document) => ({ id: document.id, title: document.title, chars: document.content.length }))
+  const authorizedChars = authorizedDocuments.reduce((sum, document) => sum + document.chars, 0)
+  const baseTrace = { authorizedDocuments, authorizedChars, budget }
+
+  if (documents.length === 0) {
+    return { promptBlock: "", trace: { ...baseTrace, mode: "NONE", retrieved: [], injectedChars: 0, estimatedTokens: 0 } }
+  }
+
+  const chunks = documents.flatMap((document) => chunkKnowledgeDocument(document))
+
+  // V1.7.1n — catálogo das etapas avaliáveis dos trechos que entram no prompt (a MESMA função da verificação). Obrigatória só
+  // com o plano de cobertura do fechamento ativo (a chamada chegou ao fim).
+  const contentById = new Map(documents.map((document) => [document.id, document.content]))
+  // Checkpoint Registry: num documento GOVERNADO só as etapas ATIVAS (no escopo do colaborador) são marcadas no prompt.
+  // Organização do Agent (todas as bases autorizadas são dela — ver loadAuthorizedPublishedDocuments).
+  const organizationId = documents[0]!.organizationId
+  const governance = presentation.markProcessRoles ? await loadCheckpointGovernance(db, organizationId, documents.map((document) => ({ id: document.id, version: document.version })), { agentId, personId: presentation.governanceSubjectPersonId ?? null }) : null
+  const catalogOf = (selected: readonly RankedChunk[]) => presentation.markProcessRoles
+    ? applyCheckpointGovernance(buildProcessCheckpointCatalog({ excerpts: selected.map((chunk) => ({ documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, chunkIndex: chunk.index })), contentOf: (id) => contentById.get(id), subject: coverage?.subject ?? null, coveragePlan: Boolean(coverage?.phases.includes("CLOSING")) }), governance)
+    : null
+  const governanceTrace = governance ? { checkpointGovernance: governance } : {}
+
+  // Bases pequenas cabem inteiras: recuperar seria só custo e risco de perder contexto.
+  if (authorizedChars <= budget.maxTotalChars) {
+    const full = chunks.map((chunk) => ({ ...chunk, score: 1 }))
+    const marks = catalogOf(full)
+    return {
+      promptBlock: formatPromptBlock(full, roleOf, marks),
+      trace: { ...baseTrace, mode: "FULL", retrieved: full.map(toExcerpt), injectedChars: authorizedChars, estimatedTokens: estimateTokens(authorizedChars), ...(marks ? { checkpointCatalog: publicCatalogOf(marks) } : {}), ...governanceTrace },
+    }
+  }
+
+  // Siglas do glossário: "PJ" vira termo próprio e a definição entra na busca ("pessoa jurídica"); a pergunta original
+  // não muda — só o que a busca procura.
+  const glossary = await loadGlossaryAcronyms(db, organizationId)
+  const expansion = expandAcronyms(query, glossary)
+  const tokenizeOptions: TokenizeOptions = { acronyms: new Set(glossary.map((entry) => entry.acronym)) }
+  const anchors = documentAnchors(expansion.searchQuery, chunks, tokenizeOptions)
+  const ambiguous = ambiguousProcessesOf(anchors)
+  // Termos que vieram SÓ da expansão (não estavam na pergunta): ajudam a achar o documento, pesam pouco na seção.
+  const originalTerms = new Set(tokenize(query, tokenizeOptions))
+  const contextTerms = new Set(expansion.expansions.flatMap((entry) => tokenize(entry.definition)).filter((term) => !originalTerms.has(term)))
+  const ranked = selectWithinBudget(rankChunks(expansion.searchQuery, chunks, { ...tokenizeOptions, contextTerms }), budget)
+  const planned = coverage && coverage.phases.includes("CLOSING") ? planClosingCoverage(chunks, ranked, coverage) : null
+  const selected = planned ? [...ranked, ...planned.chunks] : ranked
+  const injectedChars = selected.reduce((sum, chunk) => sum + chunk.text.length, 0)
+  const marks = catalogOf(selected)
+  return {
+    promptBlock: formatPromptBlock(selected, roleOf, marks),
+    trace: {
+      ...baseTrace,
+      mode: selected.length > 0 ? "RETRIEVAL" : "NO_MATCH",
+      retrieved: selected.map(toExcerpt),
+      injectedChars,
+      estimatedTokens: estimateTokens(injectedChars),
+      ...(expansion.expansions.length > 0 ? { queryExpansion: expansion.expansions } : {}),
+      ...(anchors.anchored.length > 0 ? { anchoredDocuments: anchors.anchored.map(({ documentId, documentTitle }) => ({ documentId, documentTitle })) } : {}),
+      ...(ambiguous.length > 0 ? { ambiguousProcesses: ambiguous } : {}),
+      ...(planned ? { coverage: planned.trace } : {}),
+      ...(marks ? { checkpointCatalog: publicCatalogOf(marks) } : {}),
+      ...governanceTrace,
+    },
+  }
+}
+
+/**
+ * Dúvida de PROCESSO: mais de um documento empata como assunto da pergunta — os títulos casam com exatamente as mesmas
+ * palavras da pergunta ("troca" em "Troca de Titularidade" e "Troca de CHIP").
+ * Nunca decide por palpite: a resposta pergunta ao colaborador.
+ */
+export function ambiguousProcessesOf(anchors: ReturnType<typeof documentAnchors>): { documentId: string; documentTitle: string }[] {
+  const pool = anchors.anchored.length > 0 ? anchors.anchored : anchors.candidates
+  const best = pool[0]
+  if (!best) return []
+  // Empate de VERDADE: os títulos casam com as MESMAS palavras da pergunta ("troca" nos dois). Títulos que casam com
+  // palavras diferentes ("chamada" num, "móvel" noutro) não são o mesmo assunto — não há dúvida a perguntar.
+  const key = (anchor: { matchedTitleTerms: string[] }) => [...anchor.matchedTitleTerms].sort().join("|")
+  const tied = pool.filter((anchor) => key(anchor) === key(best))
+  return tied.length >= 2 ? tied.slice(0, 4).map(({ documentId, documentTitle }) => ({ documentId, documentTitle })) : []
+}
+
+/** Siglas ativas do Glossário geral da organização (termo curto em maiúsculas). Falha = sem expansão, nunca sem resposta. */
+async function loadGlossaryAcronyms(db: Database, organizationId: string): Promise<GlossaryAcronym[]> {
+  try {
+    const result = await db.query<{ term: string; definition: string }>(`select term, definition from glossary_terms where organization_id = $1 and active`, [organizationId])
+    return result.rows.flatMap((row) => (/^[A-Z][A-Z0-9]{1,5}$/.test(row.term.trim()) ? [{ acronym: row.term.trim(), definition: row.definition.trim() }] : []))
+  } catch (error) {
+    console.error(JSON.stringify({ event: "glossary_acronyms_load_failed", message: (error as Error).message }))
+    return []
+  }
+}
+
+/** O plano de cobertura da fase de fechamento (puro; exportado para teste). */
+export function planClosingCoverage(chunks: readonly KnowledgeChunk[], ranked: readonly RankedChunk[], request: KnowledgeCoverageRequest, coverageBudget: { maxChunks: number; maxChars: number } = DEFAULT_COVERAGE_BUDGET): { chunks: RankedChunk[]; trace: KnowledgeCoverageTrace } {
+  // V1.7.1m — o PROCESSO é o documento primário pelo assunto da interação (nunca o maior score); ambíguo = todos os ancorados.
+  const primaryProcess = selectPrimaryProcessDocument(chunks.map((chunk) => ({ documentId: chunk.documentId, documentTitle: chunk.documentTitle })), request.subject)
+  const processIds = new Set(primaryProcess.primaryDocumentId ? [primaryProcess.primaryDocumentId] : primaryProcess.basis === "AMBIGUOUS_SUBJECT_ANCHOR" ? primaryProcess.candidates.map((candidate) => candidate.documentId) : [])
+  const processId = primaryProcess.primaryDocumentId
+  const taken = new Set(ranked.map((chunk) => `${chunk.documentId}#${chunk.index}`))
+  const withRole = chunks.flatMap((chunk) => { const role = closingSectionRoleOf(chunk.heading, chunk.documentTitle); return role ? [{ chunk, role }] : [] })
+  // Ordem: seções de fechamento do(s) processo(s) primeiro; depois as checklists transversais (reforço, nunca substituto).
+  const candidates = [
+    ...withRole.filter(({ chunk }) => processIds.has(chunk.documentId)).map((entry) => ({ ...entry, reason: "PROCESS_CLOSING_SECTION" as const })),
+    ...withRole.filter(({ chunk, role }) => !processIds.has(chunk.documentId) && role === "CHECKLIST").map((entry) => ({ ...entry, reason: "TRANSVERSAL_CHECKLIST" as const })),
+  ].filter(({ chunk }) => !taken.has(`${chunk.documentId}#${chunk.index}`))
+  const added: KnowledgeCoverageTrace["added"] = []
+  const picked: RankedChunk[] = []
+  let chars = 0
+  let skipped = 0
+  for (const { chunk, role, reason } of candidates) {
+    if (picked.length >= coverageBudget.maxChunks || chars + chunk.text.length > coverageBudget.maxChars) { skipped += 1; continue }
+    picked.push({ ...chunk, score: 0 })
+    chars += chunk.text.length
+    added.push({ documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, chunkIndex: chunk.index, role, reason })
+  }
+  const process = processId ? chunks.find((chunk) => chunk.documentId === processId) ?? null : null
+  return { chunks: picked, trace: { version: KNOWLEDGE_COVERAGE_VERSION, primaryProcess, phases: [...request.phases], processDocument: process ? { documentId: process.documentId, documentTitle: process.documentTitle } : null, added, skippedForBudget: skipped } }
+}
+
+/**
+ * V1.7.1n — rastro para PERSISTIR/telemetria: o catálogo completo (texto de cada etapa) sai — a verificação o recalcula dos trechos
+ * apresentados — e fica só o resumo (quantas etapas, obrigatórias, opcionais, só apoio).
+ */
+export function withoutCheckpointCatalog(trace: KnowledgeTrace): KnowledgeTrace {
+  if (!trace.checkpointCatalog) return trace
+  const { checkpointCatalog, ...rest } = trace
+  const refsOf = (predicate: (entry: (typeof checkpointCatalog.entries)[number]) => boolean) => checkpointCatalog.entries.filter(predicate).map((entry) => entry.ref)
+  const required = refsOf((entry) => entry.processRequirement === "REQUIRED")
+  const mustAssess = refsOf((entry) => entry.assessmentRequirement === "MUST_ASSESS")
+  const mayAssess = refsOf((entry) => entry.assessmentRequirement === "MAY_ASSESS").length
+  return { ...rest, checkpointSummary: { version: checkpointCatalog.version, presented: checkpointCatalog.entries.length, required: required.length, optional: mayAssess, supportOnly: refsOf((entry) => entry.assessmentRequirement === "SUPPORT_ONLY").length, requiredRefs: required, mustAssess: mustAssess.length, mayAssess, mustAssessRefs: mustAssess, coveragePlan: checkpointCatalog.coveragePlan } }
+}
+
+function toExcerpt(chunk: RankedChunk): RetrievedKnowledgeExcerpt {
+  return { documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, score: Number(chunk.score.toFixed(3)), chunkIndex: chunk.index }
+}
+
+/**
+ * V1.7.1m — ASSUNTO da interação para identificar o processo primário: o nome canônico do assunto (quando o motivo bruto resolve
+ * para um) ou o motivo registrado. Dado estruturado do atendimento — nunca texto do modelo. Interação de outra organização = null.
+ */
+export async function loadInteractionSubject(db: Database, organizationId: string, interactionId: string | null | undefined): Promise<string | null> {
+  if (!interactionId) return null
+  const row = await db.query<{ subject: string | null }>(
+    `select coalesce(d.name, i.reason) subject
+     from interactions i
+     left join interaction_subject_definitions d on d.organization_id = i.organization_id and d.code = ${canonicalSubjectSql("i")} and d.active
+     where i.id = $1 and i.organization_id = $2`,
+    [interactionId, organizationId],
+  )
+  return row.rows[0]?.subject?.trim() || null
+}

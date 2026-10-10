@@ -1,0 +1,49 @@
+{
+  "_comment": "GABARITO da validação focal da Larissa Monteiro (DEMO-OP-0001), registrado ANTES da rodada paga em 30/09/2026, a partir da leitura do 'Procedimento Operacional — Contestação de Contas Móvel' v1 (§9, §11, §15, §21, §32, §34, §35, §46, §47) e das transcrições congeladas em selection.json. Lido SÓ pelo avaliador (score-larissa.ts); nunca entra em prompt, runtime ou memória. Critérios identificados pelo trecho literal da regra; termos de mensagem são sinal auxiliar. Todos os casos são INDEPENDENTES até esta rodada (nunca usados para ajustar a implementação).",
+  "forbiddenMessagePhrases": ["conforme previsto", "atender mais rápido", "seja mais objetiv", "siga o procedimento", "mantenha o bom trabalho", "reduzir o tma", "continue assim"],
+  "cases": {
+    "C07": {
+      "scenario": "Mensalidade cobrada após cancelamento pedido em 02/07 e NÃO concluído; fatura já paga. Ela registrou a contestação, informou prazo (5 dias úteis, SMS), crédito na próxima fatura, recapitulou, deu protocolo e confirmou entendimento — mas não corrigiu/concluiu o cancelamento (§21 'Corrigir o status'), então a cobrança tende a voltar.",
+      "procedure": "Contestação",
+      "path": ["PARTIALLY_CORRECT", "INCORRECT"],
+      "mustDeviate": [["Corrigir o status"]],
+      "mustNotAccuse": ["prazo exibido", "informar o prazo", "Protocolo", "ficaram claras", "Conta ajustada", "Valor a pagar", "Contas anteriores", "data de nascimento"],
+      "mustNotCreditQuote": [],
+      "message": { "outcome": ["PUBLISHABLE"], "tone": ["DEVELOPMENT", "MIXED"], "mustMentionAny": ["cancelamento", "status"] },
+      "expectedGuidance": [["cancelamento", "status", "concluir", "corrig"]],
+      "notes": "Limite: 'Registrar a falha' e 'Preservar a data da manifestação' são ações internas — não observáveis pela conversa; acusá-las como omissão é indevido (aparecem como 'fora do gabarito' para leitura)."
+    },
+    "C04": {
+      "scenario": "Dois serviços digitais não reconhecidos (R$ 32,80), fatura não paga, chamada LONGA (1180 s): explicou a composição da conta (§11), comparou com maio e junho (§9), cancelou as renovações e registrou a contestação (§15), prazo e SMS (§35), recapitulação com protocolo (§46), confirmação de entendimento (§47). Situação de limite para o TMA: a duração vem de etapas do procedimento — nunca 'seja mais rápida'.",
+      "procedure": "Contestação",
+      "path": ["CORRECT"],
+      "mustDeviate": [],
+      "mustNotAccuse": ["Contas anteriores", "comparar a conta", "informar o prazo", "prazo exibido", "Protocolo", "ficaram claras", "Cancelar a recorrência", "Registrar contestação", "linguagem simples", "data de nascimento"],
+      "mustNotCreditQuote": [],
+      "message": { "outcome": ["PUBLISHABLE"], "tone": ["RECOGNITION", "MIXED"], "mustMentionAny": ["composição", "faturas", "anteriores", "renovação"] },
+      "expectedGuidance": [],
+      "notes": "Limite: bloqueio preventivo (§15 item 4, 'se disponível e autorizado') e conta ajustada ('quando o processo permitir') não foram mencionados — condicionais; tratar como falha firme é exagero (aparecem como 'fora do gabarito' para leitura)."
+    },
+    "C00": {
+      "scenario": "Serviço digital não reconhecido (Cine Fácil, R$ 14,90), fatura não paga, bem conduzida: validação, identificação, cancelou a renovação, registrou a contestação, prazo e SMS, recapitulação com protocolo, confirmação de entendimento. Sem comparação verbal com contas anteriores (consulta interna — não observável). Só análise (memória do indicador), sem mensagem.",
+      "procedure": "Contestação",
+      "path": ["CORRECT"],
+      "mustDeviate": [],
+      "mustNotAccuse": ["Contas anteriores", "comparar a conta", "informar o prazo", "prazo exibido", "Protocolo", "ficaram claras", "Cancelar a recorrência", "Registrar contestação", "data de nascimento"],
+      "mustNotCreditQuote": [],
+      "analysisOnly": true,
+      "message": { "outcome": [], "tone": [], "mustMentionAny": [] },
+      "expectedGuidance": []
+    }
+  },
+  "indicator": {
+    "scenario": "TMA de agosto/2026: 357 s, meta 400 (dentro), julho 382 (melhorou). Em julho há 1 chamada registrada: não dá para localizar por assunto onde o resultado mudou. As chamadas analisadas de agosto (Contestação) são memória já existente — nenhuma nova análise para o indicador, nenhuma chamada de colega.",
+    "official": { "value": 357, "target": 400, "withinTarget": true, "previous": 382, "movement": "IMPROVED" },
+    "acceptableConclusions": ["RESULT_RECOGNITION", "STRENGTH_PATTERN"],
+    "forbiddenConclusions": ["PATTERN_SUPPORTED", "CHANGE_LOCATED_NO_CAUSE", "MIX_EFFECT"],
+    "mustHaveLimitationAbout": ["localizar", "insuficiente", "não foi possível"],
+    "maxNewCallAnalyses": 0,
+    "message": { "outcome": ["PUBLISHABLE", "ABSTAINED"], "tone": ["RECOGNITION", "INFORMATIVE"] },
+    "forbiddenInMessage": ["mais rápid", "agilid", "reduzir o tempo", "encurt", "seja mais objetiv", "por isso o resultado", "graças a", "garant"]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "environment": "banco de desenvolvimento (inia), 2026-09-18 (hotfix: corpus v3)",
+  "version": "DIAGNOSTIC_DATASET_V1_1",
+  "fingerprint": "da0bcee413f0239c24ffb62137edf980cc572ea2859f1289e90b76b83aae5cfa",
+  "components": {
+    "structure": {
+      "subgroupId": "de003187-930c-4686-88af-7a9a2e802a4e",
+      "groupName": "B2C · Atendimento Geral",
+      "subgroupName": "Diagnóstico IA — Operadores com gravações",
+      "supervisorId": "de00f387-7ae8-4484-8d87-65171a920ca8",
+      "memberCount": 36,
+      "membersHash": "5a52cdd19abb20265463050020684e460359caf9dd670b46d0e18cd8dd41fa02"
+    },
+    "interactions": {
+      "count": 604,
+      "transcripts": 604,
+      "firstStartedAt": "2026-04-01 11:38:02-03",
+      "lastStartedAt": "2026-09-14 18:18:49-03",
+      "hash": "2d977fafabd4f62691fc1e5924121fbcb16ef30b42bb8c2188b6e038c3c94116"
+    },
+    "transcripts": {
+      "hash": "eb2a2e027df8152b41ad313d0dcb6abdc9a7575e1d70762b11995e946dbf4237"
+    },
+    "subjects": {
+      "catalogVersion": "DEMO_SUBJECTS_V1",
+      "definitions": 17,
+      "aliases": 108,
+      "hash": "76e0514fe51c72f22b740143213a611d739d3bfdc223216ae9d082e2c0661f4f"
+    },
+    "dataset": {
+      "sourceLot": "inia_demo_90_v1",
+      "corpus": "inia_demo_90_v3",
+      "corpusSha256": "57a380da6d9dcc835ed4bb493968cbb39dbcde454a5009196866e2b28658f532",
+      "temporalLayout": "V2_JUN_JUL_AGO_2026"
+    }
+  }
+}

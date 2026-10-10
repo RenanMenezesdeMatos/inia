@@ -1,0 +1,696 @@
+{
+  "version": "USAGE_CATALOG_V1",
+  "screens": [
+    {
+      "key": "home",
+      "kind": "ROUTE",
+      "area": "OPERATIONAL",
+      "routeTemplate": "/",
+      "parent": null
+    },
+    {
+      "key": "my_profile.operator",
+      "kind": "ROUTE",
+      "area": "OPERATIONAL",
+      "routeTemplate": "/operator",
+      "parent": null
+    },
+    {
+      "key": "my_profile.manager",
+      "kind": "ROUTE",
+      "area": "MANAGEMENT",
+      "routeTemplate": "/supervisor",
+      "parent": null
+    },
+    {
+      "key": "my_profile.operator.followup",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.operator.indicators",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.operator.people",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.operator.pending",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.operator.structure",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.operator.calendar",
+      "kind": "TAB",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": "my_profile.operator"
+    },
+    {
+      "key": "my_profile.manager.followup",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "my_profile.manager.indicators",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "my_profile.manager.people",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "my_profile.manager.pending",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "my_profile.manager.structure",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "my_profile.manager.calendar",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "my_profile.manager"
+    },
+    {
+      "key": "employee_profile",
+      "kind": "ROUTE",
+      "area": "MANAGEMENT",
+      "routeTemplate": "/supervisor/operators/:operatorId",
+      "parent": null
+    },
+    {
+      "key": "employee_profile.followup",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "employee_profile.indicators",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "employee_profile.people",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "employee_profile.pending",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "employee_profile.structure",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "employee_profile.calendar",
+      "kind": "TAB",
+      "area": "MANAGEMENT",
+      "routeTemplate": null,
+      "parent": "employee_profile"
+    },
+    {
+      "key": "case_detail",
+      "kind": "ROUTE",
+      "area": "MANAGEMENT",
+      "routeTemplate": "/supervisor/cases/:caseId",
+      "parent": null
+    },
+    {
+      "key": "profile_edit",
+      "kind": "ROUTE",
+      "area": "OPERATIONAL",
+      "routeTemplate": "/perfil/editar",
+      "parent": null
+    },
+    {
+      "key": "support_material",
+      "kind": "ROUTE",
+      "area": "OPERATIONAL",
+      "routeTemplate": "/materiais/:materialId",
+      "parent": null
+    },
+    {
+      "key": "diagnostics",
+      "kind": "ROUTE",
+      "area": "TOOLS",
+      "routeTemplate": "/diagnostics",
+      "parent": null
+    },
+    {
+      "key": "diagnostics.processes",
+      "kind": "TAB",
+      "area": "TOOLS",
+      "routeTemplate": null,
+      "parent": "diagnostics"
+    },
+    {
+      "key": "diagnostics.people",
+      "kind": "TAB",
+      "area": "TOOLS",
+      "routeTemplate": null,
+      "parent": "diagnostics"
+    },
+    {
+      "key": "diagnostics.concentration",
+      "kind": "TAB",
+      "area": "TOOLS",
+      "routeTemplate": null,
+      "parent": "diagnostics"
+    },
+    {
+      "key": "diagnostics.materials",
+      "kind": "TAB",
+      "area": "TOOLS",
+      "routeTemplate": null,
+      "parent": "diagnostics"
+    },
+    {
+      "key": "diagnostics.indicators",
+      "kind": "TAB",
+      "area": "TOOLS",
+      "routeTemplate": null,
+      "parent": "diagnostics"
+    },
+    {
+      "key": "qa_feedbacks",
+      "kind": "ROUTE",
+      "area": "TOOLS",
+      "routeTemplate": "/qa-lab/feedbacks",
+      "parent": null
+    },
+    {
+      "key": "followup.chat_panel",
+      "kind": "PANEL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "followup.conversation_history",
+      "kind": "PANEL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "feedback.detail",
+      "kind": "MODAL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "feedback.session",
+      "kind": "MODAL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "feedback.confirm_reading",
+      "kind": "MODAL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "feedback.rating_reason",
+      "kind": "PANEL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "notifications.panel",
+      "kind": "PANEL",
+      "area": "OPERATIONAL",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "workflow.manual_run",
+      "kind": "MODAL",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": null
+    },
+    {
+      "key": "admin.knowledge",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/knowledge",
+      "parent": null
+    },
+    {
+      "key": "admin.knowledge.new",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/knowledge/new",
+      "parent": null
+    },
+    {
+      "key": "admin.knowledge.detail",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/knowledge/:documentId",
+      "parent": null
+    },
+    {
+      "key": "admin.knowledge.edit",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/knowledge/:documentId/edit",
+      "parent": null
+    },
+    {
+      "key": "admin.checkpoints",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/checkpoints",
+      "parent": null
+    },
+    {
+      "key": "admin.business_domains",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/business-domains",
+      "parent": null
+    },
+    {
+      "key": "admin.agents",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/agents",
+      "parent": null
+    },
+    {
+      "key": "admin.agents.new",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/agents/new",
+      "parent": null
+    },
+    {
+      "key": "admin.agents.detail",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/agents/:agentId",
+      "parent": null
+    },
+    {
+      "key": "admin.orchestrators",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/assistant",
+      "parent": null
+    },
+    {
+      "key": "admin.orchestrators.detail",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/assistant/:orchestratorId",
+      "parent": null
+    },
+    {
+      "key": "admin.ai",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/ai",
+      "parent": null
+    },
+    {
+      "key": "admin.indicators",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/indicators",
+      "parent": null
+    },
+    {
+      "key": "admin.argument_scripts",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/argument-scripts",
+      "parent": null
+    },
+    {
+      "key": "admin.call_rules",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/call-rules",
+      "parent": null
+    },
+    {
+      "key": "admin.channel_flags",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/channel-flags",
+      "parent": null
+    },
+    {
+      "key": "admin.workflows",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/workflows",
+      "parent": null
+    },
+    {
+      "key": "admin.workflows.detail",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/workflows/:workflowId",
+      "parent": null
+    },
+    {
+      "key": "admin.workflows.detail.editor",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.workflows.detail"
+    },
+    {
+      "key": "admin.workflows.detail.enrollments",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.workflows.detail"
+    },
+    {
+      "key": "admin.workflows.detail.results",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.workflows.detail"
+    },
+    {
+      "key": "admin.qa_lab",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/simulate",
+      "parent": null
+    },
+    {
+      "key": "admin.qa_lab.workflow",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.qa_lab"
+    },
+    {
+      "key": "admin.qa_lab.agent",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.qa_lab"
+    },
+    {
+      "key": "admin.qa_lab.orchestrator",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.qa_lab"
+    },
+    {
+      "key": "admin.qa_lab.feedbacks",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.qa_lab"
+    },
+    {
+      "key": "admin.qa_lab.history",
+      "kind": "TAB",
+      "area": "ADMINISTRATION",
+      "routeTemplate": null,
+      "parent": "admin.qa_lab"
+    },
+    {
+      "key": "admin.conversations",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/conversations",
+      "parent": null
+    },
+    {
+      "key": "admin.inia_scenes",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/inia-scenes",
+      "parent": null
+    },
+    {
+      "key": "admin.users",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/users",
+      "parent": null
+    },
+    {
+      "key": "admin.governance",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/governance",
+      "parent": null
+    },
+    {
+      "key": "admin.operational_calendar",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/operational-calendar",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub.import",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub/import",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub.source_new",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub/sources/new",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub.source",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub/sources/:sourceId",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub.feed",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub/feeds/:feedId",
+      "parent": null
+    },
+    {
+      "key": "admin.data_hub.run",
+      "kind": "ROUTE",
+      "area": "ADMINISTRATION",
+      "routeTemplate": "/admin/data-hub/runs/:runId",
+      "parent": null
+    },
+    {
+      "key": "admin.usability",
+      "kind": "ROUTE",
+      "area": "USABILITY_PANEL",
+      "routeTemplate": "/admin/usability",
+      "parent": null
+    },
+    {
+      "key": "admin.usability.person",
+      "kind": "ROUTE",
+      "area": "USABILITY_PANEL",
+      "routeTemplate": "/admin/usability/people/:personId",
+      "parent": null
+    },
+    {
+      "key": "wiki",
+      "kind": "ROUTE",
+      "area": "WIKI",
+      "routeTemplate": "/wiki/*",
+      "parent": null
+    }
+  ],
+  "urlTabs": {
+    "my_profile.operator": {
+      "param": "tab",
+      "default": "followup",
+      "values": [
+        "followup",
+        "indicators",
+        "people",
+        "pending",
+        "structure",
+        "calendar"
+      ]
+    },
+    "my_profile.manager": {
+      "param": "tab",
+      "default": "followup",
+      "values": [
+        "followup",
+        "indicators",
+        "people",
+        "pending",
+        "structure",
+        "calendar"
+      ]
+    },
+    "employee_profile": {
+      "param": "tab",
+      "default": "followup",
+      "values": [
+        "followup",
+        "indicators",
+        "people",
+        "pending",
+        "structure",
+        "calendar"
+      ]
+    }
+  },
+  "unroutedTabs": {
+    "diagnostics": [
+      "processes",
+      "people",
+      "concentration",
+      "materials",
+      "indicators"
+    ],
+    "admin.workflows.detail": [
+      "editor",
+      "enrollments",
+      "results"
+    ],
+    "admin.qa_lab": [
+      "workflow",
+      "agent",
+      "orchestrator",
+      "feedbacks",
+      "history"
+    ]
+  },
+  "elements": [
+    "nav.link",
+    "nav.tab",
+    "nav.user_menu",
+    "nav.area_switcher",
+    "feedback.card",
+    "feedback.open_detail",
+    "feedback.listen",
+    "feedback.confirm_reading.open",
+    "feedback.confirm_reading.submit",
+    "feedback.confirm_reading.cancel",
+    "feedback.rating.up",
+    "feedback.rating.down",
+    "feedback.rating.submit_reason",
+    "feedback.material.open",
+    "feedback.invite.listen",
+    "feedback.invite.read",
+    "feedback.invite.later",
+    "feedback.session.exit",
+    "feedback.session.replay",
+    "material.download",
+    "chat.send",
+    "chat.mic",
+    "chat.mute",
+    "chat.camera",
+    "chat.end_call",
+    "chat.start_call",
+    "chat.interrupt",
+    "chat.new_conversation",
+    "chat.history.open",
+    "chat.collapse",
+    "notifications.bell",
+    "notifications.item",
+    "notifications.mark_all_read",
+    "workflow.manual_run.open",
+    "workflow.manual_run.submit",
+    "list.search",
+    "list.filter",
+    "list.pagination",
+    "usability.export",
+    "usability.drilldown"
+  ],
+  "contents": [
+    "feedback.content",
+    "feedback.session.content",
+    "material.content",
+    "followup.feed"
+  ],
+  "searchSurfaces": [
+    "admin.list",
+    "followup.feed",
+    "team",
+    "structure",
+    "usability"
+  ],
+  "actions": [
+    "chat.send_message",
+    "feedback.rate",
+    "feedback.confirm_reading",
+    "feedback.start_application",
+    "workflow.manual_run",
+    "material.download",
+    "profile.save",
+    "usability.export"
+  ]
+}

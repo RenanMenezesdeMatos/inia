@@ -1,0 +1,232 @@
+{
+  "version": "FEEDBACK_VIEW_V1",
+  "heading": {
+    "title": "Contestação de cobrança",
+    "subtitle": "Atendimento de 28/09/2026"
+  },
+  "card": "Você conduziu bem a investigação do caso e a tratativa, mas o protocolo não foi informado ao cliente, nem mesmo na recapitulação. Veja no feedback como ajustar o encerramento nas próximas chamadas.",
+  "greeting": null,
+  "narrative": [
+    "Larissa, você conduziu bem a investigação do caso e a tratativa: validou o titular da linha, identificou a cobrança que o cliente não reconhecia e verificou se a conta já tinha sido paga; na tratativa, informou ao cliente o registro da contestação e a abertura da análise e cancelou a recorrência do serviço.",
+    "O principal ajuste está no encerramento: o protocolo não foi informado ao cliente, nem mesmo na recapitulação.",
+    "Na próxima chamada, antes de se despedir, informe claramente o número do protocolo gerado para a solicitação.",
+    "Mantenha também o que você fez bem no restante da chamada: informou o prazo da análise e verificou se o cliente tinha dúvidas."
+  ],
+  "developments": [
+    {
+      "key": "dev-1+dev-0",
+      "title": "Encerramento da chamada",
+      "whatHappened": "O protocolo não foi informado ao cliente e, por isso, também ficou de fora da recapitulação final.",
+      "call": {
+        "kind": "ABSENCE",
+        "statement": "Não foi identificado o número do protocolo sendo informado ao cliente durante esta chamada.",
+        "verified": true,
+        "context": {
+          "speaker": "OPERATOR",
+          "intro": "Você disse",
+          "text": "Recapitulando, Tiago: cancelei a renovação do Música Plus, registrei a contestação dos R$ 16,90, a análise leva até 7 dias úteis e a resposta vem por SMS. Se for aprovada, o valor sai da fatura e você paga só o restante da conta.",
+          "truncated": false
+        }
+      },
+      "adjustment": [
+        "O protocolo não foi informado ao cliente e, por isso, também ficou de fora da recapitulação final."
+      ],
+      "guidance": {
+        "rules": [
+          {
+            "text": "Antes de finalizar: … - [ ] Forneci protocolo?",
+            "section": null
+          },
+          {
+            "text": "Antes de encerrar, informar:\n\n- Conta analisada;\n- Lançamento contestado;\n- Valor;\n- Ação realizada;\n- Serviço cancelado, quando aplicável;\n- Conta ajustada;\n- Valor a pagar;\n- Prazo;\n- Canal de retorno;\n- Protocolo.",
+            "section": null
+          }
+        ],
+        "avoid": [],
+        "examples": [
+          "Seu protocolo é 202609130184.",
+          "Recapitulando: contestamos o serviço digital de R$ 29,90, cancelamos a renovação e ativamos o bloqueio preventivo autorizado. A conta ajustada de R$ 94,00 ficará disponível no App Vivo após o processamento. A análise será concluída em até cinco dias úteis. O protocolo é 202609130184."
+        ]
+      },
+      "sources": [
+        {
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "section": "Checklist do operador",
+          "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "accessible": true
+        },
+        {
+          "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "documentTitle": "Procedimento Operacional — Contestação de Contas Móvel",
+          "section": "Recapitulação obrigatória",
+          "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+          "accessible": true
+        }
+      ],
+      "whyItMatters": [
+        "A informação do número de protocolo é necessária para que o cliente tenha um registro de referência do atendimento."
+      ],
+      "howToApply": "Antes de se despedir, informe claramente o número do protocolo gerado para a solicitação. Inclua também o número do protocolo na recapitulação final.",
+      "suggestedResponse": null,
+      "itemIndexes": [
+        1,
+        0
+      ],
+      "consolidates": [
+        "Protocolo",
+        "Recapitulação obrigatória"
+      ]
+    }
+  ],
+  "maintain": {
+    "summary": "Na investigação do caso, você validou o titular da linha, identificou a cobrança que o cliente não reconhecia e verificou se a conta já tinha sido paga. Na tratativa, você informou ao cliente o registro da contestação e a abertura da análise e cancelou a recorrência do serviço. No encerramento, você informou o prazo da análise e verificou se o cliente tinha dúvidas.",
+    "evidence": [
+      {
+        "title": "Registro da contestação",
+        "statement": "Você comunicou ao cliente que realizaria o registro da contestação do valor para análise pelo setor responsável.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "Agora vou registrar a contestação dos R$ 16,90 pra equipe de faturamento analisar.",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 2,
+        "phase": "TREATMENT"
+      },
+      {
+        "title": "Validação do titular",
+        "statement": "Você solicitou a confirmação do nome do titular e da data de nascimento antes de prosseguir com a verificação da linha.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você perguntou",
+            "text": "Claro, vou verificar pra você. Antes, me confirma se a linha está no seu nome e a sua data de nascimento, por favor?",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 3,
+        "phase": "INVESTIGATION"
+      },
+      {
+        "title": "Identificação da cobrança",
+        "statement": "Você localizou e informou ao cliente a origem da cobrança, especificando o serviço, a data de ativação e o histórico do lançamento na fatura.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "Deixa eu localizar",
+            "truncated": false
+          },
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "Encontrei. É um serviço de música por streaming, ativado no dia 2 de setembro por uma mensagem de oferta respondida pelo celular da linha. É a primeira vez que ele aparece na sua fatura.",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 4,
+        "phase": "INVESTIGATION"
+      },
+      {
+        "title": "Verificação do pagamento",
+        "statement": "Você perguntou diretamente ao cliente se a fatura de setembro já havia sido paga.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você perguntou",
+            "text": "Entendi. E essa fatura de setembro, você já pagou?",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 5,
+        "phase": "INVESTIGATION"
+      },
+      {
+        "title": "Cancelamento da recorrência",
+        "statement": "Você declarou que efetuou o cancelamento da renovação do serviço, evitando novas cobranças.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "Certo. Acabei de cancelar a renovação do Música Plus, então ele não volta a ser cobrado nas próximas faturas.",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 6,
+        "phase": "TREATMENT"
+      },
+      {
+        "title": "Abertura de análise",
+        "statement": "Você informou que registraria a contestação para que a equipe de faturamento realize a análise.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "Agora vou registrar a contestação dos R$ 16,90 pra equipe de faturamento analisar.",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 7,
+        "phase": "TREATMENT"
+      },
+      {
+        "title": "Prazo da análise",
+        "statement": "Você especificou o prazo de até 7 dias úteis para a conclusão da análise e confirmou que o retorno seria enviado via SMS.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você disse",
+            "text": "A análise leva até 7 dias úteis, e o resultado chega pra você por SMS neste número.",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 8,
+        "phase": "CLOSING"
+      },
+      {
+        "title": "Confirmação de entendimento",
+        "statement": "Você questionou se o cliente possuía alguma dúvida sobre as explicações fornecidas.",
+        "quotes": [
+          {
+            "speaker": "OPERATOR",
+            "intro": "Você perguntou",
+            "text": "Ficou alguma dúvida sobre o que eu te expliquei?",
+            "truncated": false
+          }
+        ],
+        "itemIndex": 9,
+        "phase": "CLOSING"
+      }
+    ]
+  },
+  "attention": [],
+  "materials": [
+    {
+      "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+      "title": "Procedimento Operacional — Contestação de Contas Móvel",
+      "href": "/materiais/c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+      "usedIn": [
+        "Recapitulação obrigatória",
+        "Protocolo",
+        "Registro da contestação",
+        "Validação do titular",
+        "Identificação da cobrança",
+        "Verificação do pagamento",
+        "Cancelamento da recorrência",
+        "Abertura de análise",
+        "Prazo da análise",
+        "Confirmação de entendimento"
+      ],
+      "sections": [
+        "Recapitulação obrigatória",
+        "Checklist do operador",
+        "Serviços digitais não reconhecidos"
+      ],
+      "accessible": true
+    }
+  ],
+  "context": null
+}

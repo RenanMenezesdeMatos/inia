@@ -1,0 +1,51 @@
+import type { Database } from "../../../infrastructure/database/pool.js"
+
+/**
+ * O que já depende de um indicador — base da proteção de alteração semântica e da exclusão.
+ * Medições, metas e fechamentos apontam por FK (`indicator_definition_id`); Workflows apontam
+ * por CÓDIGO dentro do grafo (Condition/Ranking/critério/agendamento) e do gatilho
+ * (`trigger_config.indicatorCode`) — por isso o código também é um campo semântico: renomear
+ * quebraria referências silenciosamente.
+ */
+export type IndicatorDependencies = {
+  measurements: number
+  goals: number
+  officialClosures: number
+  /** Workflows (rascunho, versão ativa ou gatilho) que referenciam o código. */
+  workflows: { id: string; name: string }[]
+  hasHistory: boolean
+}
+
+export async function loadIndicatorDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<IndicatorDependencies> {
+  const counts = await db.query<{ measurements: string; goals: string; official_closures: string }>(
+    `select
+       (select count(*) from indicator_measurements where indicator_definition_id = $1)::text measurements,
+       (select count(*) from goals where indicator_definition_id = $1)::text goals,
+       (select count(*) from employee_indicator_performance where indicator_definition_id = $1)::text official_closures`,
+    [definition.id],
+  )
+  const workflows = await db.query<{ id: string; name: string }>(
+    `select w.id, w.name from workflows w
+      where w.organization_id = $1 and (
+        jsonb_path_exists(w.draft_graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text))
+        or (w.trigger_config is not null and jsonb_path_exists(w.trigger_config, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
+        or exists (select 1 from workflow_versions v where v.id = w.active_version_id and jsonb_path_exists(v.graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
+      )
+      order by w.name`,
+    [organizationId, definition.code],
+  )
+  const row = counts.rows[0]!
+  const measurements = Number(row.measurements)
+  const goals = Number(row.goals)
+  const officialClosures = Number(row.official_closures)
+  return { measurements, goals, officialClosures, workflows: workflows.rows, hasHistory: measurements > 0 || goals > 0 || officialClosures > 0 || workflows.rows.length > 0 }
+}
+
+export function describeDependencies(dependencies: IndicatorDependencies): string {
+  const parts: string[] = []
+  if (dependencies.measurements > 0) parts.push(`${dependencies.measurements.toLocaleString("pt-BR")} medições`)
+  if (dependencies.goals > 0) parts.push(`${dependencies.goals} metas`)
+  if (dependencies.officialClosures > 0) parts.push(`${dependencies.officialClosures.toLocaleString("pt-BR")} fechamentos oficiais`)
+  if (dependencies.workflows.length > 0) parts.push(`${dependencies.workflows.length} Workflow(s): ${dependencies.workflows.map((workflow) => workflow.name).slice(0, 3).join(", ")}${dependencies.workflows.length > 3 ? "…" : ""}`)
+  return parts.join("; ")
+}

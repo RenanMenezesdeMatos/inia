@@ -1,0 +1,828 @@
+{
+  "dataset": {
+    "version": "DIAGNOSTIC_DATASET_V1_1",
+    "previousVersion": "DIAGNOSTIC_DATASET_V1",
+    "status": "HOMOLOGATED",
+    "frozenAt": "2026-09-18",
+    "sourceLot": "inia_demo_90_v1",
+    "corpus": "inia_demo_90_v3",
+    "corpusSha256": "57a380da6d9dcc835ed4bb493968cbb39dbcde454a5009196866e2b28658f532",
+    "temporalLayout": "V2_JUN_JUL_AGO_2026",
+    "subjectCatalog": "DEMO_SUBJECTS_V1",
+    "group": "b2c-atendimento-geral",
+    "subgroup": "Diagnóstico IA — Operadores com gravações"
+  },
+  "note": "Mapa V1 (data declarada pela fonte) → V2 (posição no calendário da massa). Ids e conteúdo (exceto os tokens de data revisados no corpus v3 — ver inia_demo_90_v3.revisions.json) idênticos; só startedAt/endedAt mudam. Uso de QA.",
+  "calls": [
+    {
+      "id": "INIA-DEMO-M-001",
+      "interactionId": "de002d84-c6c4-4b6f-8a40-0091b5a7e5d4",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-001",
+      "sourceStartedAt": "2026-06-01T11:07:00-03:00",
+      "startedAt": "2026-06-01T09:20:00-03:00",
+      "endedAt": "2026-06-01T09:27:11-03:00",
+      "durationSeconds": 431
+    },
+    {
+      "id": "INIA-DEMO-R-001",
+      "interactionId": "de00d38f-17a0-424e-81a6-081fb61d8185",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-001",
+      "sourceStartedAt": "2026-06-01T13:07:00-03:00",
+      "startedAt": "2026-06-01T08:20:00-03:00",
+      "endedAt": "2026-06-01T08:24:14-03:00",
+      "durationSeconds": 254
+    },
+    {
+      "id": "INIA-DEMO-C-001",
+      "interactionId": "de00f8f6-bb4f-412b-8ae8-e8dcb3c87e2a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-001",
+      "sourceStartedAt": "2026-06-01T15:07:00-03:00",
+      "startedAt": "2026-06-01T14:20:00-03:00",
+      "endedAt": "2026-06-01T14:26:36-03:00",
+      "durationSeconds": 396
+    },
+    {
+      "id": "INIA-DEMO-C-002",
+      "interactionId": "de005b76-a0e5-45b3-87eb-f3d73b199f68",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-002",
+      "sourceStartedAt": "2026-06-02T08:14:00-03:00",
+      "startedAt": "2026-06-03T15:13:00-03:00",
+      "endedAt": "2026-06-03T15:20:29-03:00",
+      "durationSeconds": 449
+    },
+    {
+      "id": "INIA-DEMO-M-002",
+      "interactionId": "de001200-5eee-40c3-8b82-a288424c63bb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-002",
+      "sourceStartedAt": "2026-06-02T14:14:00-03:00",
+      "startedAt": "2026-06-03T10:13:00-03:00",
+      "endedAt": "2026-06-03T10:20:24-03:00",
+      "durationSeconds": 444
+    },
+    {
+      "id": "INIA-DEMO-R-002",
+      "interactionId": "de0075e1-249a-4c8a-85fd-f49c78af8a05",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-002",
+      "sourceStartedAt": "2026-06-02T16:14:00-03:00",
+      "startedAt": "2026-06-03T09:13:00-03:00",
+      "endedAt": "2026-06-03T09:17:27-03:00",
+      "durationSeconds": 267
+    },
+    {
+      "id": "INIA-DEMO-R-003",
+      "interactionId": "de00389c-96f9-4dcc-877a-5666f111eef2",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-003",
+      "sourceStartedAt": "2026-06-03T09:21:00-03:00",
+      "startedAt": "2026-06-08T10:06:00-03:00",
+      "endedAt": "2026-06-08T10:10:26-03:00",
+      "durationSeconds": 266
+    },
+    {
+      "id": "INIA-DEMO-C-003",
+      "interactionId": "de00b31f-b71b-4692-807b-fa6596d248de",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-003",
+      "sourceStartedAt": "2026-06-03T11:21:00-03:00",
+      "startedAt": "2026-06-08T16:06:00-03:00",
+      "endedAt": "2026-06-08T16:12:22-03:00",
+      "durationSeconds": 382
+    },
+    {
+      "id": "INIA-DEMO-M-003",
+      "interactionId": "de008f28-0935-400a-8a88-4827fa06b9e6",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-003",
+      "sourceStartedAt": "2026-06-03T17:21:00-03:00",
+      "startedAt": "2026-06-08T11:06:00-03:00",
+      "endedAt": "2026-06-08T11:13:04-03:00",
+      "durationSeconds": 424
+    },
+    {
+      "id": "INIA-DEMO-M-004",
+      "interactionId": "de005f26-37ca-457b-8046-13e187a552c8",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-004",
+      "sourceStartedAt": "2026-06-04T10:28:00-03:00",
+      "startedAt": "2026-06-10T11:59:00-03:00",
+      "endedAt": "2026-06-10T12:05:29-03:00",
+      "durationSeconds": 389
+    },
+    {
+      "id": "INIA-DEMO-R-004",
+      "interactionId": "de00cf25-3957-4682-8aba-c91c36df6894",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-004",
+      "sourceStartedAt": "2026-06-04T12:28:00-03:00",
+      "startedAt": "2026-06-10T10:59:00-03:00",
+      "endedAt": "2026-06-10T11:02:50-03:00",
+      "durationSeconds": 230
+    },
+    {
+      "id": "INIA-DEMO-C-004",
+      "interactionId": "de00c070-4f25-4f28-810e-a2fe6a136e46",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-004",
+      "sourceStartedAt": "2026-06-04T14:28:00-03:00",
+      "startedAt": "2026-06-10T16:59:00-03:00",
+      "endedAt": "2026-06-10T17:05:10-03:00",
+      "durationSeconds": 370
+    },
+    {
+      "id": "INIA-DEMO-M-005",
+      "interactionId": "de00d377-2902-4446-8a0e-9e9aeac76447",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-005",
+      "sourceStartedAt": "2026-06-05T13:35:00-03:00",
+      "startedAt": "2026-06-12T12:52:00-03:00",
+      "endedAt": "2026-06-12T12:55:53-03:00",
+      "durationSeconds": 233
+    },
+    {
+      "id": "INIA-DEMO-R-005",
+      "interactionId": "de000fcd-b475-4952-8815-d32e9fc61186",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-005",
+      "sourceStartedAt": "2026-06-05T15:35:00-03:00",
+      "startedAt": "2026-06-12T11:52:00-03:00",
+      "endedAt": "2026-06-12T11:55:45-03:00",
+      "durationSeconds": 225
+    },
+    {
+      "id": "INIA-DEMO-C-005",
+      "interactionId": "de00b8d9-8017-414b-8915-9dc001572c86",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-005",
+      "sourceStartedAt": "2026-06-05T17:35:00-03:00",
+      "startedAt": "2026-06-12T17:52:00-03:00",
+      "endedAt": "2026-06-12T17:55:45-03:00",
+      "durationSeconds": 225
+    },
+    {
+      "id": "INIA-DEMO-R-006",
+      "interactionId": "de0013a2-b791-415b-8d56-829a76eadcff",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-006",
+      "sourceStartedAt": "2026-06-06T08:42:00-03:00",
+      "startedAt": "2026-06-17T12:45:00-03:00",
+      "endedAt": "2026-06-17T12:49:16-03:00",
+      "durationSeconds": 256
+    },
+    {
+      "id": "INIA-DEMO-C-006",
+      "interactionId": "de008146-2004-468f-8140-f472649862eb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-006",
+      "sourceStartedAt": "2026-06-06T10:42:00-03:00",
+      "startedAt": "2026-06-17T18:45:00-03:00",
+      "endedAt": "2026-06-17T18:51:49-03:00",
+      "durationSeconds": 409
+    },
+    {
+      "id": "INIA-DEMO-M-006",
+      "interactionId": "de007b1b-702f-4d91-8181-d34d227bcf06",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-006",
+      "sourceStartedAt": "2026-06-06T16:42:00-03:00",
+      "startedAt": "2026-06-17T13:45:00-03:00",
+      "endedAt": "2026-06-17T13:52:32-03:00",
+      "durationSeconds": 452
+    },
+    {
+      "id": "INIA-DEMO-M-007",
+      "interactionId": "de00e4e9-da33-4726-88bc-6a1e09db95dd",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-007",
+      "sourceStartedAt": "2026-06-07T09:49:00-03:00",
+      "startedAt": "2026-06-19T14:38:00-03:00",
+      "endedAt": "2026-06-19T14:45:53-03:00",
+      "durationSeconds": 473
+    },
+    {
+      "id": "INIA-DEMO-R-007",
+      "interactionId": "de00a5d5-5721-458b-8733-07b874bc7844",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-007",
+      "sourceStartedAt": "2026-06-07T11:49:00-03:00",
+      "startedAt": "2026-06-19T13:38:00-03:00",
+      "endedAt": "2026-06-19T13:42:40-03:00",
+      "durationSeconds": 280
+    },
+    {
+      "id": "INIA-DEMO-C-007",
+      "interactionId": "de00496e-2635-4651-8f36-2fd7bae23a1e",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-007",
+      "sourceStartedAt": "2026-06-07T13:49:00-03:00",
+      "startedAt": "2026-06-19T19:38:00-03:00",
+      "endedAt": "2026-06-19T19:44:41-03:00",
+      "durationSeconds": 401
+    },
+    {
+      "id": "INIA-DEMO-M-008",
+      "interactionId": "de00eb97-055f-482c-8788-300378ea3ac0",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-008",
+      "sourceStartedAt": "2026-06-08T12:56:00-03:00",
+      "startedAt": "2026-06-23T15:31:00-03:00",
+      "endedAt": "2026-06-23T15:37:57-03:00",
+      "durationSeconds": 417
+    },
+    {
+      "id": "INIA-DEMO-R-008",
+      "interactionId": "de00834c-b1df-4ae4-8162-a44479cd9741",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-008",
+      "sourceStartedAt": "2026-06-08T14:56:00-03:00",
+      "startedAt": "2026-06-23T09:03:00-03:00",
+      "endedAt": "2026-06-23T09:07:24-03:00",
+      "durationSeconds": 264
+    },
+    {
+      "id": "INIA-DEMO-C-008",
+      "interactionId": "de007e4b-4de2-4969-8f31-115d1a12aaf1",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-008",
+      "sourceStartedAt": "2026-06-08T16:56:00-03:00",
+      "startedAt": "2026-06-23T15:03:00-03:00",
+      "endedAt": "2026-06-23T15:09:26-03:00",
+      "durationSeconds": 386
+    },
+    {
+      "id": "INIA-DEMO-C-009",
+      "interactionId": "de00cc6a-08bb-47dc-8240-c79291a3b11a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-009",
+      "sourceStartedAt": "2026-06-09T09:03:00-03:00",
+      "startedAt": "2026-06-26T15:56:00-03:00",
+      "endedAt": "2026-06-26T16:02:43-03:00",
+      "durationSeconds": 403
+    },
+    {
+      "id": "INIA-DEMO-M-009",
+      "interactionId": "de00ad10-e09a-40ca-8489-f7dbdb2f740a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-009",
+      "sourceStartedAt": "2026-06-09T15:03:00-03:00",
+      "startedAt": "2026-06-26T16:24:00-03:00",
+      "endedAt": "2026-06-26T16:30:39-03:00",
+      "durationSeconds": 399
+    },
+    {
+      "id": "INIA-DEMO-R-009",
+      "interactionId": "de00153b-a194-4249-85fe-e6ba551cd635",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-009",
+      "sourceStartedAt": "2026-06-09T17:03:00-03:00",
+      "startedAt": "2026-06-26T09:56:00-03:00",
+      "endedAt": "2026-06-26T10:00:02-03:00",
+      "durationSeconds": 242
+    },
+    {
+      "id": "INIA-DEMO-M-010",
+      "interactionId": "de008820-723d-4bf7-87f4-217e6036f61a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-010",
+      "sourceStartedAt": "2026-06-10T08:10:00-03:00",
+      "startedAt": "2026-06-30T09:49:00-03:00",
+      "endedAt": "2026-06-30T09:52:56-03:00",
+      "durationSeconds": 236
+    },
+    {
+      "id": "INIA-DEMO-R-010",
+      "interactionId": "de003649-f88d-49fb-8af3-26be95bc81cd",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-010",
+      "sourceStartedAt": "2026-06-10T10:10:00-03:00",
+      "startedAt": "2026-06-30T10:49:00-03:00",
+      "endedAt": "2026-06-30T10:52:52-03:00",
+      "durationSeconds": 232
+    },
+    {
+      "id": "INIA-DEMO-C-010",
+      "interactionId": "de00a1cf-840f-4c77-86f2-82bdbdfa7e7e",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-010",
+      "sourceStartedAt": "2026-06-10T12:10:00-03:00",
+      "startedAt": "2026-06-30T16:49:00-03:00",
+      "endedAt": "2026-06-30T16:52:55-03:00",
+      "durationSeconds": 235
+    },
+    {
+      "id": "INIA-DEMO-M-011",
+      "interactionId": "de00d695-da82-45f5-857c-0354eceaa236",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-011",
+      "sourceStartedAt": "2026-06-11T11:17:00-03:00",
+      "startedAt": "2026-07-01T09:20:00-03:00",
+      "endedAt": "2026-07-01T09:25:41-03:00",
+      "durationSeconds": 341
+    },
+    {
+      "id": "INIA-DEMO-R-011",
+      "interactionId": "de00fcb3-17f4-4088-8c8a-e0bfe370b4fd",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-011",
+      "sourceStartedAt": "2026-06-11T13:17:00-03:00",
+      "startedAt": "2026-07-01T08:20:00-03:00",
+      "endedAt": "2026-07-01T08:27:05-03:00",
+      "durationSeconds": 425
+    },
+    {
+      "id": "INIA-DEMO-C-011",
+      "interactionId": "de00a82b-245a-419f-8341-b24e7dba8581",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-011",
+      "sourceStartedAt": "2026-06-11T15:17:00-03:00",
+      "startedAt": "2026-07-01T14:20:00-03:00",
+      "endedAt": "2026-07-01T14:27:09-03:00",
+      "durationSeconds": 429
+    },
+    {
+      "id": "INIA-DEMO-C-012",
+      "interactionId": "de004fdb-ce56-4c0e-8edc-c5e326a9cb9c",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-012",
+      "sourceStartedAt": "2026-06-12T08:24:00-03:00",
+      "startedAt": "2026-07-03T15:13:00-03:00",
+      "endedAt": "2026-07-03T15:19:12-03:00",
+      "durationSeconds": 372
+    },
+    {
+      "id": "INIA-DEMO-M-012",
+      "interactionId": "de0087d2-2353-42de-8154-f5537fbf2b4d",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-012",
+      "sourceStartedAt": "2026-06-12T14:24:00-03:00",
+      "startedAt": "2026-07-03T10:13:00-03:00",
+      "endedAt": "2026-07-03T10:18:14-03:00",
+      "durationSeconds": 314
+    },
+    {
+      "id": "INIA-DEMO-R-012",
+      "interactionId": "de008188-d2d2-49f1-8641-c8f6d29c8b2d",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-012",
+      "sourceStartedAt": "2026-06-12T16:24:00-03:00",
+      "startedAt": "2026-07-03T09:13:00-03:00",
+      "endedAt": "2026-07-03T09:18:33-03:00",
+      "durationSeconds": 333
+    },
+    {
+      "id": "INIA-DEMO-R-013",
+      "interactionId": "de003143-a3dc-4b71-8f53-61077c31df31",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-013",
+      "sourceStartedAt": "2026-06-13T09:31:00-03:00",
+      "startedAt": "2026-07-08T10:06:00-03:00",
+      "endedAt": "2026-07-08T10:12:07-03:00",
+      "durationSeconds": 367
+    },
+    {
+      "id": "INIA-DEMO-C-013",
+      "interactionId": "de00cc10-4b3a-433e-8842-be2285c75184",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-013",
+      "sourceStartedAt": "2026-06-13T11:31:00-03:00",
+      "startedAt": "2026-07-08T16:06:00-03:00",
+      "endedAt": "2026-07-08T16:12:50-03:00",
+      "durationSeconds": 410
+    },
+    {
+      "id": "INIA-DEMO-M-013",
+      "interactionId": "de009c16-551f-41fe-841a-7c66aa6e2a5e",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-013",
+      "sourceStartedAt": "2026-06-13T17:31:00-03:00",
+      "startedAt": "2026-07-08T11:06:00-03:00",
+      "endedAt": "2026-07-08T11:10:36-03:00",
+      "durationSeconds": 276
+    },
+    {
+      "id": "INIA-DEMO-M-014",
+      "interactionId": "de00efc3-0d97-4400-8c7e-04870ac37691",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-014",
+      "sourceStartedAt": "2026-06-14T10:38:00-03:00",
+      "startedAt": "2026-07-10T11:59:00-03:00",
+      "endedAt": "2026-07-10T12:04:00-03:00",
+      "durationSeconds": 300
+    },
+    {
+      "id": "INIA-DEMO-R-014",
+      "interactionId": "de004b24-ea1e-4076-8000-989be0520d22",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-014",
+      "sourceStartedAt": "2026-06-14T12:38:00-03:00",
+      "startedAt": "2026-07-10T10:59:00-03:00",
+      "endedAt": "2026-07-10T11:05:24-03:00",
+      "durationSeconds": 384
+    },
+    {
+      "id": "INIA-DEMO-C-014",
+      "interactionId": "de00ae0d-6ef3-4f7a-86be-1134873d1834",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-014",
+      "sourceStartedAt": "2026-06-14T14:38:00-03:00",
+      "startedAt": "2026-07-10T16:59:00-03:00",
+      "endedAt": "2026-07-10T17:06:50-03:00",
+      "durationSeconds": 470
+    },
+    {
+      "id": "INIA-DEMO-M-015",
+      "interactionId": "de00aad1-d0b0-481f-8a36-67efb4dee658",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-015",
+      "sourceStartedAt": "2026-06-15T13:45:00-03:00",
+      "startedAt": "2026-07-15T12:52:00-03:00",
+      "endedAt": "2026-07-15T12:56:01-03:00",
+      "durationSeconds": 241
+    },
+    {
+      "id": "INIA-DEMO-R-015",
+      "interactionId": "de00a2fd-6534-4647-8b53-e0a01766c032",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-015",
+      "sourceStartedAt": "2026-06-15T15:45:00-03:00",
+      "startedAt": "2026-07-15T11:52:00-03:00",
+      "endedAt": "2026-07-15T11:56:06-03:00",
+      "durationSeconds": 246
+    },
+    {
+      "id": "INIA-DEMO-C-015",
+      "interactionId": "de00b72b-d0c8-4aea-85da-4e70ed03e113",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-015",
+      "sourceStartedAt": "2026-06-15T17:45:00-03:00",
+      "startedAt": "2026-07-15T17:52:00-03:00",
+      "endedAt": "2026-07-15T17:55:52-03:00",
+      "durationSeconds": 232
+    },
+    {
+      "id": "INIA-DEMO-R-016",
+      "interactionId": "de00545f-942f-48a1-8294-816188817430",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-016",
+      "sourceStartedAt": "2026-06-16T08:52:00-03:00",
+      "startedAt": "2026-07-17T12:45:00-03:00",
+      "endedAt": "2026-07-17T12:50:59-03:00",
+      "durationSeconds": 359
+    },
+    {
+      "id": "INIA-DEMO-C-016",
+      "interactionId": "de000e4a-c171-4fbb-800f-c6a461cb7069",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-016",
+      "sourceStartedAt": "2026-06-16T10:52:00-03:00",
+      "startedAt": "2026-07-17T18:45:00-03:00",
+      "endedAt": "2026-07-17T18:51:29-03:00",
+      "durationSeconds": 389
+    },
+    {
+      "id": "INIA-DEMO-M-016",
+      "interactionId": "de009c65-8c1c-4fc4-80c7-d242671e5c0f",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-016",
+      "sourceStartedAt": "2026-06-16T16:52:00-03:00",
+      "startedAt": "2026-07-17T13:45:00-03:00",
+      "endedAt": "2026-07-17T13:49:36-03:00",
+      "durationSeconds": 276
+    },
+    {
+      "id": "INIA-DEMO-M-017",
+      "interactionId": "de00bbf0-8cac-4d79-8282-01d14f7a2340",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-017",
+      "sourceStartedAt": "2026-06-17T09:59:00-03:00",
+      "startedAt": "2026-07-22T14:38:00-03:00",
+      "endedAt": "2026-07-22T14:44:34-03:00",
+      "durationSeconds": 394
+    },
+    {
+      "id": "INIA-DEMO-R-017",
+      "interactionId": "de00dd8f-6142-4a8f-8bf1-707af99165eb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-017",
+      "sourceStartedAt": "2026-06-17T11:59:00-03:00",
+      "startedAt": "2026-07-22T13:38:00-03:00",
+      "endedAt": "2026-07-22T13:45:02-03:00",
+      "durationSeconds": 422
+    },
+    {
+      "id": "INIA-DEMO-C-017",
+      "interactionId": "de00afbb-76a1-4251-86ed-7f0b6d18bcd0",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-017",
+      "sourceStartedAt": "2026-06-17T13:59:00-03:00",
+      "startedAt": "2026-07-22T19:38:00-03:00",
+      "endedAt": "2026-07-22T19:44:40-03:00",
+      "durationSeconds": 400
+    },
+    {
+      "id": "INIA-DEMO-M-018",
+      "interactionId": "de001f37-7cbc-49b0-8841-4c24e91f40e3",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-018",
+      "sourceStartedAt": "2026-06-18T12:06:00-03:00",
+      "startedAt": "2026-07-24T15:31:00-03:00",
+      "endedAt": "2026-07-24T15:35:41-03:00",
+      "durationSeconds": 281
+    },
+    {
+      "id": "INIA-DEMO-R-018",
+      "interactionId": "de007b34-f5e2-47c7-80ab-21243f16b024",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-018",
+      "sourceStartedAt": "2026-06-18T14:06:00-03:00",
+      "startedAt": "2026-07-24T09:03:00-03:00",
+      "endedAt": "2026-07-24T09:09:02-03:00",
+      "durationSeconds": 362
+    },
+    {
+      "id": "INIA-DEMO-C-018",
+      "interactionId": "de00b638-1cac-4455-832f-a6a892e76d2a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-018",
+      "sourceStartedAt": "2026-06-18T16:06:00-03:00",
+      "startedAt": "2026-07-24T15:03:00-03:00",
+      "endedAt": "2026-07-24T15:09:14-03:00",
+      "durationSeconds": 374
+    },
+    {
+      "id": "INIA-DEMO-C-019",
+      "interactionId": "de00d176-2de4-40c7-8511-076b138155e5",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-019",
+      "sourceStartedAt": "2026-06-19T09:13:00-03:00",
+      "startedAt": "2026-07-29T15:56:00-03:00",
+      "endedAt": "2026-07-29T16:03:08-03:00",
+      "durationSeconds": 428
+    },
+    {
+      "id": "INIA-DEMO-M-019",
+      "interactionId": "de00bb55-ae69-4fc3-857a-de12362692aa",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-019",
+      "sourceStartedAt": "2026-06-19T15:13:00-03:00",
+      "startedAt": "2026-07-29T16:24:00-03:00",
+      "endedAt": "2026-07-29T16:29:27-03:00",
+      "durationSeconds": 327
+    },
+    {
+      "id": "INIA-DEMO-R-019",
+      "interactionId": "de009678-1d55-4d74-81da-09915149ea28",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-019",
+      "sourceStartedAt": "2026-06-19T17:13:00-03:00",
+      "startedAt": "2026-07-29T09:56:00-03:00",
+      "endedAt": "2026-07-29T10:02:19-03:00",
+      "durationSeconds": 379
+    },
+    {
+      "id": "INIA-DEMO-M-020",
+      "interactionId": "de0080ef-7f33-48a6-8461-183ff59230b8",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-020",
+      "sourceStartedAt": "2026-06-20T08:20:00-03:00",
+      "startedAt": "2026-07-31T09:49:00-03:00",
+      "endedAt": "2026-07-31T09:52:47-03:00",
+      "durationSeconds": 227
+    },
+    {
+      "id": "INIA-DEMO-R-020",
+      "interactionId": "de00cb01-dcaf-450b-84ab-a0fe7bb5260e",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-020",
+      "sourceStartedAt": "2026-06-20T10:20:00-03:00",
+      "startedAt": "2026-07-31T10:49:00-03:00",
+      "endedAt": "2026-07-31T10:52:42-03:00",
+      "durationSeconds": 222
+    },
+    {
+      "id": "INIA-DEMO-C-020",
+      "interactionId": "de00f388-1cef-429f-8ae2-3653a9210f12",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-020",
+      "sourceStartedAt": "2026-06-20T12:20:00-03:00",
+      "startedAt": "2026-07-31T16:49:00-03:00",
+      "endedAt": "2026-07-31T16:52:41-03:00",
+      "durationSeconds": 221
+    },
+    {
+      "id": "INIA-DEMO-M-021",
+      "interactionId": "de00e677-96e6-4b34-8f7c-f8e2864035e4",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-021",
+      "sourceStartedAt": "2026-06-21T11:27:00-03:00",
+      "startedAt": "2026-08-03T09:20:00-03:00",
+      "endedAt": "2026-08-03T09:23:56-03:00",
+      "durationSeconds": 236
+    },
+    {
+      "id": "INIA-DEMO-R-021",
+      "interactionId": "de000046-c1af-4aba-8620-1e26a1b6936f",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-021",
+      "sourceStartedAt": "2026-06-21T13:27:00-03:00",
+      "startedAt": "2026-08-03T08:20:00-03:00",
+      "endedAt": "2026-08-03T08:28:22-03:00",
+      "durationSeconds": 502
+    },
+    {
+      "id": "INIA-DEMO-C-021",
+      "interactionId": "de00be6e-1759-4e34-8501-a0bf739411bc",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-021",
+      "sourceStartedAt": "2026-06-21T15:27:00-03:00",
+      "startedAt": "2026-08-03T14:20:00-03:00",
+      "endedAt": "2026-08-03T14:26:33-03:00",
+      "durationSeconds": 393
+    },
+    {
+      "id": "INIA-DEMO-C-022",
+      "interactionId": "de006d69-cab6-473b-8b01-0d8278e95ceb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-022",
+      "sourceStartedAt": "2026-06-22T08:34:00-03:00",
+      "startedAt": "2026-08-05T15:13:00-03:00",
+      "endedAt": "2026-08-05T15:20:23-03:00",
+      "durationSeconds": 443
+    },
+    {
+      "id": "INIA-DEMO-M-022",
+      "interactionId": "de003833-b1f2-494c-8e85-d63d7d606960",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-022",
+      "sourceStartedAt": "2026-06-22T14:34:00-03:00",
+      "startedAt": "2026-08-05T10:13:00-03:00",
+      "endedAt": "2026-08-05T10:19:40-03:00",
+      "durationSeconds": 400
+    },
+    {
+      "id": "INIA-DEMO-R-022",
+      "interactionId": "de007f15-0301-4781-8a3d-847822ef5334",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-022",
+      "sourceStartedAt": "2026-06-22T16:34:00-03:00",
+      "startedAt": "2026-08-05T09:13:00-03:00",
+      "endedAt": "2026-08-05T09:21:28-03:00",
+      "durationSeconds": 508
+    },
+    {
+      "id": "INIA-DEMO-R-023",
+      "interactionId": "de002f45-7829-4c07-8019-72f71920f7cb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-023",
+      "sourceStartedAt": "2026-06-23T09:41:00-03:00",
+      "startedAt": "2026-08-07T10:06:00-03:00",
+      "endedAt": "2026-08-07T10:14:10-03:00",
+      "durationSeconds": 490
+    },
+    {
+      "id": "INIA-DEMO-C-023",
+      "interactionId": "de00bd63-b07e-4390-8a03-48403b54d58f",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-023",
+      "sourceStartedAt": "2026-06-23T11:41:00-03:00",
+      "startedAt": "2026-08-07T16:06:00-03:00",
+      "endedAt": "2026-08-07T16:12:35-03:00",
+      "durationSeconds": 395
+    },
+    {
+      "id": "INIA-DEMO-M-023",
+      "interactionId": "de00c891-3c3f-4f24-8b51-9732f245d191",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-023",
+      "sourceStartedAt": "2026-06-23T17:41:00-03:00",
+      "startedAt": "2026-08-07T11:06:00-03:00",
+      "endedAt": "2026-08-07T11:10:45-03:00",
+      "durationSeconds": 285
+    },
+    {
+      "id": "INIA-DEMO-M-024",
+      "interactionId": "de0098b9-b252-4a67-8aa6-ec7df06f0cde",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-024",
+      "sourceStartedAt": "2026-06-24T10:48:00-03:00",
+      "startedAt": "2026-08-12T11:59:00-03:00",
+      "endedAt": "2026-08-12T12:02:41-03:00",
+      "durationSeconds": 221
+    },
+    {
+      "id": "INIA-DEMO-R-024",
+      "interactionId": "de0005f2-a075-402b-8950-49c64544c62c",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-024",
+      "sourceStartedAt": "2026-06-24T12:48:00-03:00",
+      "startedAt": "2026-08-12T10:59:00-03:00",
+      "endedAt": "2026-08-12T11:07:06-03:00",
+      "durationSeconds": 486
+    },
+    {
+      "id": "INIA-DEMO-C-024",
+      "interactionId": "de000d76-1180-41fd-8433-a16068ef1f75",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-024",
+      "sourceStartedAt": "2026-06-24T14:48:00-03:00",
+      "startedAt": "2026-08-12T16:59:00-03:00",
+      "endedAt": "2026-08-12T17:05:05-03:00",
+      "durationSeconds": 365
+    },
+    {
+      "id": "INIA-DEMO-M-025",
+      "interactionId": "de007503-7d89-48ea-8575-110c9bbbb905",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-025",
+      "sourceStartedAt": "2026-06-25T13:55:00-03:00",
+      "startedAt": "2026-08-14T12:52:00-03:00",
+      "endedAt": "2026-08-14T12:56:00-03:00",
+      "durationSeconds": 240
+    },
+    {
+      "id": "INIA-DEMO-R-025",
+      "interactionId": "de0056d1-22a2-4dc0-8925-c73201869248",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-025",
+      "sourceStartedAt": "2026-06-25T15:55:00-03:00",
+      "startedAt": "2026-08-14T11:52:00-03:00",
+      "endedAt": "2026-08-14T11:56:13-03:00",
+      "durationSeconds": 253
+    },
+    {
+      "id": "INIA-DEMO-C-025",
+      "interactionId": "de0078f4-d01c-4904-8f46-f1a4e03e0365",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-025",
+      "sourceStartedAt": "2026-06-25T17:55:00-03:00",
+      "startedAt": "2026-08-14T17:52:00-03:00",
+      "endedAt": "2026-08-14T17:55:56-03:00",
+      "durationSeconds": 236
+    },
+    {
+      "id": "INIA-DEMO-R-026",
+      "interactionId": "de00192e-d8fc-458b-8c76-abd94af4772a",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-026",
+      "sourceStartedAt": "2026-06-26T08:02:00-03:00",
+      "startedAt": "2026-08-18T12:45:00-03:00",
+      "endedAt": "2026-08-18T12:53:19-03:00",
+      "durationSeconds": 499
+    },
+    {
+      "id": "INIA-DEMO-C-026",
+      "interactionId": "de000a82-182d-41b0-8648-4273261cfd51",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-026",
+      "sourceStartedAt": "2026-06-26T10:02:00-03:00",
+      "startedAt": "2026-08-18T18:45:00-03:00",
+      "endedAt": "2026-08-18T18:51:58-03:00",
+      "durationSeconds": 418
+    },
+    {
+      "id": "INIA-DEMO-M-026",
+      "interactionId": "de003d38-dd56-4a8f-8525-027de6ee8291",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-026",
+      "sourceStartedAt": "2026-06-26T16:02:00-03:00",
+      "startedAt": "2026-08-18T13:45:00-03:00",
+      "endedAt": "2026-08-18T13:49:21-03:00",
+      "durationSeconds": 261
+    },
+    {
+      "id": "INIA-DEMO-M-027",
+      "interactionId": "de0057d1-e68f-4c5e-8155-70b3db9d728d",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-027",
+      "sourceStartedAt": "2026-06-27T09:09:00-03:00",
+      "startedAt": "2026-08-20T14:38:00-03:00",
+      "endedAt": "2026-08-20T14:42:06-03:00",
+      "durationSeconds": 246
+    },
+    {
+      "id": "INIA-DEMO-R-027",
+      "interactionId": "de00484d-b0aa-411e-80c8-33feb04c9971",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-027",
+      "sourceStartedAt": "2026-06-27T11:09:00-03:00",
+      "startedAt": "2026-08-20T13:38:00-03:00",
+      "endedAt": "2026-08-20T13:45:53-03:00",
+      "durationSeconds": 473
+    },
+    {
+      "id": "INIA-DEMO-C-027",
+      "interactionId": "de000f63-e77b-4d1a-836b-ae703bba3664",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-027",
+      "sourceStartedAt": "2026-06-27T13:09:00-03:00",
+      "startedAt": "2026-08-20T19:38:00-03:00",
+      "endedAt": "2026-08-20T19:44:28-03:00",
+      "durationSeconds": 388
+    },
+    {
+      "id": "INIA-DEMO-M-028",
+      "interactionId": "de00e974-e63a-48c1-8644-5d5769b4bb02",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-028",
+      "sourceStartedAt": "2026-06-28T12:16:00-03:00",
+      "startedAt": "2026-08-25T15:31:00-03:00",
+      "endedAt": "2026-08-25T15:34:54-03:00",
+      "durationSeconds": 234
+    },
+    {
+      "id": "INIA-DEMO-R-028",
+      "interactionId": "de0085c7-6e16-4342-8ef6-307f081bf1ff",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-028",
+      "sourceStartedAt": "2026-06-28T14:16:00-03:00",
+      "startedAt": "2026-08-25T09:03:00-03:00",
+      "endedAt": "2026-08-25T09:10:46-03:00",
+      "durationSeconds": 466
+    },
+    {
+      "id": "INIA-DEMO-C-028",
+      "interactionId": "de00e88e-28e5-4854-8814-91ecf99a25fc",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-028",
+      "sourceStartedAt": "2026-06-28T16:16:00-03:00",
+      "startedAt": "2026-08-25T15:03:00-03:00",
+      "endedAt": "2026-08-25T15:09:02-03:00",
+      "durationSeconds": 362
+    },
+    {
+      "id": "INIA-DEMO-C-029",
+      "interactionId": "de002c42-609c-4f71-8711-6865aa1cdf04",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-029",
+      "sourceStartedAt": "2026-06-29T09:23:00-03:00",
+      "startedAt": "2026-08-27T15:56:00-03:00",
+      "endedAt": "2026-08-27T16:02:03-03:00",
+      "durationSeconds": 363
+    },
+    {
+      "id": "INIA-DEMO-M-029",
+      "interactionId": "de00447b-6af1-4f0f-8cf5-b5efdb88aa97",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-029",
+      "sourceStartedAt": "2026-06-29T15:23:00-03:00",
+      "startedAt": "2026-08-27T16:24:00-03:00",
+      "endedAt": "2026-08-27T16:28:04-03:00",
+      "durationSeconds": 244
+    },
+    {
+      "id": "INIA-DEMO-R-029",
+      "interactionId": "de00434c-eae2-4ac7-8195-10892ad7ba9c",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-029",
+      "sourceStartedAt": "2026-06-29T17:23:00-03:00",
+      "startedAt": "2026-08-27T09:56:00-03:00",
+      "endedAt": "2026-08-27T10:03:56-03:00",
+      "durationSeconds": 476
+    },
+    {
+      "id": "INIA-DEMO-M-030",
+      "interactionId": "de0007df-8e9d-4df9-81cb-e6fbf5104c4b",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-M-030",
+      "sourceStartedAt": "2026-06-30T08:30:00-03:00",
+      "startedAt": "2026-08-31T09:49:00-03:00",
+      "endedAt": "2026-08-31T09:52:54-03:00",
+      "durationSeconds": 234
+    },
+    {
+      "id": "INIA-DEMO-R-030",
+      "interactionId": "de00ba27-630b-4d98-80d1-d54adf2aaffb",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-R-030",
+      "sourceStartedAt": "2026-06-30T10:30:00-03:00",
+      "startedAt": "2026-08-31T10:49:00-03:00",
+      "endedAt": "2026-08-31T10:52:50-03:00",
+      "durationSeconds": 230
+    },
+    {
+      "id": "INIA-DEMO-C-030",
+      "interactionId": "de002b79-6993-4a53-82e9-08c20d774445",
+      "externalId": "DEMO-inia_demo_90_v1:INIA-DEMO-C-030",
+      "sourceStartedAt": "2026-06-30T12:30:00-03:00",
+      "startedAt": "2026-08-31T16:49:00-03:00",
+      "endedAt": "2026-08-31T16:52:49-03:00",
+      "durationSeconds": 229
+    }
+  ]
+}

@@ -1,0 +1,404 @@
+{
+  "collaborator": {
+    "version": "FEEDBACK_VIEW_V1",
+    "kind": "INDICATOR",
+    "heading": {
+      "title": "TMA",
+      "subtitle": "Fechamento de agosto de 2026"
+    },
+    "sectionLabels": {
+      "developments": "O que trabalhar no próximo ciclo",
+      "call": "Exemplos das chamadas",
+      "maintain": "O que manter",
+      "detailsHint": "O resultado do ciclo, o padrão encontrado, exemplos das chamadas e o que o processo orienta."
+    },
+    "card": "TMA de 495 s, fora da meta no fechamento de agosto de 2026. Principal ponto: recapitulação.",
+    "greeting": "Olá, Larissa!",
+    "narrative": [
+      "No fechamento de agosto de 2026, seu TMA oficial foi de 495 s, fora da meta de 450 s (quartil oficial Q4).",
+      "Neste ciclo, as chamadas de Contestação de cobrança passaram a representar uma parte maior dos seus atendimentos (de 18% para 34%) e tiveram duração média registrada maior que as demais.",
+      "O ponto que mais se repetiu nas suas chamadas analisadas: a recapitulação não trouxe todos os pontos previstos em 4 de 6 chamadas analisadas de Contestação de cobrança.",
+      "Nas próximas chamadas de contestação de cobrança: antes de encerrar, recapitule o que foi feito, o próximo passo e o prazo.",
+      "Mantenha o que já funciona: você informou o protocolo em 6 de 6 chamadas analisadas de Contestação de cobrança."
+    ],
+    "cycle": {
+      "title": "Resultado do ciclo · agosto de 2026",
+      "indicators": [
+        {
+          "name": "TMA",
+          "lines": [
+            {
+              "label": "Resultado oficial",
+              "value": "495 s"
+            },
+            {
+              "label": "Meta oficial",
+              "value": "450 s"
+            },
+            {
+              "label": "Situação oficial",
+              "value": "fora da referência"
+            },
+            {
+              "label": "Quartil oficial",
+              "value": "Q4 (Q1 = melhor, Q4 = pior)"
+            },
+            {
+              "label": "Atingimento oficial",
+              "value": "90,9%"
+            },
+            {
+              "label": "Peso no PRV",
+              "value": "25%"
+            },
+            {
+              "label": "Fechamento anterior (julho de 2026)",
+              "value": "410 s, quartil Q2"
+            }
+          ],
+          "notes": [
+            "As chamadas de Contestação de cobrança passaram de 18% para 34% dos seus atendimentos, com duração média registrada de 620 s (as demais: 380 s).",
+            "Foram analisadas 6 das suas chamadas de Contestação de cobrança deste fechamento."
+          ]
+        }
+      ]
+    },
+    "developments": [
+      {
+        "key": "TMA-1",
+        "title": "Recapitulação",
+        "whatHappened": "A recapitulação não trouxe todos os pontos previstos em 4 de 6 chamadas analisadas de Contestação de cobrança.",
+        "call": {
+          "kind": "QUOTES",
+          "quotes": [
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 04/08, você disse",
+              "text": "Então fica aberta a contestação, tá bom?",
+              "truncated": false
+            },
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 08/08, você disse",
+              "text": "Então fica aberta a contestação, tá bom?",
+              "truncated": false
+            },
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 12/08, você disse",
+              "text": "Então fica aberta a contestação, tá bom?",
+              "truncated": false
+            }
+          ]
+        },
+        "adjustment": [],
+        "guidance": {
+          "rules": [
+            {
+              "text": "Antes de encerrar, recapitule o que foi feito, o próximo passo e o prazo.",
+              "section": "Recapitulação"
+            }
+          ],
+          "avoid": [],
+          "examples": []
+        },
+        "sources": [
+          {
+            "documentId": "doc-contestacao",
+            "documentTitle": "Procedimento de Contestação de Cobrança",
+            "section": "Recapitulação",
+            "href": "/materiais/doc-contestacao"
+          }
+        ],
+        "whyItMatters": [],
+        "howToApply": "Nas próximas chamadas de contestação de cobrança: antes de encerrar, recapitule o que foi feito, o próximo passo e o prazo.",
+        "suggestedResponse": null,
+        "itemIndexes": [
+          1
+        ]
+      }
+    ],
+    "maintain": {
+      "summary": "Você informou o protocolo em 6 de 6 chamadas analisadas de Contestação de cobrança.",
+      "evidence": [
+        {
+          "title": "Protocolo",
+          "statement": "Você informou o protocolo em 6 de 6 chamadas analisadas de Contestação de cobrança.",
+          "quotes": [
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 04/08, você disse",
+              "text": "Anota o protocolo da contestação, por favor.",
+              "truncated": false
+            },
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 08/08, você disse",
+              "text": "Anota o protocolo da contestação, por favor.",
+              "truncated": false
+            },
+            {
+              "speaker": "OPERATOR",
+              "intro": "Em uma chamada de 12/08, você disse",
+              "text": "Anota o protocolo da contestação, por favor.",
+              "truncated": false
+            }
+          ],
+          "itemIndex": 2
+        }
+      ]
+    },
+    "attention": [],
+    "materials": [
+      {
+        "documentId": "doc-contestacao",
+        "title": "Procedimento de Contestação de Cobrança",
+        "href": "/materiais/doc-contestacao",
+        "usedIn": [
+          "Recapitulação",
+          "Protocolo"
+        ],
+        "sections": [
+          "Recapitulação"
+        ]
+      }
+    ],
+    "context": null
+  },
+  "supervisor": {
+    "version": "PRV_SUPERVISOR_VIEW_V1",
+    "cycle": "agosto de 2026",
+    "prv": {
+      "achievementPercent": 88,
+      "quartile": "Q4",
+      "previous": null
+    },
+    "interpretation": [
+      "TMA: mudança de mix e padrão operacional.",
+      "Há comportamento recorrente no Subgrupo que não aparece na população deste colaborador — não é atribuído a ele.",
+      "A mudança de mix coincidiu com o resultado do fechamento; composição não demonstra causa."
+    ],
+    "triage": [
+      {
+        "indicator": "TMA",
+        "decision": "investigado (desenvolvimento)",
+        "reasons": [
+          "quartil oficial dentro dos quartis que a estratégia investiga"
+        ]
+      }
+    ],
+    "indicators": [
+      {
+        "name": "TMA",
+        "conclusion": "Mudança de mix e padrão operacional",
+        "official": [
+          "TMA oficial no fechamento de agosto de 2026: 495 s",
+          "Meta oficial: 450 s",
+          "Situação oficial: fora da referência",
+          "Quartil oficial: Q4 (Q1 = melhor, Q4 = pior)",
+          "Atingimento oficial: 90,9%",
+          "Peso no PRV: 25%",
+          "Fechamento anterior (julho de 2026): 410 s, quartil Q2"
+        ],
+        "population": {
+          "interactionsInPeriod": 50,
+          "selectedSegment": "Contestação de cobrança",
+          "selectionReason": "maior tempo registrado acima da média geral do período, ponderado pelo volume de atendimentos",
+          "segments": [
+            {
+              "label": "Contestação de cobrança",
+              "interactions": 17,
+              "sharePercent": 34,
+              "averageDurationSeconds": 620
+            },
+            {
+              "label": "Segunda via",
+              "interactions": 33,
+              "sharePercent": 66,
+              "averageDurationSeconds": 380
+            }
+          ]
+        },
+        "sample": {
+          "eligible": 12,
+          "analyzed": 6,
+          "reused": 2,
+          "reanalyzed": 4,
+          "newObservations": 8,
+          "reusedObservations": 4,
+          "selectionReason": "2 reaproveitadas; 4 novas"
+        },
+        "coverage": null,
+        "mix": {
+          "status": "SHIFT",
+          "statement": "Contestação de cobrança passou de 18% para 34% dos atendimentos do colaborador entre os dois fechamentos; nesse motivo, a duração média registrada foi de 620 s, contra 380 s nas demais chamadas.",
+          "rows": [
+            {
+              "label": "Segunda via",
+              "previousSharePercent": 82,
+              "currentSharePercent": 66,
+              "averageDurationSeconds": 380
+            },
+            {
+              "label": "Contestação de cobrança",
+              "previousSharePercent": 18,
+              "currentSharePercent": 34,
+              "averageDurationSeconds": 620
+            }
+          ]
+        },
+        "patterns": [
+          {
+            "title": "Recapitulação",
+            "classification": "a desenvolver",
+            "attribution": "do colaborador",
+            "eligible": 6,
+            "followed": 2,
+            "notFollowed": 4,
+            "partial": 4,
+            "notObservable": 0,
+            "notApplicable": 0,
+            "ineligible": 0,
+            "notFollowedRatePercent": 66.7,
+            "concentration": null,
+            "byWeekday": [
+              {
+                "label": "segunda-feira",
+                "eligible": 2,
+                "notFollowed": 1
+              },
+              {
+                "label": "terça-feira",
+                "eligible": 1,
+                "notFollowed": 1
+              },
+              {
+                "label": "quarta-feira",
+                "eligible": 1,
+                "notFollowed": 1
+              },
+              {
+                "label": "quinta-feira",
+                "eligible": 1,
+                "notFollowed": 1
+              },
+              {
+                "label": "sexta-feira",
+                "eligible": 1,
+                "notFollowed": 0
+              }
+            ]
+          },
+          {
+            "title": "Protocolo",
+            "classification": "consistente",
+            "attribution": "sem padrão",
+            "eligible": 6,
+            "followed": 6,
+            "notFollowed": 0,
+            "partial": 0,
+            "notObservable": 0,
+            "notApplicable": 0,
+            "ineligible": 0,
+            "notFollowedRatePercent": 0,
+            "concentration": null,
+            "byWeekday": [
+              {
+                "label": "segunda-feira",
+                "eligible": 2,
+                "notFollowed": 0
+              },
+              {
+                "label": "terça-feira",
+                "eligible": 1,
+                "notFollowed": 0
+              },
+              {
+                "label": "quarta-feira",
+                "eligible": 1,
+                "notFollowed": 0
+              },
+              {
+                "label": "quinta-feira",
+                "eligible": 1,
+                "notFollowed": 0
+              },
+              {
+                "label": "sexta-feira",
+                "eligible": 1,
+                "notFollowed": 0
+              }
+            ]
+          }
+        ],
+        "team": {
+          "status": "disponível",
+          "contributors": 6,
+          "behaviors": [
+            {
+              "title": "Confirmação de entendimento",
+              "classification": "a desenvolver",
+              "notFollowed": 13,
+              "eligible": 18
+            }
+          ]
+        },
+        "processes": [
+          {
+            "documentTitle": "Procedimento de Contestação de Cobrança",
+            "eligible": 12,
+            "notFollowed": 4
+          }
+        ],
+        "evidence": [
+          {
+            "title": "Recapitulação",
+            "date": "04/08",
+            "text": "Então fica aberta a contestação, tá bom?"
+          },
+          {
+            "title": "Recapitulação",
+            "date": "08/08",
+            "text": "Então fica aberta a contestação, tá bom?"
+          },
+          {
+            "title": "Recapitulação",
+            "date": "12/08",
+            "text": "Então fica aberta a contestação, tá bom?"
+          },
+          {
+            "title": "Protocolo",
+            "date": "04/08",
+            "text": "Anota o protocolo da contestação, por favor."
+          },
+          {
+            "title": "Protocolo",
+            "date": "08/08",
+            "text": "Anota o protocolo da contestação, por favor."
+          },
+          {
+            "title": "Protocolo",
+            "date": "12/08",
+            "text": "Anota o protocolo da contestação, por favor."
+          }
+        ],
+        "findings": [
+          "Contestação de cobrança passou de 18% para 34% dos atendimentos do colaborador entre os dois fechamentos; nesse motivo, a duração média registrada foi de 620 s, contra 380 s nas demais chamadas.",
+          "Recapitulação: não seguida em 4 de 6 chamadas analisadas de Contestação de cobrança.",
+          "Protocolo: seguida em 6 de 6 chamadas analisadas de Contestação de cobrança."
+        ],
+        "unsupportedHypotheses": [
+          "Confirmação de entendimento: recorrente no Subgrupo, mas não na população do colaborador — não é atribuída a ele.",
+          "O comportamento observado ou a mudança de mix ter causado o resultado do indicador (associação e composição não são causa)."
+        ],
+        "limitations": [
+          "A duração por motivo é a duração registrada das chamadas — uma aproximação, nunca o cálculo oficial do indicador.",
+          "Foram analisadas 6 de 12 chamadas elegíveis de Contestação de cobrança no período (2 com avaliação anterior reaproveitada, 4 avaliadas nesta análise); a análise não representa todas as chamadas.",
+          "Um comportamento observado nas chamadas analisadas não demonstra que ele causou o resultado do indicador.",
+          "A mudança na composição dos motivos aconteceu no mesmo período do resultado — composição não demonstra causa.",
+          "Nas chamadas avaliadas anteriormente, só as etapas seguidas ou não seguidas ficaram registradas: etapas não observáveis ou não aplicáveis dessas chamadas não entram na contagem."
+        ]
+      }
+    ]
+  }
+}

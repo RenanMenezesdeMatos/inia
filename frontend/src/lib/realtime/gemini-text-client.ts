@@ -1,0 +1,203 @@
+"use client"
+
+const API_URL = process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
+// A second, looser timeout on top of the backend's own — belt and
+// suspenders against the composer getting stuck forever (empty "thinking"
+// bubble, send disabled) if a request hangs instead of erroring. Confirmed
+// as a real failure mode on 2026-09-09 when Gemini's servers were unstable.
+// Needs to comfortably cover the backend's own worst case, so the backend's
+// own error surfaces first instead of this timeout winning the race. That
+// worst case got a lot bigger on 2026-09-11 once an orchestrator is
+// configured: a single turn can now chain up to 3 sequential (non-streamed)
+// Gemini calls — decide which specialist(s) to call, run each specialist,
+// then synthesize the final reply — each with its own ~45s ceiling and a
+// possible retry, verified live while chasing a spurious "não consegui
+// responder" that was actually this timeout winning the race against a
+// backend call still in flight.
+const REQUEST_TIMEOUT_MS = 150_000
+
+import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
+
+export type HistoryTurn = { role: "user" | "model"; text: string }
+
+/** Resposta de texto completa: o texto montado dos chunks + os materiais de apoio que o
+ * Orquestrador recomendou (evento SSE próprio, já resolvidos pelo backend com título real e
+ * acesso do operador — a URL é montada na tela a partir do id, nunca vem do modelo). */
+/** Resposta de texto completa: o texto montado dos chunks, os materiais de apoio que o Orquestrador recomendou (evento SSE
+ * próprio, já resolvidos pelo backend — a URL é montada na tela a partir do id, nunca vem do modelo), a conversa em que a
+ * troca ficou gravada e se a RESPOSTA foi salva (`persisted = false` = apareceu mas não entrou no histórico). */
+export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean }
+
+/** A conversa pedida já foi encerrada (outra aba começou outra, ou ficou inativa): o chat troca para a atual. */
+export class ConversationClosedError extends Error {
+  constructor(readonly activeConversationId: string | null) {
+    super("Esta conversa já foi encerrada.")
+    this.name = "ConversationClosedError"
+  }
+}
+
+export type ConversationRef = { conversationId: string; created: boolean; rotatedFrom: string | null }
+
+/** A tela estava desatualizada: a conversa pedida não é mais a desta aplicação de feedback (ex.: concluída em outra aba). Nada foi
+ * gravado — o chat recarrega a aplicação e devolve o texto ao campo. */
+export class FeedbackConversationChangedError extends Error {
+  constructor() {
+    super("A conversa deste feedback mudou.")
+    this.name = "FeedbackConversationChangedError"
+  }
+}
+
+/**
+ * Mensagem de texto para a INIA — REST/SSE, separado do GeminiRealtimeTransport de propósito (texto nunca precisa de
+ * WebSocket/áudio). O cliente envia só a mensagem nova + a conversa que está exibindo (`null` = a atual/uma nova); o
+ * backend resolve a conversa, grava a pergunta e monta o contexto do modelo a partir do BANCO, só com a conversa — nenhum
+ * histórico sai do navegador. `clientMessageId` torna retentativas idempotentes. `onConversation` chega antes do texto.
+ */
+export async function fetchTextReply(
+  /** `feedbackApplicationId`: a mensagem é sobre uma aplicação de feedback — o BACKEND decide a conversa (a da aplicação ou a
+   * complementar, criada na primeira dúvida depois da conclusão). */
+  // A persona da INIA é do servidor; daqui só sai o contexto da tela (dado, não instrução).
+  input: { conversationId: string | null; text: string; clientMessageId: string; contextHint?: string; feedbackApplicationId?: string | null },
+  onChunk: (text: string) => void,
+  onConversation?: (conversation: ConversationRef) => void,
+): Promise<TextReply> {
+  const response = await fetch(`${API_URL}/api/v1/realtime/messages`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...input, feedbackApplicationId: input.feedbackApplicationId ?? undefined }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  }).catch(() => {
+    throw new Error("Não foi possível contatar a INIA. Verifique sua conexão e tente de novo.")
+  })
+  if (response.status === 409) {
+    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; details?: { activeConversationId?: string | null } } } | null
+    if (payload?.error?.code === "ASSISTANT_CONVERSATION_CLOSED") throw new ConversationClosedError(payload.error.details?.activeConversationId ?? null)
+    if (payload?.error?.code === "FEEDBACK_APPLICATION_CONVERSATION_MISMATCH" || payload?.error?.code === "FEEDBACK_APPLICATION_NOT_STARTED") throw new FeedbackConversationChangedError()
+  }
+  if (!response.ok || !response.body) throw new Error("Não foi possível obter uma resposta da INIA.")
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  let full = ""
+  let streamError: string | null = null
+  let supportMaterials: FeedbackSupportMaterial[] = []
+  let interactionId: string | null = null
+  let conversationId: string | null = null
+  let persisted = false
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split("\n\n")
+    buffer = events.pop() ?? ""
+    for (const event of events) {
+      const { name, data } = parseSseEvent(event)
+      if (!data) continue
+      if (name === "conversation") {
+        const payload = JSON.parse(data) as ConversationRef
+        conversationId = payload.conversationId
+        onConversation?.(payload)
+      } else if (name === "chunk") {
+        const text = (JSON.parse(data) as { text: string }).text
+        full += text
+        onChunk(text)
+      } else if (name === "persisted") {
+        persisted = true
+        interactionId = (JSON.parse(data) as { interactionId?: string }).interactionId ?? interactionId
+      } else if (name === "persist_error") {
+        persisted = false
+      } else if (name === "support_materials") {
+        const payload = JSON.parse(data) as { interactionId?: string; supportMaterials?: FeedbackSupportMaterial[] }
+        supportMaterials = Array.isArray(payload.supportMaterials) ? payload.supportMaterials : []
+        interactionId = payload.interactionId ?? interactionId
+      } else if (name === "error") {
+        streamError = (JSON.parse(data) as { message: string }).message
+      }
+    }
+  }
+
+  if (streamError) throw new Error(streamError)
+  if (!full || !conversationId) throw new Error("Não foi possível obter uma resposta da INIA.")
+  return { text: full, supportMaterials, interactionId, conversationId, persisted }
+}
+
+export type ConversationSummary = {
+  id: string
+  kind: "CONVERSATION" | "LEGACY_HISTORY"
+  status: "ACTIVE" | "CLOSED"
+  startedAt: string
+  lastActivityAt: string
+  closedAt: string | null
+  closeReason: "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | null
+  /** Workflow Outputs V1 — conversa criada por um Workflow (primeira mensagem da INIA); "nova" até a primeira abertura. FEEDBACK =
+   * conversa de uma aplicação de feedback (somente consulta depois de concluída). */
+  origin?: "USER" | "WORKFLOW" | "FEEDBACK"
+  title?: string | null
+  unread?: boolean
+  /** Conversa complementar de uma aplicação concluída (dúvidas depois da conclusão). */
+  feedbackFollowUp?: boolean
+  messageCount: number
+  firstUserMessage: string | null
+  lastMessage: { role: "user" | "assistant"; preview: string; channel: "chat" | "voice" } | null
+}
+
+export type ConversationMessage = {
+  id: string
+  channel: "chat" | "voice"
+  role: "user" | "assistant"
+  content: string
+  agentId: string | null
+  occurredAt: string
+  cursor: string
+  supportMaterials: FeedbackSupportMaterial[]
+  /** "WORKFLOW" = recado entregue por um fluxo da INIA (mensagem destacada); "FEEDBACK" = apresentação de uma aplicação de
+   * feedback; null nas demais. */
+  origin?: "WORKFLOW" | "FEEDBACK" | null
+}
+
+async function getJson<T>(path: string, errorMessage: string): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { credentials: "include", cache: "no-store" }).catch(() => {
+    throw new Error(errorMessage)
+  })
+  if (!response.ok) throw new Error(errorMessage)
+  return ((await response.json()) as { data: T }).data
+}
+
+/** Conversa ativa ao abrir o chat (null = começa limpo) + a janela de inatividade configurada no backend. */
+export function fetchCurrentConversation() {
+  return getJson<{ conversation: ConversationSummary | null; inactivityHours: number }>("/api/v1/realtime/conversations/current", "Não foi possível carregar a conversa atual.")
+}
+
+/** Conversas do próprio usuário, da mais recente para a mais antiga. */
+export function fetchOwnConversations(page = 1, pageSize = 20) {
+  return getJson<{ items: ConversationSummary[]; total: number; page: number; pageSize: number }>(`/api/v1/realtime/conversations?page=${page}&pageSize=${pageSize}`, "Não foi possível carregar as conversas anteriores.")
+}
+
+/** Página de mensagens de uma conversa do próprio usuário: as mais recentes, as anteriores (`before`) ou as novas (`after`). */
+export function fetchConversationMessages(conversationId: string, options: { before?: string; after?: string; limit?: number } = {}) {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 30) })
+  if (options.before) params.set("before", options.before)
+  if (options.after) params.set("after", options.after)
+  return getJson<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean }>(`/api/v1/realtime/conversations/${conversationId}/messages?${params}`, "Não foi possível carregar as mensagens da conversa.")
+}
+
+/** "Nova conversa": encerra a atual no backend (nada é criado até a próxima mensagem). */
+export async function startNewConversation(): Promise<void> {
+  const response = await fetch(`${API_URL}/api/v1/realtime/conversations/new`, { method: "POST", credentials: "include" }).catch(() => {
+    throw new Error("Não foi possível iniciar uma nova conversa.")
+  })
+  if (!response.ok) throw new Error("Não foi possível iniciar uma nova conversa.")
+}
+
+function parseSseEvent(block: string): { name: string | null; data: string | null } {
+  let name: string | null = null
+  let data: string | null = null
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) name = line.slice("event:".length).trim()
+    else if (line.startsWith("data:")) data = line.slice("data:".length).trim()
+  }
+  return { name, data }
+}

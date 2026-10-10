@@ -1,0 +1,341 @@
+{
+  "_comment": "GABARITO da bateria de avaliação do motor de feedback. Lido SÓ por score-battery.ts — nunca pelo runtime, prompt ou base. Critérios por trecho do texto da regra (case-insensitive). mustDeviate: cada grupo precisa de ao menos um critério NOT_MET/PARTIAL cujo texto contenha um dos termos. mustNotAccuse: nenhum critério NOT_MET/PARTIAL pode conter o termo. mustNotCreditQuote: nenhum critério MET pode se apoiar em fala com esse trecho. | 30/09/2026: a bateria foi executada 6 vezes enquanto o motor era corrigido (SV1 ajustou o prompt de redação; os demais expuseram defeitos corrigidos em seguida). Todos os casos viraram REGRESSÃO — não são prova independente. Os critérios esperados são identificados pelo trecho literal da regra; termos de mensagem são sinal auxiliar.",
+  "forbiddenMessagePhrases": [
+    "conforme previsto",
+    "atender mais rápido",
+    "seja mais objetivo",
+    "siga o procedimento",
+    "mantenha o bom trabalho",
+    "reduzir o tma",
+    "continue assim"
+  ],
+  "cases": {
+    "SV1-caminho-correto-sinal-negativo": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "CORRECT"
+      ],
+      "mustDeviate": [],
+      "mustNotAccuse": [
+        "canal",
+        "canais digitais",
+        "protocolo",
+        "dúvida",
+        "validaç",
+        "baixar"
+      ],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "RECOGNITION"
+        ],
+        "mustMentionAny": [
+          "Meu Vivo",
+          "baixar",
+          "canal digital",
+          "canais digitais",
+          "acompanh"
+        ]
+      },
+      "scenario": "Sinal negativo (nota URA 1) com processo correto: deve reconhecer, sem inventar ajuste.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar o prompt de redação (SV1) e nas 6 execuções da bateria de 30/09/2026 — regressão, não prova independente."
+    },
+    "SV2-caminho-errado-email-informado-na-chamada": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "INCORRECT"
+      ],
+      "mustDeviate": [
+        [
+          "informado durante o atendimento",
+          "terceiros"
+        ],
+        [
+          "canais digitais",
+          "canal digital",
+          "orientar o acesso",
+          "disponível nos canais"
+        ]
+      ],
+      "mustNotAccuse": [],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "DEVELOPMENT",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "cadastrad",
+          "valida",
+          "canais digitais",
+          "canal digital"
+        ]
+      },
+      "scenario": "Citações verdadeiras, caminho errado: envio manual para e-mail informado na chamada (de terceiro) sem exceção.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "SV3-excecao-anatel-aplicada-corretamente": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "CORRECT"
+      ],
+      "mustDeviate": [],
+      "mustNotAccuse": [
+        "não deve enviar manualmente",
+        "informado durante o atendimento",
+        "orientar o acesso",
+        "disponível nos canais"
+      ],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "RECOGNITION",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "Anatel",
+          "cadastrad",
+          "exceção"
+        ]
+      },
+      "scenario": "Exceção (menção à Anatel) aplicada corretamente: o envio pelo canal cadastrado é o caminho certo.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "SV4-mesma-acao-sem-excecao": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "INCORRECT",
+        "PARTIALLY_CORRECT"
+      ],
+      "mustDeviate": [
+        [
+          "não deve enviar manualmente",
+          "enviar manualmente",
+          "canais digitais",
+          "canal digital",
+          "orientar o acesso",
+          "disponível nos canais",
+          "exceç"
+        ]
+      ],
+      "mustNotAccuse": [
+        "informado durante o atendimento"
+      ],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "DEVELOPMENT",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "canais digitais",
+          "canal digital",
+          "Meu Vivo",
+          "autosserviço",
+          "exceção"
+        ]
+      },
+      "scenario": "Mesma ação verbalizada do SV3 (envio para o e-mail cadastrado) sem a condição da exceção: agora é desvio.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "SV5-falha-ferramenta-pre-requisito-omitido-e-promessa": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "INCORRECT",
+        "PARTIALLY_CORRECT"
+      ],
+      "mustDeviate": [
+        [
+          "tentou acessar",
+          "indisponibilidade",
+          "orientações básicas",
+          "outro canal",
+          "mensagem de erro",
+          "falha comprovada"
+        ]
+      ],
+      "mustNotAccuse": [],
+      "mustNotCreditQuote": [
+        "Vou te mandar a segunda via por SMS"
+      ],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "DEVELOPMENT",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "erro",
+          "falha",
+          "tentou",
+          "outro canal",
+          "indisponibilidade"
+        ]
+      },
+      "scenario": "Exceção por falha aplicada sem os pré-requisitos; promessa de envio (intenção) não é execução.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "SV6-transcricao-incompleta": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "CORRECT",
+        "PARTIALLY_CORRECT",
+        "UNDETERMINED"
+      ],
+      "mustDeviate": [],
+      "mustNotAccuse": [
+        "protocolo",
+        "dúvida",
+        "confirme se conseguiu",
+        "prazo",
+        "próximo passo"
+      ],
+      "mustNotCreditQuote": [],
+      "outcome": [
+        "PARTIAL",
+        "INSUFFICIENT_EVIDENCE",
+        "USABLE"
+      ],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE",
+          "ABSTAINED"
+        ],
+        "tone": [
+          "RECOGNITION",
+          "INFORMATIVE",
+          "MIXED"
+        ],
+        "mustMentionAny": []
+      },
+      "scenario": "Gravação interrompida: ausência no fim não pode virar acusação.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "SV7-troca-de-falante-protocolo": {
+      "procedure": "Segunda Via de Conta",
+      "path": [
+        "CORRECT",
+        "PARTIALLY_CORRECT"
+      ],
+      "mustDeviate": [
+        [
+          "protocolo"
+        ]
+      ],
+      "mustNotAccuse": [],
+      "mustNotCreditQuote": [
+        "2026-0929-1188"
+      ],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "MIXED",
+          "DEVELOPMENT"
+        ],
+        "mustMentionAny": [
+          "protocolo"
+        ]
+      },
+      "scenario": "O número de protocolo foi dito pelo CLIENTE (de ontem); o operador não informou o deste atendimento.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "ND1-promessa-de-desconto-fora-do-sistema": {
+      "procedure": "Negociação de Débito",
+      "path": [
+        "INCORRECT",
+        "PARTIALLY_CORRECT"
+      ],
+      "mustDeviate": [
+        [
+          "prometer descontos",
+          "descontos disponibilizados",
+          "condições diferentes",
+          "somente descontos",
+          "alçada",
+          "abatimento"
+        ]
+      ],
+      "mustNotAccuse": [],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "DEVELOPMENT",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "sistema",
+          "desconto",
+          "juros",
+          "oferta"
+        ]
+      },
+      "scenario": "Promessa de desconto fora do sistema e fechamento sem resumo/aceite.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    },
+    "ND2-negociacao-assistida-completa-serasa": {
+      "procedure": "Negociação de Débito",
+      "path": [
+        "CORRECT"
+      ],
+      "mustDeviate": [],
+      "mustNotAccuse": [
+        "prometer",
+        "aceite",
+        "consequências",
+        "protocolo",
+        "dúvida",
+        "negativação",
+        "canal digital",
+        "canais digitais",
+        "orientar o cliente a acessar"
+      ],
+      "mustNotCreditQuote": [],
+      "message": {
+        "outcome": [
+          "PUBLISHABLE"
+        ],
+        "tone": [
+          "RECOGNITION",
+          "MIXED"
+        ],
+        "mustMentionAny": [
+          "recapitul",
+          "aceite",
+          "confirm",
+          "Serasa",
+          "condições"
+        ]
+      },
+      "scenario": "Exceção (Serasa) conduzida corretamente, com recapitulação e aceite expresso: deve reconhecer com especificidade.",
+      "usedForCalibration": true,
+      "calibrationNote": "Usado para ajustar a implementação em 30/09/2026 (6 execuções da bateria durante as correções) — regressão, não prova independente."
+    }
+  }
+}

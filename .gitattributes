@@ -1,0 +1,6 @@
+# Scripts e configurações do Windows Server: sempre com quebra de linha do Windows (CRLF).
+# Os .ps1 também vão com a marca UTF-8 (BOM) — sem ela o PowerShell 5.1 lê acentos e travessões como ANSI.
+deploy/windows/**/*.ps1 text eol=crlf
+deploy/windows/**/*.config text eol=crlf
+# Atalhos de linha de comando do Windows (Prompt de Comando).
+*.cmd text eol=crlf

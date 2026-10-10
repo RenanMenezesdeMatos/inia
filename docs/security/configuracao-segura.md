@@ -1,0 +1,149 @@
+# Configuração segura, atualização e reversão (08/10/2026)
+
+## 1. Variáveis do backend (`backend/.env`)
+
+| Variável | Padrão | Recomendação |
+|---|---|---|
+| `NODE_ENV` | `development` | **`production` em qualquer servidor** (com ou sem HTTPS). Só o computador de quem desenvolve usa `development`. Em produção a API exige `JWT_SECRET` (≥ 32 caracteres, diferente do exemplo) e `DATA_HUB_SECRET_KEY`, e recusa dados de demonstração. |
+| `SESSION_COOKIE_SECURE` | `auto` | `auto`/`true` com HTTPS. `false` **só** em servidor HTTP de rede interna (o navegador descarta cookie `Secure` em HTTP). |
+| `JWT_SECRET` | valor de exemplo | Aleatório e longo (`npm run env:init` gera 96 caracteres). Trocar derruba todas as sessões e zera a trava de tentativas de login. |
+| `DATA_HUB_SECRET_KEY` | — | 32 bytes aleatórios. Fica fora do banco; perder a chave obriga a redigitar as senhas das conexões. Nunca trocar sem migração (ver R-12). |
+| `CORS_ORIGIN` | `http://localhost:3000` | O endereço público exato da interface (lista separada por vírgula). Também é a lista de origens aceitas nas escritas com sessão (proteção contra CSRF). Nunca `*`. |
+| `TRUST_PROXY` | `loopback` | `loopback` com IIS/proxy na mesma máquina; IPs/sub-redes do proxy se ele estiver em outra máquina; `false` sem proxy. Nunca `true` (recusado na subida). |
+| `HOST` | todas as interfaces | `127.0.0.1` atrás do IIS (a API não fica exposta na rede). |
+| `LOGIN_RATE_LIMIT_PER_IP` | `30` (por 5 min) | Aumentar se muitas pessoas saem pelo mesmo IP (proxy corporativo sem `X-Forwarded-For`). `0` desliga só este limite. |
+| `INIA_OUTBOUND_MODE` | `OPEN` | `ALLOWLIST` quando a área de dados puder listar os destinos (bancos, SFTP, APIs, provedores de IA). |
+| `INIA_OUTBOUND_ALLOWED_DESTINATIONS` | — | Ex.: `10.20.0.0/16, sqlprod.empresa.local:1433, *.api.cliente.com.br, 127.0.0.1:11434`. Um destino listado é aceito mesmo numa faixa fechada (ex.: Ollama na própria máquina em produção). |
+
+O que a política de destinos nega sempre (salvo liberação explícita): metadados de nuvem e link-local (`169.254.0.0/16`,
+`fe80::/10`, `fd00:ec2::254`, nomes `metadata*`), endereços não roteáveis, o host:porta do banco interno (`DATABASE_URL`) e, em
+produção, a própria máquina (loopback). Redes privadas (10/8, 172.16/12, 192.168/16, fc00::/7) são permitidas no modo `OPEN`.
+
+## 2. Interface (`frontend/.env.local`)
+
+`NEXT_PUBLIC_INIA_API_URL` entra no build e define a origem da API na CSP (`img-src`/`connect-src`) e se o HSTS é enviado
+(só quando é `https://`). Mudou o endereço: `npm run build` de novo.
+
+### Content-Security-Policy com nonce (R-07, 08/10/2026)
+
+- **Como funciona**: `frontend/src/proxy.ts` monta a CSP a cada requisição (`src/lib/security/content-security-policy.ts`) com um
+  nonce aleatório de 128 bits. `script-src 'self' 'nonce-…' 'strict-dynamic'`, **sem `'unsafe-inline'` e sem `'unsafe-eval'` em
+  produção** (o `next dev` acrescenta `'unsafe-eval'` e `ws:`). O Next aplica o nonce aos próprios scripts (lê o cabeçalho da
+  requisição); o script de tema do next-themes o recebe pelo `RootLayout`; o Zod roda `jitless` (sem a sonda de `eval` que virava
+  violação em toda página). As demais diretivas não mudaram. `next.config.ts` mantém os outros cabeçalhos (X-Frame-Options,
+  nosniff, Referrer-Policy, Permissions-Policy, COOP, HSTS).
+- **Alcance**: o proxy passa por todas as páginas — login, recuperação de senha, wiki, raiz e 404 inclusive; sessão continua
+  exigida só nas áreas logadas (`AUTHENTICATED_PREFIXES`). Ficam fora só `_next/static`, `_next/image` e o favicon.
+- **Decisão: todas as páginas passam a ser renderizadas por requisição.** Página pré-renderizada no build não tem como levar o
+  nonce, e os scripts dela seriam bloqueados. O `RootLayout` lê o nonce (`headers()`), o que torna todas as rotas dinâmicas. Antes,
+  46 rotas eram estáticas: login, recuperação de senha, 404, laboratório do avatar (só desenvolvimento) e as 42 páginas da wiki. As
+  áreas logadas já eram dinâmicas (cada uma consulta a API) e não mudam. Custo medido nas páginas que eram estáticas (`next start`,
+  um processo, máquina de desenvolvimento; 60 requisições em sequência e 300 com 10 em paralelo):
+
+  | Página | Estática p50 / p95 | Com nonce p50 / p95 | Vazão (10 em paralelo) |
+  |---|---|---|---|
+  | `/auth/login` | 1,9 / 6,3 ms | 7,0 / 13,2 ms | 275 → 82 req/s |
+  | `/wiki` | 3,4 / 6,2 ms | 11,7 / 20,3 ms | 156 → 52 req/s |
+  | `/wiki/glossario` | 3,1 / 5,9 ms | 10,6 / 20,6 ms | 165 → 54 req/s |
+  | `/wiki/workflows/nodes` | 3,8 / 6,1 ms | 14,6 / 29,1 ms | 125 → 47 req/s |
+
+  Aceito: são de 5 a 11 ms de servidor por carga completa de página de baixa frequência (login e wiki); a navegação dentro da
+  aplicação continua no cliente; a instalação não usa CDN (o IIS só repassa), então nenhum cache de borda é perdido. Efeito
+  visível: um clique entre páginas da wiki passa a buscar a página no servidor, em vez de usar a versão estática pré-carregada.
+- **Alternativas descartadas**: (a) manter `'unsafe-inline'` só nas páginas estáticas — em produção login e wiki dividem a origem
+  com a API, e um XSS ali agiria com a sessão da pessoa; (b) SRI (`experimental.sri`) — põe `integrity` só nos arquivos `.js`
+  externos; o HTML estático continua com scripts inline (dados do RSC e o tema), que exigiriam `'unsafe-inline'`.
+- **Verificado no navegador** (build de produção, com `report-uri` de teste coletando os relatórios do próprio navegador): zero
+  violações em login, recuperação de senha, wiki, 404, Acompanhamento com avatar 3D (gestor e operador), Indicadores,
+  Organograma, perfil, Diagnóstico, editor de Workflow (React Flow), prévias PDF (worker do pdf.js) e DOCX da base e outras nove
+  telas da Administração; o worklet do microfone e workers `blob:` carregam. Controles negativos bloqueados: `<script>` inline do
+  HTML, atributo `on*`, URL `javascript:` e `eval`. `next dev` também sem violação.
+- **IIS**: não ligar cache de saída (output caching) para as páginas — o nonce precisa ser único por resposta (o Next já manda
+  `Cache-Control: private, no-cache, no-store` nelas); não acrescentar outra `Content-Security-Policy` no `web.config` (seria uma
+  segunda política somada a esta).
+- **Residual** (ver R-07 em `pendencias-e-riscos.md`): `style-src` mantém `'unsafe-inline'`; com `'strict-dynamic'`, o Chromium
+  deixa rodar um `<script>` inline criado via DOM por código já confiável.
+- **Reversão**: voltar `frontend/src/proxy.ts`, `src/app/layout.tsx`, `src/app/providers.tsx` e `next.config.ts` (a CSP estática
+  volta ao `headers()`) e `npm run build`.
+
+## 3. IIS / proxy
+
+- HTTPS com certificado da empresa sempre que possível (o microfone da voz só funciona com HTTPS). Com HTTPS, configurar HSTS
+  também no IIS se houver outros sites no mesmo host.
+- O ARR envia `X-Forwarded-For` por padrão; mantenha. Sem ele, todos os usuários parecem vir de `127.0.0.1` e dividem o mesmo
+  limite de login por IP.
+- Não abra as portas 3000 e 3333 no firewall; só a porta pública do IIS.
+- `requestLimits maxAllowedContentLength` (100 MB) é maior que os limites da aplicação (upload da Central 50 MB, base 15 MB,
+  JSON 1 MB, API Push 10 MB) — a aplicação é quem recusa.
+
+## 4. Bancos externos (Central de Dados)
+
+A INIA só gera `SELECT` (dialeto próprio, sem SQL digitado), abre sessões PostgreSQL/MySQL/MariaDB como somente leitura e
+limita linhas, tempo e volume. Isso **não substitui** um usuário de banco somente leitura — a credencial cadastrada deve ter só
+leitura nas tabelas/visões necessárias:
+
+- **SQL Server**: login próprio, `db_datareader` (ou `GRANT SELECT` nas visões); nunca `db_owner`/`sysadmin`. O SQL Server não tem
+  sessão somente leitura: aqui a permissão do usuário é a barreira principal.
+- **PostgreSQL**: `CREATE ROLE inia_leitura LOGIN …; GRANT CONNECT …; GRANT USAGE ON SCHEMA …; GRANT SELECT ON …` (sem
+  `CREATE`, sem `pg_read_server_files`).
+- **MySQL/MariaDB**: `GRANT SELECT ON banco.* TO 'inia_leitura'@'<ip-do-servidor-da-inia>'`.
+- Criptografia: `VERIFY_FULL` (com a CA da empresa) em produção; `PREFERRED` aceita certificado não verificado e cai para texto
+  puro. Trocar servidor, porta, usuário ou modo de TLS de uma fonte exige digitar a senha de novo.
+- A INIA não confere automaticamente se a credencial é somente leitura: registre essa verificação no checklist da instalação.
+
+SFTP: informe a fingerprint SHA-256 da chave do servidor quando a área de infraestrutura a fornecer; sem ela, a INIA grava a
+primeira chave vista e recusa qualquer chave diferente depois.
+
+## 5. Banco interno da INIA
+
+Usuário próprio da aplicação (dono do banco `inia`), sem superusuário; porta só para o servidor da aplicação; backup antes de
+toda atualização. O usuário dos testes (`TEST_DATABASE_URL`) não deve existir em produção.
+
+## 6. Papéis e escopos (o que mudou para quem administra)
+
+- Central de Dados e ingestão legada: só `data_hub.manage` com escopo de **organização**.
+- Domínios de negócio, flags de canal, calendário operacional, governança, definições/glossário de indicadores e catálogo de
+  assuntos: leitura em qualquer escopo; **alteração só com escopo de organização**.
+- Regras de cálculo e bases de conhecimento: o administrador de Grupo/Subgrupo mantém as do próprio Grupo; "todos os Grupos" exige
+  organização.
+- Definir/alterar nível de liderança no cadastro: `people.manage` de organização. Trocar e-mail ou inativar alguém com conta segue a
+  mesma custódia da tela de acessos. Ninguém altera o próprio nível, Grupo, e-mail ou situação.
+- Gerar senha/habilitar/desabilitar: o escopo de quem age precisa alcançar toda a estrutura que a pessoa lidera.
+
+## 7. Atualização
+
+1. Backup do banco interno (`pg_dump`).
+2. Atualizar o código (`git pull` ou pacote) e dependências: `npm run install:all` (o `package-lock.json` traz next 16.3.8,
+   multer 2.4.0, proxy-addr 2.0.8, sharp 0.35.5).
+3. `npm run update` — aplica a migration `123_auth_session_revocations.sql` (cria a tabela `auth_revoked_sessions`; nada é
+   alterado nem apagado). **A migration precisa rodar antes de subir o código novo**: o guard de sessão consulta essa tabela.
+4. Revisar `backend/.env`: `NODE_ENV=production`; `SESSION_COOKIE_SECURE=false` se o endereço for HTTP; `TRUST_PROXY`;
+   `JWT_SECRET` ≥ 32 caracteres (senão a API não sobe em produção). Quem instalar de novo com `env-init` já recebe esses valores.
+5. `npm run build` (interface e API) e reiniciar os serviços.
+6. Conferir: `/health`; login e logout; um administrador de Grupo não vê a Central de Dados; cabeçalho
+   `Content-Security-Policy` com `script-src 'self' 'nonce-…' 'strict-dynamic'` nas páginas, inclusive login e wiki, com nonce
+   diferente a cada recarga (`curl -sI https://<endereço>/auth/login`), e nenhuma mensagem "Content Security Policy" no console do
+   navegador (F12) ao abrir login, Acompanhamento e Administração.
+
+Efeitos visíveis: sessões emitidas antes continuam válidas até vencer (não têm `jti`); quem estava inativo no cadastro perde o
+acesso; administradores escopados deixam de alterar catálogos da organização e de entrar na Central; fontes da Central cujo
+destino mude passam a pedir a senha; conexões de IA que trocarem de host perdem a chave guardada; arquivos da base passam a
+baixar como anexo (a prévia na tela continua).
+
+## 8. Reversão
+
+1. Parar os serviços e voltar o código e o `package-lock.json` para a versão anterior; `npm run install:all`; `npm run build`.
+2. A tabela `auth_revoked_sessions` pode ficar (o código antigo não a usa). Para removê-la: `drop table auth_revoked_sessions;`
+   e `delete from schema_migrations where name = '123_auth_session_revocations.sql';`.
+3. Nenhum dado de negócio foi migrado: fingerprints SFTP gravadas por TOFU ficam na configuração da fonte (o código antigo as usa
+   normalmente); segredos revogados por troca de destino continuam revogados (cadastrar de novo).
+4. Se `NODE_ENV` foi mudado para `production` num servidor HTTP e for preciso voltar: `NODE_ENV=development` volta a funcionar
+   com o código antigo (sem `SESSION_COOKIE_SECURE`).
+
+## 9. Rotação de credenciais
+
+Não foi encontrado segredo exposto no repositório nem no histórico; **nenhuma rotação é necessária por causa desta auditoria**.
+Nenhuma senha fica no código: a das contas de demonstração vem de `INIA_DEMO_PASSWORD` (backend/.env) e as dos bancos de exemplo do
+Docker de `INIA_EXAMPLES_ADMIN_PASSWORD`/`INIA_EXAMPLES_READER_PASSWORD` (.env da raiz), todas geradas por `npm run env:init`; as
+contas que as migrations antigas criam nascem com senha aleatória. Mesmo assim, nunca usar uma instalação de demonstração com dados
+reais, e nunca carregar a massa demo em servidor (recusado em produção).

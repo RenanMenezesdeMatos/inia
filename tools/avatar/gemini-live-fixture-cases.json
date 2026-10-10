@@ -1,0 +1,8 @@
+[
+ {"id":"frase-01-apresentacao","prompt":"Diga exatamente: \"Olá! Eu sou a INIA, sua mentora. Vamos aprender juntos?\""},
+ {"id":"frase-02-proposta","prompt":"Diga exatamente: \"Minha proposta é bem simples: primeiro vamos ouvir você.\""},
+ {"id":"frase-03-escolha","prompt":"Diga exatamente: \"Você prefere falar sobre vendas, benefícios ou atendimento?\""},
+ {"id":"frase-04-amanha","prompt":"Diga exatamente: \"Amanhã, às oito e meia, vamos revisar os próximos passos.\""},
+ {"id":"frase-05-labiais","prompt":"Diga exatamente: \"Posso passar um bom feedback? Vamos ver juntos o mapa das vendas e das metas de fevereiro.\""},
+ {"id":"resposta-longa","prompt":"Em cinco ou seis frases, com calma e pausas naturais, explique para um operador de atendimento como você vai ajudá-lo a melhorar os indicadores dele ao longo do mês. Não use listas."}
+]

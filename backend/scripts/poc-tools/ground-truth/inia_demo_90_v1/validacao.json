@@ -1,0 +1,28 @@
+{
+  "resultado": "APROVADO",
+  "chamadas": 90,
+  "operadores": 3,
+  "chamadas_por_operador": 30,
+  "casos_controle": 18,
+  "rechamadas": 8,
+  "assuntos_primarios": 17,
+  "duracao_min_s": 221,
+  "duracao_max_s": 508,
+  "transcricoes_unicas": 90,
+  "segmentos": 2802,
+  "checagens": [
+    "IDs únicos",
+    "90 JSONs válidos",
+    "30 chamadas por operador",
+    "90 transcrições distintas",
+    "metadados CSV idênticos ao JSONL",
+    "intervalos contínuos e duração reconciliada",
+    "espera separada de silêncio",
+    "rechamadas com vínculo, cliente e cronologia válidos",
+    "evidências QA verbatim com segmento e tempo",
+    "transferência compatível com participação de suporte",
+    "nota ausente preservada como null",
+    "tendências de TMA confirmadas",
+    "ausência de rótulos QA nos dados importáveis"
+  ]
+}

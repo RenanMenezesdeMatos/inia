@@ -1,0 +1,172 @@
+[
+  {
+    "key": "01",
+    "name": "Rechamada recorrente",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "02",
+    "name": "Detrator de URA",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "03",
+    "name": "Q4 recorrente",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "04",
+    "name": "Maiores quedas por Subgrupo",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "05",
+    "name": "Piores em Qualidade por Grupo",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "06",
+    "name": "PRV baixo recorrente",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "07",
+    "name": "TMA fora do esperado",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "08",
+    "name": "Contestação multidomínio",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "09",
+    "name": "TMA bom + Qualidade ruim",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "10",
+    "name": "Disponibilidade / Aderência",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "11",
+    "name": "Reconhecimento dos melhores",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "12",
+    "name": "Maiores evoluções",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "13",
+    "name": "Monitoramento operacional do dia",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "14",
+    "name": "Qualidade + PRV",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "15",
+    "name": "Maior queda entre críticos",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "DIRECTOR"
+    }
+  },
+  {
+    "key": "16",
+    "name": "Resumo mensal do Supervisor",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "SUPERVISOR"
+    }
+  },
+  {
+    "key": "17",
+    "name": "Padrões recorrentes no grupo",
+    "structureRequirement": {
+      "kind": "GROUP",
+      "domain": "RETENCAO",
+      "domainName": "Retenção e Cancelamento"
+    }
+  },
+  {
+    "key": "18a",
+    "name": "Auditoria de conformidade — Faturamento",
+    "structureRequirement": {
+      "kind": "GROUP_SCOPE",
+      "domain": "FATURAMENTO",
+      "domainName": "Faturamento"
+    }
+  },
+  {
+    "key": "18b",
+    "name": "Auditoria de conformidade — Retenção e Cancelamento",
+    "structureRequirement": {
+      "kind": "GROUP_SCOPE",
+      "domain": "RETENCAO",
+      "domainName": "Retenção e Cancelamento"
+    }
+  },
+  {
+    "key": "18c",
+    "name": "Auditoria de conformidade — Suporte Técnico",
+    "structureRequirement": {
+      "kind": "GROUP_SCOPE",
+      "domain": "SUPORTE",
+      "domainName": "Suporte Técnico"
+    }
+  },
+  {
+    "key": "19",
+    "name": "Ausência de dados",
+    "structureRequirement": {
+      "kind": "GENERIC"
+    }
+  },
+  {
+    "key": "20",
+    "name": "Plano consolidado de ação",
+    "structureRequirement": {
+      "kind": "PERSON_ANCHOR",
+      "role": "MANAGER"
+    }
+  }
+]

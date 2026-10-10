@@ -1,0 +1,267 @@
+{
+ "_source": "Homologação real Rechamada V1 (2026-09-29) — feedbackView + supervisorView publicados (feedback ee06d29b…)",
+ "collaborator": {
+  "card": "Rechamada de 14,6%, fora da meta em agosto de 2026. As interações marcadas se concentraram em contestação de cobrança.",
+  "kind": "INDICATOR",
+  "cycle": {
+   "title": "Resultado do período · agosto de 2026",
+   "indicators": [
+    {
+     "name": "Rechamada",
+     "lines": [
+      {
+       "label": "Resultado oficial",
+       "value": "14,6%"
+      },
+      {
+       "label": "Meta oficial",
+       "value": "10%"
+      },
+      {
+       "label": "Situação oficial",
+       "value": "fora da referência"
+      },
+      {
+       "label": "Quartil oficial",
+       "value": "Q4 (Q1 = melhor, Q4 = pior)"
+      },
+      {
+       "label": "Atingimento oficial",
+       "value": "68,5%"
+      },
+      {
+       "label": "Período anterior (julho de 2026)",
+       "value": "6,8%, quartil Q1"
+      }
+     ],
+     "notes": [
+      "7 de 48 interações atendidas vieram marcadas como rechamada (14,6%).",
+      "Contestação de cobrança: 5 das 7 interações marcadas; 35,7% dos atendimentos desse motivo, contra 5,9% nos demais.",
+      "Período anterior (julho de 2026): 3 de 44 interações marcadas (6,8%).",
+      "Contestação de cobrança passou de 33,3% para 71,4% das interações marcadas."
+     ]
+    }
+   ]
+  },
+  "context": null,
+  "heading": {
+   "title": "Rechamada",
+   "subtitle": "Agosto de 2026"
+  },
+  "version": "FEEDBACK_VIEW_V1",
+  "greeting": "Olá, Joana!",
+  "maintain": null,
+  "attention": [],
+  "materials": [],
+  "narrative": [
+   "Em agosto de 2026, o resultado oficial de Rechamada foi de 14,6%, fora da meta de 10% (quartil oficial Q4). No período anterior, foi de 6,8%, quartil Q1 (julho de 2026).",
+   "Das 48 interações que você atendeu no período, 7 chegaram marcadas como rechamada (14,6%). Contestação de cobrança reuniu 5 delas: nesse motivo, 5 de 14 atendimentos vieram marcados (35,7%), contra 5,9% nos demais motivos.",
+   "No período anterior (julho de 2026), 3 de 44 interações atendidas vieram marcadas (6,8%). Contestação de cobrança passou de 33,3% para 71,4% das interações marcadas.",
+   "Os dados que recebemos marcam o novo contato, mas não indicam qual atendimento anterior o originou nem quem atendeu. Por isso, esta análise não aponta um comportamento seu ligado a esse resultado."
+  ],
+  "developments": [],
+  "sectionLabels": {
+   "call": "Exemplos das chamadas",
+   "maintain": "O que manter",
+   "detailsHint": "O resultado do período, onde o indicador aparece nas suas interações e o que a análise não pode concluir.",
+   "developments": "O que trabalhar"
+  }
+ },
+ "supervisor": {
+  "prv": null,
+  "cycle": "agosto de 2026",
+  "source": {
+   "kind": "DIRECT_INDICATOR",
+   "label": "Diagnóstico direto do indicador (sem PRV)"
+  },
+  "triage": [
+   {
+    "reasons": [
+     "quartil oficial dentro dos quartis que a estratégia investiga",
+     "resultado oficial fora da referência",
+     "quartil oficial piorou em relação ao fechamento anterior"
+    ],
+    "decision": "investigado (desenvolvimento)",
+    "indicator": "Rechamada"
+   }
+  ],
+  "version": "PRV_SUPERVISOR_VIEW_V1",
+  "indicators": [
+   {
+    "mix": {
+     "rows": [
+      {
+       "label": "Segunda via",
+       "currentSharePercent": 41.7,
+       "previousSharePercent": 50,
+       "averageDurationSeconds": 461
+      },
+      {
+       "label": "Contestação de cobrança",
+       "currentSharePercent": 29.2,
+       "previousSharePercent": 27.3,
+       "averageDurationSeconds": 448
+      },
+      {
+       "label": "Plano",
+       "currentSharePercent": 29.2,
+       "previousSharePercent": 22.7,
+       "averageDurationSeconds": 506
+      }
+     ],
+     "status": "NO_SHIFT",
+     "statement": null
+    },
+    "name": "Rechamada",
+    "team": {
+     "status": "sem observações do Subgrupo no período",
+     "behaviors": [],
+     "contributors": 0
+    },
+    "steps": {
+     "mode": "Orientado pela IA",
+     "planner": "escolhidos pela IA a partir da estratégia",
+     "rejected": [],
+     "selected": [
+      {
+       "label": "Composição dos motivos × período anterior",
+       "purpose": "Verificar se houve alteração na composição dos motivos atendidos em relação ao período anterior."
+      },
+      {
+       "label": "Interações sinalizadas por motivo",
+       "purpose": "Identificar em quais motivos as interações marcadas como rechamada se concentram no período."
+      },
+      {
+       "label": "Interações sinalizadas × período anterior",
+       "purpose": "Comparar a evolução das interações com sinal de rechamada por motivo frente ao período anterior."
+      }
+     ],
+     "notSelected": [],
+     "unavailable": [
+      {
+       "label": "Avaliar processos nos atendimentos",
+       "reason": "os dados de interação não trazem vínculo com o atendimento anterior"
+      },
+      {
+       "label": "Comparação agregada com o grupo",
+       "reason": "os dados de interação não trazem vínculo com o atendimento anterior"
+      }
+     ]
+    },
+    "sample": {
+     "reused": 0,
+     "analyzed": 0,
+     "eligible": 0,
+     "reanalyzed": 0,
+     "newObservations": 0,
+     "selectionReason": "",
+     "reusedObservations": 0
+    },
+    "signal": {
+     "label": "rechamada",
+     "status": "concentrado em um motivo",
+     "reasons": [
+      {
+       "label": "Contestação de cobrança",
+       "signaled": 5,
+       "interactions": 14,
+       "signalRatePercent": 35.7,
+       "shareOfSignalPercent": 71.4
+      },
+      {
+       "label": "Segunda via",
+       "signaled": 1,
+       "interactions": 20,
+       "signalRatePercent": 5,
+       "shareOfSignalPercent": 14.3
+      },
+      {
+       "label": "Plano",
+       "signaled": 1,
+       "interactions": 14,
+       "signalRatePercent": 7.1,
+       "shareOfSignalPercent": 14.3
+      }
+     ],
+     "signaled": 7,
+     "evolution": {
+      "status": "comparável",
+      "shifted": "Contestação de cobrança: 33,3% → 71,4% das interações marcadas",
+      "previous": {
+       "signaled": 3,
+       "interactions": 44,
+       "signalRatePercent": 6.8
+      }
+     },
+     "interactions": 48,
+     "concentration": "Contestação de cobrança: 5 de 7 marcadas (71,4%); 35,7% dos atendimentos do motivo × 5,9% nos demais",
+     "signalRatePercent": 14.6
+    },
+    "coverage": null,
+    "evidence": [],
+    "findings": [
+     "Em agosto de 2026, 7 de 48 interações atendidas vieram marcadas como rechamada (14,6%).",
+     "Contestação de cobrança reuniu 5 das 7 interações marcadas como rechamada (71,4%); nesse motivo, 5 de 14 interações vieram marcadas (35,7%), contra 5,9% nos demais motivos.",
+     "No período anterior, 3 de 44 interações atendidas vieram marcadas (6,8%).",
+     "Contestação de cobrança passou de 33,3% para 71,4% das interações marcadas entre os dois períodos."
+    ],
+    "official": [
+     "Rechamada oficial em agosto de 2026: 14,6%",
+     "Meta oficial: 10%",
+     "Situação oficial: fora da referência",
+     "Quartil oficial: Q4 (Q1 = melhor, Q4 = pior)",
+     "Atingimento oficial: 68,5%",
+     "Período anterior (julho de 2026): 6,8%, quartil Q1"
+    ],
+    "patterns": [],
+    "strategy": {
+     "version": 1,
+     "versionId": "32f78c84-1d74-4977-948e-a9b83590c438"
+    },
+    "processes": [],
+    "conclusion": "Mudança de mix de motivos",
+    "population": {
+     "segments": [
+      {
+       "label": "Segunda via",
+       "interactions": 20,
+       "sharePercent": 41.7,
+       "averageDurationSeconds": 461
+      },
+      {
+       "label": "Contestação de cobrança",
+       "interactions": 14,
+       "sharePercent": 29.2,
+       "averageDurationSeconds": 448
+      },
+      {
+       "label": "Plano",
+       "interactions": 14,
+       "sharePercent": 29.2,
+       "averageDurationSeconds": 506
+      }
+     ],
+     "selectedSegment": "Contestação de cobrança",
+     "selectionReason": "motivo em que as interações sinalizadas se concentram",
+     "interactionsInPeriod": 48
+    },
+    "evidenceGap": "os dados de interação não trazem vínculo com o atendimento anterior",
+    "limitations": [
+     "A estratégia pede a avaliação dos atendimentos ANTERIORES vinculados ao sinal, mas os dados de interação não trazem esse vínculo — nenhum atendimento anterior é presumido e nenhum comportamento é avaliado a partir do sinal.",
+     "As interações marcadas como rechamada chegam prontas da fonte de dados: a INIA não define janela nem regra do sinal, só conta o que foi marcado.",
+     "As interações marcadas são as que o colaborador atendeu; os dados não informam qual atendimento anterior originou cada uma, nem quem o atendeu.",
+     "A mudança na composição das interações marcadas aconteceu no mesmo período do resultado — composição não demonstra causa."
+    ],
+    "unsupportedHypotheses": [
+     "O comportamento observado ou a mudança de mix ter causado o resultado do indicador (associação e composição não são causa).",
+     "Que as interações marcadas como rechamada tenham sido causadas por um atendimento do colaborador (o vínculo com o atendimento anterior não existe nos dados)."
+    ]
+   }
+  ],
+  "interpretation": [
+   "Rechamada: mudança de mix de motivos.",
+   "As interações marcadas como rechamada se concentraram em Contestação de cobrança; concentração não demonstra causa.",
+   "A estratégia pede os atendimentos anteriores vinculados ao sinal, mas os dados não trazem esse vínculo: nenhum comportamento foi avaliado a partir do sinal."
+  ]
+ }
+}

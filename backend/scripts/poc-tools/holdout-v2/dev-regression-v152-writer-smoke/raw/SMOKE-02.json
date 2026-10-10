@@ -1,0 +1,249 @@
+{
+  "caseId": "SMOKE-02",
+  "callNumber": 2,
+  "callsForThisCase": 1,
+  "requestSha256Frozen": "2e4c4bf83a6e0df6f2ec88252707279ed7cdc8713415ba67ab9358970302f73a",
+  "writer": {
+    "promptVersion": "FEEDBACK_WRITER_PROMPT_V1",
+    "promptSha256": "b0e1961d6cd6934cf6ee763ee5f04669ded5371f963922271c0b29d7619538ba",
+    "writerSha256": "c5192d79a84d2a042efad81ca0cdc17979d1fe80479b0e7fdba33144b02fa1a2",
+    "model": "gemini-3.1-flash-lite",
+    "config": {
+      "provider": "GEMINI",
+      "model": "gemini-3.1-flash-lite",
+      "responseMimeType": "application/json",
+      "timeoutMs": 30000,
+      "retries": 0,
+      "modelFallback": false,
+      "escalation": false
+    }
+  },
+  "input": {
+    "contract": "FEEDBACK_WRITER_INPUT_V1",
+    "effectClaimMode": "POTENTIAL_ONLY",
+    "interactionLabel": "24/09/2026",
+    "uncertainty": "evidência de uma única interação; não representa padrão",
+    "items": [
+      {
+        "slot": "ITEM_1",
+        "section": "OPPORTUNITY",
+        "interpretation": {
+          "kind": "FRICTION",
+          "polarity": "NEGATIVE",
+          "scope": "INTERACTION_SPECIFIC",
+          "safeMeaning": "momento de atrito na conversa ligado à condução do operador, observado nesta interação"
+        },
+        "guidance": {
+          "source": "COACHING_SUGGESTION",
+          "mandatory": false,
+          "knowledge": null
+        },
+        "evidence": [
+          {
+            "speaker": "OPERADOR",
+            "text": "Esse valor aparece por causa do faturamento pro rata do ciclo com o ajuste da franquia excedente.",
+            "truncated": false,
+            "wasRedacted": false
+          },
+          {
+            "speaker": "CLIENTE",
+            "text": "Desculpa, mas eu não entendi nada do que você acabou de falar.",
+            "truncated": false,
+            "wasRedacted": false
+          }
+        ],
+        "evidenceWithheld": 0
+      }
+    ],
+    "constraints": [
+      {
+        "code": "ONLY_THIS_INTERACTION",
+        "text": "Fale somente sobre esta interação."
+      },
+      {
+        "code": "NEVER_PATTERN",
+        "text": "Nunca descreva como padrão, hábito, tendência ou característica do colaborador (nada de 'costuma', 'sempre', 'frequentemente')."
+      },
+      {
+        "code": "NO_INTENT_DIAGNOSIS",
+        "text": "Não diagnostique intenção, motivação ou estado emocional do colaborador."
+      },
+      {
+        "code": "NO_UNSUPPORTED_CAUSE",
+        "text": "Não afirme causa ou consequência que a evidência não mostra."
+      },
+      {
+        "code": "NO_INVENTED_POLICY",
+        "text": "Não cite política, procedimento ou regra além do documento informado no item."
+      },
+      {
+        "code": "NO_INVENTED_NUMBERS",
+        "text": "Não escreva número, prazo, valor ou meta que não esteja na evidência ou na regra do item."
+      },
+      {
+        "code": "NO_SYSTEM_EXECUTION_CLAIM",
+        "text": "Não afirme que algo foi executado ou registrado em sistema."
+      },
+      {
+        "code": "NO_INTERNAL_IDS",
+        "text": "Não mencione identificadores, códigos ou nomes de campos."
+      },
+      {
+        "code": "NO_AI_ATTRIBUTION",
+        "text": "Não diga que uma IA, a INIA ou um sistema detectou algo."
+      },
+      {
+        "code": "NO_DISCIPLINARY_LANGUAGE",
+        "text": "Não use linguagem disciplinar (advertência, punição, penalidade, infração)."
+      },
+      {
+        "code": "COACHING_IS_SUGGESTION",
+        "text": "Em COACHING_SUGGESTION, a orientação é sugestão, nunca obrigação."
+      },
+      {
+        "code": "NORMATIVE_ONLY_WITH_KB_RULE",
+        "text": "Linguagem normativa ('deve', 'é obrigatório') só em item KB_RULE e só sobre a regra informada."
+      },
+      {
+        "code": "PRESERVE_EVIDENCE",
+        "text": "Se citar a evidência entre aspas, copie o texto exibível exatamente; nunca reconstrua dado mascarado ([CPF], [TELEFONE]…)."
+      },
+      {
+        "code": "FILL_ONLY_WORDING",
+        "text": "Preencha somente observed, whyItMatters e whatYouCanDo de cada item; nada mais."
+      },
+      {
+        "code": "POTENTIAL_EFFECT_ONLY",
+        "text": "Benefício para o cliente só como possibilidade ('pode ajudar', 'contribui para'); nunca como resultado ocorrido ou garantido ('garante que', 'assegura que', 'fez com que o cliente entendesse')."
+      },
+      {
+        "code": "REINFORCE_OBSERVED_ONLY",
+        "text": "Em ponto positivo, reforce exatamente o comportamento observado na evidência; não o troque por outro comportamento que não aparece nela."
+      }
+    ],
+    "outputFields": [
+      "observed",
+      "whyItMatters",
+      "whatYouCanDo"
+    ]
+  },
+  "http": {
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
+    "status": 200,
+    "transportError": null,
+    "startedAt": "2026-09-24T02:02:43.633Z",
+    "endedAt": "2026-09-24T02:02:44.887Z",
+    "requestBody": {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "FEEDBACK_WRITER_INPUT_V1:\n{\n  \"contract\": \"FEEDBACK_WRITER_INPUT_V1\",\n  \"effectClaimMode\": \"POTENTIAL_ONLY\",\n  \"interactionLabel\": \"24/09/2026\",\n  \"uncertainty\": \"evidência de uma única interação; não representa padrão\",\n  \"constraints\": [\n    {\n      \"code\": \"ONLY_THIS_INTERACTION\",\n      \"text\": \"Fale somente sobre esta interação.\"\n    },\n    {\n      \"code\": \"NEVER_PATTERN\",\n      \"text\": \"Nunca descreva como padrão, hábito, tendência ou característica do colaborador (nada de 'costuma', 'sempre', 'frequentemente').\"\n    },\n    {\n      \"code\": \"NO_INTENT_DIAGNOSIS\",\n      \"text\": \"Não diagnostique intenção, motivação ou estado emocional do colaborador.\"\n    },\n    {\n      \"code\": \"NO_UNSUPPORTED_CAUSE\",\n      \"text\": \"Não afirme causa ou consequência que a evidência não mostra.\"\n    },\n    {\n      \"code\": \"NO_INVENTED_POLICY\",\n      \"text\": \"Não cite política, procedimento ou regra além do documento informado no item.\"\n    },\n    {\n      \"code\": \"NO_INVENTED_NUMBERS\",\n      \"text\": \"Não escreva número, prazo, valor ou meta que não esteja na evidência ou na regra do item.\"\n    },\n    {\n      \"code\": \"NO_SYSTEM_EXECUTION_CLAIM\",\n      \"text\": \"Não afirme que algo foi executado ou registrado em sistema.\"\n    },\n    {\n      \"code\": \"NO_INTERNAL_IDS\",\n      \"text\": \"Não mencione identificadores, códigos ou nomes de campos.\"\n    },\n    {\n      \"code\": \"NO_AI_ATTRIBUTION\",\n      \"text\": \"Não diga que uma IA, a INIA ou um sistema detectou algo.\"\n    },\n    {\n      \"code\": \"NO_DISCIPLINARY_LANGUAGE\",\n      \"text\": \"Não use linguagem disciplinar (advertência, punição, penalidade, infração).\"\n    },\n    {\n      \"code\": \"COACHING_IS_SUGGESTION\",\n      \"text\": \"Em COACHING_SUGGESTION, a orientação é sugestão, nunca obrigação.\"\n    },\n    {\n      \"code\": \"NORMATIVE_ONLY_WITH_KB_RULE\",\n      \"text\": \"Linguagem normativa ('deve', 'é obrigatório') só em item KB_RULE e só sobre a regra informada.\"\n    },\n    {\n      \"code\": \"PRESERVE_EVIDENCE\",\n      \"text\": \"Se citar a evidência entre aspas, copie o texto exibível exatamente; nunca reconstrua dado mascarado ([CPF], [TELEFONE]…).\"\n    },\n    {\n      \"code\": \"FILL_ONLY_WORDING\",\n      \"text\": \"Preencha somente observed, whyItMatters e whatYouCanDo de cada item; nada mais.\"\n    },\n    {\n      \"code\": \"POTENTIAL_EFFECT_ONLY\",\n      \"text\": \"Benefício para o cliente só como possibilidade ('pode ajudar', 'contribui para'); nunca como resultado ocorrido ou garantido ('garante que', 'assegura que', 'fez com que o cliente entendesse').\"\n    },\n    {\n      \"code\": \"REINFORCE_OBSERVED_ONLY\",\n      \"text\": \"Em ponto positivo, reforce exatamente o comportamento observado na evidência; não o troque por outro comportamento que não aparece nela.\"\n    }\n  ],\n  \"items\": [\n    {\n      \"itemRef\": \"ITEM_1\",\n      \"section\": \"OPPORTUNITY\",\n      \"kind\": \"FRICTION\",\n      \"polarity\": \"NEGATIVE\",\n      \"scope\": \"INTERACTION_SPECIFIC\",\n      \"safeMeaning\": \"momento de atrito na conversa ligado à condução do operador, observado nesta interação\",\n      \"guidanceSource\": \"COACHING_SUGGESTION\",\n      \"guidanceMandatory\": false,\n      \"knowledge\": null,\n      \"evidence\": [\n        {\n          \"speaker\": \"OPERADOR\",\n          \"text\": \"Esse valor aparece por causa do faturamento pro rata do ciclo com o ajuste da franquia excedente.\",\n          \"truncated\": false,\n          \"masked\": false\n        },\n        {\n          \"speaker\": \"CLIENTE\",\n          \"text\": \"Desculpa, mas eu não entendi nada do que você acabou de falar.\",\n          \"truncated\": false,\n          \"masked\": false\n        }\n      ],\n      \"evidenceWithheldCount\": 0\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ],
+      "systemInstruction": {
+        "parts": [
+          {
+            "text": "Você escreve o texto de um feedback para um operador de atendimento sobre UMA única interação (uma conversa com um cliente).\n\nA entrada já traz tudo decidido: quais itens existem, se cada um é ponto positivo (STRENGTH) ou ponto de desenvolvimento (OPPORTUNITY), o significado seguro de cada item, a fonte da orientação e a evidência exibível — trechos literais da conversa, com dados pessoais já mascarados (por exemplo [CPF], [TELEFONE], [PROTOCOLO]). Você não decide nem altera nada disso. Você só escreve três textos por item.\n\nPARA CADA ITEM, escreva em português do Brasil, falando diretamente com o operador (\"você\"), em tom respeitoso, claro e sem jargão:\n- observed: o que aconteceu nesta interação, fiel ao significado seguro e à evidência do item;\n- whyItMatters: por que isso é relevante para o atendimento, como possibilidade de efeito;\n- whatYouCanDo: o que o operador pode fazer em conversas parecidas.\n\nESCOPO\n1. Fale somente desta interação. Nunca trate o item como padrão, hábito, tendência ou característica do operador; não use \"costuma\", \"sempre\", \"frequentemente\", \"geralmente\" nem \"tende a\".\n2. Não diagnostique intenção, motivação, esforço ou estado emocional do operador.\n3. Não afirme causa nem consequência que a evidência não mostra.\n\nEFEITO — somente potencial\n4. Benefício ou impacto para o cliente aparece só como possibilidade: \"pode ajudar\", \"contribui para\", \"pode facilitar\", \"pode evitar\".\n5. Nunca afirme como ocorrido ou garantido um estado do cliente que a evidência não mostra: não use \"garante que\", \"assegura que\", \"fez com que\" ou \"resultou em\" para dizer que o cliente entendeu, recebeu, ficou satisfeito, ficou tranquilo ou teve o problema resolvido.\n\nPONTO POSITIVO — reforce somente o que foi observado\n6. Reforce exatamente o comportamento que aparece na evidência, com o mesmo alcance. Não o transforme em outro comportamento: resumir não é confirmar que o cliente entendeu; enviar ou informar não é o cliente ter recebido; informar não é o cliente ter ficado satisfeito; ser objetivo não é ter resolvido o problema.\n7. Não acrescente elogios ou qualidades que o significado seguro e a evidência não sustentam.\n\nPONTO DE DESENVOLVIMENTO\n8. Descreva o ponto sem acusação e sem linguagem disciplinar (advertência, punição, penalidade, infração, falha grave).\n9. Quando a fonte da orientação for COACHING_SUGGESTION, whatYouCanDo é uma sugestão prática (\"você pode...\", \"uma alternativa é...\"), nunca uma obrigação.\n10. Não invente canal oficial, obrigação, política, procedimento, requisito, regra de segurança ou risco que o item não traga. Linguagem normativa (\"deve\", \"é obrigatório\", \"é proibido\") só quando o item trouxer uma regra da base, e somente sobre o texto dessa regra.\n\nFATOS\n11. Não escreva número, valor, prazo, data ou meta que não esteja na evidência ou na regra do item.\n12. Não afirme que algo foi executado, registrado ou alterado em sistema além do que a evidência mostra literalmente.\n13. Se citar a evidência entre aspas, copie o trecho exatamente como está; nunca reconstrua um dado mascarado.\n14. Mantenha o sentido do item: ponto positivo continua positivo; ponto de desenvolvimento continua de desenvolvimento.\n\nFORMA\n15. Não mencione IA, INIA, sistema de análise, nem que algo foi \"detectado\" ou \"identificado automaticamente\".\n16. Não mencione nomes de campos, códigos ou valores técnicos da entrada (itemRef, STRENGTH, OPPORTUNITY, COACHING_SUGGESTION e similares).\n17. Cada texto tem de uma a três frases curtas.\n\nSAÍDA\nResponda SOMENTE com um objeto JSON, sem texto antes ou depois e sem markdown, neste formato:\n{\"items\":[{\"itemRef\":\"<itemRef do item>\",\"observed\":\"...\",\"whyItMatters\":\"...\",\"whatYouCanDo\":\"...\"}]}\n- exatamente um objeto por item recebido, na mesma ordem da entrada;\n- em itemRef, copie exatamente o itemRef do item;\n- nenhum campo além de itemRef, observed, whyItMatters e whatYouCanDo; nenhum resumo geral."
+          }
+        ]
+      },
+      "generationConfig": {
+        "responseMimeType": "application/json"
+      }
+    }
+  },
+  "responseRaw": "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\": [\n          {\n            \"text\": \"{\\\"items\\\":[{\\\"itemRef\\\":\\\"ITEM_1\\\",\\\"observed\\\":\\\"Você explicou a composição do valor utilizando termos técnicos como 'faturamento pro rata' e 'franquia excedente', o que levou o cliente a manifestar que não entendeu a explicação.\\\",\\\"whyItMatters\\\":\\\"Evitar termos técnicos complexos pode facilitar a compreensão das informações pelo cliente.\\\",\\\"whatYouCanDo\\\":\\\"Você pode tentar explicar o conceito de forma mais simples ou utilizar exemplos cotidianos para tornar o entendimento mais acessível ao cliente.\\\"}]}\",\n            \"thoughtSignature\": \"EnEKbwFpFH0T/3fxAR6Dnswzl/gknd36UpMQqdAyHCj9INXybIpCG7iPFu1HMVJb2b3X9ixNrNWJklUM7CSJZg4DiwEOZbnJVfoxec+Aiptlm6rv4SXKchZ4/sS+yoGgr3ciy4Pz9XXfXHEQCbjTk8fGCg==\"\n          }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 2079,\n    \"candidatesTokenCount\": 104,\n    \"totalTokenCount\": 2183,\n    \"promptTokensDetails\": [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 2079\n      }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\": \"gemini-3.1-flash-lite\",\n  \"responseId\": \"w4S0at-NNKqKqtsPpP_yyQc\"\n}\n",
+  "usageMetadata": {
+    "promptTokenCount": 2079,
+    "candidatesTokenCount": 104,
+    "totalTokenCount": 2183,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 2079
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "pipeline": {
+    "status": "PENDING_REVIEW",
+    "writerError": null,
+    "writerRawOutput": {
+      "items": [
+        {
+          "slot": "ITEM_1",
+          "observed": "Você explicou a composição do valor utilizando termos técnicos como 'faturamento pro rata' e 'franquia excedente', o que levou o cliente a manifestar que não entendeu a explicação.",
+          "whyItMatters": "Evitar termos técnicos complexos pode facilitar a compreensão das informações pelo cliente.",
+          "whatYouCanDo": "Você pode tentar explicar o conceito de forma mais simples ou utilizar exemplos cotidianos para tornar o entendimento mais acessível ao cliente."
+        }
+      ]
+    },
+    "provenance": {
+      "adapterVersion": "GEMINI_FEEDBACK_WRITER_V1",
+      "provider": "GEMINI",
+      "requestedModel": "gemini-3.1-flash-lite",
+      "responseModel": "gemini-3.1-flash-lite",
+      "promptVersion": "FEEDBACK_WRITER_PROMPT_V1",
+      "promptSha256": "b0e1961d6cd6934cf6ee763ee5f04669ded5371f963922271c0b29d7619538ba",
+      "schemaVersion": "FEEDBACK_WRITER_OUTPUT_V1",
+      "contractVersion": "FEEDBACK_WRITER_INPUT_V1",
+      "effectClaimMode": "POTENTIAL_ONLY",
+      "writerSha256": "c5192d79a84d2a042efad81ca0cdc17979d1fe80479b0e7fdba33144b02fa1a2",
+      "config": {
+        "responseMimeType": "application/json",
+        "timeoutMs": 30000,
+        "retries": 0,
+        "modelFallback": false,
+        "escalation": false
+      },
+      "requestSha256": "2e4c4bf83a6e0df6f2ec88252707279ed7cdc8713415ba67ab9358970302f73a",
+      "responseSha256": "4171417dd9efaf19ee90a663cdbc66d1261cce975eddacfba942a4c6c905d297",
+      "response": {
+        "durationMs": 1254,
+        "usage": {
+          "promptTokens": 2079,
+          "outputTokens": 104,
+          "reasoningTokens": null,
+          "cachedInputTokens": null,
+          "totalTokens": 2183
+        },
+        "costStatus": "NOT_CONFIGURED"
+      },
+      "validation": {
+        "status": "VALID",
+        "detail": null,
+        "itemCount": 1,
+        "expectedItemCount": 1
+      }
+    },
+    "reviews": [
+      {
+        "slot": "ITEM_1",
+        "section": "OPPORTUNITY",
+        "wordingSource": "WRITER",
+        "writerViolations": [],
+        "writerOriginal": {
+          "slot": "ITEM_1",
+          "observed": "Você explicou a composição do valor utilizando termos técnicos como 'faturamento pro rata' e 'franquia excedente', o que levou o cliente a manifestar que não entendeu a explicação.",
+          "whyItMatters": "Evitar termos técnicos complexos pode facilitar a compreensão das informações pelo cliente.",
+          "whatYouCanDo": "Você pode tentar explicar o conceito de forma mais simples ou utilizar exemplos cotidianos para tornar o entendimento mais acessível ao cliente."
+        },
+        "proposedWording": {
+          "observed": "Você explicou a composição do valor utilizando termos técnicos como 'faturamento pro rata' e 'franquia excedente', o que levou o cliente a manifestar que não entendeu a explicação.",
+          "whyItMatters": "Evitar termos técnicos complexos pode facilitar a compreensão das informações pelo cliente.",
+          "whatYouCanDo": "Você pode tentar explicar o conceito de forma mais simples ou utilizar exemplos cotidianos para tornar o entendimento mais acessível ao cliente."
+        },
+        "reviewRequiredBy": [
+          "FEEDBACK_PILOT_REVIEW_POLICY_V1",
+          "STRUCTURAL:OPPORTUNITY_PRESENT",
+          "STRUCTURAL:NEGATIVE_AGENT_FINDING"
+        ],
+        "reviewStatus": "PENDING_REVIEW"
+      }
+    ]
+  }
+}

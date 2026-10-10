@@ -1,0 +1,373 @@
+{
+  "orchestrators": [
+    {
+      "id": "71c306e5-3d8a-47da-8069-f2bda486e937",
+      "name": "Orquestrador · Atendimento multidomínio",
+      "invocationMode": "WORKFLOW",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "a9289ac2-756c-4ecb-92c8-9c85964b8ae4",
+      "policyKind": "MULTIDOMAIN",
+      "policyDomains": [
+        "FATURAMENTO",
+        "RETENCAO",
+        "SUPORTE",
+        "CADASTRO"
+      ],
+      "routingPolicy": "DOMAINS",
+      "routingDomains": [
+        "FATURAMENTO",
+        "RETENCAO",
+        "SUPORTE",
+        "CADASTRO"
+      ],
+      "specialistAgentIds": [
+        "0d96457c-736c-409c-ad94-5bfc89bad543",
+        "f18c813b-2557-4181-b35e-66667e45353b",
+        "a2beb78c-280d-4ee0-b688-10be1d0a6eeb",
+        "c7936be7-e0cd-4c69-b24b-a185bc2886fd",
+        "73ae9889-f46d-4e22-9bd1-a80626232b6b"
+      ]
+    },
+    {
+      "id": "48c4ccf9-2102-4f44-8216-e2e00f65c417",
+      "name": "Orquestrador · Cadastro e Titularidade",
+      "invocationMode": "WORKFLOW",
+      "active": false,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "0aec6750-62c4-41da-b7b0-62ff77fa7a75",
+      "policyKind": "DOMAIN",
+      "policyDomains": [
+        "CADASTRO"
+      ],
+      "routingPolicy": "DOMAINS",
+      "routingDomains": [
+        "CADASTRO"
+      ],
+      "specialistAgentIds": [
+        "0d96457c-736c-409c-ad94-5bfc89bad543",
+        "f18c813b-2557-4181-b35e-66667e45353b"
+      ]
+    },
+    {
+      "id": "a21a22b0-921c-4b4c-89cf-941c5ea0759a",
+      "name": "Orquestrador · Faturamento",
+      "invocationMode": "WORKFLOW",
+      "active": false,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "72d99ef1-8c97-4882-a4bc-9d66f25188cb",
+      "policyKind": "DOMAIN",
+      "policyDomains": [
+        "FATURAMENTO"
+      ],
+      "routingPolicy": "DOMAINS",
+      "routingDomains": [
+        "FATURAMENTO"
+      ],
+      "specialistAgentIds": [
+        "f18c813b-2557-4181-b35e-66667e45353b",
+        "a2beb78c-280d-4ee0-b688-10be1d0a6eeb"
+      ]
+    },
+    {
+      "id": "1868bf54-0a45-4260-8cfe-55bd7832778d",
+      "name": "Orquestrador · Gerencial (consolidado)",
+      "invocationMode": "WORKFLOW",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "9e51c521-26df-4e54-b54d-a2e7c8fd76b9",
+      "policyKind": "MANAGERIAL",
+      "policyDomains": [],
+      "routingPolicy": null,
+      "routingDomains": [],
+      "specialistAgentIds": []
+    },
+    {
+      "id": "d4bdb7f7-c116-4ca3-8612-4ef61de21654",
+      "name": "Orquestrador · Qualidade e Experiência",
+      "invocationMode": "WORKFLOW",
+      "active": false,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "e3a33993-89ba-4553-ae5b-d6f992857d10",
+      "policyKind": "TRANSVERSAL",
+      "policyDomains": [],
+      "routingPolicy": null,
+      "routingDomains": [],
+      "specialistAgentIds": [
+        "b302f984-e9fe-4cff-ad96-2f10dfc6232a",
+        "f18c813b-2557-4181-b35e-66667e45353b",
+        "2e5d735f-98b1-4640-9ec9-a5c65b56efeb"
+      ]
+    },
+    {
+      "id": "9db88a29-9b78-40e1-be6b-f2158fc38fd3",
+      "name": "Orquestrador · Retenção e Cancelamento",
+      "invocationMode": "WORKFLOW",
+      "active": false,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "cc9cd5ef-6feb-4ea0-975c-9b1b09ada077",
+      "policyKind": "DOMAIN",
+      "policyDomains": [
+        "RETENCAO"
+      ],
+      "routingPolicy": "DOMAINS",
+      "routingDomains": [
+        "RETENCAO"
+      ],
+      "specialistAgentIds": [
+        "f18c813b-2557-4181-b35e-66667e45353b",
+        "c7936be7-e0cd-4c69-b24b-a185bc2886fd"
+      ]
+    },
+    {
+      "id": "165ab464-f0a0-405c-8cb1-42945ff60a89",
+      "name": "Orquestrador · Suporte Técnico",
+      "invocationMode": "WORKFLOW",
+      "active": false,
+      "scopeType": "ALL_TEAMS",
+      "coordinatorAgentId": "600a0647-c8c7-492f-a4fb-36e76acb64ba",
+      "policyKind": "DOMAIN",
+      "policyDomains": [
+        "SUPORTE"
+      ],
+      "routingPolicy": "DOMAINS",
+      "routingDomains": [
+        "SUPORTE"
+      ],
+      "specialistAgentIds": [
+        "f18c813b-2557-4181-b35e-66667e45353b",
+        "73ae9889-f46d-4e22-9bd1-a80626232b6b"
+      ]
+    }
+  ],
+  "agents": [
+    {
+      "id": "a9289ac2-756c-4ecb-92c8-9c85964b8ae4",
+      "name": "Coordenação · Atendimento multidomínio",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "0aec6750-62c4-41da-b7b0-62ff77fa7a75",
+      "name": "Coordenação · Cadastro e Titularidade",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "72d99ef1-8c97-4882-a4bc-9d66f25188cb",
+      "name": "Coordenação · Faturamento",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "9e51c521-26df-4e54-b54d-a2e7c8fd76b9",
+      "name": "Coordenação · Gerencial (consolidado)",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "e3a33993-89ba-4553-ae5b-d6f992857d10",
+      "name": "Coordenação · Qualidade e Experiência",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "cc9cd5ef-6feb-4ea0-975c-9b1b09ada077",
+      "name": "Coordenação · Retenção e Cancelamento",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "600a0647-c8c7-492f-a4fb-36e76acb64ba",
+      "name": "Coordenação · Suporte Técnico",
+      "agentType": "ORCHESTRATOR",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": null,
+      "specialtyKind": null,
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "0d96457c-736c-409c-ad94-5bfc89bad543",
+      "name": "Especialista de Cadastro e Titularidade",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "CADASTRO",
+      "specialtyKind": "DOMAIN",
+      "domain": "CADASTRO",
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "eb4a6b11-9ec5-4f15-9452-bd908da6a4a1",
+      "name": "Especialista de Disponibilidade Operacional",
+      "agentType": "INDICATOR_FEEDBACK",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "PERFORMANCE",
+      "specialtyKind": "PERFORMANCE",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "b302f984-e9fe-4cff-ad96-2f10dfc6232a",
+      "name": "Especialista de Eficiência Operacional",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "CROSS_CUTTING",
+      "specialtyKind": "CROSS_CUTTING",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "f18c813b-2557-4181-b35e-66667e45353b",
+      "name": "Especialista de Experiência do Cliente",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "CROSS_CUTTING",
+      "specialtyKind": "CROSS_CUTTING",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "a2beb78c-280d-4ee0-b688-10be1d0a6eeb",
+      "name": "Especialista de Faturamento",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "FATURAMENTO",
+      "specialtyKind": "DOMAIN",
+      "domain": "FATURAMENTO",
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "510a3593-87e9-4233-a297-5e43365b81b9",
+      "name": "Especialista de Performance Individual",
+      "agentType": "DIAGNOSTICS",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "PERFORMANCE",
+      "specialtyKind": "PERFORMANCE",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "0d35c1db-e3ab-478b-8e3e-2e178fbe9069",
+      "name": "Especialista de PRV",
+      "agentType": "INDICATOR_FEEDBACK",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "PERFORMANCE",
+      "specialtyKind": "PERFORMANCE",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "2e5d735f-98b1-4640-9ec9-a5c65b56efeb",
+      "name": "Especialista de Qualidade de Atendimento",
+      "agentType": "CALL_FEEDBACK",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "CROSS_CUTTING",
+      "specialtyKind": "CROSS_CUTTING",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "ba01f07b-c2ed-422a-9af3-d911b4f50cde",
+      "name": "Especialista de Reconhecimento",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "PERFORMANCE",
+      "specialtyKind": "PERFORMANCE",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "c7936be7-e0cd-4c69-b24b-a185bc2886fd",
+      "name": "Especialista de Retenção e Cancelamento",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "RETENCAO",
+      "specialtyKind": "DOMAIN",
+      "domain": "RETENCAO",
+      "capability": null,
+      "consolidatedInput": false
+    },
+    {
+      "id": "c820644d-4871-4720-b972-cbe8806a3939",
+      "name": "Especialista de Síntese Gerencial",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "SYNTHESIS",
+      "specialtyKind": "SYNTHESIS",
+      "domain": null,
+      "capability": null,
+      "consolidatedInput": true
+    },
+    {
+      "id": "73ae9889-f46d-4e22-9bd1-a80626232b6b",
+      "name": "Especialista de Suporte Técnico",
+      "agentType": "CUSTOM",
+      "active": true,
+      "scopeType": "ALL_TEAMS",
+      "specialty": "SUPORTE",
+      "specialtyKind": "DOMAIN",
+      "domain": "SUPORTE",
+      "capability": null,
+      "consolidatedInput": false
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+[
+ {"id":"kore-frase-01-apresentacao","prompt":"Diga exatamente: \"Olá! Eu sou a INIA, sua mentora. Vamos aprender juntos?\""},
+ {"id":"kore-frase-02-proposta","prompt":"Diga exatamente: \"Minha proposta é bem simples: primeiro vamos ouvir você.\""},
+ {"id":"kore-frase-03-escolha","prompt":"Diga exatamente: \"Você prefere falar sobre vendas, benefícios ou atendimento?\""},
+ {"id":"kore-frase-04-amanha","prompt":"Diga exatamente: \"Amanhã, às oito e meia, vamos revisar os próximos passos.\""},
+ {"id":"kore-frase-05-labiais","prompt":"Diga exatamente: \"Posso passar um bom feedback? Vamos ver juntos o mapa das vendas e das metas de fevereiro.\""},
+ {"id":"kore-resposta-longa","prompt":"Em cinco ou seis frases, com calma e pausas naturais, explique para um operador de atendimento como você vai ajudá-lo a melhorar os indicadores dele ao longo do mês. Não use listas."},
+ {"id":"kore-numeros","prompt":"Diga exatamente: \"Seu protocolo é 2026 0925 8841. O valor contestado é de R$ 1.234,56, com vencimento em 15/03, e a análise fica pronta em até 7 dias úteis, às 14h30.\""},
+ {"id":"kore-lista-ingles","prompt":"Diga exatamente: \"Hoje vamos ver três pontos: primeiro, o feedback da call de ontem; segundo, o dashboard de follow-up; e terceiro, o seu TMA no call center.\""},
+ {"id":"kore-voz-pergunta-curta","audioPrompt":"Oi INIA, qual foi o meu tempo médio de atendimento ontem?"},
+ {"id":"kore-voz-pergunta-longa","audioPrompt":"INIA, eu tive muitas rechamadas essa semana. Você pode me explicar com calma o que eu posso fazer diferente nas próximas ligações?"}
+]

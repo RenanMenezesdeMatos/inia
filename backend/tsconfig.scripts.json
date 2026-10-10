@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "allowJs": true
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "scripts/**/*.mts"],
+  // Scripts congelados (hash no `*-freeze.json` ou "nunca reexecutar/repetir"): nunca editar — ficam fora para que a evolução
+  // de `src/` não obrigue a mexer neles. A definição é `scripts/frozen-scripts.js` (a mesma do lint); esta lista é estática e
+  // `scripts/frozen-scripts.test.ts` falha se ela divergir. Arquivo excluído ainda é checado se um script ativo o importar.
+  "exclude": [
+    "dist",
+    "node_modules",
+    "scripts/poc-tools/benchmarks/**/*",
+    "scripts/poc-tools/holdout-v2/**/*",
+    "scripts/feedback-engine/evaluation/larissa/compare-contracts-v10.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v10.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v11.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v12.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v13.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v14.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v14b.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v14c.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v14d.ts",
+    "scripts/feedback-engine/evaluation/larissa/evaluate-round-v9.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v10-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v11-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v12-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v13-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v14-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v14b-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v14c-budget.ts",
+    "scripts/feedback-engine/evaluation/larissa/round-v14d-budget.ts"
+  ]
+}

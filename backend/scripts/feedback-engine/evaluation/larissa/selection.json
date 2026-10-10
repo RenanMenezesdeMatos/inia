@@ -1,0 +1,89 @@
+{
+  "frozenAt": "2026-09-30T21:49:16.879Z",
+  "person": {
+    "id": "de00ae6a-c8c9-490a-816b-e3cc8cf18986",
+    "name": "Larissa Monteiro",
+    "matricula": "DEMO-OP-0001",
+    "organizationId": "00000000-0000-4000-8000-000000000001",
+    "team": "B2C · Atendimento Geral",
+    "subteam": "Diagnóstico IA — Operadores com gravações"
+  },
+  "agent": {
+    "id": "a2beb78c-280d-4ee0-b688-10be1d0a6eeb",
+    "name": "Especialista de Faturamento",
+    "updatedAt": "2026-09-25T15:25:10.001Z"
+  },
+  "calls": [
+    {
+      "key": "C07",
+      "externalId": "GOLDEN-LARISSA-TMA-AGO-C07",
+      "interactionId": "bf7e4baf-0efa-41a0-80c3-786730629e10",
+      "startedAt": "2026-08-21T13:15:00.000Z",
+      "durationSeconds": 495,
+      "reason": "Contestação de cobrança",
+      "transcriptSha256": "7eee443a65a930c20854f241f7852bd1379e193504cdd0c152f110bb4713e63c"
+    },
+    {
+      "key": "C04",
+      "externalId": "GOLDEN-LARISSA-TMA-AGO-C04",
+      "interactionId": "176ab98b-8064-454a-91d8-d03ac1c417b3",
+      "startedAt": "2026-08-13T13:30:00.000Z",
+      "durationSeconds": 1180,
+      "reason": "Contestação de cobrança",
+      "transcriptSha256": "42ea8dcf3b5abd1f926813ffee74fb4aef67092ff635f2c1c6e7fe0fd58e9147"
+    },
+    {
+      "key": "C00",
+      "externalId": "GOLDEN-LARISSA-TMA-AGO-C00",
+      "interactionId": "b03aed12-6ba5-4791-8192-3feea889ee0a",
+      "startedAt": "2026-08-04T12:12:00.000Z",
+      "durationSeconds": 455,
+      "reason": "Contestação de cobrança",
+      "transcriptSha256": "28424bea7c3c6f5ef7ca93d8e64a81adbc573d5f5caea9c9874bd88049527034"
+    }
+  ],
+  "knowledge": [
+    {
+      "documentId": "00000000-0000-4000-8000-000000000051",
+      "title": "Checklist de Encerramento de Chamada",
+      "version": 1,
+      "contentHash": "bb2b01a17ca31c621d52298a76be011864638b0d861bd59b3e76e03c515b81f5",
+      "perspective": "CURRENT_RULE_REEVALUATION"
+    },
+    {
+      "documentId": "2da26d89-9565-49e6-9a7f-dcd44737a1e0",
+      "title": "Procedimento Operacional Negociação de Débito",
+      "version": 1,
+      "contentHash": "53d3e4b6c2e0f3d359b10234c719df7e99b42491f3daeab18d07fe2955ebb95e",
+      "perspective": "CURRENT_RULE_REEVALUATION"
+    },
+    {
+      "documentId": "8a50953d-25a6-44b6-9487-c4e0ca77bebf",
+      "title": "Procedimento Operacional Segunda Via de Conta",
+      "version": 1,
+      "contentHash": "2266559f7c48d836a587ebb6391d65fa74e80954a1dd72999373a0c0cdbf570b",
+      "perspective": "CURRENT_RULE_REEVALUATION"
+    },
+    {
+      "documentId": "b8da52ca-e65c-419c-bace-83431f04ba2c",
+      "title": "Procedimento Operacional Jeito Vivo de Atender",
+      "version": 1,
+      "contentHash": "3633b32e3f09457306839c39287a41666217bc57ae650de6a4febbd149ba3f18",
+      "perspective": "CURRENT_RULE_REEVALUATION"
+    },
+    {
+      "documentId": "c8f2c818-72db-48dc-8d7d-d8a9fe861c65",
+      "title": "Procedimento Operacional — Contestação de Contas Móvel",
+      "version": 1,
+      "contentHash": "9fb993eea9f5aac19b13fac0ae360b6a41e32b77d18751aeeaa6f547bb901643",
+      "perspective": "CURRENT_RULE_REEVALUATION"
+    }
+  ],
+  "indicator": {
+    "code": "TMA",
+    "referencePeriod": "2026-08",
+    "closingId": "de0006a0-23ed-420f-8809-28f28c9205c6",
+    "value": 357,
+    "target": 400
+  }
+}

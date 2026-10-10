@@ -1,0 +1,39 @@
+/**
+ * V1.5.7 — PERMISSÕES: ações granulares do INIA. Um PAPEL é um pacote delas; uma ATRIBUIÇÃO concede um papel a uma CONTA
+ * de usuário num ESCOPO. Cargo/nível hierárquico do colaborador NUNCA concede permissão. Namespace `<área>.<recurso>.<ação>`
+ * (ou `<área>.<ação>`), extensível: módulos futuros (ex.: `store.view`, `store.inventory.manage`) só acrescentam entradas.
+ */
+export const PERMISSIONS = {
+  "access.users.view": "Ver usuários e seus acessos",
+  "access.users.manage": "Criar contas de acesso e vincular colaboradores",
+  "access.roles.view": "Ver papéis e permissões",
+  "access.roles.assign": "Atribuir e revogar papéis (dentro do próprio escopo e da própria delegação)",
+  "people.manage": "Administrar cadastro de pessoas (situação, jornada, capital operacional)",
+  "agents.manage": "Administrar agentes e orquestradores",
+  "knowledge.manage": "Administrar bases de conhecimento",
+  "workflows.manage": "Administrar workflows",
+  "configuration.manage": "Administrar configurações operacionais (indicadores, regras, flags, domínios, calendário, estrutura)",
+  "data_hub.manage": "Administrar a Central de Dados e cargas",
+  "ai.view": "Ver configuração, uso e custo de IA",
+  "ai.manage": "Administrar provedores, modelos, roteamento e orçamentos de IA",
+  "qa_lab.use": "Usar o QA Lab (testes isolados de Agents, Orquestradores e Workflows)",
+  // V1.5.8 — visões AMPLIADAS (além da própria estrutura por reports_to, que continua sendo regra operacional de quem lidera):
+  "indicators.view": "Ver Indicadores e Equipe de colaboradores do escopo (além da própria estrutura)",
+  "structure.metrics.view": "Ver os dados de gestão (população, situação, span) de líderes do escopo em Minha estrutura",
+  "calendar.manage": "Ver e ajustar o Calendário da equipe (exceções e classificações) de colaboradores do escopo",
+  "feedback_quality_review.view": "Ver a fila e o detalhe do QA de feedback",
+  "feedback_quality_review.decide": "Avaliar feedbacks no QA (aprovar, editar, rejeitar)",
+  "assistant_conversations.view": "Ler as conversas dos colaboradores com a INIA (somente leitura) no escopo",
+  // Experiência visual da INIA (cenário atrás do avatar, sazonal ou não) — só do Administrador geral, na organização inteira.
+  "inia_experience.manage": "Administrar o cenário da INIA (fundo atrás do avatar, inclusive os sazonais)",
+  // Monitoria de usabilidade — agregados, pessoas identificadas, exportação, comentários de avaliações e configuração da coleta.
+  // Permissões SEPARADAS: ver agregados nunca traz nome/id de pessoa; ver uso não libera conteúdo de conversa (continua
+  // exigindo `assistant_conversations.view`); exportar não amplia o que a conta já pode consultar.
+  "usability.view": "Ver a Monitoria de usabilidade (agregados) no escopo",
+  "usability.users.view": "Ver pessoas identificadas e o detalhe de uso individual na Monitoria de usabilidade, no escopo",
+  "usability.export": "Exportar CSV da Monitoria de usabilidade (o mesmo recorte que a conta já pode consultar)",
+  "usability.comments.view": "Ler os comentários das avaliações negativas de feedback na Monitoria de usabilidade, no escopo",
+  "usability.manage": "Configurar a coleta da Monitoria de usabilidade (ligar/desligar, retenção, fuso, classificação de contas de teste)",
+} as const
+
+export type Permission = keyof typeof PERMISSIONS

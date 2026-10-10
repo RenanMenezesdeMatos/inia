@@ -1,0 +1,26 @@
+{
+  "name": "inia-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "INIA — Supervisora Virtual com IA. Comandos de instalação e execução (backend + frontend).",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "doctor": "node scripts/install/doctor.mjs",
+    "env:init": "node scripts/install/env-init.mjs",
+    "install:all": "npm ci --prefix backend && npm ci --prefix frontend",
+    "db:connect": "node scripts/install/db-connect.mjs",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose stop postgres",
+    "examples:up": "node scripts/install/example-databases.mjs && docker compose --profile external-examples up -d --build --wait",
+    "examples:down": "docker compose --profile external-examples --profile external-example-sqlserver stop example-postgres example-mariadb example-mysql example-sqlserver",
+    "examples:sqlserver:up": "node scripts/install/example-databases.mjs && docker compose --profile external-example-sqlserver up -d --build --wait example-sqlserver && docker compose --profile external-example-sqlserver run --rm example-sqlserver-init",
+    "setup": "npm --prefix backend run setup --",
+    "update": "npm --prefix backend run update",
+    "admin:create": "npm --prefix backend run admin:create --",
+    "dev": "node scripts/install/run.mjs dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "start": "node scripts/install/run.mjs start"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "README.md": "5036ed85213c1ddc52f925c6865c23abdae077990a6f24f34fce8675b13982bd",
+  "dados/chamadas.jsonl": "f55e1b254fadb6db2650bd7e4f40392d9e8000bbd05bb54ec15f2d410de8f28a",
+  "dados/metadados.csv": "12f9da053e4e189375dc90e197418bdff695d472b78f7b0bb0b0e868dca116c1",
+  "qa_nao_importar/GROUND_TRUTH.md": "75da0c415ac7f5db4d6592e8d8af434c9e94aaf6b980699b5e8d6c1ed84aa550",
+  "qa_nao_importar/ground_truth_chamadas.jsonl": "badcb9ced1e5b44819f6b2ee4585b491f39ca9c4554035f30e15b39d3c7dae6b",
+  "qa_nao_importar/metricas_esperadas.json": "2f6dbe1a54c6784fbb4f64585301e7ac665968bdf47707f385d294b7064221e9",
+  "qa_nao_importar/validacao.json": "f50aaa5bfb2c286d5d039f18bc7897934e53b9ce3601999ce1cfb0292670e195"
+}
