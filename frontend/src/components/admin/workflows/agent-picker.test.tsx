@@ -10,7 +10,7 @@ import { AgentPicker } from "./agent-picker"
 afterEach(cleanup)
 
 function agent(id: string, name: string, specialty: Agent["specialty"]): Agent {
-  return { id, name, agentType: "CUSTOM", objective: "", description: "", contextPrompt: "", active: true, createdAt: "2026-09-16T00:00:00.000Z", createdByName: null, usageCount: 0, scopeType: "ALL_TEAMS", teamId: null, teamName: null, subteamId: null, subteamName: null, knowledgeDocuments: [], prohibitedTopics: [], specialty, specialtyKind: null, domain: null, businessDomainId: null, businessDomain: null, capability: null, consolidatedInput: false, recommendSupportMaterials: false, investigationCapabilities: [] }
+  return { id, name, agentType: "CUSTOM", objective: "", description: "", contextPrompt: "", active: true, createdAt: "2026-09-16T00:00:00.000Z", createdByName: null, usageCount: 0, scopeType: "ALL_TEAMS", teamId: null, teamName: null, subteamId: null, subteamName: null, knowledgeDocuments: [], actionLimitsEnabled: false, actionLimits: null, specialty, specialtyKind: null, domain: null, businessDomainId: null, businessDomain: null, capability: null, consolidatedInput: false, recommendSupportMaterials: false, investigationCapabilities: [] }
 }
 
 describe("AgentPicker — especialista incompatível com a política aparece desabilitado, com o motivo", () => {

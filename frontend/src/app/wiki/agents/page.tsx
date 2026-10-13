@@ -196,7 +196,7 @@ export default function AgentsPage() {
             { title: "Grupo (alcance)", detail: <>Escolha o <strong>Alcance por grupo</strong>: “Todos os grupos” (só admin global) ou um Grupo/Subgrupo específico. Ao escolher um grupo, as bases já escopadas para ele entram pré-selecionadas.</> },
             { title: "Contexto (prompt)", detail: "Instruções detalhadas de como o agente deve raciocinar. Os especialistas do catálogo seguem um esqueleto de 12 pontos: papel, objetivo, fontes permitidas, prioridade da base, uso da transcrição, uso de indicadores, ausência de dados, fatos × hipóteses, evidências, formato da saída, limitações e proibições." },
             { title: "Bases de conhecimento consultadas", detail: <>Mova para “Selecionadas” as bases que este Agent pode consultar. Só bases publicadas entram no runtime; ver <WikiLink href="/wiki/bases-conhecimento#vinculo">Vínculo com Agents</WikiLink>. Não associe base “para preencher campo”.</> },
-            { title: "Restrições específicas deste agente", detail: "Marque os assuntos proibidos que valem só para este Agent — eles são SOMADOS aos assuntos proibidos globais de Governança, nunca os substituem." },
+            { title: "Limites de atuação", detail: <>Ligue “Limitar a atuação deste agente” e escreva em “Até onde este agente vai” o que ele atende (ex.: “só assuntos de faturamento — fatura, cobrança, segunda via, contestação e negociação de débito”). Ligado, o que estiver fora é recusado em uma frase. Desligado, ele responde como sempre. Ver <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink>.</> },
             { title: "Criar agente", detail: "Depois de criado, as abas Teste, Execuções e Histórico ficam disponíveis. O Agent nasce ativo; o interruptor no cabeçalho desativa/ativa." },
             { title: "Teste", detail: <>Na aba <strong>Teste</strong>, cole uma “Transcrição ou cenário de teste” e clique em <strong>Executar teste</strong> — uma request real ao modelo, persistida como execução (Teste manual). Para testar com uma interação real e ver o rastro de conhecimento, use o <WikiLink href="/wiki/qa-lab#agent-orchestrator">QA Lab › Agent</WikiLink>.</> },
           ]}
@@ -213,9 +213,33 @@ export default function AgentsPage() {
         <FieldRow label="Bases de conhecimento consultadas" value="Lista de bases autorizadas (Disponíveis ↔ Selecionadas). O backend recusa ids inexistentes ou excluídos." />
         <FieldRow label="Materiais de apoio" value="“Recomendar materiais quando este Agente responder diretamente” (padrão desligado): com a opção ligada, quando o Agent é o respondente final (node “Chamar agente”, teste manual), ele pode indicar até 3 materiais das bases que consultou. Como especialista de um Orquestrador, a seleção final é do Orquestrador." />
         <FieldRow label="Ferramentas de investigação" value={<>Sete capacidades amigáveis (Indicadores e tendências, Segmentação operacional, Comparação operacional, Interações e transcrições, Jornada operacional, Base de Conhecimento, Materiais de apoio), todas desligadas por padrão. Com capacidades, o Agent investiga os dados com ferramentas determinísticas antes de responder; um Workflow pode restringir (nunca conceder). Ver <WikiLink href="/wiki/agents/ferramentas-investigacao">Ferramentas de investigação</WikiLink>.</>} />
-        <FieldRow label="Restrições específicas" value="Assuntos proibidos adicionais, somados aos globais de Governança." />
+        <FieldRow label="Limites de atuação" value="Interruptor “Limitar a atuação deste agente” (padrão desligado) + campo “Até onde este agente vai” (até 1.000 caracteres), liberado só com o interruptor ligado. Ligado exige texto. Desligado, o texto fica guardado e volta ao religar." />
         <FieldRow label="Ativo" value="Interruptor no cabeçalho. Um Agent inativo bloqueia a publicação de Workflows que o usam." />
         <p className="text-sm text-muted-foreground">Não existem outros campos no formulário atual — em particular, nenhum campo de modelo de IA, temperatura ou provedor: a execução fica atrás de uma interface única e trocável (hoje implementada com Gemini).</p>
+      </WikiSection>
+
+      <WikiSection id="limites-atuacao" title="Limites de atuação" eyebrow="Até onde o Agent vai — escrito no próprio Agent">
+        <p>
+          Cada Agent pode ter um limite próprio: o interruptor <strong className="font-medium text-foreground">Limitar a atuação deste agente</strong>{" "}
+          e o texto <strong className="font-medium text-foreground">Até onde este agente vai</strong>. Ligado, o texto entra nas instruções do Agent,
+          antes dos assuntos proibidos, e vale acima de qualquer pedido de quem conversa com ele.
+        </p>
+        <ul className="list-inside list-disc space-y-1">
+          <li>Pedido fora do limite: o Agent diz, em uma frase, que o assunto não é atendido ali e oferece ajuda com o que ele atende.</li>
+          <li>Cumprimentar, agradecer, pedir esclarecimento e perguntar o que ele faz continuam respondidos.</li>
+          <li>Quem decide se um pedido está fora é a IA, pelo sentido — não existe lista de palavras.</li>
+          <li>Vale em tudo que o Agent faz: chat, voz, “Ouvir com a INIA” e Workflows. Mudanças ficam no Histórico do Agent.</li>
+        </ul>
+        <WarningCallout kind="tip" title="Para a INIA não responder sobre qualquer coisa no chat">
+          No chat e na voz, quem recebe a pergunta primeiro é o Orquestrador. Ligue os limites no Agent do tipo Orquestrador que ele usa (por exemplo:
+          “Assuntos de trabalho na operação: indicadores, feedbacks, processos e procedimentos de atendimento.”). Testado em 13/10/2026: “Quero saber da
+          história do Son Goku” passou a ser recusado, e “O que você consegue fazer por mim?” continuou respondido. A INIA não pesquisa na internet:
+          respostas fora do trabalho vêm do que o modelo aprendeu no treinamento.
+        </WarningCallout>
+        <p>
+          Limites de atuação são do Agent; <WikiLink href="/wiki/administracao#governanca">assuntos proibidos</WikiLink> são regras da empresa e valem
+          para todos os Agents. Os dois se somam.
+        </p>
       </WikiSection>
 
       <WikiSection id="abas" title="As abas de um Agent" eyebrow="Configuração · Teste · Execuções · Histórico">

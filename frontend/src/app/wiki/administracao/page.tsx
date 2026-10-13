@@ -76,9 +76,11 @@ export default function AdministrationPage() {
 
       <WikiSection id="governanca" title="Governança" eyebrow="Guardrails globais">
         <p>
-          <strong className="font-medium text-foreground">Assuntos proibidos</strong> valem para todos os Agents (cada Agent pode somar restrições
-          específicas, nunca substituir). <strong className="font-medium text-foreground">Glossário geral</strong> define termos e como aplicá-los no
-          feedback, independentemente de grupo ou assunto.
+          <strong className="font-medium text-foreground">Assuntos proibidos</strong> são regras da empresa e valem para todos os Agents e em toda
+          conversa com a INIA (chat, voz, “Ouvir com a INIA” e chat sem Orquestrador). Para limitar um Agent específico, use os{" "}
+          <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink> no próprio Agent — os dois se somam.{" "}
+          <strong className="font-medium text-foreground">Glossário geral</strong> define termos e como aplicá-los no feedback, independentemente de
+          grupo ou assunto. O motor de feedback (“Gerar feedback”) usa regras próprias e não lê assuntos proibidos nem limites de atuação.
         </p>
       </WikiSection>
 

@@ -15,6 +15,7 @@ export const AGENT_TEXT_LIMITS = {
   description: { label: "Descrição", min: 5, max: 2_000 },
   contextPrompt: { label: "Contexto (prompt)", min: 10, max: 12_000 },
   capability: { label: "Competência", min: 0, max: 80 },
+  actionLimits: { label: "Limites de atuação", min: 0, max: 1_000 },
 } as const
 
 export type AgentTextField = keyof typeof AGENT_TEXT_LIMITS

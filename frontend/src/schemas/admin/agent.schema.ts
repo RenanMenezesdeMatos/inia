@@ -35,11 +35,11 @@ export const AGENT_TEXT_LIMITS = {
   description: { label: "Descrição", min: 5, max: 2_000 },
   contextPrompt: { label: "Contexto (prompt)", min: 10, max: 12_000 },
   capability: { label: "Competência", min: 0, max: 80 },
+  actionLimits: { label: "Limites de atuação", min: 0, max: 1_000 },
 } as const
 export type AgentTextField = keyof typeof AGENT_TEXT_LIMITS
 
 const agentKnowledgeDocumentSchema = z.object({ id: z.string(), title: z.string() })
-const agentProhibitedTopicSchema = z.object({ id: z.string(), name: z.string() })
 
 export const agentSchema = z.object({
   id: z.string(),
@@ -58,7 +58,9 @@ export const agentSchema = z.object({
   subteamId: z.string().nullable(),
   subteamName: z.string().nullable(),
   knowledgeDocuments: z.array(agentKnowledgeDocumentSchema),
-  prohibitedTopics: z.array(agentProhibitedTopicSchema),
+  /** Limites de atuação: interruptor + "até onde este agente vai" (desligado, o texto fica guardado e não vale). */
+  actionLimitsEnabled: z.boolean().default(false),
+  actionLimits: z.string().nullable().default(null),
   /** Legado (053): domínio de processo, transversal, performance, síntese ou sem classificação — dual-write mantém igual à forma nova. */
   specialty: agentSpecialtySchema.nullable().catch(null),
   /** Forma alvo (057/060): tipo de especialidade + domínio de negócio (só DOMAIN — `businessDomain` do catálogo; `domain` = código legado dual-write) + competência (só CROSS_CUTTING) + aceita resultado consolidado. */

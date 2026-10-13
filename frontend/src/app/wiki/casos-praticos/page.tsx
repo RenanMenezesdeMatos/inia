@@ -72,7 +72,7 @@ export default function PracticalCasesPage() {
             { title: "Grupo", detail: "Todos os grupos (admin global) ou o Grupo de faturamento — as bases escopadas para o grupo entram pré-selecionadas." },
             { title: "Contexto (prompt)", detail: "Papel, objetivo, fontes permitidas (só as bases de faturamento), prioridade da base, uso da transcrição, ausência de dados, fatos × hipóteses, evidências literais, formato da saída, limitações e proibições." },
             { title: "Bases de conhecimento consultadas", detail: "Selecione só as três bases de faturamento — nunca Cancelamento, Reparo ou políticas de RH." },
-            { title: "Restrições específicas", detail: "Marque as que se aplicam só a este Agent (somadas às globais)." },
+            { title: "Limites de atuação", detail: "Opcional: ligue e escreva “só assuntos de faturamento — fatura, cobrança, segunda via, contestação e negociação de débito”." },
             { title: "Criar agente → Teste", detail: "Cole uma transcrição de segunda via e execute o teste; depois, no QA Lab › Agent, verifique que só as seções de segunda via foram recuperadas." },
           ]}
         />

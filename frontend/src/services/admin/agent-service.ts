@@ -58,7 +58,9 @@ export type CreateAgentInput = {
   contextPrompt: string
   orgScope: OrgScopeValue
   knowledgeDocumentIds: string[]
-  prohibitedTopicIds: string[]
+  /** Limites de atuação: ligado exige texto (o backend recusa sem). */
+  actionLimitsEnabled: boolean
+  actionLimits: string | null
   /** Legado (053) — mantido para chamadas antigas; a forma nova abaixo prevalece no backend. */
   specialty?: AgentSpecialty | null
   /** Forma alvo (057/060): tipo + domínio de negócio por id do catálogo (só DOMAIN) + competência (só CROSS_CUTTING) + aceita consolidado. */
@@ -92,7 +94,8 @@ function agentPayload(input: CreateAgentInput) {
     teamId: input.orgScope.teamId,
     subteamId: input.orgScope.subteamId,
     knowledgeDocumentIds: input.knowledgeDocumentIds,
-    prohibitedTopicIds: input.prohibitedTopicIds,
+    actionLimitsEnabled: input.actionLimitsEnabled,
+    actionLimits: input.actionLimits,
     recommendSupportMaterials: input.recommendSupportMaterials ?? false,
     investigationCapabilities: input.investigationCapabilities ?? [],
     ...specialtyPayload(input),

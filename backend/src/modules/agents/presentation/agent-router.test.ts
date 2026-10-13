@@ -43,7 +43,8 @@ const AGENT_TEAM_A = {
   usageCount: 0,
   createdByName: null,
   knowledgeDocuments: [],
-  prohibitedTopics: [],
+  actionLimitsEnabled: false,
+  actionLimits: null as string | null,
 }
 const AGENT_TEAM_B = { ...AGENT_TEAM_A, id: "agent-b", name: "Agente RETENÇÃO", teamId: TEAM_B, teamName: "RETENÇÃO" }
 
@@ -255,16 +256,16 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
     const agent = await loginAgent(catalogDatabase(passwordHash, inserts))
     const byId = await agent.post("/api/v1/admin/agents").send({ ...baseBody, specialtyKind: "DOMAIN", businessDomainId: "d0000000-0000-4000-8000-000000000005" })
     expect(byId.status).toBe(201)
-    // insert: … $11 specialty, $12 specialty_kind, $13 domain, $14 capability, $15 consolidated_input, $16 business_domain_id, $17 recommend_support_materials (padrão false)
-    expect(inserts[0]!.slice(10)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
+    // insert: … $11 specialty, $12 specialty_kind, $13 domain, $14 capability, $15 consolidated_input, $16 business_domain_id, $17 recommend_support_materials (padrão false), $18 capacidades
+    expect(inserts[0]!.slice(10, 18)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
     // Forma de compatibilidade (só o código): resolve para a MESMA FK.
     const byCode = await agent.post("/api/v1/admin/agents").send({ ...baseBody, name: "Agent · Entregas 2", specialtyKind: "DOMAIN", domain: "logistica" })
     expect(byCode.status).toBe(201)
-    expect(inserts[1]!.slice(10)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
+    expect(inserts[1]!.slice(10, 18)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
     // Legado puro (`specialty` = código) também resolve para a FK — dual-read na entrada.
     const legacy = await agent.post("/api/v1/admin/agents").send({ ...baseBody, name: "Agent · Faturamento", specialty: "FATURAMENTO" })
     expect(legacy.status).toBe(201)
-    expect(inserts[2]!.slice(10)).toEqual(["FATURAMENTO", "DOMAIN", "FATURAMENTO", null, false, "d0000000-0000-4000-8000-000000000001", false, []])
+    expect(inserts[2]!.slice(10, 18)).toEqual(["FATURAMENTO", "DOMAIN", "FATURAMENTO", null, false, "d0000000-0000-4000-8000-000000000001", false, []])
   })
 
   it("CROSS_CUTTING/PERFORMANCE/SYNTHESIS não exigem nem aceitam domínio; domínio DESATIVADO não entra num Agent novo, mas um Agent existente que já o tinha continua salvando", async () => {
@@ -282,5 +283,56 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
     // Edição de um Agent que JÁ estava em BACKOFFICE (desativado depois): renomear mantém o domínio e salva.
     const rename = await agent.patch(`/api/v1/admin/agents/${AGENT_TEAM_A.id}`).send({ name: "Agent · Backoffice (renomeado)", specialtyKind: "DOMAIN", businessDomainId: "d0000000-0000-4000-8000-000000000006" })
     expect(rename.status).toBe(200)
+  })
+})
+
+describe("agent-router — Limites de atuação (migration 124)", () => {
+  const body = { name: "Agent · Faturamento", agentType: "CUSTOM", objective: "objetivo válido", description: "descrição válida", contextPrompt: "prompt com mais de dez caracteres", scopeType: "ALL_TEAMS" }
+  function limitsDatabase(passwordHash: string, writes: { sql: string; params: unknown[] }[], before = { ...AGENT_TEAM_A, scopeType: "ALL_TEAMS", teamId: null }) {
+    return fakeDatabase([], passwordHash, (sql, params) => {
+      if (sql.trim().startsWith("insert into agents") || sql.trim().startsWith("update agents set") || sql.includes("insert into agent_history")) {
+        writes.push({ sql, params: params ?? [] })
+        return { rows: [{ id: AGENT_TEAM_A.id }], rowCount: 1 }
+      }
+      if (sql.includes('select name, agent_type "agentType"') && sql.includes("from agents where id = $1")) return { rows: [before], rowCount: 1 }
+      return undefined
+    })
+  }
+
+  it("criar: desligado por padrão; ligado grava o texto aparado; ligado sem texto = 422 sem gravar nada", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const writes: { sql: string; params: unknown[] }[] = []
+    const agent = await loginAgent(limitsDatabase(passwordHash, writes))
+    expect((await agent.post("/api/v1/admin/agents").send(body)).status).toBe(201)
+    expect(writes[0]!.params.slice(-2)).toEqual([false, null])
+    expect((await agent.post("/api/v1/admin/agents").send({ ...body, actionLimitsEnabled: true, actionLimits: "  Só faturamento e cobrança.  " })).status).toBe(201)
+    expect(writes.filter((write) => write.sql.trim().startsWith("insert into agents")).at(-1)!.params.slice(-2)).toEqual([true, "Só faturamento e cobrança."])
+    const before = writes.length
+    const missing = await agent.post("/api/v1/admin/agents").send({ ...body, actionLimitsEnabled: true, actionLimits: "   " })
+    expect(missing.status).toBe(422)
+    expect(missing.body.error.code).toBe("AGENT_ACTION_LIMITS_REQUIRED")
+    expect(writes).toHaveLength(before)
+    const tooLong = await agent.post("/api/v1/admin/agents").send({ ...body, actionLimitsEnabled: true, actionLimits: "a".repeat(1_001) })
+    expect(tooLong.status).toBe(400)
+  })
+
+  it("editar: ligar reaproveita o texto guardado e entra no histórico; desligar guarda o texto; ligar sem texto = 422", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const writes: { sql: string; params: unknown[] }[] = []
+    const stored = { ...AGENT_TEAM_A, scopeType: "ALL_TEAMS", teamId: null, actionLimitsEnabled: false, actionLimits: "Só faturamento." }
+    const agent = await loginAgent(limitsDatabase(passwordHash, writes, stored))
+    expect((await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: true })).status).toBe(200)
+    const update = writes.find((write) => write.sql.trim().startsWith("update agents set"))!
+    expect(update.params.slice(-2)).toEqual([true, "Só faturamento."])
+    const history = JSON.parse(String(writes.find((write) => write.sql.includes("insert into agent_history"))!.params[5]))
+    expect(history).toEqual([{ field: "actionLimits", label: "Limites de atuação", from: "Desligados — Só faturamento.", to: "Ligados — Só faturamento." }])
+
+    writes.length = 0
+    expect((await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: false, actionLimits: "Só faturamento." })).status).toBe(200)
+    expect(writes.find((write) => write.sql.trim().startsWith("update agents set"))!.params.slice(-2)).toEqual([false, "Só faturamento."])
+
+    const empty = await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: true, actionLimits: "" })
+    expect(empty.status).toBe(422)
+    expect(empty.body.error.code).toBe("AGENT_ACTION_LIMITS_REQUIRED")
   })
 })

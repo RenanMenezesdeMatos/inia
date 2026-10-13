@@ -8,6 +8,7 @@ import { applyManageableScopeFilter, canManageScope, getManageableScopes } from 
 import { agentBusinessDomainJoin, agentBusinessDomainJson, assertBusinessDomainsSelectable, resolveBusinessDomainRefs } from "../../business-domains/application/business-domain-lookup.js"
 import { businessDomainCodeSchema } from "../../business-domains/domain/business-domain.js"
 import { agentTextSchema } from "../domain/agent-field-limits.js"
+import { actionLimitsProblem, describeActionLimits, type AgentActionLimits } from "../domain/action-limits.js"
 import { describeSpecialtyProblem, legacySpecialtyFor, legacySpecialtySchema, resolveAgentSpecialty, specialtyKindSchema, type AgentSpecialty } from "../domain/agent-specialty.js"
 import { runAgent } from "../application/run-agent.js"
 import { buildSystemPrompt } from "../application/build-system-prompt.js"
@@ -28,7 +29,6 @@ const agentSchema = z.object({
   teamId: z.string().uuid().optional(),
   subteamId: z.string().uuid().optional(),
   knowledgeDocumentIds: z.array(z.string().uuid()).default([]),
-  prohibitedTopicIds: z.array(z.string().uuid()).default([]),
   active: z.boolean().optional(),
   // Especialidade — forma alvo (migration 057/060, agents/domain/agent-specialty.ts): tipo +
   // domínio de negócio (só DOMAIN — por id do catálogo em `businessDomainId`, ou por código em
@@ -46,6 +46,9 @@ const agentSchema = z.object({
   recommendSupportMaterials: z.boolean().optional(),
   /** Capacidades de investigação (investigation/domain/capabilities.ts) — o Agent é dono das Tools. */
   investigationCapabilities: z.array(investigationCapabilitySchema).optional(),
+  /** Limites de atuação (agents/domain/action-limits.ts): interruptor + "até onde este agente vai". Ligado exige texto. */
+  actionLimitsEnabled: z.boolean().default(false),
+  actionLimits: agentTextSchema("actionLimits").nullable().optional(),
 })
 
 const updateAgentSchema = z.object({
@@ -58,7 +61,6 @@ const updateAgentSchema = z.object({
   teamId: z.string().uuid().optional(),
   subteamId: z.string().uuid().optional(),
   knowledgeDocumentIds: z.array(z.string().uuid()).optional(),
-  prohibitedTopicIds: z.array(z.string().uuid()).optional(),
   active: z.boolean().optional(),
   specialtyKind: specialtyKindSchema.nullable().optional(),
   businessDomainId: z.string().uuid().nullable().optional(),
@@ -68,7 +70,18 @@ const updateAgentSchema = z.object({
   specialty: legacySpecialtySchema.nullable().optional(),
   recommendSupportMaterials: z.boolean().optional(),
   investigationCapabilities: z.array(investigationCapabilitySchema).optional(),
+  actionLimitsEnabled: z.boolean().optional(),
+  actionLimits: agentTextSchema("actionLimits").nullable().optional(),
 })
+
+/** Texto vazio dos limites vira null (o interruptor desligado guarda o texto que houver). */
+const actionLimitsText = (value: string | null | undefined) => (value?.trim() ? value.trim() : null)
+
+/** Ligado sem texto: 422 antes de gravar (o banco também recusa — agents_action_limits_check). */
+function assertActionLimits(limits: AgentActionLimits) {
+  const problem = actionLimitsProblem(limits)
+  if (problem) throw new DomainError(problem, "AGENT_ACTION_LIMITS_REQUIRED", 422)
+}
 
 /**
  * Entrada → especialidade tipada: a forma nova (`specialtyKind`…) prevalece; sem ela, a forma
@@ -123,6 +136,7 @@ const AGENT_SELECT = `
     a.business_domain_id "businessDomainId", ${agentBusinessDomainJson("bd")} "businessDomain",
     a.recommend_support_materials "recommendSupportMaterials",
     coalesce(a.investigation_capabilities, '{}'::text[]) "investigationCapabilities",
+    a.action_limits_enabled "actionLimitsEnabled", a.action_limits "actionLimits",
     a.scope_type "scopeType", a.team_id "teamId", t.name "teamName", a.subteam_id "subteamId", st.name "subteamName",
     (select count(*) from agent_runs ar where ar.agent_id = a.id)::int "usageCount",
     cp.name "createdByName",
@@ -131,13 +145,7 @@ const AGENT_SELECT = `
       from agent_knowledge_documents akd
       join knowledge_documents kd on kd.id = akd.knowledge_document_id
       where akd.agent_id = a.id
-    ), '[]') "knowledgeDocuments",
-    coalesce((
-      select json_agg(json_build_object('id', pt.id, 'name', pt.name))
-      from agent_prohibited_topics apt
-      join prohibited_topics pt on pt.id = apt.prohibited_topic_id
-      where apt.agent_id = a.id
-    ), '[]') "prohibitedTopics"
+    ), '[]') "knowledgeDocuments"
   from agents a
   ${agentBusinessDomainJoin("a", "bd")}
   left join teams t on t.id = a.team_id
@@ -156,7 +164,7 @@ const FIELD_LABELS: Record<string, string> = {
   active: "Status",
   scopeType: "Alcance",
   knowledgeDocumentIds: "Bases de conhecimento",
-  prohibitedTopicIds: "Restrições específicas",
+  actionLimits: "Limites de atuação",
   investigationCapabilities: "Ferramentas de investigação",
 }
 
@@ -173,6 +181,8 @@ type AgentRow = {
   teamId: string | null
   subteamId: string | null
   investigationCapabilities?: string[] | null
+  actionLimitsEnabled: boolean
+  actionLimits: string | null
 }
 
 function diffIdList(field: string, before: string[], after: string[] | undefined): FieldChange | null {
@@ -191,8 +201,7 @@ function diffAgentFields(
   input: { [K in keyof AgentRow]?: AgentRow[K] | undefined },
   knowledgeBefore: string[],
   knowledgeAfter: string[] | undefined,
-  prohibitedTopicsBefore: string[],
-  prohibitedTopicsAfter: string[] | undefined,
+  actionLimitsAfter: AgentActionLimits,
 ): FieldChange[] {
   const changes: FieldChange[] = []
   for (const field of ["name", "agentType", "objective", "description", "contextPrompt"] as const) {
@@ -221,8 +230,9 @@ function diffAgentFields(
   }
   const knowledgeChange = diffIdList("knowledgeDocumentIds", knowledgeBefore, knowledgeAfter)
   if (knowledgeChange) changes.push(knowledgeChange)
-  const prohibitedTopicsChange = diffIdList("prohibitedTopicIds", prohibitedTopicsBefore, prohibitedTopicsAfter)
-  if (prohibitedTopicsChange) changes.push(prohibitedTopicsChange)
+  const actionLimitsBefore = describeActionLimits({ enabled: before.actionLimitsEnabled, text: before.actionLimits })
+  const actionLimitsNow = describeActionLimits(actionLimitsAfter)
+  if (actionLimitsBefore !== actionLimitsNow) changes.push({ field: "actionLimits", label: FIELD_LABELS.actionLimits!, from: actionLimitsBefore, to: actionLimitsNow })
   if (input.investigationCapabilities !== undefined) {
     const from = normalizeCapabilities(before.investigationCapabilities ?? [])
     const to = normalizeCapabilities(input.investigationCapabilities)
@@ -299,22 +309,6 @@ async function syncKnowledgeDocuments(client: { query: Database["query"] }, orga
     await client.query(
       `insert into agent_knowledge_documents(agent_id, knowledge_document_id) values ($1,$2)`,
       [agentId, knowledgeDocumentId],
-    )
-  }
-}
-
-async function syncProhibitedTopics(client: { query: Database["query"] }, organizationId: string, agentId: string, prohibitedTopicIds: string[]) {
-  // Só assuntos proibidos desta organização (antes qualquer id era vinculado).
-  const uniqueIds = [...new Set(prohibitedTopicIds)]
-  if (uniqueIds.length > 0) {
-    const found = await client.query(`select id from prohibited_topics where id = any($1::uuid[]) and organization_id = $2`, [uniqueIds, organizationId])
-    if (found.rows.length !== uniqueIds.length) throw new DomainError("Um dos assuntos proibidos selecionados não existe.", "AGENT_PROHIBITED_TOPIC_NOT_FOUND", 422)
-  }
-  await client.query(`delete from agent_prohibited_topics where agent_id = $1`, [agentId])
-  for (const prohibitedTopicId of uniqueIds) {
-    await client.query(
-      `insert into agent_prohibited_topics(agent_id, prohibited_topic_id) values ($1,$2)`,
-      [agentId, prohibitedTopicId],
     )
   }
 }
@@ -436,12 +430,14 @@ export function createAgentRouter(db: Database) {
     }
 
     const specialty = (await specialtyFromInput(db, organizationId, input)) ?? { kind: null, domain: null, capability: null, acceptsConsolidated: false }
+    const actionLimits: AgentActionLimits = { enabled: input.actionLimitsEnabled, text: actionLimitsText(input.actionLimits) }
+    assertActionLimits(actionLimits)
     const client = await db.connect()
     try {
       await client.query("begin")
       const created = await client.query<{ id: string }>(
-        `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, specialty, specialty_kind, domain, capability, consolidated_input, business_domain_id, recommend_support_materials, investigation_capabilities)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning id`,
+        `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, specialty, specialty_kind, domain, capability, consolidated_input, business_domain_id, recommend_support_materials, investigation_capabilities, action_limits_enabled, action_limits)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
         [
           organizationId,
           input.name,
@@ -461,11 +457,12 @@ export function createAgentRouter(db: Database) {
           specialty.domain?.id ?? null,
           input.recommendSupportMaterials ?? false,
           normalizeCapabilities(input.investigationCapabilities),
+          actionLimits.enabled,
+          actionLimits.text,
         ],
       )
       const agentId = created.rows[0]!.id
       await syncKnowledgeDocuments(client, organizationId, agentId, input.knowledgeDocumentIds)
-      await syncProhibitedTopics(client, organizationId, agentId, input.prohibitedTopicIds)
       await recordAgentHistory(client, organizationId, {
         agentId,
         action: "CREATED",
@@ -495,7 +492,8 @@ export function createAgentRouter(db: Database) {
       await client.query("begin")
       const before = await client.query<AgentRow>(
         `select name, agent_type "agentType", objective, description, context_prompt "contextPrompt", active,
-                scope_type "scopeType", team_id "teamId", subteam_id "subteamId"
+                scope_type "scopeType", team_id "teamId", subteam_id "subteamId",
+                action_limits_enabled "actionLimitsEnabled", action_limits "actionLimits"
          from agents where id = $1 and organization_id = $2`,
         [request.params.id, organizationId],
       )
@@ -521,10 +519,12 @@ export function createAgentRouter(db: Database) {
         `select knowledge_document_id from agent_knowledge_documents where agent_id = $1`,
         [request.params.id],
       )
-      const prohibitedTopicsBefore = await client.query<{ prohibited_topic_id: string }>(
-        `select prohibited_topic_id from agent_prohibited_topics where agent_id = $1`,
-        [request.params.id],
-      )
+      // Estado final dos limites (PATCH parcial): o que não veio continua como está.
+      const nextActionLimits: AgentActionLimits = {
+        enabled: input.actionLimitsEnabled ?? before.rows[0].actionLimitsEnabled,
+        text: input.actionLimits !== undefined ? actionLimitsText(input.actionLimits) : before.rows[0].actionLimits,
+      }
+      assertActionLimits(nextActionLimits)
       const currentSpecialtyRow = await client.query<{ specialty: string | null; specialty_kind: string | null; domain: string | null; capability: string | null; consolidated_input: boolean; business_domain_id: string | null; business_domain_code: string | null; business_domain_name: string | null; business_domain_active: boolean | null }>(
         `select a.specialty, a.specialty_kind, a.domain, a.capability, a.consolidated_input, bd.id "business_domain_id", bd.code "business_domain_code", bd.name "business_domain_name", bd.active "business_domain_active"
            from agents a ${agentBusinessDomainJoin("a", "bd")} where a.id = $1 and a.organization_id = $2`,
@@ -550,6 +550,8 @@ export function createAgentRouter(db: Database) {
            business_domain_id = case when $12::boolean then $18::uuid else business_domain_id end,
            recommend_support_materials = coalesce($19, recommend_support_materials),
            investigation_capabilities = coalesce($20::text[], investigation_capabilities),
+           action_limits_enabled = $21,
+           action_limits = $22,
            updated_at = now()
          where id = $10 and organization_id = $11
          returning id`,
@@ -574,6 +576,8 @@ export function createAgentRouter(db: Database) {
           nextSpecialty?.domain?.id ?? null,
           input.recommendSupportMaterials ?? null,
           input.investigationCapabilities ? normalizeCapabilities(input.investigationCapabilities) : null,
+          nextActionLimits.enabled,
+          nextActionLimits.text,
         ],
       )
       if (!updated.rows[0]) {
@@ -583,16 +587,12 @@ export function createAgentRouter(db: Database) {
       if (input.knowledgeDocumentIds) {
         await syncKnowledgeDocuments(client, organizationId, request.params.id, input.knowledgeDocumentIds)
       }
-      if (input.prohibitedTopicIds) {
-        await syncProhibitedTopics(client, organizationId, request.params.id, input.prohibitedTopicIds)
-      }
       const changes = diffAgentFields(
         before.rows[0]!,
         input,
         knowledgeBefore.rows.map((row) => row.knowledge_document_id),
         input.knowledgeDocumentIds,
-        prohibitedTopicsBefore.rows.map((row) => row.prohibited_topic_id),
-        input.prohibitedTopicIds,
+        nextActionLimits,
       )
       if (changes.length > 0) {
         await recordAgentHistory(client, organizationId, {

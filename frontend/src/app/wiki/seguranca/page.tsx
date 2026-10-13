@@ -107,14 +107,17 @@ export default function SecurityPage() {
           compact
           steps={[
             { label: "Sistema", detail: "regras da plataforma", tone: "core" },
-            { label: "Agent", detail: "instruções do Agent (contexto/prompt) + restrições globais e específicas", tone: "ai" },
+            { label: "Agent", detail: "instruções do Agent (contexto/prompt) + limites de atuação dele + assuntos proibidos da empresa", tone: "ai" },
             { label: "Conhecimento recuperado", detail: "trechos das bases — declarados como DADOS, nunca instruções", tone: "input" },
             { label: "Entrada", detail: "transcrição, pergunta, números oficiais", tone: "input" },
           ]}
         />
         <ul className="list-inside list-disc space-y-1">
           <li>Conteúdo de documento é DADO. Uma frase &quot;ignore as instruções&quot; dentro de uma base continua sendo texto do documento.</li>
-          <li>Restrições globais de Governança valem para todos; restrições específicas de um Agent são somadas, nunca substituem.</li>
+          <li>
+            Assuntos proibidos de Governança valem para todos os Agents e em toda conversa com a INIA; os limites de atuação de um Agent são somados a
+            eles, nunca os substituem. Ver <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink>.
+          </li>
           <li>Chaves e credenciais nunca fazem parte do prompt; o QA Lab redige segredos antes de persistir o prompt final.</li>
           <li>Texto gerado por IA é exibido formatado sem executar HTML embutido; links perigosos são neutralizados.</li>
           <li>A execução da IA fica atrás de uma interface única e trocável — trocar de provedor não muda nenhuma outra parte do sistema.</li>

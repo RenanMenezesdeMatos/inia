@@ -119,7 +119,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
     icon: Bot,
     description: "Especialistas de IA com objetivo, instruções e fontes de conhecimento autorizadas.",
     pages: [
-      { href: "/wiki/agents", title: "Agents", description: "O que é, quando usar, quando não usar, como criar (campos reais), abas, princípio do especialista e o catálogo oficial." },
+      { href: "/wiki/agents", title: "Agents", description: "O que é, quando usar, quando não usar, como criar (campos reais), limites de atuação, abas, princípio do especialista e o catálogo oficial." },
       { href: "/wiki/agents/dominios-negocio", title: "Domínios de negócio", description: "Catálogo administrável das áreas de conhecimento que classificam Agents especialistas e restringem Orchestrators. Domínio ≠ Grupo, ≠ Base, ≠ Agent; novo domínio é configuração." },
       { href: "/wiki/agents/ferramentas-investigacao", title: "Ferramentas de investigação", description: "Como um Agent investiga os dados antes de concluir: capacidades, ferramentas que calculam fatos, IA que interpreta, restrição pelo Workflow, chat/avatar, trace auditável, qualidade e proveniência." },
     ],

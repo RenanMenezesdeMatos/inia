@@ -129,9 +129,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           <EntityCardTag icon={BookOpen}>
             {agent.knowledgeDocuments.length} {agent.knowledgeDocuments.length === 1 ? "base" : "bases"}
           </EntityCardTag>
-          <EntityCardTag icon={ShieldBan}>
-            {agent.prohibitedTopics.length} {agent.prohibitedTopics.length === 1 ? "restrição" : "restrições"}
-          </EntityCardTag>
+          {agent.actionLimitsEnabled ? <EntityCardTag icon={ShieldBan}>Com limites de atuação</EntityCardTag> : null}
           <EntityCardTag icon={Zap}>
             {agent.usageCount} {agent.usageCount === 1 ? "execução" : "execuções"}
           </EntityCardTag>

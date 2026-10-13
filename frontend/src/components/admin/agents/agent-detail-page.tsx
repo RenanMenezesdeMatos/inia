@@ -24,13 +24,13 @@ import {
 } from "@/components/ui/tooltip"
 
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { ActionLimitsCard } from "@/components/admin/agents/action-limits-card"
 import { describeBusinessDomain, type BusinessDomainRef } from "@/schemas/admin/business-domain.schema"
 import { resolveAgentSpecialty, SPECIALTY_KIND_HELP, SPECIALTY_KIND_LABELS, type SpecialtyKind } from "@/schemas/admin/orchestrator-policy"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
 import { INVESTIGATION_CAPABILITIES, INVESTIGATION_CAPABILITY_DESCRIPTIONS, INVESTIGATION_CAPABILITY_LABELS, toolsForCapabilities, type InvestigationCapability } from "@/schemas/admin/investigation.schema"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
-import { useProhibitedTopicsQuery } from "@/queries/admin/use-governance-queries"
 import {
   useAgentHistoryQuery,
   useAgentQuery,
@@ -160,6 +160,7 @@ function AgentHistoryTimeline({ agentId }: { agentId: string }) {
                 {entry.changes.map((change) => (
                   <li key={change.field}>
                     <span className="font-medium text-foreground">{change.label}:</span>{" "}
+                    {/* prohibitedTopicIds: registros antigos de "Restrições específicas" (marcação removida na migration 124). */}
                     {change.field === "knowledgeDocumentIds" || change.field === "prohibitedTopicIds" ? (
                       change.to
                     ) : (
@@ -258,7 +259,6 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
   const router = useRouter()
   const manageableTeamsQuery = useManageableTeamsQuery()
   const knowledgeQuery = useKnowledgeDocumentsQuery()
-  const prohibitedTopicsQuery = useProhibitedTopicsQuery()
   const createMutation = useCreateAgentMutation()
   const updateMutation = useUpdateAgentMutation()
   const toggleActiveMutation = useToggleAgentActiveMutation()
@@ -293,7 +293,9 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
     source ? { scopeType: source.scopeType, teamId: source.teamId ?? undefined, subteamId: source.subteamId ?? undefined } : { scopeType: "ALL_TEAMS" },
   )
   const [knowledgeDocumentIds, setKnowledgeDocumentIds] = useState<string[]>(source?.knowledgeDocuments.map((doc) => doc.id) ?? [])
-  const [prohibitedTopicIds, setProhibitedTopicIds] = useState<string[]>(source?.prohibitedTopics.map((topic) => topic.id) ?? [])
+  // Limites de atuação: interruptor + texto. Desligado, o texto fica guardado (volta ao religar) e não vale.
+  const [actionLimitsEnabled, setActionLimitsEnabled] = useState<boolean>(source?.actionLimitsEnabled ?? false)
+  const [actionLimits, setActionLimits] = useState<string>(source?.actionLimits ?? "")
 
   // Escopo Administrativo (Parte 10/11): criando um agente novo, um admin restrito nunca deve
   // ficar com "Todos os grupos" pré-selecionado.
@@ -323,7 +325,8 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
       setContextPrompt(agent.contextPrompt)
       setOrgScope({ scopeType: agent.scopeType, teamId: agent.teamId ?? undefined, subteamId: agent.subteamId ?? undefined })
       setKnowledgeDocumentIds(agent.knowledgeDocuments.map((doc) => doc.id))
-      setProhibitedTopicIds(agent.prohibitedTopics.map((topic) => topic.id))
+      setActionLimitsEnabled(agent.actionLimitsEnabled)
+      setActionLimits(agent.actionLimits ?? "")
     }
   }
 
@@ -332,10 +335,6 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
     if (!isEditing && knowledgeQuery.data) {
       setKnowledgeDocumentIds(teamDefaultDocumentIds(knowledgeQuery.data, nextScope))
     }
-  }
-
-  function toggleProhibitedTopic(id: string) {
-    setProhibitedTopicIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
   }
 
   async function handleSubmit() {
@@ -353,7 +352,8 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
       contextPrompt,
       orgScope,
       knowledgeDocumentIds,
-      prohibitedTopicIds,
+      actionLimitsEnabled,
+      actionLimits: actionLimits.trim() ? actionLimits.trim() : null,
     }
     if (agent) {
       await updateMutation.mutateAsync({ id: agent.id, input })
@@ -371,6 +371,7 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
     description,
     contextPrompt,
     ...(specialtyKind === "CROSS_CUTTING" ? { capability } : {}),
+    actionLimits,
   }
   const textChecks = (Object.entries(textValues) as [AgentTextField, string][]).map(([field, value]) => ({
     label: AGENT_TEXT_LIMITS[field].label,
@@ -382,6 +383,7 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
     overLimit.length ? `Acima do limite de caracteres: ${overLimit.join(", ")}.` : null,
     belowMin.length ? `Preencha o mínimo de caracteres: ${belowMin.join(", ")}.` : null,
     specialtyKind === "DOMAIN" && !domain?.id ? "Escolha o domínio de negócio." : null,
+    actionLimitsEnabled && !actionLimits.trim() ? "Descreva até onde este agente vai ou desligue os limites de atuação." : null,
   ]
     .filter(Boolean)
     .join(" ")
@@ -742,35 +744,7 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Restrições específicas deste agente</CardTitle>
-                <CardDescription>
-                  Além dos assuntos proibidos globais (Governança), que valem para todos os agentes, marque aqui restrições que se aplicam só a este.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-40 rounded-lg border">
-                  <div className="space-y-1 p-3">
-                    {prohibitedTopicsQuery.data?.length ? (
-                      prohibitedTopicsQuery.data.map((topic) => (
-                        <label key={topic.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-input"
-                            checked={prohibitedTopicIds.includes(topic.id)}
-                            onChange={() => toggleProhibitedTopic(topic.id)}
-                          />
-                          {topic.name}
-                        </label>
-                      ))
-                    ) : (
-                      <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum assunto proibido cadastrado em Governança ainda.</p>
-                    )}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+            <ActionLimitsCard enabled={actionLimitsEnabled} text={actionLimits} onEnabledChange={setActionLimitsEnabled} onTextChange={setActionLimits} />
 
             {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
           </div>

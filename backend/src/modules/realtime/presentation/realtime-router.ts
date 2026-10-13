@@ -19,6 +19,7 @@ import { loadApplicationInstructionByConversation, loadApplicationVoiceInstructi
 import { consultationRelationFor } from "../../feedback-application/application/session-consultation.js"
 import { FEEDBACK_SESSION_EXCLUDED_CAPABILITIES, FEEDBACK_SESSION_VOICE_ADDENDUM, renderSpecialistFrame, type FeedbackConsultation } from "../../feedback-application/domain/session-consultation.js"
 import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
+import { loadAgentGuardrails, renderConversationGuardrails } from "../../agents/application/agent-guardrails.js"
 
 const historyTurnSchema = z.object({
   role: z.enum(["user", "model"]),
@@ -137,6 +138,9 @@ export function createRealtimeRouter(
     specialistTool?: typeof runSpecialistTool
     /** Conversa em que uma escrita sobre uma aplicação é gravada (decidida pelo backend; cria a complementar na primeira dúvida). */
     feedbackApplicationConversation?: (input: { organizationId: string; personId: string; applicationId: string; requestedConversationId: string | null; now: Date }) => Promise<{ conversationId: string; created: boolean }>
+    /** Limites de uma conversa cuja instrução NÃO é o prompt de um Agent (aplicação de feedback, chat/voz sem Orquestrador):
+     * os limites de atuação do Agente do Orquestrador, quando há, + os assuntos proibidos. Vazio = instrução inalterada. */
+    conversationGuardrails?: (organizationId: string, agentId: string | null) => Promise<string>
   } = {},
 ) {
   const router = Router()
@@ -166,6 +170,7 @@ export function createRealtimeRouter(
     const target = await feedbackApplicationConversation({ organizationId: request.user!.organizationId, personId: request.user!.personId, applicationId: input.feedbackApplicationId, requestedConversationId: input.conversationId, now: at })
     return { requestedId: target.conversationId, created: target.created }
   }
+  const conversationGuardrails = deps.conversationGuardrails ?? (async (organizationId, agentId) => renderConversationGuardrails(await loadAgentGuardrails(db, organizationId, agentId)))
   const conversations = deps.conversations ?? createPostgresConversationStore(db)
   const now = deps.now ?? (() => new Date())
   // Dono e organização SEMPRE da sessão — nunca do corpo da requisição.
@@ -187,9 +192,10 @@ export function createRealtimeRouter(
     const orchestrator = await resolveOrchestrator(scope.organizationId, personId, "INTERACTIVE")
     const tools = orchestrator?.tools ?? []
     const instruction = async () => {
-      if (feedbackApplicationId) return feedbackApplicationVoice({ organizationId: scope.organizationId, personId, applicationId: feedbackApplicationId, now: now(), consultation: tools.length > 0 })
+      // Limites de atuação e assuntos proibidos: o prompt do Orquestrador já os traz; a instrução da aplicação e a persona, não.
+      if (feedbackApplicationId) return `${await feedbackApplicationVoice({ organizationId: scope.organizationId, personId, applicationId: feedbackApplicationId, now: now(), consultation: tools.length > 0 })}${await conversationGuardrails(scope.organizationId, orchestrator?.orchestratorAgentId ?? null)}`
       // Perfil de quem pergunta (cargo, nível, se lidera alguém): o Orquestrador da voz adapta roteamento e resposta.
-      return orchestrator ? `${orchestrator.systemPrompt}${await askingPersonProfile(scope.organizationId, personId)}` : INIA_VOICE_PERSONA
+      return orchestrator ? `${orchestrator.systemPrompt}${await askingPersonProfile(scope.organizationId, personId)}` : `${INIA_VOICE_PERSONA}${await conversationGuardrails(scope.organizationId, null)}`
     }
     // Recapitulação: a conversa GRAVADA (nunca o que está na tela); conversa de outra pessoa = 404.
     const recap = async () => {
@@ -435,7 +441,8 @@ export function createRealtimeRouter(
         const consult = Boolean(sessionOrchestrator && sessionOrchestrator.tools.length > 0)
         const application = await feedbackApplicationContext({ organizationId: scope.organizationId, ownerPersonId: operatorId, conversationId: resolved.conversationId, now: at, consultation: consult })
         if (!application) throw new DomainError("Não foi possível carregar o contexto deste feedback. Tente de novo em instantes.", "FEEDBACK_APPLICATION_CONTEXT_UNAVAILABLE", 503)
-        const instruction = application.instruction + (await loadAddressingContext(db, scope.organizationId, operatorId))
+        // A instrução da aplicação substitui o prompt do Orquestrador: os limites de atuação dele e os assuntos proibidos entram aqui.
+        const instruction = application.instruction + (await loadAddressingContext(db, scope.organizationId, operatorId)) + (await conversationGuardrails(scope.organizationId, sessionOrchestrator?.orchestratorAgentId ?? null))
         const consultation = application.consultation
         if (consult && sessionOrchestrator && consultation) {
           const session = { ...sessionOrchestrator, systemPrompt: instruction, outputInstructions: null, structuredOutput: null }
@@ -468,8 +475,10 @@ export function createRealtimeRouter(
         // streama. Não há especialista, Tool, evidência nem afirmação comportamental validável aqui
         // (persona genérica sem dados do colaborador), logo não há Evidence Gating a aplicar. Com um
         // Orquestrador configurado (o caminho real do produto), tudo passa pelo gateway.
+        // Sem Agent, só os assuntos proibidos.
+        const personaInstruction = systemInstruction + (await conversationGuardrails(scope.organizationId, null))
         let full = ""
-        await streamTextReply(history, systemInstruction, (text) => {
+        await streamTextReply(history, personaInstruction, (text) => {
           full += text
           send("chunk", { text })
         })
