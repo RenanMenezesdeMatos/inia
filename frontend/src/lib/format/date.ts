@@ -20,6 +20,11 @@ export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", DATE_TIME_OPTIONS)
 }
 
+/** Instante ISO → "dd/mm, hh:mm" — a hora de publicação na linha "INIA · …" de um item do Acompanhamento (colaborador e estrutura). */
+export function formatFeedTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+}
+
 export type FormatShortDateTimeOptions = {
   timeZone?: string
   withYear?: boolean

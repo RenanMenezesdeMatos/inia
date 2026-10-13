@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { resolveFeedbackViewsForViewer } from "../../reliable-feedback/application/feedback-view-access.js"
 import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legacy-feedback-headings.js"
+import { loadFeedbackOrigins } from "../../feedbacks/infrastructure/feedback-origins.js"
 import { loadFeedbackSupportMaterials } from "../../feedbacks/application/feedback-support-materials.js"
 import { PgPendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { quartileSchema, type Quartile } from "../../indicators/domain/employee-performance-schema.js"
@@ -377,6 +378,8 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     const views = await resolveFeedbackViewsForViewer(this.db, { organizationId: query.organizationId, viewer: { personId: query.viewerId }, views: result.rows.map((row) => (row.feedback as { view?: unknown } | null)?.view ?? null) })
     // Feedback de atendimento sem view model: o título gravado era o nome da base/agente — a leitura usa o assunto da interação vinculada.
     const legacyHeadings = await loadLegacyFeedbackHeadings(this.db, { organizationId: query.organizationId, feedbackIds: result.rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
+    // Motivo do feedback (o mesmo selo e ícone do cabeçalho do Acompanhamento do colaborador), em uma consulta para a página.
+    const origins = await loadFeedbackOrigins(this.db, { organizationId: query.organizationId, feedbackIds: result.rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
     return {
       total,
       items: result.rows.map((row, index) => ({
@@ -393,6 +396,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         caseId: row.caseId === null || row.caseId === undefined ? null : String(row.caseId),
         createdAt: new Date(String(row.createdAt)).toISOString(),
         acknowledgedAt: row.acknowledgedAt ? new Date(String(row.acknowledgedAt)).toISOString() : null,
+        origin: row.kind === "FEEDBACK" ? (origins.get(String(row.id)) ?? null) : null,
         feedback: row.feedback ? { ...(row.feedback as NonNullable<FollowUpItem["feedback"]>), view: views[index] ?? null, supportMaterials: supportMaterials.get(String(row.id)) ?? [] } : null,
       })),
     }

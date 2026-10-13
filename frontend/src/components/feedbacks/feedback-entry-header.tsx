@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { CalendarDays, ChartLine, Headset, Sun } from "lucide-react"
+import { CalendarDays, ChartLine, ClipboardCheck, Headset, Megaphone, MessageSquareText, Send, Sun, TriangleAlert } from "lucide-react"
 
 import { DisplayIcon } from "@/lib/display-icons"
 import { cn } from "@/lib/utils"
@@ -9,14 +9,22 @@ import { cn } from "@/lib/utils"
  *   Monitoria · Rechamada / Monitoria · Nota da URA / Monitoria · Rotina / Monitoria · Avulsa / Indicador (TMA, Reincidência…).
  * A FAMÍLIA dá a cor (monitoria = azul, indicador = verde-água); o MOTIVO dá o ícone (configurado por flag/indicador na
  * Administração, senão o padrão pelo comportamento — vem pronto do backend). O ícone nunca diz o tom do conteúdo.
+ *
+ * O Acompanhamento da estrutura (liderança) usa o MESMO cabeçalho; as famílias depois de "Leitura do dia" são os itens que só
+ * a liderança recebe (resultado de Workflow, revisão, escalonamento, comunicado) — o colaborador nunca as vê.
  */
-export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING"
+export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING" | "WORKFLOW_OUTPUT" | "HUMAN_REVIEW" | "ESCALATION" | "NOTICE" | "OTHER"
 export type FeedbackEntryOrigin = { family: FeedbackEntryFamily; label: string | null; iconKey: string | null }
 
 const FAMILY: Record<FeedbackEntryFamily, { label: string; fallback: typeof Headset; tile: string; eyebrow: string }> = {
   MONITORING: { label: "Monitoria", fallback: Headset, tile: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300", eyebrow: "text-sky-700 dark:text-sky-300" },
   INDICATOR: { label: "Indicador", fallback: ChartLine, tile: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300", eyebrow: "text-teal-700 dark:text-teal-300" },
   DAILY_READING: { label: "Leitura do dia", fallback: Sun, tile: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300", eyebrow: "text-amber-700 dark:text-amber-300" },
+  WORKFLOW_OUTPUT: { label: "Resultado de workflow", fallback: Send, tile: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300", eyebrow: "text-violet-700 dark:text-violet-300" },
+  HUMAN_REVIEW: { label: "Revisão pendente", fallback: ClipboardCheck, tile: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300", eyebrow: "text-rose-700 dark:text-rose-300" },
+  ESCALATION: { label: "Escalonamento", fallback: TriangleAlert, tile: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", eyebrow: "text-orange-700 dark:text-orange-300" },
+  NOTICE: { label: "Comunicado", fallback: Megaphone, tile: "bg-primary/10 text-primary dark:text-chart-4", eyebrow: "text-primary dark:text-chart-4" },
+  OTHER: { label: "Acompanhamento", fallback: MessageSquareText, tile: "bg-muted text-muted-foreground", eyebrow: "text-muted-foreground" },
 }
 
 /** "Monitoria · Rechamada" — o texto do tipo + motivo (também é o que o leitor de tela lê antes do título). */

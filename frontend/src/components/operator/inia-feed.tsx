@@ -16,9 +16,10 @@ export function IniaFeed({ title, description, children }: { title: string; desc
  * Um item do feed da INIA. A linha do autor ("INIA · data") tem a altura do avatar, então nome e data ficam centralizados
  * com a foto; à direita dela fica o `meta` do item (ex.: quando o atendimento aconteceu). O conteúdo começa na mesma coluna
  * do nome (as ações de um feedback ficam no topo do cartão dele).
+ * `recipient` (só no Acompanhamento da estrutura) diz de quem é o item ("para Larissa Monteiro"), logo depois da data.
  * `footer` (ex.: "Este conteúdo foi útil?") só existe onde a ação é real — nada de botão só de tela.
  */
-export function IniaFeedItem({ timestamp, meta, footer, children }: { timestamp: string; meta?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
+export function IniaFeedItem({ timestamp, recipient, meta, footer, children }: { timestamp: string; recipient?: React.ReactNode; meta?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
     <Message align="start" className="gap-3 py-5">
       <MessageAvatar className="self-start bg-transparent group-has-data-[slot=message-footer]/message:translate-y-0">
@@ -33,6 +34,7 @@ export function IniaFeedItem({ timestamp, meta, footer, children }: { timestamp:
           <strong className="font-heading text-sm text-primary dark:text-chart-4">INIA</strong>
           <span aria-hidden className="text-muted-foreground/50">·</span>
           <span className="shrink-0 font-normal tabular-nums">{timestamp}</span>
+          {recipient ? <><span aria-hidden className="text-muted-foreground/50">·</span><span className="min-w-0 truncate font-normal" data-slot="feed-item-recipient">{recipient}</span></> : null}
           {meta ? <div className="flex min-w-0 items-center max-sm:basis-full sm:ml-auto sm:pl-3">{meta}</div> : null}
         </MessageHeader>
         {/* No celular o conteúdo usa a largura inteira (passa sob a coluna do avatar); do sm para cima, alinha com o nome. */}

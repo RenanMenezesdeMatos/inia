@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
 import { feedbackViewSchema } from "@/schemas/feedbacks/feedback-view.schema"
+import { feedbackOriginSchema } from "@/schemas/feedbacks/feedback-origin.schema"
 
 export const indicatorStatusSchema = z.enum(["good", "attention"])
 
@@ -69,18 +70,6 @@ export const operatorIndicatorHistoryFeedbackSchema = z.object({
 })
 
 export const operatorIndicatorsHistoryKindSchema = z.enum(["reading", "monitoria_feedback", "indicator_feedback"])
-
-/**
- * MOTIVO do feedback (backend feedbacks/domain/feedback-origin.ts): tipo (monitoria/indicador), por que veio (flag que disparou,
- * rotina, avulsa, indicador), o nome configurado e a chave do ícone (catálogo `@/lib/display-icons`).
- */
-export const feedbackOriginSchema = z.object({
-  family: z.enum(["MONITORING", "INDICATOR"]),
-  reason: z.enum(["FLAG", "SCHEDULE", "MANUAL", "INDICATOR", "UNKNOWN"]),
-  label: z.string().nullable(),
-  iconKey: z.string(),
-})
-export type FeedbackOrigin = z.infer<typeof feedbackOriginSchema>
 
 export const operatorIndicatorHistorySchema = z.object({
   id: z.string(),

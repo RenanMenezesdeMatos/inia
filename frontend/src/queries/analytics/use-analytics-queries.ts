@@ -1,6 +1,6 @@
 "use client"
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query"
 
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import type { AnalyticsContext, GroupingDimension, OperationalComparison } from "@/schemas/analytics/analytics.schema"
@@ -54,6 +54,13 @@ export function useTeamMembersQuery(subject: SubjectRef | null, period: string |
   return useQuery({ queryKey: analyticsKeys.teamMembers(subject, period, params), queryFn: () => fetchTeamMembers(subject, period, params), enabled, placeholderData: keepPreviousData })
 }
 
-export function useFollowUpFeedQuery(subject: SubjectRef | null, page: number, pageSize: number, unacknowledgedOnly = false) {
-  return useQuery({ queryKey: analyticsKeys.followUps(subject, page, pageSize, unacknowledgedOnly), queryFn: () => fetchFollowUpFeed(subject, page, pageSize, unacknowledgedOnly), placeholderData: keepPreviousData })
+/** Acompanhamento da estrutura como uma timeline só (mais recente primeiro): cada página do servidor é anexada ao fim — o
+ * "carregar mais" do feed revela os progressivamente mais antigos, como no Acompanhamento do colaborador. */
+export function useFollowUpFeedQuery(subject: SubjectRef | null, pageSize: number, unacknowledgedOnly = false) {
+  return useInfiniteQuery({
+    queryKey: analyticsKeys.followUps(subject, pageSize, unacknowledgedOnly),
+    queryFn: ({ pageParam }) => fetchFollowUpFeed(subject, pageParam, pageSize, unacknowledgedOnly),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+  })
 }

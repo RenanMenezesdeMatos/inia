@@ -734,7 +734,7 @@ assessments,assessments/:id,export.csv}` — organização da sessão, só pesso
     `CHANGE_LOCATED_NOT_EXAMINED`.
   - `feedback-heading.test.ts` (assunto canônico × gravado × código × neutro; legado com e sem assunto; idempotência),
     `generate-feedback.test.ts` (título do motor), `conversational-delivery.test.ts` (tópico neutro), frontend
-    `follow-up-detail-sheet.test.tsx`.
+    `follow-up-entry.test.tsx` (antes `follow-up-detail-sheet.test.tsx`).
   - `strength-selection.test.ts` (análise REAL revisada da C07, sem custo; V3: papel no caso, sem bônus de regra condicional,
     situações diferentes da C07).
   - Postgres: `feedback-engine-workflow-proof`, `follow-up-visibility-proof`, `diagnostic-strategy-proof`.

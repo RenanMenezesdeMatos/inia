@@ -148,7 +148,7 @@ export default function HowItConnectsPage() {
             { label: "O Agent devolve feedback com evidência literal; o código confere a literalidade", detail: "se a citação não for literal, o resultado é descartado", tone: "ai" },
             { label: "Revisão humana → Supervisor do operador, em Pendências", detail: "Aprovar publica; Reprovar não publica; Escalar → Escalonar ao Gerente com o conteúdo", tone: "people" },
             { label: "Output → O próprio operador · Acompanhamento", detail: "cria o caso, registra a evidência e publica o Feedback", tone: "output" },
-            { label: "O operador lê e clica “Confirmar ciência”; o Supervisor vê “Ciência em ‹data›”", tone: "people" },
+            { label: "O operador lê e clica “Confirmar ciência”; o Supervisor vê “Ciência confirmada em ‹data›”", tone: "people" },
           ]}
         />
         <p>

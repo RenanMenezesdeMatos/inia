@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
 import { feedbackViewSchema } from "@/schemas/feedbacks/feedback-view.schema"
+import { feedbackOriginSchema } from "@/schemas/feedbacks/feedback-origin.schema"
 import { prvSupervisorViewSchema } from "@/schemas/feedbacks/prv-supervisor-view.schema"
 import { employmentStatusReadSchema, freshnessBlockSchema, operationalCapitalViewSchema, UNKNOWN_FRESHNESS, workScheduleViewSchema } from "@/schemas/people/employment-status.schema"
 
@@ -558,6 +559,8 @@ export const followUpItemSchema = z.object({
   caseId: z.string().nullable(),
   createdAt: z.string(),
   acknowledgedAt: z.string().nullable(),
+  /** Motivo do feedback — o MESMO cabeçalho do Acompanhamento do colaborador (só em feedbacks; ausente/null = alerta ou desconhecido). */
+  origin: feedbackOriginSchema.nullable().optional(),
   feedback: z
     .object({
       evidenceFound: z.string(),

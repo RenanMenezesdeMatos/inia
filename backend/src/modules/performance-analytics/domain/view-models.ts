@@ -1,6 +1,7 @@
 import type { FeedbackView } from "../../reliable-feedback/domain/feedback-view.js"
 import type { PrvSupervisorView } from "../../reliable-feedback/domain/prv-closing-views.js"
 import type { FeedbackSupportMaterialView } from "../../feedbacks/application/feedback-support-materials.js"
+import type { FeedbackOrigin } from "../../feedbacks/domain/feedback-origin.js"
 import type { EmploymentStatus } from "../../people/domain/employment-status.js"
 import type { Quartile } from "../../indicators/domain/employee-performance-schema.js"
 import type { IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
@@ -515,6 +516,9 @@ export type FollowUpItem = {
   caseId: string | null
   createdAt: string
   acknowledgedAt: string | null
+  /** Motivo do feedback (flag que disparou a monitoria, rotina, avulsa, indicador) — o MESMO cabeçalho do Acompanhamento do
+   * colaborador. Só em feedbacks (kind = FEEDBACK); `null` = alerta ou motivo desconhecido. */
+  origin?: FeedbackOrigin | null
   /** Conteúdo estruturado do feedback (quando kind = FEEDBACK). `supportMaterials` = materiais
    * da Base de Conhecimento recomendados pela IA, já resolvidos para ESTE viewer (título real ou
    * marcador de indisponível — nunca URL do modelo). */

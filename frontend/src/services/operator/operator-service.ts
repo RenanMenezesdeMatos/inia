@@ -8,10 +8,11 @@ import {
   type OperatorIndicatorsData,
   type OperatorProfile,
 } from "@/schemas/operator"
-import type { FeedbackOrigin } from "@/schemas/operator/operator-indicators.schema"
+import type { FeedbackOrigin } from "@/schemas/feedbacks/feedback-origin.schema"
 import { ROLE_LABELS, type PlatformRole } from "@/schemas/auth/auth.schema"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
 import type { FeedbackView } from "@/schemas/feedbacks/feedback-view.schema"
+import { formatFeedTimestamp } from "@/lib/format/date"
 
 import { SESSION_COOKIE_NAME } from "@/services/auth/auth-service"
 import { redirectIfSessionEnded } from "@/services/auth/server-session"
@@ -99,7 +100,7 @@ function mapHistory(rows: OperatorFeedbackRow[]): OperatorIndicatorHistory[] {
       subtitle: row.heading?.subtitle ?? null,
       message: row.summary || row.recommendation || row.evidenceFound || "Novo feedback disponível.",
       occurredAt: row.occurredAt ?? row.createdAt,
-      timestamp: new Date(row.occurredAt ?? row.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }),
+      timestamp: formatFeedTimestamp(row.occurredAt ?? row.createdAt),
       kind,
       presentation:
         kind === "monitoria_feedback"

@@ -73,7 +73,7 @@ export default function FollowUpPage() {
           aprovação nem reprovação de nada.
         </p>
         <FieldRow label="Como confirma" value="No Acompanhamento dele (ou dentro da conversa com a INIA sobre o feedback), clicando em “Confirmar ciência” e entrando com o próprio login e senha. Depois disso o item mostra “Ciência confirmada em ‹data›”. A confirmação é definitiva e pode ser repetida sem efeito; se havia uma conversa com a INIA em andamento sobre o feedback, ela é concluída." />
-        <FieldRow label="O que o gestor vê" value="No Acompanhamento da estrutura, cada feedback mostra “Aguardando ciência do colaborador” ou “Ciência em ‹data›”. Na Equipe, o resumo conta os feedbacks publicados ainda sem ciência e a linha de cada pessoa mostra “N aguardando ciência” — clicar abre o Acompanhamento dela só com esses itens." />
+        <FieldRow label="O que o gestor vê" value="No Acompanhamento da estrutura, cada feedback aparece como no Acompanhamento do colaborador — o mesmo cartão (tipo, motivo e título) e o conteúdo lido no próprio cartão —, com “para ‹pessoa›” na linha da INIA e, embaixo, “Aguardando ciência do colaborador” ou “Ciência confirmada em ‹data›”. Na Equipe, o resumo conta os feedbacks publicados ainda sem ciência e a linha de cada pessoa mostra “N aguardando ciência” — clicar abre o Acompanhamento dela só com esses itens." />
         <FieldRow label="Funcionalmente" value="Confirmar grava a data/hora da ciência no feedback; o status do feedback continua Publicado. Só o destinatário consegue confirmar." />
         <WarningCallout title="Ciência não é aprovação" kind="tip">
           Confirmar ciência registra que o feedback foi recebido e lido. Não altera o feedback, não fecha o caso e não decide nada de Workflow.
