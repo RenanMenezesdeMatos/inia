@@ -34,7 +34,7 @@ O limite por token do API Push (60/min) também conta nessa loja (`consumePushQu
 `login-ip-failures` (`LOGIN_RATE_LIMIT_PER_IP`, 200/5 min, **só recusas** — até 13/10 contava tudo com 30). A trava de negócio
 por e-mail (5 falhas/15 min) não mudou. `normalizeClientIp` tira a PORTA do IP: o ARR manda `X-Forwarded-For: ip:porta` por
 padrão e o Express devolve isso em `req.ip` (cada conexão virava um "IP"); o `configurar-iis.ps1` também desliga
-`includePortInXFF`.
+`includePortInXForwardedFor`.
 
 ## HTTP, desligamento e streaming
 

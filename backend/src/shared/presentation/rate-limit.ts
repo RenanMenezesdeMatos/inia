@@ -83,7 +83,7 @@ export function createRateLimiter(rule: RateLimitRule, store: RateLimitStore = c
 /**
  * IP sem a PORTA: o ARR do IIS, por padrão, manda `X-Forwarded-For: 203.0.113.5:54321` (porta efêmera de cada conexão) e o
  * Express devolve isso como `req.ip` — cada conexão viraria um "IP" novo e o limite por IP não valeria. O configurar-iis.ps1
- * desliga a porta (includePortInXFF); isto cobre um proxy configurado à mão.
+ * desliga a porta (includePortInXForwardedFor); isto cobre um proxy configurado à mão.
  */
 export function normalizeClientIp(ip: string): string {
   const ipv4WithPort = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(ip)

@@ -84,7 +84,7 @@ Ok "Scripts e Ferramentas de Gerenciamento do IIS"
 
 # --- 2. Proxy do ARR no nível do servidor -----------------------------------------------------------------------
 Passo "2/6 Ligando o proxy do ARR (tempo limite 5 min, sem acumular respostas, IP do cliente sem porta)"
-AppCmd @("set", "config", "-section:system.webServer/proxy", "/enabled:True", "/preserveHostHeader:True", "/timeout:00:05:00", "/responseBufferLimit:0", "/includePortInXFF:False", "/commit:apphost") | Out-Null
+AppCmd @("set", "config", "-section:system.webServer/proxy", "/enabled:True", "/preserveHostHeader:True", "/timeout:00:05:00", "/responseBufferLimit:0", "/includePortInXForwardedFor:False", "/commit:apphost") | Out-Null
 Ok "proxy ligado"
 
 # --- 3. Web farms + pasta do site + web.config ------------------------------------------------------------------
@@ -117,7 +117,7 @@ function Configurar-Farm([string]$Nome, [int]$Instancias, [int]$PortaInterna, [s
     "$arr.healthCheck.minServers:1",
     "$arr.protocol.timeout:00:05:00",
     "$arr.protocol.responseBufferLimit:0",
-    "$arr.protocol.includePortInXFF:False",
+    "$arr.protocol.includePortInXForwardedFor:False",
     "/commit:apphost"
   ) | Out-Null
   $enderecos = (1..$Instancias | ForEach-Object { "127.0.0.$($_):$PortaInterna" }) -join ", "
