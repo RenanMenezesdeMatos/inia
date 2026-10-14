@@ -1,10 +1,10 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { IndicatorsView } from "./indicators-view"
-import { EMPLOYEE_DASHBOARD, EMPTY_EMPLOYEE_DASHBOARD, MANAGER_CONTEXT, MONTH_COMPARISON, OPERATOR_CONTEXT, STRUCTURE_DASHBOARD } from "./testing/fixtures"
+import { ADMIN_CONTEXT, EMPLOYEE_DASHBOARD, EMPTY_EMPLOYEE_DASHBOARD, MANAGER_CONTEXT, MONTH_COMPARISON, OPERATOR_CONTEXT, STRUCTURE_DASHBOARD } from "./testing/fixtures"
 import { installJsdomStubs } from "./testing/jsdom-stubs"
 import { renderWithQuery } from "./testing/render-with-query"
 
@@ -291,5 +291,49 @@ describe("Indicadores — visão STRUCTURE (Supervisor e acima)", () => {
     renderWithQuery(<IndicatorsView context={MANAGER_CONTEXT} state={{ subject: null, period: null, indicator: null, groupBy: null }} onStateChange={() => {}} employeeHref={(id) => `/e/${id}`} />)
     expect(screen.getByLabelText("Período")).toBeInTheDocument()
     expect(document.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+  })
+})
+
+describe("Indicadores — viewer sem sujeito padrão (Administrador geral fora da hierarquia)", () => {
+  it("na ficha de um colaborador consulta o sujeito visitado e mostra o fechamento oficial — nunca fica no esqueleto", async () => {
+    service.fetchIndicatorDashboard.mockResolvedValue(EMPLOYEE_DASHBOARD)
+    const subject = { kind: "EMPLOYEE" as const, id: "op-1" }
+    renderWithQuery(<IndicatorsView context={ADMIN_CONTEXT} state={{ subject, period: null, indicator: null, groupBy: null }} onStateChange={() => {}} employeeHref={(id) => `/e/${id}`} title="Indicadores de Ana" />)
+
+    expect(await screen.findByText("PRV de Ana")).toBeInTheDocument()
+    expect(screen.getByText("105%")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Tempo Médio de Atendimento" })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0)
+    expect(service.fetchIndicatorDashboard).toHaveBeenCalledWith(subject, "2026-09", null)
+  })
+
+  it("a trilha da ficha só informa a cadeia: o gestor do visitado não vira link (subir levaria ao perfil próprio, sem estrutura)", async () => {
+    service.fetchIndicatorDashboard.mockResolvedValue({ ...EMPLOYEE_DASHBOARD, breadcrumb: [{ kind: "SUPERVISOR_TEAM", id: "sup-1", label: "Bruno Lima" }, { kind: "EMPLOYEE", id: "op-1", label: "Diego Costa" }] })
+    const onStateChange = vi.fn()
+    renderWithQuery(<IndicatorsView context={ADMIN_CONTEXT} state={{ subject: { kind: "EMPLOYEE", id: "op-1" }, period: null, indicator: null, groupBy: null }} onStateChange={onStateChange} employeeHref={(id) => `/e/${id}`} title="Indicadores de Diego" />)
+
+    const nav = await screen.findByRole("navigation", { name: "Estrutura em análise" })
+    expect(nav).toHaveTextContent("Bruno Lima")
+    expect(nav).toHaveTextContent("Diego Costa")
+    expect(within(nav).queryByRole("button")).not.toBeInTheDocument()
+    fireEvent.click(within(nav).getByText("Bruno Lima"))
+    expect(onStateChange).not.toHaveBeenCalled()
+  })
+
+  it("a mesma trilha para um gestor continua navegável: o primeiro item volta para a estrutura dele", async () => {
+    service.fetchIndicatorDashboard.mockResolvedValue({ ...EMPLOYEE_DASHBOARD, breadcrumb: [{ kind: "MANAGER_STRUCTURE", id: "mgr-1", label: "Roberto Gerente" }, { kind: "SUPERVISOR_TEAM", id: "sup-1", label: "Bruno Lima" }, { kind: "EMPLOYEE", id: "op-1", label: "Diego Costa" }] })
+    const onStateChange = vi.fn()
+    renderWithQuery(<IndicatorsView context={MANAGER_CONTEXT} state={{ subject: { kind: "EMPLOYEE", id: "op-1" }, period: null, indicator: null, groupBy: null }} onStateChange={onStateChange} employeeHref={(id) => `/e/${id}`} title="Indicadores de Diego" />)
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bruno Lima" }))
+    expect(onStateChange).toHaveBeenCalledWith({ subject: { kind: "SUPERVISOR_TEAM", id: "sup-1" }, indicator: null, groupBy: null })
+    fireEvent.click(screen.getByRole("button", { name: "Roberto Gerente" }))
+    expect(onStateChange).toHaveBeenLastCalledWith({ subject: null, indicator: null, groupBy: null })
+  })
+
+  it("sem sujeito explícito continua sem consultar: o backend responderia NO_STRUCTURE", () => {
+    renderWithQuery(<IndicatorsView context={ADMIN_CONTEXT} state={{ subject: null, period: null, indicator: null, groupBy: null }} onStateChange={() => {}} employeeHref={(id) => `/e/${id}`} />)
+    expect(screen.getByLabelText("Período")).toBeInTheDocument()
+    expect(service.fetchIndicatorDashboard).not.toHaveBeenCalled()
   })
 })

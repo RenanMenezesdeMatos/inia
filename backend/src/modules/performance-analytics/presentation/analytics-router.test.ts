@@ -7,7 +7,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import type { FollowUpItem } from "../domain/view-models.js"
 import { fixtureOrg, IDS } from "../testing/fixture-org.js"
-import { InMemoryAnalyticsRepository, ORG, type InMemoryOrg } from "../testing/in-memory-analytics-repository.js"
+import { InMemoryAnalyticsRepository, ORG, person, type InMemoryOrg } from "../testing/in-memory-analytics-repository.js"
 import { createAnalyticsRouter } from "./analytics-router.js"
 
 const noDatabase = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
@@ -67,6 +67,48 @@ describe("GET /analytics — autenticação e escopo via API", () => {
     expect(own.body.data.prv.achievementPercent).toBe(105)
     expect((await request(app).get(`/analytics/indicators?subjectKind=EMPLOYEE&subjectId=${IDS.op2}`)).status).toBe(403)
     expect((await request(app).get("/analytics/team")).status).toBe(400) // sujeito EMPLOYEE não tem visão de estrutura
+  })
+
+  it("Administrador geral do setup (fora da hierarquia, indicators.view na organização): sem sujeito padrão, mas a ficha do colaborador devolve o fechamento oficial", async () => {
+    const org = fixtureOrg()
+    org.people.push(person({ id: "admin-setup", name: "Administração da INIA", role: "ADMIN" }))
+    org.access = { acc: { "indicators.view": { organizationWide: true } } }
+    const app = appAs(user("admin-setup", "ADMIN"), org)
+    expect((await request(app).get("/analytics/context")).body.data.defaultSubject).toBeNull()
+    const visited = await request(app).get(`/analytics/indicators?subjectKind=EMPLOYEE&subjectId=${IDS.op1}&period=2026-09`)
+    expect(visited.status).toBe(200)
+    expect(visited.body.data).toMatchObject({ mode: "EMPLOYEE", subject: { subject: { kind: "EMPLOYEE", employeeId: IDS.op1 } } })
+    expect(visited.body.data.prv.achievementPercent).toBe(105)
+    // Sem sujeito na query não há o que mostrar — por isso a tela só consulta com sujeito explícito ou padrão.
+    const own = await request(app).get("/analytics/indicators?period=2026-09")
+    expect(own.status).toBe(404)
+    expect(own.body.error.code).toBe("NO_STRUCTURE")
+  })
+
+  it("viewer sem sujeito padrão: as competências do contexto vêm do escopo de acesso dele; quem tem estrutura continua com as da própria estrutura", async () => {
+    const periodsOf = (body: { data: { availablePeriods: { period: string }[] } }) => body.data.availablePeriods.map((entry) => entry.period)
+    const orgWide = fixtureOrg()
+    orgWide.people.push(person({ id: "admin-setup", name: "Administração da INIA", role: "ADMIN" }))
+    orgWide.access = { acc: { "indicators.view": { organizationWide: true } } }
+    // Organização inteira: julho só existe para Ana (equipe da Vanessa) e precisa aparecer na ficha de qualquer pessoa.
+    const admin = await request(appAs(user("admin-setup", "ADMIN"), orgWide)).get("/analytics/context")
+    expect(admin.body.data.defaultSubject).toBeNull()
+    expect(periodsOf(admin.body)).toEqual(["2026-09", "2026-08", "2026-07"])
+    expect(admin.body.data.currentPeriod).toBe("2026-09")
+
+    // Recorte do acesso: só o Grupo FATURAS (Caio tem agosto e setembro) — julho da Ana fica de fora.
+    const teamScoped = fixtureOrg()
+    teamScoped.people.push(person({ id: "admin-faturas", name: "Administração de Faturas", role: "ADMIN" }))
+    teamScoped.access = { acc: { "indicators.view": { teamIds: [IDS.teamB] } } }
+    expect(periodsOf((await request(appAs(user("admin-faturas", "ADMIN"), teamScoped)).get("/analytics/context")).body)).toEqual(["2026-09", "2026-08"])
+
+    // Sem acesso nenhum, nada muda: só o último mês fechado.
+    const noAccess = fixtureOrg()
+    noAccess.people.push(person({ id: "admin-sem-acesso", name: "Sem acesso", role: "ADMIN" }))
+    expect(periodsOf((await request(appAs(user("admin-sem-acesso", "ADMIN"), noAccess)).get("/analytics/context")).body)).toEqual(["2026-09"])
+
+    // Supervisor (tem sujeito padrão): as competências da própria equipe, como antes — nunca as da organização.
+    expect(periodsOf((await request(appAs(user(IDS.bruno, "SUPERVISOR"))).get("/analytics/context")).body)).toEqual(["2026-09", "2026-08"])
   })
 
   it("erros de entrada são claros: competência inválida, agrupamento inválido, tipo de sujeito desconhecido", async () => {

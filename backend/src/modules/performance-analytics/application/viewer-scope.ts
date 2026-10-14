@@ -85,6 +85,11 @@ export function operatorsBelow(scope: ViewerScope, anchorId: string): PersonNode
   return result.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
 }
 
+/** Todos os operadores ativos visíveis ao viewer (subárvore ∪ escopo de acesso), sem âncora. */
+export function visibleOperators(scope: ViewerScope): PersonNode[] {
+  return [...scope.nodes.values()].filter(isActiveOperator)
+}
+
 /** Equipe direta de um Supervisor — mesma definição do Workflow Engine (`resolveDirectReportOperatorIds`). */
 export function directOperatorsOf(scope: ViewerScope, supervisorId: string): PersonNode[] {
   return (scope.children.get(supervisorId) ?? []).filter(isActiveOperator).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
@@ -196,8 +201,7 @@ export function resolveSubject(scope: ViewerScope, subject: AnalyticsSubject): R
   }
 
   const group = structureAnchorGroupRef(subject)
-  const scopedOperators = [...scope.nodes.values()].filter(isActiveOperator)
-  const members = scopedOperators
+  const members = visibleOperators(scope)
     .filter((node) => (group?.teamId ? node.teamId === group.teamId : node.subteamId === group?.subteamId))
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
   if (members.length === 0) throw accessDenied()

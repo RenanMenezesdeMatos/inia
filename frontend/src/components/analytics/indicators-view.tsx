@@ -22,8 +22,14 @@ export type IndicatorsViewState = { subject: SubjectRef | null; period: string |
 export function IndicatorsView({ context, state, onStateChange, employeeHref, title, canSeeLineage = false }: { context: AnalyticsContext; state: IndicatorsViewState; onStateChange: (patch: Partial<IndicatorsViewState>) => void; employeeHref: (personId: string) => string; title?: string; /** "Origem do dado" — capability de acesso (Central de Dados), nunca o nível hierárquico. */ canSeeLineage?: boolean }) {
   const period = state.period ?? context.currentPeriod
   const comparison = state.comparison ?? null
-  const query = useIndicatorDashboardQuery(state.subject, period, comparison, context.defaultSubject !== null)
+  // Sem sujeito explícito o backend usa o sujeito padrão do viewer, e quem não tem nenhum recebe NO_STRUCTURE — só então
+  // a consulta fica desligada. Sujeito explícito (ficha do colaborador) sempre consulta: o Administrador geral, fora da
+  // hierarquia, não tem sujeito padrão e mesmo assim vê quem o escopo de acesso dele alcança.
+  const query = useIndicatorDashboardQuery(state.subject, period, comparison, state.subject !== null || context.defaultSubject !== null)
   const viewerIsSubject = query.data?.mode === "EMPLOYEE" && (state.subject === null || state.subject.id === context.viewer.personId)
+  // A trilha começa na estrutura de quem vê e subir volta para ela. Sem sujeito padrão, o primeiro item já é a cadeia de
+  // quem é visitado e o perfil próprio não tem Indicadores de estrutura para onde voltar: a trilha só informa.
+  const navigateBreadcrumb = context.defaultSubject !== null ? (subject: SubjectRef | null) => onStateChange({ subject, indicator: null, groupBy: null }) : undefined
 
   return (
     <section className="min-h-[calc(100dvh-12rem)] w-full space-y-4">
@@ -31,7 +37,7 @@ export function IndicatorsView({ context, state, onStateChange, employeeHref, ti
         <div className="min-w-0">
           <p className="font-heading text-sm text-muted-foreground">Performance</p>
           <h2 className="text-2xl font-semibold tracking-tight">{title ?? (query.data?.mode === "STRUCTURE" ? "Indicadores da estrutura" : "Meus indicadores")}</h2>
-          {query.data ? <HierarchyBreadcrumb entries={query.data.breadcrumb} onNavigate={(subject) => onStateChange({ subject, indicator: null, groupBy: null })} /> : null}
+          {query.data ? <HierarchyBreadcrumb entries={query.data.breadcrumb} onNavigate={navigateBreadcrumb} /> : null}
         </div>
         {/* Período (competência oficial, mês fechado) = fechamento oficial; Comparação = janelas do acompanhamento
             operacional (a partir de hoje). Trocar uma nunca altera a outra. */}

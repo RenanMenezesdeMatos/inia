@@ -33,6 +33,20 @@ export const MANAGER_CONTEXT: AnalyticsContext = {
   capabilities: { ...SUPERVISOR_CONTEXT.capabilities, groupingOptions: ["COORDINATOR", "SUPERVISOR", "TEAM", "SUBTEAM"], peopleTabLabel: "Estrutura" },
 }
 
+/** Administrador geral criado pelo `setup`: pessoa fora da hierarquia (sem sujeito padrão), com `indicators.view` na
+ * organização — as competências do contexto vêm de tudo o que esse acesso alcança. */
+export const ADMIN_CONTEXT: AnalyticsContext = {
+  viewer: { personId: "adm-1", role: "ADMIN", name: "Administração da INIA" },
+  defaultSubject: null,
+  capabilities: { ...OPERATOR_CONTEXT.capabilities, peopleTabLabel: null, tabs: ["FOLLOW_UP", "INDICATORS", "CALENDAR", "STRUCTURE"] },
+  pendingActionCount: 0,
+  availablePeriods: [
+    { period: "2026-09", label: "Setembro 2026" },
+    { period: "2026-08", label: "Agosto 2026" },
+  ],
+  currentPeriod: "2026-09",
+}
+
 const HISTORY = [
   { period: "2026-04", label: "abr/26", value: null },
   { period: "2026-05", label: "mai/26", value: null },

@@ -3,7 +3,7 @@ import { longPeriodLabel } from "../domain/reference-period.js"
 import { buildIndicatorViewCapabilities } from "../domain/view-capabilities.js"
 import type { AnalyticsContext } from "../domain/view-models.js"
 import type { AnalyticsReadRepository } from "./analytics-read-repository.js"
-import { hasAccessGrant, resolveDefaultSubject, resolveSubject, type ViewerScope } from "./viewer-scope.js"
+import { hasAccessGrant, resolveDefaultSubject, resolveSubject, visibleOperators, type ViewerScope } from "./viewer-scope.js"
 
 /**
  * Primeiro carregamento da área: quem é o viewer, seu sujeito padrão, o que pode ver e quais
@@ -13,7 +13,10 @@ import { hasAccessGrant, resolveDefaultSubject, resolveSubject, type ViewerScope
 export async function buildAnalyticsContext(repository: AnalyticsReadRepository, scope: ViewerScope, subject: AnalyticsSubject | null, lastClosedPeriod: string): Promise<AnalyticsContext> {
   const defaultSubject = resolveDefaultSubject(scope)
   const effective = subject ?? defaultSubject?.subject ?? null
-  const members = effective ? resolveSubject(scope, effective).members : []
+  // Sem sujeito nenhum (quem está fora da hierarquia, ex.: o Administrador geral do setup), as competências vêm de tudo o
+  // que o escopo de acesso dele alcança — é o que a ficha de quem ele visita oferece no seletor. Quem tem sujeito padrão
+  // continua com as competências da própria estrutura.
+  const members = effective ? resolveSubject(scope, effective).members : visibleOperators(scope)
   // Guard central do fechamento oficial: o seletor de competência só conhece meses FECHADOS
   // (<= último fechamento possível no fuso da organização) — o mês corrente nunca aparece,
   // exista ou não linha no banco (official-closure-policy.ts).
