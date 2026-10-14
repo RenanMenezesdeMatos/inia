@@ -1,4 +1,5 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { rateLimitBucket } from "../../../shared/application/rate-limit/rate-limit-store.js"
 import type { DataHubContext } from "./data-hub-context.js"
 import { findRun, SELECT_FEED, SELECT_SOURCE, type DataFeedRow, type DataRunRow, type DataSourceRow } from "./records.js"
 import { enqueueRun } from "./run-service.js"
@@ -10,31 +11,21 @@ import { hashPushToken } from "./source-service.js"
  * vira um Run na fila (202 + runId) — nunca processado dentro do request. Mesmo lote com a mesma
  * Idempotency-Key devolve o MESMO Run (nada duplica).
  *
- * Rate limit: token bucket em memória por token (60 req/min, burst 60) — proteção do endpoint
- * inbound proporcional à infraestrutura atual (uma instância); atrás de um gateway com rate limit
- * próprio, o dele prevalece.
+ * Rate limit por TOKEN (60 req/min, janela deslizante): conta na loja de limites do contexto — no servidor, a do PostgreSQL
+ * (`rate_limit_hits`), dividida por todas as APIs atrás do IIS (antes era um balde em memória por processo: com N APIs o
+ * limite efetivo virava N × 60). A chave é o id do token JÁ AUTENTICADO, nunca o texto enviado. Atrás de um gateway com rate
+ * limit próprio, o dele prevalece. Loja fora do ar = a requisição passa (aviso no log).
  */
-const RATE_LIMIT_PER_MINUTE = 60
-const buckets = new Map<string, { tokens: number; refilledAt: number }>()
-/** Teto de baldes vivos: a chave é o id do token JÁ AUTENTICADO (nunca o texto enviado), mas o mapa nunca cresce sem limite. */
-const MAX_BUCKETS = 10_000
+export const PUSH_RATE_LIMIT_PER_MINUTE = 60
 
-export function checkRateLimit(key: string, now = Date.now(), limit = RATE_LIMIT_PER_MINUTE): boolean {
-  if (!buckets.has(key) && buckets.size >= MAX_BUCKETS) {
-    const oldest = buckets.keys().next().value
-    if (oldest !== undefined) buckets.delete(oldest)
+export async function consumePushQuota(ctx: DataHubContext, tokenId: string, limit = PUSH_RATE_LIMIT_PER_MINUTE): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  try {
+    const decision = await ctx.pushRateLimits.consume(rateLimitBucket("push-token", tokenId), 60_000, limit)
+    return { allowed: decision.allowed, retryAfterSeconds: Math.max(1, Math.ceil(decision.retryAfterMs / 1000)) }
+  } catch (error) {
+    ctx.logger.warn({ err: error instanceof Error ? error.message : String(error) }, "data-hub push rate limit store unavailable")
+    return { allowed: true, retryAfterSeconds: 0 }
   }
-  const bucket = buckets.get(key) ?? { tokens: limit, refilledAt: now }
-  const elapsedMinutes = (now - bucket.refilledAt) / 60_000
-  bucket.tokens = Math.min(limit, bucket.tokens + elapsedMinutes * limit)
-  bucket.refilledAt = now
-  if (bucket.tokens < 1) {
-    buckets.set(key, bucket)
-    return false
-  }
-  bucket.tokens -= 1
-  buckets.set(key, bucket)
-  return true
 }
 
 export type PushAuth = { source: DataSourceRow; feed: DataFeedRow; tokenId: string }

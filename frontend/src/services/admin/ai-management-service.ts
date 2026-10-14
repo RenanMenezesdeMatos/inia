@@ -72,6 +72,7 @@ export type CreateAiConnectionInput = {
   baseUrl?: string | null
   isLocal?: boolean
   timeoutMs?: number
+  maxConcurrentCalls?: number | null
   apiKey?: string | null
   customHeaders?: Record<string, string> | null
 }
@@ -80,7 +81,7 @@ export async function createAiConnection(input: CreateAiConnectionInput): Promis
   return aiConnectionSchema.parse(await adminSend(`${BASE}/connections`, "POST", input))
 }
 
-export type UpdateAiConnectionInput = { id: string; name?: string; baseUrl?: string | null; isLocal?: boolean; timeoutMs?: number; enabled?: boolean }
+export type UpdateAiConnectionInput = { id: string; name?: string; baseUrl?: string | null; isLocal?: boolean; timeoutMs?: number; maxConcurrentCalls?: number | null; enabled?: boolean }
 
 export async function updateAiConnection({ id, ...input }: UpdateAiConnectionInput): Promise<AiConnection> {
   return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}`, "PATCH", input))

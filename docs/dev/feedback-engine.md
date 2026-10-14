@@ -27,7 +27,7 @@ Gatilho → Chamar agente / Orquestrador → Gerar feedback → [Revisão humana
 | Orquestrador com especialista em Avaliação de processo | o especialista usa a mesma `analyzeCall` (hook `analyzeCall` em `run-specialist-tool`). |
 | Chamar agente (outros formatos) | inalterado (`runAgent`). |
 | Gerar feedback | `generateFeedback`: reaproveita a análise da origem ou analisa agora (origem antiga), monta o brief, compõe e verifica. `PUBLISHABLE` → segue para o Output com `FEEDBACK_ENGINE_MESSAGE`; `ABSTAINED` → a execução termina com o motivo (sem Output). **Nunca espera QA.** |
-| Output FOLLOW_UP → O próprio operador | publica no Acompanhamento (caso + evidência + feedback + materiais + timeline + outbox, numa transação; emissão idempotente com `engine_message_id`). |
+| Output FOLLOW_UP → O próprio operador | publica no Acompanhamento (caso + evidência + feedback + materiais + timeline, numa transação; emissão idempotente com `engine_message_id`). |
 | Output CHAT/AVATAR | mesma projeção (`FEEDBACK_VIEW`) das entregas conversacionais. |
 
 Os grafos, gatilhos, agendas, públicos, decisões do motor de Workflow e configurações de Output **não mudaram**. A validação de

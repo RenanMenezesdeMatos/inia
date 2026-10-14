@@ -485,6 +485,8 @@ export type ManualRunView = {
     events: { nodeId: string; nodeLabel: string | null; eventType: string; createdAt: string }[]
   }
   deliveries: ManualRunDelivery[]
+  /** Intervenções que o nó "Avaliar política de acompanhamento" abriu ou recomendou nesta execução (não são entregas). */
+  interventions: { id: string; caseId: string; typeName: string; status: string; responsibleName: string; dueAt: string }[]
 }
 
 const WAIT_EVENT: Record<string, ManualRunView["execution"]["waitingFor"]> = {
@@ -570,6 +572,12 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
       order by "createdAt"`,
     [row.enrollment_id],
   )
+  const interventions = await db.query<ManualRunView["interventions"][number]>(
+    `select i.id, i.case_id "caseId", coalesce(v.definition->>'name', i.type_key) "typeName", i.status, r.name "responsibleName", i.due_at::text "dueAt"
+       from interventions i join intervention_type_versions v on v.id = i.type_version_id join people r on r.id = i.responsible_id
+      where i.enrollment_id = $1 order by i.created_at`,
+    [row.enrollment_id],
+  )
   const lastEvent = events.rows[events.rows.length - 1] ?? null
   const lastFailure = [...events.rows].reverse().find((event) => event.event_type === "node_failed" || event.event_type === "flow_dead") ?? null
   const status = row.status ?? "active"
@@ -604,6 +612,7 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
       events: events.rows.map((event) => ({ nodeId: event.node_id, nodeLabel: labelOf(event.node_id), eventType: event.event_type, createdAt: event.created_at })),
     },
     deliveries: deliveries.rows,
+    interventions: interventions.rows,
   }
 }
 

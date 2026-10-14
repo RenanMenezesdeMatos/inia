@@ -29,6 +29,7 @@ export const VARIABLE_A = "0a7a0000-0000-4000-8000-0000000000c1"
 export const VARIABLE_B = "0a7a0000-0000-4000-8000-0000000000c2"
 const DOMAIN_ID = "0a7a0000-0000-4000-8000-0000000000c3"
 const MISSING_UUID = "0a7a0000-0000-4000-8000-0000000000ff"
+const POLICY_ID = "0a7a0000-0000-4000-8000-0000000000c4"
 
 // ---------------------------------------------------------------------------------------------
 // Gatilhos
@@ -70,6 +71,7 @@ export const interactionFeedback = (id: string, source: Record<string, unknown>)
 export const select = (id = "select", config: Record<string, unknown> = { selectionMode: "CONDITION", criterion: PRV_CRITERION }) => node(id, "select_employees", "Selecionar colaboradores", config)
 export const apply = (id = "apply") => node(id, "apply_individually", "Aplicar individualmente")
 export const join = (id = "join") => node(id, "consolidate_results", "Consolidar resultados")
+export const policyNode = (id = "pol", config: Record<string, unknown> = {}) => node(id, "intervention_policy", "Avaliar política", { policyId: POLICY_ID, mode: "RECOMMEND_ONLY", analysisSourceNodeIds: [], ...config })
 
 const PRV_CRITERION = { comparator: "LT", thresholdNumeric: 80, performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_ACHIEVEMENT" } }
 
@@ -138,7 +140,7 @@ const conditionCase = (config: Record<string, unknown>, base: TriggerSetup = FLA
 
 /** Família de regra = o arquivo onde ela mora nos dois lados (publish-validation/<família>.ts no backend,
  * workflow-validation/<família>.ts no editor). */
-export type RuleFamily = "trigger-context" | "conditions" | "actions" | "orchestrators" | "review-escalation" | "outputs" | "fan-out" | "indicator-diagnosis" | "reliable-feedback"
+export type RuleFamily = "trigger-context" | "conditions" | "actions" | "orchestrators" | "review-escalation" | "outputs" | "fan-out" | "indicator-diagnosis" | "reliable-feedback" | "intervention-policy"
 
 export type MirroredCase = {
   family: RuleFamily
@@ -235,6 +237,9 @@ export const MIRRORED: MirroredCase[] = [
   },
 
   // ---- orchestrators: orquestrador (esquema do rascunho — o backend recusa ao SALVAR) -----------------------
+  // ---- intervention-policy: nó "Avaliar política de acompanhamento" -------------------------------------------------------------
+  { family: "intervention-policy", name: "Avaliar política sem política escolhida", setup: setup(MANUAL_COLLABORATOR, chain(triggerNode(), policyNode("pol", { policyId: "" }), endNode())), code: "VALIDATION_ERROR", nodeId: "pol" },
+  { family: "intervention-policy", name: "referência de análise que vem depois do nó", setup: setup(MANUAL_COLLABORATOR, chain(triggerNode(), policyNode("pol", { analysisSourceNodeIds: ["end"] }), endNode())), code: "WORKFLOW_INTERVENTION_POLICY_SOURCE_NOT_ANCESTOR", nodeId: "pol" },
   { family: "orchestrators", name: "Orquestrador sem orquestrador escolhido", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { orchestratorId: "" }), endNode())), code: "VALIDATION_ERROR", nodeId: "orq" },
   { family: "orchestrators", name: "Orquestrador sem instrução", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { instruction: "   " }), endNode())), code: "VALIDATION_ERROR", nodeId: "orq" },
   { family: "orchestrators", name: "roteamento por domínios sem domínio", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { routing: { mode: "DOMAINS", businessDomainIds: [] } }), endNode())), code: "VALIDATION_ERROR", nodeId: "orq" },
@@ -311,6 +316,7 @@ export const MIRRORED: MirroredCase[] = [
   { family: "fan-out", name: "Revisão humana sobre a estrutura", setup: consolidated(chain(triggerNode(), humanReview("hr"), endNode())), code: "WORKFLOW_HUMAN_REVIEW_INVALID_MODE", nodeId: "hr" },
   { family: "fan-out", name: "Revisão humana depois de Consolidar resultados", setup: consolidated(consolidatedGraph({ orq: humanReview("orq") })), code: "WORKFLOW_HUMAN_REVIEW_INVALID_MODE", nodeId: "orq" },
   { family: "fan-out", name: "Orquestrador sobre a estrutura", setup: consolidated(chain(triggerNode(), orchestrator(), endNode())), code: "WORKFLOW_ORCHESTRATOR_INVALID_MODE", nodeId: "orq" },
+  { family: "fan-out", name: "Avaliar política de acompanhamento sobre a estrutura", setup: consolidated(chain(triggerNode(), policyNode(), endNode())), code: "WORKFLOW_INTERVENTION_POLICY_INVALID_MODE", nodeId: "pol" },
   { family: "fan-out", name: "Chamar agente sobre a estrutura", setup: consolidated(chain(triggerNode(), agent("agent", { scheduledDataSource: { kind: "PERFORMANCE", closures: 1 } }), output(), endNode())), code: "WORKFLOW_ACTION_INVALID_MODE", nodeId: "agent" },
   { family: "fan-out", name: "Escalonar sobre a estrutura", setup: consolidated(chain(triggerNode(), escalate("esc"), endNode())), code: "WORKFLOW_ACTION_INVALID_MODE", nodeId: "esc" },
   { family: "fan-out", name: "Feedback direto de atendimento sobre a estrutura", setup: consolidated(chain(triggerNode(), interactionFeedback("ifb", { kind: "COLLABORATOR_SAMPLE", period: "WEEK", sampleSize: 3, strategy: "MOST_RECENT" }), endNode())), code: "WORKFLOW_ACTION_INVALID_MODE", nodeId: "ifb" },
@@ -440,6 +446,8 @@ export type BackendOnlyCase = { name: string; reason: string; setup: ParitySetup
 const withDb = (base: ParitySetup, db: Partial<ParityDbFacts>): ParitySetup => ({ ...base, db })
 const VALID_AGENT_FLOW = setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), output(), endNode()))
 const VALID_ORCHESTRATOR_FLOW = setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator(), output("out", "nodeOutputs.orq"), endNode()))
+const VALID_POLICY_FLOW = setup(MANUAL_COLLABORATOR, chain(triggerNode(), policyNode(), endNode()))
+const policyRow = (extra: Record<string, unknown>) => (policyId: string) => ({ id: policyId, name: "Política", active: true, scope_type: "ORGANIZATION", team_id: null, subteam_id: null, subteam_team_id: null, published: 1, ...extra })
 const agentRow = (row: Record<string, unknown>) => () => ({ id: AGENT_ID, name: "Agente", active: true, agent_type: "CALL_FEEDBACK", specialty: null, specialty_kind: "PERFORMANCE", domain: null, consolidated_input: true, ...row })
 const orchestratorRow = (row: Record<string, unknown>) => () => ({ id: ORCHESTRATOR_ID, output_schema: null, structured_output: null, output_instructions: null, scopeType: "ALL_TEAMS", teamId: null, subteamId: null, name: "Orquestrador", active: true, invocation_mode: "WORKFLOW", ...row })
 const indicatorRow = (row: Record<string, unknown>) => (code: string) => ({ id: "0a7a0000-0000-4000-8000-0000000000d1", code, name: code, active: true, daily_supported: true, official_closure_supported: true, desired_direction: "HIGHER", operational_aggregation: "WEIGHTED_AVERAGE", ...row })
@@ -482,6 +490,10 @@ export const BACKEND_ONLY: BackendOnlyCase[] = [
   { name: "diagnóstico do indicador sem estratégia publicada", reason: "estratégia de diagnóstico do indicador", setup: withDb(indicatorDiagnosisFlow, { strategyConfig: null }), code: "WORKFLOW_INDICATOR_DIAGNOSIS_STRATEGY_MISSING" },
   { name: "diagnóstico do indicador com Agent fora dos domínios da estratégia", reason: "estratégia de diagnóstico × domínio do agente", setup: withDb(indicatorDiagnosisFlow, { strategyConfig: { ...emptyStrategyConfig(), allowedBusinessDomainIds: [DOMAIN_ID] } }), code: "WORKFLOW_INDICATOR_DIAGNOSIS_DOMAIN_NOT_ALLOWED" },
   { name: "diagnóstico direto de indicador sem fechamento oficial", reason: "catálogo de indicadores", setup: withDb(directDiagnosisFlow, { indicator: indicatorRow({ official_closure_supported: false }) }), code: "WORKFLOW_INDICATOR_DIAGNOSIS_INDICATOR_UNAVAILABLE", nodeId: "agent" },
+  { name: "política de acompanhamento que não existe", reason: "catálogo de políticas", setup: withDb(VALID_POLICY_FLOW, { interventionPolicy: () => null }), code: "WORKFLOW_INTERVENTION_POLICY_NOT_FOUND", nodeId: "pol" },
+  { name: "política de acompanhamento inativa", reason: "catálogo de políticas", setup: withDb(VALID_POLICY_FLOW, { interventionPolicy: policyRow({ active: false }) }), code: "WORKFLOW_INTERVENTION_POLICY_INACTIVE", nodeId: "pol" },
+  { name: "política de acompanhamento sem versão publicada", reason: "versões da política", setup: withDb(VALID_POLICY_FLOW, { interventionPolicy: policyRow({ published: 0 }) }), code: "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED", nodeId: "pol" },
+  { name: "política de outro Grupo que o Workflow", reason: "escopo da política", setup: { ...withDb(VALID_POLICY_FLOW, { interventionPolicy: policyRow({ scope_type: "GROUP", team_id: "0a7a0000-0000-4000-8000-0000000000c5" }) }), scope: { scopeType: "TEAM", teamId: PARITY_TEAM_ID, subteamId: null } }, code: "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH", nodeId: "pol" },
   { name: "feedback direto de atendimento com o módulo desligado", reason: "módulo desligado no ambiente (INIA_INTERACTION_FEEDBACK_PIPELINE)", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), interactionFeedback("ifb", { kind: "TRIGGER_INTERACTION" }), endNode())), code: "WORKFLOW_INTERACTION_FEEDBACK_DISABLED", nodeId: "ifb", env: "INTERACTION_FEEDBACK_OFF" },
 ]
 
@@ -510,6 +522,10 @@ export const BACKEND_ONLY_CODES = [
   "WORKFLOW_INDICATOR_DIAGNOSIS_DOMAIN_NOT_ALLOWED",
   "WORKFLOW_INDICATOR_DIAGNOSIS_INDICATOR_UNAVAILABLE",
   "WORKFLOW_INTERACTION_FEEDBACK_DISABLED",
+  "WORKFLOW_INTERVENTION_POLICY_NOT_FOUND",
+  "WORKFLOW_INTERVENTION_POLICY_INACTIVE",
+  "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED",
+  "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH",
 ]
 
 /** Mensagens do backend de regras "só backend" que compartilham código com regras espelhadas (varredura aleatória). */

@@ -80,9 +80,10 @@ export default function IntroductionPage() {
           ]}
         />
         <p>
-          O escalonamento de performance segue, em ordem: <span className="font-mono text-xs">OBSERVE → ORIENT → COACH → ACTION_PLAN → MANAGER</span>.
-          Um resultado abaixo da meta, isoladamente, não determina escalonamento — pesam causa, recorrência, evidências, evolução e intervenções
-          anteriores.
+          O que fazer em cada situação — observar, orientar, treinar, abrir plano de ação, encaminhar à liderança — não é uma escada fixa: é
+          decidido por <WikiLink href="/wiki/administracao/politicas-de-acompanhamento">políticas de acompanhamento</WikiLink> que a organização
+          configura e versiona. Um resultado abaixo da meta, isoladamente, não determina a intervenção — pesam causa, recorrência, evidências,
+          evolução e intervenções anteriores; bons resultados também geram reconhecimento.
         </p>
       </WikiSection>
 

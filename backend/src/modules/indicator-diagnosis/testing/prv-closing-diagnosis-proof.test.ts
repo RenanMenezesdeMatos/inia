@@ -216,7 +216,6 @@ describe.skip("Indicator Diagnosis V1 — fechamento do PRV → TMA: prova Postg
     const feedbacks = (await pool.query<{ id: string; case_id: string }>("select id, case_id from feedbacks where operator_id = any($1::uuid[])", [people])).rows
     await pool.query("delete from feedback_support_materials where feedback_id = any($1::uuid[])", [feedbacks.map((row) => row.id)])
     await pool.query("delete from case_timeline_events where case_id = any($1::uuid[])", [feedbacks.map((row) => row.case_id)])
-    await pool.query("delete from outbox_events where aggregate_id::text = any($1::text[])", [feedbacks.map((row) => row.id)])
     await pool.query("delete from feedbacks where operator_id = any($1::uuid[])", [people])
     await pool.query("delete from evidences where case_id = any($1::uuid[])", [feedbacks.map((row) => row.case_id)])
     await pool.query("delete from supervision_cases where operator_id = any($1::uuid[])", [people])

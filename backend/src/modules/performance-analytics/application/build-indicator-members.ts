@@ -1,7 +1,8 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { StructureAnchor } from "../../workflows/domain/structure-anchor-schema.js"
 import type { IndicatorMemberRow, IndicatorMembersPage } from "../domain/view-models.js"
-import type { AnalyticsReadRepository } from "./analytics-read-repository.js"
+import type { AnalyticsReadRepository, IndicatorDefinitionRow, PersonNode } from "./analytics-read-repository.js"
+import { cachedOfficial } from "./official-analytics-cache.js"
 import { isWithinReference } from "./member-performance.js"
 import { comparison, indicatorRowOf, loadPerformanceDataset } from "./performance-dataset.js"
 import { resolveSubject, type ViewerScope } from "./viewer-scope.js"
@@ -26,13 +27,28 @@ export async function buildIndicatorMembers(
 ): Promise<IndicatorMembersPage> {
   const resolved = resolveSubject(scope, subject)
   const memberIds = resolved.members.map((member) => member.id)
-  const dataset = await loadPerformanceDataset(repository, scope.organizationId, memberIds, period)
+  // Linhas de TODOS os membros (cache da camada oficial); busca, ordenação e página sobre uma cópia, a cada request.
+  const { definition, rows: allRows } = await cachedOfficial(repository, scope, ["indicator-members", subject, period, code], memberIds.length, () => buildIndicatorMemberRows(repository, scope, resolved.members, period, code))
+  const term = query.search?.trim().toLocaleLowerCase("pt-BR")
+  const rows = allRows.filter((row) => !term || row.name.toLocaleLowerCase("pt-BR").includes(term))
+
+  rows.sort((a, b) => compareRows(a, b, query.sort, query.order))
+  const start = (query.page - 1) * query.pageSize
+  return {
+    indicator: { code, name: definition.name, unit: definition.unit, direction: definition.direction, capabilities: definition.capabilities },
+    period,
+    items: rows.slice(start, start + query.pageSize),
+    total: rows.length,
+    page: query.page,
+    pageSize: query.pageSize,
+  }
+}
+
+async function buildIndicatorMemberRows(repository: AnalyticsReadRepository, scope: ViewerScope, members: PersonNode[], period: string, code: string): Promise<{ definition: IndicatorDefinitionRow; rows: IndicatorMemberRow[] }> {
+  const dataset = await loadPerformanceDataset(repository, scope.organizationId, members.map((member) => member.id), period)
   const definition = dataset.definitions.get(code)
   if (!definition) throw new DomainError("Indicador inexistente.", "INDICATOR_NOT_FOUND", 404)
-
-  const term = query.search?.trim().toLocaleLowerCase("pt-BR")
-  const rows: IndicatorMemberRow[] = resolved.members
-    .filter((member) => !term || member.name.toLocaleLowerCase("pt-BR").includes(term))
+  const rows: IndicatorMemberRow[] = members
     .map((member) => {
       const current = indicatorRowOf(dataset, member.id, period, code)
       const previous = indicatorRowOf(dataset, member.id, dataset.previousPeriod, code)
@@ -53,17 +69,7 @@ export async function buildIndicatorMembers(
         trend,
       }
     })
-
-  rows.sort((a, b) => compareRows(a, b, query.sort, query.order))
-  const start = (query.page - 1) * query.pageSize
-  return {
-    indicator: { code, name: definition.name, unit: definition.unit, direction: definition.direction, capabilities: definition.capabilities },
-    period,
-    items: rows.slice(start, start + query.pageSize),
-    total: rows.length,
-    page: query.page,
-    pageSize: query.pageSize,
-  }
+  return { definition, rows }
 }
 
 /** SEM DADOS vai sempre pro fim, independente da direção da ordenação — nunca "vale zero". */

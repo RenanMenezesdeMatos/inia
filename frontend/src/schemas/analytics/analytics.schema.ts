@@ -548,7 +548,7 @@ export type TeamMembersPage = z.infer<typeof teamMembersPageSchema>
 export const followUpItemSchema = z.object({
   id: z.string(),
   kind: z.enum(["FEEDBACK", "ALERT"]),
-  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "OTHER"]),
+  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "INTERVENTION", "OTHER"]),
   title: z.string(),
   /** Metadado do título ("Atendimento de 29/09/2026") — `FEEDBACK_HEADING_V1`. */
   subtitle: z.string().nullish(),
@@ -578,5 +578,7 @@ export const followUpItemSchema = z.object({
 })
 export type FollowUpItem = z.infer<typeof followUpItemSchema>
 
-export const followUpFeedSchema = z.object({ items: z.array(followUpItemSchema), total: z.number(), page: z.number(), pageSize: z.number() })
+/** Página de `GET /analytics/follow-ups` (mais recente primeiro). `nextCursor` = cursor opaco para pedir a seguinte; null = o feed acaba
+ * nesta página. */
+export const followUpFeedSchema = z.object({ items: z.array(followUpItemSchema), nextCursor: z.string().nullable() })
 export type FollowUpFeed = z.infer<typeof followUpFeedSchema>

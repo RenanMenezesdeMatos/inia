@@ -1,6 +1,8 @@
 import { env } from "../../../config/env.js"
 import { beforeLlmCall, countTechnicalIdsInPrompt, recordLlmCall, usageFromGeminiPayload, type LlmRouteRecord, type LlmUsage } from "../../../shared/application/llm-telemetry.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
+import { currentAiAbortSignal, withAiCancellation } from "../../../shared/application/model-routing/ai-runtime.js"
 
 // Modelo diferente do chat de texto simples (backend/src/modules/realtime/infrastructure/gemini-text-client.ts,
 // que fica no 3.1-flash-lite de propósito, sem etapa de "thinking") — o Orquestrador precisa de
@@ -157,9 +159,11 @@ async function connectWithRetry(model: string, contents: ChatTurn[], systemInstr
             ? { cachedContent }
             : { systemInstruction: { parts: [{ text: systemInstruction }] }, ...(tools.length > 0 ? { tools: [{ functionDeclarations: tools }] } : {}) }),
         }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // Prazo da chamada + cancelamento de quem pediu (SSE do chat fechado): o fetch para e a vaga do limitador volta.
+        signal: withAiCancellation(AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
       })
     } catch (error) {
+      if (currentAiAbortSignal()?.aborted) throw new AiCallCancelledError()
       const timedOut = error instanceof Error && error.name === "TimeoutError"
       throw new DomainError(
         timedOut ? "A INIA demorou demais para responder." : "Não foi possível contatar a INIA.",

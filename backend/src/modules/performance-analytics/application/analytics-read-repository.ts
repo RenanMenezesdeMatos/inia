@@ -3,11 +3,12 @@ import { resolveFeedbackViewsForViewer } from "../../reliable-feedback/applicati
 import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legacy-feedback-headings.js"
 import { loadFeedbackOrigins } from "../../feedbacks/infrastructure/feedback-origins.js"
 import { loadFeedbackSupportMaterials } from "../../feedbacks/application/feedback-support-materials.js"
+import { encodeFollowUpCursor, followUpCursorAtSql, type FollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
 import { PgPendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { quartileSchema, type Quartile } from "../../indicators/domain/employee-performance-schema.js"
 import type { IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
-import type { EmploymentStatusView, FollowUpItem, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
+import type { EmploymentStatusView, FollowUpFeed, FollowUpItem, OperationalStructureSummary, OperationalTrendView, PersistedInsight } from "../domain/view-models.js"
 import { EMPLOYMENT_STATUS_LABELS, STATUS_BASIS_LABELS } from "../../people/domain/employment-status.js"
 import { loadEmploymentStatusHistory, resolveEmployeeStatusAt } from "../../people/application/employment-status-service.js"
 import { loadWorkScheduleSummary } from "../../people/application/work-schedule-service.js"
@@ -15,13 +16,16 @@ import { findBrazilianCapital } from "../../people/domain/brazilian-capitals.js"
 import { describeStatusSource, resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 import type { OperationalComparison } from "../domain/operational-comparison.js"
-import { buildEmployeeOperationalTrends, buildStructureOperationalSummary } from "./operational-trend.js"
+import { buildEmployeeOperationalTrends, buildStructureOperationalSummary, type StructureSummaryObservation } from "./operational-trend.js"
+import { AnalyticsCache, membersFingerprint } from "../infrastructure/analytics-cache.js"
+import { loadAnalyticsVersions, type AnalyticsVersions } from "../infrastructure/analytics-versions.js"
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
 import { visibilityOf } from "../../access/application/access-service.js"
 import type { Permission } from "../../access/domain/permissions.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
 import { recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
+import { descendantsOf, organizationPeopleGraphCache, PERSON_NODE_JOINS, PERSON_NODE_SELECT, type OrganizationPeopleGraphCache } from "../infrastructure/organization-people-graph.js"
 
 /**
  * Porta de leitura da área de analytics — tudo em lote (N pessoas × M competências numa ida ao
@@ -76,8 +80,10 @@ export type FollowUpFeedQuery = {
   includeViewerAlerts: boolean
   /** Só feedbacks ainda sem ciência do colaborador (o atalho "aguardando ciência" da Equipe). */
   unacknowledgedOnly: boolean
-  page: number
-  pageSize: number
+  /** Itens por página. */
+  limit: number
+  /** Último item da página anterior (keyset); null = primeira página. */
+  before: FollowUpCursor | null
 }
 
 export interface AnalyticsReadRepository {
@@ -109,33 +115,76 @@ export interface AnalyticsReadRepository {
    * normalmente não a tem (Operador). */
   countPendingActions(organizationId: string, viewerId: string): Promise<number>
   loadPersistedIndicatorInsights(personId: string, indicatorNames: string[]): Promise<PersistedInsight[]>
-  loadFollowUpFeed(query: FollowUpFeedQuery): Promise<{ items: FollowUpItem[]; total: number }>
+  loadFollowUpFeed(query: FollowUpFeedQuery): Promise<FollowUpFeed>
   /** Acompanhamento operacional (camada 1, resolvedor único de medições) de um colaborador, por indicador diário. */
   loadEmployeeOperationalTrends(organizationId: string, personId: string, now: Date, comparison: OperationalComparison, relevantCodes?: string[]): Promise<Map<string, OperationalTrendView>>
   /** Resumo operacional pooled de uma estrutura (membros), por indicador diário. */
   loadStructureOperationalSummary(organizationId: string, personIds: string[], now: Date, comparison: OperationalComparison): Promise<OperationalStructureSummary | null>
   /** Situação funcional atual (people.current_employment_status + período vigente). */
   loadEmploymentStatus(organizationId: string, personId: string, now: Date): Promise<EmploymentStatusView>
+  /** Versões da organização que invalidam os caches da camada oficial (migration 128); ausente/null = sem cache. */
+  loadCacheVersions?(organizationId: string): Promise<AnalyticsVersions | null>
 }
 
-const PERSON_SELECT = `p.id, p.name, p.role, p.reports_to_id "reportsToId", p.team_id "teamId", t.name "teamName",
-       p.subteam_id "subteamId", st.name "subteamName", p.avatar_url "avatarUrl", p.job_title "jobTitle", p.operational_capital_code "operationalCapitalCode", p.active`
-const PERSON_JOINS = `left join teams t on t.id = p.team_id left join subteams st on st.id = p.subteam_id`
 
 const toNumber = (value: unknown): number | null => (value === null || value === undefined ? null : Number(value))
 
+export type PgAnalyticsReadRepositoryOptions = {
+  /**
+   * De onde vêm as pessoas (escopo, organograma, Equipe): `graph` (padrão) = grafo da organização em memória, invalidado
+   * pela versão STRUCTURE (infrastructure/organization-people-graph.ts); `sql` = as consultas originais, uma por leitura —
+   * a REFERÊNCIA que a prova de igualdade compara com o grafo.
+   */
+  peopleSource?: "graph" | "sql"
+  peopleGraphCache?: OrganizationPeopleGraphCache
+  /**
+   * Resumo operacional da estrutura: `read-model` (padrão) = infrastructure/operational-read-model.ts com cache curto;
+   * `raw` = o caminho original, consultas por indicador — a referência da prova.
+   */
+  operationalSource?: "read-model" | "raw"
+  operationalSummaryCache?: AnalyticsCache<OperationalStructureSummary | null>
+  /** `false` desliga o cache da camada oficial (official-analytics-cache.ts) — a referência da prova. */
+  officialCache?: boolean
+}
+
+/** Um cache por processo do resumo operacional da estrutura (60 s, 200 estruturas). */
+export const operationalSummaryCache = new AnalyticsCache<OperationalStructureSummary | null>(200, 60_000)
+
 export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
   private readonly pendingActions: PgPendingActionsRepository
-  constructor(private readonly db: Database) {
+  private readonly peopleSource: "graph" | "sql"
+  private readonly peopleGraphCache: OrganizationPeopleGraphCache
+  private readonly operationalSource: "read-model" | "raw"
+  private readonly operationalSummaryCache: AnalyticsCache<OperationalStructureSummary | null>
+  private readonly officialCache: boolean
+  constructor(
+    private readonly db: Database,
+    options: PgAnalyticsReadRepositoryOptions = {},
+  ) {
     this.pendingActions = new PgPendingActionsRepository(db)
+    this.peopleSource = options.peopleSource ?? "graph"
+    this.peopleGraphCache = options.peopleGraphCache ?? organizationPeopleGraphCache
+    this.operationalSource = options.operationalSource ?? "read-model"
+    this.operationalSummaryCache = options.operationalSummaryCache ?? operationalSummaryCache
+    this.officialCache = options.officialCache ?? true
+  }
+
+  async loadCacheVersions(organizationId: string): Promise<AnalyticsVersions | null> {
+    return this.officialCache ? loadAnalyticsVersions(this.db, organizationId) : null
+  }
+
+  private graph(organizationId: string) {
+    return this.peopleGraphCache.get(this.db, organizationId)
   }
 
   async loadPerson(organizationId: string, personId: string): Promise<PersonNode | null> {
-    const result = await this.db.query<PersonNode>(`select ${PERSON_SELECT} from people p ${PERSON_JOINS} where p.organization_id = $1 and p.id = $2`, [organizationId, personId])
+    if (this.peopleSource === "graph") return (await this.graph(organizationId)).byId.get(personId) ?? null
+    const result = await this.db.query<PersonNode>(`select ${PERSON_NODE_SELECT} from people p ${PERSON_NODE_JOINS} where p.organization_id = $1 and p.id = $2`, [organizationId, personId])
     return result.rows[0] ?? null
   }
 
   async loadDescendants(organizationId: string, anchorId: string): Promise<PersonNode[]> {
+    if (this.peopleSource === "graph") return descendantsOf(await this.graph(organizationId), anchorId)
     const result = await this.db.query<PersonNode>(
       // `union` (não `union all`): a CTE recursiva só segue para ids ainda não vistos, então um
       // ciclo em reports_to_id (A → B → A, ou A → A) termina em vez de travar o request — a
@@ -146,7 +195,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
          union
          select p.id from people p join subordinates s on p.reports_to_id = s.id
        )
-       select ${PERSON_SELECT} from people p ${PERSON_JOINS} where p.id in (select id from subordinates) order by p.name`,
+       select ${PERSON_NODE_SELECT} from people p ${PERSON_NODE_JOINS} where p.id in (select id from subordinates) order by p.name, p.id`,
       [organizationId, anchorId],
     )
     return result.rows
@@ -158,22 +207,36 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
 
   async loadPeopleInVisibility(organizationId: string, visibility: VisibilityFilter): Promise<PersonNode[]> {
     if (!visibility.organizationWide && visibility.teamIds.length === 0 && visibility.subteamIds.length === 0) return []
+    if (this.peopleSource === "graph") {
+      const graph = await this.graph(organizationId)
+      return graph.people.filter((person) => visibility.organizationWide || (person.teamId !== null && visibility.teamIds.includes(person.teamId)) || (person.subteamId !== null && visibility.subteamIds.includes(person.subteamId)))
+    }
     const result = await this.db.query<PersonNode>(
-      `select ${PERSON_SELECT} from people p ${PERSON_JOINS}
+      `select ${PERSON_NODE_SELECT} from people p ${PERSON_NODE_JOINS}
        where p.organization_id = $1 and ($2::boolean or p.team_id = any($3::uuid[]) or p.subteam_id = any($4::uuid[]))
-       order by p.name`,
+       order by p.name, p.id`,
       [organizationId, visibility.organizationWide, visibility.teamIds, visibility.subteamIds],
     )
     return result.rows
   }
 
   async loadDirectReports(organizationId: string, personId: string): Promise<PersonNode[]> {
-    const result = await this.db.query<PersonNode>(`select ${PERSON_SELECT} from people p ${PERSON_JOINS} where p.organization_id = $1 and p.reports_to_id = $2 order by p.name`, [organizationId, personId])
+    if (this.peopleSource === "graph") return [...((await this.graph(organizationId)).childrenOf.get(personId) ?? [])]
+    const result = await this.db.query<PersonNode>(`select ${PERSON_NODE_SELECT} from people p ${PERSON_NODE_JOINS} where p.organization_id = $1 and p.reports_to_id = $2 order by p.name, p.id`, [organizationId, personId])
     return result.rows
   }
 
   async countActiveDirectReports(organizationId: string, personIds: string[]): Promise<Map<string, number>> {
     if (personIds.length === 0) return new Map()
+    if (this.peopleSource === "graph") {
+      const graph = await this.graph(organizationId)
+      const counts = new Map<string, number>()
+      for (const personId of new Set(personIds)) {
+        const total = (graph.childrenOf.get(personId) ?? []).filter((child) => child.active).length
+        if (total > 0) counts.set(personId, total)
+      }
+      return counts
+    }
     const result = await this.db.query<{ managerId: string; total: string }>(
       `select reports_to_id "managerId", count(*)::text total from people where organization_id = $1 and active and reports_to_id = any($2::uuid[]) group by reports_to_id`,
       [organizationId, personIds],
@@ -290,7 +353,21 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
 
   async loadStructureOperationalSummary(organizationId: string, personIds: string[], now: Date, comparison: OperationalComparison): Promise<OperationalStructureSummary | null> {
     const timeZone = await resolveOrganizationTimezone(this.db, organizationId)
-    return buildStructureOperationalSummary(this.db, { organizationId, personIds, now, timeZone, comparison })
+    const input = { organizationId, personIds, now, timeZone, comparison }
+    if (this.operationalSource === "raw") return buildStructureOperationalSummary(this.db, input, { source: "raw" })
+    // Cache curto: a chave leva a geração do read model e a última marca pendente da organização — qualquer escrita que
+    // mude o cálculo muda a chave. Só entra no cache o que veio inteiro do read model, e só até a primeira medição futura.
+    const state = await this.db.query<{ generation: string | null; dirty: string | null }>(
+      `select (select generation::text from analytics_rollup_state where organization_id = $1) generation, (select max(id)::text from analytics_operational_dirty where organization_id = $1) dirty`,
+      [organizationId],
+    )
+    const key = JSON.stringify([organizationId, comparison, localDateOf(now, timeZone), state.rows[0]?.generation ?? null, state.rows[0]?.dirty ?? null, membersFingerprint(personIds)])
+    let observation: StructureSummaryObservation | null = null
+    return this.operationalSummaryCache.getOrCompute(
+      key,
+      () => buildStructureOperationalSummary(this.db, input, { source: "read-model", observe: (value) => (observation = value) }),
+      () => (observation?.source === "read-model" && observation.liveMembers === 0 ? (observation.validUntilMs ?? Number.POSITIVE_INFINITY) : false),
+    )
   }
 
   async loadEmploymentStatus(organizationId: string, personId: string, now: Date): Promise<EmploymentStatusView> {
@@ -338,51 +415,73 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     }
   }
 
-  async loadFollowUpFeed(query: FollowUpFeedQuery): Promise<{ items: FollowUpItem[]; total: number }> {
-    const offset = (query.page - 1) * query.pageSize
+  async loadFollowUpFeed(query: FollowUpFeedQuery): Promise<FollowUpFeed> {
     // Feedbacks publicados (pro operador) e alertas endereçados ao viewer viram um único feed
     // ordenado por data — sem tabela nova, sem duplicar armazenamento: cada item aponta pra sua
-    // linha de origem.
+    // linha de origem. A página é escolhida só por (tipo, id, instante) — pelo índice parcial
+    // `idx_feedbacks_operator_feed` (migration 130) — e o conteúdo (view, JSON do feedback) é
+    // montado DEPOIS do LIMIT, só para os itens da página. Paginada por keyset, como o
+    // Acompanhamento do colaborador: o cursor (instante, id) do último item filtra os dois ramos
+    // ANTES da ordenação e `limit + 1` diz se há página seguinte — sem `count(*)` sobre o
+    // histórico da estrutura e sem OFFSET, que crescia com a profundidade da página. O item
+    // extra só conta (`hasMore`): o conteúdo é montado para os `limit` exibidos.
+    const params: unknown[] = [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.limit, query.unacknowledgedOnly]
+    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "" }
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
-         select f.id::text id, 'FEEDBACK' kind, f.feedback_kind::text category,
-                coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) title,
-                coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') subtitle,
-                coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) summary,
-                f.recommendation detail, null::text severity, f.operator_id "operatorId", p.name "operatorName", f.case_id::text "caseId",
-                coalesce(f.published_at, f.created_at) "createdAt", f.acknowledged_at "acknowledgedAt",
-                json_build_object('evidenceFound', f.evidence_found, 'observedBehavior', f.observed_behavior, 'relatedProcedure', f.related_procedure, 'recommendation', f.recommendation, 'view', coalesce(f.context_snapshot->'feedbackEngine'->'feedbackView', f.context_snapshot->'reliableFeedback'->'feedbackView'), 'supervisorView', case when f.operator_id <> $4 then f.context_snapshot->'reliableFeedback'->'supervisorView' end) feedback
-         from feedbacks f join people p on p.id = f.operator_id
+         select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
+         from feedbacks f
          where f.organization_id = $1 and f.status = 'PUBLISHED' and f.operator_id = any($2::uuid[])
-           and (not $7::boolean or f.acknowledged_at is null)
-           and ${visibleInFollowUpSql("f")}
+           and (not $6::boolean or f.acknowledged_at is null)
+           and ${visibleInFollowUpSql("f")} ${before.feedback}
          union all
-         select a.id::text, 'ALERT', a.alert_type, a.title, null::text, a.description, null, a.severity, c.operator_id, p.name, a.case_id::text,
-                a.created_at, a.read_at, null
-         from alerts a left join supervision_cases c on c.id = a.case_id left join people p on p.id = c.operator_id
-         where $3::boolean and a.organization_id = $1 and a.recipient_id = $4 and a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED')
-           and not ${recadoAlertCoveredByFollowUpSql("a")}
+         select a.id, 'ALERT', a.created_at
+         from alerts a
+         where $3::boolean and a.organization_id = $1 and a.recipient_id = $4
+           -- Intervenção: resolver a PENDÊNCIA (aceitar, aprovar) não apaga o registro do Acompanhamento — o aviso continua
+           -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
+           and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
+           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert}
+       ), probe as (
+         select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
+       ), page as (
+         select id, kind, "createdAt" from probe order by "createdAt" desc, id desc limit $5
        )
-       select *, count(*) over()::int total from feed order by "createdAt" desc limit $5 offset $6`,
-      [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.pageSize, offset, query.unacknowledgedOnly],
+       select page.id::text id, page.kind, page."createdAt", ${followUpCursorAtSql('page."createdAt"')} "cursorAt", (select count(*) from probe) > $5 "hasMore",
+              coalesce(f.feedback_kind::text, a.alert_type) category,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) else a.title end title,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') end subtitle,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) else a.description end summary,
+              f.recommendation detail, a.severity, coalesce(f.operator_id, c.operator_id) "operatorId", p.name "operatorName", coalesce(f.case_id, a.case_id)::text "caseId",
+              case when page.kind = 'FEEDBACK' then f.acknowledged_at else a.read_at end "acknowledgedAt",
+              case when page.kind = 'FEEDBACK' then json_build_object('evidenceFound', f.evidence_found, 'observedBehavior', f.observed_behavior, 'relatedProcedure', f.related_procedure, 'recommendation', f.recommendation, 'view', coalesce(f.context_snapshot->'feedbackEngine'->'feedbackView', f.context_snapshot->'reliableFeedback'->'feedbackView'), 'supervisorView', case when f.operator_id <> $4 then f.context_snapshot->'reliableFeedback'->'supervisorView' end) end feedback
+       from page
+       left join feedbacks f on page.kind = 'FEEDBACK' and f.id = page.id
+       left join alerts a on page.kind = 'ALERT' and a.id = page.id
+       left join supervision_cases c on c.id = a.case_id
+       left join people p on p.id = coalesce(f.operator_id, c.operator_id)
+       order by page."createdAt" desc, page.id desc`,
+      params,
     )
-    const total = result.rows[0] ? Number(result.rows[0].total) : 0
+    const rows = result.rows
+    const last = rows.at(-1)
+    const nextCursor = last?.hasMore === true ? encodeFollowUpCursor({ at: String(last.cursorAt), id: String(last.id) }) : null
     // Materiais de apoio resolvidos POR VIEWER a cada leitura (feedback-support-materials.ts):
     // fora do alcance/despublicado vira marcador neutro, nunca link — e feedback antigo vem com [].
     const supportMaterials = await loadFeedbackSupportMaterials(this.db, {
       organizationId: query.organizationId,
       viewer: { personId: query.viewerId },
-      feedbackIds: result.rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)),
+      feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)),
     })
     // Feedback por Flag V2 — view model publicado com os links resolvidos para quem lê (null = feedback anterior).
-    const views = await resolveFeedbackViewsForViewer(this.db, { organizationId: query.organizationId, viewer: { personId: query.viewerId }, views: result.rows.map((row) => (row.feedback as { view?: unknown } | null)?.view ?? null) })
+    const views = await resolveFeedbackViewsForViewer(this.db, { organizationId: query.organizationId, viewer: { personId: query.viewerId }, views: rows.map((row) => (row.feedback as { view?: unknown } | null)?.view ?? null) })
     // Feedback de atendimento sem view model: o título gravado era o nome da base/agente — a leitura usa o assunto da interação vinculada.
-    const legacyHeadings = await loadLegacyFeedbackHeadings(this.db, { organizationId: query.organizationId, feedbackIds: result.rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
+    const legacyHeadings = await loadLegacyFeedbackHeadings(this.db, { organizationId: query.organizationId, feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
     // Motivo do feedback (o mesmo selo e ícone do cabeçalho do Acompanhamento do colaborador), em uma consulta para a página.
-    const origins = await loadFeedbackOrigins(this.db, { organizationId: query.organizationId, feedbackIds: result.rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
+    const origins = await loadFeedbackOrigins(this.db, { organizationId: query.organizationId, feedbackIds: rows.filter((row) => row.kind === "FEEDBACK").map((row) => String(row.id)) })
     return {
-      total,
-      items: result.rows.map((row, index) => ({
+      nextCursor,
+      items: rows.map((row, index) => ({
         id: String(row.id),
         kind: row.kind === "FEEDBACK" ? "FEEDBACK" : "ALERT",
         category: normalizeCategory(String(row.category)),
@@ -412,6 +511,6 @@ function normalizeCategory(value: string): FollowUpItem["category"] {
     case "WORKFLOW_ESCALATION":
       return value
     default:
-      return "OTHER"
+      return value.startsWith("INTERVENTION_") ? "INTERVENTION" : "OTHER"
   }
 }

@@ -41,7 +41,9 @@ describe("seed de demonstração — separação de migrations", () => {
     const seeds = await sqlFiles("seeds/demo")
     expect(seeds.length).toBeGreaterThan(0)
     for (const seed of seeds) expect(countUnguardedInserts(seed.sql), seed.name).toBe(0)
-    expect(seeds.every((seed) => seed.sql.includes("'DEMO_SEED'"))).toBe(true)
+    // Todo arquivo marca o que é demo: origem 'DEMO_SEED' onde a tabela tem essa coluna, ou ids determinísticos de00… nas
+    // tabelas de configuração (tipos, políticas, competências), que não têm coluna de origem.
+    for (const seed of seeds) expect(seed.sql.includes("'DEMO_SEED'") || /'de00[0-9a-f]{4}-0000-4000-8000-[0-9a-f]{12}'/.test(seed.sql), seed.name).toBe(true)
   })
 })
 

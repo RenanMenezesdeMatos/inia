@@ -1,11 +1,12 @@
-import pino from "pino"
-import { env } from "../../../config/env.js"
+import type pino from "pino"
+import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { FetchHttpClient } from "../infrastructure/fetch-http-client.js"
 import { PgAesSecretStore } from "../infrastructure/aes-secret-store.js"
 import { PgRawObjectStore } from "../infrastructure/pg-raw-object-store.js"
 import { Ssh2SftpClient } from "../infrastructure/ssh2-sftp-client.js"
 import { DriverExternalDatabaseConnector } from "../infrastructure/external-databases/external-database-connector.js"
+import { createMemoryRateLimitStore, type RateLimitStore } from "../../../shared/application/rate-limit/rate-limit-store.js"
 import { systemClock, type Clock, type ExternalDatabaseConnector, type HttpClient, type RawObjectStore, type SecretStore, type SftpClient } from "./ports.js"
 
 /**
@@ -27,6 +28,17 @@ export type DataHubContext = {
   databases: ExternalDatabaseConnector
   clock: Clock
   logger: DataHubLogger
+  /**
+   * Como uma carga recém-enfileirada é acordada (`kickWorker`). Ausente = processa neste processo, fora do request (papel
+   * `all`, testes). Com o papel `api`, o servidor passa um aviso ao processamento (NOTIFY) — o exceljs e o pipeline da carga
+   * nunca rodam no event loop das telas.
+   */
+  wakeWorker?: () => void
+  /**
+   * Onde conta o limite por token do API Push. O servidor passa a loja do PostgreSQL (o mesmo contador para todas as APIs);
+   * sem ela, memória deste contexto (testes).
+   */
+  pushRateLimits: RateLimitStore
 }
 
 export function createDataHubContext(db: Database, overrides: Partial<Omit<DataHubContext, "db">> = {}): DataHubContext {
@@ -38,6 +50,8 @@ export function createDataHubContext(db: Database, overrides: Partial<Omit<DataH
     sftp: overrides.sftp ?? new Ssh2SftpClient(),
     databases: overrides.databases ?? new DriverExternalDatabaseConnector(),
     clock: overrides.clock ?? systemClock,
-    logger: overrides.logger ?? pino({ level: env.LOG_LEVEL, name: "data-hub", enabled: env.NODE_ENV !== "test" }),
+    logger: overrides.logger ?? createLogger("data-hub"),
+    ...(overrides.wakeWorker ? { wakeWorker: overrides.wakeWorker } : {}),
+    pushRateLimits: overrides.pushRateLimits ?? createMemoryRateLimitStore(),
   }
 }

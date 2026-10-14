@@ -221,9 +221,16 @@ export async function runDataHubTick(ctx: DataHubContext): Promise<{ enqueued: n
  * Dispara o processamento da fila fora do request (sem bloquear a resposta HTTP). O tick
  * periódico continua sendo a garantia; isto só reduz a latência percebida na UI. Serializado
  * por processo: se já há um worker rodando, o próximo tick pega o que sobrou.
+ *
+ * Com `ctx.wakeWorker` (API separada do processamento, papel `api`) só avisa o processamento: a carga — leitura de planilha
+ * com o exceljs inteiro, mapeamento, validação, gravação — nunca roda no processo que atende as telas.
  */
 let workerBusy = false
 export function kickWorker(ctx: DataHubContext): void {
+  if (ctx.wakeWorker) {
+    ctx.wakeWorker()
+    return
+  }
   if (workerBusy) return
   workerBusy = true
   setImmediate(() => {

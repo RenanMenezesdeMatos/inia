@@ -3,5 +3,5 @@ import { fetchSupervisionCase } from "@/services/supervision-cases"
 
 export default async function Page({ params }: { params: Promise<{ caseId: string }> }) {
   const { caseId } = await params
-  return <SupervisionCasePage item={await fetchSupervisionCase(caseId)} />
+  return <SupervisionCasePage caseId={caseId} item={await fetchSupervisionCase(caseId)} />
 }

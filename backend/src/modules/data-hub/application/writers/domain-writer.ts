@@ -10,7 +10,7 @@ import type { DataFeedRow } from "../records.js"
  *  - `prepare`: resolve referências EM LOTE (zero N+1), aplica regras que dependem do catálogo
  *    (componentes exigidos pela estratégia do indicador…) e separa prontos × rejeitados.
  *  - `apply`: escreve um lote dentro da transação recebida, pelos mesmos caminhos canônicos do
- *    domínio (upsert pela chave natural, matrícula de Workflows, outbox), devolvendo contagens e
+ *    domínio (upsert pela chave natural, matrícula de Workflows), devolvendo contagens e
  *    lineage. Nunca 1 INSERT por registro: unnest em lote.
  */
 export type ValidRecord = { recordNumber: number; record: CanonicalRecord; sourceRecordKey: string | null }

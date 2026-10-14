@@ -1,5 +1,7 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
+import { computePublicAssetVersions } from "./src/lib/assets/public-asset-versions";
 import { originOf } from "./src/lib/security/content-security-policy";
 
 /**
@@ -24,10 +26,27 @@ const securityHeaders = [
   ...(httpsDeployment ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
 ];
 
+/**
+ * Cache dos estáticos de `public/` (o Next manda `max-age=0` neles: a cada tela o navegador revalidava o modelo 3D de 6,6 MB e as
+ * imagens). Os endereços que a interface monta com `publicAsset()` levam `?v=<hash do conteúdo>` (calculado aqui, no build):
+ * esses saem IMUTÁVEIS por 1 ano — trocar o arquivo muda o hash, logo o endereço. Sem `?v` (endereço digitado, laboratório do
+ * avatar), cache curto com revalidação.
+ */
+const assetVersions = computePublicAssetVersions(path.join(process.cwd(), "public"));
+const IMMUTABLE = "public, max-age=31536000, immutable";
+const SHORT = "public, max-age=3600, stale-while-revalidate=86400";
+const STATIC_SOURCES = ["/models/:path*", "/:file([^/]+\\.(?:png|jpe?g|webp|svg))"];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  env: { NEXT_PUBLIC_INIA_ASSET_VERSIONS: JSON.stringify(assetVersions) },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // O último cabeçalho que casa vale: sem versão = curto; com `?v` = imutável.
+      ...STATIC_SOURCES.map((source) => ({ source, headers: [{ key: "Cache-Control", value: SHORT }] })),
+      ...STATIC_SOURCES.map((source) => ({ source, has: [{ type: "query" as const, key: "v" }], headers: [{ key: "Cache-Control", value: IMMUTABLE }] })),
+    ];
   },
 };
 

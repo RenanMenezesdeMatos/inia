@@ -49,6 +49,7 @@ import {
 } from "@/queries/inia-scenes/use-inia-scenes"
 import { INIA_SCENE_BLUR, INIA_SCENE_DIM, INIA_SCENE_IMAGE_RULES, INIA_SCENE_IMAGES, type IniaScene, type IniaSceneImage, type IniaScenesOverview } from "@/schemas/inia-scenes/inia-scene.schema"
 import { sceneImageSrc } from "@/services/inia-scenes/inia-scene-service"
+import { publicAsset } from "@/lib/assets/public-asset"
 
 /**
  * CENÁRIO DA INIA — o fundo atrás dela no palco da aplicação de feedback e no painel do Acompanhamento (call center, Natal,
@@ -118,7 +119,7 @@ function StagePreview({ imageUrl, blur, dim, className }: { imageUrl: string | n
       {imageUrl ? <IniaSceneBackdrop imageUrl={imageUrl} blur={blur} dim={dim} variant="stage" miniature /> : null}
       {/* A INIA no lugar dela (meio corpo, à esquerda) e os cards à direita, em escala — sempre ACIMA da máscara. */}
       {/* eslint-disable-next-line @next/next/no-img-element -- ilustração local estática da prévia */}
-      <img src="/INIA.png" alt="" aria-hidden className="absolute bottom-0 left-[6%] w-[30%] object-contain object-bottom" />
+      <img src={publicAsset("/INIA.png")} alt="" aria-hidden className="absolute bottom-0 left-[6%] w-[30%] object-contain object-bottom" />
       <div aria-hidden className="absolute top-[9%] right-[4%] bottom-[6%] flex w-[52%] flex-col gap-[3%]">
         <div className="flex-[1.1] rounded-md bg-background/95 p-[3%] shadow-lg">
           <div className="h-[9%] w-1/3 rounded-full bg-primary/40" />

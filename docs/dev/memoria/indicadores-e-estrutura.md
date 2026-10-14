@@ -4,7 +4,7 @@
 >
 > As regras do catálogo de indicadores metadata-driven ficaram no `CLAUDE.md`, porque valem para qualquer módulo.
 >
-> Ver também: [architecture/ADR-007-catalogo-de-indicadores-metadata-driven.md](../../architecture/ADR-007-catalogo-de-indicadores-metadata-driven.md).
+> Ver também: [architecture/ADR-007-catalogo-de-indicadores-metadata-driven.md](../../architecture/ADR-007-catalogo-de-indicadores-metadata-driven.md) e [read-model-e-ciclo-de-vida.md](read-model-e-ciclo-de-vida.md) — desde 13/10/2026 o escopo vem de um grafo em cache, o resumo operacional da estrutura vem do read model por pessoa × janela e a camada oficial tem cache por versão (os números são os mesmos, provados).
 
 ### Indicadores e Equipe/Estrutura — analytics compartilhado (implementado)
 

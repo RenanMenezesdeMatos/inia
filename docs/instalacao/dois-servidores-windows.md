@@ -5,6 +5,7 @@ ficam). É a mesma arquitetura de produção — só muda onde cada peça está.
 
 > Versão para imprimir e distribuir às áreas, com figuras: **IT-INIA-003** em
 > [docs/manuais](../manuais/) (`.docx` e `.pdf`). Este arquivo é o resumo técnico do mesmo procedimento.
+> Ensaio desta montagem em duas VMs da Azure (conta gratuita): [homologacao-azure.md](homologacao-azure.md).
 
 | Peça | Onde | Porta | Quem cuida |
 | --- | --- | --- | --- |
@@ -17,7 +18,8 @@ ficam). É a mesma arquitetura de produção — só muda onde cada peça está.
 | Google Gemini (IA) | Internet | 443 | Responsável pela IA (chave) |
 
 As pessoas acessam **um endereço só** (ex.: `https://inia.empresa.local`). O IIS manda `/api` e `/health` para a API e
-o resto para a interface. A INIA não roda sobre SQL Server: o banco interno é sempre PostgreSQL, e o SQL Server só é lido.
+o resto para a interface — cada um por uma **web farm** do ARR, com uma ou mais instâncias (seção 8). A INIA não roda
+sobre SQL Server: o banco interno é sempre PostgreSQL, e o SQL Server só é lido.
 
 **Ordem:** 1) área de dados: PostgreSQL · 2) área de dados: login de leitura no SQL Server · 3) infraestrutura:
 preparar o Windows · 4) instalar a INIA · 5) IIS · 6) serviços · 7) primeiro acesso. Os passos 1, 2 e 3 podem ser
@@ -28,7 +30,8 @@ interna) login e telas funcionam, mas o navegador **bloqueia o microfone** e nad
 
 **Firewall:** usuários → porta pública do servidor da aplicação; servidor da aplicação → 5432 e 1433 da área de dados;
 servidor da aplicação → internet 443 (`generativelanguage.googleapis.com`, `registry.npmjs.org`, `github.com`);
-navegador dos usuários → `generativelanguage.googleapis.com` 443 (voz). **Não abra 3000, 3333 nem 3334.**
+navegador dos usuários → `generativelanguage.googleapis.com` 443 (voz). **Não abra 3000, 3333 nem 3334** (nem as portas
+das instâncias extras: tudo escuta só em endereços 127.0.0.x).
 
 ---
 
@@ -68,6 +71,8 @@ New-NetFirewallRule -DisplayName "PostgreSQL - INIA" -Direction Inbound -Protoco
 - **SSL (recomendado):** `ssl = on`, `ssl_cert_file`, `ssl_key_file`. Certificado da autoridade da empresa para o
   **nome** do servidor (a INIA consegue conferir) ou autoassinado (criptografa sem conferir). Sem SSL: `host` no lugar
   de `hostssl`, só em rede interna confiável.
+- **Conexões e memória:** ajuste `max_connections`, `shared_buffers` e `work_mem` pelo número de instâncias da INIA — ver
+  a seção 8 ("PostgreSQL para várias instâncias"). Com uma API e um processamento, os padrões do instalador bastam.
 - **Backup** (Agendador de Tarefas; senha em `%APPDATA%\postgresql\pgpass.conf` da conta da tarefa):
 
 ```powershell
@@ -161,10 +166,13 @@ powershell -ExecutionPolicy Bypass -File C:\inia\deploy\windows\iis\configurar-i
 
 Sem HTTPS (rede interna): `… configurar-iis.ps1 -Porta 8080 -AbrirFirewall`. O script
 ([deploy/windows/iis/configurar-iis.ps1](../../deploy/windows/iis/configurar-iis.ps1)) confere IIS/URL Rewrite/ARR/
-ferramentas, liga o proxy do ARR (tempo-limite 5 min, `responseBufferLimit` 0 — o chat chega em fluxo), grava o
+ferramentas, liga o proxy do ARR (tempo-limite 5 min, `responseBufferLimit` 0 — o chat chega em fluxo —, IP do cliente
+**sem a porta** no `X-Forwarded-For`), cria as web farms **INIA-API** e **INIA-Interface** (health check em `/ready` da
+API e `/healthz` da interface a cada 3 s; balanceamento por menos requisições em andamento), grava o
 [web.config](../../deploy/windows/iis/web.config) em `C:\inia-iis`, cria o pool e o site **INIA** (para se outro site
-usa a porta), liga o certificado e o firewall. Rodar de novo é seguro. Até os serviços subirem, o endereço dá
-**502.3 Bad Gateway** (esperado).
+usa a porta), liga o certificado e o firewall. Rodar de novo é seguro (as web farms da INIA são recriadas). Até os
+serviços subirem, o endereço dá **502.3 Bad Gateway** (esperado). Várias instâncias: `-InstanciasApi N
+-InstanciasInterface N` (seção 8).
 
 ## 6. Serviços do Windows
 
@@ -180,8 +188,9 @@ chamam a IA), `-CertificadoRaiz C:\certificados\raiz-empresa.pem` (`NODE_EXTRA_C
 fica no serviço porque serviço do Windows não enxerga variável de sistema nova sem reiniciar o servidor),
 `-ProcessoUnico` (formato antigo: um serviço INIA - API fazendo API + processamento), `-Remover`. Cria **INIA - API**
 (`--role=api`), **INIA - Processamento** (`--role=worker`) e **INIA - Interface** (início automático atrasado, reinício em
-falha 10 s/30 s, registros em `C:\inia\logs` rodando a cada 10 MB × 8, conta Sistema Local) e espera o `/health` da API e
-o do processamento (`http://127.0.0.1:3334/health`, porta `WORKER_HEALTH_PORT` do `backend\.env`) responderem. Script:
+falha 10 s/30 s, registros em `C:\inia\logs` rodando a cada 10 MB × 8, conta Sistema Local, 30 s para parar) e espera o
+`/ready` da API, o `/health` do processamento (`http://127.0.0.1:3334/health`, porta `WORKER_HEALTH_PORT` do
+`backend\.env`) e o `/healthz` da interface responderem. Várias instâncias, cota de IA e pool por papel: seção 8. Script:
 [deploy/windows/servicos/instalar-servicos.ps1](../../deploy/windows/servicos/instalar-servicos.ps1).
 
 **Por que dois serviços no backend:** o processamento (Workflows de monitoria/indicador, que esperam minutos pela IA) roda
@@ -189,16 +198,17 @@ num processo próprio e não divide o processador com as telas. As tarefas peri�
 entregas) usam uma trava no banco: com 2+ processos de processamento, cada rodada acontece em um só. O processamento
 reinicia sem derrubar a API (e vice-versa); uma execução interrompida é retomada sozinha quando a posse dela vence.
 
-**Capacidade de IA** (`backend\.env`, ver comentários do `.env.example`): cada processo tem um limitador de chamadas —
-`INIA_AI_MAX_CONCURRENT_CALLS` (padrão 16) chamadas ao provedor ao mesmo tempo, das quais
-`INIA_AI_RESERVED_INTERACTIVE_CALLS` (padrão 4) só para chat/voz/telas. Com os serviços separados, a API só tem chamadas
-interativas e o processamento só lote (até 16 − 4 = 12 simultâneas). Os dois usam a mesma chave do Gemini: some o que cada
-processo pode usar e mantenha abaixo da cota da chave. Se o provedor responder "limite de requisições" (429), o
-processamento espera o tempo pedido e tenta de novo; o chat tenta uma vez a mais e, persistindo, mostra uma mensagem clara.
+**Capacidade de IA:** o limite do provedor é da **conexão** (Administração › IA › Provedores › conexão › **Chamadas
+simultâneas** — o limite por acesso que o provedor informar), dividido por todas as instâncias da INIA; um quarto fica
+reservado para chat e voz. Se o provedor responder "limite de requisições" (429), aquela conexão pausa os lotes em **todas**
+as instâncias pelo tempo pedido (o chat nunca é pausado; tenta uma vez a mais e, persistindo, mostra uma mensagem clara). Além
+disso cada processo tem um limitador local (`INIA_AI_MAX_CONCURRENT_CALLS`, padrão 16, das quais
+`INIA_AI_RESERVED_INTERACTIVE_CALLS` = 4 só para chat/voz/telas) — proteção do próprio processo, não a cota do provedor.
 
 ## 7. Primeiro acesso
 
-1. `https://inia.empresa.local/health` → `{"status":"ok"}`.
+1. `https://inia.empresa.local/health` → `{"status":"ok"}`. Na própria máquina, `http://127.0.0.1:3333/ready` →
+   `{"status":"ready"}` (banco respondendo).
 2. Administrador entra com o e-mail do `setup` e a senha temporária e cria a própria senha (IT-INIA-002).
 3. IA: `GEMINI_API_KEY=` no `C:\inia\backend\.env` e `Restart-Service INIA-API, INIA-Processamento`.
 4. **Administração › Central de Dados › Conectar banco de dados** → SQL Server → Conexão → Testar conexão → tabela ou
@@ -235,8 +245,92 @@ máquina Windows x64 com o mesmo Node.js e copie a pasta.
 novo o `instalar-servicos.ps1` com as mesmas opções — ele remove os serviços antigos e cria os três. A migration 122
 (trava das tarefas periódicas) entra no `npm run update`.
 
+**Instalação existente (um serviço por papel, de antes da web farm):** depois de `npm run update` (aplica as migrations
+126 e 127) e `npm run build`, rode de novo `configurar-iis.ps1` (cria as web farms; com uma instância o comportamento é o
+mesmo) e, se quiser várias instâncias, `instalar-servicos.ps1` com os números (seção 8). No `backend\.env`, troque
+`LOGIN_RATE_LIMIT_PER_IP=30` por `200` (agora conta só as recusas por IP) e acrescente `LOGIN_RATE_LIMIT_PER_IP_EMAIL=20`.
+
 **Depois da POC:** a montagem já é a de produção. Para mover o banco: `pg_dump` no atual, `pg_restore` no novo (banco
 vazio, mesmo dono) e `npm run db:connect`.
+
+## 8. Várias instâncias (web farm) — muitos usuários simultâneos
+
+Um processo Node usa ~1 núcleo. No teste de carga de 08/10/2026 (Mac M5, IA falsa com a latência real), 100 usuários levaram
+a API a 0,4 núcleo no pico — 600 simultâneos não cabem num processo só (extrapolação, não medido). A INIA roda **N APIs,
+N interfaces e M processamentos** na mesma máquina (ou, com o IIS na frente, em mais de uma):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\inia\deploy\windows\servicos\instalar-servicos.ps1 -WinSW C:\inia-ferramentas\WinSW-x64.exe -InstanciasApi 3 -InstanciasInterface 2 -InstanciasProcessamento 2 -PoolApi 25 -PoolProcessamento 25
+powershell -ExecutionPolicy Bypass -File C:\inia\deploy\windows\iis\configurar-iis.ps1 -Porta 443 -Https -CertificadoThumbprint IMPRESSAO-DIGITAL -NomeDoHost inia.empresa.local -InstanciasApi 3 -InstanciasInterface 2
+```
+
+- **Endereços:** a instância *i* da API escuta em `127.0.0.i:3333` e a da interface em `127.0.0.i:3000` (o ARR identifica o
+  servidor da farm pelo endereço, sem a porta — `127.0.0.1:3333` e `127.0.0.1:3335` seriam "o mesmo"; todo o 127.0.0.0/8 é
+  loopback no Windows). O processamento *j* expõe `/health` em `127.0.0.1:3334 + j − 1`. Os serviços: INIA-API, INIA-API-2…,
+  INIA-Processamento, INIA-Processamento-2…, INIA-Interface, INIA-Interface-2… (a primeira instância mantém o nome antigo).
+- **Quantas:** some as instâncias até perto do número de núcleos livres (ex.: 8 vCPUs → 3 APIs + 2 interfaces + 2
+  processamentos). Memória medida por processo: API até ~0,9 GB, interface até ~0,2 GB.
+- **O que vale para o conjunto fica no PostgreSQL:** limites de login e de IA por conta (migration 126), vagas e pausa de
+  cada conexão de IA (migrations 127 e 135), tarefas periódicas (trava no banco, uma rodada por intervalo), fila de Workflows e
+  da Central de Dados (posse com `skip locked`); a API acorda o processamento por `NOTIFY` quando entra uma carga da Central.
+  Nenhum estado de sessão fica no processo: não precisa de afinidade ("sticky session").
+- **Login atrás de Citrix/VDI/NAT:** o limite conta por IP **+ e-mail** (`LOGIN_RATE_LIMIT_PER_IP_EMAIL`, 20 por 5 min) e,
+  por IP, só as tentativas **recusadas** (`LOGIN_RATE_LIMIT_PER_IP`, 200 por 5 min). Com o IIS na mesma máquina,
+  `TRUST_PROXY=loopback`; IIS em outra máquina ou mais de um proxy no caminho: os IPs de todos eles
+  ([configuracao-segura.md](../security/configuracao-segura.md)).
+- **Saúde e parada:** o ARR consulta `/ready` de cada API a cada 3 s (503 = banco fora ou desligando → sai da farm). Ao parar
+  um serviço, a API sai da prontidão, espera 5 s (`INIA_SHUTDOWN_DRAIN_MS`), para de aceitar conexões e tem até 25 s
+  (`INIA_SHUTDOWN_TIMEOUT_MS`) para terminar — reinicie uma instância por vez e ninguém perde a tela.
+- **Métricas:** `http://127.0.0.i:3333/internal/metrics` (só na própria máquina; o IIS devolve 404 para `/internal`) —
+  atraso do event loop, conexões do pool (inclusive quantas requisições **esperam** conexão), latência por rota (p50/p95/p99)
+  e o limitador de IA; no processamento, o mesmo em `/health`. `INIA_METRICS_TOKEN` exige também um token.
+
+### Vagas de IA: por conexão (em todas as instâncias) e por processo
+
+- **Por conexão — o que importa para o provedor:** em Administração › IA › Provedores, cada conexão tem **Chamadas
+  simultâneas**: quantas chamadas aquele acesso aceita ao mesmo tempo, **somando todas as instâncias** (APIs e
+  processamentos). Use o limite por acesso que o provedor informar; em branco = sem limite próprio. Um quarto das vagas fica
+  reservado para chat e voz (o lote nunca as ocupa). Um 429 daquela conexão pausa os lotes dela em todas as instâncias; numa
+  política com cadeia de modelos, o lote passa direto para o próximo.
+- **Por processo — proteção local:** `-CotaIaApi` e `-CotaIaProcessamento` gravam `INIA_AI_MAX_CONCURRENT_CALLS` em cada serviço
+  (no processamento, também `INIA_AI_RESERVED_INTERACTIVE_CALLS=1`: lá não há chat). Limita a memória e o event loop de cada
+  processo; não precisa somar com a cota do provedor (isso é da conexão).
+
+### PostgreSQL para várias instâncias
+
+**Conexões.** Cada instância tem o próprio pool (`DATABASE_POOL_MAX`, padrão 20; `-PoolApi`/`-PoolProcessamento` no
+instalador). O processamento usa até `WORKFLOW_WORKER_CONCURRENCY` (8) conexões nas execuções, uma por tarefa periódica em
+andamento (até 6, a trava fica na conexão) e mais 1 fora do pool para ouvir os avisos da Central de Dados. A API usa conexões
+por requisição (curtas) — no teste de 08/10 um processo único com 100 usuários chegou a 43 conexões (teto 40).
+
+| Papel | `DATABASE_POOL_MAX` sugerido | Observação |
+| --- | --- | --- |
+| API (cada instância) | 25 | Suba se `/internal/metrics` mostrar `pool.waiting` > 0 com frequência |
+| Processamento (cada instância) | 25 | ≥ `WORKFLOW_WORKER_CONCURRENCY` + 8 |
+| Interface | — | Não conecta ao banco |
+
+`max_connections` ≥ soma dos pools + 1 por processamento (aviso da Central) + ~15 de manutenção (backup, psql,
+`superuser_reserved_connections`). Exemplo com 3 APIs e 2 processamentos: 3 × 25 + 2 × 25 + 2 + 15 = 142 → **200**.
+Acima de ~300 conexões, considere um PgBouncer (modo *session*: a INIA usa `LISTEN` e travas consultivas de sessão).
+
+**Memória** (exemplo: servidor de dados com 16 GB, SSD, só PostgreSQL; reinício do serviço para `max_connections` e
+`shared_buffers`):
+
+| Parâmetro | Linux | Windows | Por quê |
+| --- | --- | --- | --- |
+| `max_connections` | 200 | 200 | Soma dos pools + folga (acima) |
+| `shared_buffers` | 4GB (~25% da RAM) | 512MB | No Windows valores grandes rendem menos; a faixa útil citada pela EDB (e por versões antigas da documentação do PostgreSQL) é 64MB–512MB — o cache do sistema operacional faz o resto. Mais de 40% da RAM raramente ajuda em qualquer sistema |
+| `effective_cache_size` | 12GB | 12GB | ~75% da RAM: só informa o planejador |
+| `work_mem` | 16MB | 16MB | Por ordenação/hash, por conexão: (RAM − `shared_buffers`) ÷ (`max_connections` × 3) ≈ 16–20MB. Nunca centenas de MB: 200 conexões × várias operações estouram a memória |
+| `maintenance_work_mem` | 1GB | 512MB | VACUUM e criação de índice |
+| `random_page_cost` | 1.1 | 1.1 | Disco SSD |
+| `max_wal_size` | 4GB | 4GB | Menos checkpoints durante as cargas da Central de Dados |
+| `idle_in_transaction_session_timeout` | 5min | 5min | Uma conexão esquecida em transação não segura travas |
+| `log_min_duration_statement` | 1000 | 1000 | Registra consultas acima de 1 s |
+| `effective_io_concurrency` | 200 | não configure | No Windows o PostgreSQL não usa e recusa valor diferente de 0 |
+
+Confira depois: `select count(*) from pg_stat_activity where datname = 'inia';` perto do pico (deve ficar bem abaixo de
+`max_connections`) e o `pool.waiting` de cada API em `/internal/metrics`.
 
 ## O que já foi testado
 
@@ -247,4 +341,5 @@ vazio, mesmo dono) e `npm run db:connect`.
 | Endereço único com proxy na frente e API/interface só em 127.0.0.1 | Testado com proxy equivalente ao IIS |
 | API e processamento em processos separados (`--role=api` / `--role=worker`, dois processamentos ao mesmo tempo) | Testado em macOS — tarefas periódicas uma vez por rodada no conjunto, desligamento limpo |
 | `configurar-iis.ps1`, `instalar-servicos.ps1` (três serviços) | Sintaxe conferida (PowerShell 7); **não executados num Windows Server** |
+| Web farm (N APIs/interfaces, M processamentos), health check do ARR, X-Forwarded-For sem porta | Scripts escritos e revisados em 13/10/2026 **sem PowerShell nem Windows disponíveis — nunca executados**. Na API: dois processos reais dividindo limite de login e pausa de IA (prova automatizada), `/ready`, desligamento com prazo e IP com porta tratado — testados em macOS |
 | SQL Server real; voz atrás do IIS | **Não validados** |

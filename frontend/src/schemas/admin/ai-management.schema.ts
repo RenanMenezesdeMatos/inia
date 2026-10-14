@@ -153,6 +153,8 @@ export const aiConnectionSchema = z.object({
   apiVersion: z.string().nullable().catch(null),
   isLocal: z.boolean(),
   timeoutMs: z.number(),
+  /** Chamadas simultâneas da conexão somando todas as instâncias da INIA; null = sem limite próprio. */
+  maxConcurrentCalls: z.number().nullable().catch(null),
   enabled: z.boolean(),
   credential: z.object({ configured: z.boolean(), maskedValue: z.string().nullable(), updatedAt: z.string().nullable() }),
   customHeaderNames: z.array(z.string()).catch([]),

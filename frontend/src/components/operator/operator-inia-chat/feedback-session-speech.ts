@@ -2,9 +2,10 @@ import type { AvatarConversationState } from "@/lib/avatar/animation/types"
 import type { FeedbackOpenRequest } from "../feedback-application/feedback-workspace-context"
 import type { FeedbackSessionSpeech, FeedbackSessionStatus } from "../feedback-application/feedback-session-dialog"
 import { formatDateTime } from "@/lib/format/date"
+import { plainTextOf } from "@/lib/format/plain-text"
 import type { FeedbackApplicationDetail } from "@/schemas/feedback-applications/feedback-application.schema"
 import { ENTRY_HEADLINE, periodPhrase, type FeedbackSession, type PresentationPhase, type SessionEntry } from "./feedback-session-model"
-import { bubbleTextOf, type StageUtterance } from "./stage-speech"
+import type { StageUtterance } from "./stage-speech"
 
 type DescribeFeedbackSessionInput = {
   sessionApplication: FeedbackApplicationDetail | null
@@ -63,9 +64,11 @@ export function describeFeedbackSession({ sessionApplication, feedbackOpening, f
                           : "Leia comigo aqui ao lado. Quando quiser, eu apresento por voz."
   // O balão é o que ela está DIZENDO: a fala em andamento (no ritmo da voz, até pousar na conversa); a chegada, um aviso ou a
   // espera pela voz; ela ouvindo; ela pensando. Fora disso, sem balão — o estado continua em texto para leitor de tela.
+  // A fala vai em texto corrido: a transcrição da voz ao vivo e a resposta escrita podem trazer Markdown (`**negrito**`, links),
+  // que só a conversa renderiza.
   const say: FeedbackSessionSpeech = { kind: "say", headline: feedbackError ? "Não consegui abrir este feedback agora." : ENTRY_HEADLINE[sessionEntry], detail: speechDetail }
   const sessionSpeech: FeedbackSessionSpeech = stageUtterance
-    ? { kind: "stream", key: stageUtterance.key, text: stageUtterance.markdown ? bubbleTextOf(stageUtterance.text) : stageUtterance.text, heardWords: stageUtterance.heard, ended: stageUtterance.ended, landOn: stageUtterance.landOn }
+    ? { kind: "stream", key: stageUtterance.key, text: plainTextOf(stageUtterance.text), heardWords: stageUtterance.heard, ended: stageUtterance.ended, landOn: stageUtterance.landOn }
     : feedbackOpening || feedbackError || presentationPhase === "preparing" || presentationPhase === "blocked" || presentationPhase === "failed"
       ? say
       : micOpen

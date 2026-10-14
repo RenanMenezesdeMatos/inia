@@ -2,27 +2,65 @@ import type { StructureAnchor } from "../../workflows/domain/structure-anchor-sc
 import { isHierarchyRole, type GroupingDimension } from "../domain/hierarchy-levels.js"
 import { longPeriodLabel } from "../domain/reference-period.js"
 import { buildIndicatorViewCapabilities } from "../domain/view-capabilities.js"
-import type { MemberSituation, StructureUnitSummary, TeamMemberSummary, TeamMembersPage, TeamOverview, TeamSummaryCounts } from "../domain/view-models.js"
+import type { MemberSituation, StructureGroupSummary, StructureUnitSummary, TeamMemberSummary, TeamMembersPage, TeamOverview, TeamSummaryCounts } from "../domain/view-models.js"
 import type { AnalyticsReadRepository, FollowUpCounts, PersonNode } from "./analytics-read-repository.js"
 import { buildMemberPerformance, type MemberPerformance } from "./member-performance.js"
 import { indicatorCodesWithData, loadPerformanceDataset, type PerformanceDataset } from "./performance-dataset.js"
 import { splitIntoGroups, summarizeGroup, TOP_ATTENTION_INDICATORS, type GroupBucket } from "./structure-groups.js"
+import { cachedOfficial } from "./official-analytics-cache.js"
 import { buildBreadcrumb, resolveSubject, type ResolvedSubject, type ViewerScope } from "./viewer-scope.js"
 
+/**
+ * O que a Equipe deriva do FECHAMENTO OFICIAL de uma estrutura — guardado no cache da camada oficial
+ * (official-analytics-cache.ts): desempenho por membro, indicadores de atenção já nomeados, unidades subordinadas com os
+ * consolidados e as opções de filtro. Acompanhamentos e pendências entram a cada request (MemberContext).
+ */
+type OfficialTeamBase = {
+  performances: Map<string, MemberPerformance>
+  attentionIndicators: Map<string, TeamMemberSummary["attentionIndicators"]>
+  units: { summary: StructureGroupSummary; bucket: GroupBucket }[]
+  topGroupBy: GroupingDimension | null
+  directMemberCount: number
+  filterOptions: TeamOverview["filterOptions"]
+}
+
 type MemberContext = {
-  dataset: PerformanceDataset
+  base: OfficialTeamBase
   followUps: Map<string, FollowUpCounts>
   pendingReviews: Map<string, number>
 }
 
-async function loadMemberContext(repository: AnalyticsReadRepository, scope: ViewerScope, resolved: ResolvedSubject, period: string): Promise<MemberContext> {
+async function loadMemberContext(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, resolved: ResolvedSubject, period: string): Promise<MemberContext> {
   const memberIds = resolved.members.map((member) => member.id)
-  const [dataset, followUps, pendingReviews] = await Promise.all([
-    loadPerformanceDataset(repository, scope.organizationId, memberIds, period),
+  const [base, followUps, pendingReviews] = await Promise.all([
+    cachedOfficial(repository, scope, ["team-base", subject, period], memberIds.length, () => buildOfficialTeamBase(repository, scope, subject, resolved, period)),
     repository.loadFollowUpCounts(memberIds),
     repository.loadPendingReviewCounts(scope.organizationId, scope.viewer.id, memberIds),
   ])
-  return { dataset, followUps, pendingReviews }
+  return { base, followUps, pendingReviews }
+}
+
+async function buildOfficialTeamBase(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, resolved: ResolvedSubject, period: string): Promise<OfficialTeamBase> {
+  const dataset = await loadPerformanceDataset(repository, scope.organizationId, resolved.members.map((member) => member.id), period)
+  const performances = new Map(resolved.members.map((member) => [member.id, buildMemberPerformance(dataset, member.id)]))
+  const attentionIndicators = new Map(
+    [...performances].map(([personId, performance]) => [
+      personId,
+      performance.belowTargetRows
+        .map((row) => ({ code: row.indicatorCode, name: dataset.definitions.get(row.indicatorCode)?.name ?? row.indicatorCode, achievementPercent: row.achievementPercent }))
+        .sort((a, b) => (a.achievementPercent ?? Number.POSITIVE_INFINITY) - (b.achievementPercent ?? Number.POSITIVE_INFINITY))
+        .slice(0, TOP_ATTENTION_INDICATORS),
+    ]),
+  )
+  const { units, topGroupBy, directMembers } = collectUnits(scope, resolved, subject)
+  return {
+    performances,
+    attentionIndicators,
+    units: units.map((bucket) => ({ bucket, summary: summarizeGroup(dataset, bucket) })),
+    topGroupBy,
+    directMemberCount: directMembers.length,
+    filterOptions: buildFilterOptions(resolved.members, dataset),
+  }
 }
 
 /**
@@ -33,11 +71,9 @@ async function loadMemberContext(repository: AnalyticsReadRepository, scope: Vie
  */
 export async function buildTeamOverview(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, period: string): Promise<TeamOverview> {
   const resolved = resolveSubject(scope, subject)
-  const context = await loadMemberContext(repository, scope, resolved, period)
-  const performances = resolved.members.map((member) => buildMemberPerformance(context.dataset, member.id))
-
-  const { units: unitBuckets, topGroupBy, directMembers } = collectUnits(scope, resolved, subject)
-  const units = unitBuckets.map((bucket) => summarizeUnit(context, bucket))
+  const context = await loadMemberContext(repository, scope, subject, resolved, period)
+  const performances = resolved.members.map((member) => context.base.performances.get(member.id)!)
+  const units = context.base.units.map((unit) => summarizeUnit(context, unit.bucket, unit.summary))
 
   return {
     subject: resolved.descriptor,
@@ -46,10 +82,10 @@ export async function buildTeamOverview(repository: AnalyticsReadRepository, sco
     periodLabel: longPeriodLabel(period),
     summary: summarizeCounts(performances, context),
     units,
-    unitsGroupBy: topGroupBy,
+    unitsGroupBy: context.base.topGroupBy,
     showsMembersDirectly: units.length === 0,
-    directMemberCount: units.length === 0 ? 0 : directMembers.length,
-    filterOptions: buildFilterOptions(resolved.members, context.dataset),
+    directMemberCount: units.length === 0 ? 0 : context.base.directMemberCount,
+    filterOptions: context.base.filterOptions,
   }
 }
 
@@ -88,8 +124,7 @@ export function isDirectMember(scope: ViewerScope, anchorId: string | null, memb
   return true
 }
 
-function summarizeUnit(context: MemberContext, bucket: GroupBucket): StructureUnitSummary {
-  const base = summarizeGroup(context.dataset, bucket)
+function summarizeUnit(context: MemberContext, bucket: GroupBucket, base: StructureGroupSummary): StructureUnitSummary {
   return {
     ...base,
     subject: bucket.subject!,
@@ -147,7 +182,7 @@ const SITUATION_RANK: Record<MemberSituation, number> = { BELOW_REFERENCE: 0, NO
 
 export async function buildTeamMembersPage(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, period: string, query: TeamMembersQuery): Promise<TeamMembersPage> {
   const resolved = resolveSubject(scope, subject)
-  const context = await loadMemberContext(repository, scope, resolved, period)
+  const context = await loadMemberContext(repository, scope, subject, resolved, period)
   const term = query.search?.trim().toLocaleLowerCase("pt-BR")
 
   const anchorId = resolved.anchor?.id ?? null
@@ -156,7 +191,7 @@ export async function buildTeamMembersPage(repository: AnalyticsReadRepository, 
     .filter((member) => !term || member.name.toLocaleLowerCase("pt-BR").includes(term))
     .filter((member) => !query.teamId || member.teamId === query.teamId)
     .filter((member) => !query.subteamId || member.subteamId === query.subteamId)
-    .map((member) => toMemberSummary(member, buildMemberPerformance(context.dataset, member.id), context))
+    .map((member) => toMemberSummary(member, context.base.performances.get(member.id)!, context))
     .filter((row) => !query.situation || row.situation === query.situation)
     .filter((row) => !query.attentionIndicatorCode || row.attentionIndicators.some((indicator) => indicator.code === query.attentionIndicatorCode))
     .filter((row) => !query.pendingOnly || row.followUps.unacknowledged > 0 || row.pendingReviews > 0)
@@ -167,9 +202,6 @@ export async function buildTeamMembersPage(repository: AnalyticsReadRepository, 
 }
 
 function toMemberSummary(member: PersonNode, performance: MemberPerformance, context: MemberContext): TeamMemberSummary {
-  const attentionIndicators = performance.belowTargetRows
-    .map((row) => ({ code: row.indicatorCode, name: context.dataset.definitions.get(row.indicatorCode)?.name ?? row.indicatorCode, achievementPercent: row.achievementPercent }))
-    .sort((a, b) => (a.achievementPercent ?? Number.POSITIVE_INFINITY) - (b.achievementPercent ?? Number.POSITIVE_INFINITY))
   return {
     personId: member.id,
     name: member.name,
@@ -187,7 +219,7 @@ function toMemberSummary(member: PersonNode, performance: MemberPerformance, con
     trend: performance.trend,
     indicatorsWithData: performance.indicatorsWithData,
     indicatorsBelowTarget: performance.indicatorsBelowTarget,
-    attentionIndicators: attentionIndicators.slice(0, TOP_ATTENTION_INDICATORS),
+    attentionIndicators: context.base.attentionIndicators.get(member.id)!,
     followUps: context.followUps.get(member.id) ?? { total: 0, unacknowledged: 0 },
     pendingReviews: context.pendingReviews.get(member.id) ?? 0,
   }

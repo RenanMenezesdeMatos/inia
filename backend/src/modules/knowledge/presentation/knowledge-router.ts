@@ -10,10 +10,10 @@ import { renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { knowledgeFileContentType, sendKnowledgeFile } from "./knowledge-file-response.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
 import { canManageScope, getManageableScopes, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
-import pino from "pino"
+import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { syncCheckpointRegistry } from "../../checkpoint-registry/application/checkpoint-registry-service.js"
 
-const registryLog = pino({ name: "checkpoint-registry", enabled: process.env.NODE_ENV !== "test" })
+const registryLog = createLogger("checkpoint-registry")
 
 const upload = multer({ storage: multer.memoryStorage(), limits: multerLimits(15 * 1024 * 1024) })
 

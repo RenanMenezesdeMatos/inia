@@ -19,6 +19,7 @@ import { useWorkflowVariablesQuery } from "@/queries/admin/use-workflow-variable
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
 import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
+import { usePolicyResultCatalog } from "@/components/admin/workflows/use-policy-result-catalog"
 
 const WHOLE_OBJECT_VALUE = "__whole__"
 const VARIABLE_ORIGIN_PREFIX = "__var__"
@@ -80,7 +81,8 @@ export function StructuredContentPicker({
   const decoded = decodeSourcePath(path)
   const nodeId = decoded?.kind === "node" ? decoded.nodeId : ""
   const variableId = decoded?.kind === "variable" ? decoded.variableId : ""
-  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById) : undefined
+  const policies = usePolicyResultCatalog(graph)
+  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById, policies) : undefined
   const currentFieldPath = decoded?.kind === "node" && decoded.field ? decodeStructuredFieldPath(decoded.field) : null
 
   useEffect(() => {
@@ -120,7 +122,7 @@ export function StructuredContentPicker({
           <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
             {sourceMode === "FEEDBACK_ONLY"
               ? "Feedback oficial para o Acompanhamento do operador passa pela camada de confiabilidade: conecte este nó depois de um \"Gerar feedback\"."
-              : "Nenhum resultado disponível ainda — conecte este nó depois de um Agente ou Orquestrador."}
+              : "Nenhum resultado disponível ainda — conecte este nó depois de um Agente, Orquestrador ou Avaliar política de acompanhamento."}
           </p>
         ) : (
           <Select value={originValue} onValueChange={selectOrigin}>

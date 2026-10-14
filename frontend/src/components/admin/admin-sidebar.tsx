@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, CalendarDays, ChevronRight, Cpu, Database, FlaskConical, Flag, Gauge, ImageIcon, Layers, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, FlaskConical, Flag, Gauge, ImageIcon, Layers, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
@@ -106,6 +106,8 @@ const GROUPS: NavGroup[] = [
     label: "Automação",
     entries: [
       { href: "/admin/workflows", label: "Workflows", icon: Zap, capability: "canManageWorkflows" },
+      // Quando observar, orientar, treinar, abrir plano ou encaminhar — tipos de intervenção, competências e políticas versionadas.
+      { href: "/admin/intervention-policies", label: "Políticas de acompanhamento", icon: ClipboardList, capability: "canAccessInterventionPolicies" },
       { href: "/admin/simulate", label: "QA Lab", icon: FlaskConical, capability: "canUseQaLab" },
     ],
   },

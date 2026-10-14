@@ -11,6 +11,7 @@ import { validateOutputContent } from "./publish-validation/outputs.js"
 import { validateConsolidatedStructure, validateRankings, validateSelectionCriteria } from "./publish-validation/fan-out.js"
 import { validateIndicatorDiagnosis, validateIndicatorUsage, validatePrvClosingDiagnosis } from "./publish-validation/indicator-diagnosis.js"
 import { validateReliableFeedbackFlow } from "./publish-validation/reliable-feedback.js"
+import { validateInterventionPolicyReferences, validateInterventionPolicySources } from "./publish-validation/intervention-policy.js"
 
 export { type PublishValidationRow, type PublishValidationOptions } from "./publish-validation/context.js"
 export { parseSourcePath } from "./publish-validation/source-paths.js"
@@ -85,9 +86,11 @@ export async function validateWorkflowForPublish(db: Database, organizationId: s
   validateOutputContent(catalogContext)
   validateEscalations(catalogContext)
   validateVariables(catalogContext)
+  validateInterventionPolicySources(catalogContext)
   await validateAgentReferences(catalogContext)
   await validateOrchestratorReferences(catalogContext)
   await validateFixedRecipients(catalogContext)
+  await validateInterventionPolicyReferences(catalogContext)
 
   return graph
 }

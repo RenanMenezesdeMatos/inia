@@ -49,3 +49,6 @@ __pycache__/
 
 # Saídas locais (vídeos, capturas, áudios e relatórios gerados) — nunca versionadas.
 /output/
+
+# Saída do teste de carga (logs, PIDs, resultados)
+tools/loadtest/out/

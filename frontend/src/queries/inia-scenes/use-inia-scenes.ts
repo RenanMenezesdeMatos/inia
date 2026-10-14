@@ -21,6 +21,13 @@ const MAX_TIMER_MS = 60 * 60_000
 const MIN_TIMER_MS = 1_000
 /** A imagem seguinte é baixada pouco antes da troca (nunca todas as imagens de uma vez). */
 const PRELOAD_LEAD_MS = 90_000
+/**
+ * Espalha a releitura na hora da troca: cada página espera de 0 a 60 s a mais, sorteados uma vez por página — centenas de
+ * telas abertas (ex.: virada de turno às 18h) não pedem o cenário novo à API no mesmo segundo. A imagem já foi pré-carregada,
+ * então o atraso só adia a troca visual.
+ */
+export const MAX_SCENE_CHANGE_JITTER_MS = 60_000
+const PAGE_SCENE_CHANGE_JITTER_MS = typeof window === "undefined" ? 0 : Math.floor(Math.random() * (MAX_SCENE_CHANGE_JITTER_MS + 1))
 
 /**
  * Quanto falta (ms) para a próxima troca, pelo relógio do SERVIDOR: `nextChangeAt − now` da resposta, menos o tempo que passou
@@ -35,17 +42,17 @@ export function msUntilSceneChange(state: CurrentIniaSceneState | undefined, fet
  * Velho = passou do instante da troca (ou 5 min, o que vier antes): voltar à aba ou à conexão relê só nesse caso. É contado a
  * partir de quando a resposta chegou (o React Query compara `dataUpdatedAt + staleTime` com agora).
  */
-export function sceneStaleTime(state: CurrentIniaSceneState | undefined, fetchedAt: number): number {
+export function sceneStaleTime(state: CurrentIniaSceneState | undefined, fetchedAt: number, jitterMs = 0): number {
   const untilAtFetch = msUntilSceneChange(state, fetchedAt, fetchedAt)
   if (untilAtFetch === null) return MAX_STALE_MS
-  return Math.max(0, Math.min(MAX_STALE_MS, untilAtFetch + CHANGE_MARGIN_MS))
+  return Math.max(0, Math.min(MAX_STALE_MS, untilAtFetch + CHANGE_MARGIN_MS + jitterMs))
 }
 
 /** Com a página aberta, pergunta de novo logo depois da troca (relógio do servidor), no máximo a cada hora. */
-export function sceneRefetchInterval(state: CurrentIniaSceneState | undefined, fetchedAt: number, clientNow = Date.now()): number | false {
+export function sceneRefetchInterval(state: CurrentIniaSceneState | undefined, fetchedAt: number, clientNow = Date.now(), jitterMs = 0): number | false {
   const until = msUntilSceneChange(state, fetchedAt, clientNow)
   if (until === null) return false
-  return Math.max(MIN_TIMER_MS, Math.min(MAX_TIMER_MS, until + CHANGE_MARGIN_MS))
+  return Math.max(MIN_TIMER_MS, Math.min(MAX_TIMER_MS, until + CHANGE_MARGIN_MS + jitterMs))
 }
 
 /**
@@ -53,14 +60,14 @@ export function sceneRefetchInterval(state: CurrentIniaSceneState | undefined, f
  * com a tela aberta: pede de novo no instante da próxima troca; ao voltar para a aba ou recuperar a conexão, relê se esse
  * instante já passou. A imagem seguinte é pré-carregada pouco antes, para a troca não piscar.
  */
-export function useCurrentIniaScene(enabled = true): CurrentIniaScene | null {
+export function useCurrentIniaScene(enabled = true, jitterMs = PAGE_SCENE_CHANGE_JITTER_MS): CurrentIniaScene | null {
   const query = useQuery({
     queryKey: iniaSceneKeys.current,
     queryFn: fetchCurrentIniaScene,
     enabled,
     retry: 1,
-    staleTime: (current) => sceneStaleTime(current.state.data, current.state.dataUpdatedAt),
-    refetchInterval: (current) => sceneRefetchInterval(current.state.data, current.state.dataUpdatedAt),
+    staleTime: (current) => sceneStaleTime(current.state.data, current.state.dataUpdatedAt, jitterMs),
+    refetchInterval: (current) => sceneRefetchInterval(current.state.data, current.state.dataUpdatedAt, Date.now(), jitterMs),
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })

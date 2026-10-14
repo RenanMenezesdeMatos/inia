@@ -55,6 +55,7 @@ const run = (stage: ManualRun["execution"]["stage"], deliveries: ManualRun["deli
   measurement: null,
   execution: { enrollmentId: "enr-1", status: stage === "COMPLETED" ? "completed" : "active", stage, currentNodeId: "agent", currentNodeLabel: "Monitoria", waitingFor: null, lastError: null, nextRetryAt: null, updatedAt: "2026-09-30T10:05:00Z", events: [] },
   deliveries,
+  interventions: [],
 })
 
 beforeAll(() => installJsdomStubs())

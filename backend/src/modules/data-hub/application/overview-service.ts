@@ -295,6 +295,44 @@ const ENTITY_COUNT_SQL: Record<string, string> = {
   interaction_flags: "select count(*)::int c from interaction_flags where organization_id = $1",
 }
 
+/**
+ * Contagem exata das tabelas de destino, em cache. As maiores (interações, transcrições, medições, flags) crescem milhões de
+ * linhas por mês, e a tela consulta a visão geral a cada 30 s (4 s com carga na fila) — cada consulta refazia 14 `count(*)`.
+ * Agora a contagem é refeita quando uma carga TERMINA (a chave é o último fim de carga) ou depois de 10 minutos (o que chega
+ * pela ingestão em tempo real), e nunca duas ao mesmo tempo. Cache por banco/conexão e por processo.
+ */
+const ENTITY_COUNTS_MAX_AGE_MS = 10 * 60_000
+const entityCountsCache = new WeakMap<object, Map<string, { key: string; at: number; counts: Promise<Map<string, number>> }>>()
+
+function entityCountsOf(ctx: DataHubContext, organizationId: string, lastFinishedAt: string | null): Promise<Map<string, number>> {
+  let byOrganization = entityCountsCache.get(ctx.db)
+  if (!byOrganization) {
+    byOrganization = new Map()
+    entityCountsCache.set(ctx.db, byOrganization)
+  }
+  const key = lastFinishedAt ?? ""
+  const cached = byOrganization.get(organizationId)
+  if (cached && cached.key === key && Date.now() - cached.at < ENTITY_COUNTS_MAX_AGE_MS) return cached.counts
+  const counts = (async () => {
+    const result = new Map<string, number>()
+    const entities = [...new Set(DATA_CONTRACTS.map((contract) => contract.targetEntity))]
+    for (const entity of entities) {
+      const sql = ENTITY_COUNT_SQL[entity]
+      if (!sql) continue
+      const row = await ctx.db.query<{ c: number }>(sql, [organizationId])
+      result.set(entity, row.rows[0]?.c ?? 0)
+    }
+    return result
+  })()
+  const entry = { key, at: Date.now(), counts }
+  byOrganization.set(organizationId, entry)
+  // Falha não fica em cache: a próxima consulta tenta de novo.
+  counts.catch(() => {
+    if (byOrganization.get(organizationId) === entry) byOrganization.delete(organizationId)
+  })
+  return counts
+}
+
 export async function buildOverview(ctx: DataHubContext, organizationId: string): Promise<Overview> {
   const now = ctx.clock.now()
   const sources = await listSourceSummaries(ctx, organizationId)
@@ -308,24 +346,18 @@ export async function buildOverview(ctx: DataHubContext, organizationId: string)
   ])
   // "Hoje" = dia LOCAL da organização no instante do Clock (nunca o now() do banco): as cargas gravam
   // queued_at/finished_at pelo mesmo Clock, então os cartões fecham em teste (relógio fixo) e em produção.
-  const todayRuns = await ctx.db.query<{ received: number; rejected: number; warnings: number; runs: number; queued: number }>(
+  const todayRuns = await ctx.db.query<{ received: number; rejected: number; warnings: number; runs: number; queued: number; last_finished: string | null }>(
     `with day as (select $2::date as start_local)
      select coalesce(sum(records_received) filter (where status in ('COMPLETED','PARTIAL','FAILED') and (finished_at at time zone $3)::date = day.start_local), 0)::int received,
             coalesce(sum(records_rejected) filter (where (finished_at at time zone $3)::date = day.start_local), 0)::int rejected,
             coalesce(sum(warning_count) filter (where (finished_at at time zone $3)::date = day.start_local), 0)::int warnings,
             count(*) filter (where (queued_at at time zone $3)::date = day.start_local)::int runs,
-            count(*) filter (where status = 'QUEUED')::int queued
+            count(*) filter (where status = 'QUEUED')::int queued,
+            max(finished_at)::text last_finished
      from data_ingestion_runs, day where organization_id = $1`,
     [organizationId, today, timeZone],
   )
-  const counts = new Map<string, number>()
-  const entities = [...new Set(DATA_CONTRACTS.map((contract) => contract.targetEntity))]
-  for (const entity of entities) {
-    const sql = ENTITY_COUNT_SQL[entity]
-    if (!sql) continue
-    const result = await ctx.db.query<{ c: number }>(sql, [organizationId])
-    counts.set(entity, result.rows[0]?.c ?? 0)
-  }
+  const counts = await entityCountsOf(ctx, organizationId, todayRuns.rows[0]?.last_finished ?? null)
   const allFeeds = sources.flatMap((source) => source.feeds.map((feed) => ({ feed, source })))
   const dataMap: DataMapEntry[] = DATA_CONTRACTS.map((contract) => {
     const feeds = allFeeds.filter(({ feed }) => feed.contractKey === contract.key && feed.status !== "DRAFT")

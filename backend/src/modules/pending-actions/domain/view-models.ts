@@ -14,7 +14,7 @@ import type { HumanReviewDecision } from "../../workflows/domain/graph-schema.js
  *    evidência de produção: falta injustificada / ausência justificada (motivo) / trabalhou — dados não
  *    chegaram (classificações revisáveis) ou corrigir planejamento. Nunca antes de as fontes fecharem.
  */
-export type PendingActionKind = "HUMAN_REVIEW" | "WORKDAY_RECONCILIATION"
+export type PendingActionKind = "HUMAN_REVIEW" | "WORKDAY_RECONCILIATION" | "INTERVENTION"
 
 /** PENDING: a execução está parada esperando esta decisão. DECIDED: alguém já decidiu (histórico).
  * UNAVAILABLE: a execução não está mais nesse ponto (cancelada/falhou/seguiu por outro caminho). */
@@ -68,7 +68,31 @@ export type WorkdayReconciliationSummary = {
   availability: { state: string; label: string } | null
 }
 
-export type PendingActionSummary = HumanReviewSummary | WorkdayReconciliationSummary
+/**
+ * Intervenção que exige resposta do viewer AGORA (aceitar/descartar, aprovar/devolver, decidir, ou item vencendo). O detalhe e
+ * os controles moram no CASO (`/supervisor/cases/:caseId?intervention=:id`); resolver a pendência não encerra a intervenção.
+ */
+export type InterventionPendingSummary = {
+  /** `intervention:${interventionId}` — chave estável usada em URL/deep link. */
+  id: string
+  kind: "INTERVENTION"
+  status: PendingActionStatus
+  interventionId: string
+  caseId: string
+  operator: PendingActionPerson | null
+  typeName: string
+  reason: string
+  pendingReason: "ACCEPT" | "APPROVE" | "DECIDE" | "EXECUTE"
+  pendingLabel: string
+  dueAt: string
+  overdue: boolean
+  sensitive: boolean
+  requestedAt: string
+  decidedAt: null
+  reviewer: null
+}
+
+export type PendingActionSummary = HumanReviewSummary | WorkdayReconciliationSummary | InterventionPendingSummary
 
 export type PendingActionsSummary = {
   pending: PendingActionSummary[]

@@ -213,7 +213,8 @@ async function resolveDefinitionParam(db: Database, indicatorCode: string, param
   return { kind: loaded?.kind ?? DEFAULT_DEFINITION.kind, unjustifiedAbsencePolicy: loaded?.unjustifiedAbsencePolicy ?? DEFAULT_DEFINITION.unjustifiedAbsencePolicy }
 }
 
-type RawRow = {
+/** Uma linha agregada de medições (colunas de `aggregateColumns`, numéricos como texto do banco). */
+export type MeasurementWindowRow = {
   subject_id?: string
   avg_value: string | null
   min_value: string | null
@@ -234,16 +235,16 @@ type RawRow = {
 
 const num = (value: string | null | undefined): number | null => (value === null || value === undefined ? null : Number(value))
 
-function ignoredOf(row: RawRow | undefined): number {
+export function ignoredOf(row: MeasurementWindowRow | undefined): number {
   return row?.ignored_count !== undefined && row?.ignored_count !== null ? Number(row.ignored_count) : 0
 }
 
 /** Dias de falta injustificada que JÁ têm medição elegível deste indicador (não recebem zero por cima). */
-function absenceDaysWithDataOf(row: RawRow | undefined): number {
+export function absenceDaysWithDataOf(row: MeasurementWindowRow | undefined): number {
   return row?.absence_days_with_data !== undefined && row?.absence_days_with_data !== null ? Number(row.absence_days_with_data) : 0
 }
 
-function toRaw(row: RawRow | undefined): RawWindowComponents {
+export function toRaw(row: MeasurementWindowRow | undefined): RawWindowComponents {
   const sampleCount = row?.sample_count ? Number(row.sample_count) : 0
   return {
     sampleCount,
@@ -269,11 +270,11 @@ function toRaw(row: RawRow | undefined): RawWindowComponents {
  * DATA ELEGÍVEL, nunca a última linha física) respeitam a MESMA elegibilidade da cobertura.
  * `ignored_count` conta as medições da janela que ficaram de fora (auditoria/QA — nunca apagadas).
  */
-function aggregateColumns(m: string, timeZoneParam: string): string {
+export function aggregateColumns(m: string, timeZoneParam: string): string {
   const f = `filter (where ${m}.eligible)`
   return `avg(${m}.value) ${f}::numeric avg_value, min(${m}.value) ${f}::numeric min_value, max(${m}.value) ${f}::numeric max_value, count(${m}.value) ${f}::int sample_count,
             sum(${m}.value) ${f}::numeric sum_value,
-            (array_agg(${m}.value order by ${m}.period_end desc) ${f})[1]::numeric latest_value,
+            (array_agg(${m}.value order by ${m}.period_end desc, ${m}.id desc) ${f})[1]::numeric latest_value,
             sum(${m}.value * coalesce(${m}.denominator, 1)) ${f}::numeric weighted_sum,
             sum(coalesce(${m}.denominator, 1)) filter (where ${m}.eligible and ${m}.value is not null)::numeric weight_total,
             sum(${m}.numerator) ${f}::numeric numerator_sum,
@@ -380,12 +381,28 @@ function nextDay(date: string): string {
   return new Date(Date.UTC(year!, month! - 1, day! + 1)).toISOString().slice(0, 10)
 }
 
-function finish(rawInput: RawWindowComponents, input: OperationalWindowInput, definition: Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">, eligibility: EligibilityResult | undefined, ignoredMeasurements: number, absenceDaysWithData = 0): OperationalWindowResult {
+/**
+ * O que `finish` lê da elegibilidade de UM colaborador na janela — o resultado inteiro (`EligibilityResult`) ou só as
+ * contagens guardadas pelo read model do analytics da liderança (performance-analytics/infrastructure/operational-read-model.ts).
+ */
+export type WindowEligibilityFacts = { eligibleDays: number; unjustifiedAbsenceDays: number }
+
+export function eligibilityFactsOf(eligibility: Pick<EligibilityResult, "eligibleDays" | "observed">): WindowEligibilityFacts {
+  return { eligibleDays: eligibility.eligibleDays, unjustifiedAbsenceDays: eligibility.observed.unjustifiedAbsenceDays }
+}
+
+function finish(rawInput: RawWindowComponents, input: Pick<OperationalWindowInput, "aggregation" | "window" | "expectedDays">, definition: Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">, eligibility: EligibilityResult | undefined, ignoredMeasurements: number, absenceDaysWithData = 0): OperationalWindowResult {
+  const result = finishWindow(rawInput, input, definition, eligibility ? eligibilityFactsOf(eligibility) : undefined, ignoredMeasurements, absenceDaysWithData)
+  return eligibility ? { ...result, eligibility } : result
+}
+
+/** Valor final de uma janela a partir dos componentes brutos — a ÚNICA regra (falta injustificada, cobertura, sem dias elegíveis). */
+export function finishWindow(rawInput: RawWindowComponents, input: Pick<OperationalWindowInput, "aggregation" | "window" | "expectedDays">, definition: Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">, eligibility: WindowEligibilityFacts | undefined, ignoredMeasurements: number, absenceDaysWithData = 0): OperationalWindowResult {
   const kind = definition.kind
   // FALTA INJUSTIFICADA confirmada (classificação humana) em dia elegível SEM medição: com política
   // ZERO_CONTRIBUTION o dia entra como contribuição lógica 0 (Produção); com NO_SAMPLE nada entra (TMA,
   // Qualidade — não existe amostra). Nunca uma linha em indicator_measurements.
-  const absenceDays = eligibility?.observed.unjustifiedAbsenceDays ?? 0
+  const absenceDays = eligibility?.unjustifiedAbsenceDays ?? 0
   const zeroContributionDays = definition.unjustifiedAbsencePolicy === "ZERO_CONTRIBUTION" ? Math.max(0, absenceDays - absenceDaysWithData) : 0
   const raw = zeroContributionDays > 0 ? applyZeroContribution(rawInput, zeroContributionDays) : rawInput
   const combined = combineWindowComponents(raw, input.aggregation, kind)
@@ -398,7 +415,6 @@ function finish(rawInput: RawWindowComponents, input: OperationalWindowInput, de
     expectedDays,
     // Cobertura e valor olham para o MESMO universo: dias com medição ELEGÍVEL (ou zero lógico) ÷ dias elegíveis.
     coverage: expectedDays !== null && expectedDays > 0 ? Math.min(1, combined.daysWithData / expectedDays) : null,
-    ...(eligibility ? { eligibility } : {}),
     ignoredMeasurements,
     unjustifiedAbsence: { days: absenceDays, policy: definition.unjustifiedAbsencePolicy, zeroContributionDays },
   }
@@ -420,6 +436,39 @@ export async function loadWorkActivityEvidenceSources(db: Database, organization
   return { interactions: interactions.rows[0]?.present === true, indicatorCodes: indicators.rows.map((row) => row.code) }
 }
 
+type InteractionDayCount = { operator_id: string; local_date: string; total: number }
+
+/**
+ * Interações por pessoa × data local — da `person_daily_activity` (migration 129: a MESMA contagem, mantida por trigger na
+ * transação de cada escrita em `interactions`), em vez de contar as linhas brutas a cada resolução. Se a tabela foi montada
+ * com outro fuso (ou a organização não tem estado), cai na contagem bruta — mesmo resultado, só mais caro.
+ */
+export async function countInteractionsByPersonDay(db: Database, subjectIds: string[], firstDate: string, lastDate: string, timeZone: string): Promise<{ rows: InteractionDayCount[] }> {
+  const state = await db.query<{ usable: boolean | null }>(
+    `select bool_and(s.time_zone is not distinct from $2) usable
+       from (select distinct organization_id from people where id = any($1::uuid[])) p
+       left join person_daily_activity_state s on s.organization_id = p.organization_id`,
+    [subjectIds, timeZone],
+  )
+  if (state.rows[0]?.usable !== true) return countInteractionsByPersonDayRaw(db, subjectIds, firstDate, lastDate, timeZone)
+  return db.query<InteractionDayCount>(
+    `select person_id operator_id, to_char(local_date, 'YYYY-MM-DD') local_date, interaction_count total
+       from person_daily_activity where person_id = any($1::uuid[]) and local_date between $2::date and $3::date`,
+    [subjectIds, firstDate, lastDate],
+  )
+}
+
+/** Contagem BRUTA (o caminho original) — fallback de `countInteractionsByPersonDay` e referência da prova de igualdade. */
+export async function countInteractionsByPersonDayRaw(db: Pick<Database, "query">, subjectIds: string[], firstDate: string, lastDate: string, timeZone: string): Promise<{ rows: InteractionDayCount[] }> {
+  return db.query<InteractionDayCount>(
+    `select operator_id, to_char((started_at at time zone $4)::date, 'YYYY-MM-DD') local_date, count(*)::int total
+       from interactions
+      where operator_id = any($1::uuid[]) and started_at >= ($2::date::timestamp at time zone $4) - interval '1 day' and started_at < ($3::date::timestamp at time zone $4) + interval '2 days'
+      group by 1, 2`,
+    [subjectIds, firstDate, lastDate, timeZone],
+  )
+}
+
 /**
  * Evidência OBSERVADA por pessoa × dia local (WorkActivityEvidence), em lote: interações do
  * colaborador iniciadas no dia + medições diárias de indicadores MARCADOS como prova (volume/amostra
@@ -439,15 +488,7 @@ export async function loadWorkActivityEvidence(db: Database, subjectIds: string[
     return created
   }
   const [interactions, measurements] = await Promise.all([
-    sources.interactions
-      ? db.query<{ operator_id: string; local_date: string; total: number }>(
-          `select operator_id, to_char((started_at at time zone $4)::date, 'YYYY-MM-DD') local_date, count(*)::int total
-             from interactions
-            where operator_id = any($1::uuid[]) and started_at >= ($2::date::timestamp at time zone $4) - interval '1 day' and started_at < ($3::date::timestamp at time zone $4) + interval '2 days'
-            group by 1, 2`,
-          [subjectIds, firstDate, lastDate, timeZone],
-        )
-      : Promise.resolve({ rows: [] as { operator_id: string; local_date: string; total: number }[] }),
+    sources.interactions ? countInteractionsByPersonDay(db, subjectIds, firstDate, lastDate, timeZone) : Promise.resolve({ rows: [] as InteractionDayCount[] }),
     sources.indicatorCodes.length > 0
       ? db.query<{ subject_id: string; local_date: string; codes: string[] }>(
           `select m.subject_id, to_char((m.period_start at time zone $4)::date, 'YYYY-MM-DD') local_date, array_agg(distinct i.code order by i.code) codes
@@ -831,7 +872,7 @@ export async function resolveOperationalWindow(db: Database, input: OperationalW
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
   // Um único colaborador: dias elegíveis respeitam a admissão dele. Estrutura pooled: dias esperados informados pelo chamador.
   const eligible = input.subjectIds.length === 1 && input.expectedDays !== undefined ? eligibility.get(input.subjectIds[0]!) : undefined
-  const result = await db.query<RawRow>(
+  const result = await db.query<MeasurementWindowRow>(
     `with ${SQL.cte},
      scoped as (
        select m.*, ${SQL.predicate} eligible, ${SQL.absencePredicate} on_absence_day
@@ -849,7 +890,7 @@ export async function resolveOperationalWindow(db: Database, input: OperationalW
 export async function resolveOperationalWindowBySubject(db: Database, input: OperationalWindowInput, kind?: WindowDefinitionParam): Promise<Map<string, OperationalWindowResult>> {
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
-  const result = await db.query<RawRow>(
+  const result = await db.query<MeasurementWindowRow>(
     `with ${SQL.cte},
      scoped as (
        select m.*, ${SQL.predicate} eligible, ${SQL.absencePredicate} on_absence_day
@@ -860,12 +901,30 @@ export async function resolveOperationalWindowBySubject(db: Database, input: Ope
      select m.subject_id, ${aggregateColumns("m", "$5")} from scoped m group by m.subject_id`,
     [input.indicatorCode, input.subjectIds, input.window.start.toISOString(), input.window.end.toISOString(), input.timeZone ?? DEFAULT_TIMEZONE, ranges.personIds, ranges.from, ranges.to, NON_ELIGIBLE_EMPLOYMENT_STATUSES, absence.personIds, absence.dates],
   )
+  return finishWindowBySubject(result.rows, input, definition, eligibility)
+}
+
+/**
+ * Pós-processamento ÚNICO da janela por colaborador (linhas agregadas por `subject_id` → resultado por pessoa) — usado
+ * pela consulta original e pelo read model do analytics da liderança, com a elegibilidade inteira ou só as contagens.
+ */
+export function finishWindowBySubject(
+  rows: Iterable<MeasurementWindowRow>,
+  input: Pick<OperationalWindowInput, "aggregation" | "window" | "expectedDays">,
+  definition: Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">,
+  eligibility: ReadonlyMap<string, EligibilityResult | WindowEligibilityFacts>,
+): Map<string, OperationalWindowResult> {
+  const resolve = (row: MeasurementWindowRow | undefined, entry: EligibilityResult | WindowEligibilityFacts | undefined) => {
+    if (entry && "observed" in entry) return finish(toRaw(row), input, definition, entry, ignoredOf(row), absenceDaysWithDataOf(row))
+    return finishWindow(toRaw(row), input, definition, entry, ignoredOf(row), absenceDaysWithDataOf(row))
+  }
+  const absenceDaysOf = (entry: EligibilityResult | WindowEligibilityFacts) => ("observed" in entry ? entry.observed.unjustifiedAbsenceDays : entry.unjustifiedAbsenceDays)
   const bySubject = new Map<string, OperationalWindowResult>()
   const seen = new Set<string>()
-  for (const row of result.rows) {
+  for (const row of rows) {
     if (!row.subject_id) continue
     seen.add(row.subject_id)
-    const resolved = finish(toRaw(row), input, definition, input.expectedDays !== undefined ? eligibility.get(row.subject_id) : undefined, ignoredOf(row), absenceDaysWithDataOf(row))
+    const resolved = resolve(row, input.expectedDays !== undefined ? eligibility.get(row.subject_id) : undefined)
     // Sem valor (ou sem nenhum dia elegível) = fora da população ranqueada — nunca Q4 por omissão.
     if (resolved.value !== null) bySubject.set(row.subject_id, resolved)
   }
@@ -873,8 +932,8 @@ export async function resolveOperationalWindowBySubject(db: Database, input: Ope
   // é um resultado conhecido (Produção = 0), não "sem dados" — entra na população com contribuição zero.
   if (definition.unjustifiedAbsencePolicy === "ZERO_CONTRIBUTION" && input.expectedDays !== undefined) {
     for (const [subjectId, entry] of eligibility) {
-      if (seen.has(subjectId) || entry.observed.unjustifiedAbsenceDays === 0) continue
-      const resolved = finish(toRaw(undefined), input, definition, entry, 0, 0)
+      if (seen.has(subjectId) || absenceDaysOf(entry) === 0) continue
+      const resolved = resolve(undefined, entry)
       if (resolved.value !== null) bySubject.set(subjectId, resolved)
     }
   }
@@ -890,7 +949,7 @@ export type OperationalDailyPoint = { date: string; raw: RawWindowComponents; va
 export async function resolveOperationalDailySeries(db: Database, input: OperationalWindowInput, kind?: WindowDefinitionParam): Promise<{ points: OperationalDailyPoint[]; eligibility: EligibilityResult | undefined; ignoredMeasurements: number }> {
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
-  const result = await db.query<RawRow & { local_date: string }>(
+  const result = await db.query<MeasurementWindowRow & { local_date: string }>(
     `with ${SQL.cte},
      scoped as (
        select m.*, ${SQL.predicate} eligible, ${SQL.absencePredicate} on_absence_day
@@ -933,13 +992,13 @@ export async function resolveOperationalClosedMonths(
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const union = { start: input.months[input.months.length - 1]!.start, end: input.months[0]!.end }
   const { ranges, absence } = await eligibilityParams(db, { subjectIds: input.subjectIds, window: union, ...(input.timeZone ? { timeZone: input.timeZone } : {}), ...(input.now ? { now: input.now } : {}) })
-  const result = await db.query<RawRow & { missing_months: string; months: (RawRow & { month_start: string })[] | null }>(
+  const result = await db.query<MeasurementWindowRow & { missing_months: string; months: (MeasurementWindowRow & { month_start: string })[] | null }>(
     `with expected(month_start, month_end) as (
        select * from unnest($3::timestamptz[], $4::timestamptz[])
      ),
      ${SQL.cte},
      matched as (
-       select e.month_start, m.value, m.numerator, m.denominator, m.sample_count, m.period_start, m.period_end, ${SQL.predicate} eligible, ${SQL.absencePredicate} on_absence_day
+       select e.month_start, m.id, m.value, m.numerator, m.denominator, m.sample_count, m.period_start, m.period_end, ${SQL.predicate} eligible, ${SQL.absencePredicate} on_absence_day
        from expected e
        join indicator_measurements m
          on m.period_start < e.month_end and m.period_end > e.month_start
@@ -965,7 +1024,7 @@ export async function resolveOperationalClosedMonths(
   const total = finish(toRaw(row), { ...input, window: union, ...(totalExpected !== undefined ? { expectedDays: totalExpected } : {}) }, definition, undefined, ignoredOf(row))
   // Detalhe por mês — aceita também o formato camelCase (monthStart/sampleCount/avgValue) do
   // contrato anterior desta consulta, pra não quebrar traces/fakes que ainda o usam.
-  const detailsByStart = new Map<string, RawRow>()
+  const detailsByStart = new Map<string, MeasurementWindowRow>()
   for (const month of row?.months ?? []) {
     const legacy = month as unknown as { monthStart?: string; sampleCount?: number | string; avgValue?: string | null }
     const start = month.month_start ?? legacy.monthStart

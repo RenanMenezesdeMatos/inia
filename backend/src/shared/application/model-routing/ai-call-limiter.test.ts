@@ -341,3 +341,61 @@ describe("limitador — vagas, prioridade e repetição", () => {
     expect(createAiCallLimiter({ ...DEFAULT_AI_CALL_LIMITER_CONFIG, maxConcurrent: 1, reservedInteractive: 0 }).config).toMatchObject({ maxConcurrent: 2, reservedInteractive: 1 })
   })
 })
+
+describe("cancelamento de quem pediu (SSE fechado)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("cancelada na fila: sai sem ocupar vaga e a próxima da fila segue; cancelada no backoff: não repete", async () => {
+    const { limiter } = limiterWith({ maxConcurrent: 2, reservedInteractive: 1 })
+    const gate = deferred()
+    const busy = [track(limiter, "INTERACTIVE", () => gate.promise), track(limiter, "INTERACTIVE", () => gate.promise)]
+    const cancel = new AbortController()
+    let ran = false
+    const queued = track(limiter, "INTERACTIVE", async () => {
+      ran = true
+      return "x"
+    }, { signal: cancel.signal })
+    const next = track(limiter, "INTERACTIVE", async () => "próxima")
+    await vi.advanceTimersByTimeAsync(0)
+    expect(limiter.stats().queued.INTERACTIVE).toBe(2)
+    cancel.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    await queued.promise
+    expect(ran).toBe(false)
+    expect(queued.state.error).toMatchObject({ code: "AI_CALL_CANCELLED" })
+    expect(limiter.stats().queued.INTERACTIVE).toBe(1)
+    gate.resolve("ok")
+    await Promise.all(busy.map((item) => item.promise))
+    await next.promise
+    expect(next.state.value).toBe("próxima")
+    expect(limiter.stats().running).toEqual({ INTERACTIVE: 0, BATCH: 0 })
+
+    const stop = new AbortController()
+    let attempts = 0
+    const retrying = track(limiter, "BATCH", async () => {
+      attempts++
+      throw rateLimited(10_000)
+    }, { signal: stop.signal })
+    await vi.advanceTimersByTimeAsync(1_000)
+    stop.abort()
+    await vi.advanceTimersByTimeAsync(20_000)
+    await retrying.promise
+    expect(attempts).toBe(1)
+    expect(retrying.state.error).toMatchObject({ code: "AI_CALL_CANCELLED" })
+  })
+
+  it("já cancelada antes de pedir vaga: nem entra na fila", async () => {
+    const { limiter } = limiterWith()
+    const cancel = new AbortController()
+    cancel.abort()
+    const call = track(limiter, "INTERACTIVE", async () => "x", { signal: cancel.signal })
+    await call.promise
+    expect(call.state).toMatchObject({ started: false, error: { code: "AI_CALL_CANCELLED" } })
+  })
+})

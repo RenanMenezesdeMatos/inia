@@ -338,6 +338,10 @@ const LEADER_REFERENCES: readonly { table: string; column: string }[] = [
   { table: "agent_history", column: "changed_by_person_id" },
   { table: "assistant_orchestrators", column: "created_by" },
   { table: "org_config_values", column: "updated_by" },
+  { table: "interventions", column: "person_id" },
+  { table: "interventions", column: "responsible_id" },
+  { table: "interventions", column: "approver_id" },
+  { table: "intervention_policy_evaluations", column: "person_id" },
 ]
 
 /**

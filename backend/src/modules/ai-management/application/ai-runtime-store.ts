@@ -24,6 +24,8 @@ export type ConnectionRuntime = {
   apiVersion: string | null
   isLocal: boolean
   timeoutMs: number
+  /** Chamadas simultâneas desta conexão somando todas as instâncias (migration 135); null = sem teto próprio. */
+  maxConcurrentCalls: number | null
   enabled: boolean
   apiKey: EncryptedSecret | null
   headers: EncryptedSecret | null
@@ -46,7 +48,7 @@ export function legacyPricingKey(providerKey: string, modelName: string): string
 }
 
 type PolicyRow = { id: string; use_case: string; status: string; mode: string; strategy: string | null; max_estimated_cost_per_request: string | null; cost_currency: string | null; fallback_on: string[]; model_ids: string[] | null }
-type ModelRow = { id: string; display_name: string; provider_model_id: string; enabled: boolean; kind: string; capabilities: ModelCapabilities; context_window: number | null; max_output_tokens: number | null; quality_tier: string | null; model_timeout_ms: number | null; metadata: Record<string, unknown> | null; connection_id: string; connection_name: string; connection_enabled: boolean; provider_key: string; base_url: string | null; api_version: string | null; is_local: boolean; connection_timeout_ms: number }
+type ModelRow = { id: string; display_name: string; provider_model_id: string; enabled: boolean; kind: string; capabilities: ModelCapabilities; context_window: number | null; max_output_tokens: number | null; quality_tier: string | null; model_timeout_ms: number | null; metadata: Record<string, unknown> | null; connection_id: string; connection_name: string; connection_enabled: boolean; provider_key: string; base_url: string | null; api_version: string | null; is_local: boolean; connection_timeout_ms: number; connection_max_concurrent_calls: number | null }
 type PricingRow = { id: string; model_id: string; currency: string; input_per_million: string; output_per_million: string; cached_input_per_million: string | null; reasoning_per_million: string | null; effective_from: Date; effective_to: Date | null; note: string | null }
 type SecretRow = { connection_id: string; purpose: string; ciphertext: Buffer; iv: Buffer; auth_tag: Buffer }
 type BudgetRow = { id: string; scope: string; scope_key: string | null; currency: string; monthly_amount: string; warning_thresholds: number[]; hard_limit: boolean; enabled: boolean }
@@ -70,7 +72,7 @@ export async function loadModelSnapshots(db: Queryable, organizationId: string, 
   const [modelRows, pricingRows, latencyRows, rateRows] = await Promise.all([
     db.query<ModelRow>(
       `select m.id, m.display_name, m.provider_model_id, m.enabled, m.kind, m.capabilities, m.context_window, m.max_output_tokens, m.quality_tier, m.timeout_ms model_timeout_ms, m.metadata,
-              c.id connection_id, c.name connection_name, c.enabled connection_enabled, c.provider_key, c.base_url, c.api_version, c.is_local, c.timeout_ms connection_timeout_ms
+              c.id connection_id, c.name connection_name, c.enabled connection_enabled, c.provider_key, c.base_url, c.api_version, c.is_local, c.timeout_ms connection_timeout_ms, c.max_concurrent_calls connection_max_concurrent_calls
          from ai_models m join ai_connections c on c.id = m.connection_id
         where m.organization_id = $1 and m.id = any($2::uuid[])`,
       [organizationId, modelIds],
@@ -97,7 +99,7 @@ export async function loadModelSnapshots(db: Queryable, organizationId: string, 
         const secret = secrets.rows.find((item) => item.connection_id === row.connection_id && item.purpose === purpose)
         return secret ? { ciphertext: secret.ciphertext, iv: secret.iv, authTag: secret.auth_tag } : null
       }
-      connections.set(row.connection_id, { id: row.connection_id, name: row.connection_name, providerKey: row.provider_key, baseUrl: row.base_url ?? provider?.defaultBaseUrl ?? null, apiVersion: row.api_version, isLocal: provider ? isLocalDeployment(provider, row.is_local) : row.is_local, timeoutMs: row.connection_timeout_ms, enabled: row.connection_enabled, apiKey: secretOf("API_KEY"), headers: secretOf("CUSTOM_HEADERS") })
+      connections.set(row.connection_id, { id: row.connection_id, name: row.connection_name, providerKey: row.provider_key, baseUrl: row.base_url ?? provider?.defaultBaseUrl ?? null, apiVersion: row.api_version, isLocal: provider ? isLocalDeployment(provider, row.is_local) : row.is_local, timeoutMs: row.connection_timeout_ms, maxConcurrentCalls: row.connection_max_concurrent_calls, enabled: row.connection_enabled, apiKey: secretOf("API_KEY"), headers: secretOf("CUSTOM_HEADERS") })
     }
     const versions = pricing.get(row.id) ?? []
     const current = versions.find((version) => version.effectiveFrom <= now && (version.effectiveTo === null || now < version.effectiveTo)) ?? null
@@ -171,8 +173,44 @@ function legacyPricingOf(rows: LegacyPricingRow[]): Map<string, AiPricingVersion
 
 export type MonthSpendRow = { use_case: string; provider_key: string; currency: string | null; amount: string | null; unknown_calls: number }
 
-/** Gasto do mês corrente (fuso da organização) por Use Case × provider × moeda — UMA consulta, base de todos os orçamentos. */
+/**
+ * Gasto do mês corrente (fuso da organização) por Use Case × provider × moeda — base de todos os orçamentos. Os dias
+ * ANTERIORES a hoje vêm do resumo diário `ai_usage_daily` (migration 138: a mesma soma, mantida por trigger na transação de
+ * cada evento — até 30 linhas em vez do mês inteiro de eventos); HOJE, até `now`, vem do bruto, como sempre. Somas em
+ * `numeric`: o resultado é o da consulta original para qualquer instante. Resumo montado com outro fuso (ou sem estado) →
+ * a soma original.
+ */
 export async function loadMonthSpend(db: Queryable, organizationId: string, now: Date): Promise<MonthSpendRow[]> {
+  const result = await db.query<MonthSpendRow & { usable: boolean }>(
+    `with tz as (select ${ORG_TIMEZONE_SQL} time_zone),
+     usable as (select exists (select 1 from ai_usage_daily_state s, tz where s.organization_id = $1 and s.time_zone = tz.time_zone) ok),
+     bounds as (
+       select date_trunc('month', $2::timestamptz at time zone tz.time_zone)::date first_day,
+              ($2::timestamptz at time zone tz.time_zone)::date today,
+              date_trunc('month', $2::timestamptz at time zone tz.time_zone) at time zone tz.time_zone month_start,
+              date_trunc('day', $2::timestamptz at time zone tz.time_zone) at time zone tz.time_zone today_start
+         from tz
+     ),
+     parts as (
+       select d.use_case, d.provider_key, d.currency, d.cost_sum cost, d.unknown_success_count unknown_calls
+         from ai_usage_daily d, bounds where d.organization_id = $1 and d.local_date >= bounds.first_day and d.local_date < bounds.today
+       union all
+       select e.use_case, e.provider_key, e.currency, e.cost, case when e.cost_status = 'UNKNOWN' and e.status = 'SUCCESS' then 1 else 0 end
+         from ai_usage_events e, bounds where e.organization_id = $1 and e.occurred_at >= greatest(bounds.month_start, bounds.today_start) and e.occurred_at <= $2
+     )
+     select use_case, provider_key, currency, sum(cost)::text amount, sum(unknown_calls)::int unknown_calls, true usable
+       from parts, usable where usable.ok
+      group by use_case, provider_key, currency
+     union all
+     select null, null, null, null, null, false from usable where not usable.ok`,
+    [organizationId, now],
+  )
+  if (result.rows.some((row) => !row.usable)) return loadMonthSpendRaw(db, organizationId, now)
+  return result.rows.map(({ use_case, provider_key, currency, amount, unknown_calls }) => ({ use_case, provider_key, currency, amount, unknown_calls }))
+}
+
+/** Soma ORIGINAL sobre o bruto — fallback de `loadMonthSpend` e referência da prova de igualdade. */
+export async function loadMonthSpendRaw(db: Queryable, organizationId: string, now: Date): Promise<MonthSpendRow[]> {
   const result = await db.query<MonthSpendRow>(
     `with bounds as (select date_trunc('month', $2::timestamptz at time zone ${ORG_TIMEZONE_SQL}) at time zone ${ORG_TIMEZONE_SQL} month_start)
      select use_case, provider_key, currency, sum(cost)::text amount, count(*) filter (where cost_status = 'UNKNOWN' and status = 'SUCCESS')::int unknown_calls

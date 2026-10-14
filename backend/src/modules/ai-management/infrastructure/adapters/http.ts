@@ -1,4 +1,6 @@
-import { AiProviderError, categorizeFetchError, categorizeHttpStatus, redactSecrets, retryAfterMsFrom, type AiErrorCategory } from "../../../../shared/application/model-routing/ai-errors.js"
+import { AiCallCancelledError, AiProviderError, categorizeFetchError, categorizeHttpStatus, redactSecrets, retryAfterMsFrom, type AiErrorCategory } from "../../../../shared/application/model-routing/ai-errors.js"
+import { currentAiAbortSignal, withAiCancellation } from "../../../../shared/application/model-routing/ai-runtime.js"
+import { createStreamDeadline, type StreamDeadline } from "../../../../shared/infrastructure/http/stream-deadline.js"
 import { outboundPolicy } from "../../../../config/outbound-policy.js"
 import { assertOutboundDestination, normalizeHost, OutboundDestinationDenied, unmapIpv4, urlPort } from "../../../../shared/infrastructure/outbound-destination-policy.js"
 import type { ConnectionTestResult, ConnectionTestStatus, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
@@ -55,13 +57,35 @@ export async function requestJson<T>(fetchImpl: FetchLike, connection: ResolvedC
 }
 
 export async function rawRequest(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  // Prazo da chamada inteira + cancelamento de quem pediu (a pessoa fechou o chat): o fetch para e a vaga do limitador volta.
+  return send(fetchImpl, connection, url, init, withAiCancellation(AbortSignal.timeout(timeoutMs)), () => currentAiAbortSignal()?.aborted === true)
+}
+
+/**
+ * Resposta EM FLUXO: o prazo vale até a resposta começar e, depois, para o silêncio entre pedaços (`readSse` com o mesmo
+ * `deadline`) — um stream longo e saudável nunca é cortado no meio. O cancelamento de quem pediu entra no mesmo sinal.
+ */
+export async function rawStreamRequest(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, timeoutMs: number): Promise<{ response: Response; deadline: StreamDeadline }> {
+  const deadline = createStreamDeadline({ connectTimeoutMs: timeoutMs, idleTimeoutMs: timeoutMs, cancel: currentAiAbortSignal() })
+  try {
+    const response = await send(fetchImpl, connection, url, init, deadline.signal, () => deadline.cancelled)
+    deadline.started()
+    return { response, deadline }
+  } catch (error) {
+    deadline.dispose()
+    throw error
+  }
+}
+
+async function send(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, signal: AbortSignal, cancelled: () => boolean): Promise<Response> {
   const problem = endpointProblem(url)
   if (problem) throw new AiProviderError("INVALID_REQUEST", { message: `Endpoint inválido: ${problem}` })
   let response: Response
   try {
-    response = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
+    response = await fetchImpl(url, { ...init, signal })
   } catch (error) {
     if (error instanceof OutboundDestinationDenied) throw new AiProviderError("INVALID_REQUEST", { message: `Endpoint inválido: ${error.reason}.` })
+    if (cancelled()) throw new AiCallCancelledError()
     const category = categorizeFetchError(error)
     logProviderFailure(connection, category, null, error instanceof Error ? `${error.name}: ${error.message}` : "fetch failed")
     throw new AiProviderError(category)
@@ -124,16 +148,29 @@ export function safeJsonParse(raw: string): Record<string, unknown> {
   }
 }
 
-/** Lê um corpo SSE (`data: {...}` por linha) e entrega cada payload JSON. */
-export async function readSse(response: Response, onPayload: (payload: Record<string, unknown>) => void): Promise<void> {
-  if (!response.body) return
+/** Lê um corpo SSE (`data: {...}` por linha) e entrega cada payload JSON. Com `deadline` (de `rawStreamRequest`), cada pedaço
+ * reinicia o prazo de silêncio; prazo estourado = TIMEOUT, quem pediu foi embora = cancelada. */
+export async function readSse(response: Response, onPayload: (payload: Record<string, unknown>) => void, deadline?: StreamDeadline): Promise<void> {
+  if (!response.body) {
+    deadline?.dispose()
+    return
+  }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await reader.read()
+      } catch (error) {
+        if (deadline?.cancelled) throw new AiCallCancelledError()
+        if (deadline?.timedOut) throw new AiProviderError("TIMEOUT")
+        throw error
+      }
+      const { done, value } = chunk
       if (done) break
+      deadline?.progressed()
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split("\n")
       buffer = lines.pop() ?? ""
@@ -146,6 +183,7 @@ export async function readSse(response: Response, onPayload: (payload: Record<st
       }
     }
   } finally {
+    deadline?.dispose()
     reader.releaseLock()
   }
 }

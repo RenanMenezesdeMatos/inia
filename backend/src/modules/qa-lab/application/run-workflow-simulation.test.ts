@@ -363,9 +363,9 @@ describe("QA Lab — simulação isolada de Workflow (engine real, efeitos simul
 
     // Isolamento (Parte 8/45/47): a ÚNICA escrita no banco é a própria qa_runs. Nenhum
     // agent_runs, alerts, feedbacks, workflow_outputs, org_config_values, workflow_enrollments,
-    // outbox_events — logo nenhum Workflow B pode ter sido matriculado.
+    // — logo nenhum Workflow B pode ter sido matriculado.
     expect(writes(log)).toEqual(["insert into qa_runs"])
-    expect(log.some((entry) => /workflow_enrollments|outbox_events|agent_runs|into alerts|into feedbacks|workflow_outputs|org_config_values/.test(entry.sql))).toBe(false)
+    expect(log.some((entry) => /workflow_enrollments|agent_runs|into alerts|into feedbacks|workflow_outputs|org_config_values/.test(entry.sql))).toBe(false)
     expect(run.executedBy).toBe(ADMIN_ID)
   })
 

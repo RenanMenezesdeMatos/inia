@@ -20,6 +20,8 @@ export async function runMigrations(client: pg.PoolClient, log: (message: string
     if (done.rowCount) continue
     await client.query("begin")
     try {
+      // Migration nunca herda limite de comando/transação de quem a chama (um índice sobre tabela grande passa de minutos).
+      await client.query(`select set_config('statement_timeout', '0', true), set_config('idle_in_transaction_session_timeout', '0', true)`)
       await client.query(await readFile(join(directory, file), "utf8"))
       await client.query("insert into schema_migrations(name) values($1)", [file])
       await client.query("commit")

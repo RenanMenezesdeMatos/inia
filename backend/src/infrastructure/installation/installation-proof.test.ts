@@ -71,8 +71,11 @@ describe.skipIf(!enabled)("instalação — banco vazio até o primeiro administ
       const count = await client.query<{ n: number }>(`select count(*)::int n from public."${name}"`)
       if (count.rows[0]!.n > 0) nonEmpty[name] = count.rows[0]!.n
     }
+    // `analytics_versions` e `analytics_operational_dirty` são controle técnico do read model do analytics (migrations 128 e
+    // 136): os gatilhos de `people` anotam a versão da estrutura da organização e a pessoa a recalcular, que o processamento
+    // periódico consome. Nenhum dado de negócio nem de demonstração.
     expect(Object.keys(nonEmpty).sort()).toEqual(
-      [...KEEP_TABLES, "access_role_assignments", "audit_logs", "installation_info", "operations", "people", "user_accounts"].sort(),
+      [...KEEP_TABLES, "access_role_assignments", "analytics_operational_dirty", "analytics_versions", "audit_logs", "installation_info", "operations", "people", "user_accounts"].sort(),
     )
     expect(nonEmpty).toMatchObject({ organizations: 1, people: 1, user_accounts: 1, access_role_assignments: 1, operations: 1, installation_info: 1, brazilian_capitals: 27 })
 

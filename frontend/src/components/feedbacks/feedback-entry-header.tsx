@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { CalendarDays, ChartLine, ClipboardCheck, Headset, Megaphone, MessageSquareText, Send, Sun, TriangleAlert } from "lucide-react"
+import { CalendarDays, ChartLine, ClipboardCheck, Headset, ListChecks, Megaphone, MessageSquareText, Send, Sun, TriangleAlert } from "lucide-react"
 
 import { DisplayIcon } from "@/lib/display-icons"
 import { cn } from "@/lib/utils"
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
  * O Acompanhamento da estrutura (liderança) usa o MESMO cabeçalho; as famílias depois de "Leitura do dia" são os itens que só
  * a liderança recebe (resultado de Workflow, revisão, escalonamento, comunicado) — o colaborador nunca as vê.
  */
-export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING" | "WORKFLOW_OUTPUT" | "HUMAN_REVIEW" | "ESCALATION" | "NOTICE" | "OTHER"
+export type FeedbackEntryFamily = "MONITORING" | "INDICATOR" | "DAILY_READING" | "WORKFLOW_OUTPUT" | "HUMAN_REVIEW" | "ESCALATION" | "INTERVENTION" | "NOTICE" | "OTHER"
 export type FeedbackEntryOrigin = { family: FeedbackEntryFamily; label: string | null; iconKey: string | null }
 
 const FAMILY: Record<FeedbackEntryFamily, { label: string; fallback: typeof Headset; tile: string; eyebrow: string }> = {
@@ -23,6 +23,7 @@ const FAMILY: Record<FeedbackEntryFamily, { label: string; fallback: typeof Head
   WORKFLOW_OUTPUT: { label: "Resultado de workflow", fallback: Send, tile: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300", eyebrow: "text-violet-700 dark:text-violet-300" },
   HUMAN_REVIEW: { label: "Revisão pendente", fallback: ClipboardCheck, tile: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300", eyebrow: "text-rose-700 dark:text-rose-300" },
   ESCALATION: { label: "Escalonamento", fallback: TriangleAlert, tile: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", eyebrow: "text-orange-700 dark:text-orange-300" },
+  INTERVENTION: { label: "Intervenção", fallback: ListChecks, tile: "bg-lime-100 text-lime-800 dark:bg-lime-950 dark:text-lime-300", eyebrow: "text-lime-800 dark:text-lime-300" },
   NOTICE: { label: "Comunicado", fallback: Megaphone, tile: "bg-primary/10 text-primary dark:text-chart-4", eyebrow: "text-primary dark:text-chart-4" },
   OTHER: { label: "Acompanhamento", fallback: MessageSquareText, tile: "bg-muted text-muted-foreground", eyebrow: "text-muted-foreground" },
 }

@@ -379,7 +379,6 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     const interaction = await db.query<{ id: string }>(`select id from interactions where organization_id = $1 and external_id = 'TC-CALL-1'`, [ORG])
     expect(interaction.rows).toHaveLength(1)
     expect((await db.query(`select 1 from transcripts where interaction_id = $1`, [interaction.rows[0]!.id])).rowCount).toBe(1)
-    expect((await db.query(`select 1 from outbox_events where aggregate_id = $1 and event_type = 'InteractionTranscriptReceived'`, [interaction.rows[0]!.id])).rowCount).toBe(1)
 
     // Flags: Workflow por flag "rechamada" é matriculado exatamente como na ingestão em tempo real.
     const flagId = (await db.query<{ id: string }>(`select id from channel_flags where organization_id = $1 and channel = 'VOICE' and flag_name = 'rechamada'`, [ORG])).rows[0]!.id

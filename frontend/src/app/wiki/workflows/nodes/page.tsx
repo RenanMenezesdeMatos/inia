@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const TOC: WikiTocEntry[] = [
   { id: "visao-geral", label: "Visão geral" },
   { id: "contexto", label: "Contexto dos nodes" },
-  { id: "catalogo", label: "Os 11 nodes" },
+  { id: "catalogo", label: "Os 12 nodes" },
   { id: "compatibilidade", label: "Compatibilidade por contexto" },
   { id: "acao-tipos", label: "Ação: os tipos" },
   { id: "diagnostico-indicador", label: "Diagnóstico do indicador" },
@@ -61,7 +61,7 @@ export default function NodesPage() {
         />
       </WikiSection>
 
-      <WikiSection id="catalogo" title="Os 11 nodes" eyebrow="Finalidade, quando usar, entrada, saída, configurações, limitações, exemplo">
+      <WikiSection id="catalogo" title="Os 12 nodes" eyebrow="Finalidade, quando usar, entrada, saída, configurações, limitações, exemplo">
         <div className="grid grid-cols-1 gap-4">
           {WIKI_NODE_ORDER.map((type) => {
             const node = WIKI_NODES[type]

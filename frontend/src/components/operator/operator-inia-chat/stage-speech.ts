@@ -3,7 +3,7 @@
  * (`heard` = quantas palavras já soaram); quando ela termina (`ended`), a fala POUSA na mensagem `landOn` da conversa e o balão
  * some. No painel nada disso existe (a legenda continua na conversa).
  */
-export type StageUtterance = { key: number; text: string; ended: boolean; landOn: string | null; heard: () => number; markdown?: boolean }
+export type StageUtterance = { key: number; text: string; ended: boolean; landOn: string | null; heard: () => number }
 
 /** Sem alinhamento com o áudio (voz do sistema), ~2,6 palavras por segundo. */
 export const STAGE_WORD_MS = 385
@@ -45,15 +45,6 @@ export function createReadingClock(available: () => number) {
       return remaining * msPerWord + READ_HOLD_MS
     },
   }
-}
-
-/** O balão mostra texto corrido: a marcação de uma resposta escrita (negrito, títulos, tabelas, links) fica só na conversa. */
-export function bubbleTextOf(markdown: string): string {
-  return markdown
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/^\s*\|?\s*:?-{2,}.*$/gm, " ")
-    .replace(/[*_`#>|]+/g, " ")
-    .replace(/^\s*[-•]\s+/gm, " ")
 }
 
 export const wordsIn = (text: string) => text.trim().split(/\s+/).filter(Boolean).length

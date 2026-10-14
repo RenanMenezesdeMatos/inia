@@ -31,8 +31,7 @@
 | `testing/fakes.ts`, `testing/data-hub-proof.test.ts` | MockHttpClient, FakeSftpClient, CapturingLogger; prova contra o banco de teste (`INIA_DB_PROOF=1 npx vitest run data-hub-proof`) | testes |
 
 Efeitos canônicos que os writers reutilizam (nunca um caminho paralelo): `enrollIndicatorWorkflows` (medição nova/alterada),
-`enrollFlagWorkflows` (flag nova/alterada), `outbox_events InteractionTranscriptReceived` (transcrição nova/alterada),
-`applyEmployeeStatusSnapshot` (situação funcional e ausências). Preview/amostra/teste de conexão nunca escrevem.
+`enrollFlagWorkflows` (flag nova/alterada), `applyEmployeeStatusSnapshot` (situação funcional e ausências). Preview/amostra/teste de conexão nunca escrevem.
 
 Atomicidade: contratos `PARTIAL_ALLOWED` aplicam em lotes de 1.000 (`APPLY_BATCH`), cada lote na própria transação;
 `ATOMIC` (ORGANIZATIONAL_STRUCTURE) ou feed com `fail_on_any_rejection` exigem zero rejeição e uma transação única.

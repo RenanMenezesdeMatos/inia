@@ -7,6 +7,7 @@
 > Ver também: [auditoria-agents-orchestrators-2026-09.md](../auditoria-agents-orchestrators-2026-09.md).
 
 ### Camada de IA: especialistas por domínio, retrieval de KB e orquestradores (implementado 2026-09-15)
+- **Busca na base sempre pelo cache por versão** (14/10/2026): `retrieveKnowledgeForAgent` nunca traz o texto das bases a cada chamada — confere as versões publicadas vinculadas e reaproveita trechos e índice montados para elas (detalhe e medição em [escala-e-operacao.md](escala-e-operacao.md), fase 2). Mudar a consulta das bases = manter a chave pela versão publicada (`knowledge_versions.id`).
 
 Regra: **um Agent não é dono de todo o conhecimento da empresa.** Agent = especialista em um domínio; Base de Conhecimento = fonte autorizada do domínio; Retrieval = só os trechos pertinentes entram no prompt; Orquestrador = coordenação quando há mais de uma competência ou síntese; Workflow = caminho mais simples (Agent direto quando o domínio é conhecido; Orquestrador só para escolher/sintetizar).
 

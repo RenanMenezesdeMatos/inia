@@ -22,6 +22,8 @@ export const REALTIME_MODEL = INIA_LIVE_MODEL
 
 const NEW_SESSION_WINDOW_MS = 5 * 60_000
 const SESSION_LIFETIME_MS = 30 * 60_000
+/** Emitir o token é uma chamada curta: sem prazo, um provedor travado segurava o request (e o botão de voz) indefinidamente. */
+const TOKEN_REQUEST_TIMEOUT_MS = 10_000
 
 export type EphemeralRealtimeSession = {
   wsUrl: string
@@ -69,14 +71,26 @@ export async function createEphemeralRealtimeSession(config: VoiceSessionConfig)
   const expireTime = new Date(now + SESSION_LIFETIME_MS).toISOString()
   const newSessionExpireTime = new Date(now + NEW_SESSION_WINDOW_MS).toISOString()
 
-  const response = await fetch(AUTH_TOKENS_URL, {
-    method: "POST",
-    headers: {
-      "x-goog-api-key": env.GEMINI_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: buildLiveSessionSetup(config) }),
-  })
+  let response: Response
+  try {
+    response = await fetch(AUTH_TOKENS_URL, {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": env.GEMINI_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ uses: 1, expireTime, newSessionExpireTime, bidiGenerateContentSetup: buildLiveSessionSetup(config) }),
+      signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
+    })
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError"
+    console.warn(JSON.stringify({ event: "realtime_token_error", status: null, reason: timedOut ? "TIMEOUT" : "NETWORK" }))
+    throw new DomainError(
+      timedOut ? "A sessão de voz demorou demais para iniciar. Tente de novo." : "Não foi possível iniciar a sessão de voz.",
+      timedOut ? "REALTIME_SESSION_TIMEOUT" : "REALTIME_SESSION_NETWORK_ERROR",
+      504,
+    )
+  }
 
   if (!response.ok) {
     // O corpo do provedor fica só no log do servidor (pode trazer detalhe da conta/chave); o navegador recebe o status.

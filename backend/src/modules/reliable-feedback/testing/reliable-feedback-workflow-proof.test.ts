@@ -142,7 +142,6 @@ describe.skip("V1.5.12 — Workflow → Agent → Gerar feedback → Output: pro
     await pool.query("delete from workflow_output_emissions where enrollment_id in (select id from workflow_enrollments where workflow_id = any($1::uuid[]))", [created.workflows])
     const feedbackIds = (await pool.query<{ id: string; case_id: string }>("select id, case_id from feedbacks where operator_id = $1", [operator])).rows
     await pool.query("delete from case_timeline_events where case_id = any($1::uuid[])", [feedbackIds.map((row) => row.case_id)])
-    await pool.query("delete from outbox_events where aggregate_id = any($1::text[])", [feedbackIds.map((row) => row.id)]).catch(() => pool.query("delete from outbox_events where aggregate_id::text = any($1::text[])", [feedbackIds.map((row) => row.id)]))
     await pool.query("delete from feedbacks where operator_id = $1", [operator])
     await pool.query("delete from evidences where case_id = any($1::uuid[])", [feedbackIds.map((row) => row.case_id)])
     await pool.query("delete from supervision_cases where operator_id = $1", [operator])

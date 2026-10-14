@@ -14,7 +14,7 @@ import { effectClaimsInContent } from "../domain/effect-claims.js"
 /**
  * V1.5.12 — PUBLICAÇÃO do ReliableFeedbackArtifact no ACOMPANHAMENTO (Output FOLLOW_UP + O próprio operador).
  *
- * Reaproveita a publicação real do feedback (supervision_cases + evidences + feedbacks PUBLISHED + timeline + outbox):
+ * Reaproveita a publicação real do feedback (supervision_cases + evidences + feedbacks PUBLISHED + timeline):
  * o feed do colaborador, a CIÊNCIA (`acknowledged_at`), o contexto do chat e os analytics leem exatamente o mesmo registro
  * de sempre. Diferenças de propósito:
  *   - IDEMPOTENTE por nó Output (`workflow_output_emissions`, unique matrícula × nó × superfície × destinatário): retry,
@@ -192,7 +192,6 @@ export async function publishReliableFeedbackToFollowUp(db: Database, store: Rel
     // persistência do feedback de sempre — sem acesso, o material não entra e o aviso fica no context_snapshot).
     await persistSupportMaterialsWithSnapshot(client, { organizationId: input.organizationId, feedbackId, operatorId: record.collaboratorId, supportMaterials: supportMaterialsOf(output.items) })
     await client.query(`insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'FEEDBACK_PUBLISHED', $3)`, [input.organizationId, caseId, { feedbackId }])
-    await client.query(`insert into outbox_events (aggregate_type, aggregate_id, event_type, payload) values ('Feedback', $1, 'FeedbackPublished', $2)`, [feedbackId, { feedbackId, caseId }])
     await client.query(`update workflow_output_emissions set case_id = $2, feedback_id = $3 where id = $1`, [emission.rows[0].id, caseId, feedbackId])
     await client.query("commit")
     return { caseId, feedbackId, reused: false }

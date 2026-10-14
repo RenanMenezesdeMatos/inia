@@ -55,12 +55,13 @@ export function useTeamMembersQuery(subject: SubjectRef | null, period: string |
 }
 
 /** Acompanhamento da estrutura como uma timeline só (mais recente primeiro): cada página do servidor é anexada ao fim — o
- * "carregar mais" do feed revela os progressivamente mais antigos, como no Acompanhamento do colaborador. */
-export function useFollowUpFeedQuery(subject: SubjectRef | null, pageSize: number, unacknowledgedOnly = false) {
+ * "carregar mais" do feed revela os progressivamente mais antigos, como no Acompanhamento do colaborador, pelo cursor que veio
+ * com a página anterior (um item novo publicado no meio não repete nem pula nada). */
+export function useFollowUpFeedQuery(subject: SubjectRef | null, limit: number, unacknowledgedOnly = false) {
   return useInfiniteQuery({
-    queryKey: analyticsKeys.followUps(subject, pageSize, unacknowledgedOnly),
-    queryFn: ({ pageParam }) => fetchFollowUpFeed(subject, pageParam, pageSize, unacknowledgedOnly),
-    initialPageParam: 1,
-    getNextPageParam: (last) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    queryKey: analyticsKeys.followUps(subject, limit, unacknowledgedOnly),
+    queryFn: ({ pageParam }) => fetchFollowUpFeed(subject, pageParam, limit, unacknowledgedOnly),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
   })
 }

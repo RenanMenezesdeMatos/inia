@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { env } from "../../../config/env.js"
 import { DomainError } from "../../domain/domain-error.js"
 import { hasLlmTelemetryStore } from "../llm-telemetry.js"
-import { AiProviderError } from "./ai-errors.js"
-import { currentAiCallOrigin, currentAiWorkflowCorrelation } from "./ai-runtime.js"
+import { AiCallCancelledError, AiProviderError } from "./ai-errors.js"
+import { currentAiAbortSignal, currentAiCallOrigin, currentAiWorkflowCorrelation } from "./ai-runtime.js"
 import type { AiUseCaseKey } from "./ai-use-cases.js"
 
 /**
@@ -21,8 +21,12 @@ import type { AiUseCaseKey } from "./ai-use-cases.js"
  *  - Telemetria: espera na fila e motivo vão para o evento de uso de cada tentativa (`ai_usage_events`, via contexto
  *    assíncrono — sem prompt/resposta) e para o log estruturado (`ai_call_queued`, `ai_call_retry`).
  *
- * O limitador é POR PROCESSO. Com API e processamento separados (`INIA_PROCESS_ROLE`), o processamento só tem lote — o teto
- * de lote dele (`maxConcurrent − reservedInteractive`) é o quanto da cota o lote consegue ocupar; o chat roda na API.
+ * O limitador é POR PROCESSO (fila, prioridade e vagas locais — `INIA_AI_MAX_CONCURRENT_CALLS` de cada instância). Com API e
+ * processamento separados (`INIA_PROCESS_ROLE`), o processamento só tem lote — o teto de lote dele
+ * (`maxConcurrent − reservedInteractive`) é o quanto da cota o lote consegue ocupar; o chat roda na API.
+ *
+ * O que vale para TODAS as instâncias fica por CONEXÃO de IA, no ponto em que a conexão é conhecida (provider-call-gate.ts):
+ * vagas simultâneas da conexão (configuradas na tela de Provedores de IA) e a pausa depois de um 429 daquela conexão.
  */
 export const AI_CALL_PRIORITIES = ["INTERACTIVE", "BATCH"] as const
 export type AiCallPriority = (typeof AI_CALL_PRIORITIES)[number]
@@ -158,6 +162,8 @@ export type AiLimitedCall = {
   noRetry?: boolean
   /** Ainda dá para repetir? (streaming: depois do primeiro pedaço entregue, nunca — trocaria a resposta no meio). */
   canRetry?: () => boolean
+  /** Quem pediu foi embora (SSE fechado): sai da fila na hora, não repete, e a vaga volta para os outros. */
+  signal?: AbortSignal | undefined
 }
 
 export type AiCallLimiterStats = {
@@ -184,7 +190,7 @@ export type AiCallLimiterDeps = {
 }
 
 type Slot = { waitedMs: number; reason: AiCallQueueReason; release: () => void }
-type Waiter = { priority: AiCallPriority; enqueuedAt: number; reason: AiCallQueueReason; resolve: (slot: Slot) => void; reject: (error: unknown) => void; timer?: ReturnType<typeof setTimeout> }
+type Waiter = { priority: AiCallPriority; enqueuedAt: number; reason: AiCallQueueReason; resolve: (slot: Slot) => void; reject: (error: unknown) => void; timer?: ReturnType<typeof setTimeout>; detach?: () => void }
 
 const records = new AsyncLocalStorage<AiCallLimiterRecord>()
 
@@ -227,6 +233,7 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
   function grant(waiter: Waiter, now: number): void {
     running[waiter.priority]++
     if (waiter.timer) clearTimeout(waiter.timer)
+    waiter.detach?.()
     waiter.resolve({ waitedMs: now - waiter.enqueuedAt, reason: waiter.reason, release: releaser(waiter.priority) })
   }
 
@@ -244,8 +251,12 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
     }
   }
 
-  function acquire(priority: AiCallPriority, timeoutMs: number | null, useCase: AiUseCaseKey): Promise<Slot> {
+  function acquire(priority: AiCallPriority, timeoutMs: number | null, useCase: AiUseCaseKey, signal: AbortSignal | undefined): Promise<Slot> {
     return new Promise<Slot>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new AiCallCancelledError())
+        return
+      }
       const now = Date.now()
       if (queues[priority].length === 0 && canStart(priority, now)) {
         running[priority]++
@@ -259,14 +270,47 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
           const index = queue.indexOf(waiter)
           if (index < 0) return
           queue.splice(index, 1)
+          waiter.detach?.()
           const waitedMs = Date.now() - waiter.enqueuedAt
           log({ event: "ai_call_capacity_busy", useCase, priority, waitedMs, running: { ...running }, queued: { INTERACTIVE: queues.INTERACTIVE.length, BATCH: queues.BATCH.length } })
           reject(new AiCapacityBusyError(waitedMs))
         }, timeoutMs)
         waiter.timer.unref?.()
       }
+      if (signal) {
+        // Cancelada na fila: sai sem ter ocupado vaga nenhuma.
+        const onAbort = () => {
+          const queue = queues[priority]
+          const index = queue.indexOf(waiter)
+          if (index < 0) return
+          queue.splice(index, 1)
+          if (waiter.timer) clearTimeout(waiter.timer)
+          reject(new AiCallCancelledError())
+        }
+        signal.addEventListener("abort", onAbort, { once: true })
+        waiter.detach = () => signal.removeEventListener("abort", onAbort)
+      }
       queues[priority].push(waiter)
       dispatch()
+    })
+  }
+
+  /** Espera antes de repetir — interrompida se quem pediu for embora. */
+  function backoff(ms: number, signal: AbortSignal | undefined): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new AiCallCancelledError())
+        return
+      }
+      const onAbort = () => {
+        clearTimeout(timer)
+        reject(new AiCallCancelledError())
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort)
+        resolve()
+      }, ms)
+      signal?.addEventListener("abort", onAbort, { once: true })
     })
   }
 
@@ -279,7 +323,7 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
 
   function decide(call: AiLimitedCall, attempt: number, error: unknown): Decision {
     const signal = retrySignalOf(error)
-    if (!signal || call.noRetry) return { retry: false, error }
+    if (!signal || call.noRetry || call.signal?.aborted) return { retry: false, error }
     const canRetry = call.canRetry ? call.canRetry() : true
     if (call.priority === "INTERACTIVE") {
       const allowed = canRetry && attempt === 1 && !(signal.kind === "UNAVAILABLE" && signal.providerAlreadyRetried)
@@ -307,7 +351,7 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
       let attempt = 1
       let backoffWaitMs = 0
       for (;;) {
-        const slot = await acquire(call.priority, call.priority === "INTERACTIVE" ? config.interactiveQueueTimeoutMs : null, call.useCase)
+        const slot = await acquire(call.priority, call.priority === "INTERACTIVE" ? config.interactiveQueueTimeoutMs : null, call.useCase, call.signal)
         const record: AiCallLimiterRecord = { priority: call.priority, priorityReason: call.priorityReason, attempt, queueWaitMs: backoffWaitMs + slot.waitedMs, queueReason: attempt > 1 ? "RETRY_BACKOFF" : slot.reason }
         if (slot.waitedMs >= QUEUE_LOG_THRESHOLD_MS) log({ event: "ai_call_queued", useCase: call.useCase, priority: call.priority, priorityReason: call.priorityReason, attempt, waitedMs: slot.waitedMs, reason: slot.reason })
         let decision: Decision
@@ -321,7 +365,7 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
         if (!decision.retry) throw decision.error
         if (call.priority === "BATCH") pauseBatch(decision.pauseBatchMs)
         log({ event: "ai_call_retry", useCase: call.useCase, priority: call.priority, attempt, kind: decision.signal.kind, retryAfterMs: decision.signal.retryAfterMs, waitMs: decision.waitMs, batchPausedMs: call.priority === "BATCH" ? decision.pauseBatchMs : 0 })
-        await new Promise((resolve) => setTimeout(resolve, decision.waitMs))
+        await backoff(decision.waitMs, call.signal)
         backoffWaitMs = decision.waitMs
         attempt++
       }
@@ -355,5 +399,5 @@ export function setAiCallLimiter(next: AiCallLimiter | null): void {
 /** Atalho do gateway: classifica pelo contexto e passa pelo limitador do processo. */
 export function runLimitedAiCall<T>(useCase: AiUseCaseKey, options: Pick<AiLimitedCall, "noRetry" | "canRetry">, fn: () => Promise<T>): Promise<T> {
   const { priority, reason } = classifyAiCall(useCase)
-  return aiCallLimiter().run({ priority, priorityReason: reason, useCase, ...options }, fn)
+  return aiCallLimiter().run({ priority, priorityReason: reason, useCase, ...options, signal: currentAiAbortSignal() ?? undefined }, fn)
 }

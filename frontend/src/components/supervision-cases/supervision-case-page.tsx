@@ -1,7 +1,7 @@
 import { AlertTriangle, BookOpenCheck, CheckCircle2, ClipboardCheck, Target } from "lucide-react"
-import type { ReactNode } from "react"
+import { Suspense, type ReactNode } from "react"
+import { CaseInterventions } from "@/components/interventions/case-interventions"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,9 +13,29 @@ const statusLabels: Record<string, string> = {
   RESOLVED: "Resolvido", CLOSED: "Encerrado",
 }
 
-type Props = { item: SupervisionCase }
+type Props = { caseId: string; item: SupervisionCase | null }
 
-export function SupervisionCasePage({ item }: Props) {
+/**
+ * Caso de supervisão = o centro: análise, intervenções, evidências e histórico. As intervenções (com relatório, controles e
+ * acompanhamento) vêm da própria API de intervenções, que confere a relação do viewer — por isso aparecem mesmo quando os
+ * dados gerais do caso não estão no escopo de Indicadores de quem decide (ex.: avaliador de continuidade).
+ */
+export function SupervisionCasePage({ caseId, item }: Props) {
+  if (!item) {
+    return (
+      <main className="mx-auto w-full max-w-7xl space-y-4 px-4 py-4 sm:px-6 lg:px-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Caso de supervisão</CardTitle>
+            <CardDescription>Os dados gerais deste caso não estão disponíveis para você. As intervenções que você acompanha aparecem abaixo.</CardDescription>
+          </CardHeader>
+        </Card>
+        <Suspense>
+          <CaseInterventions caseId={caseId} />
+        </Suspense>
+      </main>
+    )
+  }
   const feedback = item.feedbacks[0]
   const recommendation = item.recommendations[0]
 
@@ -28,30 +48,33 @@ export function SupervisionCasePage({ item }: Props) {
               <div className="flex flex-wrap gap-2">
                 <Badge>{item.priority}</Badge>
                 <Badge variant="outline">{statusLabels[item.status] ?? item.status}</Badge>
-                <Badge variant="secondary">Confiança {Math.round((item.confidence ?? 0) * 100)}%</Badge>
+                {item.confidence !== null ? <Badge variant="secondary">Confiança {Math.round(item.confidence * 100)}%</Badge> : null}
               </div>
               <CardTitle className="text-xl">{item.title}</CardTitle>
               <CardDescription>{item.operator.name} · {item.team.name}</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline">Escalonar</Button>
-              <Button>Publicar feedback</Button>
-            </div>
           </div>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">
-          <Card size="sm"><CardHeader><CardDescription>Indicador impactado</CardDescription><CardTitle>{item.indicatorCode} · {item.indicatorValue}</CardTitle></CardHeader><CardContent className="text-xs text-muted-foreground">Meta {item.indicatorTarget}</CardContent></Card>
+          <Card size="sm"><CardHeader><CardDescription>Indicador impactado</CardDescription><CardTitle>{item.indicatorCode} · {item.indicatorValue}</CardTitle></CardHeader>{item.indicatorTarget && item.indicatorTarget !== "—" ? <CardContent className="text-xs text-muted-foreground">Meta {item.indicatorTarget}</CardContent> : null}</Card>
           <Card size="sm"><CardHeader><CardDescription>Causa operacional</CardDescription><CardTitle className="text-sm">{item.rootCause ?? "Em análise"}</CardTitle></CardHeader></Card>
           <Card size="sm"><CardHeader><CardDescription>Próxima ação</CardDescription><CardTitle className="text-sm">{recommendation?.description ?? "Definir ação"}</CardTitle></CardHeader></Card>
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="journey">
+      <Tabs defaultValue="interventions">
         <TabsList>
-          <TabsTrigger value="journey">Jornada completa</TabsTrigger>
+          <TabsTrigger value="interventions">Intervenções</TabsTrigger>
+          <TabsTrigger value="journey">Diagnóstico</TabsTrigger>
           <TabsTrigger value="feedback">Feedback</TabsTrigger>
           <TabsTrigger value="evidence">Evidências</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="interventions" className="mt-4">
+          <Suspense>
+            <CaseInterventions caseId={caseId} />
+          </Suspense>
+        </TabsContent>
 
         <TabsContent value="journey" className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <Card>
@@ -72,7 +95,7 @@ export function SupervisionCasePage({ item }: Props) {
               <Separator />
               <div className="flex gap-3"><CheckCircle2 className="mt-0.5 size-4 text-primary"/><div><p className="text-sm font-medium">Impacto esperado</p><p className="text-xs text-muted-foreground">{recommendation?.expectedImpact}</p></div></div>
               <Separator />
-              <div className="flex gap-3"><AlertTriangle className="mt-0.5 size-4 text-amber-500"/><div><p className="text-sm font-medium">Acompanhamento</p><p className="text-xs text-muted-foreground">Reavaliar após cinco interações e escalar se não houver evolução.</p></div></div>
+              <div className="flex gap-3"><AlertTriangle className="mt-0.5 size-4 text-amber-500"/><div><p className="text-sm font-medium">Acompanhamento</p><p className="text-xs text-muted-foreground">O acompanhamento deste caso — intervenções, prazos, checkpoints e decisões — fica na aba Intervenções, conforme a política de acompanhamento.</p></div></div>
             </CardContent>
           </Card>
         </TabsContent>

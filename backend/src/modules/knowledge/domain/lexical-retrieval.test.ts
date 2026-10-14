@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { chunkKnowledgeDocument } from "./knowledge-chunking.js"
-import { DEFAULT_RETRIEVAL_BUDGET, documentAnchors, rankChunks, selectWithinBudget, tokenize } from "./lexical-retrieval.js"
+import { DEFAULT_RETRIEVAL_BUDGET, buildKnowledgeIndex, documentAnchors, rankChunks, selectWithinBudget, tokenize } from "./lexical-retrieval.js"
 import { expandAcronyms } from "./query-acronyms.js"
 import { ambiguousProcessesOf } from "../application/retrieve-knowledge.js"
 
@@ -239,3 +239,25 @@ describe("busca em duas etapas — regressões do chat (2026-09-29)", () => {
     expect(ambiguousProcessesOf(documentAnchors("Qual a etapa e como abrir um chamado para linha móvel?", chunks))).toEqual([])
   })
 })
+
+describe("índice pronto (cache por versão das bases)", () => {
+  const CHUNKS = [FATURAMENTO, CONTESTACAO, PARCELAMENTO].flatMap((document) => chunkKnowledgeDocument(document))
+  const QUERIES = ["o cliente quer contestar uma cobrança", "segunda via da fatura por e-mail", "parcelar débito em atraso com entrada", "Quais os documentos da TT de PJ para PJ? Troca de Titularidade Pessoa jurídica"]
+
+  it("ranqueia exatamente como os trechos crus, com e sem siglas", () => {
+    const acronyms = { acronyms: new Set(["PJ", "TT"]) }
+    for (const chunks of [CHUNKS, TWO_STAGE_CHUNKS]) {
+      for (const query of QUERIES) {
+        expect(rankChunks(query, buildKnowledgeIndex(chunks), { contextTerms: new Set(["pessoa"]) })).toEqual(rankChunks(query, chunks, { contextTerms: new Set(["pessoa"]) }))
+        expect(rankChunks(query, buildKnowledgeIndex(chunks, acronyms), acronyms)).toEqual(rankChunks(query, chunks, acronyms))
+      }
+    }
+  })
+
+  it("índice montado com outras siglas é ignorado (tokeniza de novo, mesmo resultado)", () => {
+    const query = "Quais os documentos da TT de PJ para PJ?"
+    const acronyms = { acronyms: new Set(["PJ", "TT"]) }
+    expect(rankChunks(query, buildKnowledgeIndex(TWO_STAGE_CHUNKS), acronyms)).toEqual(rankChunks(query, TWO_STAGE_CHUNKS, acronyms))
+  })
+})
+

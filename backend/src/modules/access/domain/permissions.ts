@@ -34,6 +34,18 @@ export const PERMISSIONS = {
   "usability.export": "Exportar CSV da Monitoria de usabilidade (o mesmo recorte que a conta já pode consultar)",
   "usability.comments.view": "Ler os comentários das avaliações negativas de feedback na Monitoria de usabilidade, no escopo",
   "usability.manage": "Configurar a coleta da Monitoria de usabilidade (ligar/desligar, retenção, fuso, classificação de contas de teste)",
+  // Políticas de acompanhamento e intervenções — CONFIGURAR (editar, simular, publicar, auditar) é separado de AGIR sobre
+  // colaboradores (ver, executar, aprovar, decidir). Configurar nunca dá acesso a colaboradores: simular com uma pessoa real
+  // exige também enxergá-la (própria estrutura ou `indicators.view`/`workflows.manage` no escopo).
+  "intervention_policies.edit": "Editar tipos de intervenção, competências e rascunhos de políticas de acompanhamento (no escopo)",
+  "intervention_policies.simulate": "Simular políticas de acompanhamento sem efeitos, com colaboradores que a conta já pode consultar",
+  "intervention_policies.publish": "Publicar tipos de intervenção e versões de políticas de acompanhamento (no escopo)",
+  "intervention_policies.audit": "Consultar versões, publicações e avaliações das políticas de acompanhamento",
+  "interventions.view": "Ver intervenções e relatórios de colaboradores do escopo (além da própria estrutura)",
+  "interventions.execute": "Executar intervenções de colaboradores do escopo (aceitar, tarefas, checkpoints, concluir, cancelar, encaminhar)",
+  "interventions.approve": "Aprovar ou devolver intervenções que exigem aprovação, no escopo",
+  // Decisão SENSÍVEL — sempre concessão explícita; nenhum papel administrativo a recebe por padrão. Nunca altera situação funcional.
+  "interventions.sensitive_decide": "Decidir solicitações de avaliação de continuidade (decisão humana restrita; nunca altera situação funcional nem executa desligamento)",
 } as const
 
 export type Permission = keyof typeof PERMISSIONS

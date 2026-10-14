@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { SurfaceProjection } from "../domain/surface-projection.js"
-import { AVATAR_ALERT_KEY_PREFIX, recadoCoveredByFollowUpSql } from "./recado-follow-up-invite.js"
+import { AVATAR_ALERT_KEY_PREFIX, CHAT_ALERT_KEY_PREFIX, recadoCoveredByFollowUpSql } from "./recado-follow-up-invite.js"
 
 /**
  * ENTREGA de um nó Output nas superfícies CONVERSACIONAIS (V1): CHAT e AVATAR.
@@ -95,7 +95,7 @@ async function notify(client: Queryable, input: ConversationalDeliveryInput, ale
 }
 
 export const CHAT_MESSAGE_KEY_PREFIX = "workflow-output:"
-export const chatAlertDedupeKey = (outputId: string) => `workflow_chat:${outputId}`
+export const chatAlertDedupeKey = (outputId: string) => `${CHAT_ALERT_KEY_PREFIX}${outputId}`
 export const avatarAlertDedupeKey = (outputId: string) => `${AVATAR_ALERT_KEY_PREFIX}${outputId}`
 
 export async function deliverChatConversation(db: Database, input: ConversationalDeliveryInput): Promise<ChatDeliveryResult> {

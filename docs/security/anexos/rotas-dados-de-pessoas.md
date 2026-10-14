@@ -40,15 +40,15 @@ Legend: **RA** = `requireAuth` (JWT cookie + DB check on `user_accounts.active` 
 | diagnostics | GET /diagnostics/memory/{summary,filter-options,processes,people,concentration,materials,indicators,assessments} | RA + authorize | — | session org + `person_id = any(visible)` | page ≤200; **from/to any date (no range cap)** | Heavy aggregates over unbounded range (F-13). |
 | diagnostics | GET /diagnostics/memory/indicators/:id, /assessments/:id | RA + authorize | — | `id + org + person_id = any(visible)` (`leadership-diagnostics.ts:428,470`) | uuid regex | OK. |
 | diagnostics | GET /diagnostics/memory/export.csv | RA + authorize | — | same | `view` free text reflected in filename/preamble; 5000-row cap | CSV cells not formula-neutralized (F-16). |
-| reporting | GET /api/v1/supervisor/overview | RA | **JWT `role` ∈ hierarchy** OR indicators.view (ORG) | **ORG(hard)**; whole operation | — | JWT role grants org-wide per-person data (F-2). Unbounded. |
-| reporting | GET /api/v1/supervisor/operators/:id | RA | `canOpenEmployeeProfile` (subtree ∪ indicators.view scope) | scope check OK; data queries by operator id only | id checked against scope set | Returns feedbacks of every status (F-10). |
-| reporting | GET /api/v1/operator/overview | RA | self | person from JWT; profile ORG(hard) | — | Returns the operator's own non-published feedbacks (F-10). |
+| reporting | GET /api/v1/supervisor/operators/:id | RA | `canOpenEmployeeProfile` (subtree ∪ indicators.view scope) | scope check OK; data queries by operator id only | id checked against scope set | Profile, plans, monitorings, escalation. Since 2026-10-13 no feedbacks/indicators (the page reads them from `/analytics`, scope-checked): F-10 no longer applies here. `GET /supervisor/overview` (F-2, unbounded) was removed the same day. |
+| reporting | GET /api/v1/operator/overview | RA | self | person from JWT; profile, indicators and feedbacks ORG(hard) | — | Own PUBLISHED feedbacks only, first page (12) + cursor; latest period per indicator (2026-10-13). |
+| reporting | GET /api/v1/operator/feedbacks | RA | self | person from JWT; ORG(hard) | `cursor` strict base64url (timestamp µs + uuid) → 400 when malformed; `limit` 1–50 | Next page of the operator's own published feedbacks (keyset). |
 | performance-analytics | GET /api/v1/analytics/context | RA | viewer scope (subtree ∪ indicators.view) | session org; `resolveSubject` | subjectKind enum, uuid | OK. |
 | performance-analytics | GET /analytics/indicators | RA | same | `resolveSubject` | same + period clamp, comparison enum | OK. |
 | performance-analytics | GET /analytics/indicators/breakdown | RA | same | `resolveSubject` | groupBy whitelist | OK. |
 | performance-analytics | GET /analytics/indicators/:code/members | RA | same | `resolveSubject` | page ≤100, search ≤200 | OK. |
 | performance-analytics | GET /analytics/team, /team/members | RA | same | `resolveSubject` | page ≤100, filters zod | OK. |
-| performance-analytics | GET /analytics/follow-ups | RA | same | `resolveSubject`; feed SQL org-filtered | page ≤100 | OK. |
+| performance-analytics | GET /analytics/follow-ups | RA | same | `resolveSubject`; feed SQL org-filtered | `cursor` strict base64url (timestamp µs + uuid) → 400 when malformed; `limit` 1–100 | OK (keyset). |
 | org-structure | GET /api/v1/people/:personId/organization-structure | RA | open org chart (product decision); management metrics gated by **JWT role** OR structure.metrics.view | session org | uuid | Every user sees every active person's corporate email, group, job title (by design, info); management metrics (incl. leave buckets) granted by JWT role (F-2). |
 | org-structure | GET /api/v1/admin/org-structure/teams | can(configuration.manage) | any scope | ORG(hard) | — | Scoped admin sees every team (info). |
 | org-structure | GET /admin/org-structure/teams/manageable | can(configuration.manage) | scope-filtered | ORG(hard) | — | OK. |

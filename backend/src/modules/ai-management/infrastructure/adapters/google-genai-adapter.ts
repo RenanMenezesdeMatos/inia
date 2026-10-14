@@ -3,7 +3,7 @@ import { usageFromGeminiPayload, type LlmUsage } from "../../../../shared/applic
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
 import type { ModelCapabilities } from "../../domain/ai-capabilities.js"
 import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
-import { joinUrl, rawRequest, readSse, requestJson, testByListing } from "./http.js"
+import { joinUrl, rawStreamRequest, readSse, requestJson, testByListing } from "./http.js"
 
 /**
  * Protocolo Google Gemini (generateContent) com a credencial DA CONEXÃO. O caminho legado
@@ -91,7 +91,7 @@ export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProvid
     },
     async stream(connection, providerModelId, request, timeoutMs, onChunk): Promise<AiStreamResult> {
       const startedAt = Date.now()
-      const response = await rawRequest(fetchImpl, connection, joinUrl(connection.baseUrl, `models/${encodeURIComponent(providerModelId)}:streamGenerateContent?alt=sse`), { method: "POST", headers: headers(connection), body: body(request) }, timeoutMs)
+      const { response, deadline } = await rawStreamRequest(fetchImpl, connection, joinUrl(connection.baseUrl, `models/${encodeURIComponent(providerModelId)}:streamGenerateContent?alt=sse`), { method: "POST", headers: headers(connection), body: body(request) }, timeoutMs)
       let text = ""
       let usage: LlmUsage = usageFromGeminiPayload(null)
       let model = providerModelId
@@ -103,7 +103,7 @@ export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProvid
         }
         if ("usageMetadata" in payload) usage = usageFromGeminiPayload(payload)
         if (typeof payload.modelVersion === "string") model = payload.modelVersion
-      })
+      }, deadline)
       return { usage, model, durationMs: Date.now() - startedAt, text }
     },
   }

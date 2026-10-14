@@ -156,6 +156,17 @@ export function findIndividualOnlyConflict(graph: FlowGraph): IndividualOnlyConf
           : `Revisão humana exige um colaborador individual como contexto. Adicione "Aplicar individualmente" antes do nó "${node.label}".`,
       }
     }
+    // Política de acompanhamento avalia UM colaborador (fatos, histórico, intervenções dele) — nunca uma estrutura.
+    if (node.type === "intervention_policy") {
+      return {
+        nodeId: node.id,
+        nodeLabel: node.label,
+        code: "WORKFLOW_INTERVENTION_POLICY_INVALID_MODE",
+        message: afterJoin
+          ? `O nó "${node.label}" avalia uma política de acompanhamento depois de "Consolidar resultados" — ali não há um colaborador individual. Mova o nó para o caminho individual.`
+          : `O nó "${node.label}" avalia uma política de acompanhamento, que exige um colaborador individual como contexto. Adicione "Aplicar individualmente" antes deste nó.`,
+      }
+    }
     if (node.type === "orchestrator") {
       return {
         nodeId: node.id,

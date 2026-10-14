@@ -6,6 +6,7 @@ import { validateGraphShape, validateInteractionFeedbackSource, validateManualTr
 import { validateConditions } from "./workflow-validation/conditions"
 import { validateAgentHasOutput, validateNoVariableCycles, validateSetVariableNode } from "./workflow-validation/actions"
 import { validateOrchestratorNode } from "./workflow-validation/orchestrators"
+import { validateInterventionPolicyNode } from "./workflow-validation/intervention-policy"
 import { validateEscalations, validateHumanReviewTargets } from "./workflow-validation/review-escalation"
 import { validateConversationalOutputs, validateOutputSourceNode, validateStructuredSources } from "./workflow-validation/outputs"
 import { validateConsolidatedGraph } from "./workflow-validation/fan-out"
@@ -44,6 +45,7 @@ export function validateWorkflowGraph(
     validateSetVariableNode(context, node)
     validateOutputSourceNode(context, node)
     validateOrchestratorNode(context, node)
+    validateInterventionPolicyNode(context, node)
   }
   validateNoVariableCycles(graph, variablesById, issues)
   validateAgentHasOutput(context)

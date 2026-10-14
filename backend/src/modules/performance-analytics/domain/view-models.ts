@@ -505,7 +505,8 @@ export type TeamMembersPage = {
 export type FollowUpItem = {
   id: string
   kind: "FEEDBACK" | "ALERT"
-  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "OTHER"
+  /** INTERVENTION = atualização de uma intervenção (aberta, aprovada, decidida, novo sinal) — o link vai para o caso. */
+  category: "INDICATOR" | "MONITORING" | "WORKFLOW_OUTPUT" | "WORKFLOW_HUMAN_REVIEW" | "WORKFLOW_ESCALATION" | "INTERVENTION" | "OTHER"
   title: string
   /** Metadado do título (ex.: "Atendimento de 29/09/2026") — só feedbacks com cabeçalho; null = sem subtítulo. */
   subtitle?: string | null
@@ -529,4 +530,6 @@ export type FollowUpItem = {
     supervisorView?: PrvSupervisorView | null } | null
 }
 
-export type FollowUpFeed = { items: FollowUpItem[]; total: number; page: number; pageSize: number }
+/** Página do feed da estrutura (mais recente primeiro). `nextCursor` = cursor opaco do último item, para pedir a seguinte;
+ * null = o feed acaba nesta página. */
+export type FollowUpFeed = { items: FollowUpItem[]; nextCursor: string | null }

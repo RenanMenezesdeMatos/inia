@@ -12,17 +12,26 @@
 
   O script:
     1. confere se o IIS, o URL Rewrite e o ARR estão instalados;
-    2. liga o proxy do ARR no nível do servidor (tempo limite de 5 minutos e SEM acumular respostas - o chat da INIA
-       chega em fluxo);
-    3. cria a pasta do site e grava nela o web.config (com as portas internas da INIA);
+    2. liga o proxy do ARR no nível do servidor (tempo limite de 5 minutos, SEM acumular respostas - o chat da INIA
+       chega em fluxo - e SEM a porta do cliente no X-Forwarded-For - senão cada conexão vira um "IP" nos limites);
+    3. cria as WEB FARMS "INIA-API" e "INIA-Interface", com uma entrada por instância (instância i = 127.0.0.i, a mesma
+       porta para todas: o ARR identifica o servidor pelo endereço, sem a porta), health check (/ready da API e /healthz da
+       interface, a cada 3 s) e balanceamento por MENOS REQUISIÇÕES em andamento; grava o web.config na pasta do site;
     4. cria (ou mantém) o pool de aplicativos "INIA" sem .NET e o site "INIA" com a ligação HTTP na porta informada;
     5. com -Https, liga também HTTPS usando o certificado informado pela impressão digital;
     6. com -AbrirFirewall, libera a porta no Firewall do Windows.
 
-  Rodar de novo é seguro: o que já existe é mantido e o web.config é regravado.
+  -InstanciasApi e -InstanciasInterface têm de bater com o que o instalar-servicos.ps1 instalou (os mesmos números).
+
+  Rodar de novo é seguro: as web farms da INIA são recriadas, o resto é mantido e o web.config é regravado.
+
+  ATENÇÃO: escrito e revisado sem execução num Windows real (13/10/2026). Confira o resultado no Gerenciador do IIS
+  (Server Farms > INIA-API > Monitoring and Management: todos os servidores "Healthy").
 
 .EXAMPLE
   .\configurar-iis.ps1 -Porta 8080
+.EXAMPLE
+  .\configurar-iis.ps1 -Porta 8080 -InstanciasApi 3 -InstanciasInterface 2
 .EXAMPLE
   .\configurar-iis.ps1 -Porta 443 -Https -CertificadoThumbprint 0123ABCD... -NomeDoHost inia.empresa.local -AbrirFirewall
 #>
@@ -34,6 +43,8 @@ param(
   [string]$PastaDoSite = "C:\inia-iis",
   [int]$PortaApi = 3333,
   [int]$PortaInterface = 3000,
+  [ValidateRange(1, 20)][int]$InstanciasApi = 1,
+  [ValidateRange(1, 20)][int]$InstanciasInterface = 1,
   [switch]$Https,
   [string]$CertificadoThumbprint = "",
   [switch]$AbrirFirewall
@@ -72,23 +83,58 @@ if (-not (Get-Module -ListAvailable -Name WebAdministration)) { Falha "Faltam os
 Ok "Scripts e Ferramentas de Gerenciamento do IIS"
 
 # --- 2. Proxy do ARR no nível do servidor -----------------------------------------------------------------------
-Passo "2/6 Ligando o proxy do ARR (tempo limite 5 min, sem acumular respostas)"
-AppCmd @("set", "config", "-section:system.webServer/proxy", "/enabled:True", "/preserveHostHeader:True", "/timeout:00:05:00", "/responseBufferLimit:0", "/commit:apphost") | Out-Null
+Passo "2/6 Ligando o proxy do ARR (tempo limite 5 min, sem acumular respostas, IP do cliente sem porta)"
+AppCmd @("set", "config", "-section:system.webServer/proxy", "/enabled:True", "/preserveHostHeader:True", "/timeout:00:05:00", "/responseBufferLimit:0", "/includePortInXFF:False", "/commit:apphost") | Out-Null
 Ok "proxy ligado"
 
-# --- 3. Pasta do site + web.config ------------------------------------------------------------------------------
-Passo "3/6 Pasta do site e web.config"
+# --- 3. Web farms + pasta do site + web.config ------------------------------------------------------------------
+Passo "3/6 Web farms (INIA-API x$InstanciasApi, INIA-Interface x$InstanciasInterface), pasta do site e web.config"
+Import-Module WebAdministration
+
+# Uma web farm por papel. Instância i = 127.0.0.i na mesma porta (o ARR identifica o servidor pelo ENDEREÇO, sem a porta:
+# 127.0.0.1:3333 e 127.0.0.1:3335 seriam o "mesmo" servidor). Health check: só recebe tráfego quem responde "$Resposta" no
+# corpo de $Caminho; ao desligar, a API responde 503 sem essa palavra e sai da farm antes de fechar a porta.
+function Configurar-Farm([string]$Nome, [int]$Instancias, [int]$PortaInterna, [string]$Caminho, [string]$Resposta) {
+  if (Get-WebConfiguration -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "webFarms/webFarm[@name='$Nome']") {
+    AppCmd @("set", "config", "-section:webFarms", "/-[name='$Nome']", "/commit:apphost") | Out-Null
+  }
+  AppCmd @("set", "config", "-section:webFarms", "/+[name='$Nome']", "/commit:apphost") | Out-Null
+  for ($i = 1; $i -le $Instancias; $i++) {
+    $endereco = "127.0.0.$i"
+    AppCmd @("set", "config", "-section:webFarms", "/+[name='$Nome'].[address='$endereco']", "/commit:apphost") | Out-Null
+    AppCmd @("set", "config", "-section:webFarms", "/[name='$Nome'].[address='$endereco'].applicationRequestRouting.httpPort:$PortaInterna", "/commit:apphost") | Out-Null
+  }
+  $arr = "/[name='$Nome'].applicationRequestRouting"
+  AppCmd @(
+    "set", "config", "-section:webFarms",
+    # Menos requisições em andamento: o chat fica aberto em fluxo; rodízio simples empilharia conversas longas numa instância.
+    "$arr.loadBalancing.algorithm:LeastRequests",
+    "$arr.healthCheck.url:http://$($Nome.ToLower())$Caminho",
+    "$arr.healthCheck.interval:00:00:03",
+    "$arr.healthCheck.timeout:00:00:02",
+    "$arr.healthCheck.responseMatch:$Resposta",
+    # Com TODAS as instâncias fora (ex.: banco parado), continua mandando para uma: a pessoa vê a mensagem da INIA, não um 502.
+    "$arr.healthCheck.minServers:1",
+    "$arr.protocol.timeout:00:05:00",
+    "$arr.protocol.responseBufferLimit:0",
+    "$arr.protocol.includePortInXFF:False",
+    "/commit:apphost"
+  ) | Out-Null
+  $enderecos = (1..$Instancias | ForEach-Object { "127.0.0.$($_):$PortaInterna" }) -join ", "
+  Ok "web farm $Nome - $enderecos - health check $Caminho"
+}
+Configurar-Farm "INIA-API" $InstanciasApi $PortaApi "/ready" "ready"
+Configurar-Farm "INIA-Interface" $InstanciasInterface $PortaInterface "/healthz" "inia-interface"
+
 $modelo = Join-Path $PSScriptRoot "web.config"
 if (-not (Test-Path $modelo)) { Falha "Não achei o modelo $modelo (rode o script de dentro da pasta deploy\windows\iis da INIA)." }
 New-Item -ItemType Directory -Force -Path $PastaDoSite | Out-Null
 $conteudo = Get-Content -Raw -Encoding UTF8 $modelo
-$conteudo = $conteudo.Replace("http://127.0.0.1:3333", "http://127.0.0.1:$PortaApi").Replace("http://127.0.0.1:3000", "http://127.0.0.1:$PortaInterface")
 [IO.File]::WriteAllText((Join-Path $PastaDoSite "web.config"), $conteudo, (New-Object Text.UTF8Encoding($false)))
-Ok "web.config gravado em $PastaDoSite (API 127.0.0.1:$PortaApi · interface 127.0.0.1:$PortaInterface)"
+Ok "web.config gravado em $PastaDoSite (regras para as web farms INIA-API e INIA-Interface)"
 
 # --- 4. Pool de aplicativos e site ------------------------------------------------------------------------------
 Passo "4/6 Pool de aplicativos e site '$NomeDoSite'"
-Import-Module WebAdministration
 $protocolo = "http"; if ($Https) { $protocolo = "https" }
 
 # A porta (com o mesmo nome de host) não pode estar em uso por OUTRO site - o IIS não iniciaria nenhum dos dois.
@@ -144,3 +190,4 @@ if ($AbrirFirewall) {
 $esquema = "http"; if ($Https) { $esquema = "https" }
 $hostExibido = "localhost"; if ($NomeDoHost) { $hostExibido = $NomeDoHost }
 Write-Host "`nPronto. Com os serviços da INIA no ar, teste: $($esquema)://$($hostExibido):$Porta/health  (deve responder {""status"":""ok""})" -ForegroundColor Green
+Write-Host "Saúde de cada instância: Gerenciador do IIS > Server Farms > INIA-API / INIA-Interface > Monitoring and Management." -ForegroundColor Green

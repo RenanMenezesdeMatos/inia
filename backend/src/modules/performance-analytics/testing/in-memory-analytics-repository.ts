@@ -10,6 +10,7 @@ import type {
 } from "../application/analytics-read-repository.js"
 import type { VisibilityFilter } from "../../access/application/access-repository.js"
 import type { Permission } from "../../access/domain/permissions.js"
+import { encodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
 
 /**
  * Implementação em memória da porta de leitura — os testes montam uma organização pequena e
@@ -186,11 +187,21 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
 
   async loadFollowUpFeed(query: FollowUpFeedQuery) {
     this.calls.push("loadFollowUpFeed")
-    const items = (this.org.feed ?? []).filter((item) =>
-      item.kind === "FEEDBACK"
-        ? query.operatorIds.includes(item.operator?.personId ?? "") && (!query.unacknowledgedOnly || item.acknowledgedAt === null)
-        : query.includeViewerAlerts && !query.unacknowledgedOnly,
-    )
-    return { items: items.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: items.length }
+    // Mesma ordem e mesmo cursor do Postgres: (instante em microssegundos, id), mais recente primeiro. A chave tem largura fixa
+    // até o "|", então comparar o texto compara (instante, id).
+    const key = (at: string, id: string) => `${at}|${id}`
+    const atOf = (item: FollowUpItem) => new Date(item.createdAt).toISOString().replace("Z", "000Z")
+    const before = query.before ? key(query.before.at, query.before.id) : null
+    const items = (this.org.feed ?? [])
+      .filter((item) =>
+        item.kind === "FEEDBACK"
+          ? query.operatorIds.includes(item.operator?.personId ?? "") && (!query.unacknowledgedOnly || item.acknowledgedAt === null)
+          : query.includeViewerAlerts && !query.unacknowledgedOnly,
+      )
+      .filter((item) => before === null || key(atOf(item), item.id) < before)
+      .sort((a, b) => key(atOf(b), b.id).localeCompare(key(atOf(a), a.id)))
+    const page = items.slice(0, query.limit)
+    const last = page.at(-1)
+    return { items: page, nextCursor: items.length > query.limit && last ? encodeFollowUpCursor({ at: atOf(last), id: last.id }) : null }
   }
 }

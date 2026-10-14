@@ -70,6 +70,16 @@ export const accessCapabilitiesSchema = z.object({
   canExportUsability: capability,
   canViewUsabilityComments: capability,
   canManageUsability: capability,
+  // Políticas de acompanhamento (configurar) × intervenções (agir sobre colaboradores) — sempre separadas.
+  canAccessInterventionPolicies: capability,
+  canEditInterventionPolicies: capability,
+  canSimulateInterventionPolicies: capability,
+  canPublishInterventionPolicies: capability,
+  canAuditInterventionPolicies: capability,
+  canViewInterventions: capability,
+  canExecuteInterventions: capability,
+  canApproveInterventions: capability,
+  canDecideSensitiveInterventions: capability,
 })
 export type AccessCapabilities = z.infer<typeof accessCapabilitiesSchema>
 /** Capabilities vazias (deny by default) — quando a sessão ainda não foi lida. */

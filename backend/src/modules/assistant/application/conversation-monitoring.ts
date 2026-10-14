@@ -25,18 +25,22 @@ const SCOPE_CTE = `with recursive grants as (
   union
   select p.id from people p join subordinates s on p.reports_to_id = s.id
 )`
-/** Filtro de alcance sobre a conversa `c` e o dono `owner`. */
-const VISIBLE = `c.organization_id = $1 and (
+/** O alcance depende só do DONO da conversa (`owner`): Grupo, Subgrupo ou estrutura dele. */
+const OWNER_VISIBLE = `(
     exists (select 1 from grants g where g.scope_type = 'ORGANIZATION')
     or exists (select 1 from grants g where g.scope_type = 'GROUP' and g.team_id = owner.team_id)
     or exists (select 1 from grants g where g.scope_type = 'SUBGROUP' and g.subteam_id = owner.subteam_id)
-    or c.owner_person_id in (select id from subordinates)
+    or owner.id in (select id from subordinates)
   )`
+/** Filtro de alcance sobre a conversa `c` e o dono `owner`. */
+const VISIBLE = `c.organization_id = $1 and ${OWNER_VISIBLE}`
+/** Fuso da organização calculado UMA vez por consulta (antes era uma subconsulta por conversa). */
+const ORGANIZATION_TIMEZONE = `cross join (select coalesce((select op.timezone from operations op where op.organization_id = $1 order by op.created_at limit 1), '${DEFAULT_ORGANIZATION_TIMEZONE}') timezone) o`
 const FROM = `from assistant_conversations c
   join people owner on owner.id = c.owner_person_id and owner.organization_id = c.organization_id
   left join teams t on t.id = owner.team_id
   left join subteams st on st.id = owner.subteam_id
-  cross join lateral (select coalesce((select op.timezone from operations op where op.organization_id = c.organization_id order by op.created_at limit 1), '${DEFAULT_ORGANIZATION_TIMEZONE}') timezone) o`
+  ${ORGANIZATION_TIMEZONE}`
 
 const baseParams = (viewer: MonitoringViewer) => [viewer.organizationId, viewer.personId, rolesWithPermission("assistant_conversations.view")]
 
@@ -87,8 +91,10 @@ function filterSql(filters: MonitoringFilters, params: unknown[]): string {
   if (filters.status === "CLOSED") clauses.push(`c.status = 'CLOSED' and c.kind = 'CONVERSATION'`)
   if (filters.status === "LEGACY") clauses.push(`c.kind = 'LEGACY_HISTORY'`)
   if (filters.origin) clauses.push(`c.origin = ${add(filters.origin)}`)
-  if (filters.from) clauses.push(`(c.last_activity_at at time zone o.timezone)::date >= ${add(filters.from)}::date`)
-  if (filters.to) clauses.push(`(c.last_activity_at at time zone o.timezone)::date <= ${add(filters.to)}::date`)
+  // Datas locais viram instantes (início do dia `from`, início do dia seguinte a `to`, no fuso da organização): a mesma regra
+  // de antes, mas comparando a coluna como está — o índice de última atividade serve.
+  if (filters.from) clauses.push(`c.last_activity_at >= (${add(filters.from)}::date)::timestamp at time zone o.timezone`)
+  if (filters.to) clauses.push(`c.last_activity_at < (${add(filters.to)}::date + 1)::timestamp at time zone o.timezone`)
   return clauses.length > 0 ? ` and ${clauses.join(" and ")}` : ""
 }
 
@@ -98,7 +104,7 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
   const countParams = [...params]
   params.push(filters.pageSize, (filters.page - 1) * filters.pageSize)
   const optionParams = baseParams(viewer)
-  const [rows, total, owners, teams] = await Promise.all([
+  const [rows, total, owners] = await Promise.all([
     db.query<Row>(
       `${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${CONVERSATION_LAST_MESSAGE_JOIN}
        where ${VISIBLE}${extra}
@@ -106,16 +112,23 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
       params,
     ),
     db.query<{ n: number }>(`${SCOPE_CTE} select count(*)::int n ${FROM} where ${VISIBLE}${extra}`, countParams),
-    // Opções de filtro derivadas do PRÓPRIO alcance (nunca listam quem está fora dele).
-    db.query<{ id: string; name: string }>(`${SCOPE_CTE} select distinct owner.id, owner.name ${FROM} where ${VISIBLE} order by owner.name limit 500`, optionParams),
-    db.query<{ team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null }>(
-      `${SCOPE_CTE} select distinct owner.team_id, t.name team_name, owner.subteam_id, st.name subteam_name ${FROM} where ${VISIBLE}`,
+    // Opções de filtro derivadas do PRÓPRIO alcance (nunca listam quem está fora dele): as PESSOAS no alcance que têm ao menos
+    // uma conversa — uma consulta pelo índice de dono por pessoa, em vez de um distinct sobre todas as conversas a cada
+    // atualização da tela (20 s). Grupos e Subgrupos saem dessas mesmas pessoas.
+    db.query<{ id: string; name: string; team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null }>(
+      `${SCOPE_CTE} select owner.id, owner.name, owner.team_id, t.name team_name, owner.subteam_id, st.name subteam_name
+         from people owner
+         left join teams t on t.id = owner.team_id
+         left join subteams st on st.id = owner.subteam_id
+        where owner.organization_id = $1 and ${OWNER_VISIBLE}
+          and exists (select 1 from assistant_conversations c where c.organization_id = $1 and c.owner_person_id = owner.id)
+        order by owner.name`,
       optionParams,
     ),
   ])
   const teamOptions = new Map<string, string>()
   const subteamOptions = new Map<string, { id: string; name: string; teamId: string | null }>()
-  for (const row of teams.rows) {
+  for (const row of owners.rows) {
     if (row.team_id && row.team_name) teamOptions.set(row.team_id, row.team_name)
     if (row.subteam_id && row.subteam_name) subteamOptions.set(row.subteam_id, { id: row.subteam_id, name: row.subteam_name, teamId: row.team_id })
   }
@@ -123,7 +136,7 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
     items: rows.rows.map(toMonitored),
     total: total.rows[0]?.n ?? 0,
     filterOptions: {
-      operators: owners.rows.map((row) => ({ id: row.id, name: row.name })),
+      operators: owners.rows.slice(0, 500).map((row) => ({ id: row.id, name: row.name })),
       teams: [...teamOptions].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
       subteams: [...subteamOptions.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     },

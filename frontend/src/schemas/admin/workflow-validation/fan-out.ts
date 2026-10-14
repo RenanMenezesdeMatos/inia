@@ -172,6 +172,15 @@ export function validateConsolidatedGraph(context: ValidationContext): void {
             : `Revisão humana exige um colaborador individual como contexto. Adicione "Aplicar individualmente" antes do nó "${node.label}".`,
         })
       }
+      if (node.type === "intervention_policy") {
+        issues.push({
+          nodeId: node.id,
+          code: "WORKFLOW_INTERVENTION_POLICY_INVALID_MODE",
+          message: afterJoin
+            ? `O nó "${node.label}" avalia uma política de acompanhamento depois de "Consolidar resultados" — ali não há um colaborador individual. Mova o nó para o caminho individual.`
+            : `O nó "${node.label}" avalia uma política de acompanhamento, que exige um colaborador individual como contexto. Adicione "Aplicar individualmente" antes deste nó.`,
+        })
+      }
       if (node.type === "orchestrator") {
         issues.push({ nodeId: node.id, code: "WORKFLOW_ORCHESTRATOR_INVALID_MODE", message: `O nó "${node.label}" usa o Orquestrador, que exige um colaborador individual como contexto. Adicione "Aplicar individualmente" antes deste nó.` })
       }

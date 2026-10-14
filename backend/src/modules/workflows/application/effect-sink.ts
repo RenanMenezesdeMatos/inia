@@ -10,6 +10,7 @@ import { productionInteractionFeedbackEffects, type InteractionFeedbackEffects }
 import { productionReliableFeedbackEffects, type ReliableFeedbackEffects } from "../../reliable-feedback/application/reliable-feedback-wiring.js"
 import { productionConversationalEffects, type ConversationalEffects } from "../../conversational-delivery/application/conversational-effects.js"
 import { productionFeedbackEngineEffects, type FeedbackEngineEffects } from "../../feedback-engine/application/engine-wiring.js"
+import { productionInterventionEffects, type InterventionEffects } from "../../interventions/application/workflow-intervention-effects.js"
 
 /**
  * Boundary de side effects do motor de workflow — o ÚNICO lugar por onde um node consegue
@@ -81,6 +82,8 @@ export type WorkflowEffectSink = {
   /** MOTOR DE FEEDBACK — análise de chamada, investigação de indicador, geração e publicação da mensagem (memória gravada na
    * análise; nenhuma espera por QA). QA Lab: mesma lógica com memória em RAM. */
   feedbackEngine: FeedbackEngineEffects
+  /** "Avaliar política de acompanhamento": grava avaliação, caso, relatório e intervenções numa transação (QA Lab: nada gravado). */
+  interventions: InterventionEffects
 }
 
 /** Teto da resposta rejeitada guardada para diagnóstico (a resposta de um especialista cabe inteira; nada de payload sem limite). */
@@ -180,4 +183,6 @@ export const productionEffects: WorkflowEffectSink = {
   conversational: productionConversationalEffects,
 
   feedbackEngine: productionFeedbackEngineEffects,
+
+  interventions: productionInterventionEffects,
 }

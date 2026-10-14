@@ -56,6 +56,8 @@ export type ParityDbFacts = {
   businessDomain: (domainId: string) => Row | null
   /** Pessoa fixa (destinatário/revisor "específico") ativa na organização; `null` = inexistente, inativa ou de outra organização. */
   person: (personId: string) => Row | null
+  /** Política de acompanhamento do nó "Avaliar política"; `null` = não existe nesta organização. */
+  interventionPolicy: (policyId: string) => Row | null
 }
 
 export type ParityVariable = { id: string; type: "BOOLEAN" | "NUMERIC" | "TEXT"; name: string }
@@ -75,6 +77,8 @@ export type ParitySetup = {
   /** `indicator_definitions.operational_aggregation` por código (padrão: "WEIGHTED_AVERAGE"). */
   operationalAggregation?: Record<string, OperationalAggregationKind>
   db?: Partial<ParityDbFacts>
+  /** Abrangência do Workflow (padrão: todos os Grupos). */
+  scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId: string | null; subteamId: string | null }
 }
 
 /** O que o backend diz: o primeiro problema (código, nó quando a regra informa) ou `null` = publicável. */
@@ -123,6 +127,7 @@ function fakeDb(setup: ParitySetup): Database {
   const strategyConfig = facts.strategyConfig === undefined ? (emptyStrategyConfig() as unknown as Row) : facts.strategyConfig
   const businessDomain = facts.businessDomain ?? ((domainId: string): Row => ({ id: domainId, name: "Domínio", active: true, specialists: 1 }))
   const person = facts.person ?? ((personId: string): Row => ({ id: personId }))
+  const interventionPolicy = facts.interventionPolicy ?? ((policyId: string): Row => ({ id: policyId, name: "Política", active: true, scope_type: "ORGANIZATION", team_id: null, subteam_id: null, subteam_team_id: null, published: 1 }))
 
   const present = (row: Row | null): Row[] => (row ? [row] : [])
   async function query(sql: string, params: unknown[] = []): Promise<{ rows: Row[]; rowCount: number }> {
@@ -137,6 +142,7 @@ function fakeDb(setup: ParitySetup): Database {
       if (sql.includes("from workflow_variables")) return setup.variables ?? []
       if (sql.includes("from business_domains bd where bd.id = any")) return (params[0] as string[]).flatMap((id) => present(businessDomain(id)))
       if (sql.includes("from people where id = any")) return (params[0] as string[]).flatMap((id) => present(person(id)))
+      if (sql.includes("from intervention_policies p")) return (params[1] as string[]).flatMap((id) => present(interventionPolicy(id)))
       throw new Error(`Consulta não prevista pelo banco falso da paridade: ${sql.trim().slice(0, 120)}`)
     })()
     return { rows, rowCount: rows.length }
@@ -158,9 +164,9 @@ export async function backendVerdict(setup: ParitySetup): Promise<BackendVerdict
     const trigger = normalizeManualTrigger(triggerConfigSchema.parse(setup.trigger))
     validateScheduleTrigger(trigger)
     const row: PublishValidationRow = {
-      scopeType: "ALL_TEAMS",
-      teamId: null,
-      subteamId: null,
+      scopeType: setup.scope?.scopeType ?? "ALL_TEAMS",
+      teamId: setup.scope?.teamId ?? null,
+      subteamId: setup.scope?.subteamId ?? null,
       draftGraph: setup.graph,
       triggerConfig: trigger,
       consolidatedStructure: setup.consolidated ? (setup.structure ?? PARITY_STRUCTURE) : null,

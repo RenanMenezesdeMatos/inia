@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { gradientAlphaOver } from "@/components/inia-scenes/inia-scene-backdrop"
 import type { CurrentIniaSceneState } from "@/schemas/inia-scenes/inia-scene.schema"
-import { msUntilSceneChange, sceneRefetchInterval, sceneStaleTime, useCurrentIniaScene } from "./use-inia-scenes"
+import { MAX_SCENE_CHANGE_JITTER_MS, msUntilSceneChange, sceneRefetchInterval, sceneStaleTime, useCurrentIniaScene } from "./use-inia-scenes"
 
 const service = vi.hoisted(() => ({ fetch: vi.fn<() => Promise<unknown>>() }))
 vi.mock("@/services/inia-scenes/inia-scene-service", () => ({ fetchCurrentIniaScene: service.fetch, sceneImageSrc: (url: string) => url }))
@@ -39,11 +39,23 @@ describe("cenário atual — quando pedir de novo", () => {
     expect(sceneRefetchInterval(data, fetchedAt, fetchedAt + 120_000)).toBe(1_000)
   })
 
+  it("espalha a releitura da troca (0–60 s por página): centenas de telas não pedem o cenário novo no mesmo segundo", () => {
+    const data = state("2026-10-07T20:59:00.000Z", "2026-10-07T21:00:00.000Z")
+    const fetchedAt = Date.parse("2030-01-01T00:00:00Z")
+    expect(sceneRefetchInterval(data, fetchedAt, fetchedAt, 0)).toBe(61_500)
+    expect(sceneRefetchInterval(data, fetchedAt, fetchedAt, 45_000)).toBe(106_500)
+    expect(sceneStaleTime(data, fetchedAt, 45_000)).toBe(106_500)
+    // Nunca passa do teto de 5 min de "velho" nem do de 1 h do timer; troca já passada continua sem laço apertado.
+    expect(sceneStaleTime(state("2026-10-07T12:00:00.000Z", "2026-10-07T21:00:00.000Z"), fetchedAt, MAX_SCENE_CHANGE_JITTER_MS)).toBe(5 * 60_000)
+    expect(sceneRefetchInterval(data, fetchedAt, fetchedAt + 120_000, 30_000)).toBe(1_000)
+    expect(MAX_SCENE_CHANGE_JITTER_MS).toBe(60_000)
+  })
+
   it("troca a imagem SOZINHA com a tela aberta, no instante informado pelo servidor", async () => {
     // 1ª resposta: a troca é agora (folga de 1,5 s); a 2ª já vem com a noite.
     service.fetch.mockResolvedValueOnce(state("2026-10-07T21:00:00.000Z", "2026-10-07T21:00:00.000Z", "dia")).mockResolvedValue(state("2026-10-07T21:00:01.500Z", "2026-10-08T09:00:00.000Z", "noite"))
     function Probe() {
-      const current = useCurrentIniaScene()
+      const current = useCurrentIniaScene(true, 0)
       return <p data-testid="image">{current?.imageId ?? "nenhum"}</p>
     }
     render(<QueryClientProvider client={new QueryClient()}><Probe /></QueryClientProvider>)
@@ -55,7 +67,7 @@ describe("cenário atual — quando pedir de novo", () => {
   it("ao voltar para a aba depois do instante da troca, relê; antes dele, não", async () => {
     service.fetch.mockResolvedValue(state("2026-10-07T20:00:00.000Z", "2026-10-07T21:00:00.000Z"))
     function Probe() {
-      const current = useCurrentIniaScene()
+      const current = useCurrentIniaScene(true, 0)
       return <p>{current?.imageId ?? "nenhum"}</p>
     }
     const client = new QueryClient()

@@ -10,6 +10,7 @@ import { resolveOrganizationTimezone } from "./organization-timezone.js"
 import { executeOrchestrator, executeOrchestratorConsolidated } from "./orchestrator-executor.js"
 import { executeSynthesisAgent } from "./synthesis-agent-executor.js"
 import { executeOutput } from "./output-executor.js"
+import { executeInterventionPolicyNode } from "./intervention-policy-executor.js"
 import { localDateParts } from "./schedule-recurrence.js"
 import { resolveSelectionCandidates, runEmployeeRanking, runEmployeeSelection, type EmployeeCollectionOutput } from "./select-employees-executor.js"
 import { elapsedScheduledPercent, resolveShiftWindow } from "./shift-schedule.js"
@@ -583,6 +584,20 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
           ...(result.nodeOutput.caseId ? { caseId: result.nodeOutput.caseId } : {}),
         },
         nodeOutput: result.nodeOutput,
+      }
+    }
+
+    case "intervention_policy": {
+      const nodeOutput = await executeInterventionPolicyNode(context, node)
+      const edge = requireEdge(context.graph, node.id, "always")
+      if ("fail" in edge) return edge.fail
+      return {
+        kind: "advance",
+        nextNodeId: edge.target,
+        eventType: "intervention_policy_evaluated",
+        // `caseId` no topo do evento: um Output/Escalar posterior anexa ao MESMO caso (findRecentCaseId), como no Output.
+        eventPayload: { policyId: nodeOutput.policyId, policyVersion: nodeOutput.policyVersion, mode: nodeOutput.mode, outcome: nodeOutput.structuredResult.outcome, evaluationId: nodeOutput.evaluationId, ...(nodeOutput.caseId ? { caseId: nodeOutput.caseId } : {}), decisions: nodeOutput.decisions.map((decision) => ({ typeKey: decision.typeKey, status: decision.status })) },
+        nodeOutput,
       }
     }
 

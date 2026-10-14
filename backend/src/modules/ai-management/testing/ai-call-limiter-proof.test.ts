@@ -8,6 +8,8 @@ import { createAiCallLimiter, DEFAULT_AI_CALL_LIMITER_CONFIG, INTERACTIVE_RATE_L
 import { registerAiRuntime, runWithAiOrganization, runWithAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { createChatStreamer, generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { createAiRuntime } from "../application/ai-runtime-service.js"
+import { connectionGateKey, setProviderCallGate } from "../../../shared/application/model-routing/provider-call-gate.js"
+import { createPostgresProviderCallGate } from "../../../shared/infrastructure/model-routing/postgres-provider-call-gate.js"
 import { startFakeOpenAiServer, type FakeServer } from "./fake-openai-compatible-server.js"
 import { setProofAccountPassword } from "../../auth/testing/proof-account-password.js"
 
@@ -174,7 +176,9 @@ describe.skipIf(!ENABLED)("limitador de chamadas de IA — chat continua respond
 
   afterAll(async () => {
     setAiCallLimiter(null)
+    setProviderCallGate(null)
     registerAiRuntime(null)
+    await pool.query(`delete from ai_provider_cooldowns where scope = $1`, [connectionGateKey(connectionId)])
     await cleanup()
     await fake?.close()
     await pool.end()
@@ -219,4 +223,72 @@ describe.skipIf(!ENABLED)("limitador de chamadas de IA — chat continua respond
     // O chat nunca é pausado; se o 429 alcançá-lo, ele tenta uma vez a mais e, persistindo, recebe o erro claro.
     expect(over.chat.errors.every((error) => error.includes(INTERACTIVE_RATE_LIMIT_MESSAGE))).toBe(true)
   }, 60_000)
+
+  it("VAGAS DA CONEXÃO (Provedores de IA) = cota do acesso: mesmo com o processo acima da cota, nenhum 429 — o portão segura o excedente", async () => {
+    // Vagas da conexão configuradas pela API de administração (a mesma tela de Provedores de IA).
+    const patched = await api.patch(`/api/v1/admin/ai/connections/${connectionId}`).send({ maxConcurrentCalls: PROVIDER.capacity.maxConcurrent })
+    expect(patched.status, JSON.stringify(patched.body)).toBe(200)
+    expect(patched.body.data.maxConcurrentCalls).toBe(PROVIDER.capacity.maxConcurrent)
+    registerAiRuntime(createAiRuntime(pool, { snapshotTtlMs: 5_000, spendTtlMs: 5_000, alertThrottleMs: 60_000 }))
+    await pool.query(`delete from ai_provider_cooldowns where scope = $1`, [connectionGateKey(connectionId)])
+    const gate = createPostgresProviderCallGate(pool, { source: "prova-limitador", slotPollMs: 50 })
+    setProviderCallGate(gate)
+    try {
+      const gated = await runScenario("LIGADO acima da cota + vagas da conexão = 6", { maxConcurrent: 10, reservedInteractive: 2 })
+      process.stdout.write(`\n${report(gated)}\n`)
+      expect(gated.provider.rateLimited).toBe(0)
+      expect(gated.provider.peakInFlight).toBeLessThanOrEqual(PROVIDER.capacity.maxConcurrent)
+      expect(gated.batch).toMatchObject({ ok: BATCH_WORKERS * CALLS_PER_WORKER, failed: 0 })
+      expect(gated.chat).toMatchObject({ ok: CHAT_MESSAGES, failed: 0 })
+      const leftover = await pool.query<{ n: number }>(`select count(*)::int n from ai_call_slot_leases where key = $1 and expires_at > now()`, [connectionGateKey(connectionId)])
+      expect(leftover.rows[0]!.n).toBe(0)
+    } finally {
+      gate.stop()
+      setProviderCallGate(null)
+      await api.patch(`/api/v1/admin/ai/connections/${connectionId}`).send({ maxConcurrentCalls: null })
+    }
+  }, 90_000)
+
+  it("PAUSA DA CONEXÃO: com a conexão 1 pausada por um 429 (de qualquer instância), o lote vai direto para o próximo modelo da cadeia", async () => {
+    const second = await startFakeOpenAiServer({ latencyMs: 20 })
+    const gate = createPostgresProviderCallGate(pool, { source: "prova-limitador" })
+    try {
+      const created = await api.post("/api/v1/admin/ai/connections").send({ providerKey: "OPENAI_COMPATIBLE", name: `${PREFIX}Reserva`, baseUrl: second.url, isLocal: false })
+      expect(created.status, JSON.stringify(created.body)).toBe(201)
+      const secondId = created.body.data.id as string
+      expect((await api.post(`/api/v1/admin/ai/connections/${secondId}/sync-models`)).status).toBe(200)
+      const secondModels = await api.get(`/api/v1/admin/ai/models?connectionId=${secondId}`)
+      const secondModelId = (secondModels.body.data as { id: string; providerModelId: string }[]).find((model) => model.providerModelId === "fake-ok")!.id
+      expect((await api.patch(`/api/v1/admin/ai/models/${secondModelId}`).send({ capabilities: { STRUCTURED_OUTPUT: { supported: true } } })).status).toBe(200)
+      const draft = await api.put("/api/v1/admin/ai/routing/SPECIALIST_RESPONSE/draft").send({ mode: "FALLBACK_CHAIN", modelIds: [modelId, secondModelId], fallbackOn: ["RATE_LIMIT", "TIMEOUT", "NETWORK", "PROVIDER_ERROR", "MODEL_UNAVAILABLE"] })
+      expect(draft.status, JSON.stringify(draft.body)).toBe(200)
+      expect((await api.post("/api/v1/admin/ai/routing/SPECIALIST_RESPONSE/activate")).status).toBe(200)
+      registerAiRuntime(createAiRuntime(pool, { snapshotTtlMs: 5_000, spendTtlMs: 5_000, alertThrottleMs: 60_000 }))
+      setAiCallLimiter(createAiCallLimiter({ ...DEFAULT_AI_CALL_LIMITER_CONFIG, ...LIMITER }, { log: () => {} }))
+      setProviderCallGate(gate)
+
+      // Os 429 dos cenários anteriores já tiram o modelo da frente da cadeia por 1 min (RATE_LIMIT_DEPRIORITIZE_MS, lido de
+      // ai_usage_events): sem esse histórico, só a pausa da CONEXÃO decide.
+      await pool.query(`delete from ai_usage_events where model_id = $1 and error_category = 'RATE_LIMIT'`, [modelId])
+      // Outra instância recebeu 429 desta conexão: a pausa está no banco.
+      await pool.query(`insert into ai_provider_cooldowns (scope, paused_until, reason, source) values ($1, clock_timestamp() + interval '30 seconds', 'RATE_LIMIT', 'outra-instancia')
+                        on conflict (scope) do update set paused_until = excluded.paused_until`, [connectionGateKey(connectionId)])
+      await gate.refresh()
+      const servedBefore = fake.stats.served
+      const startedAt = new Date()
+      const enrollmentId = randomUUID()
+      const correlation = { workflowId: randomUUID(), workflowVersionId: randomUUID(), enrollmentId, rootEnrollmentId: enrollmentId, nodeId: "proof-node" }
+      for (let index = 0; index < 3; index += 1) await runWithAiWorkflowCorrelation(ORG, correlation, () => generateForRoute(specialistRequest()))
+      expect(fake.stats.served).toBe(servedBefore)
+      expect(second.stats.served).toBe(3)
+      const usage = await pool.query<{ connection_id: string; route_reason: string; fallback_reason: string | null }>(`select connection_id, route_reason, fallback_reason from ai_usage_events where occurred_at >= $1 and use_case = 'SPECIALIST_RESPONSE' and connection_id = any($2::uuid[])`, [startedAt, [connectionId, secondId]])
+      expect(usage.rows).toHaveLength(3)
+      expect(usage.rows.map((row) => [row.connection_id === secondId, row.fallback_reason])).toEqual([[true, "FALLBACK_RATE_LIMIT"], [true, "FALLBACK_RATE_LIMIT"], [true, "FALLBACK_RATE_LIMIT"]])
+    } finally {
+      gate.stop()
+      setProviderCallGate(null)
+      await pool.query(`delete from ai_provider_cooldowns where scope = $1`, [connectionGateKey(connectionId)])
+      await second.close()
+    }
+  }, 90_000)
 })

@@ -65,6 +65,27 @@ export function currentAiCallOrigin(): AiCallOrigin | null {
   return contextStorage.getStore()?.origin ?? null
 }
 
+/**
+ * CANCELAMENTO das chamadas de IA feitas dentro de `fn` (ex.: SSE do chat — a pessoa fechou a página): o limitador tira a
+ * chamada da fila e os clientes HTTP de IA (adapters e clientes legados) interrompem o fetch. Contexto à parte da
+ * organização: vale com ou sem ela, e uma chamada aninhada herda o mesmo sinal.
+ */
+const cancellationStorage = new AsyncLocalStorage<AbortSignal>()
+
+export function runWithAiCancellation<T>(signal: AbortSignal, fn: () => T): T {
+  return cancellationStorage.run(signal, fn)
+}
+
+export function currentAiAbortSignal(): AbortSignal | null {
+  return cancellationStorage.getStore() ?? null
+}
+
+/** Sinal do fetch = o prazo da chamada + o cancelamento de quem pediu (se houver). */
+export function withAiCancellation(signal: AbortSignal): AbortSignal {
+  const cancellation = currentAiAbortSignal()
+  return cancellation ? AbortSignal.any([signal, cancellation]) : signal
+}
+
 export type AiUsageStatus = "SUCCESS" | "ERROR" | "BLOCKED"
 export type AiRoutingModeRecord = "LEGACY" | "PINNED" | "FALLBACK_CHAIN" | "AUTO"
 export type AiUsageOrigin = "RUNTIME" | "QA_LAB" | "ADMIN_TEST"

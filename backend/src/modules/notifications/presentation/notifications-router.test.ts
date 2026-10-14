@@ -65,6 +65,16 @@ describe("Sino — conteúdo e autorização", () => {
     expect(data.items[2]).toMatchObject({ kind: "ESCALATION", readAt: "2026-09-13T10:00:00.000Z", target: { type: "FOLLOW_UP", itemId: A3 } })
   })
 
+  it("situação das revisões: o sino pede só os avisos de revisão que está mostrando — nada quando não mostra nenhum", async () => {
+    const repos = fixtures()
+    await request(appAs(SUPERVISOR, repos)).get("/notifications")
+    expect(repos.pending.reviewListReads).toEqual([[A1]])
+    const withoutReview = fixtures()
+    withoutReview.notifications.alerts.splice(0, 1)
+    await request(appAs(SUPERVISOR, withoutReview)).get("/notifications")
+    expect(withoutReview.pending.reviewListReads).toEqual([])
+  })
+
   it("alerta de outra estrutura nunca aparece nem pode ser marcado como lido por quem não é o destinatário", async () => {
     const repos = fixtures()
     const app = appAs(SUPERVISOR, repos)

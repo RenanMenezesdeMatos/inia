@@ -11,6 +11,7 @@ import type { DataHubContext } from "./data-hub-context.js"
 import { APPLY_BATCH, closeStages, finishRun, mapAll, persistLineage, persistRejections, RAW_RETENTION_LIMIT_BYTES, transition, type LoadedRun } from "./run-pipeline.js"
 import { emptyApply, mergeApply, type WriteContext } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
+import { useBatchStatementTimeout } from "../../../infrastructure/database/pool.js"
 
 /**
  * Carga de um conjunto de dados de BANCO EXTERNO.
@@ -239,6 +240,7 @@ export async function runDatabasePages(ctx: DataHubContext, loaded: LoadedRun, b
         const client = await ctx.db.connect()
         try {
           await client.query("begin")
+          await useBatchStatementTimeout(client)
           await persistRejections(client, run, rejections)
           for (let index = 0; index < prepared.ready.length; index += APPLY_BATCH) {
             const part = await writer.apply(writeContext, client, prepared.ready.slice(index, index + APPLY_BATCH))

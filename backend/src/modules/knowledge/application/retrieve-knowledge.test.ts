@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { Database } from "../../../infrastructure/database/pool.js"
-import { retrieveKnowledgeForAgent } from "./retrieve-knowledge.js"
-
-/** Banco falso: só responde à query de bases autorizadas do agente, filtrando pelo agentId —
- * exatamente o contrato de isolamento que a função real aplica no SQL. */
-function fakeDb(links: Record<string, { id: string; title: string; content: string }[]>): Database {
-  return {
-    query: async (_sql: string, params: unknown[]) => ({ rows: links[String(params[0])] ?? [] }),
-  } as unknown as Database
-}
+import { fakeKnowledgeDb as fakeDb } from "../testing/fake-knowledge-db.js"
+import { clearKnowledgeSnapshotCache, retrieveKnowledgeForAgent } from "./retrieve-knowledge.js"
 
 function bigDocument(id: string, title: string, topic: string, sections: number): { id: string; title: string; content: string } {
   const body = Array.from({ length: sections }, (_, index) =>
@@ -68,5 +60,33 @@ describe("retrieveKnowledgeForAgent", () => {
     expect(result.trace.mode).toBe("NO_MATCH")
     expect(result.promptBlock).toBe("")
     expect(result.trace.authorizedDocuments).toHaveLength(1)
+  })
+
+  describe("bases em cache por versão", () => {
+    const base = () => [bigDocument("kb-fat", "Faturamento", "emissão de fatura", 10), bigDocument("kb-cont", "Contestação", "contestação de cobrança", 10)]
+
+    it("mesmas versões: o texto não volta do banco e o resultado é idêntico ao montado do zero", async () => {
+      clearKnowledgeSnapshotCache()
+      const db = fakeDb({ agent: base() })
+      const first = await retrieveKnowledgeForAgent(db, "agent", "o cliente quer contestar uma cobrança")
+      const contentQueries = () => db.queries.filter((sql) => sql.includes("from knowledge_versions where id = any")).length
+      expect(contentQueries()).toBe(1)
+      const second = await retrieveKnowledgeForAgent(db, "agent", "o cliente quer contestar uma cobrança")
+      const other = await retrieveKnowledgeForAgent(db, "agent", "como emitir a segunda via da fatura")
+      expect(contentQueries()).toBe(1)
+      expect(second).toEqual(first)
+      clearKnowledgeSnapshotCache()
+      expect(await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", "como emitir a segunda via da fatura")).toEqual(other)
+    })
+
+    it("versão nova publicada: a busca seguinte já usa o texto novo", async () => {
+      clearKnowledgeSnapshotCache()
+      const before = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", "prazo de estorno")
+      expect(before.trace.mode).toBe("NO_MATCH")
+      const updated = [...base(), { id: "kb-estorno", title: "Estorno", content: "## Prazo de estorno\nO estorno do valor cobrado indevidamente sai em até 2 faturas, com protocolo do pedido de estorno." }]
+      const after = await retrieveKnowledgeForAgent(fakeDb({ agent: updated }), "agent", "prazo de estorno")
+      expect(after.trace.authorizedDocuments.map((document) => document.id)).toContain("kb-estorno")
+      expect(after.promptBlock).toContain("Prazo de estorno")
+    })
   })
 })

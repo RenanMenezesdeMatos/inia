@@ -391,7 +391,7 @@ export function demoFollowUpIds(): { cases: string[]; evidences: string[]; feedb
 
 /**
  * Artefatos DERIVADOS da fixture — o que o runtime produz quando a Pendência demo é decidida de
- * verdade (aprovar → caso + evidência + feedback publicado + linha do tempo + outbox; escalar →
+ * verdade (aprovar → caso + evidência + feedback publicado + linha do tempo; escalar →
  * alerta ao Gerente; qualquer decisão → eventos e outputs da matrícula). Os ids nascem em runtime,
  * então NÃO são hardcoded: são resolvidos pela cadeia real, sempre a partir de ids que a fixture
  * conhece:
@@ -404,7 +404,7 @@ export function demoFollowUpIds(): { cases: string[]; evidences: string[]; feedb
  *     └ alerts cuja dedupe_key é a chave estruturada do motor
  *       (`workflow_output|workflow_escalation|workflow_human_review:<enrollmentId>:…`)
  *   └ casos derivados → feedbacks/evidências/linha do tempo/recomendações/planos/escalonamentos/
- *     agent_runs/alertas por FK case_id; outbox_events por aggregate_id do feedback.
+ *     agent_runs/alertas por FK case_id.
  *
  * Nunca por título, `like '%demo%'` ou "pessoa demo": um caso real aberto pra um operador demo por
  * outro caminho continua sendo bloqueio do reset, não derivado.
@@ -477,10 +477,7 @@ export async function deleteDerivedDemoArtifacts(_client: Pick<Client, "query">,
     await run("derived:recommendations", `delete from recommendations where case_id = any($1::uuid[])`, [derived.cases])
     await run("derived:agent_runs", `delete from agent_runs where case_id = any($1::uuid[])`, [derived.cases])
   }
-  if (derived.feedbacks.length > 0) {
-    await run("derived:outbox_events", `delete from outbox_events where aggregate_type = 'Feedback' and aggregate_id = any($1::uuid[])`, [derived.feedbacks])
-    await run("derived:feedbacks", `delete from feedbacks where id = any($1::uuid[])`, [derived.feedbacks])
-  }
+  if (derived.feedbacks.length > 0) await run("derived:feedbacks", `delete from feedbacks where id = any($1::uuid[])`, [derived.feedbacks])
   if (derived.alerts.length > 0) await run("derived:alerts", `delete from alerts where id = any($1::uuid[])`, [derived.alerts])
   if (derived.cases.length > 0) {
     await run("derived:evidences", `delete from evidences where case_id = any($1::uuid[])`, [derived.cases])

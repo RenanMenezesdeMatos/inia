@@ -5,7 +5,7 @@ import { selectPrimaryProcessDocument, type PrimaryProcessSelection } from "../d
 import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRolesOf, type ClosingSectionRole, type SectionProcessRole } from "../domain/section-roles.js"
 import { applyCheckpointGovernance, buildProcessCheckpointCatalog, publicCatalogOf, renderExcerptWithCheckpoints, type CheckpointGovernanceSnapshot, type ProcessCheckpointCatalog } from "../../reliable-feedback/domain/checkpoint-catalog.js"
 import { loadCheckpointGovernance } from "../../checkpoint-registry/application/checkpoint-governance-loader.js"
-import { DEFAULT_RETRIEVAL_BUDGET, documentAnchors, estimateTokens, rankChunks, selectWithinBudget, tokenize, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
+import { DEFAULT_RETRIEVAL_BUDGET, acronymsKeyOf, buildKnowledgeIndex, documentAnchors, estimateTokens, rankChunks, selectWithinBudget, tokenize, type KnowledgeIndex, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
 import { expandAcronyms, type AcronymExpansion, type GlossaryAcronym } from "../domain/query-acronyms.js"
 
 
@@ -106,21 +106,90 @@ export type KnowledgeRetrievalResult = {
 
 /** `organizationId`: a organização do Agent (do registro) — a base só entra quando é da mesma organização dele. */
 type PublishedDocumentRow = { id: string; title: string; content: string; version: number; organizationId: string }
+/** O que identifica o conteúdo sem trazê-lo: a versão publicada (`knowledge_versions.id`) nunca tem o texto alterado. */
+type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content"> & { versionId: string }
 
-async function loadAuthorizedPublishedDocuments(db: Database, agentId: string): Promise<PublishedDocumentRow[]> {
-  const result = await db.query<PublishedDocumentRow>(
-    `select kd.id, kd.title, kv.content, kv.version, a.organization_id "organizationId"
+/**
+ * BASES DO AGENT EM CACHE, por processo. Antes, cada busca (chat, voz, ferramentas de investigação, prompt do especialista e
+ * do Orquestrador — várias por mensagem) trazia do banco o texto INTEIRO de todas as bases, refazia os trechos, os papéis das
+ * seções e a tokenização de tudo. Agora cada busca confere no banco só QUAIS versões publicadas estão vinculadas (consulta
+ * leve, sem o texto) e reaproveita o que já foi montado para exatamente essas versões; o texto só vem quando algo mudou.
+ * Sempre fresco com N processos: a conferência é por chamada, nunca por tempo.
+ */
+type AgentKnowledgeSnapshot = {
+  key: string
+  documents: PublishedDocumentRow[]
+  chunks: KnowledgeChunk[]
+  rolesByDocument: Map<string, ReturnType<typeof sectionProcessRolesOf>>
+  /** Índice por conjunto de siglas do Glossário (as siglas mudam a tokenização). */
+  indexes: Map<string, KnowledgeIndex>
+}
+const MAX_CACHED_AGENTS = 64
+const MAX_INDEXES_PER_AGENT = 4
+const snapshotsByAgent = new Map<string, AgentKnowledgeSnapshot>()
+
+async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Promise<PublishedDocumentHeader[]> {
+  const result = await db.query<PublishedDocumentHeader>(
+    `select kd.id, kd.title, kv.id "versionId", kv.version, a.organization_id "organizationId"
      from agent_knowledge_documents akd
      join knowledge_documents kd on kd.id = akd.knowledge_document_id
      join agents a on a.id = akd.agent_id
      join lateral (
-       select content, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1
+       select id, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1
      ) kv on true
      where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null
      order by kd.title`,
     [agentId],
   )
   return result.rows
+}
+
+async function loadAgentKnowledgeSnapshot(db: Database, agentId: string): Promise<AgentKnowledgeSnapshot> {
+  const headers = await loadAuthorizedDocumentHeaders(db, agentId)
+  const key = headers.map((header) => `${header.organizationId}|${header.id}|${header.versionId}|${header.title}`).join("\n")
+  const cached = snapshotsByAgent.get(agentId)
+  if (cached && cached.key === key) {
+    snapshotsByAgent.delete(agentId)
+    snapshotsByAgent.set(agentId, cached)
+    return cached
+  }
+  const contents = headers.length === 0
+    ? new Map<string, string>()
+    : new Map((await db.query<{ id: string; content: string }>(`select id, content from knowledge_versions where id = any($1::uuid[])`, [headers.map((header) => header.versionId)])).rows.map((row) => [row.id, row.content]))
+  const documents = headers.flatMap(({ versionId, ...header }) => {
+    const content = contents.get(versionId)
+    return content === undefined ? [] : [{ ...header, content }]
+  })
+  const snapshot: AgentKnowledgeSnapshot = {
+    key,
+    documents,
+    chunks: documents.flatMap((document) => chunkKnowledgeDocument(document)),
+    rolesByDocument: new Map(documents.map((document) => [document.id, sectionProcessRolesOf(document.content, document.title)])),
+    indexes: new Map(),
+  }
+  // Versão trocada entre as duas consultas (publicação no meio): o conteúdo veio pelas versões da chave, mas a lista pode
+  // ter ficado incompleta — não guarda, a próxima busca monta de novo.
+  if (documents.length === headers.length) {
+    snapshotsByAgent.delete(agentId)
+    snapshotsByAgent.set(agentId, snapshot)
+    while (snapshotsByAgent.size > MAX_CACHED_AGENTS) snapshotsByAgent.delete(snapshotsByAgent.keys().next().value!)
+  }
+  return snapshot
+}
+
+function knowledgeIndexOf(snapshot: AgentKnowledgeSnapshot, options: TokenizeOptions): KnowledgeIndex {
+  const acronymsKey = acronymsKeyOf(options)
+  const cached = snapshot.indexes.get(acronymsKey)
+  if (cached) return cached
+  const index = buildKnowledgeIndex(snapshot.chunks, options)
+  snapshot.indexes.set(acronymsKey, index)
+  while (snapshot.indexes.size > MAX_INDEXES_PER_AGENT) snapshot.indexes.delete(snapshot.indexes.keys().next().value!)
+  return index
+}
+
+/** Só para testes: esquece as bases montadas. */
+export function clearKnowledgeSnapshotCache(): void {
+  snapshotsByAgent.clear()
 }
 
 /**
@@ -174,8 +243,8 @@ export async function retrieveKnowledgeForAgent(
   coverage: KnowledgeCoverageRequest | null = null,
   presentation: KnowledgePresentationOptions = {},
 ): Promise<KnowledgeRetrievalResult> {
-  const documents = await loadAuthorizedPublishedDocuments(db, agentId)
-  const rolesByDocument = new Map(documents.map((document) => [document.id, sectionProcessRolesOf(document.content, document.title)]))
+  const snapshot = await loadAgentKnowledgeSnapshot(db, agentId)
+  const { documents, rolesByDocument } = snapshot
   const roleOf = presentation.markProcessRoles ? (chunk: RankedChunk) => rolesByDocument.get(chunk.documentId)?.(chunk.heading) ?? "UNKNOWN" : null
   const authorizedDocuments = documents.map((document) => ({ id: document.id, title: document.title, chars: document.content.length }))
   const authorizedChars = authorizedDocuments.reduce((sum, document) => sum + document.chars, 0)
@@ -185,13 +254,13 @@ export async function retrieveKnowledgeForAgent(
     return { promptBlock: "", trace: { ...baseTrace, mode: "NONE", retrieved: [], injectedChars: 0, estimatedTokens: 0 } }
   }
 
-  const chunks = documents.flatMap((document) => chunkKnowledgeDocument(document))
+  const { chunks } = snapshot
 
   // V1.7.1n — catálogo das etapas avaliáveis dos trechos que entram no prompt (a MESMA função da verificação). Obrigatória só
   // com o plano de cobertura do fechamento ativo (a chamada chegou ao fim).
   const contentById = new Map(documents.map((document) => [document.id, document.content]))
   // Checkpoint Registry: num documento GOVERNADO só as etapas ATIVAS (no escopo do colaborador) são marcadas no prompt.
-  // Organização do Agent (todas as bases autorizadas são dela — ver loadAuthorizedPublishedDocuments).
+  // Organização do Agent (todas as bases autorizadas são dela — ver loadAuthorizedDocumentHeaders).
   const organizationId = documents[0]!.organizationId
   const governance = presentation.markProcessRoles ? await loadCheckpointGovernance(db, organizationId, documents.map((document) => ({ id: document.id, version: document.version })), { agentId, personId: presentation.governanceSubjectPersonId ?? null }) : null
   const catalogOf = (selected: readonly RankedChunk[]) => presentation.markProcessRoles
@@ -219,7 +288,7 @@ export async function retrieveKnowledgeForAgent(
   // Termos que vieram SÓ da expansão (não estavam na pergunta): ajudam a achar o documento, pesam pouco na seção.
   const originalTerms = new Set(tokenize(query, tokenizeOptions))
   const contextTerms = new Set(expansion.expansions.flatMap((entry) => tokenize(entry.definition)).filter((term) => !originalTerms.has(term)))
-  const ranked = selectWithinBudget(rankChunks(expansion.searchQuery, chunks, { ...tokenizeOptions, contextTerms }), budget)
+  const ranked = selectWithinBudget(rankChunks(expansion.searchQuery, knowledgeIndexOf(snapshot, tokenizeOptions), { ...tokenizeOptions, contextTerms }), budget)
   const planned = coverage && coverage.phases.includes("CLOSING") ? planClosingCoverage(chunks, ranked, coverage) : null
   const selected = planned ? [...ranked, ...planned.chunks] : ranked
   const injectedChars = selected.reduce((sum, chunk) => sum + chunk.text.length, 0)

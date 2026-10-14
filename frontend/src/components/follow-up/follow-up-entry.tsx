@@ -43,6 +43,7 @@ const ALERT_FAMILY: Record<FollowUpItem["category"], FeedbackEntryFamily> = {
   WORKFLOW_OUTPUT: "WORKFLOW_OUTPUT",
   WORKFLOW_HUMAN_REVIEW: "HUMAN_REVIEW",
   WORKFLOW_ESCALATION: "ESCALATION",
+  INTERVENTION: "INTERVENTION",
   OTHER: "OTHER",
 }
 
@@ -99,6 +100,12 @@ export function FollowUpEntry({ item, showRecipient, employeeHref, highlighted =
             ) : (
               <ExpandableContent item={item} open={open} onOpenChange={setOpen} />
             )}
+            {/* Intervenção: uma atualização curta com o caminho para o caso — tarefas e decisões ficam lá (e em Pendências), nunca aqui. */}
+            {item.kind === "ALERT" && item.category === "INTERVENTION" && item.caseId ? (
+              <Link href={`/supervisor/cases/${encodeURIComponent(item.caseId)}`} className="inline-flex text-xs font-medium text-primary hover:underline">
+                Abrir no caso de supervisão
+              </Link>
+            ) : null}
             {item.kind === "FEEDBACK" ? (
               <>
                 <Separator />

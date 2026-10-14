@@ -1,7 +1,7 @@
 import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../application/analytics-read-repository.js"
 import { buildAnalyticsContext } from "../application/build-analytics-context.js"
 import { buildEmployeeDashboard } from "../application/build-employee-dashboard.js"
@@ -10,8 +10,6 @@ import { buildIndicatorMembers } from "../application/build-indicator-members.js
 import { buildStructureBreakdown, buildStructureDashboard } from "../application/build-structure-dashboard.js"
 import { buildTeamMembersPage, buildTeamOverview } from "../application/build-team-overview.js"
 import { loadViewerScope, resolveDefaultSubject, type ViewerScope } from "../application/viewer-scope.js"
-
-const followUpQuerySchema = z.object({ ack: z.enum(["all", "pending"]).default("all") })
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ANALYTICS_SUBJECT_KINDS, buildAnalyticsSubject, isStructureSubject, type AnalyticsSubject } from "../domain/analytics-subject.js"
 import { isGroupingDimension } from "../domain/hierarchy-levels.js"
@@ -19,6 +17,14 @@ import { DEFAULT_OPERATIONAL_COMPARISON, isOperationalComparison, type Operation
 import { parseReferencePeriod } from "../domain/reference-period.js"
 import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
+import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
+
+const followUpQuerySchema = z.object({
+  ack: z.enum(["all", "pending"]).default("all"),
+  /** Cursor devolvido pela página anterior (`nextCursor`); ausente = primeira página. */
+  cursor: z.string().trim().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
+})
 
 const subjectQuerySchema = z.object({
   subjectKind: z.enum(ANALYTICS_SUBJECT_KINDS as [string, ...string[]]).optional(),
@@ -148,9 +154,10 @@ export function createAnalyticsRouter(db: Database, repository: AnalyticsReadRep
     try {
       const scope = await loadViewerScope(repository, request.user!)
       const subject = subjectFrom(request, scope)
-      const { page, pageSize } = paginationQuerySchema.parse(request.query)
-      const { ack } = followUpQuerySchema.parse(request.query)
-      response.json({ data: await buildFollowUpFeed(repository, scope, subject, page, pageSize, ack === "pending") })
+      const query = followUpQuerySchema.parse(request.query)
+      const before = decodeFollowUpCursor(query.cursor)
+      if (query.cursor && !before) throw new DomainError("Cursor de paginação inválido.", "INVALID_CURSOR", 400)
+      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending" }) })
     } catch (error) {
       next(error)
     }

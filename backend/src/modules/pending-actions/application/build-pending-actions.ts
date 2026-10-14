@@ -6,20 +6,23 @@ import { resolveSource } from "../../workflows/application/output-executor.js"
 import { findEdge, humanReviewDecisionSchema, type FlowGraph, type FlowNode, type HumanReviewDecision } from "../../workflows/domain/graph-schema.js"
 import { describeReviewContent } from "../domain/review-content.js"
 import { buildReviewPresentation } from "../domain/review-presentation.js"
-import type { HumanReviewDetail, HumanReviewSummary, PendingActionPerson, PendingActionStatus, PendingActionSummary, PendingActionsSummary, ReviewPreviousOutput, WorkdayReconciliationDetail, WorkdayReconciliationSummary } from "../domain/view-models.js"
+import type { HumanReviewDetail, HumanReviewSummary, InterventionPendingSummary, PendingActionPerson, PendingActionStatus, PendingActionSummary, PendingActionsSummary, ReviewPreviousOutput, WorkdayReconciliationDetail, WorkdayReconciliationSummary } from "../domain/view-models.js"
 import type { PendingActionsRepository, ReviewAlertRow, WorkdayReconciliationRecord } from "./pending-actions-repository.js"
 
 export type Viewer = { personId: string; organizationId: string }
 
 type StoredDecision = { decision?: HumanReviewDecision; reviewerId?: string; decidedAt?: string }
 
-/** Estado de UM ponto de revisão, derivado só da execução — mesma regra em lista, detalhe,
+/** Aviso de revisão vivo — o mesmo filtro das contagens no SQL (pending-actions-repository.ts). */
+const LIVE_ALERT_STATUSES = new Set(["OPEN", "SEEN", "ACKNOWLEDGED"])
+
+/** Estado de UM ponto de revisão, derivado da execução (e do aviso ainda vivo) — mesma regra em lista, detalhe,
  * contadores e decisão. */
 export function reviewStatus(row: ReviewAlertRow): { status: PendingActionStatus; stored: StoredDecision | null } {
   if (!row.enrollment) return { status: "UNAVAILABLE", stored: null }
-  const stored = row.enrollment.nodeOutputs[row.nodeId] as StoredDecision | undefined
+  const stored = row.enrollment.reviewOutput as StoredDecision | null | undefined
   if (stored?.decision && humanReviewDecisionSchema.safeParse(stored.decision).success) return { status: "DECIDED", stored }
-  if (row.enrollment.status === "waiting" && row.enrollment.currentNodeId === row.nodeId) return { status: "PENDING", stored: null }
+  if (row.enrollment.status === "waiting" && row.enrollment.currentNodeId === row.nodeId && LIVE_ALERT_STATUSES.has(row.alertStatus)) return { status: "PENDING", stored: null }
   return { status: "UNAVAILABLE", stored: null }
 }
 
@@ -61,7 +64,7 @@ async function loadPeopleFor(repository: PendingActionsRepository, rows: ReviewA
   const ids = new Set<string>()
   for (const row of rows) {
     if (row.enrollment?.operatorId) ids.add(row.enrollment.operatorId)
-    const stored = row.enrollment?.nodeOutputs[row.nodeId] as StoredDecision | undefined
+    const stored = row.enrollment?.reviewOutput as StoredDecision | null | undefined
     if (stored?.reviewerId) ids.add(stored.reviewerId)
   }
   return repository.loadPeople([...ids])
@@ -109,12 +112,32 @@ async function loadPeopleForWorkdays(repository: PendingActionsRepository, rows:
  * primeiro (revisões e produção não identificada), histórico (decididas/indisponíveis/resolvidas) em
  * seguida. Órfãos de execução ficam fora. */
 export async function buildPendingActions(repository: PendingActionsRepository, viewer: Viewer): Promise<PendingActionsSummary> {
-  const [reviewRows, workdayRows] = await Promise.all([repository.loadReviewAlerts(viewer.personId, viewer.organizationId), repository.loadWorkdayReconciliations(viewer.personId, viewer.organizationId)])
+  const [reviewRows, workdayRows, interventionRows] = await Promise.all([repository.loadReviewAlerts(viewer.personId, viewer.organizationId), repository.loadWorkdayReconciliations(viewer.personId, viewer.organizationId), repository.loadInterventionPendings(viewer.personId, viewer.organizationId)])
   const rows = reviewRows.filter((row) => row.enrollment !== null)
   const [graphs, people, workdayPeople] = await Promise.all([loadGraphs(repository, rows), loadPeopleFor(repository, rows), loadPeopleForWorkdays(repository, workdayRows)])
   const summaries: PendingActionSummary[] = [
     ...rows.map((row) => buildSummary(row, row.enrollment ? (graphs.get(row.enrollment.versionId) ?? null) : null, people)),
     ...workdayRows.map((row) => buildWorkdaySummary(row, workdayPeople)),
+    ...interventionRows.map(
+      (row): InterventionPendingSummary => ({
+        id: `intervention:${row.id}`,
+        kind: "INTERVENTION",
+        status: "PENDING",
+        interventionId: row.id,
+        caseId: row.caseId,
+        operator: { personId: row.person.id, name: row.person.name, teamName: row.person.teamName, jobTitle: null },
+        typeName: row.type.name,
+        reason: row.reason,
+        pendingReason: row.pendingReason,
+        pendingLabel: row.pendingLabel,
+        dueAt: row.dueAt,
+        overdue: row.overdue,
+        sensitive: row.sensitive,
+        requestedAt: row.updatedAt,
+        decidedAt: null,
+        reviewer: null,
+      }),
+    ),
   ]
   const byRecency = (a: PendingActionSummary, b: PendingActionSummary) => b.requestedAt.localeCompare(a.requestedAt)
   const pending = summaries.filter((item) => item.status === "PENDING").sort(byRecency)

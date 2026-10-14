@@ -21,7 +21,8 @@ import {
   type PerformanceDataset,
 } from "./performance-dataset.js"
 import { splitIntoGroups, summarizeGroup } from "./structure-groups.js"
-import { buildBreadcrumb, resolveSubject, type ViewerScope } from "./viewer-scope.js"
+import { cachedOfficial } from "./official-analytics-cache.js"
+import { buildBreadcrumb, resolveSubject, type ResolvedSubject, type ViewerScope } from "./viewer-scope.js"
 
 export const CONSOLIDATION_METHOD =
   "Média aritmética simples dos atingimentos oficiais (achievement_percent) de todos os pares colaborador × indicador da estrutura no período. Sem peso de PRV; competências e indicadores sem dado ficam fora da média (nunca contam como zero)."
@@ -34,10 +35,16 @@ export const CONSOLIDATION_METHOD =
 export async function buildStructureDashboard(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, period: string, now: Date = new Date(), operationalComparison: OperationalComparison = DEFAULT_OPERATIONAL_COMPARISON): Promise<StructureIndicatorDashboard> {
   const resolved = resolveSubject(scope, subject)
   const memberIds = resolved.members.map((member) => member.id)
-  const [dataset, operationalSummary] = await Promise.all([
-    loadPerformanceDataset(repository, scope.organizationId, memberIds, period),
+  const [official, operationalSummary] = await Promise.all([
+    cachedOfficial(repository, scope, ["structure-dashboard", subject, period], memberIds.length, () => buildStructureOfficialDashboard(repository, scope, subject, resolved, memberIds, period)),
     repository.loadStructureOperationalSummary(scope.organizationId, memberIds, now, operationalComparison),
   ])
+  return { ...official, operationalSummary }
+}
+
+/** Tudo do painel da estrutura que vem do FECHAMENTO OFICIAL (o resumo operacional tem cache próprio). */
+async function buildStructureOfficialDashboard(repository: AnalyticsReadRepository, scope: ViewerScope, subject: StructureAnchor, resolved: ResolvedSubject, memberIds: string[], period: string): Promise<Omit<StructureIndicatorDashboard, "operationalSummary">> {
+  const dataset = await loadPerformanceDataset(repository, scope.organizationId, memberIds, period)
   const performances = memberIds.map((id) => buildMemberPerformance(dataset, id))
 
   const consolidated = consolidatedAchievement(dataset, memberIds, period)
@@ -78,7 +85,6 @@ export async function buildStructureDashboard(repository: AnalyticsReadRepositor
     positives: insights.positives,
     attentionPoints: insights.attentionPoints,
     groupingOptions: buildIndicatorViewCapabilities(scope.role, subject.kind).groupingOptions,
-    operationalSummary,
   }
 }
 
@@ -115,7 +121,9 @@ export async function buildStructureBreakdown(repository: AnalyticsReadRepositor
   const allowed = buildIndicatorViewCapabilities(scope.role, subject.kind).groupingOptions
   if (!allowed.includes(groupBy)) throw new DomainError("Agrupamento não disponível para esta estrutura.", "INVALID_GROUPING", 400)
   const memberIds = resolved.members.map((member) => member.id)
-  const dataset = await loadPerformanceDataset(repository, scope.organizationId, memberIds, period)
-  const groups = splitIntoGroups(scope, resolved, groupBy).map((bucket) => summarizeGroup(dataset, bucket))
-  return { subject: resolved.descriptor, period, groupBy, groupByLabel: GROUPING_LABELS[groupBy], groups }
+  return cachedOfficial(repository, scope, ["structure-breakdown", subject, period, groupBy], memberIds.length, async () => {
+    const dataset = await loadPerformanceDataset(repository, scope.organizationId, memberIds, period)
+    const groups = splitIntoGroups(scope, resolved, groupBy).map((bucket) => summarizeGroup(dataset, bucket))
+    return { subject: resolved.descriptor, period, groupBy, groupByLabel: GROUPING_LABELS[groupBy], groups }
+  })
 }

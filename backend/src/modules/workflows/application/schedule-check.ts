@@ -9,6 +9,23 @@ import { isDateDue, localDateParts, zonedTimeToIso, type ScheduleRecurrenceConfi
 import { isAssumedWorkday, resolveRelativeInstant, type EmployeeShift } from "./shift-schedule.js"
 
 
+/**
+ * Nascimento EM LOTE das matrículas de UM workflow num disparo: um único insert para todos os sujeitos (e horários) devidos —
+ * antes era um insert por operador, a cada minuto, até o fim do dia. A idempotência continua sendo o índice único
+ * `workflow_enrollments_schedule_slot_uk` (workflow, sujeito, horário): o que já nasceu é ignorado e só o novo conta.
+ */
+async function enrollScheduledSlots(db: Database, input: { organizationId: string; workflowId: string; versionId: string; triggerNodeId: string; slots: { subjectId: string; scheduledFor: string }[] }): Promise<number> {
+  if (input.slots.length === 0) return 0
+  const result = await db.query(
+    `insert into workflow_enrollments(organization_id, workflow_id, version_id, scheduled_subject_id, scheduled_for, current_node_id)
+     select $1, $2, $3, slot.subject_id, slot.scheduled_for, $4
+     from unnest($5::uuid[], $6::timestamptz[]) as slot(subject_id, scheduled_for)
+     on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null do nothing`,
+    [input.organizationId, input.workflowId, input.versionId, input.triggerNodeId, input.slots.map((slot) => slot.subjectId), input.slots.map((slot) => slot.scheduledFor)],
+  )
+  return result.rowCount ?? 0
+}
+
 type ScheduledWorkflowRow = {
   organization_id: string
   id: string
@@ -102,20 +119,15 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
       )
       const shiftByPerson = new Map(shifts.rows.map((row) => [row.person_id, { startTime: row.start_time, workMinutes: row.work_minutes } as EmployeeShift]))
 
+      const slots: { subjectId: string; scheduledFor: string }[] = []
       for (const operatorId of operatorIds) {
         const shift = shiftByPerson.get(operatorId)
         if (!shift) continue // sem jornada configurada — nunca inventa horário
         const instant = resolveRelativeInstant(shift, workflow.relative, today, timezone)
         if (!instant || instant.getTime() > now.getTime()) continue // ainda não venceu, ou configuração incompatível com essa jornada
-
-        const result = await db.query(
-          `insert into workflow_enrollments(organization_id, workflow_id, version_id, scheduled_subject_id, scheduled_for, current_node_id)
-           values ($1,$2,$3,$4,$5,$6)
-           on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null do nothing`,
-          [organizationId, workflow.id, workflow.version_id, operatorId, instant.toISOString(), triggerNode.id],
-        )
-        enrolled += result.rowCount ?? 0
+        slots.push({ subjectId: operatorId, scheduledFor: instant.toISOString() })
       }
+      enrolled += await enrollScheduledSlots(db, { organizationId, workflowId: workflow.id, versionId: workflow.version_id, triggerNodeId: triggerNode.id, slots })
       continue
     }
 
@@ -135,17 +147,10 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
       // Modo Individual (ausente = sempre foi o padrão) — uma matrícula por operador elegível
       // pelo Filtro Populacional (ausente = todos da Abrangência).
       const operatorIds = await resolveEligibleOperatorIds(db, organizationId, population)
+      // Um insert por horário devido, com todos os operadores elegíveis de uma vez.
       for (const time of dueTimes) {
         const scheduledFor = zonedTimeToIso(today, time, timezone)
-        for (const operatorId of operatorIds) {
-          const result = await db.query(
-            `insert into workflow_enrollments(organization_id, workflow_id, version_id, scheduled_subject_id, scheduled_for, current_node_id)
-             values ($1,$2,$3,$4,$5,$6)
-             on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null do nothing`,
-            [organizationId, workflow.id, workflow.version_id, operatorId, scheduledFor, triggerNode.id],
-          )
-          enrolled += result.rowCount ?? 0
-        }
+        enrolled += await enrollScheduledSlots(db, { organizationId, workflowId: workflow.id, versionId: workflow.version_id, triggerNodeId: triggerNode.id, slots: operatorIds.map((subjectId) => ({ subjectId, scheduledFor })) })
       }
       continue
     }
@@ -164,16 +169,7 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
     if (memberIds.length === 0) continue // estrutura sem nenhum operador — nunca inventa sujeito
     const subjectId = anchorId ?? [...memberIds].sort()[0]!
 
-    for (const time of dueTimes) {
-      const scheduledFor = zonedTimeToIso(today, time, timezone)
-      const result = await db.query(
-        `insert into workflow_enrollments(organization_id, workflow_id, version_id, scheduled_subject_id, scheduled_for, current_node_id)
-         values ($1,$2,$3,$4,$5,$6)
-         on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null do nothing`,
-        [organizationId, workflow.id, workflow.version_id, subjectId, scheduledFor, triggerNode.id],
-      )
-      enrolled += result.rowCount ?? 0
-    }
+    enrolled += await enrollScheduledSlots(db, { organizationId, workflowId: workflow.id, versionId: workflow.version_id, triggerNodeId: triggerNode.id, slots: dueTimes.map((time) => ({ subjectId, scheduledFor: zonedTimeToIso(today, time, timezone) })) })
   }
   return { enrolled }
 }

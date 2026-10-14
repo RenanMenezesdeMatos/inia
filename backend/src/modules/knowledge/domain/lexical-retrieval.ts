@@ -94,6 +94,26 @@ function indexChunk(chunk: KnowledgeChunk, options: TokenizeOptions): IndexedChu
 }
 
 /**
+ * ÍNDICE dos trechos (tokenização feita uma vez). Tokenizar todos os trechos era ~2/3 do custo de cada busca e se repetia a
+ * cada mensagem do chat; o índice depende só dos trechos e das siglas, então `retrieve-knowledge.ts` guarda um por versão
+ * das bases do Agent. `rankChunks` aceita o índice pronto e devolve exatamente o mesmo ranking que com os trechos crus.
+ */
+export type KnowledgeIndex = { readonly chunks: readonly KnowledgeChunk[]; readonly indexed: readonly IndexedChunk[]; readonly acronymsKey: string }
+
+/** Identidade das siglas usadas na tokenização — um índice só vale para as mesmas siglas. */
+export function acronymsKeyOf(options: TokenizeOptions): string {
+  return options.acronyms && options.acronyms.size > 0 ? [...options.acronyms].sort().join(",") : ""
+}
+
+export function buildKnowledgeIndex(chunks: readonly KnowledgeChunk[], options: TokenizeOptions = {}): KnowledgeIndex {
+  return { chunks, indexed: chunks.map((chunk) => indexChunk(chunk, options)), acronymsKey: acronymsKeyOf(options) }
+}
+
+function isKnowledgeIndex(value: readonly KnowledgeChunk[] | KnowledgeIndex): value is KnowledgeIndex {
+  return !Array.isArray(value)
+}
+
+/**
  * ÂNCORA DE DOCUMENTO (busca em duas etapas). Numa base operacional o ASSUNTO costuma estar no título do documento
  * ("Troca de Titularidade entre Empresas") e o DETALHE numa seção ("17. Documentos da empresa cedente") que não repete o
  * assunto. Um documento é ANCORADO quando o título contém ≥ 2 termos da pergunta (ou todos, se ela tiver 1) que sejam
@@ -127,11 +147,13 @@ export function documentAnchors(query: string, chunks: readonly KnowledgeChunk[]
  *      menor (distinguem subtemas do mesmo documento). Pergunta só com o assunto pontua pela pergunta inteira. Vêm primeiro.
  *   2. qualquer outro trecho: a regra de sempre — ≥ 2 termos distintos da pergunta no próprio trecho.
  */
-export function rankChunks(query: string, chunks: KnowledgeChunk[], options: RankOptions = {}): RankedChunk[] {
+export function rankChunks(query: string, source: readonly KnowledgeChunk[] | KnowledgeIndex, options: RankOptions = {}): RankedChunk[] {
+  const chunks = isKnowledgeIndex(source) ? source.chunks : source
   const queryTerms = meaningfulQueryTerms([...new Set(tokenize(query, options))])
   if (queryTerms.length === 0 || chunks.length === 0) return []
 
-  const indexed = chunks.map((chunk) => indexChunk(chunk, options))
+  // Índice pronto só quando foi tokenizado com as MESMAS siglas; senão, tokeniza agora (o resultado é o mesmo).
+  const indexed = isKnowledgeIndex(source) && source.acronymsKey === acronymsKeyOf(options) ? source.indexed : chunks.map((chunk) => indexChunk(chunk, options))
   const averageLength = indexed.reduce((sum, item) => sum + item.length, 0) / indexed.length || 1
   const documentFrequency = new Map<string, number>()
   for (const term of queryTerms) {

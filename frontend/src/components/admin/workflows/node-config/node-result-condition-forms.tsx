@@ -13,6 +13,7 @@ import type { FlatOutputSchemaField } from "@/schemas/admin/output-schema-fields
 import type { WorkflowVariable } from "@/schemas/admin/workflow-variable.schema"
 import { COMPARATOR_LABELS, COMPARATORS_BY_FIELD_TYPE, type Comparator, type ConditionRule, type FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import { applyTypedValue, currentTypedValue } from "./typed-threshold"
+import { usePolicyResultCatalog } from "@/components/admin/workflows/use-policy-result-catalog"
 
 /** Origem "Resultado de um nó anterior" ao selecionar um Field: EQUALS falha pra tipos que não o
  * suportam (nunca deveria acontecer, já que sempre pegamos o primeiro comparador válido), então
@@ -174,7 +175,8 @@ export function NodeResultConditionForm({
   const contentSources = resolveContentSources(graph, fromNodeId, agentsById, orchestratorsById)
   const decoded = decodeSourcePath(rule.sourcePath ?? "")
   const nodeId = decoded?.kind === "node" ? decoded.nodeId : ""
-  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById) : undefined
+  const policies = usePolicyResultCatalog(graph)
+  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById, policies) : undefined
 
   function selectOrigin(nextNodeId: string) {
     // Trocar a origem invalida completamente campo/comparador/valor anteriores — nunca deixa um
@@ -188,7 +190,7 @@ export function NodeResultConditionForm({
         <Label>Origem</Label>
         {contentSources.length === 0 ? (
           <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-            Nenhum resultado disponível ainda — conecte este nó depois de um Agente ou Orquestrador.
+            Nenhum resultado disponível ainda — conecte este nó depois de um Agente, Orquestrador ou Avaliar política de acompanhamento.
           </p>
         ) : (
           <Select value={nodeId} onValueChange={selectOrigin}>

@@ -46,11 +46,11 @@ describe("Sino — dados reais, badge e destinos", () => {
     service.fetchNotifications.mockResolvedValue(SUMMARY)
     const onNavigate = vi.fn()
     renderWithQuery(<NotificationPanel profileHref="/supervisor" onNavigate={onNavigate} />)
-    expect(await screen.findByText("1 revisão aguarda sua decisão · abrir Pendências")).toBeInTheDocument()
+    expect(await screen.findByText("1 pendência aguarda você · abrir Pendências")).toBeInTheDocument()
     expect(screen.getByText("Revisão pendente")).toBeInTheDocument()
     expect(screen.getByText("Novo acompanhamento")).toBeInTheDocument()
     expect(screen.getByText("Escalonamento")).toBeInTheDocument()
-    fireEvent.click(screen.getByText("1 revisão aguarda sua decisão · abrir Pendências"))
+    fireEvent.click(screen.getByText("1 pendência aguarda você · abrir Pendências"))
     expect(onNavigate).toHaveBeenCalledWith("/supervisor?tab=pending")
   })
 
@@ -87,5 +87,7 @@ describe("Sino — dados reais, badge e destinos", () => {
     expect(notificationHref({ type: "PENDING_ACTION", actionId: "e:n" }, "/supervisor")).toBe("/supervisor?tab=pending&review=e%3An")
     expect(notificationHref({ type: "FOLLOW_UP", itemId: "x", operatorId: null }, "/operator")).toBe("/operator?tab=followup&item=x")
     expect(notificationHref({ type: "NONE" }, "/supervisor")).toBeNull()
+    // Intervenção: o sino abre o CONTEXTO dela no caso de supervisão, nunca uma tela própria.
+    expect(notificationHref({ type: "INTERVENTION", interventionId: "int-1", caseId: "case-1" }, "/supervisor")).toBe("/supervisor/cases/case-1?intervention=int-1")
   })
 })

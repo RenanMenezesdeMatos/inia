@@ -26,6 +26,7 @@
     "db:seed:demo:reset": "tsx src/infrastructure/database/reset-demo.ts",
     "db:seed:demo:reset:test": "NODE_ENV=test tsx src/infrastructure/database/reset-demo.ts",
     "calendar:reconcile": "tsx src/infrastructure/database/reconcile-calendar.ts",
+    "analytics:rollup": "tsx src/infrastructure/database/rebuild-analytics-read-model.ts",
     "db:migrate-legacy-workflow-outputs": "tsx src/infrastructure/database/migrate-legacy-workflow-outputs.ts",
     "setup": "tsx src/infrastructure/installation/setup.ts",
     "update": "tsx src/infrastructure/installation/update.ts",
@@ -37,6 +38,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
@@ -56,6 +58,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",

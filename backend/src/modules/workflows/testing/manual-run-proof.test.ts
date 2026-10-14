@@ -3,12 +3,16 @@
  * (não publicado, inativo, sem permissão, fora do escopo), elegibilidade do colaborador, contexto (interação real DO
  * colaborador, com transcrição), idempotência (mesma chave = mesmo disparo; chave nova = nova execução), a matrícula NORMAL
  * processada pelo motor até o fim, a origem manual visível em Execuções/Resultados e que ingestão nunca dispara um Manual.
- * ZERO chamada de modelo. Tudo numa transação desfeita no fim (banco intacto).
+ * ZERO chamada de modelo. Cada caso roda numa transação desfeita AO FIM DO PRÓPRIO CASO (banco intacto); o de concorrência
+ * grava por outras conexões do pool e apaga o que criou.
+ * A transação nunca atravessa casos: escrita pendente segura lock de linha até o rollback, e o caso seguinte, que grava por
+ * OUTRA conexão, esperaria por ela até estourar o tempo. Foi o que aconteceu com a migration 128 (`analytics_versions`,
+ * 13/10/2026): todo insert em `people` atualiza a MESMA linha por organização.
  *   INIA_DB_PROOF=1 npx vitest run manual-run-proof
  */
 import pg from "pg"
 import request from "supertest"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { env } from "../../../config/env.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
@@ -22,16 +26,20 @@ let pool: pg.Pool
 let client: pg.PoolClient
 
 describe.skipIf(!ENABLED)("Gatilho Manual — prova Postgres (API real, motor real, zero modelo)", () => {
-  beforeAll(async () => {
+  beforeAll(() => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL })
+  })
+  beforeEach(async () => {
     client = await pool.connect()
     await client.query("begin")
   })
-  afterAll(async () => {
+  afterEach(async () => {
     if (client) {
       await client.query("rollback")
       client.release()
     }
+  })
+  afterAll(async () => {
     if (pool) await pool.end()
   })
 
@@ -205,9 +213,11 @@ describe.skipIf(!ENABLED)("Gatilho Manual — prova Postgres (API real, motor re
   it("duplo clique SIMULTÂNEO (duas conexões, mesma chave) = exatamente uma execução; dados gravados e apagados", async () => {
     const fixture = { people: [] as string[], workflows: [] as string[] }
     try {
+      // Cada id entra na limpeza assim que nasce: uma falha no meio não deixa resíduo no banco de teste.
       const requester = (await pool.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, 'Proof Manual Concorrência Admin', 'SUPERVISOR') returning id", [ORG])).rows[0]!.id
+      fixture.people.push(requester)
       const operator = (await pool.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, 'Proof Manual Concorrência Operador', 'OPERATOR') returning id", [ORG])).rows[0]!.id
-      fixture.people.push(requester, operator)
+      fixture.people.push(operator)
       const graph = { nodes: [{ id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} }, { id: "end", type: "end", label: "Fim", position: { x: 0, y: 0 }, config: {} }], edges: [{ id: "e1", source: "trigger", sourceHandle: "always", target: "end" }] }
       const workflowId = (await pool.query<{ id: string }>(`insert into workflows (organization_id, name, trigger_config, draft_graph) values ($1, 'Proof Manual Concorrência', '{"kind":"manual","context":"COLLABORATOR"}', $2) returning id`, [ORG, JSON.stringify(graph)])).rows[0]!.id
       fixture.workflows.push(workflowId)

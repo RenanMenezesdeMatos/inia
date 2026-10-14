@@ -2,7 +2,7 @@ import { AiProviderError } from "../../../../shared/application/model-routing/ai
 import type { LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
 import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
-import { joinUrl, rawRequest, readSse, requestJson, safeJsonParse, testByListing } from "./http.js"
+import { joinUrl, rawRequest, rawStreamRequest, readSse, requestJson, safeJsonParse, testByListing } from "./http.js"
 
 /**
  * Protocolo OpenAI Chat Completions — OpenAI, xAI, LM Studio, Ollama (/v1) e qualquer servidor
@@ -161,7 +161,7 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
     },
     async stream(connection, providerModelId, request, timeoutMs, onChunk): Promise<AiStreamResult> {
       const startedAt = Date.now()
-      const response = await rawRequest(fetchImpl, connection, joinUrl(connection.baseUrl, "chat/completions"), {
+      const { response, deadline } = await rawStreamRequest(fetchImpl, connection, joinUrl(connection.baseUrl, "chat/completions"), {
         method: "POST",
         headers: authHeaders(connection),
         body: JSON.stringify({ model: providerModelId, messages: toChatMessages(request.systemPrompt, request.contents), stream: true, stream_options: { include_usage: true }, ...maxTokensField(connection, request.maxOutputTokens) }),
@@ -177,7 +177,7 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
         }
         if (payload.usage) usage = normalizeOpenAiUsage(payload.usage as ChatUsage)
         if (typeof payload.model === "string") model = payload.model
-      })
+      }, deadline)
       return { usage, model, durationMs: Date.now() - startedAt, text }
     },
   }

@@ -16,6 +16,7 @@ import type { DataHubContext } from "./data-hub-context.js"
 import { findFeed, findSource, SELECT_RUN, toIsoRow, type DataFeedRow, type DataRunRow, type DataSourceRow } from "./records.js"
 import { emptyApply, mergeApply, type ApplyResult, type Rejection, type ValidRecord, type WriteContext } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
+import { useBatchStatementTimeout } from "../../../infrastructure/database/pool.js"
 
 /**
  * Pipeline de um Run: CONNECTING → FETCHING → PARSING → MAPPING → VALIDATING → APPLYING →
@@ -321,10 +322,17 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
     const total = emptyApply()
     const client = await ctx.db.connect()
     try {
-      if (atomic) await client.query("begin")
+      // Cada transação de aplicação roda com o limite de comando das cargas em lote, mesmo quando esta carga roda na API.
+      if (atomic) {
+        await client.query("begin")
+        await useBatchStatementTimeout(client)
+      }
       for (let index = 0; index < prepared.ready.length; index += APPLY_BATCH) {
         const chunk = prepared.ready.slice(index, index + APPLY_BATCH)
-        if (!atomic) await client.query("begin")
+        if (!atomic) {
+          await client.query("begin")
+          await useBatchStatementTimeout(client)
+        }
         try {
           const result = await writer.apply(writeContext, client, chunk)
           await persistLineage(client, run, result.lineage)

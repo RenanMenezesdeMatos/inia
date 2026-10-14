@@ -110,7 +110,6 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     await pool.query("delete from feedback_material_recommendations where person_id = any($1::uuid[])", [people])
     await pool.query("delete from feedback_support_materials where feedback_id = any($1::uuid[])", [feedbackRows.map((row) => row.id)])
     await pool.query("delete from case_timeline_events where case_id = any($1::uuid[])", [feedbackRows.map((row) => row.case_id)])
-    await pool.query("delete from outbox_events where aggregate_id::text = any($1::text[])", [feedbackRows.map((row) => row.id)])
     await pool.query("delete from audit_logs where action = 'FEEDBACK_GREETING_REPROJECTED' and entity_id = any($1::uuid[])", [feedbackRows.map((row) => row.id)])
     await pool.query("delete from feedback_follow_up_hides where feedback_id = any($1::uuid[])", [feedbackRows.map((row) => row.id)])
     await pool.query("delete from feedbacks where operator_id = any($1::uuid[])", [people])

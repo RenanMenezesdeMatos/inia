@@ -16,8 +16,8 @@ import { checkpointReadinessOf, compositeFactsOf, isObservationEligibleForAnalyt
 import { observationsFrom } from "../../indicator-diagnosis/domain/process-patterns.js"
 import { sectionProcessRoleIn, sectionProcessRoleOf } from "../../knowledge/domain/section-roles.js"
 import { retrieveKnowledgeForAgent } from "../../knowledge/application/retrieve-knowledge.js"
+import { fakeKnowledgeDb } from "../../knowledge/testing/fake-knowledge-db.js"
 import { checkpointCapacityFor, PROCESS_ASSESSMENT_INSTRUCTIONS } from "../../agents/domain/process-assessment-contract.js"
-import type { Database } from "../../../infrastructure/database/pool.js"
 import {
   V171K_ASSESSMENT, V171K_CHECKLIST_ID, V171K_COLLABORATOR_NAME, V171K_CONTENT, V171K_DOC_TITLE, V171K_PRESENTED, V171K_PUBLISHED, V171K_SUBJECT, V171K_TRANSCRIPT, V171K_WRITER_RAW,
 } from "../testing/contestacao-v171k-smoke-fixture.js"
@@ -77,7 +77,7 @@ describe("V1.7.1l — A/B/C) papel da SEÇÃO × papel do SEGMENTO", () => {
 
 describe("V1.7.1l — D) o objetivo continua como CONTEXTO para o especialista (espaço de candidatos)", () => {
   const DOC = "# Procedimento X\n\n## 1. Objetivo\n\nGarantir:\n\n- Informação sobre prazos;\n- Prevenção de cobranças.\n\n## 2. Checklist do operador\n\n- [ ] Informei o prazo?\n- [ ] Forneci protocolo?"
-  const fakeDb = { query: async () => ({ rows: [{ id: "doc-x", title: "Procedimento X", content: DOC }] }) } as unknown as Database
+  const fakeDb = fakeKnowledgeDb({ "agent-x": [{ id: "doc-x", title: "Procedimento X", content: DOC }] })
   it("o conteúdo do objetivo chega ao prompt rotulado como contexto; o checklist sai como antes; sem a opção nada muda", async () => {
     const marked = await retrieveKnowledgeForAgent(fakeDb, "agent-x", "prazo", undefined, null, { markProcessRoles: true })
     expect(marked.trace.mode).toBe("FULL")

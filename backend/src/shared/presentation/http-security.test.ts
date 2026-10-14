@@ -6,7 +6,8 @@ import type { Database } from "../../infrastructure/database/pool.js"
 import { createApp, parseTrustProxy } from "../../main/app.js"
 import { legacyAccessQuery } from "../../modules/access/testing/legacy-admin-fixture.js"
 import { hashPassword } from "../../modules/auth/infrastructure/password-hasher.js"
-import { createRateLimiter } from "./rate-limit.js"
+import { createMemoryRateLimitStore } from "../application/rate-limit/rate-limit-store.js"
+import { createRateLimiter, normalizeClientIp, rateLimitBucket } from "./rate-limit.js"
 
 /**
  * Controles HTTP transversais da auditoria de segurança (docs/security/relatorio-de-achados.md): conferência de origem das
@@ -169,6 +170,47 @@ describe("limites de requisições", () => {
     expect((await attempt("203.0.113.11")).status).toBe(401)
   })
 
+  it("login: cada e-mail tem o seu contador no mesmo IP (Citrix/NAT); logins certos não esgotam o teto de recusas do IP", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIpAndEmail: 2, loginPerIp: 2 } })
+    const attempt = (email: string, password: string) => request(app).post("/api/v1/auth/login").set("X-Forwarded-For", "203.0.113.20").send({ email, password })
+    // Muitas pessoas entrando certo pelo mesmo IP (o banco falso aceita qualquer e-mail com a senha certa): ninguém é barrado.
+    for (let index = 0; index < 5; index += 1) expect((await attempt(`pessoa${index}@inia.com`, "Inia@123")).status).toBe(200)
+    // O mesmo e-mail (com outra caixa e espaços) atinge o próprio teto; outro e-mail no mesmo IP continua.
+    expect((await attempt(ACCOUNT.email, "Inia@123")).status).toBe(200)
+    expect((await attempt(ACCOUNT.email, "Inia@123")).status).toBe(200)
+    const sameEmail = await attempt(" Carla.Nunes@inia.com ", "Inia@123")
+    expect(sameEmail.status).toBe(429)
+    expect(sameEmail.body.error.message).toContain("este e-mail")
+    expect((await attempt("outra.pessoa@inia.com", "errada-123")).status).toBe(401)
+  })
+
+  it("IP com a porta (padrão do ARR no IIS: X-Forwarded-For 203.0.113.5:54321) conta como o mesmo IP", async () => {
+    expect(normalizeClientIp("203.0.113.5:54321")).toBe("203.0.113.5")
+    expect(normalizeClientIp("[2001:db8::1]:443")).toBe("2001:db8::1")
+    expect(normalizeClientIp("::ffff:127.0.0.1")).toBe("127.0.0.1")
+    expect(normalizeClientIp("2001:db8::1")).toBe("2001:db8::1")
+    const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIp: 2 } })
+    const attempt = (port: number) => request(app).post("/api/v1/auth/login").set("X-Forwarded-For", `203.0.113.30:${port}`).send({ email: `pessoa-${Math.random()}@inia.com`, password: "errada-123" })
+    expect((await attempt(50001)).status).toBe(401)
+    expect((await attempt(50002)).status).toBe(401)
+    expect((await attempt(50003)).status).toBe(429)
+  })
+
+  it("balde do limite: regra + hash da chave — nunca IP ou e-mail em claro", () => {
+    const bucket = rateLimitBucket("login-ip-email", "203.0.113.20|carla.nunes@inia.com")
+    expect(bucket).toMatch(/^login-ip-email:[0-9a-f]{32}$/)
+    expect(bucket).not.toContain("carla")
+    expect(rateLimitBucket("login-ip-email", "203.0.113.20|carla.nunes@inia.com")).toBe(bucket)
+  })
+
+  it("loja indisponível: a requisição passa (o limite nunca derruba o produto) e o aviso vai para o log", async () => {
+    const failing = { consume: () => Promise.reject(new Error("banco fora")), check: () => Promise.reject(new Error("banco fora")), record: () => Promise.reject(new Error("banco fora")) }
+    const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIpAndEmail: 1, loginPerIp: 1 }, rateLimitStore: failing })
+    const login = () => request(app).post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+    expect((await login()).status).toBe(200)
+    expect((await login()).status).toBe(200)
+  })
+
   it("confirmação de ciência com senha: só as FALHAS contam, por conta", async () => {
     const app = createApp(fakeDatabase().database, { rateLimits: { readConfirmationFailuresPerAccount: 2 } })
     const cookie = await loggedInCookie(app)
@@ -197,7 +239,7 @@ describe("limites de requisições", () => {
 
   it("janela deslizante: libera depois da janela e despreza a anterior com o tempo", () => {
     let now = 0
-    const limiter = createRateLimiter({ name: "t", windowMs: 1000, max: 2, key: () => "k" }, () => now)
+    const limiter = createRateLimiter({ name: "t", windowMs: 1000, max: 2, key: () => "k" }, createMemoryRateLimitStore(() => now))
     const run = () => {
       let status = 200
       limiter({} as never, { set: () => undefined, status: (code: number) => ({ json: () => (status = code) }), on: () => undefined } as never, () => undefined)

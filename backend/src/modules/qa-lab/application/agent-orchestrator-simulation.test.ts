@@ -42,10 +42,13 @@ function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string 
       const name = id === SPECIALIST_ID ? "Especialista de Indicadores" : "Agente de Indicadores"
       return { rows: [{ name, objective: "obj", description: "desc", context_prompt: "prompt", active: options.agentActive ?? true }], rowCount: 1 }
     }
-    // Atende tanto a listagem de bases do contexto do QA quanto o retrieval do prompt
-    // (retrieve-knowledge.ts), que também lê `content` da versão publicada.
+    // Atende tanto a listagem de bases do contexto do QA quanto o retrieval do prompt (retrieve-knowledge.ts), que primeiro
+    // lê as versões publicadas vinculadas (`versionId`) e depois o `content` dessas versões.
     if (text.includes("from agent_knowledge_documents akd join knowledge_documents kd")) {
-      return { rows: [{ id: "k1", title: "Manual de PRV", content: "## PRV\nO PRV é o programa de remuneração variável." }], rowCount: 1 }
+      return { rows: [{ id: "k1", title: "Manual de PRV", versionId: "k1-v1", version: 1, organizationId: "org-qa", content: "## PRV\nO PRV é o programa de remuneração variável." }], rowCount: 1 }
+    }
+    if (text.includes("from knowledge_versions where id = any")) {
+      return { rows: (params[0] as string[]).includes("k1-v1") ? [{ id: "k1-v1", content: "## PRV\nO PRV é o programa de remuneração variável." }] : [], rowCount: 1 }
     }
     if (text.includes("select id, name from agents where id = any")) {
       return { rows: [{ id: AGENT_ID, name: "Agente de Indicadores" }, { id: SPECIALIST_ID, name: "Especialista de Indicadores" }], rowCount: 2 }

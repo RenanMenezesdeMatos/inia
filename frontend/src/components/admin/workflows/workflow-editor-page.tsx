@@ -40,6 +40,7 @@ import { ManualRunDialog } from "./manual-run-dialog"
 
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useOrchestratorsQuery } from "@/queries/admin/use-assistant-queries"
+import { usePublishedPolicySummariesQuery } from "@/queries/admin/use-intervention-policy-queries"
 import {
   useDeleteWorkflowMutation,
   usePublishWorkflowMutation,
@@ -132,6 +133,9 @@ function defaultConfigFor(type: FlowNodeType, trigger: WorkflowDetail["trigger"]
       return { reviewTarget: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" } }
     case "output":
       return { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "" }
+    case "intervention_policy":
+      // Nasce em "Somente recomendar": abrir de fato é uma escolha explícita de quem configura.
+      return { policyId: "", mode: "RECOMMEND_ONLY", analysisSourceNodeIds: [] }
   }
 }
 
@@ -194,6 +198,8 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
   const colorMode = useReactFlowColorMode()
   const agentsQuery = useAgentsQuery()
   const orchestratorsQuery = useOrchestratorsQuery()
+  // Só para o nome no card do nó "Avaliar política de acompanhamento" (resumo publicado — lido com workflows.manage).
+  const policySummariesQuery = usePublishedPolicySummariesQuery()
   const variablesQuery = useWorkflowVariablesQuery(workflow.id)
   const orchestratorsById = useMemo(() => new Map((orchestratorsQuery.data ?? []).map((orchestrator) => [orchestrator.id, orchestrator])), [orchestratorsQuery.data])
   const saveDraftMutation = useSaveWorkflowDraftMutation(workflow.id)
@@ -361,8 +367,13 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
       isConsolidatedMode: Boolean(workflow.consolidatedStructure),
       getAgentName: (agentId: string) => agentsQuery.data?.find((agent) => agent.id === agentId)?.name,
       getOrchestratorName: (orchestratorId: string) => orchestratorsQuery.data?.find((orchestrator) => orchestrator.id === orchestratorId)?.name,
+      getPolicyName: (policyId: string) => policySummariesQuery.data?.find((policy) => policy.id === policyId)?.name,
       getStructuredFieldLabel: (nodeId: string, fieldPath: string) =>
-        resolveStructuredFields(currentGraph, nodeId, orchestratorsById)?.find((field) => field.path === fieldPath)?.label,
+        resolveStructuredFields(currentGraph, nodeId, orchestratorsById, new Map((policySummariesQuery.data ?? []).map((policy) => [policy.id, policy])))?.find((field) => field.path === fieldPath)?.label,
+      getStructuredFieldOptionLabel: (nodeId: string, fieldPath: string, value: string) =>
+        resolveStructuredFields(currentGraph, nodeId, orchestratorsById, new Map((policySummariesQuery.data ?? []).map((policy) => [policy.id, policy])))
+          ?.find((field) => field.path === fieldPath)
+          ?.enumOptions?.find((option) => option.value === value)?.label,
       getVariable: (variableId: string) => {
         const variable = variablesQuery.data?.find((candidate) => candidate.id === variableId)
         return variable ? { label: variable.name, type: variable.type } : undefined
@@ -370,7 +381,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
       getNodeLabel: (nodeId: string) => currentGraph.nodes.find((candidate) => candidate.id === nodeId)?.label,
       issuesByNodeId,
     }),
-    [workflow.trigger, workflow.consolidatedStructure, agentsQuery.data, orchestratorsQuery.data, orchestratorsById, currentGraph, variablesQuery.data, issuesByNodeId],
+    [workflow.trigger, workflow.consolidatedStructure, agentsQuery.data, orchestratorsQuery.data, policySummariesQuery.data, orchestratorsById, currentGraph, variablesQuery.data, issuesByNodeId],
   )
 
   return (

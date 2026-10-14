@@ -11,6 +11,17 @@
  *    Output, outro nó publicando o mesmo artefato, avisos criados antes desta regra).
  */
 export const AVATAR_ALERT_KEY_PREFIX = "workflow_avatar:"
+/** Aviso da entrega de Chat (`workflow_chat:<outputId>`) — o sino abre a conversa criada por ela. */
+export const CHAT_ALERT_KEY_PREFIX = "workflow_chat:"
+
+/**
+ * Id da entrega (`workflow_outputs.id`) gravado na chave do aviso (`<prefixo><outputId>`) — como expressão uuid, para o join
+ * usar a chave primária da entrega (concatenar `prefixo || wo.id` obrigava a varrer todas as entregas). Chave fora do formato
+ * nunca casa: o CASE impede o cast de um texto que não é uuid.
+ */
+export function alertOutputIdSql(alert: string, prefix: string): string {
+  return `(case when ${alert}.dedupe_key ~ '^${prefix}[0-9a-f-]{36}$' then substr(${alert}.dedupe_key, ${prefix.length + 1})::uuid end)`
+}
 
 /** Expressão booleana sobre a linha de entrega `output` (alias de `workflow_outputs`). */
 export function recadoCoveredByFollowUpSql(output: string): string {
@@ -22,8 +33,6 @@ export function recadoCoveredByFollowUpSql(output: string): string {
 
 /** Expressão booleana sobre o aviso `alert` (alias de `alerts`): é o aviso de um recado de voz coberto pelo Acompanhamento. */
 export function recadoAlertCoveredByFollowUpSql(alert: string): string {
-  // O id da entrega vem da chave gravada na criação do aviso (`workflow_avatar:<outputId>`); chave fora do formato nunca casa
-  // (o CASE impede o cast de um texto que não é uuid).
-  const outputId = `(case when ${alert}.dedupe_key ~ '^${AVATAR_ALERT_KEY_PREFIX}[0-9a-f-]{36}$' then substr(${alert}.dedupe_key, ${AVATAR_ALERT_KEY_PREFIX.length + 1})::uuid end)`
-  return `(${alert}.alert_type = 'WORKFLOW_AVATAR_MESSAGE' and exists (select 1 from workflow_outputs rfu_o where rfu_o.id = ${outputId} and rfu_o.surface = 'AVATAR' and ${recadoCoveredByFollowUpSql("rfu_o")}))`
+  // O id da entrega vem da chave gravada na criação do aviso (`workflow_avatar:<outputId>`).
+  return `(${alert}.alert_type = 'WORKFLOW_AVATAR_MESSAGE' and exists (select 1 from workflow_outputs rfu_o where rfu_o.id = ${alertOutputIdSql(alert, AVATAR_ALERT_KEY_PREFIX)} and rfu_o.surface = 'AVATAR' and ${recadoCoveredByFollowUpSql("rfu_o")}))`
 }

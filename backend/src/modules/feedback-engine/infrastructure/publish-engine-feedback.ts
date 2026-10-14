@@ -13,7 +13,7 @@ import { deliverySkipOfMessage } from "./delivery-guards-sql.js"
 /**
  * PUBLICAÇÃO da mensagem do motor no ACOMPANHAMENTO (Output FOLLOW_UP + O próprio operador).
  *
- * Reaproveita a publicação real do feedback (supervision_cases + evidences + feedbacks PUBLISHED + timeline + outbox) — o feed,
+ * Reaproveita a publicação real do feedback (supervision_cases + evidences + feedbacks PUBLISHED + timeline) — o feed,
  * a CIÊNCIA, o chat e os analytics leem o mesmo registro de sempre — numa transação só e IDEMPOTENTE por nó Output
  * (`workflow_output_emissions`). O conteúdo vem SÓ da mensagem gravada (a fonte da verdade), nunca do Execution Context; o
  * destinatário precisa ser o colaborador da mensagem. No snapshot: o view model (o que a tela renderiza), proveniência segura
@@ -133,7 +133,6 @@ export async function publishEngineFeedbackToFollowUp(db: Database, input: Publi
     await client.query(`update feedback_material_recommendations set delivered_feedback_id = $2, delivered_at = now() where message_id = $1 and delivered_feedback_id is null`, [record.id, feedbackId])
     await client.query(`update feedback_engine_messages set delivered_at = coalesce(delivered_at, now()) where id = $1`, [record.id])
     await client.query(`insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'FEEDBACK_PUBLISHED', $3)`, [input.organizationId, caseId, { feedbackId }])
-    await client.query(`insert into outbox_events (aggregate_type, aggregate_id, event_type, payload) values ('Feedback', $1, 'FeedbackPublished', $2)`, [feedbackId, { feedbackId, caseId }])
     await client.query(`update workflow_output_emissions set case_id = $2, feedback_id = $3 where id = $1`, [emission.rows[0].id, caseId, feedbackId])
     await client.query("commit")
     return { caseId, feedbackId, reused: false }

@@ -2,17 +2,18 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Bell, CalendarDays, CalendarX2, CheckCheck, ClipboardCheck, Info, Send, Sparkles, type LucideIcon } from "lucide-react"
+import { AlertTriangle, Bell, CalendarDays, CalendarX2, CheckCheck, ClipboardCheck, Info, ListChecks, Send, Sparkles, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatShortDateTime } from "@/lib/format/date"
+import { interventionHref } from "@/lib/interventions/intervention-href"
 import { cn } from "@/lib/utils"
 import { useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "@/queries/notifications/use-notifications"
 import { NOTIFICATION_KIND_LABELS, type NotificationItem, type NotificationTarget } from "@/schemas/notifications/notifications.schema"
 
-const KIND_ICONS: Record<NotificationItem["kind"], LucideIcon> = { HUMAN_REVIEW: ClipboardCheck, WORKFLOW_OUTPUT: Send, INIA_MESSAGE: Sparkles, ESCALATION: AlertTriangle, WORKDAY_RECONCILIATION: CalendarX2, CALENDAR_NOTICE: CalendarDays, OTHER: Info }
+const KIND_ICONS: Record<NotificationItem["kind"], LucideIcon> = { HUMAN_REVIEW: ClipboardCheck, WORKFLOW_OUTPUT: Send, INIA_MESSAGE: Sparkles, ESCALATION: AlertTriangle, WORKDAY_RECONCILIATION: CalendarX2, CALENDAR_NOTICE: CalendarDays, INTERVENTION: ListChecks, OTHER: Info }
 
 /** Destino de cada notificação — o backend diz O QUE abrir (revisão, pendência de produção, item do
  * Acompanhamento, Calendário da equipe, Calendário operacional); aqui só vira rota. `profileHref` é a
@@ -36,6 +37,8 @@ export function notificationHref(target: NotificationTarget, profileHref: string
       return `${profileHref}?tab=followup&iniaConversation=${encodeURIComponent(target.conversationId)}`
     case "INIA_AVATAR_DELIVERY":
       return `${profileHref}?tab=followup&iniaDelivery=${encodeURIComponent(target.deliveryId)}`
+    case "INTERVENTION":
+      return interventionHref(target.caseId, target.interventionId)
     case "NONE":
       return null
   }
@@ -110,7 +113,7 @@ export function NotificationPanel({ profileHref, onNavigate }: { profileHref: st
       {pendingActions > 0 ? (
         <button type="button" onClick={() => onNavigate(`${profileHref}?tab=pending`)} className="flex shrink-0 items-center gap-2 border-b border-border/70 bg-amber-50 px-4 py-2 text-left text-xs font-medium text-amber-800 hover:bg-amber-100 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-950">
           <ClipboardCheck className="size-3.5" aria-hidden />
-          {pendingActions === 1 ? "1 revisão aguarda sua decisão" : `${pendingActions} revisões aguardam sua decisão`} · abrir Pendências
+          {pendingActions === 1 ? "1 pendência aguarda você" : `${pendingActions} pendências aguardam você`} · abrir Pendências
         </button>
       ) : null}
 

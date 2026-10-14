@@ -98,6 +98,7 @@ export const manualRunSchema = z.object({
     events: z.array(z.object({ nodeId: z.string(), nodeLabel: z.string().nullable(), eventType: z.string(), createdAt: z.coerce.string() })),
   }),
   deliveries: z.array(manualRunDeliverySchema),
+  interventions: z.array(z.object({ id: z.string(), caseId: z.string(), typeName: z.string(), status: z.string(), responsibleName: z.string(), dueAt: z.string() })).default([]),
 })
 export type ManualRun = z.infer<typeof manualRunSchema>
 

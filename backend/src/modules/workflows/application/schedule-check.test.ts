@@ -4,6 +4,13 @@ import { runScheduleCheck } from "./schedule-check.js"
 
 type QueryHandler = (sql: string, params?: unknown[]) => { rows: unknown[]; rowCount: number } | undefined
 
+/** O checador nasce as matrículas EM LOTE (um insert por disparo): `$5` = sujeitos, `$6` = horários — um par por matrícula. */
+function slotsOf(params: unknown[] | undefined): [subject: string, scheduledFor: string][] {
+  const subjects = (params?.[4] ?? []) as string[]
+  const times = (params?.[5] ?? []) as string[]
+  return subjects.map((subject, index) => [subject, times[index]!])
+}
+
 type WorkflowRow = {
   id: string
   active_version_id: string
@@ -51,11 +58,14 @@ function fakeDb(workflow: WorkflowRow, extra: QueryHandler = () => undefined): {
       }
 
       if (sql.trim().startsWith("insert into workflow_enrollments")) {
-        const scheduledFor = params?.[4] as string
-        const slot = `${workflow.id}:operator-1:${scheduledFor}`
-        if (insertedSlots.has(slot)) return { rows: [], rowCount: 0 } // on conflict do nothing
-        insertedSlots.add(slot)
-        return { rows: [{ id: "enrollment-1" }], rowCount: 1 }
+        let inserted = 0
+        for (const [, scheduledFor] of slotsOf(params)) {
+          const slot = `${workflow.id}:operator-1:${scheduledFor}`
+          if (insertedSlots.has(slot)) continue // on conflict do nothing
+          insertedSlots.add(slot)
+          inserted++
+        }
+        return { rows: [], rowCount: inserted }
       }
 
       return { rows: [], rowCount: 0 }
@@ -195,12 +205,14 @@ function fakeDbRelative(workflow: WorkflowRow, operators: OperatorFixture[], ext
       }
 
       if (sql.trim().startsWith("insert into workflow_enrollments")) {
-        const operatorId = params?.[3] as string
-        const scheduledFor = params?.[4] as string
-        const slot = `${workflow.id}:${operatorId}:${scheduledFor}`
-        if (insertedSlots.has(slot)) return { rows: [], rowCount: 0 }
-        insertedSlots.add(slot)
-        return { rows: [{ id: "enrollment-1" }], rowCount: 1 }
+        let inserted = 0
+        for (const [operatorId, scheduledFor] of slotsOf(params)) {
+          const slot = `${workflow.id}:${operatorId}:${scheduledFor}`
+          if (insertedSlots.has(slot)) continue
+          insertedSlots.add(slot)
+          inserted++
+        }
+        return { rows: [], rowCount: inserted }
       }
 
       return { rows: [], rowCount: 0 }
@@ -330,12 +342,14 @@ describe("runScheduleCheck — Modo de Avaliação (Individual com Filtro Popula
           return { rows: [{ graph: { nodes: [{ id: "trigger", type: "trigger" }] } }], rowCount: 1 }
         }
         if (sql.trim().startsWith("insert into workflow_enrollments")) {
-          const operatorId = params?.[3] as string
-          const scheduledFor = params?.[4] as string
-          const slot = `${workflow.id}:${operatorId}:${scheduledFor}`
-          if (insertedSlots.has(slot)) return { rows: [], rowCount: 0 }
-          insertedSlots.add(slot)
-          return { rows: [{ id: "enrollment-1" }], rowCount: 1 }
+          let inserted = 0
+          for (const [operatorId, scheduledFor] of slotsOf(params)) {
+            const slot = `${workflow.id}:${operatorId}:${scheduledFor}`
+            if (insertedSlots.has(slot)) continue
+            insertedSlots.add(slot)
+            inserted++
+          }
+          return { rows: [], rowCount: inserted }
         }
         return { rows: [], rowCount: 0 }
       }),
@@ -412,11 +426,9 @@ describe("runScheduleCheck — Modo de Avaliação (Individual com Filtro Popula
         }
         if (sql.includes("from workflow_versions")) return { rows: [{ graph: { nodes: [{ id: "trigger", type: "trigger" }] } }], rowCount: 1 }
         if (sql.trim().startsWith("insert into workflow_enrollments")) {
-          const operatorId = params?.[3] as string
-          const scheduledFor = params?.[4] as string
-          const slot = `${operatorId}:${scheduledFor}`
-          insertedSlots.add(slot)
-          return { rows: [{ id: "enrollment-1" }], rowCount: 1 }
+          const slots = slotsOf(params)
+          for (const [operatorId, scheduledFor] of slots) insertedSlots.add(`${operatorId}:${scheduledFor}`)
+          return { rows: [], rowCount: slots.length }
         }
         return { rows: [], rowCount: 0 }
       }),
@@ -450,8 +462,10 @@ describe("runScheduleCheck — organização de cada Workflow (nunca uma organiz
           return { rows: [{ id: operatorsOf[params[0] as string] }], rowCount: 1 }
         }
         if (sql.trim().startsWith("insert into workflow_enrollments")) {
-          inserts.push(params)
-          return { rows: [{ id: "enrollment" }], rowCount: 1 }
+          // Uma linha por matrícula, no formato (organização, workflow, versão, sujeito, horário, nó do gatilho).
+          const slots = slotsOf(params)
+          for (const [subject, scheduledFor] of slots) inserts.push([params[0], params[1], params[2], subject, scheduledFor, params[3]])
+          return { rows: [], rowCount: slots.length }
         }
         return { rows: [], rowCount: 0 }
       }),

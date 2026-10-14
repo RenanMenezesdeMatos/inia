@@ -1,4 +1,4 @@
-import { Bot, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Split, UsersRound, Zap, type LucideIcon } from "lucide-react"
+import { Bot, ClipboardCheck, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Split, UsersRound, Zap, type LucideIcon } from "lucide-react"
 
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
 import type { FlowNodeType, OutputSurface, OutputTargetType } from "@/schemas/admin/workflow-graph.schema"
@@ -16,7 +16,7 @@ import { NOTIFICATION_KIND_LABELS } from "@/schemas/notifications/notifications.
  */
 
 // ---------------------------------------------------------------------------------------------
-// Nodes do Workflow Engine — todos os 11 tipos reais do Builder
+// Nodes do Workflow Engine — todos os 12 tipos reais do Builder
 // ---------------------------------------------------------------------------------------------
 
 export type NodeContext = "STRUCTURE" | "EMPLOYEE_COLLECTION" | "EMPLOYEE" | "CONSOLIDATED_RESULT"
@@ -203,6 +203,29 @@ export const WIKI_NODES: Record<FlowNodeType, NodeDoc> = {
     acceptedIn: ["EMPLOYEE"],
     consolidatedOnly: false,
   },
+  intervention_policy: {
+    type: "intervention_policy",
+    label: NODE_TYPE_LABELS.intervention_policy,
+    icon: ClipboardCheck,
+    iconClass: "text-lime-700 dark:text-lime-300",
+    iconBgClass: "bg-lime-100 dark:bg-lime-950",
+    summary: "Avalia uma política de acompanhamento publicada: quais intervenções cabem para o colaborador.",
+    purpose:
+      "Aplicar os critérios administráveis da política (indicadores, metas, quartil oficial, recorrência, suficiência dos dados, situação funcional, intervenções anteriores, diagnóstico sustentado) sem reconstruí-los no Workflow. Grava a avaliação, o relatório de inteligência e as intervenções no caso de supervisão.",
+    whenToUse: "Quando o Workflow precisa decidir se cabe observar, orientar, treinar, abrir um plano de ação, encaminhar à liderança ou solicitar avaliação de continuidade — sempre pela política, nunca por uma sequência fixa.",
+    input: "O colaborador da execução, a política escolhida (versão em vigor no disparo) e, opcionalmente, nós anteriores como referência de análise (feedback publicado, caso, atendimento).",
+    output: "Resultado estruturado para Conditions: resultado geral (criada, aprovação pendente, recomendada, existente, nenhuma regra, inconclusiva, conflito, carência, não aplicável) e o resultado de CADA ação.",
+    settings: ["Política publicada", "Modo: Somente recomendar ou Abrir intervenções conforme a política", "Referências de análise (nós anteriores)"],
+    limitations: [
+      "Critérios, prazos, responsáveis e aprovações são da política — o nó não sobrescreve",
+      "Exige colaborador individual",
+      "Retry e retomada devolvem a mesma avaliação; outra versão publicada só vale para os próximos disparos",
+      "Nunca decide nem executa desligamento: a avaliação de continuidade é sempre uma solicitação de decisão humana",
+    ],
+    example: "Gatilho (Agenda mensal) → Avaliar política \"Acompanhamento de TMA\" → Condição \"Aprovação pendente = sim\" → Output avisando o gerente.",
+    acceptedIn: ["EMPLOYEE"],
+    consolidatedOnly: false,
+  },
   output: {
     type: "output",
     label: NODE_TYPE_LABELS.output,
@@ -239,7 +262,7 @@ export const WIKI_NODES: Record<FlowNodeType, NodeDoc> = {
   },
 }
 
-export const WIKI_NODE_ORDER: FlowNodeType[] = ["trigger", "condition", "action", "orchestrator", "human_review", "output", "wait", "end", "select_employees", "apply_individually", "consolidate_results"]
+export const WIKI_NODE_ORDER: FlowNodeType[] = ["trigger", "condition", "action", "orchestrator", "intervention_policy", "human_review", "output", "wait", "end", "select_employees", "apply_individually", "consolidate_results"]
 
 // ---------------------------------------------------------------------------------------------
 // Surfaces (onde algo aparece) — todas as reais, com o estado de consumo de cada uma
@@ -366,6 +389,7 @@ export const WIKI_NOTIFICATIONS: Record<NotificationKind, NotificationDoc> = {
   ESCALATION: { kind: "ESCALATION", label: NOTIFICATION_KIND_LABELS.ESCALATION, productMeaning: "Um caso foi escalonado para você (Escalonar de um Workflow ou \"Escalar\" numa revisão).", whereItLeads: "Acompanhamento, com o escalonamento destacado." },
   WORKDAY_RECONCILIATION: { kind: "WORKDAY_RECONCILIATION", label: NOTIFICATION_KIND_LABELS.WORKDAY_RECONCILIATION, productMeaning: "Um colaborador da sua equipe estava programado para trabalhar, o turno terminou e nenhuma evidência de produção chegou — você confirma o que aconteceu (não trabalhou / trabalhou e os dados não chegaram / corrigir escala).", whereItLeads: "Aba Pendências, com a pendência de produção aberta." },
   CALENDAR_NOTICE: { kind: "CALENDAR_NOTICE", label: NOTIFICATION_KIND_LABELS.CALENDAR_NOTICE, productMeaning: "Aviso do calendário operacional: produção observada num dia planejado como folga/day off (divergência), produção com situação funcional não produtiva (inconsistência) ou calendário de escalas perto do fim (Admin).", whereItLeads: "Calendário da equipe (no dia/colaborador) ou Administração › Central de Dados › Calendário operacional." },
+  INTERVENTION: { kind: "INTERVENTION", label: NOTIFICATION_KIND_LABELS.INTERVENTION, productMeaning: "Uma intervenção foi atribuída a você, aguarda sua aprovação ou decisão, foi aprovada, devolvida, encaminhada ou recebeu um novo sinal da política de acompanhamento.", whereItLeads: "Caso de supervisão, com a intervenção aberta (relatório, evidências, controles e histórico)." },
   OTHER: { kind: "OTHER", label: NOTIFICATION_KIND_LABELS.OTHER, productMeaning: "Aviso genérico endereçado a você.", whereItLeads: "Marca como lido; sem destino específico." },
 }
 

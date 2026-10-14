@@ -119,6 +119,17 @@ function describeEscalateEvent(event: WorkflowEnrollmentEvent, graph: FlowGraph 
   return `De ${from} → ${targetLabel} · ${surfaces || "sem superfície"}${reasonText}`
 }
 
+const POLICY_OUTCOME_LABELS: Record<string, string> = { CREATED: "intervenção criada", PENDING_APPROVAL: "aprovação pendente", RECOMMENDED: "intervenção recomendada", EXISTING: "intervenção já existente", NO_MATCH: "nenhuma regra atendida", INCONCLUSIVE: "avaliação inconclusiva", CONFLICT: "conflito entre intervenções", SUPPRESSED: "suprimida pela carência", NOT_APPLICABLE: "política não aplicável" }
+const POLICY_DECISION_LABELS: Record<string, string> = { CREATED: "aberta", PENDING_APPROVAL: "aguardando aprovação", RECOMMENDED: "recomendada", EXISTING: "já existia", SUPPRESSED: "carência", CONFLICT: "conflito" }
+
+/** "Avaliar política de acompanhamento": resultado geral + decisão POR AÇÃO e a versão usada — sem ids técnicos. */
+function describePolicyEvent(event: WorkflowEnrollmentEvent): string | null {
+  if (event.eventType !== "intervention_policy_evaluated") return null
+  const payload = event.payload as { outcome?: unknown; policyVersion?: unknown; mode?: unknown; decisions?: unknown }
+  const decisions = Array.isArray(payload.decisions) ? (payload.decisions as { typeKey?: unknown; status?: unknown }[]).map((decision) => `${String(decision.typeKey)}: ${POLICY_DECISION_LABELS[String(decision.status)] ?? String(decision.status)}`) : []
+  return `Política v${String(payload.policyVersion ?? "?")} (${payload.mode === "APPLY_POLICY" ? "abre conforme a política" : "somente recomenda"}) — ${POLICY_OUTCOME_LABELS[String(payload.outcome)] ?? String(payload.outcome)}${decisions.length > 0 ? ` · ${decisions.join(" · ")}` : ""}`
+}
+
 function EventList({ enrollment, graph, workflowId }: { enrollment: WorkflowEnrollment; graph: FlowGraph | null; workflowId: string }) {
   const variablesQuery = useWorkflowVariablesQuery(workflowId)
   const variables = variablesQuery.data ?? []
@@ -127,6 +138,7 @@ function EventList({ enrollment, graph, workflowId }: { enrollment: WorkflowEnro
       {enrollment.events.map((event, index) => {
         const setVariableDetail = describeSetVariableEvent(event, graph, variables)
         const escalateDetail = describeEscalateEvent(event, graph)
+        const policyDetail = describePolicyEvent(event)
         // V1.7.1c — falha classificada: categoria, tentativa, campo inválido e decisão de retry (sem conteúdo da resposta).
         const failure = event.eventType === "node_failed" || event.eventType === "flow_dead" ? failureFromEventPayload(event.payload) : null
         return (
@@ -138,6 +150,7 @@ function EventList({ enrollment, graph, workflowId }: { enrollment: WorkflowEnro
             </div>
             {setVariableDetail ? <p className="pl-[4.75rem] text-xs">{setVariableDetail}</p> : null}
             {escalateDetail ? <p className="pl-[4.75rem] text-xs">{escalateDetail}</p> : null}
+            {policyDetail ? <p className="pl-[4.75rem] text-xs">{policyDetail}</p> : null}
             {failure ? <div className="pl-[4.75rem] pt-1"><ExecutionFailureDetail failure={failure} /></div> : null}
           </li>
         )

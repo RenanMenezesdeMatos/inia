@@ -10,16 +10,30 @@
   Usa o WinSW (Windows Service Wrapper, gratuito, licença MIT): baixe o arquivo WinSW-x64.exe da versão 2.12.0 em
   https://github.com/winsw/winsw/releases e informe o caminho dele em -WinSW.
 
-  Cria três serviços:
-    INIA-API            node backend\dist\main\server.js --role=api      telas, chat, voz e administração (lê o backend\.env)
-    INIA-Processamento  node backend\dist\main\server.js --role=worker   Workflows, feedbacks e tarefas periódicas - sem
-                        HTTP público; /health só em 127.0.0.1 (porta WORKER_HEALTH_PORT do backend\.env, padrão 3334)
-    INIA-Interface      node frontend\...\next start -H ... -p ...       (lê o frontend\.env.local)
+  Cria os serviços (um por instância; a primeira de cada papel mantém o nome antigo):
+    INIA-API, INIA-API-2…            node backend\dist\main\server.js --role=api     telas, chat, voz e administração
+    INIA-Processamento, …-2…         node backend\dist\main\server.js --role=worker  Workflows, feedbacks e tarefas periódicas -
+                                     sem HTTP público; /health só em 127.0.0.1 (WORKER_HEALTH_PORT do backend\.env, padrão
+                                     3334; a instância j usa essa porta + j - 1)
+    INIA-Interface, INIA-Interface-2…  node frontend\...\next start -H ... -p ...   (lê o frontend\.env.local)
   API e processamento separados: um lote pesado de IA não divide o processador com as telas. Todos iniciam
   automaticamente (com atraso, depois da rede), reiniciam em caso de falha e gravam os registros em <pasta da INIA>\logs.
-  Rodar de novo reinstala (útil depois de mudar a configuração).
+  Rodar de novo reinstala (útil depois de mudar a configuração ou o número de instâncias).
+
+  VÁRIAS INSTÂNCIAS (web farm do IIS - configurar-iis.ps1 com os MESMOS números): com mais de uma, a instância i da API e
+  da interface escuta em 127.0.0.i, na mesma porta (o ARR do IIS identifica o servidor pelo endereço). Um processo Node usa
+  ~1 núcleo: some instâncias até perto do número de núcleos livres. Tudo o que precisa valer para o conjunto (limites de
+  login, pausa do provedor de IA, tarefas periódicas, fila de Workflows e da Central de Dados) fica no PostgreSQL.
+  -CotaIaApi / -CotaIaProcessamento: chamadas de IA ao mesmo tempo POR PROCESSO (INIA_AI_MAX_CONCURRENT_CALLS) - proteção
+  local; o limite do PROVEDOR fica na conexão de IA (Administração > IA > Provedores > "Chamadas simultâneas"), dividido por
+  todas as instâncias. -PoolApi / -PoolProcessamento: conexões ao banco POR
+  INSTÂNCIA (DATABASE_POOL_MAX) - a soma de todas + folga precisa caber no max_connections do PostgreSQL. 0 = o valor do
+  backend\.env.
 
   -ProcessoUnico volta ao formato antigo (um serviço INIA-API fazendo API + processamento, sem INIA-Processamento).
+
+  ATENÇÃO: escrito e revisado sem execução num Windows real (13/10/2026) - confira o resultado em services.msc e nos
+  /health e /ready de cada instância.
 
 .EXAMPLE
   .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe
@@ -28,6 +42,9 @@
 .EXAMPLE
   .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe -ProxyInternet http://proxy.empresa.local:8080 -CertificadoRaiz C:\certificados\raiz-empresa.pem
   (proxy que inspeciona HTTPS: o Node só aceita o certificado da empresa se receber a raiz em .pem)
+.EXAMPLE
+  .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe -InstanciasApi 3 -InstanciasInterface 2 -InstanciasProcessamento 2 -PoolApi 25 -PoolProcessamento 25
+  (3 APIs, 2 interfaces e 2 processamentos; depois: configurar-iis.ps1 -InstanciasApi 3 -InstanciasInterface 2)
 .EXAMPLE
   .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe -ProcessoUnico
   (API e processamento num processo só, como antes)
@@ -40,6 +57,13 @@ param(
   [string]$ProxyInternet = "",
   [string]$SemProxyPara = "localhost,127.0.0.1",
   [string]$CertificadoRaiz = "",
+  [ValidateRange(1, 20)][int]$InstanciasApi = 1,
+  [ValidateRange(1, 20)][int]$InstanciasInterface = 1,
+  [ValidateRange(1, 20)][int]$InstanciasProcessamento = 1,
+  [ValidateRange(0, 512)][int]$CotaIaApi = 0,
+  [ValidateRange(0, 512)][int]$CotaIaProcessamento = 0,
+  [ValidateRange(0, 200)][int]$PoolApi = 0,
+  [ValidateRange(0, 200)][int]$PoolProcessamento = 0,
   [switch]$ProcessoUnico,
   [switch]$Remover
 )
@@ -58,10 +82,21 @@ if (-not $identidade.IsInRole([Security.Principal.WindowsBuiltInRole]::Administr
 $raiz = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $pastaServicos = Join-Path $PSScriptRoot "bin"
 $pastaLogs = Join-Path $raiz "logs"
-# Todos os que podem existir (remover/reinstalar limpa qualquer formato); os instalados dependem de -ProcessoUnico.
-$servicos = @("INIA-API", "INIA-Processamento", "INIA-Interface")
-$instalar = @("INIA-API", "INIA-Processamento", "INIA-Interface")
-if ($ProcessoUnico) { $instalar = @("INIA-API", "INIA-Interface") }
+if ($ProcessoUnico -and ($InstanciasApi -gt 1 -or $InstanciasProcessamento -gt 1)) { Falha "-ProcessoUnico é um processo só: não combina com -InstanciasApi/-InstanciasProcessamento maiores que 1." }
+# A API recusa subir com menos de 2 (INIA_AI_MAX_CONCURRENT_CALLS, DATABASE_POOL_MAX): 0 = usar o backend\.env.
+foreach ($par in @(@("-CotaIaApi", $CotaIaApi), @("-CotaIaProcessamento", $CotaIaProcessamento), @("-PoolApi", $PoolApi), @("-PoolProcessamento", $PoolProcessamento))) {
+  if ($par[1] -eq 1) { Falha "$($par[0]) precisa ser 0 (usar o backend\.env) ou pelo menos 2." }
+}
+
+# Nome do serviço da instância i (a primeira mantém o nome antigo: atualizar uma instalação existente não cria um duplicado).
+function Nome-Instancia([string]$base, [int]$i) { if ($i -eq 1) { return $base } else { return "$base-$i" } }
+
+# Todos os que podem existir - inclusive instâncias a mais de uma instalação anterior (remover/reinstalar limpa qualquer formato).
+$servicos = @(@("INIA-API", "INIA-Processamento", "INIA-Interface") + @(Get-Service -Name "INIA-*" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^INIA-(API|Processamento|Interface)(-\d+)?$" } | ForEach-Object { $_.Name })) | Select-Object -Unique
+$instalar = @()
+foreach ($i in 1..$InstanciasApi) { $instalar += (Nome-Instancia "INIA-API" $i) }
+if (-not $ProcessoUnico) { foreach ($j in 1..$InstanciasProcessamento) { $instalar += (Nome-Instancia "INIA-Processamento" $j) } }
+foreach ($i in 1..$InstanciasInterface) { $instalar += (Nome-Instancia "INIA-Interface" $i) }
 
 function Remover-Servico([string]$id) {
   $exe = Join-Path $pastaServicos "$id.exe"
@@ -119,10 +154,24 @@ if (Test-Path $envInterface) {
     if ($linha -match "^INIA_WEB_HOST=(\S+)") { $hostInterface = $Matches[1] }
   }
 }
-$argumentosInterface = "`"$nextJs`" start -p $portaInterface"
-if ($hostInterface) { $argumentosInterface = "$argumentosInterface -H $hostInterface" }
+# Uma instância: como antes (endereço do frontend\.env.local). Várias: a instância i escuta em 127.0.0.i (web farm do IIS).
+function Argumentos-Interface([int]$i) {
+  $argumentos = "`"$nextJs`" start -p $portaInterface"
+  if ($InstanciasInterface -gt 1) { return "$argumentos -H 127.0.0.$i" }
+  if ($hostInterface) { return "$argumentos -H $hostInterface" }
+  return $argumentos
+}
 $exibicaoInterface = "todas as interfaces"; if ($hostInterface) { $exibicaoInterface = $hostInterface }
-Ok "interface na porta $portaInterface ($exibicaoInterface)"
+if ($InstanciasInterface -gt 1) { $exibicaoInterface = "127.0.0.1 a 127.0.0.$InstanciasInterface" }
+Ok "interface: $InstanciasInterface instância(s) na porta $portaInterface ($exibicaoInterface)"
+
+# Porta da API e do /health do processamento (as mesmas do backend\.env).
+$portaApi = "3333"
+$portaProcessamento = "3334"
+foreach ($linha in Get-Content (Join-Path $raiz "backend\.env")) {
+  if ($linha -match "^PORT=(\d+)") { $portaApi = $Matches[1] }
+  if ($linha -match "^WORKER_HEALTH_PORT=(\d+)") { $portaProcessamento = $Matches[1] }
+}
 
 # --- 2. Arquivos dos serviços -----------------------------------------------------------------------------------
 Passo "2/4 Gerando os arquivos dos serviços em $pastaServicos"
@@ -148,6 +197,25 @@ if ($CertificadoRaiz) {
   $ambienteApi += "  <env name=""NODE_EXTRA_CA_CERTS"" value=""$(Xml $CertificadoRaiz)""/>`r`n"
 }
 
+function Linha-Env([string]$nome, [string]$valor) { return "  <env name=""$nome"" value=""$(Xml $valor)""/>`r`n" }
+
+# Ambiente de cada instância (por cima do backend\.env: o dotenv não sobrescreve variável que o serviço já definiu).
+function Ambiente-Api([int]$i) {
+  $ambiente = $ambienteApi
+  if ($InstanciasApi -gt 1) { $ambiente += (Linha-Env "HOST" "127.0.0.$i") }
+  if ($CotaIaApi -gt 0) { $ambiente += (Linha-Env "INIA_AI_MAX_CONCURRENT_CALLS" "$CotaIaApi") }
+  if ($PoolApi -gt 0) { $ambiente += (Linha-Env "DATABASE_POOL_MAX" "$PoolApi") }
+  return $ambiente
+}
+function Ambiente-Processamento([int]$j) {
+  $ambiente = $ambienteApi
+  if ($portaProcessamento -ne "0") { $ambiente += (Linha-Env "WORKER_HEALTH_PORT" "$([int]$portaProcessamento + $j - 1)") }
+  # O processamento só tem lote: uma vaga reservada (o mínimo) basta - o chat roda na API.
+  if ($CotaIaProcessamento -gt 0) { $ambiente += (Linha-Env "INIA_AI_MAX_CONCURRENT_CALLS" "$CotaIaProcessamento") + (Linha-Env "INIA_AI_RESERVED_INTERACTIVE_CALLS" "1") }
+  if ($PoolProcessamento -gt 0) { $ambiente += (Linha-Env "DATABASE_POOL_MAX" "$PoolProcessamento") }
+  return $ambiente
+}
+
 function Gravar-Servico([string]$id, [string]$nome, [string]$descricao, [string]$argumentos, [string]$pasta, [string]$ambiente) {
   $xml = @"
 <service>
@@ -162,7 +230,9 @@ function Gravar-Servico([string]$id, [string]$nome, [string]$descricao, [string]
   <onfailure action="restart" delay="10 sec"/>
   <onfailure action="restart" delay="30 sec"/>
   <resetfailure>1 hour</resetfailure>
-  <stoptimeout>15 sec</stoptimeout>
+  <!-- A API sai da prontidão, espera o IIS tirá-la da farm (INIA_SHUTDOWN_DRAIN_MS, 5 s) e tem até 25 s para terminar
+       (INIA_SHUTDOWN_TIMEOUT_MS); 30 s aqui para o Windows não matar o processo antes disso. -->
+  <stoptimeout>30 sec</stoptimeout>
   <logpath>$(Xml $pastaLogs)</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>10240</sizeThreshold>
@@ -175,14 +245,24 @@ $ambiente</service>
   Ok "$id.exe + $id.xml"
 }
 
+function Exibicao([string]$id) { return ($id -replace "^INIA-", "INIA - ") }
 if ($ProcessoUnico) {
-  Gravar-Servico "INIA-API" "INIA - API" "INIA: API e processamento (backend, processo único). Configuração em backend\.env." "`"$apiJs`" --role=all" (Join-Path $raiz "backend") $ambienteApi
+  Gravar-Servico "INIA-API" "INIA - API" "INIA: API e processamento (backend, processo único). Configuração em backend\.env." "`"$apiJs`" --role=all" (Join-Path $raiz "backend") (Ambiente-Api 1)
 } else {
-  Gravar-Servico "INIA-API" "INIA - API" "INIA: API (telas, chat, voz e administração). Configuração em backend\.env." "`"$apiJs`" --role=api" (Join-Path $raiz "backend") $ambienteApi
+  foreach ($i in 1..$InstanciasApi) {
+    $id = Nome-Instancia "INIA-API" $i
+    Gravar-Servico $id (Exibicao $id) "INIA: API (telas, chat, voz e administração), instância $i de $InstanciasApi. Configuração em backend\.env." "`"$apiJs`" --role=api" (Join-Path $raiz "backend") (Ambiente-Api $i)
+  }
   # O processamento também chama a IA: recebe o mesmo proxy/certificado da API.
-  Gravar-Servico "INIA-Processamento" "INIA - Processamento" "INIA: processamento (Workflows, feedbacks e tarefas periódicas; sem HTTP público). Configuração em backend\.env." "`"$apiJs`" --role=worker" (Join-Path $raiz "backend") $ambienteApi
+  foreach ($j in 1..$InstanciasProcessamento) {
+    $id = Nome-Instancia "INIA-Processamento" $j
+    Gravar-Servico $id (Exibicao $id) "INIA: processamento (Workflows, feedbacks e tarefas periódicas; sem HTTP público), instância $j de $InstanciasProcessamento. Configuração em backend\.env." "`"$apiJs`" --role=worker" (Join-Path $raiz "backend") (Ambiente-Processamento $j)
+  }
 }
-Gravar-Servico "INIA-Interface" "INIA - Interface" "INIA: interface web. Configuração em frontend\.env.local." $argumentosInterface (Join-Path $raiz "frontend") ""
+foreach ($i in 1..$InstanciasInterface) {
+  $id = Nome-Instancia "INIA-Interface" $i
+  Gravar-Servico $id (Exibicao $id) "INIA: interface web, instância $i de $InstanciasInterface. Configuração em frontend\.env.local." (Argumentos-Interface $i) (Join-Path $raiz "frontend") ""
+}
 
 # --- 3. Instalar e iniciar --------------------------------------------------------------------------------------
 Passo "3/4 Instalando e iniciando"
@@ -196,38 +276,37 @@ foreach ($id in $instalar) {
 }
 
 # --- 4. Conferir ------------------------------------------------------------------------------------------------
-Passo "4/4 Conferindo a API e o processamento"
-$portaApi = "3333"
-$portaProcessamento = "3334"
-foreach ($linha in Get-Content (Join-Path $raiz "backend\.env")) {
-  if ($linha -match "^PORT=(\d+)") { $portaApi = $Matches[1] }
-  if ($linha -match "^WORKER_HEALTH_PORT=(\d+)") { $portaProcessamento = $Matches[1] }
+Passo "4/4 Conferindo cada instância"
+# Espera até 60 s por um 200 em $url; senão, aponta o log do serviço.
+function Esperar-200([string]$url, [string]$id) {
+  for ($tentativa = 0; $tentativa -lt 30; $tentativa++) {
+    try {
+      $resposta = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 $url
+      if ($resposta.StatusCode -eq 200) { Ok "$id respondendo em $url"; return }
+    } catch { Start-Sleep -Seconds 2 }
+  }
+  Falha "$id não respondeu em 60 s ($url) - veja $pastaLogs\$id.err.log e $pastaLogs\$id.out.log"
 }
-$respondeu = $false
-for ($tentativa = 0; $tentativa -lt 30 -and -not $respondeu; $tentativa++) {
-  try {
-    $resposta = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://127.0.0.1:$portaApi/health"
-    if ($resposta.StatusCode -eq 200) { $respondeu = $true }
-  } catch { Start-Sleep -Seconds 2 }
+foreach ($i in 1..$InstanciasApi) {
+  $enderecoApi = "127.0.0.1"; if ($InstanciasApi -gt 1) { $enderecoApi = "127.0.0.$i" }
+  # /ready = pronta para receber tráfego (banco respondendo) - o mesmo que o health check da web farm consulta.
+  Esperar-200 "http://$($enderecoApi):$portaApi/ready" (Nome-Instancia "INIA-API" $i)
 }
-if ($respondeu) { Ok "API respondendo em http://127.0.0.1:$portaApi/health" }
-else { Falha "A API não respondeu em 60 s - veja $pastaLogs\INIA-API.err.log e $pastaLogs\INIA-API.out.log" }
 if (-not $ProcessoUnico) {
   if ($portaProcessamento -eq "0") {
-    Ok "processamento sem /health (WORKER_HEALTH_PORT=0) - confira o serviço INIA-Processamento em services.msc"
+    Ok "processamento sem /health (WORKER_HEALTH_PORT=0) - confira os serviços INIA-Processamento em services.msc"
   } else {
-    $respondeu = $false
-    for ($tentativa = 0; $tentativa -lt 30 -and -not $respondeu; $tentativa++) {
-      try {
-        $resposta = Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://127.0.0.1:$portaProcessamento/health"
-        if ($resposta.StatusCode -eq 200) { $respondeu = $true }
-      } catch { Start-Sleep -Seconds 2 }
-    }
-    if ($respondeu) { Ok "processamento respondendo em http://127.0.0.1:$portaProcessamento/health" }
-    else { Falha "O processamento não respondeu em 60 s - veja $pastaLogs\INIA-Processamento.err.log e $pastaLogs\INIA-Processamento.out.log" }
+    foreach ($j in 1..$InstanciasProcessamento) { Esperar-200 "http://127.0.0.1:$([int]$portaProcessamento + $j - 1)/health" (Nome-Instancia "INIA-Processamento" $j) }
   }
 }
+foreach ($i in 1..$InstanciasInterface) {
+  $enderecoInterface = "127.0.0.1"; if ($InstanciasInterface -gt 1) { $enderecoInterface = "127.0.0.$i" }
+  Esperar-200 "http://$($enderecoInterface):$portaInterface/healthz" (Nome-Instancia "INIA-Interface" $i)
+}
 
-$nomes = ($instalar | ForEach-Object { $_ -replace "^INIA-", "INIA - " }) -join ", "
+$nomes = ($instalar | ForEach-Object { Exibicao $_ }) -join ", "
 Write-Host "`nPronto. Gerencie em Serviços do Windows (services.msc): $nomes." -ForegroundColor Green
 Write-Host "Registros: $pastaLogs" -ForegroundColor Green
+if ($InstanciasApi -gt 1 -or $InstanciasInterface -gt 1) {
+  Write-Host "Agora o IIS: .\configurar-iis.ps1 -Porta <porta pública> -InstanciasApi $InstanciasApi -InstanciasInterface $InstanciasInterface" -ForegroundColor Yellow
+}

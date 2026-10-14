@@ -1,15 +1,19 @@
 import type { NextFunction, Request, Response } from "express"
+import { createMemoryRateLimitStore, rateLimitBucket, type MaybePromise, type RateLimitDecision, type RateLimitStore } from "../application/rate-limit/rate-limit-store.js"
+
+export { rateLimitBucket }
 
 /**
- * LIMITE DE REQUISIÇÕES por chave (IP, conta…) numa janela deslizante aproximada (duas janelas fixas ponderadas) — em memória,
- * por processo. Protege as portas caras ou sensíveis (login, confirmação com senha, IA, ingestão por token) contra tentativa e
- * erro e contra quem dispara custo de IA em laço. Não substitui as travas de negócio (ex.: trava de login por e-mail).
+ * LIMITE DE REQUISIÇÕES por chave (IP, conta, IP+e-mail…) numa janela deslizante aproximada (duas janelas fixas ponderadas).
+ * Protege as portas caras ou sensíveis (login, confirmação com senha, IA, ingestão por token) contra tentativa e erro e contra
+ * quem dispara custo de IA em laço. Não substitui as travas de negócio (ex.: trava de login por e-mail).
  *
- * Limitação conhecida: com mais de um processo de API atrás de um balanceador, cada processo conta sozinho (o limite efetivo
- * multiplica pelo número de processos). Ver docs/security/pendencias-e-riscos.md.
+ * ONDE CONTA: a `RateLimitStore` (shared/application/rate-limit). O servidor real usa a do PostgreSQL — N processos de API
+ * atrás do IIS dividem o mesmo contador; sem loja informada (testes, scripts), memória do processo. Loja indisponível (banco
+ * fora) = a requisição passa e o problema vai para o log: o limite nunca derruba o produto sozinho.
  */
 export type RateLimitRule = {
-  /** Nome curto da regra (entra na chave — duas regras nunca dividem contador). */
+  /** Nome curto da regra (entra no balde — duas regras nunca dividem contador). */
   name: string
   windowMs: number
   /** Máximo de requisições por janela; 0 desliga a regra. */
@@ -21,68 +25,86 @@ export type RateLimitRule = {
   message?: string
 }
 
-type Counter = { windowStart: number; current: number; previous: number }
+const STORE_WARNING_INTERVAL_MS = 60_000
+const lastStoreWarning = new Map<string, number>()
 
-/** Teto de chaves vivas por regra: uma enxurrada de IPs forjados não esgota a memória (as mais antigas saem primeiro). */
-const MAX_KEYS = 50_000
+/** Falha da loja: avisa no log no máximo uma vez por minuto por regra (banco fora não vira enxurrada de linhas). */
+function warnStoreFailure(ruleName: string, error: unknown): void {
+  const now = Date.now()
+  if ((lastStoreWarning.get(ruleName) ?? 0) > now - STORE_WARNING_INTERVAL_MS) return
+  lastStoreWarning.set(ruleName, now)
+  console.warn(JSON.stringify({ event: "rate_limit_store_unavailable", rule: ruleName, message: error instanceof Error ? error.message : String(error) }))
+}
 
-export function createRateLimiter(rule: RateLimitRule, clock: () => number = Date.now) {
-  const counters = new Map<string, Counter>()
+function settle(ruleName: string, pending: MaybePromise<void>): void {
+  if (pending instanceof Promise) pending.catch((error: unknown) => warnStoreFailure(ruleName, error))
+}
+
+export function createRateLimiter(rule: RateLimitRule, store: RateLimitStore = createMemoryRateLimitStore()) {
   const message = rule.message ?? "Muitas requisições em pouco tempo. Aguarde um instante e tente de novo."
-
-  const weightedCount = (counter: Counter, now: number) => {
-    const elapsed = now - counter.windowStart
-    const previousWeight = Math.max(0, (rule.windowMs - elapsed) / rule.windowMs)
-    return counter.current + counter.previous * previousWeight
-  }
-
-  const counterFor = (key: string, now: number): Counter => {
-    let counter = counters.get(key)
-    if (!counter) {
-      if (counters.size >= MAX_KEYS) {
-        const oldest = counters.keys().next().value
-        if (oldest !== undefined) counters.delete(oldest)
-      }
-      counter = { windowStart: now, current: 0, previous: 0 }
-      counters.set(key, counter)
-      return counter
-    }
-    const windows = Math.floor((now - counter.windowStart) / rule.windowMs)
-    if (windows >= 1) {
-      counter.previous = windows === 1 ? counter.current : 0
-      counter.current = 0
-      counter.windowStart += windows * rule.windowMs
-      // Reinsere no fim: a ordem do Map vira "menos recentemente usado primeiro" para o despejo acima.
-      counters.delete(key)
-      counters.set(key, counter)
-    }
-    return counter
-  }
 
   return function rateLimit(request: Request, response: Response, next: NextFunction) {
     if (rule.max <= 0) return next()
     const rawKey = rule.key(request)
     if (rawKey === null) return next()
-    const now = clock()
-    const counter = counterFor(`${rule.name}:${rawKey}`, now)
-    if (weightedCount(counter, now) >= rule.max) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((counter.windowStart + rule.windowMs - now) / 1000))
-      response.set("Retry-After", String(retryAfterSeconds))
-      return response.status(429).json({ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } })
+    const bucket = rateLimitBucket(rule.name, rawKey)
+    const apply = (decision: RateLimitDecision) => {
+      if (!decision.allowed) {
+        const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000))
+        response.set("Retry-After", String(retryAfterSeconds))
+        response.status(429).json({ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } })
+        return
+      }
+      if (rule.countOnlyFailures) {
+        response.on("finish", () => {
+          if (response.statusCode >= 400) settle(rule.name, store.record(bucket, rule.windowMs))
+        })
+      }
+      next()
     }
-    if (rule.countOnlyFailures) {
-      response.on("finish", () => {
-        if (response.statusCode >= 400) counter.current += 1
+    let pending: MaybePromise<RateLimitDecision>
+    try {
+      pending = rule.countOnlyFailures ? store.check(bucket, rule.windowMs, rule.max) : store.consume(bucket, rule.windowMs, rule.max)
+    } catch (error) {
+      warnStoreFailure(rule.name, error)
+      return next()
+    }
+    if (pending instanceof Promise) {
+      pending.then(apply, (error: unknown) => {
+        warnStoreFailure(rule.name, error)
+        next()
       })
-    } else {
-      counter.current += 1
+      return
     }
-    return next()
+    apply(pending)
   }
 }
 
-/** IP do cliente como o Express o resolveu (`trust proxy` decide quando X-Forwarded-For vale). */
-export const clientIpKey = (request: Request) => request.ip ?? request.socket.remoteAddress ?? "unknown"
+/**
+ * IP sem a PORTA: o ARR do IIS, por padrão, manda `X-Forwarded-For: 203.0.113.5:54321` (porta efêmera de cada conexão) e o
+ * Express devolve isso como `req.ip` — cada conexão viraria um "IP" novo e o limite por IP não valeria. O configurar-iis.ps1
+ * desliga a porta (includePortInXFF); isto cobre um proxy configurado à mão.
+ */
+export function normalizeClientIp(ip: string): string {
+  const ipv4WithPort = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(ip)
+  if (ipv4WithPort) return ipv4WithPort[1]!
+  const bracketed = /^\[([0-9a-fA-F:.]+)\](?::\d+)?$/.exec(ip)
+  if (bracketed) return bracketed[1]!
+  return ip.startsWith("::ffff:") && /^::ffff:\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) ? ip.slice("::ffff:".length) : ip
+}
+
+/** IP do cliente como o Express o resolveu (`trust proxy` decide quando X-Forwarded-For vale), sem porta. */
+export const clientIpKey = (request: Request) => normalizeClientIp(request.ip ?? request.socket.remoteAddress ?? "unknown")
 
 /** Conta da sessão (rotas montadas DEPOIS do requireAuth); sem sessão, não limita (o guard já respondeu 401). */
 export const accountKey = (request: Request) => request.user?.sub ?? null
+
+/**
+ * Login por IP + e-mail digitado (normalizado): na virada de turno centenas de pessoas entram pelo MESMO IP (Citrix, VDI,
+ * NAT) e cada uma tem o seu contador. Sem e-mail no corpo, só o IP (o login responde 400 de qualquer jeito).
+ */
+export const clientIpAndEmailKey = (request: Request) => {
+  const email = (request.body as { email?: unknown } | undefined)?.email
+  const normalized = typeof email === "string" ? email.trim().toLowerCase() : ""
+  return `${clientIpKey(request)}|${normalized}`
+}

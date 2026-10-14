@@ -43,7 +43,8 @@ import { feedbackSourceKey, type FeedbackApplicationDetail } from "@/schemas/fee
 import { asFollowUp, newTurnId, nextMessageId, nowTime, PAGE_LIMIT, presentationMessageOf, toChatMessage, type ChatMessage } from "./operator-inia-chat/chat-message"
 import { FAREWELL_TEXT, TEXT_REPLY_FALLBACK_TEXT } from "./operator-inia-chat/voice-context"
 import { ENTRY_OF_MODE, FEEDBACK_PRESENTATION_CUE, LIVE_PRESENTATION_START_TIMEOUT_MS, PRESENT_GESTURE_DELAY_MS, presentationAudioKey, type FeedbackReturn, type FeedbackSession, type LivePresentationHooks, type PresentationPhase, type SessionEntry } from "./operator-inia-chat/feedback-session-model"
-import { bubbleTextOf, createReadingClock, READ_HOLD_MS, READ_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
+import { createReadingClock, READ_HOLD_MS, READ_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
+import { plainTextOf } from "@/lib/format/plain-text"
 import { MIC_PULSE_REST_STYLE, micGlow, normalizedMicLevel, WAVEFORM_BAR_COUNT } from "./operator-inia-chat/mic-level"
 import { useStageSpeech } from "./operator-inia-chat/use-stage-speech"
 import { useFeedbackInvite } from "./operator-inia-chat/use-feedback-invite"
@@ -53,17 +54,21 @@ import { ChatMessageList } from "./operator-inia-chat/chat-message-list"
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
+import { publicAsset } from "@/lib/assets/public-asset"
+import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 
 // Mesma altura do palco do avatar em todos os estados (carregando, câmera desligada, avatar
 // desativado): trocar um pelo outro nunca empurra a conversa para baixo.
 const AVATAR_STAGE_HEIGHT = "h-64"
+const avatarStagePlaceholder = <div aria-hidden className={`${AVATAR_STAGE_HEIGHT} rounded-2xl bg-muted/40`}/>
 const IniaHumanoidAvatar3D = dynamic(() => import("./inia-humanoid-avatar-3d").then((module) => module.IniaHumanoidAvatar3D), {
   ssr: false,
-  loading: () => <div aria-hidden className={`${AVATAR_STAGE_HEIGHT} rounded-2xl bg-muted/40`}/>,
+  loading: () => avatarStagePlaceholder,
 })
 // INIA Mentora (pipeline em tools/avatar/inia-mentora). O GLB original do asset base continua em
-// /models/inia-avatar-poc.glb como cópia recuperável — basta apontar a variável para ele.
-const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? "/models/inia-mentora.glb"
+// /models/inia-avatar-poc.glb como cópia recuperável — basta apontar a variável para ele. Com a versão do conteúdo no endereço
+// (cache imutável: o navegador baixa os 6,6 MB uma vez por versão).
+const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? publicAsset("/models/inia-mentora.glb")
 
 export function OperatorIniaChat({ indicators, operator, onCollapse, context = "operator", hidden = false }: { indicators: OperatorIndicatorsData; operator: OperatorProfile; onCollapse?: () => void; context?: "operator" | "team"; hidden?: boolean }) {
   // Espaço de trabalho do Acompanhamento: o motor de voz é UM só (acima do chat) — o clique no feed libera o áudio no gesto.
@@ -1319,7 +1324,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     let reading: ReturnType<typeof createReadingClock> | null = null
     const stageWords = () => {
       const utterance = stageUtteranceRef.current
-      return utterance && utterance.key === stageKey ? wordsIn(bubbleTextOf(utterance.text)) : 0
+      return utterance && utterance.key === stageKey ? wordsIn(plainTextOf(utterance.text)) : 0
     }
     try {
       // O backend monta o contexto do modelo a partir da conversa gravada — nenhum histórico sai daqui.
@@ -1333,7 +1338,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
           if (!onStage) return
           if (stageKey === null) {
             reading = createReadingClock(stageWords)
-            stageKey = beginStageUtterance(chunk, null, { heard: reading.heard, markdown: true })
+            stageKey = beginStageUtterance(chunk, null, { heard: reading.heard })
           } else appendStageText(chunk)
         },
         (conversation) => {
@@ -1603,6 +1608,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // movido entre os dois sem remontar o Canvas.
   // -------------------------------------------------------------------------------------------
   const sessionOpen = feedbackEnabled && feedbackMode
+  // Avatar 3D (three.js ~1 MB + modelo de 6,6 MB): monta depois que a página carregou e o navegador ficou ocioso — a tela abre e
+  // responde sem esperar o 3D, e a INIA aparece sozinha logo em seguida, como antes. Sessão de feedback aberta ou conversa em
+  // andamento antes disso = monta na hora. Uma vez liberado, nunca volta atrás: o Canvas monta UMA vez e esta condição nunca o
+  // desmonta (regra do Canvas do R3F no CLAUDE.md).
+  const avatarAllowed = useBrowserIdle({ now: sessionOpen || conversationState !== "idle" })
   const sessionLayout: "desktop" | "mobile" = workspace?.layout === "mobile" ? "mobile" : "desktop"
   // Retomada com conversa: abre na última troca (depois que as mensagens estão na tela). `scrollIntoView` respeita o
   // `scroll-padding` da rolagem do palco — a pergunta fica logo abaixo do cabeçalho fixo do feedback, que recolhe sozinho.
@@ -1726,6 +1736,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     </div>
   ) : !callActive ? (
     <IniaCallPlaceholder image={operator.assistantImage} variant="ended" onCall={startCall} rounded={!sessionOpen}/>
+  ) : cameraOn && !avatarAllowed ? (
+    avatarStagePlaceholder
   ) : cameraOn ? (
     <IniaHumanoidAvatar3D
       modelUrl={avatarModelUrl}

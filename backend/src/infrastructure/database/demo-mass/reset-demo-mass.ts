@@ -56,6 +56,18 @@ const DOWNSTREAM_REFERENCES: { table: string; column: string; target: "people" |
   { table: "agent_history", column: "changed_by_person_id", target: "people" },
   { table: "assistant_orchestrators", column: "created_by", target: "people" },
   { table: "org_config_values", column: "updated_by", target: "people" },
+  // Políticas de acompanhamento e intervenções (migration 131): histórico real nunca é apagado pelo reset da massa demo.
+  { table: "intervention_policies", column: "team_id", target: "teams" },
+  { table: "intervention_policies", column: "subteam_id", target: "subteams" },
+  { table: "interventions", column: "person_id", target: "people" },
+  { table: "interventions", column: "responsible_id", target: "people" },
+  { table: "interventions", column: "approver_id", target: "people" },
+  { table: "interventions", column: "opened_by", target: "people" },
+  { table: "interventions", column: "accepted_by", target: "people" },
+  { table: "intervention_items", column: "owner_id", target: "people" },
+  { table: "intervention_events", column: "actor_id", target: "people" },
+  { table: "intervention_policy_evaluations", column: "person_id", target: "people" },
+  { table: "intervention_reports", column: "person_id", target: "people" },
 ]
 
 /** Alertas gerados pelos jobs do calendário operacional (people/application/*-service.ts). */

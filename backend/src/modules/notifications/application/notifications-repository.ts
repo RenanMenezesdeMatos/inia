@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
+import { alertOutputIdSql, CHAT_ALERT_KEY_PREFIX, recadoAlertCoveredByFollowUpSql } from "../../conversational-delivery/application/recado-follow-up-invite.js"
 
 export type AlertRow = {
   id: string
@@ -32,7 +32,8 @@ export interface NotificationsRepository {
  */
 const SHOWN_CONDITION = `not ${recadoAlertCoveredByFollowUpSql("a")}`
 
-/** Não lido = sem `read_at` e ainda vivo (resolvido/expirado não conta no badge). */
+/** Não lido = sem `read_at` e ainda vivo (resolvido/expirado não conta no badge) — o índice parcial `idx_alerts_recipient_unread`
+ * (migration 132) tem exatamente este predicado: o badge lê só os não lidos de quem pergunta. */
 const UNREAD_CONDITION = `a.read_at is null and a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') and ${SHOWN_CONDITION}`
 
 export class PgNotificationsRepository implements NotificationsRepository {
@@ -42,7 +43,7 @@ export class PgNotificationsRepository implements NotificationsRepository {
     const result = await this.db.query<{ id: string; alert_type: string; title: string; description: string; severity: AlertRow["severity"]; status: string; created_at: string; read_at: string | null; case_id: string | null; dedupe_key: string; operator_id: string | null; operator_name: string | null; conversation_id: string | null }>(
       `select a.id, a.alert_type, a.title, a.description, a.severity, a.status::text, a.created_at, a.read_at, a.case_id, a.dedupe_key, c.operator_id, p.name operator_name, wo.conversation_id
        from alerts a left join supervision_cases c on c.id = a.case_id left join people p on p.id = c.operator_id
-       left join workflow_outputs wo on a.alert_type = 'WORKFLOW_CHAT_MESSAGE' and a.dedupe_key = 'workflow_chat:' || wo.id::text
+       left join workflow_outputs wo on a.alert_type = 'WORKFLOW_CHAT_MESSAGE' and wo.id = ${alertOutputIdSql("a", CHAT_ALERT_KEY_PREFIX)}
        where a.recipient_id = $1 and a.organization_id = $2 and a.status <> 'EXPIRED' and ${SHOWN_CONDITION}
        order by a.created_at desc limit $3`,
       [viewerId, organizationId, limit],

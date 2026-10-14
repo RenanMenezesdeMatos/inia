@@ -41,3 +41,15 @@ describe("token efêmero da voz travado na configuração do servidor (R-04)", (
     expect(setup.generationConfig).not.toHaveProperty("thinkingConfig")
   })
 })
+
+describe("emissão do token da voz com prazo", () => {
+  it("o pedido leva um prazo; provedor travado vira 504 claro (o botão de voz não fica preso)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {})
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError")
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await expect(createEphemeralRealtimeSession({ systemInstruction: "x", tools: [], voiceName: "Kore" })).rejects.toMatchObject({ code: "REALTIME_SESSION_TIMEOUT", statusCode: 504 })
+  })
+})

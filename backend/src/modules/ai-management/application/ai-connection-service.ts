@@ -24,6 +24,8 @@ export type ConnectionView = {
   apiVersion: string | null
   isLocal: boolean
   timeoutMs: number
+  /** Chamadas simultâneas desta conexão somando TODAS as instâncias da INIA; null = sem teto próprio. */
+  maxConcurrentCalls: number | null
   enabled: boolean
   credential: SecretView
   customHeaderNames: string[]
@@ -45,6 +47,7 @@ export const connectionCreateSchema = z.object({
   apiVersion: z.string().trim().max(40).nullish(),
   isLocal: z.boolean().optional(),
   timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  maxConcurrentCalls: z.number().int().min(1).max(1000).nullish(),
   apiKey: z.string().trim().min(4).max(4000).nullish(),
   customHeaders: z.record(z.string(), z.string().max(2000)).nullish(),
   enabled: z.boolean().optional(),
@@ -56,6 +59,7 @@ export const connectionPatchSchema = z.object({
   apiVersion: z.string().trim().max(40).nullish(),
   isLocal: z.boolean().optional(),
   timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  maxConcurrentCalls: z.number().int().min(1).max(1000).nullish(),
   enabled: z.boolean().optional(),
 })
 
@@ -70,6 +74,7 @@ type ConnectionRow = {
   api_version: string | null
   is_local: boolean
   timeout_ms: number
+  max_concurrent_calls: number | null
   enabled: boolean
   last_health_check_at: Date | null
   last_health_status: string | null
@@ -87,7 +92,7 @@ type ConnectionRow = {
 }
 
 const CONNECTION_SELECT = `
-  select c.id, c.provider_key, c.name, c.base_url, c.api_version, c.is_local, c.timeout_ms, c.enabled,
+  select c.id, c.provider_key, c.name, c.base_url, c.api_version, c.is_local, c.timeout_ms, c.max_concurrent_calls, c.enabled,
          c.last_health_check_at, c.last_health_status, c.last_health_latency_ms, c.last_health_message, c.created_at, c.updated_at,
          k.hint key_hint, k.created_at key_updated_at, h.hint header_hint,
          (select count(*)::int from ai_models m where m.connection_id = c.id) model_count,
@@ -115,6 +120,7 @@ function toView(row: ConnectionRow): ConnectionView {
     apiVersion: row.api_version,
     isLocal: provider ? isLocalDeployment(provider, row.is_local) : row.is_local,
     timeoutMs: row.timeout_ms,
+    maxConcurrentCalls: row.max_concurrent_calls,
     enabled: row.enabled,
     credential: row.key_hint !== null ? { configured: true, maskedValue: row.key_hint, updatedAt: row.key_updated_at?.toISOString() ?? null } : { configured: false, maskedValue: null, updatedAt: null },
     customHeaderNames: row.header_hint ? row.header_hint.split(",").filter(Boolean) : [],
@@ -182,9 +188,9 @@ export async function createConnection(context: AiAdminContext, actor: Actor, ra
   let id: string
   try {
     const inserted = await context.db.query<{ id: string }>(
-      `insert into ai_connections (organization_id, provider_key, name, base_url, api_version, is_local, timeout_ms, enabled, created_by, created_at, updated_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) returning id`,
-      [actor.organizationId, provider.key, input.name, input.baseUrl ?? null, input.apiVersion ?? null, provider.deployment === "LOCAL" ? true : provider.deployment === "REMOTE" ? false : Boolean(input.isLocal), input.timeoutMs ?? 60_000, input.enabled ?? true, actor.personId, context.now()],
+      `insert into ai_connections (organization_id, provider_key, name, base_url, api_version, is_local, timeout_ms, enabled, created_by, created_at, updated_at, max_concurrent_calls)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11) returning id`,
+      [actor.organizationId, provider.key, input.name, input.baseUrl ?? null, input.apiVersion ?? null, provider.deployment === "LOCAL" ? true : provider.deployment === "REMOTE" ? false : Boolean(input.isLocal), input.timeoutMs ?? 60_000, input.enabled ?? true, actor.personId, context.now(), input.maxConcurrentCalls ?? null],
     )
     id = inserted.rows[0]!.id
   } catch (error) {
@@ -214,6 +220,7 @@ export async function updateConnection(context: AiAdminContext, actor: Actor, id
   if (input.apiVersion !== undefined) add("api_version", input.apiVersion)
   if (input.isLocal !== undefined && provider?.deployment === "REMOTE_OR_LOCAL") add("is_local", input.isLocal)
   if (input.timeoutMs !== undefined) add("timeout_ms", input.timeoutMs)
+  if (input.maxConcurrentCalls !== undefined) add("max_concurrent_calls", input.maxConcurrentCalls)
   if (input.enabled !== undefined) add("enabled", input.enabled)
   if (sets.length === 0) return current
   add("updated_at", context.now())
@@ -317,7 +324,7 @@ async function runtimeConnection(context: AiAdminContext, organizationId: string
     const row = secrets.rows.find((item) => item.purpose === purpose)
     return row ? { ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag } : null
   }
-  return { id: view.id, name: view.name, providerKey: view.providerKey, baseUrl: view.effectiveBaseUrl, apiVersion: view.apiVersion, isLocal: view.isLocal, timeoutMs: view.timeoutMs, enabled: view.enabled, apiKey: of("API_KEY"), headers: of("CUSTOM_HEADERS") }
+  return { id: view.id, name: view.name, providerKey: view.providerKey, baseUrl: view.effectiveBaseUrl, apiVersion: view.apiVersion, isLocal: view.isLocal, timeoutMs: view.timeoutMs, maxConcurrentCalls: view.maxConcurrentCalls, enabled: view.enabled, apiKey: of("API_KEY"), headers: of("CUSTOM_HEADERS") }
 }
 
 export { runtimeConnection }

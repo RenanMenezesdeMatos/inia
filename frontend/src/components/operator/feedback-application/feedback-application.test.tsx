@@ -427,6 +427,30 @@ describe("Aplicação de feedback — sessão no card central", () => {
     expect(within(dialog).queryByText(/o seu resultado ficou acima/)).not.toBeInTheDocument()
   })
 
+  it("voz ao vivo: a transcrição com Markdown no meio do parágrafo (negrito, itálico, link) aparece no balão em texto corrido", async () => {
+    api.start.mockResolvedValue({ application: detail(), created: true })
+    renderWorkspace()
+    fireEvent.click(await screen.findByRole("button", { name: "Ouvir com a INIA" }))
+    const dialog = await session()
+    await waitFor(() => expect(voiceDouble.sent).toHaveLength(1))
+    const live = voiceDouble.handlers!
+    // Fragmentos como os do Gemini Live: a marcação chega cortada entre eles.
+    act(() => {
+      live.onStateChange("thinking")
+      live.onOutputTranscript("Seu TMA foi de **10")
+      live.onStateChange("speaking")
+    })
+    expect(within(dialog).getByTestId("feedback-session-speech")).toHaveAttribute("data-speech", "stream")
+    act(() => {
+      live.onOutputTranscript("min20s**, meta")
+      live.onOutputTranscript(" *8min30s*, veja [o guia](/materiais/1d000000-0000-4000-8000-000000000001).")
+    })
+    const stream = within(dialog).getByTestId("feedback-session-stream")
+    await waitFor(() => expect(stream).toHaveTextContent("guia."), { timeout: 6000 })
+    expect(stream).toHaveTextContent(/^Seu TMA foi de 10min20s, meta 8min30s, veja o guia\.$/)
+    expect(stream.textContent).not.toMatch(/[*[\]]|materiais/)
+  }, 15_000)
+
   it("mudo ligado + 'Ouvir com a INIA': o clique tira o mudo (fica salvo) e ela apresenta COM voz; 'Ouvir apresentação' também", async () => {
     setVoiceMuted(true)
     api.start.mockResolvedValue({ application: detail(), created: true })

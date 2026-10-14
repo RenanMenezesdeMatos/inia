@@ -68,7 +68,7 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
   const any = (permission: Permission) => canAnywhere(access, permission, catalog)
   const org = (permission: Permission) => canOrganizationWide(access, permission, catalog)
   return {
-    canAccessAdministration: ["access.users.view", "access.roles.view", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "inia_experience.manage"].some((permission) => any(permission as Permission)),
+    canAccessAdministration: ["access.users.view", "access.roles.view", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "inia_experience.manage", "intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"].some((permission) => any(permission as Permission)),
     canManageUsers: any("access.users.manage"),
     canViewUsers: any("access.users.view"),
     canViewRoles: any("access.roles.view"),
@@ -97,6 +97,17 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canExportUsability: any("usability.export"),
     canViewUsabilityComments: any("usability.comments.view"),
     canManageUsability: org("usability.manage"),
+    // Políticas de acompanhamento (configuração) × intervenções (ação sobre colaboradores) — sempre separadas.
+    // Entrada da área (menu): qualquer uma das quatro permissões de configuração.
+    canAccessInterventionPolicies: ["intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"].some((permission) => any(permission as Permission)),
+    canEditInterventionPolicies: any("intervention_policies.edit"),
+    canSimulateInterventionPolicies: any("intervention_policies.simulate"),
+    canPublishInterventionPolicies: any("intervention_policies.publish"),
+    canAuditInterventionPolicies: any("intervention_policies.audit"),
+    canViewInterventions: any("interventions.view"),
+    canExecuteInterventions: any("interventions.execute"),
+    canApproveInterventions: any("interventions.approve"),
+    canDecideSensitiveInterventions: any("interventions.sensitive_decide"),
   }
 }
 

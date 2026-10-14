@@ -47,6 +47,21 @@ export async function apiPost<T = undefined>(path: string, body?: unknown): Prom
   return payload.data
 }
 
+/** PUT/PATCH autenticado por cookie (client-side) — mesmo envelope do `apiPost`. */
+export async function apiSend<T = undefined>(path: string, method: "PUT" | "PATCH" | "DELETE", body?: unknown): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method,
+    credentials: "include",
+    cache: "no-store",
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!response.ok) throw await parseError(response)
+  if (response.status === 204) return undefined as T
+  const payload = (await response.json()) as { data: T }
+  return payload.data
+}
+
 /** Serializa parâmetros de query ignorando vazios/undefined — evita `?x=undefined` na URL. */
 export function toQueryString(params: Record<string, string | number | boolean | undefined | null>): string {
   const search = new URLSearchParams()

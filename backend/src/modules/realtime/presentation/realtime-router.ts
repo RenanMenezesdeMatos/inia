@@ -3,6 +3,7 @@ import { iniaVoiceName } from "../../../config/inia-voice.js"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { runWithAiCancellation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { conversationInactivityMs, createPostgresConversationStore, type ConversationScope, type ConversationStore, type ResolvedConversation } from "../../assistant/application/assistant-conversations.js"
 import { clampOccurredAt, decodeCursor } from "../../assistant/domain/assistant-conversation.js"
 import { loadAssistantSupportMaterials, persistAssistantSupportMaterials } from "../../assistant/application/assistant-support-materials.js"
@@ -111,6 +112,9 @@ const voiceSessionSchema = z.object({
   conversationId: z.string().uuid().nullish(),
 })
 
+/** Intervalo do batimento do SSE do chat (comentário `: ping`). Abaixo dos tempos de inatividade comuns de proxy (30–60 s). */
+export const SSE_HEARTBEAT_MS = 15_000
+
 export function createRealtimeRouter(
   db: Database,
   createSession: (config: VoiceSessionConfig) => Promise<EphemeralRealtimeSession>,
@@ -141,6 +145,8 @@ export function createRealtimeRouter(
     /** Limites de uma conversa cuja instrução NÃO é o prompt de um Agent (aplicação de feedback, chat/voz sem Orquestrador):
      * os limites de atuação do Agente do Orquestrador, quando há, + os assuntos proibidos. Vazio = instrução inalterada. */
     conversationGuardrails?: (organizationId: string, agentId: string | null) => Promise<string>
+    /** Intervalo do batimento do SSE (testes encurtam). */
+    sseHeartbeatMs?: number
   } = {},
 ) {
   const router = Router()
@@ -374,7 +380,23 @@ export function createRealtimeRouter(
     response.setHeader("Cache-Control", "no-cache")
     response.setHeader("Connection", "keep-alive")
     response.flushHeaders()
-    const send = (event: string, data: unknown) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    // Quem pediu foi embora (fechou a página, a conexão caiu, o IIS cortou): as chamadas de IA desta resposta são canceladas —
+    // saem da fila do limitador ou têm o fetch interrompido — e a vaga volta para os outros. Escuta o `close` da RESPOSTA: o do
+    // request, no Node atual, dispara assim que o corpo JSON termina de ser lido, com a pessoa ainda esperando.
+    const cancellation = new AbortController()
+    response.on("close", () => {
+      if (!response.writableFinished) cancellation.abort()
+    })
+    // Batimento (comentário SSE, que o cliente ignora): o IIS/ARR e proxies não derrubam a conexão parada enquanto o Orquestrador
+    // pensa antes do primeiro pedaço.
+    const heartbeat = setInterval(() => {
+      if (!response.writableEnded && !response.destroyed) response.write(": ping\n\n")
+    }, deps.sseHeartbeatMs ?? SSE_HEARTBEAT_MS)
+    heartbeat.unref?.()
+    const send = (event: string, data: unknown) => {
+      if (response.writableEnded || response.destroyed) return
+      response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    }
     send("conversation", { conversationId: resolved.conversationId, created: resolved.created, rotatedFrom: resolved.rotatedFrom, userMessageId: userMessage.id })
 
     // Persiste a resposta EXIBIDA. Falha ao salvar depois de a resposta já ter aparecido → evento próprio: o cliente
@@ -392,107 +414,115 @@ export function createRealtimeRouter(
     }
 
     try {
-      // Retentativa da MESMA mensagem (mesma chave): devolve a resposta já gravada, sem gerar outra.
-      const previous = userMessage.duplicate ? await conversations.findByClientMessageId(resolved.conversationId, replyKey) : null
-      if (previous) {
-        send("chunk", { text: previous.content })
-        send("persisted", { interactionId: previous.id })
-        const stored = await loadAssistantSupportMaterials(db, { organizationId: scope.organizationId, viewer: { personId: operatorId }, interactionIds: [previous.id] })
-        const materials = stored.get(previous.id) ?? []
-        if (materials.length > 0) send("support_materials", { interactionId: previous.id, supportMaterials: materials })
-        send("done", {})
-        return
-      }
-
-      // Contexto do modelo = SÓ a conversa resolvida, lida do banco (nunca o histórico enviado pelo navegador, que
-      // poderia conter outra conversa). A mensagem recém-gravada é o último turno.
-      const history = await conversations.contextTurns({ organizationId: scope.organizationId, conversationId: resolved.conversationId })
-      // O nome de tratamento vem do BACKEND (preferência atual da pessoa da sessão), nunca do texto enviado pelo navegador.
-      // Conversa criada por um Workflow (Output → Chat): a IA responde com o conteúdo confiável que a originou (dados).
-      const conversationRecord = await conversations.requireOwned(scope, resolved.conversationId)
-      // Resposta do Orquestrador (não streama: a resposta inteira é inspecionada para saber se veio um functionCall) → um único
-      // chunk (o contrato SSE do front continua chunk(s) + done), gravada com os especialistas acionados e os materiais.
-      const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string) => {
-        send("chunk", { text: reply.text })
-        const interactionId = await persistReply(reply.text, {
-          agentId: reply.agentId,
-          // Especialistas acionados + o trace SEGURO das ferramentas de investigação que cada um
-          // usou (investigation/domain/tool-trace.ts) — auditável, nunca prompt/raciocínio.
-          toolCalls: reply.calls.length > 0 ? reply.calls.map((call) => ({ ...call, toolTrace: reply.results.find((result) => result.toolName === call.toolName)?.toolTrace ?? [] })) : undefined,
-        })
-        // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
-        // especialistas): persistidos junto da resposta e revalidados contra o DESTINATÁRIO (o
-        // operador da conversa). Evento próprio ANTES de `done` — o front mostra o card ao lado da
-        // resposta; sem materiais o evento não é emitido (nenhuma seção vazia).
-        if (interactionId) {
-          const supportMaterials = await persistAssistantSupportMaterials(db, { organizationId: request.user!.organizationId, interactionId, recipient: { personId: operatorId }, orchestratorId, recommendations: reply.supportMaterials })
-          if (supportMaterials.length > 0) send("support_materials", { interactionId, supportMaterials })
-        }
-      }
-
-      if (conversationRecord.origin === "FEEDBACK") {
-        // APLICAÇÃO DE FEEDBACK: a instrução do navegador é IGNORADA (poderia trazer o indicador atual) — o backend monta a
-        // conversa com o registro congelado da aplicação. Com Orquestrador do chat/voz, o que o registro não responde
-        // (processos, resultados atuais) é consultado nos especialistas dele: mesmas ferramentas, prompt da SESSÃO (nunca o do
-        // chat geral), especialista sem o registro como contexto de análise, sem nova análise de chamada e com a relação com o
-        // feedback calculada pelo sistema (session-consultation.ts). Sem Orquestrador, só o registro, com a resposta em fluxo.
-        // Sem o registro, a INIA não finge conhecer o feedback: erro explícito.
-        const sessionOrchestrator = await resolveOrchestrator(scope.organizationId, operatorId, "INTERACTIVE", input.text)
-        const consult = Boolean(sessionOrchestrator && sessionOrchestrator.tools.length > 0)
-        const application = await feedbackApplicationContext({ organizationId: scope.organizationId, ownerPersonId: operatorId, conversationId: resolved.conversationId, now: at, consultation: consult })
-        if (!application) throw new DomainError("Não foi possível carregar o contexto deste feedback. Tente de novo em instantes.", "FEEDBACK_APPLICATION_CONTEXT_UNAVAILABLE", 503)
-        // A instrução da aplicação substitui o prompt do Orquestrador: os limites de atuação dele e os assuntos proibidos entram aqui.
-        const instruction = application.instruction + (await loadAddressingContext(db, scope.organizationId, operatorId)) + (await conversationGuardrails(scope.organizationId, sessionOrchestrator?.orchestratorAgentId ?? null))
-        const consultation = application.consultation
-        if (consult && sessionOrchestrator && consultation) {
-          const session = { ...sessionOrchestrator, systemPrompt: instruction, outputInstructions: null, structuredOutput: null }
-          const reply = await orchestratedReply(db, session, history, "", operatorId, { collaboratorConversation: true, ...feedbackSpecialistOptions(consultation) }, {}, {
-            annotateSpecialistResult: (result) => consultationRelation({ organizationId: scope.organizationId, consultation, periodDays: result.periodDays, knowledge: result.knowledge }),
-          })
-          await sendOrchestratedReply(reply, sessionOrchestrator.orchestratorId)
+      await runWithAiCancellation(cancellation.signal, async () => {
+        // Retentativa da MESMA mensagem (mesma chave): devolve a resposta já gravada, sem gerar outra.
+        const previous = userMessage.duplicate ? await conversations.findByClientMessageId(resolved.conversationId, replyKey) : null
+        if (previous) {
+          send("chunk", { text: previous.content })
+          send("persisted", { interactionId: previous.id })
+          const stored = await loadAssistantSupportMaterials(db, { organizationId: scope.organizationId, viewer: { personId: operatorId }, interactionIds: [previous.id] })
+          const materials = stored.get(previous.id) ?? []
+          if (materials.length > 0) send("support_materials", { interactionId: previous.id, supportMaterials: materials })
           send("done", {})
           return
         }
-        let full = ""
-        await streamTextReply(history, instruction, (text) => {
-          full += text
-          send("chunk", { text })
-        })
-        if (full.trim()) await persistReply(full)
-        send("done", {})
-        return
-      }
-      const orchestrator = await resolveOrchestrator(scope.organizationId, operatorId, "INTERACTIVE", input.text)
-      const originContext = conversationRecord.origin === "WORKFLOW" ? await workflowContext({ organizationId: scope.organizationId, ownerPersonId: operatorId, conversationId: resolved.conversationId }) : ""
-      const systemInstruction = INIA_CHAT_PERSONA + renderClientContext(input.contextHint) + (await loadAddressingContext(db, scope.organizationId, operatorId)) + (await askingPersonProfile(scope.organizationId, operatorId)) + originContext
 
-      if (!orchestrator) {
-        // Nenhum orquestrador configurado ainda pro time desse operador —
-        // mantém o comportamento antigo (persona genérica enviada pelo
-        // front, sem tools) em vez de travar o chat.
-        // EXCEÇÃO DOCUMENTADA ao gateway (V1.3 — §9/§10): esta é a única request de texto do backend
-        // fora do llm-gateway, por razão técnica — é STREAMING (fragmentos ao vivo) e o gateway não
-        // streama. Não há especialista, Tool, evidência nem afirmação comportamental validável aqui
-        // (persona genérica sem dados do colaborador), logo não há Evidence Gating a aplicar. Com um
-        // Orquestrador configurado (o caminho real do produto), tudo passa pelo gateway.
-        // Sem Agent, só os assuntos proibidos.
-        const personaInstruction = systemInstruction + (await conversationGuardrails(scope.organizationId, null))
-        let full = ""
-        await streamTextReply(history, personaInstruction, (text) => {
-          full += text
-          send("chunk", { text })
-        })
-        if (full.trim()) await persistReply(full)
-        send("done", {})
-        return
-      }
+        // Contexto do modelo = SÓ a conversa resolvida, lida do banco (nunca o histórico enviado pelo navegador, que
+        // poderia conter outra conversa). A mensagem recém-gravada é o último turno.
+        const history = await conversations.contextTurns({ organizationId: scope.organizationId, conversationId: resolved.conversationId })
+        // O nome de tratamento vem do BACKEND (preferência atual da pessoa da sessão), nunca do texto enviado pelo navegador.
+        // Conversa criada por um Workflow (Output → Chat): a IA responde com o conteúdo confiável que a originou (dados).
+        const conversationRecord = await conversations.requireOwned(scope, resolved.conversationId)
+        // Resposta do Orquestrador (não streama: a resposta inteira é inspecionada para saber se veio um functionCall) → um único
+        // chunk (o contrato SSE do front continua chunk(s) + done), gravada com os especialistas acionados e os materiais.
+        const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string) => {
+          send("chunk", { text: reply.text })
+          const interactionId = await persistReply(reply.text, {
+            agentId: reply.agentId,
+            // Especialistas acionados + o trace SEGURO das ferramentas de investigação que cada um
+            // usou (investigation/domain/tool-trace.ts) — auditável, nunca prompt/raciocínio.
+            toolCalls: reply.calls.length > 0 ? reply.calls.map((call) => ({ ...call, toolTrace: reply.results.find((result) => result.toolName === call.toolName)?.toolTrace ?? [] })) : undefined,
+          })
+          // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
+          // especialistas): persistidos junto da resposta e revalidados contra o DESTINATÁRIO (o
+          // operador da conversa). Evento próprio ANTES de `done` — o front mostra o card ao lado da
+          // resposta; sem materiais o evento não é emitido (nenhuma seção vazia).
+          if (interactionId) {
+            const supportMaterials = await persistAssistantSupportMaterials(db, { organizationId: request.user!.organizationId, interactionId, recipient: { personId: operatorId }, orchestratorId, recommendations: reply.supportMaterials })
+            if (supportMaterials.length > 0) send("support_materials", { interactionId, supportMaterials })
+          }
+        }
 
-      await sendOrchestratedReply(await orchestratedReply(db, orchestrator, history, systemInstruction, operatorId, { collaboratorConversation: true }), orchestrator.orchestratorId)
-      send("done", {})
+        if (conversationRecord.origin === "FEEDBACK") {
+          // APLICAÇÃO DE FEEDBACK: a instrução do navegador é IGNORADA (poderia trazer o indicador atual) — o backend monta a
+          // conversa com o registro congelado da aplicação. Com Orquestrador do chat/voz, o que o registro não responde
+          // (processos, resultados atuais) é consultado nos especialistas dele: mesmas ferramentas, prompt da SESSÃO (nunca o do
+          // chat geral), especialista sem o registro como contexto de análise, sem nova análise de chamada e com a relação com o
+          // feedback calculada pelo sistema (session-consultation.ts). Sem Orquestrador, só o registro, com a resposta em fluxo.
+          // Sem o registro, a INIA não finge conhecer o feedback: erro explícito.
+          const sessionOrchestrator = await resolveOrchestrator(scope.organizationId, operatorId, "INTERACTIVE", input.text)
+          const consult = Boolean(sessionOrchestrator && sessionOrchestrator.tools.length > 0)
+          const application = await feedbackApplicationContext({ organizationId: scope.organizationId, ownerPersonId: operatorId, conversationId: resolved.conversationId, now: at, consultation: consult })
+          if (!application) throw new DomainError("Não foi possível carregar o contexto deste feedback. Tente de novo em instantes.", "FEEDBACK_APPLICATION_CONTEXT_UNAVAILABLE", 503)
+          // A instrução da aplicação substitui o prompt do Orquestrador: os limites de atuação dele e os assuntos proibidos entram aqui.
+          const instruction = application.instruction + (await loadAddressingContext(db, scope.organizationId, operatorId)) + (await conversationGuardrails(scope.organizationId, sessionOrchestrator?.orchestratorAgentId ?? null))
+          const consultation = application.consultation
+          if (consult && sessionOrchestrator && consultation) {
+            const session = { ...sessionOrchestrator, systemPrompt: instruction, outputInstructions: null, structuredOutput: null }
+            const reply = await orchestratedReply(db, session, history, "", operatorId, { collaboratorConversation: true, ...feedbackSpecialistOptions(consultation) }, {}, {
+              annotateSpecialistResult: (result) => consultationRelation({ organizationId: scope.organizationId, consultation, periodDays: result.periodDays, knowledge: result.knowledge }),
+            })
+            await sendOrchestratedReply(reply, sessionOrchestrator.orchestratorId)
+            send("done", {})
+            return
+          }
+          let full = ""
+          await streamTextReply(history, instruction, (text) => {
+            full += text
+            send("chunk", { text })
+          })
+          if (full.trim()) await persistReply(full)
+          send("done", {})
+          return
+        }
+        const orchestrator = await resolveOrchestrator(scope.organizationId, operatorId, "INTERACTIVE", input.text)
+        const originContext = conversationRecord.origin === "WORKFLOW" ? await workflowContext({ organizationId: scope.organizationId, ownerPersonId: operatorId, conversationId: resolved.conversationId }) : ""
+        const systemInstruction = INIA_CHAT_PERSONA + renderClientContext(input.contextHint) + (await loadAddressingContext(db, scope.organizationId, operatorId)) + (await askingPersonProfile(scope.organizationId, operatorId)) + originContext
+
+        if (!orchestrator) {
+          // Nenhum orquestrador configurado ainda pro time desse operador —
+          // mantém o comportamento antigo (persona genérica enviada pelo
+          // front, sem tools) em vez de travar o chat.
+          // EXCEÇÃO DOCUMENTADA ao gateway (V1.3 — §9/§10): esta é a única request de texto do backend
+          // fora do llm-gateway, por razão técnica — é STREAMING (fragmentos ao vivo) e o gateway não
+          // streama. Não há especialista, Tool, evidência nem afirmação comportamental validável aqui
+          // (persona genérica sem dados do colaborador), logo não há Evidence Gating a aplicar. Com um
+          // Orquestrador configurado (o caminho real do produto), tudo passa pelo gateway.
+          // Sem Agent, só os assuntos proibidos.
+          const personaInstruction = systemInstruction + (await conversationGuardrails(scope.organizationId, null))
+          let full = ""
+          await streamTextReply(history, personaInstruction, (text) => {
+            full += text
+            send("chunk", { text })
+          })
+          if (full.trim()) await persistReply(full)
+          send("done", {})
+          return
+        }
+
+        await sendOrchestratedReply(await orchestratedReply(db, orchestrator, history, systemInstruction, operatorId, { collaboratorConversation: true }), orchestrator.orchestratorId)
+        send("done", {})
+      })
     } catch (error) {
-      const message = error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
-      send("error", { message })
+      if (cancellation.signal.aborted) {
+        // Ninguém mais esperando: nada a enviar nem a gravar (a pergunta já está salva; a resposta interrompida não vira histórico).
+        console.info(JSON.stringify({ event: "assistant_reply_cancelled", conversationId: resolved.conversationId }))
+      } else {
+        const message = error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
+        send("error", { message })
+      }
     } finally {
+      clearInterval(heartbeat)
       response.end()
     }
   })

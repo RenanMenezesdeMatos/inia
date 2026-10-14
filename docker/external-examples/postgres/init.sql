@@ -1,6 +1,7 @@
 -- Banco EXTERNO de exemplo da Central de Dados (NÃO é o banco interno da INIA).
 -- Simula o banco de um cliente: colaboradores e medições diárias, com um usuário SOMENTE LEITURA.
 -- Dados fictícios e determinísticos (30 colaboradores, 560 medições). Só para avaliação local.
+-- No fim do arquivo: grupos, metas, fechamento oficial e chamadas com transcrição para o primeiro feedback (IT-INIA-005).
 
 create table colaboradores (
   matricula varchar(20) primary key,
@@ -623,3 +624,2081 @@ create role inia_leitura login password :'reader_password';
 grant connect on database inia_exemplo to inia_leitura;
 grant usage on schema public to inia_leitura;
 grant select on colaboradores, medicoes_diarias, vw_colaboradores_em_producao to inia_leitura;
+
+-- >>> DADOS PARA O PRIMEIRO FEEDBACK (IT-INIA-005)
+-- Gerado por backend/scripts/data-hub/first-feedback-examples.ts — não edite à mão: mude o script e rode-o de novo.
+-- Tudo fictício. Completa a massa acima com o que a IT-INIA-005 precisa numa instalação limpa:
+--   grupos e subgrupos (1 + 2), grupo/subgrupo em colaboradores, metas (TMA ≤ 300 s), fechamento_mensal (TMA de
+--   2026-08 e 2026-09, 56 linhas) e chamadas (288: agosto só com a duração; setembro, 144, com a transcrição).
+-- Ordem de carga na Central, o que mapear e o que conferir: docs/instalacao/primeiro-feedback-exemplo/README.md
+
+-- Grupo e Subgrupo de cada colaborador (colunas acrescentadas em 14/10/2026).
+alter table colaboradores add column grupo varchar(64) null, add column subgrupo varchar(128) null;
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:01' where matricula = 'EX-0001';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:02' where matricula = 'EX-0002';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:03' where matricula = 'EX-0003';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:04' where matricula = 'EX-0004';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:05' where matricula = 'EX-0005';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:06' where matricula = 'EX-0006';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:07' where matricula = 'EX-0007';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:08' where matricula = 'EX-0008';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:09' where matricula = 'EX-0009';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:10' where matricula = 'EX-0010';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:11' where matricula = 'EX-0011';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:12' where matricula = 'EX-0012';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:13' where matricula = 'EX-0013';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:14' where matricula = 'EX-0014';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:15' where matricula = 'EX-0015';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:16' where matricula = 'EX-0016';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:17' where matricula = 'EX-0017';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:18' where matricula = 'EX-0018';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:19' where matricula = 'EX-0019';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:20' where matricula = 'EX-0020';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:21' where matricula = 'EX-0021';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:22' where matricula = 'EX-0022';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:23' where matricula = 'EX-0023';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:24' where matricula = 'EX-0024';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:25' where matricula = 'EX-0025';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:26' where matricula = 'EX-0026';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:27' where matricula = 'EX-0027';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:28' where matricula = 'EX-0028';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_A', atualizado_em = '2026-10-01 08:00:29' where matricula = 'EX-0029';
+update colaboradores set grupo = 'ATENDIMENTO', subgrupo = 'ATENDIMENTO/EQUIPE_B', atualizado_em = '2026-10-01 08:00:30' where matricula = 'EX-0030';
+
+-- Grupo da operação (conjunto de dados Grupos).
+create table grupos (
+  codigo varchar(64) not null,
+  nome varchar(120) not null,
+  atualizado_em timestamp(0) not null,
+  primary key (codigo)
+);
+insert into grupos (codigo, nome, atualizado_em) values
+  ('ATENDIMENTO', 'Atendimento', '2026-10-01 08:00:00');
+
+-- Uma equipe por supervisor (conjunto de dados Subgrupos).
+create table subgrupos (
+  codigo varchar(128) not null,
+  grupo varchar(64) not null,
+  nome varchar(120) not null,
+  atualizado_em timestamp(0) not null,
+  primary key (codigo)
+);
+insert into subgrupos (codigo, grupo, nome, atualizado_em) values
+  ('ATENDIMENTO/EQUIPE_A', 'ATENDIMENTO', 'Equipe A', '2026-10-01 08:00:00'),
+  ('ATENDIMENTO/EQUIPE_B', 'ATENDIMENTO', 'Equipe B', '2026-10-01 08:00:00');
+
+-- Meta vigente do TMA para o Grupo, em segundos (conjunto de dados Metas).
+create table metas (
+  id int not null,
+  indicador varchar(40) not null,
+  tipo_sujeito varchar(20) not null,
+  sujeito varchar(128) not null,
+  meta numeric(12,2) not null,
+  inicio_vigencia date not null,
+  fim_vigencia date null,
+  atualizado_em timestamp(0) not null,
+  primary key (id)
+);
+insert into metas (id, indicador, tipo_sujeito, sujeito, meta, inicio_vigencia, fim_vigencia, atualizado_em) values
+  (1, 'TMA', 'GROUP', 'ATENDIMENTO', 300, '2026-01-01', null, '2026-10-01 08:00:00');
+
+-- Resultado OFICIAL do mês por operador, já calculado pela fonte: valor, meta, atingimento e quartil (conjunto de dados Fechamento oficial por indicador).
+create table fechamento_mensal (
+  matricula varchar(20) not null,
+  indicador varchar(40) not null,
+  competencia char(7) not null,
+  valor numeric(12,2) not null,
+  meta numeric(12,2) not null,
+  atingimento numeric(6,1) not null,
+  quartil varchar(2) not null,
+  atualizado_em timestamp(0) not null,
+  primary key (matricula, indicador, competencia)
+);
+insert into fechamento_mensal (matricula, indicador, competencia, valor, meta, atingimento, quartil, atualizado_em) values
+  ('EX-0003', 'TMA', '2026-08', 276, 300, 108.7, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0004', 'TMA', '2026-08', 285, 300, 105.3, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0005', 'TMA', '2026-08', 284, 300, 105.6, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0006', 'TMA', '2026-08', 318, 300, 94.3, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0007', 'TMA', '2026-08', 287, 300, 104.5, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0008', 'TMA', '2026-08', 316, 300, 94.9, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0009', 'TMA', '2026-08', 300, 300, 100, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0010', 'TMA', '2026-08', 298, 300, 100.7, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0011', 'TMA', '2026-08', 286, 300, 104.9, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0012', 'TMA', '2026-08', 277, 300, 108.3, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0013', 'TMA', '2026-08', 302, 300, 99.3, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0014', 'TMA', '2026-08', 319, 300, 94, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0015', 'TMA', '2026-08', 311, 300, 96.5, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0016', 'TMA', '2026-08', 288, 300, 104.2, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0017', 'TMA', '2026-08', 336, 300, 89.3, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0018', 'TMA', '2026-08', 315, 300, 95.2, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0019', 'TMA', '2026-08', 319, 300, 94, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0020', 'TMA', '2026-08', 275, 300, 109.1, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0021', 'TMA', '2026-08', 285, 300, 105.3, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0022', 'TMA', '2026-08', 281, 300, 106.8, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0023', 'TMA', '2026-08', 287, 300, 104.5, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0024', 'TMA', '2026-08', 285, 300, 105.3, 'Q2', '2026-09-05 10:00:00'),
+  ('EX-0025', 'TMA', '2026-08', 330, 300, 90.9, 'Q4', '2026-09-05 10:00:00'),
+  ('EX-0026', 'TMA', '2026-08', 271, 300, 110.7, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0027', 'TMA', '2026-08', 288, 300, 104.2, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0028', 'TMA', '2026-08', 290, 300, 103.4, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0029', 'TMA', '2026-08', 260, 300, 115.4, 'Q1', '2026-09-05 10:00:00'),
+  ('EX-0030', 'TMA', '2026-08', 301, 300, 99.7, 'Q3', '2026-09-05 10:00:00'),
+  ('EX-0003', 'TMA', '2026-09', 285, 300, 105.3, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0004', 'TMA', '2026-09', 279, 300, 107.5, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0005', 'TMA', '2026-09', 321, 300, 93.5, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0006', 'TMA', '2026-09', 306, 300, 98, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0007', 'TMA', '2026-09', 293, 300, 102.4, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0008', 'TMA', '2026-09', 313, 300, 95.8, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0009', 'TMA', '2026-09', 291, 300, 103.1, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0010', 'TMA', '2026-09', 310, 300, 96.8, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0011', 'TMA', '2026-09', 280, 300, 107.1, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0012', 'TMA', '2026-09', 280, 300, 107.1, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0013', 'TMA', '2026-09', 311, 300, 96.5, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0014', 'TMA', '2026-09', 316, 300, 94.9, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0015', 'TMA', '2026-09', 305, 300, 98.4, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0016', 'TMA', '2026-09', 294, 300, 102, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0017', 'TMA', '2026-09', 323, 300, 92.9, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0018', 'TMA', '2026-09', 318, 300, 94.3, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0019', 'TMA', '2026-09', 310, 300, 96.8, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0020', 'TMA', '2026-09', 284, 300, 105.6, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0021', 'TMA', '2026-09', 282, 300, 106.4, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0022', 'TMA', '2026-09', 275, 300, 109.1, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0023', 'TMA', '2026-09', 299, 300, 100.3, 'Q3', '2026-10-05 10:00:00'),
+  ('EX-0024', 'TMA', '2026-09', 285, 300, 105.3, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0025', 'TMA', '2026-09', 320, 300, 93.8, 'Q4', '2026-10-05 10:00:00'),
+  ('EX-0026', 'TMA', '2026-09', 277, 300, 108.3, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0027', 'TMA', '2026-09', 285, 300, 105.3, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0028', 'TMA', '2026-09', 293, 300, 102.4, 'Q2', '2026-10-05 10:00:00'),
+  ('EX-0029', 'TMA', '2026-09', 255, 300, 117.6, 'Q1', '2026-10-05 10:00:00'),
+  ('EX-0030', 'TMA', '2026-09', 310, 300, 96.8, 'Q3', '2026-10-05 10:00:00');
+
+-- Chamadas de voz com motivo, início e fim (horário da operação); setembro com a transcrição, uma fala por linha (conjunto de dados Interações).
+create table chamadas (
+  id_chamada varchar(40) not null,
+  matricula varchar(20) not null,
+  canal varchar(20) not null,
+  motivo varchar(120) not null,
+  inicio timestamp(0) not null,
+  fim timestamp(0) not null,
+  transcricao text null,
+  atualizado_em timestamp(0) not null,
+  primary key (id_chamada)
+);
+insert into chamadas (id_chamada, matricula, canal, motivo, inicio, fim, transcricao, atualizado_em) values
+  ('CH-202608-0001', 'EX-0003', 'VOICE', 'Segunda via', '2026-08-03 08:00:00', '2026-08-03 08:03:09', null, '2026-08-03 09:03:09'),
+  ('CH-202608-0002', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-08-04 13:07:23', '2026-08-04 13:11:45', null, '2026-08-04 14:11:45'),
+  ('CH-202608-0003', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-08-06 09:14:46', '2026-08-06 09:19:23', null, '2026-08-06 10:19:23'),
+  ('CH-202608-0004', 'EX-0003', 'VOICE', 'Segunda via', '2026-08-10 14:21:09', '2026-08-10 14:24:57', null, '2026-08-10 15:24:57'),
+  ('CH-202608-0005', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-08-12 10:28:32', '2026-08-12 10:33:48', null, '2026-08-12 11:33:48'),
+  ('CH-202608-0006', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-08-13 15:35:55', '2026-08-13 15:41:29', null, '2026-08-13 16:41:29'),
+  ('CH-202608-0007', 'EX-0003', 'VOICE', 'Segunda via', '2026-08-17 11:42:18', '2026-08-17 11:45:47', null, '2026-08-17 12:45:47'),
+  ('CH-202608-0008', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-08-19 16:49:41', '2026-08-19 16:54:30', null, '2026-08-19 17:54:30'),
+  ('CH-202608-0009', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-08-21 12:56:04', '2026-08-21 13:01:09', null, '2026-08-21 14:01:09'),
+  ('CH-202608-0010', 'EX-0003', 'VOICE', 'Segunda via', '2026-08-24 08:03:27', '2026-08-24 08:07:22', null, '2026-08-24 09:07:22'),
+  ('CH-202608-0011', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-08-26 13:10:50', '2026-08-26 13:16:15', null, '2026-08-26 14:16:15'),
+  ('CH-202608-0012', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-08-28 09:17:13', '2026-08-28 09:22:56', null, '2026-08-28 10:22:56'),
+  ('CH-202608-0013', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-08-04 10:13:17', '2026-08-04 10:17:48', null, '2026-08-04 11:17:48'),
+  ('CH-202608-0014', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-08-05 15:20:40', '2026-08-05 15:25:26', null, '2026-08-05 16:25:26'),
+  ('CH-202608-0015', 'EX-0004', 'VOICE', 'Segunda via', '2026-08-07 11:27:03', '2026-08-07 11:30:19', null, '2026-08-07 12:30:19'),
+  ('CH-202608-0016', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-08-11 16:34:26', '2026-08-11 16:39:52', null, '2026-08-11 17:39:52'),
+  ('CH-202608-0017', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-08-13 12:41:49', '2026-08-13 12:47:33', null, '2026-08-13 13:47:33'),
+  ('CH-202608-0018', 'EX-0004', 'VOICE', 'Segunda via', '2026-08-14 08:48:12', '2026-08-14 08:52:08', null, '2026-08-14 09:52:08'),
+  ('CH-202608-0019', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-08-18 13:55:35', '2026-08-18 14:00:34', null, '2026-08-18 15:00:34'),
+  ('CH-202608-0020', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-08-20 09:02:58', '2026-08-20 09:08:13', null, '2026-08-20 10:08:13'),
+  ('CH-202608-0021', 'EX-0004', 'VOICE', 'Segunda via', '2026-08-24 14:09:21', '2026-08-24 14:12:57', null, '2026-08-24 15:12:57'),
+  ('CH-202608-0022', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-08-25 10:16:44', '2026-08-25 10:22:20', null, '2026-08-25 11:22:20'),
+  ('CH-202608-0023', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-08-27 15:23:07', '2026-08-27 15:29:01', null, '2026-08-27 16:29:01'),
+  ('CH-202608-0024', 'EX-0004', 'VOICE', 'Segunda via', '2026-08-31 11:30:30', '2026-08-31 11:34:32', null, '2026-08-31 12:34:32'),
+  ('CH-202608-0025', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-08-04 12:26:34', '2026-08-04 12:31:19', null, '2026-08-04 13:31:19'),
+  ('CH-202608-0026', 'EX-0005', 'VOICE', 'Segunda via', '2026-08-03 08:33:57', '2026-08-03 08:37:12', null, '2026-08-03 09:37:12'),
+  ('CH-202608-0027', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-08-17 13:40:20', '2026-08-17 13:44:50', null, '2026-08-17 14:44:50'),
+  ('CH-202608-0028', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-08-10 09:47:43', '2026-08-10 09:53:26', null, '2026-08-10 10:53:26'),
+  ('CH-202608-0029', 'EX-0005', 'VOICE', 'Segunda via', '2026-08-06 14:54:06', '2026-08-06 14:58:01', null, '2026-08-06 15:58:01'),
+  ('CH-202608-0030', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-08-20 10:01:29', '2026-08-20 10:06:54', null, '2026-08-20 11:06:54'),
+  ('CH-202608-0031', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-08-14 15:08:52', '2026-08-14 15:14:06', null, '2026-08-14 16:14:06'),
+  ('CH-202608-0032', 'EX-0005', 'VOICE', 'Segunda via', '2026-08-12 11:15:15', '2026-08-12 11:18:50', null, '2026-08-12 12:18:50'),
+  ('CH-202608-0033', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-08-25 16:22:38', '2026-08-25 16:27:36', null, '2026-08-25 17:27:36'),
+  ('CH-202608-0034', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-08-26 12:29:01', '2026-08-26 12:34:54', null, '2026-08-26 13:34:54'),
+  ('CH-202608-0035', 'EX-0005', 'VOICE', 'Segunda via', '2026-08-31 08:36:24', '2026-08-31 08:40:25', null, '2026-08-31 09:40:25'),
+  ('CH-202608-0036', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-08-28 13:43:47', '2026-08-28 13:49:21', null, '2026-08-28 14:49:21'),
+  ('CH-202608-0037', 'EX-0006', 'VOICE', 'Segunda via', '2026-08-04 14:39:51', '2026-08-04 14:43:29', null, '2026-08-04 15:43:29'),
+  ('CH-202608-0038', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-08-05 10:46:14', '2026-08-05 10:51:16', null, '2026-08-05 11:51:16'),
+  ('CH-202608-0039', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-08-07 15:53:37', '2026-08-07 15:58:56', null, '2026-08-07 16:58:56'),
+  ('CH-202608-0040', 'EX-0006', 'VOICE', 'Segunda via', '2026-08-11 11:00:00', '2026-08-11 11:04:23', null, '2026-08-11 12:04:23'),
+  ('CH-202608-0041', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-08-13 16:07:23', '2026-08-13 16:13:27', null, '2026-08-13 17:13:27'),
+  ('CH-202608-0042', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-08-14 12:14:46', '2026-08-14 12:21:10', null, '2026-08-14 13:21:10'),
+  ('CH-202608-0043', 'EX-0006', 'VOICE', 'Segunda via', '2026-08-18 08:21:09', '2026-08-18 08:25:10', null, '2026-08-18 09:25:10'),
+  ('CH-202608-0044', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-08-20 13:28:32', '2026-08-20 13:34:05', null, '2026-08-20 14:34:05'),
+  ('CH-202608-0045', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-08-24 09:35:55', '2026-08-24 09:41:47', null, '2026-08-24 10:41:47'),
+  ('CH-202608-0046', 'EX-0006', 'VOICE', 'Segunda via', '2026-08-25 14:42:18', '2026-08-25 14:46:48', null, '2026-08-25 15:46:48'),
+  ('CH-202608-0047', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-08-27 10:49:41', '2026-08-27 10:55:55', null, '2026-08-27 11:55:55'),
+  ('CH-202608-0048', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-08-31 15:56:04', '2026-08-31 16:02:39', null, '2026-08-31 17:02:39'),
+  ('CH-202608-0049', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-08-03 16:52:08', '2026-08-03 16:56:41', null, '2026-08-03 17:56:41'),
+  ('CH-202608-0050', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-08-04 12:59:31', '2026-08-04 13:04:19', null, '2026-08-04 14:04:19'),
+  ('CH-202608-0051', 'EX-0007', 'VOICE', 'Segunda via', '2026-08-06 08:06:54', '2026-08-06 08:10:11', null, '2026-08-06 09:10:11'),
+  ('CH-202608-0052', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-08-10 13:13:17', '2026-08-10 13:18:46', null, '2026-08-10 14:18:46'),
+  ('CH-202608-0053', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-08-12 09:20:40', '2026-08-12 09:26:27', null, '2026-08-12 10:26:27'),
+  ('CH-202608-0054', 'EX-0007', 'VOICE', 'Segunda via', '2026-08-13 14:27:03', '2026-08-13 14:31:00', null, '2026-08-13 15:31:00'),
+  ('CH-202608-0055', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-08-17 10:34:26', '2026-08-17 10:39:27', null, '2026-08-17 11:39:27'),
+  ('CH-202608-0056', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-08-19 15:41:49', '2026-08-19 15:47:06', null, '2026-08-19 16:47:06'),
+  ('CH-202608-0057', 'EX-0007', 'VOICE', 'Segunda via', '2026-08-21 11:48:12', '2026-08-21 11:51:49', null, '2026-08-21 12:51:49'),
+  ('CH-202608-0058', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-08-24 16:55:35', '2026-08-24 17:01:13', null, '2026-08-24 18:01:13'),
+  ('CH-202608-0059', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-08-26 12:02:58', '2026-08-26 12:08:55', null, '2026-08-26 13:08:55'),
+  ('CH-202608-0060', 'EX-0007', 'VOICE', 'Segunda via', '2026-08-28 08:09:21', '2026-08-28 08:13:25', null, '2026-08-28 09:13:25'),
+  ('CH-202608-0061', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-08-04 09:05:25', '2026-08-04 09:10:42', null, '2026-08-04 10:10:42'),
+  ('CH-202608-0062', 'EX-0008', 'VOICE', 'Segunda via', '2026-08-05 14:12:48', '2026-08-05 14:16:25', null, '2026-08-05 15:16:25'),
+  ('CH-202608-0063', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-08-07 10:19:11', '2026-08-07 10:24:11', null, '2026-08-07 11:24:11'),
+  ('CH-202608-0064', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-08-11 15:26:34', '2026-08-11 15:32:56', null, '2026-08-11 16:32:56'),
+  ('CH-202608-0065', 'EX-0008', 'VOICE', 'Segunda via', '2026-08-13 11:33:57', '2026-08-13 11:38:18', null, '2026-08-13 12:38:18'),
+  ('CH-202608-0066', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-08-14 16:40:20', '2026-08-14 16:46:22', null, '2026-08-14 17:46:22'),
+  ('CH-202608-0067', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-08-18 12:47:43', '2026-08-18 12:53:32', null, '2026-08-18 13:53:32'),
+  ('CH-202608-0068', 'EX-0008', 'VOICE', 'Segunda via', '2026-08-20 08:54:06', '2026-08-20 08:58:05', null, '2026-08-20 09:58:05'),
+  ('CH-202608-0069', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-08-24 13:01:29', '2026-08-24 13:07:00', null, '2026-08-24 14:07:00'),
+  ('CH-202608-0070', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-08-25 09:08:52', '2026-08-25 09:15:25', null, '2026-08-25 10:15:25'),
+  ('CH-202608-0071', 'EX-0008', 'VOICE', 'Segunda via', '2026-08-27 14:15:15', '2026-08-27 14:19:44', null, '2026-08-27 15:19:44'),
+  ('CH-202608-0072', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-08-31 10:22:38', '2026-08-31 10:28:50', null, '2026-08-31 11:28:50'),
+  ('CH-202608-0073', 'EX-0009', 'VOICE', 'Segunda via', '2026-08-03 11:18:42', '2026-08-03 11:22:08', null, '2026-08-03 12:22:08'),
+  ('CH-202608-0074', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-08-04 16:25:05', '2026-08-04 16:29:50', null, '2026-08-04 17:29:50'),
+  ('CH-202608-0075', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-08-06 12:32:28', '2026-08-06 12:37:29', null, '2026-08-06 13:37:29'),
+  ('CH-202608-0076', 'EX-0009', 'VOICE', 'Segunda via', '2026-08-10 08:39:51', '2026-08-10 08:43:59', null, '2026-08-10 09:43:59'),
+  ('CH-202608-0077', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-08-12 13:46:14', '2026-08-12 13:51:57', null, '2026-08-12 14:51:57'),
+  ('CH-202608-0078', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-08-13 09:53:37', '2026-08-13 09:59:40', null, '2026-08-13 10:59:40'),
+  ('CH-202608-0079', 'EX-0009', 'VOICE', 'Segunda via', '2026-08-17 14:00:00', '2026-08-17 14:03:47', null, '2026-08-17 15:03:47'),
+  ('CH-202608-0080', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-08-19 10:07:23', '2026-08-19 10:12:37', null, '2026-08-19 11:12:37'),
+  ('CH-202608-0081', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-08-21 15:14:46', '2026-08-21 15:20:18', null, '2026-08-21 16:20:18'),
+  ('CH-202608-0082', 'EX-0009', 'VOICE', 'Segunda via', '2026-08-24 11:21:09', '2026-08-24 11:25:24', null, '2026-08-24 12:25:24'),
+  ('CH-202608-0083', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-08-26 16:28:32', '2026-08-26 16:34:25', null, '2026-08-26 17:34:25'),
+  ('CH-202608-0084', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-08-28 12:35:55', '2026-08-28 12:42:08', null, '2026-08-28 13:42:08'),
+  ('CH-202608-0085', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-08-04 13:31:59', '2026-08-04 13:36:31', null, '2026-08-04 14:36:31'),
+  ('CH-202608-0086', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-08-05 09:38:22', '2026-08-05 09:43:09', null, '2026-08-05 10:43:09'),
+  ('CH-202608-0087', 'EX-0011', 'VOICE', 'Segunda via', '2026-08-07 14:45:45', '2026-08-07 14:49:01', null, '2026-08-07 15:49:01'),
+  ('CH-202608-0088', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-08-11 10:52:08', '2026-08-11 10:57:35', null, '2026-08-11 11:57:35'),
+  ('CH-202608-0089', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-08-13 15:59:31', '2026-08-13 16:05:17', null, '2026-08-13 17:05:17'),
+  ('CH-202608-0090', 'EX-0011', 'VOICE', 'Segunda via', '2026-08-14 11:06:54', '2026-08-14 11:10:50', null, '2026-08-14 12:10:50'),
+  ('CH-202608-0091', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-08-18 16:13:17', '2026-08-18 16:18:17', null, '2026-08-18 17:18:17'),
+  ('CH-202608-0092', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-08-20 12:20:40', '2026-08-20 12:25:56', null, '2026-08-20 13:25:56'),
+  ('CH-202608-0093', 'EX-0011', 'VOICE', 'Segunda via', '2026-08-24 08:27:03', '2026-08-24 08:30:39', null, '2026-08-24 09:30:39'),
+  ('CH-202608-0094', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-08-25 13:34:26', '2026-08-25 13:40:03', null, '2026-08-25 14:40:03'),
+  ('CH-202608-0095', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-08-27 09:41:49', '2026-08-27 09:47:44', null, '2026-08-27 10:47:44'),
+  ('CH-202608-0096', 'EX-0011', 'VOICE', 'Segunda via', '2026-08-31 14:48:12', '2026-08-31 14:52:15', null, '2026-08-31 15:52:15'),
+  ('CH-202608-0097', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-08-03 15:44:16', '2026-08-03 15:48:54', null, '2026-08-03 16:48:54'),
+  ('CH-202608-0098', 'EX-0012', 'VOICE', 'Segunda via', '2026-08-04 11:51:39', '2026-08-04 11:54:49', null, '2026-08-04 12:54:49'),
+  ('CH-202608-0099', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-08-06 16:58:02', '2026-08-06 17:02:25', null, '2026-08-06 18:02:25'),
+  ('CH-202608-0100', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-08-10 12:05:25', '2026-08-10 12:11:00', null, '2026-08-10 13:11:00'),
+  ('CH-202608-0101', 'EX-0012', 'VOICE', 'Segunda via', '2026-08-12 08:12:48', '2026-08-12 08:16:37', null, '2026-08-12 09:16:37'),
+  ('CH-202608-0102', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-08-13 13:19:11', '2026-08-13 13:24:28', null, '2026-08-13 14:24:28'),
+  ('CH-202608-0103', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-08-17 09:26:34', '2026-08-17 09:31:40', null, '2026-08-17 10:31:40'),
+  ('CH-202608-0104', 'EX-0012', 'VOICE', 'Segunda via', '2026-08-19 14:33:57', '2026-08-19 14:37:27', null, '2026-08-19 15:37:27'),
+  ('CH-202608-0105', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-08-21 10:40:20', '2026-08-21 10:45:10', null, '2026-08-21 11:45:10'),
+  ('CH-202608-0106', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-08-24 15:47:43', '2026-08-24 15:53:27', null, '2026-08-24 16:53:27'),
+  ('CH-202608-0107', 'EX-0012', 'VOICE', 'Segunda via', '2026-08-26 11:54:06', '2026-08-26 11:58:02', null, '2026-08-26 12:58:02'),
+  ('CH-202608-0108', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-08-28 16:01:29', '2026-08-28 16:06:55', null, '2026-08-28 17:06:55'),
+  ('CH-202608-0109', 'EX-0013', 'VOICE', 'Segunda via', '2026-08-04 08:57:33', '2026-08-04 09:01:00', null, '2026-08-04 10:01:00'),
+  ('CH-202608-0110', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-08-05 13:04:56', '2026-08-05 13:09:43', null, '2026-08-05 14:09:43'),
+  ('CH-202608-0111', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-08-07 09:11:19', '2026-08-07 09:16:22', null, '2026-08-07 10:16:22'),
+  ('CH-202608-0112', 'EX-0013', 'VOICE', 'Segunda via', '2026-08-11 14:18:42', '2026-08-11 14:22:52', null, '2026-08-11 15:22:52'),
+  ('CH-202608-0113', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-08-13 10:25:05', '2026-08-13 10:30:51', null, '2026-08-13 11:30:51'),
+  ('CH-202608-0114', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-08-14 15:32:28', '2026-08-14 15:38:33', null, '2026-08-14 16:38:33'),
+  ('CH-202608-0115', 'EX-0013', 'VOICE', 'Segunda via', '2026-08-18 11:39:51', '2026-08-18 11:43:39', null, '2026-08-18 12:43:39'),
+  ('CH-202608-0116', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-08-20 16:46:14', '2026-08-20 16:51:30', null, '2026-08-20 17:51:30'),
+  ('CH-202608-0117', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-08-24 12:53:37', '2026-08-24 12:59:11', null, '2026-08-24 13:59:11'),
+  ('CH-202608-0118', 'EX-0013', 'VOICE', 'Segunda via', '2026-08-25 08:00:00', '2026-08-25 08:04:17', null, '2026-08-25 09:04:17'),
+  ('CH-202608-0119', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-08-27 13:07:23', '2026-08-27 13:13:19', null, '2026-08-27 14:13:19'),
+  ('CH-202608-0120', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-08-31 09:14:46', '2026-08-31 09:21:01', null, '2026-08-31 10:21:01'),
+  ('CH-202608-0121', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-08-03 10:10:50', '2026-08-03 10:15:53', null, '2026-08-03 11:15:53'),
+  ('CH-202608-0122', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-08-04 15:17:13', '2026-08-04 15:22:33', null, '2026-08-04 16:22:33'),
+  ('CH-202608-0123', 'EX-0014', 'VOICE', 'Segunda via', '2026-08-06 11:24:36', '2026-08-06 11:28:15', null, '2026-08-06 12:28:15'),
+  ('CH-202608-0124', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-08-10 16:31:59', '2026-08-10 16:38:04', null, '2026-08-10 17:38:04'),
+  ('CH-202608-0125', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-08-12 12:38:22', '2026-08-12 12:44:47', null, '2026-08-12 13:44:47'),
+  ('CH-202608-0126', 'EX-0014', 'VOICE', 'Segunda via', '2026-08-13 08:45:45', '2026-08-13 08:50:09', null, '2026-08-13 09:50:09'),
+  ('CH-202608-0127', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-08-17 13:52:08', '2026-08-17 13:57:42', null, '2026-08-17 14:57:42'),
+  ('CH-202608-0128', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-08-19 09:59:31', '2026-08-19 10:05:24', null, '2026-08-19 11:05:24'),
+  ('CH-202608-0129', 'EX-0014', 'VOICE', 'Segunda via', '2026-08-21 14:06:54', '2026-08-21 14:10:55', null, '2026-08-21 15:10:55'),
+  ('CH-202608-0130', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-08-24 10:13:17', '2026-08-24 10:19:33', null, '2026-08-24 11:19:33'),
+  ('CH-202608-0131', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-08-26 15:20:40', '2026-08-26 15:27:16', null, '2026-08-26 16:27:16'),
+  ('CH-202608-0132', 'EX-0014', 'VOICE', 'Segunda via', '2026-08-28 11:27:03', '2026-08-28 11:31:34', null, '2026-08-28 12:31:34'),
+  ('CH-202608-0133', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-08-04 12:23:07', '2026-08-04 12:27:56', null, '2026-08-04 13:27:56'),
+  ('CH-202608-0134', 'EX-0016', 'VOICE', 'Segunda via', '2026-08-05 08:30:30', '2026-08-05 08:33:48', null, '2026-08-05 09:33:48'),
+  ('CH-202608-0135', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-08-07 13:37:53', '2026-08-07 13:42:27', null, '2026-08-07 14:42:27'),
+  ('CH-202608-0136', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-08-11 09:44:16', '2026-08-11 09:50:04', null, '2026-08-11 10:50:04'),
+  ('CH-202608-0137', 'EX-0016', 'VOICE', 'Segunda via', '2026-08-13 14:51:39', '2026-08-13 14:55:37', null, '2026-08-13 15:55:37'),
+  ('CH-202608-0138', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-08-14 10:58:02', '2026-08-14 11:03:32', null, '2026-08-14 12:03:32'),
+  ('CH-202608-0139', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-08-18 15:05:25', '2026-08-18 15:10:43', null, '2026-08-18 16:10:43'),
+  ('CH-202608-0140', 'EX-0016', 'VOICE', 'Segunda via', '2026-08-20 11:12:48', '2026-08-20 11:16:26', null, '2026-08-20 12:16:26'),
+  ('CH-202608-0141', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-08-24 16:19:11', '2026-08-24 16:24:13', null, '2026-08-24 17:24:13'),
+  ('CH-202608-0142', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-08-25 12:26:34', '2026-08-25 12:32:32', null, '2026-08-25 13:32:32'),
+  ('CH-202608-0143', 'EX-0016', 'VOICE', 'Segunda via', '2026-08-27 08:33:57', '2026-08-27 08:38:02', null, '2026-08-27 09:38:02'),
+  ('CH-202608-0144', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-08-31 13:40:20', '2026-08-31 13:45:59', null, '2026-08-31 14:45:59'),
+  ('CH-202609-0001', 'EX-0003', 'VOICE', 'Segunda via', '2026-09-01 08:00:00', '2026-09-01 08:03:16', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260901-0300.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha um bom dia.', '2026-09-01 09:03:16'),
+  ('CH-202609-0002', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-09-02 13:07:23', '2026-09-02 13:11:54', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é a Patrícia. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Patrícia. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260902-0301. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha uma boa tarde.', '2026-09-02 14:11:54'),
+  ('CH-202609-0003', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-09-04 09:14:46', '2026-09-04 09:19:32', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é o Renato. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0002.
+Operador: Anotado: (11) 90000-0002. O seu protocolo é 20260904-0302. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha um bom dia.', '2026-09-04 10:19:32'),
+  ('CH-202609-0004', 'EX-0003', 'VOICE', 'Segunda via', '2026-09-09 14:21:09', '2026-09-09 14:25:05', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla. Com quem eu falo?
+Cliente: Oi, aqui é a Sílvia. Preciso da segunda via da minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260909-0303. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha uma boa tarde.', '2026-09-09 15:25:05'),
+  ('CH-202609-0005', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-09-11 10:28:32', '2026-09-11 10:33:58', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é a Aline. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de seguro do aparelho de R$ 19,90 que eu não contratei.
+Operador: Entendi: a cobrança de seguro do aparelho, no valor de R$ 19,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Aline. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de seguro do aparelho, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260911-0304. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha um bom dia.', '2026-09-11 11:33:58'),
+  ('CH-202609-0006', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-09-14 15:35:55', '2026-09-14 15:41:39', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é o Gustavo. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Gustavo. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0005.
+Operador: Anotado: (11) 90000-0005. O seu protocolo é 20260914-0305. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Gustavo. Tenha uma boa tarde.', '2026-09-14 16:41:39'),
+  ('CH-202609-0007', 'EX-0003', 'VOICE', 'Segunda via', '2026-09-16 11:42:18', '2026-09-16 11:45:54', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla. Com quem eu falo?
+Cliente: Oi, aqui é a Helena. Preciso da segunda via da minha conta.
+Operador: Claro, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é h***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260916-0306. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha um bom dia.', '2026-09-16 12:45:54'),
+  ('CH-202609-0008', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-09-18 16:49:41', '2026-09-18 16:54:40', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é o Igor. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Igor. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Igor. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260918-0307. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Igor. Tenha uma boa tarde.', '2026-09-18 17:54:40'),
+  ('CH-202609-0009', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-09-22 12:56:04', '2026-09-22 13:01:19', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla.
+Cliente: Oi, estou sem internet desde o fim de semana.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260922-0308.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-22 14:01:19'),
+  ('CH-202609-0010', 'EX-0003', 'VOICE', 'Segunda via', '2026-09-23 08:03:27', '2026-09-23 08:07:29', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla. Com quem eu falo?
+Cliente: Oi, aqui é o Otávio. Preciso da segunda via da minha conta.
+Operador: Claro, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é o***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260923-0309. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha um bom dia.', '2026-09-23 09:07:29'),
+  ('CH-202609-0011', 'EX-0003', 'VOICE', 'Contestação de valor', '2026-09-25 13:10:50', '2026-09-25 13:16:26', 'Operador: Exemplo Telecom, boa tarde, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é a Priscila. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Priscila. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260925-0310. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha uma boa tarde.', '2026-09-25 14:16:26'),
+  ('CH-202609-0012', 'EX-0003', 'VOICE', 'Reparo de internet', '2026-09-29 09:17:13', '2026-09-29 09:23:07', 'Operador: Exemplo Telecom, bom dia, meu nome é Carla. Com quem eu falo?
+Cliente: Aqui é o Sérgio. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0011.
+Operador: Anotado: (11) 90000-0011. O seu protocolo é 20260929-0311. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-29 10:23:07'),
+  ('CH-202609-0013', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-09-02 10:13:17', '2026-09-02 10:17:42', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é o Gustavo. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Gustavo. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Gustavo. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260902-0400. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Gustavo. Tenha um bom dia.', '2026-09-02 11:17:42'),
+  ('CH-202609-0014', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-09-03 15:20:40', '2026-09-03 15:25:20', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é a Helena. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0013.
+Operador: Anotado: (11) 90000-0013. O seu protocolo é 20260903-0401. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha uma boa tarde.', '2026-09-03 16:25:20'),
+  ('CH-202609-0015', 'EX-0004', 'VOICE', 'Segunda via', '2026-09-08 11:27:03', '2026-09-08 11:30:15', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego. Com quem eu falo?
+Cliente: Oi, aqui é o Igor. Preciso da segunda via da minha conta.
+Operador: Claro, Igor. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é i***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260908-0402. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Igor. Tenha um bom dia.', '2026-09-08 12:30:15'),
+  ('CH-202609-0016', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-09-10 16:34:26', '2026-09-10 16:39:45', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é a Luana. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de seguro do aparelho de R$ 19,90 que eu não contratei.
+Operador: Entendi: a cobrança de seguro do aparelho, no valor de R$ 19,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Luana. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de seguro do aparelho, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260910-0403. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha uma boa tarde.', '2026-09-10 17:39:45'),
+  ('CH-202609-0017', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-09-14 12:41:49', '2026-09-14 12:47:26', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é o Otávio. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0016.
+Operador: Anotado: (11) 90000-0016. O seu protocolo é 20260914-0404. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha uma boa tarde.', '2026-09-14 13:47:26'),
+  ('CH-202609-0018', 'EX-0004', 'VOICE', 'Segunda via', '2026-09-15 08:48:12', '2026-09-15 08:52:03', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260915-0405.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha um bom dia.', '2026-09-15 09:52:03'),
+  ('CH-202609-0019', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-09-17 13:55:35', '2026-09-17 14:00:27', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é o Sérgio. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Sérgio. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260917-0406. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha uma boa tarde.', '2026-09-17 15:00:27'),
+  ('CH-202609-0020', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-09-21 09:02:58', '2026-09-21 09:08:07', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é a Tânia. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Tânia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0019.
+Operador: Anotado: (11) 90000-0019. O seu protocolo é 20260921-0407. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Tânia. Tenha um bom dia.', '2026-09-21 10:08:07'),
+  ('CH-202609-0021', 'EX-0004', 'VOICE', 'Segunda via', '2026-09-23 14:09:21', '2026-09-23 14:12:52', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego. Com quem eu falo?
+Cliente: Oi, aqui é o Valter. Preciso da segunda via da minha conta.
+Operador: Claro, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é v***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260923-0408. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha uma boa tarde.', '2026-09-23 15:12:52'),
+  ('CH-202609-0022', 'EX-0004', 'VOICE', 'Contestação de valor', '2026-09-24 10:16:44', '2026-09-24 10:22:12', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego. Com quem eu falo?
+Cliente: Aqui é a Yasmin. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Yasmin. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260924-0409. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha um bom dia.', '2026-09-24 11:22:12'),
+  ('CH-202609-0023', 'EX-0004', 'VOICE', 'Reparo de internet', '2026-09-28 15:23:07', '2026-09-28 15:28:54', 'Operador: Exemplo Telecom, boa tarde, meu nome é Diego.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260928-0410.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-28 16:28:54'),
+  ('CH-202609-0024', 'EX-0004', 'VOICE', 'Segunda via', '2026-09-30 11:30:30', '2026-09-30 11:34:27', 'Operador: Exemplo Telecom, bom dia, meu nome é Diego. Com quem eu falo?
+Cliente: Oi, aqui é a Fernanda. Preciso da segunda via da minha conta.
+Operador: Claro, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é f***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260930-0411. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha um bom dia.', '2026-09-30 12:34:27'),
+  ('CH-202609-0025', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-09-03 12:26:34', '2026-09-03 12:31:19', 'Operador: Exemplo Telecom, boa tarde, meu nome é Elisa. Com quem eu falo?
+Cliente: Aqui é a Priscila. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0024.
+Operador: Anotado: (11) 90000-0024. O seu protocolo é 20260903-0500. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha uma boa tarde.', '2026-09-03 13:31:19'),
+  ('CH-202609-0026', 'EX-0005', 'VOICE', 'Segunda via', '2026-09-01 08:33:57', '2026-09-01 08:37:12', 'Operador: Exemplo Telecom, bom dia, meu nome é Elisa. Com quem eu falo?
+Cliente: Oi, aqui é o Sérgio. Preciso da segunda via da minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260901-0501. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-01 09:37:12'),
+  ('CH-202609-0027', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-09-14 13:40:20', '2026-09-14 13:46:28', 'Operador: Exemplo Telecom, boa tarde, aqui é a Elisa.
+Cliente: Oi, boa tarde. Eu queria contestar um valor da minha conta.
+Operador: Me passa o nome completo e a data de nascimento do titular.
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: E qual é a cobrança?
+Cliente: Uma cobrança de seguro do aparelho de R$ 19,90. Eu não contratei isso.
+Operador: Deixa eu ver aqui.
+Cliente: Alô? Ainda está na linha?
+Operador: Estou sim, o sistema está lento hoje.
+Cliente: Tá. E então, vocês vão tirar esse valor?
+Operador: Essa cobrança aparece como serviço adicional na sua linha.
+Cliente: Mas eu não pedi serviço nenhum. Eu quero contestar.
+Operador: Tá bom, vou abrir a contestação. É só aguardar.
+Cliente: Aguardar quanto tempo? E como eu vou saber o resultado?
+Operador: Vai para análise e depois você recebe o retorno.
+Cliente: Recebo por onde? Vou ter que ligar de novo?
+Operador: Não precisa, o retorno chega. Pode ficar tranquila.
+Cliente: Tá bom então.
+Operador: Mais alguma coisa?
+Cliente: Não.
+Operador: Tchau, tenha uma boa tarde.', '2026-09-14 14:46:28'),
+  ('CH-202609-0028', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-09-10 09:47:43', '2026-09-10 09:53:26', 'Operador: Exemplo Telecom, bom dia, meu nome é Elisa.
+Cliente: Oi, estou sem internet desde ontem à tarde.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260910-0503.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha um bom dia.', '2026-09-10 10:53:26'),
+  ('CH-202609-0029', 'EX-0005', 'VOICE', 'Segunda via', '2026-09-08 14:54:06', '2026-09-08 14:58:01', 'Operador: Exemplo Telecom, boa tarde, meu nome é Elisa. Com quem eu falo?
+Cliente: Oi, aqui é a Yasmin. Preciso da segunda via da minha conta.
+Operador: Claro, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é y***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260908-0504. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha uma boa tarde.', '2026-09-08 15:58:01'),
+  ('CH-202609-0030', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-09-15 10:01:29', '2026-09-15 10:08:52', 'Operador: Exemplo Telecom, bom dia, meu nome é Elisa. Com quem eu falo?
+Cliente: É o Wagner. Tem uma cobrança na minha conta que eu não reconheço.
+Operador: Wagner, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Qual cobrança?
+Cliente: serviço de backup em nuvem, R$ 14,90.
+Cliente: Oi? Você ainda está aí?
+Operador: Estou, estava consultando. Qual era mesmo o serviço?
+Cliente: serviço de backup em nuvem. Eu já falei, eu não contratei.
+Operador: Certo. Vou registrar a contestação. O protocolo é 20260915-0505.
+Cliente: E em quanto tempo eu tenho uma resposta?
+Operador: Depende da análise, a área responsável vai verificar.
+Cliente: Mas vão me avisar como?
+Operador: Vão entrar em contato com você.
+Cliente: Tá bom.
+Operador: Obrigada, tenha um bom dia.', '2026-09-15 11:08:52'),
+  ('CH-202609-0031', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-09-24 15:08:52', '2026-09-24 15:14:06', 'Operador: Exemplo Telecom, boa tarde, meu nome é Elisa. Com quem eu falo?
+Cliente: Aqui é a Fernanda. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0030.
+Operador: Anotado: (11) 90000-0030. O seu protocolo é 20260924-0506. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha uma boa tarde.', '2026-09-24 16:14:06'),
+  ('CH-202609-0032', 'EX-0005', 'VOICE', 'Segunda via', '2026-09-22 11:15:15', '2026-09-22 11:18:50', 'Operador: Exemplo Telecom, bom dia, meu nome é Elisa.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260922-0507.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha um bom dia.', '2026-09-22 12:18:50'),
+  ('CH-202609-0033', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-09-16 16:22:38', '2026-09-16 16:29:23', 'Operador: Exemplo Telecom, boa tarde, aqui é a Elisa.
+Cliente: Oi, boa tarde. Eu queria contestar um valor da minha conta.
+Operador: Me passa o nome completo e a data de nascimento do titular.
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: E qual é a cobrança?
+Cliente: Uma cobrança de pacote de streaming de R$ 29,90. Eu não contratei isso.
+Operador: Deixa eu ver aqui.
+Cliente: Alô? Ainda está na linha?
+Operador: Estou sim, o sistema está lento hoje.
+Cliente: Tá. E então, vocês vão tirar esse valor?
+Operador: Essa cobrança aparece como serviço adicional na sua linha.
+Cliente: Mas eu não pedi serviço nenhum. Eu quero contestar.
+Operador: Tá bom, vou abrir a contestação. É só aguardar.
+Cliente: Aguardar quanto tempo? E como eu vou saber o resultado?
+Operador: Vai para análise e depois você recebe o retorno.
+Cliente: Recebo por onde? Vou ter que ligar de novo?
+Operador: Não precisa, o retorno chega. Pode ficar tranquila.
+Cliente: Tá bom então.
+Operador: Mais alguma coisa?
+Cliente: Não.
+Operador: Tchau, tenha uma boa tarde.', '2026-09-16 17:29:23'),
+  ('CH-202609-0034', 'EX-0005', 'VOICE', 'Reparo de internet', '2026-09-30 12:29:01', '2026-09-30 12:34:54', 'Operador: Exemplo Telecom, boa tarde, meu nome é Elisa. Com quem eu falo?
+Cliente: Aqui é o Renato. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0033.
+Operador: Anotado: (11) 90000-0033. O seu protocolo é 20260930-0509. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha uma boa tarde.', '2026-09-30 13:34:54'),
+  ('CH-202609-0035', 'EX-0005', 'VOICE', 'Segunda via', '2026-09-28 08:36:24', '2026-09-28 08:40:25', 'Operador: Exemplo Telecom, bom dia, meu nome é Elisa. Com quem eu falo?
+Cliente: Oi, aqui é a Sílvia. Preciso da segunda via da minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260928-0510. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha um bom dia.', '2026-09-28 09:40:25'),
+  ('CH-202609-0036', 'EX-0005', 'VOICE', 'Contestação de valor', '2026-09-18 13:43:47', '2026-09-18 13:51:22', 'Operador: Exemplo Telecom, boa tarde, meu nome é Elisa. Com quem eu falo?
+Cliente: É a Aline. Tem uma cobrança na minha conta que eu não reconheço.
+Operador: Aline, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Qual cobrança?
+Cliente: roaming nacional, R$ 62,00.
+Cliente: Oi? Você ainda está aí?
+Operador: Estou, estava consultando. Qual era mesmo o serviço?
+Cliente: roaming nacional. Eu já falei, eu não contratei.
+Operador: Certo. Vou registrar a contestação. O protocolo é 20260918-0511.
+Cliente: E em quanto tempo eu tenho uma resposta?
+Operador: Depende da análise, a área responsável vai verificar.
+Cliente: Mas vão me avisar como?
+Operador: Vão entrar em contato com você.
+Cliente: Tá bom.
+Operador: Obrigada, tenha uma boa tarde.', '2026-09-18 14:51:22'),
+  ('CH-202609-0037', 'EX-0006', 'VOICE', 'Segunda via', '2026-09-02 14:39:51', '2026-09-02 14:43:21', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio. Com quem eu falo?
+Cliente: Oi, aqui é o Wagner. Preciso da segunda via da minha conta.
+Operador: Claro, Wagner. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é w***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260902-0600. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Wagner. Tenha uma boa tarde.', '2026-09-02 15:43:21'),
+  ('CH-202609-0038', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-09-03 10:46:14', '2026-09-03 10:51:05', 'Operador: Exemplo Telecom, bom dia, meu nome é Fábio.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Qual é o valor?
+Cliente: R$ 19,90 de seguro do aparelho. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha um bom dia.', '2026-09-03 11:51:05'),
+  ('CH-202609-0039', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-09-08 15:53:37', '2026-09-08 15:58:44', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio. Com quem eu falo?
+Cliente: Aqui é o Marcos. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Marcos. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0038.
+Operador: Anotado: (11) 90000-0038. O seu protocolo é 20260908-0602. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Marcos. Tenha uma boa tarde.', '2026-09-08 16:58:44'),
+  ('CH-202609-0040', 'EX-0006', 'VOICE', 'Segunda via', '2026-09-10 11:00:00', '2026-09-10 11:04:13', 'Operador: Exemplo Telecom, bom dia, meu nome é Fábio. Com quem eu falo?
+Cliente: Oi, aqui é a Patrícia. Preciso da segunda via da minha conta.
+Operador: Claro, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é p***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260910-0603. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha um bom dia.', '2026-09-10 12:04:13'),
+  ('CH-202609-0041', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-09-14 16:07:23', '2026-09-14 16:13:13', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio. Com quem eu falo?
+Cliente: Aqui é o Renato. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Renato. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260914-0604. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha uma boa tarde.', '2026-09-14 17:13:13'),
+  ('CH-202609-0042', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-09-15 12:14:46', '2026-09-15 12:20:56', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260915-0605.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-15 13:20:56'),
+  ('CH-202609-0043', 'EX-0006', 'VOICE', 'Segunda via', '2026-09-17 08:21:09', '2026-09-17 08:25:01', 'Operador: Exemplo Telecom, bom dia, meu nome é Fábio. Com quem eu falo?
+Cliente: Oi, aqui é a Aline. Preciso da segunda via da minha conta.
+Operador: Claro, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é a***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260917-0606. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha um bom dia.', '2026-09-17 09:25:01'),
+  ('CH-202609-0044', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-09-21 13:28:32', '2026-09-21 13:33:53', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Qual é o valor?
+Cliente: R$ 29,90 de pacote de streaming. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigado.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-21 14:33:53'),
+  ('CH-202609-0045', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-09-23 09:35:55', '2026-09-23 09:41:33', 'Operador: Exemplo Telecom, bom dia, meu nome é Fábio. Com quem eu falo?
+Cliente: Aqui é a Helena. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0044.
+Operador: Anotado: (11) 90000-0044. O seu protocolo é 20260923-0608. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha um bom dia.', '2026-09-23 10:41:33'),
+  ('CH-202609-0046', 'EX-0006', 'VOICE', 'Segunda via', '2026-09-24 14:42:18', '2026-09-24 14:46:38', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260924-0609.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha uma boa tarde.', '2026-09-24 15:46:38'),
+  ('CH-202609-0047', 'EX-0006', 'VOICE', 'Contestação de valor', '2026-09-28 10:49:41', '2026-09-28 10:55:41', 'Operador: Exemplo Telecom, bom dia, meu nome é Fábio. Com quem eu falo?
+Cliente: Aqui é a Luana. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de roaming nacional de R$ 62,00 que eu não contratei.
+Operador: Entendi: a cobrança de roaming nacional, no valor de R$ 62,00, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Luana. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de roaming nacional, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260928-0610. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha um bom dia.', '2026-09-28 11:55:41'),
+  ('CH-202609-0048', 'EX-0006', 'VOICE', 'Reparo de internet', '2026-09-30 15:56:04', '2026-09-30 16:02:24', 'Operador: Exemplo Telecom, boa tarde, meu nome é Fábio. Com quem eu falo?
+Cliente: Aqui é o Otávio. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0047.
+Operador: Anotado: (11) 90000-0047. O seu protocolo é 20260930-0611. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha uma boa tarde.', '2026-09-30 17:02:24'),
+  ('CH-202609-0049', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-09-01 16:52:08', '2026-09-01 16:56:46', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela. Com quem eu falo?
+Cliente: Aqui é a Sílvia. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de seguro do aparelho de R$ 19,90 que eu não contratei.
+Operador: Entendi: a cobrança de seguro do aparelho, no valor de R$ 19,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Sílvia. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de seguro do aparelho, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260901-0700. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha uma boa tarde.', '2026-09-01 17:56:46'),
+  ('CH-202609-0050', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-09-02 12:59:31', '2026-09-02 13:04:25', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela. Com quem eu falo?
+Cliente: Aqui é a Aline. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0049.
+Operador: Anotado: (11) 90000-0049. O seu protocolo é 20260902-0701. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha uma boa tarde.', '2026-09-02 14:04:25'),
+  ('CH-202609-0051', 'EX-0007', 'VOICE', 'Segunda via', '2026-09-04 08:06:54', '2026-09-04 08:10:15', 'Operador: Exemplo Telecom, bom dia, meu nome é Gabriela.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260904-0702.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha um bom dia.', '2026-09-04 09:10:15'),
+  ('CH-202609-0052', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-09-09 13:13:17', '2026-09-09 13:18:52', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Qual é o valor?
+Cliente: R$ 14,90 de serviço de backup em nuvem. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-09 14:18:52'),
+  ('CH-202609-0053', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-09-11 09:20:40', '2026-09-11 09:26:34', 'Operador: Exemplo Telecom, bom dia, meu nome é Gabriela. Com quem eu falo?
+Cliente: Aqui é o Igor. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Igor. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0052.
+Operador: Anotado: (11) 90000-0052. O seu protocolo é 20260911-0704. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Igor. Tenha um bom dia.', '2026-09-11 10:26:34'),
+  ('CH-202609-0054', 'EX-0007', 'VOICE', 'Segunda via', '2026-09-14 14:27:03', '2026-09-14 14:31:05', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela. Com quem eu falo?
+Cliente: Oi, aqui é a Luana. Preciso da segunda via da minha conta.
+Operador: Claro, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é l***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260914-0705. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha uma boa tarde.', '2026-09-14 15:31:05'),
+  ('CH-202609-0055', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-09-16 10:34:26', '2026-09-16 10:39:33', 'Operador: Exemplo Telecom, bom dia, meu nome é Gabriela. Com quem eu falo?
+Cliente: Aqui é o Otávio. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Otávio. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260916-0706. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha um bom dia.', '2026-09-16 11:39:33'),
+  ('CH-202609-0056', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-09-18 15:41:49', '2026-09-18 15:47:13', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela.
+Cliente: Oi, estou sem internet desde o fim de semana.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260918-0707.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-18 16:47:13'),
+  ('CH-202609-0057', 'EX-0007', 'VOICE', 'Segunda via', '2026-09-22 11:48:12', '2026-09-22 11:51:54', 'Operador: Exemplo Telecom, bom dia, meu nome é Gabriela. Com quem eu falo?
+Cliente: Oi, aqui é o Sérgio. Preciso da segunda via da minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260922-0708. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-22 12:51:54'),
+  ('CH-202609-0058', 'EX-0007', 'VOICE', 'Contestação de valor', '2026-09-23 16:55:35', '2026-09-23 17:01:20', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Qual é o valor?
+Cliente: R$ 62,00 de roaming nacional. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-23 18:01:20'),
+  ('CH-202609-0059', 'EX-0007', 'VOICE', 'Reparo de internet', '2026-09-25 12:02:58', '2026-09-25 12:09:02', 'Operador: Exemplo Telecom, boa tarde, meu nome é Gabriela. Com quem eu falo?
+Cliente: Aqui é o Valter. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0058.
+Operador: Anotado: (11) 90000-0058. O seu protocolo é 20260925-0710. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha uma boa tarde.', '2026-09-25 13:09:02'),
+  ('CH-202609-0060', 'EX-0007', 'VOICE', 'Segunda via', '2026-09-29 08:09:21', '2026-09-29 08:13:30', 'Operador: Exemplo Telecom, bom dia, meu nome é Gabriela. Com quem eu falo?
+Cliente: Oi, aqui é a Yasmin. Preciso da segunda via da minha conta.
+Operador: Claro, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é y***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260929-0711. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha um bom dia.', '2026-09-29 09:13:30'),
+  ('CH-202609-0061', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-09-02 09:05:25', '2026-09-02 09:10:39', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor. Com quem eu falo?
+Cliente: Aqui é a Luana. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0060.
+Operador: Anotado: (11) 90000-0060. O seu protocolo é 20260902-0800. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha um bom dia.', '2026-09-02 10:10:39'),
+  ('CH-202609-0062', 'EX-0008', 'VOICE', 'Segunda via', '2026-09-03 14:12:48', '2026-09-03 14:16:23', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor. Com quem eu falo?
+Cliente: Oi, aqui é o Otávio. Preciso da segunda via da minha conta.
+Operador: Claro, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é o***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260903-0801. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha uma boa tarde.', '2026-09-03 15:16:23'),
+  ('CH-202609-0063', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-09-08 10:19:11', '2026-09-08 10:24:08', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Qual é o valor?
+Cliente: R$ 14,90 de serviço de backup em nuvem. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha um bom dia.', '2026-09-08 11:24:08'),
+  ('CH-202609-0064', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-09-10 15:26:34', '2026-09-10 15:32:52', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor. Com quem eu falo?
+Cliente: Aqui é o Sérgio. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0063.
+Operador: Anotado: (11) 90000-0063. O seu protocolo é 20260910-0803. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha uma boa tarde.', '2026-09-10 16:32:52'),
+  ('CH-202609-0065', 'EX-0008', 'VOICE', 'Segunda via', '2026-09-14 11:33:57', '2026-09-14 11:38:16', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260914-0804.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha um bom dia.', '2026-09-14 12:38:16'),
+  ('CH-202609-0066', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-09-15 16:40:20', '2026-09-15 16:46:18', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor. Com quem eu falo?
+Cliente: Aqui é o Valter. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Valter. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260915-0805. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha uma boa tarde.', '2026-09-15 17:46:18'),
+  ('CH-202609-0067', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-09-17 12:47:43', '2026-09-17 12:53:29', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor. Com quem eu falo?
+Cliente: Aqui é a Yasmin. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0066.
+Operador: Anotado: (11) 90000-0066. O seu protocolo é 20260917-0806. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha uma boa tarde.', '2026-09-17 13:53:29'),
+  ('CH-202609-0068', 'EX-0008', 'VOICE', 'Segunda via', '2026-09-21 08:54:06', '2026-09-21 08:58:03', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor. Com quem eu falo?
+Cliente: Oi, aqui é o Wagner. Preciso da segunda via da minha conta.
+Operador: Claro, Wagner. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é w***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260921-0807. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Wagner. Tenha um bom dia.', '2026-09-21 09:58:03'),
+  ('CH-202609-0069', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-09-23 13:01:29', '2026-09-23 13:06:57', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Qual é o valor?
+Cliente: R$ 62,00 de roaming nacional. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-23 14:06:57'),
+  ('CH-202609-0070', 'EX-0008', 'VOICE', 'Reparo de internet', '2026-09-24 09:08:52', '2026-09-24 09:15:21', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260924-0809.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha um bom dia.', '2026-09-24 10:15:21'),
+  ('CH-202609-0071', 'EX-0008', 'VOICE', 'Segunda via', '2026-09-28 14:15:15', '2026-09-28 14:19:41', 'Operador: Exemplo Telecom, boa tarde, meu nome é Heitor. Com quem eu falo?
+Cliente: Oi, aqui é a Patrícia. Preciso da segunda via da minha conta.
+Operador: Claro, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é p***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260928-0810. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha uma boa tarde.', '2026-09-28 15:19:41'),
+  ('CH-202609-0072', 'EX-0008', 'VOICE', 'Contestação de valor', '2026-09-30 10:22:38', '2026-09-30 10:28:46', 'Operador: Exemplo Telecom, bom dia, meu nome é Heitor. Com quem eu falo?
+Cliente: Aqui é o Renato. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Renato. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260930-0811. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha um bom dia.', '2026-09-30 11:28:46'),
+  ('CH-202609-0073', 'EX-0009', 'VOICE', 'Segunda via', '2026-09-01 11:18:42', '2026-09-01 11:22:02', 'Operador: Exemplo Telecom, bom dia, meu nome é Isabela. Com quem eu falo?
+Cliente: Oi, aqui é o Valter. Preciso da segunda via da minha conta.
+Operador: Claro, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é v***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260901-0900. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha um bom dia.', '2026-09-01 12:22:02'),
+  ('CH-202609-0074', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-09-02 16:25:05', '2026-09-02 16:29:42', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é a Yasmin. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Yasmin. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260902-0901. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha uma boa tarde.', '2026-09-02 17:29:42'),
+  ('CH-202609-0075', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-09-04 12:32:28', '2026-09-04 12:37:20', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela.
+Cliente: Oi, estou sem internet desde o fim de semana.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260904-0902.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-04 13:37:20'),
+  ('CH-202609-0076', 'EX-0009', 'VOICE', 'Segunda via', '2026-09-09 08:39:51', '2026-09-09 08:43:52', 'Operador: Exemplo Telecom, bom dia, meu nome é Isabela. Com quem eu falo?
+Cliente: Oi, aqui é a Fernanda. Preciso da segunda via da minha conta.
+Operador: Claro, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é f***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260909-0903. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha um bom dia.', '2026-09-09 09:43:52'),
+  ('CH-202609-0077', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-09-11 13:46:14', '2026-09-11 13:51:47', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é o Marcos. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Marcos. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Marcos. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260911-0904. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Marcos. Tenha uma boa tarde.', '2026-09-11 14:51:47'),
+  ('CH-202609-0078', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-09-14 09:53:37', '2026-09-14 09:59:29', 'Operador: Exemplo Telecom, bom dia, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é a Patrícia. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0077.
+Operador: Anotado: (11) 90000-0077. O seu protocolo é 20260914-0905. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha um bom dia.', '2026-09-14 10:59:29'),
+  ('CH-202609-0079', 'EX-0009', 'VOICE', 'Segunda via', '2026-09-16 14:00:00', '2026-09-16 14:03:40', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260916-0906.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha uma boa tarde.', '2026-09-16 15:03:40'),
+  ('CH-202609-0080', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-09-18 10:07:23', '2026-09-18 10:12:28', 'Operador: Exemplo Telecom, bom dia, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é a Sílvia. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de roaming nacional de R$ 62,00 que eu não contratei.
+Operador: Entendi: a cobrança de roaming nacional, no valor de R$ 62,00, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Sílvia. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de roaming nacional, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260918-0907. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha um bom dia.', '2026-09-18 11:12:28'),
+  ('CH-202609-0081', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-09-22 15:14:46', '2026-09-22 15:20:08', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é a Aline. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0080.
+Operador: Anotado: (11) 90000-0080. O seu protocolo é 20260922-0908. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha uma boa tarde.', '2026-09-22 16:20:08'),
+  ('CH-202609-0082', 'EX-0009', 'VOICE', 'Segunda via', '2026-09-23 11:21:09', '2026-09-23 11:25:16', 'Operador: Exemplo Telecom, bom dia, meu nome é Isabela. Com quem eu falo?
+Cliente: Oi, aqui é o Gustavo. Preciso da segunda via da minha conta.
+Operador: Claro, Gustavo. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é g***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260923-0909. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Gustavo. Tenha um bom dia.', '2026-09-23 12:25:16'),
+  ('CH-202609-0083', 'EX-0009', 'VOICE', 'Contestação de valor', '2026-09-25 16:28:32', '2026-09-25 16:34:15', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é a Helena. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Helena. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260925-0910. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha uma boa tarde.', '2026-09-25 17:34:15'),
+  ('CH-202609-0084', 'EX-0009', 'VOICE', 'Reparo de internet', '2026-09-29 12:35:55', '2026-09-29 12:41:57', 'Operador: Exemplo Telecom, boa tarde, meu nome é Isabela. Com quem eu falo?
+Cliente: Aqui é o Igor. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Igor. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0083.
+Operador: Anotado: (11) 90000-0083. O seu protocolo é 20260929-0911. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Igor. Tenha uma boa tarde.', '2026-09-29 13:41:57'),
+  ('CH-202609-0085', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-09-02 13:31:59', '2026-09-02 13:36:25', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é a Patrícia. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Patrícia. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260902-1100. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha uma boa tarde.', '2026-09-02 14:36:25'),
+  ('CH-202609-0086', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-09-03 09:38:22', '2026-09-03 09:43:03', 'Operador: Exemplo Telecom, bom dia, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é o Renato. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0085.
+Operador: Anotado: (11) 90000-0085. O seu protocolo é 20260903-1101. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha um bom dia.', '2026-09-03 10:43:03'),
+  ('CH-202609-0087', 'EX-0011', 'VOICE', 'Segunda via', '2026-09-08 14:45:45', '2026-09-08 14:48:57', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina. Com quem eu falo?
+Cliente: Oi, aqui é a Sílvia. Preciso da segunda via da minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260908-1102. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha uma boa tarde.', '2026-09-08 15:48:57'),
+  ('CH-202609-0088', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-09-10 10:52:08', '2026-09-10 10:57:29', 'Operador: Exemplo Telecom, bom dia, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é a Aline. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Aline. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260910-1103. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha um bom dia.', '2026-09-10 11:57:29'),
+  ('CH-202609-0089', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-09-14 15:59:31', '2026-09-14 16:05:09', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260914-1104.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-14 17:05:09'),
+  ('CH-202609-0090', 'EX-0011', 'VOICE', 'Segunda via', '2026-09-15 11:06:54', '2026-09-15 11:10:46', 'Operador: Exemplo Telecom, bom dia, meu nome é Karina. Com quem eu falo?
+Cliente: Oi, aqui é a Helena. Preciso da segunda via da minha conta.
+Operador: Claro, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é h***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260915-1105. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha um bom dia.', '2026-09-15 12:10:46'),
+  ('CH-202609-0091', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-09-17 16:13:17', '2026-09-17 16:18:10', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é o Igor. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Igor. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de roaming nacional de R$ 62,00 que eu não contratei.
+Operador: Entendi: a cobrança de roaming nacional, no valor de R$ 62,00, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Igor. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de roaming nacional, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260917-1106. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Igor. Tenha uma boa tarde.', '2026-09-17 17:18:10'),
+  ('CH-202609-0092', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-09-21 12:20:40', '2026-09-21 12:25:50', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é a Luana. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0091.
+Operador: Anotado: (11) 90000-0091. O seu protocolo é 20260921-1107. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha uma boa tarde.', '2026-09-21 13:25:50'),
+  ('CH-202609-0093', 'EX-0011', 'VOICE', 'Segunda via', '2026-09-23 08:27:03', '2026-09-23 08:30:35', 'Operador: Exemplo Telecom, bom dia, meu nome é Karina. Com quem eu falo?
+Cliente: Oi, aqui é o Otávio. Preciso da segunda via da minha conta.
+Operador: Claro, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é o***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260923-1108. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha um bom dia.', '2026-09-23 09:30:35'),
+  ('CH-202609-0094', 'EX-0011', 'VOICE', 'Contestação de valor', '2026-09-24 13:34:26', '2026-09-24 13:39:56', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é a Priscila. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Priscila. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260924-1109. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha uma boa tarde.', '2026-09-24 14:39:56'),
+  ('CH-202609-0095', 'EX-0011', 'VOICE', 'Reparo de internet', '2026-09-28 09:41:49', '2026-09-28 09:47:37', 'Operador: Exemplo Telecom, bom dia, meu nome é Karina. Com quem eu falo?
+Cliente: Aqui é o Sérgio. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0094.
+Operador: Anotado: (11) 90000-0094. O seu protocolo é 20260928-1110. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-28 10:47:37'),
+  ('CH-202609-0096', 'EX-0011', 'VOICE', 'Segunda via', '2026-09-30 14:48:12', '2026-09-30 14:52:10', 'Operador: Exemplo Telecom, boa tarde, meu nome é Karina.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260930-1111.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha uma boa tarde.', '2026-09-30 15:52:10'),
+  ('CH-202609-0097', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-09-01 15:44:16', '2026-09-01 15:48:57', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é a Helena. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0096.
+Operador: Anotado: (11) 90000-0096. O seu protocolo é 20260901-1200. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha uma boa tarde.', '2026-09-01 16:48:57'),
+  ('CH-202609-0098', 'EX-0012', 'VOICE', 'Segunda via', '2026-09-02 11:51:39', '2026-09-02 11:54:51', 'Operador: Exemplo Telecom, bom dia, meu nome é Lucas.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260902-1201.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha um bom dia.', '2026-09-02 12:54:51'),
+  ('CH-202609-0099', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-09-04 16:58:02', '2026-09-04 17:02:28', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é a Luana. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Luana. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260904-1202. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha uma boa tarde.', '2026-09-04 18:02:28'),
+  ('CH-202609-0100', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-09-09 12:05:25', '2026-09-09 12:11:03', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é o Otávio. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0099.
+Operador: Anotado: (11) 90000-0099. O seu protocolo é 20260909-1203. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha uma boa tarde.', '2026-09-09 13:11:03'),
+  ('CH-202609-0101', 'EX-0012', 'VOICE', 'Segunda via', '2026-09-11 08:12:48', '2026-09-11 08:16:40', 'Operador: Exemplo Telecom, bom dia, meu nome é Lucas. Com quem eu falo?
+Cliente: Oi, aqui é a Priscila. Preciso da segunda via da minha conta.
+Operador: Claro, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é p***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260911-1204. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha um bom dia.', '2026-09-11 09:16:40'),
+  ('CH-202609-0102', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-09-14 13:19:11', '2026-09-14 13:24:32', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é o Sérgio. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de roaming nacional de R$ 62,00 que eu não contratei.
+Operador: Entendi: a cobrança de roaming nacional, no valor de R$ 62,00, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Sérgio. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de roaming nacional, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260914-1205. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha uma boa tarde.', '2026-09-14 14:24:32'),
+  ('CH-202609-0103', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-09-16 09:26:34', '2026-09-16 09:31:44', 'Operador: Exemplo Telecom, bom dia, meu nome é Lucas.
+Cliente: Oi, estou sem internet desde o fim de semana.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260916-1206.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha um bom dia.', '2026-09-16 10:31:44'),
+  ('CH-202609-0104', 'EX-0012', 'VOICE', 'Segunda via', '2026-09-18 14:33:57', '2026-09-18 14:37:29', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Oi, aqui é o Valter. Preciso da segunda via da minha conta.
+Operador: Claro, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é v***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260918-1207. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha uma boa tarde.', '2026-09-18 15:37:29'),
+  ('CH-202609-0105', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-09-22 10:40:20', '2026-09-22 10:45:13', 'Operador: Exemplo Telecom, bom dia, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é a Yasmin. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Yasmin. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Yasmin. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260922-1208. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Yasmin. Tenha um bom dia.', '2026-09-22 11:45:13'),
+  ('CH-202609-0106', 'EX-0012', 'VOICE', 'Reparo de internet', '2026-09-23 15:47:43', '2026-09-23 15:53:31', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é o Wagner. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Wagner. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0005.
+Operador: Anotado: (11) 90000-0005. O seu protocolo é 20260923-1209. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Wagner. Tenha uma boa tarde.', '2026-09-23 16:53:31'),
+  ('CH-202609-0107', 'EX-0012', 'VOICE', 'Segunda via', '2026-09-25 11:54:06', '2026-09-25 11:58:04', 'Operador: Exemplo Telecom, bom dia, meu nome é Lucas. Com quem eu falo?
+Cliente: Oi, aqui é a Fernanda. Preciso da segunda via da minha conta.
+Operador: Claro, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é f***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260925-1210. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha um bom dia.', '2026-09-25 12:58:04'),
+  ('CH-202609-0108', 'EX-0012', 'VOICE', 'Contestação de valor', '2026-09-29 16:01:29', '2026-09-29 16:06:59', 'Operador: Exemplo Telecom, boa tarde, meu nome é Lucas. Com quem eu falo?
+Cliente: Aqui é o Marcos. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Marcos. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de seguro do aparelho de R$ 19,90 que eu não contratei.
+Operador: Entendi: a cobrança de seguro do aparelho, no valor de R$ 19,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Marcos. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de seguro do aparelho, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260929-1211. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Marcos. Tenha uma boa tarde.', '2026-09-29 17:06:59'),
+  ('CH-202609-0109', 'EX-0013', 'VOICE', 'Segunda via', '2026-09-02 08:57:33', '2026-09-02 09:01:06', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina. Com quem eu falo?
+Cliente: Oi, aqui é o Sérgio. Preciso da segunda via da minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260902-1300. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-02 10:01:06'),
+  ('CH-202609-0110', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-09-03 13:04:56', '2026-09-03 13:09:52', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Qual é o valor?
+Cliente: R$ 29,90 de pacote de streaming. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-03 14:09:52'),
+  ('CH-202609-0111', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-09-08 09:11:19', '2026-09-08 09:16:31', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina. Com quem eu falo?
+Cliente: Aqui é o Valter. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0010.
+Operador: Anotado: (11) 90000-0010. O seu protocolo é 20260908-1302. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha um bom dia.', '2026-09-08 10:16:31'),
+  ('CH-202609-0112', 'EX-0013', 'VOICE', 'Segunda via', '2026-09-10 14:18:42', '2026-09-10 14:22:59', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260910-1303.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigada pelo contato. Tenha uma boa tarde.', '2026-09-10 15:22:59'),
+  ('CH-202609-0113', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-09-14 10:25:05', '2026-09-14 10:31:01', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina. Com quem eu falo?
+Cliente: Aqui é o Wagner. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Wagner. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de roaming nacional de R$ 62,00 que eu não contratei.
+Operador: Entendi: a cobrança de roaming nacional, no valor de R$ 62,00, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Wagner. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de roaming nacional, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260914-1304. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Wagner. Tenha um bom dia.', '2026-09-14 11:31:01'),
+  ('CH-202609-0114', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-09-15 15:32:28', '2026-09-15 15:38:44', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina. Com quem eu falo?
+Cliente: Aqui é a Fernanda. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0013.
+Operador: Anotado: (11) 90000-0013. O seu protocolo é 20260915-1305. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha uma boa tarde.', '2026-09-15 16:38:44'),
+  ('CH-202609-0115', 'EX-0013', 'VOICE', 'Segunda via', '2026-09-17 11:39:51', '2026-09-17 11:43:46', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina. Com quem eu falo?
+Cliente: Oi, aqui é o Marcos. Preciso da segunda via da minha conta.
+Operador: Claro, Marcos. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é m***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260917-1306. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Marcos. Tenha um bom dia.', '2026-09-17 12:43:46'),
+  ('CH-202609-0116', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-09-21 16:46:14', '2026-09-21 16:51:40', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Qual é o valor?
+Cliente: R$ 47,30 de chamadas para outra operadora. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-21 17:51:40'),
+  ('CH-202609-0117', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-09-23 12:53:37', '2026-09-23 12:59:21', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina. Com quem eu falo?
+Cliente: Aqui é o Renato. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Renato. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Obrigada. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0016.
+Operador: Anotado: (11) 90000-0016. O seu protocolo é 20260923-1308. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Renato. Tenha uma boa tarde.', '2026-09-23 13:59:21'),
+  ('CH-202609-0118', 'EX-0013', 'VOICE', 'Segunda via', '2026-09-24 08:00:00', '2026-09-24 08:04:24', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina. Com quem eu falo?
+Cliente: Oi, aqui é a Sílvia. Preciso da segunda via da minha conta.
+Operador: Claro, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigada, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260924-1309. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha um bom dia.', '2026-09-24 09:04:24'),
+  ('CH-202609-0119', 'EX-0013', 'VOICE', 'Contestação de valor', '2026-09-28 13:07:23', '2026-09-28 13:13:29', 'Operador: Exemplo Telecom, boa tarde, meu nome é Marina. Com quem eu falo?
+Cliente: Aqui é a Aline. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigada. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de seguro do aparelho de R$ 19,90 que eu não contratei.
+Operador: Entendi: a cobrança de seguro do aparelho, no valor de R$ 19,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigada por aguardar, Aline. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de seguro do aparelho, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260928-1310. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha uma boa tarde.', '2026-09-28 14:13:29'),
+  ('CH-202609-0120', 'EX-0013', 'VOICE', 'Reparo de internet', '2026-09-30 09:14:46', '2026-09-30 09:21:12', 'Operador: Exemplo Telecom, bom dia, meu nome é Marina.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260930-1311.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha um bom dia.', '2026-09-30 10:21:12'),
+  ('CH-202609-0121', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-09-01 10:10:50', '2026-09-01 10:15:50', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas. Com quem eu falo?
+Cliente: Aqui é a Fernanda. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Fernanda. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Fernanda Lima Aragão, 13 de outubro de 1991.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de pacote de streaming de R$ 29,90 que eu não contratei.
+Operador: Entendi: a cobrança de pacote de streaming, no valor de R$ 29,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Fernanda. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de pacote de streaming, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260901-1400. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigada.
+Operador: Eu que agradeço o contato, Fernanda. Tenha um bom dia.', '2026-09-01 11:15:50'),
+  ('CH-202609-0122', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-09-02 15:17:13', '2026-09-02 15:22:30', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas.
+Cliente: Oi, estou sem internet desde o fim de semana.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Marcos Teixeira Dantas, 12 de março de 1985.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260902-1401.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha uma boa tarde.', '2026-09-02 16:22:30'),
+  ('CH-202609-0123', 'EX-0014', 'VOICE', 'Segunda via', '2026-09-04 11:24:36', '2026-09-04 11:28:13', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas. Com quem eu falo?
+Cliente: Oi, aqui é a Patrícia. Preciso da segunda via da minha conta.
+Operador: Claro, Patrícia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Patrícia Nunes Viana, 3 de julho de 1990.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é p***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260904-1402. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Patrícia. Tenha um bom dia.', '2026-09-04 12:28:13'),
+  ('CH-202609-0124', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-09-09 16:31:59', '2026-09-09 16:38:01', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Renato Prado Lacerda, 21 de outubro de 1978.
+Operador: Qual é o valor?
+Cliente: R$ 62,00 de roaming nacional. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigado.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-09 17:38:01'),
+  ('CH-202609-0125', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-09-11 12:38:22', '2026-09-11 12:44:44', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas. Com quem eu falo?
+Cliente: Aqui é a Sílvia. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Sílvia. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sílvia Campos Ferraz, 8 de janeiro de 1969.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0024.
+Operador: Anotado: (11) 90000-0024. O seu protocolo é 20260911-1404. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Sílvia. Tenha uma boa tarde.', '2026-09-11 13:44:44'),
+  ('CH-202609-0126', 'EX-0014', 'VOICE', 'Segunda via', '2026-09-14 08:45:45', '2026-09-14 08:50:06', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas. Com quem eu falo?
+Cliente: Oi, aqui é a Aline. Preciso da segunda via da minha conta.
+Operador: Claro, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é a***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260914-1405. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha um bom dia.', '2026-09-14 09:50:06'),
+  ('CH-202609-0127', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-09-16 13:52:08', '2026-09-16 13:57:39', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas. Com quem eu falo?
+Cliente: Aqui é o Gustavo. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Gustavo. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Gustavo. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260916-1406. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Gustavo. Tenha uma boa tarde.', '2026-09-16 14:57:39'),
+  ('CH-202609-0128', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-09-18 09:59:31', '2026-09-18 10:05:20', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas. Com quem eu falo?
+Cliente: Aqui é a Helena. Minha internet parou de funcionar desde ontem à noite.
+Operador: Sinto muito, Helena. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0027.
+Operador: Anotado: (11) 90000-0027. O seu protocolo é 20260918-1407. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Helena. Tenha um bom dia.', '2026-09-18 11:05:20'),
+  ('CH-202609-0129', 'EX-0014', 'VOICE', 'Segunda via', '2026-09-22 14:06:54', '2026-09-22 14:10:53', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260922-1408.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha uma boa tarde.', '2026-09-22 15:10:53'),
+  ('CH-202609-0130', 'EX-0014', 'VOICE', 'Contestação de valor', '2026-09-23 10:13:17', '2026-09-23 10:19:29', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Qual é o valor?
+Cliente: R$ 19,90 de seguro do aparelho. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha um bom dia.', '2026-09-23 11:19:29'),
+  ('CH-202609-0131', 'EX-0014', 'VOICE', 'Reparo de internet', '2026-09-25 15:20:40', '2026-09-25 15:27:13', 'Operador: Exemplo Telecom, boa tarde, meu nome é Nicolas. Com quem eu falo?
+Cliente: Aqui é o Otávio. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0030.
+Operador: Anotado: (11) 90000-0030. O seu protocolo é 20260925-1410. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha uma boa tarde.', '2026-09-25 16:27:13'),
+  ('CH-202609-0132', 'EX-0014', 'VOICE', 'Segunda via', '2026-09-29 11:27:03', '2026-09-29 11:31:32', 'Operador: Exemplo Telecom, bom dia, meu nome é Nicolas. Com quem eu falo?
+Cliente: Oi, aqui é a Priscila. Preciso da segunda via da minha conta.
+Operador: Claro, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é p***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260929-1411. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha um bom dia.', '2026-09-29 12:31:32'),
+  ('CH-202609-0133', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-09-02 12:23:07', '2026-09-02 12:28:02', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo. Com quem eu falo?
+Cliente: Aqui é a Aline. Minha internet parou de funcionar desde ontem à tarde.
+Operador: Sinto muito, Aline. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Aline Moura Bastos, 30 de maio de 1995.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0032.
+Operador: Anotado: (11) 90000-0032. O seu protocolo é 20260902-1600. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Aline. Tenha uma boa tarde.', '2026-09-02 13:28:02'),
+  ('CH-202609-0134', 'EX-0016', 'VOICE', 'Segunda via', '2026-09-03 08:30:30', '2026-09-03 08:33:52', 'Operador: Exemplo Telecom, bom dia, meu nome é Paulo. Com quem eu falo?
+Cliente: Oi, aqui é o Gustavo. Preciso da segunda via da minha conta.
+Operador: Claro, Gustavo. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Gustavo Reis Amaral, 14 de fevereiro de 1988.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é g***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260903-1601. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Gustavo. Tenha um bom dia.', '2026-09-03 09:33:52'),
+  ('CH-202609-0135', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-09-08 13:37:53', '2026-09-08 13:42:32', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Helena Duarte Pinheiro, 27 de setembro de 1972.
+Operador: Qual é o valor?
+Cliente: R$ 62,00 de roaming nacional. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-08 14:42:32'),
+  ('CH-202609-0136', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-09-10 09:44:16', '2026-09-10 09:50:11', 'Operador: Exemplo Telecom, bom dia, meu nome é Paulo.
+Cliente: Oi, estou sem internet desde ontem à noite.
+Operador: Me confirma o nome completo e a data de nascimento do titular?
+Cliente: Igor Matos Siqueira, 5 de dezembro de 1999.
+Operador: Não tem falha geral na sua região. Vou abrir um reparo.
+Cliente: E quando vem alguém?
+Operador: O técnico entra em contato em até 24 horas para agendar a visita. O protocolo é 20260910-1603.
+Cliente: Tá bom, obrigado.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Tenha um bom dia.', '2026-09-10 10:50:11'),
+  ('CH-202609-0137', 'EX-0016', 'VOICE', 'Segunda via', '2026-09-14 14:51:39', '2026-09-14 14:55:42', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo. Com quem eu falo?
+Cliente: Oi, aqui é a Luana. Preciso da segunda via da minha conta.
+Operador: Claro, Luana. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Luana Freitas Brandão, 19 de agosto de 1993.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é l***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260914-1604. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigada.
+Operador: Eu que agradeço o contato, Luana. Tenha uma boa tarde.', '2026-09-14 15:55:42'),
+  ('CH-202609-0138', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-09-15 10:58:02', '2026-09-15 11:03:39', 'Operador: Exemplo Telecom, bom dia, meu nome é Paulo. Com quem eu falo?
+Cliente: Aqui é o Otávio. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Otávio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Otávio Sales Carvalho, 2 de abril de 1981.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de chamadas para outra operadora de R$ 47,30 que eu não contratei.
+Operador: Entendi: a cobrança de chamadas para outra operadora, no valor de R$ 47,30, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Otávio. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de chamadas para outra operadora, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260915-1605. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Otávio. Tenha um bom dia.', '2026-09-15 12:03:39'),
+  ('CH-202609-0139', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-09-17 15:05:25', '2026-09-17 15:10:50', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo. Com quem eu falo?
+Cliente: Aqui é a Priscila. Minha internet parou de funcionar desde hoje cedo.
+Operador: Sinto muito, Priscila. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Priscila Lopes Guerra, 11 de novembro de 1986.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0038.
+Operador: Anotado: (11) 90000-0038. O seu protocolo é 20260917-1606. Ficou alguma dúvida?
+Cliente: Não, obrigada.
+Operador: Eu que agradeço o contato, Priscila. Tenha uma boa tarde.', '2026-09-17 16:10:50'),
+  ('CH-202609-0140', 'EX-0016', 'VOICE', 'Segunda via', '2026-09-21 11:12:48', '2026-09-21 11:16:30', 'Operador: Exemplo Telecom, bom dia, meu nome é Paulo. Com quem eu falo?
+Cliente: Oi, aqui é o Sérgio. Preciso da segunda via da minha conta.
+Operador: Claro, Sérgio. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Sérgio Vidal Monteiro, 23 de junho de 1965.
+Operador: Obrigado, dados confirmados. Você prefere receber a segunda via por e-mail ou por SMS?
+Cliente: Por e-mail.
+Operador: O e-mail cadastrado é s***@exemplo.com.br. Está correto?
+Cliente: Está sim.
+Operador: Pronto, enviei a segunda via para o seu e-mail. Ela chega em até dez minutos.
+Cliente: Ótimo.
+Operador: O seu protocolo é 20260921-1607. Ficou alguma dúvida?
+Cliente: Não, era só isso. Obrigado.
+Operador: Eu que agradeço o contato, Sérgio. Tenha um bom dia.', '2026-09-21 12:16:30'),
+  ('CH-202609-0141', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-09-23 16:19:11', '2026-09-23 16:24:19', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo.
+Cliente: Oi, tem um valor errado na minha conta.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Tânia Rezende Cunha, 16 de março de 1976.
+Operador: Qual é o valor?
+Cliente: R$ 19,90 de seguro do aparelho. Eu nunca usei isso.
+Operador: Um momento que eu vou verificar, já retorno.
+Operador: Abri a contestação. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Tá certo, obrigada.
+Operador: Por nada. Tenha uma boa tarde.', '2026-09-23 17:24:19'),
+  ('CH-202609-0142', 'EX-0016', 'VOICE', 'Reparo de internet', '2026-09-24 12:26:34', '2026-09-24 12:32:39', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo. Com quem eu falo?
+Cliente: Aqui é o Valter. Minha internet parou de funcionar desde o fim de semana.
+Operador: Sinto muito, Valter. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Valter Moreira Paiva, 9 de setembro de 1959.
+Operador: Obrigado. Verifiquei aqui e não há falha geral na sua região. Você pode desligar o modem da tomada, esperar trinta segundos e ligar de novo?
+Cliente: Pronto, reiniciei. As luzes acenderam, mas continua sem internet.
+Operador: Entendi. Vou abrir o reparo. O técnico entra em contato em até 24 horas para agendar a visita. Qual telefone é melhor para o contato?
+Cliente: Pode ser este mesmo, (11) 90000-0041.
+Operador: Anotado: (11) 90000-0041. O seu protocolo é 20260924-1609. Ficou alguma dúvida?
+Cliente: Não, obrigado.
+Operador: Eu que agradeço o contato, Valter. Tenha uma boa tarde.', '2026-09-24 13:32:39'),
+  ('CH-202609-0143', 'EX-0016', 'VOICE', 'Segunda via', '2026-09-28 08:33:57', '2026-09-28 08:38:07', 'Operador: Exemplo Telecom, bom dia, meu nome é Paulo.
+Cliente: Oi, eu quero a segunda via da conta deste mês.
+Operador: Me confirma o nome completo e a data de nascimento do titular, por favor?
+Cliente: Yasmin Castro Leal, 28 de fevereiro de 2001.
+Operador: Certo. Vou mandar para o e-mail que está no cadastro.
+Cliente: Pode ser.
+Operador: Enviado. O protocolo é 20260928-1610.
+Cliente: Tá bom, obrigada.
+Operador: Mais alguma dúvida?
+Cliente: Não.
+Operador: Então Obrigado pelo contato. Tenha um bom dia.', '2026-09-28 09:38:07'),
+  ('CH-202609-0144', 'EX-0016', 'VOICE', 'Contestação de valor', '2026-09-30 13:40:20', '2026-09-30 13:46:06', 'Operador: Exemplo Telecom, boa tarde, meu nome é Paulo. Com quem eu falo?
+Cliente: Aqui é o Wagner. Quero contestar um valor que veio na minha conta.
+Operador: Claro, Wagner. Para sua segurança, me confirma o nome completo e a data de nascimento do titular?
+Cliente: Wagner Queiroz Tavares, 7 de julho de 1983.
+Operador: Obrigado. Qual item da conta você quer contestar?
+Cliente: Veio uma cobrança de serviço de backup em nuvem de R$ 14,90 que eu não contratei.
+Operador: Entendi: a cobrança de serviço de backup em nuvem, no valor de R$ 14,90, que você não reconhece. É isso?
+Cliente: Isso mesmo.
+Operador: Vou abrir a contestação no sistema. Leva cerca de um minuto, peço que aguarde na linha.
+Operador: Obrigado por aguardar, Wagner. A contestação está aberta. A análise leva até cinco dias úteis e o resultado chega por SMS.
+Cliente: Certo.
+Operador: Recapitulando: contestação da cobrança de serviço de backup em nuvem, análise em até cinco dias úteis e retorno por SMS. O seu protocolo é 20260930-1611. Ficou alguma dúvida?
+Cliente: Não, ficou claro. Obrigado.
+Operador: Eu que agradeço o contato, Wagner. Tenha uma boa tarde.', '2026-09-30 14:46:06');
+
+grant select on grupos, subgrupos, metas, fechamento_mensal, chamadas to inia_leitura;
+-- <<< FIM DOS DADOS PARA O PRIMEIRO FEEDBACK

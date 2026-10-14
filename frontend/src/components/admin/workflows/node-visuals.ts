@@ -1,4 +1,4 @@
-import { Bot, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Split, UsersRound, Zap, type LucideIcon } from "lucide-react"
+import { Bot, ClipboardCheck, Clock, Flag, GitBranch, GitMerge, Play, Send, ShieldCheck, Split, UsersRound, Zap, type LucideIcon } from "lucide-react"
 import {
   COMPARATOR_LABELS,
   ESCALATION_ROLE_LABELS,
@@ -35,6 +35,7 @@ export const NODE_ICONS: Record<FlowNodeType, LucideIcon> = {
   orchestrator: Bot,
   human_review: ShieldCheck,
   output: Send,
+  intervention_policy: ClipboardCheck,
   end: Flag,
 }
 
@@ -81,6 +82,11 @@ export const NODE_COLORS: Record<FlowNodeType, { icon: string; iconBg: string; r
     iconBg: "bg-emerald-100 dark:bg-emerald-950",
     ring: "border-emerald-400 ring-emerald-400/30",
   },
+  intervention_policy: {
+    icon: "text-lime-700 dark:text-lime-300",
+    iconBg: "bg-lime-100 dark:bg-lime-950",
+    ring: "border-lime-500 ring-lime-500/30",
+  },
   end: { icon: "text-slate-600 dark:text-slate-300", iconBg: "bg-slate-100 dark:bg-slate-800", ring: "border-slate-400 ring-slate-400/30" },
 }
 
@@ -98,10 +104,14 @@ export type NodeDescribeContext = {
   isConsolidatedMode?: boolean
   getAgentName?: (agentId: string) => string | undefined
   getOrchestratorName?: (orchestratorId: string) => string | undefined
+  /** Nome da política de acompanhamento (resumo publicado) — o card nunca mostra id. */
+  getPolicyName?: (policyId: string) => string | undefined
   /** Label amigável ("Diagnóstico › Severidade") de um campo de Structured Output, dado o node
    * de origem e o path relativo (já sem o prefixo "structuredResult.") — undefined quando o
    * schema não é conhecido, caindo no fallback textual de sempre. */
   getStructuredFieldLabel?: (nodeId: string, fieldPath: string) => string | undefined
+  /** Rótulo de negócio de um valor de campo de lista ("Recomendada ao responsável" em vez de RECOMMENDED). */
+  getStructuredFieldOptionLabel?: (nodeId: string, fieldPath: string, value: string) => string | undefined
   /** Nome + tipo de uma Workflow Variable pelo seu id imutável — undefined se ela não existir
    * mais (referência quebrada). */
   getVariable?: (variableId: string) => { label: string; type: WorkflowVariableType } | undefined
@@ -192,7 +202,8 @@ function describeConditionRule(rule: ConditionRule, context: NodeDescribeContext
   if (decoded?.kind === "node") {
     const structuredPath = decoded.field ? decodeStructuredFieldPath(decoded.field) : null
     const fieldLabel = structuredPath ? context.getStructuredFieldLabel?.(decoded.nodeId, structuredPath) : undefined
-    if (fieldLabel) return `${fieldLabel} ${describeComparison(rule)}`
+    const optionLabel = structuredPath && rule.thresholdText ? context.getStructuredFieldOptionLabel?.(decoded.nodeId, structuredPath, rule.thresholdText) : undefined
+    if (fieldLabel) return `${fieldLabel} ${describeComparison(optionLabel ? { ...rule, thresholdText: optionLabel } : rule)}`
   }
   return `resultado anterior ${describeComparison(rule)}`
 }
@@ -433,6 +444,10 @@ export function describeNodeConfig(node: FlowNode, context: NodeDescribeContext)
           : `Feedback de atendimento · até ${source.sampleSize} do período "${PERIOD_WINDOW_LABELS[source.period]}" (${source.strategy === "MOST_RECENT" ? "mais recentes" : "amostra reproduzível"})`
       }
       return `Definir "${node.config.configKey}"`
+    case "intervention_policy": {
+      const policyName = node.config.policyId ? (context.getPolicyName?.(node.config.policyId) ?? "política selecionada") : "política não selecionada"
+      return `${policyName} · ${node.config.mode === "APPLY_POLICY" ? "abre conforme a política" : "somente recomenda"}`
+    }
     case "orchestrator": {
       const orchestratorName = context.getOrchestratorName?.(node.config.orchestratorId) ?? "orquestrador não selecionado"
       return node.config.instruction ? `${orchestratorName} — "${node.config.instruction}"` : orchestratorName

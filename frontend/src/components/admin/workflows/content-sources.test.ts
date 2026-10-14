@@ -182,3 +182,41 @@ describe("resolveStructuredFields — fonte única (structuredOutputFields do ba
     expect(fields?.[1]?.fieldType).toBe("BOOLEAN")
   })
 })
+
+describe("resolveStructuredFields — nó Avaliar política de acompanhamento", () => {
+  const graph = {
+    nodes: [
+      { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} },
+      { id: "policy", type: "intervention_policy", label: "Avaliar política", position: { x: 0, y: 100 }, config: { policyId: "pol-1", mode: "APPLY_POLICY", analysisSourceNodeIds: [] } },
+    ],
+    edges: [{ id: "e1", source: "trigger", sourceHandle: "always", target: "policy" }],
+  } as unknown as FlowGraph
+  const policy = {
+    rules: [
+      { key: "R1", name: "Regra 1", priority: 1, actions: [{ typeKey: "PLANO_DE_ACAO", effect: "RECOMMEND" as const }], inconclusiveActions: [{ typeKey: "INVESTIGAR", effect: "OPEN" as const }] },
+      { key: "R2", name: "Regra 2", priority: 2, actions: [{ typeKey: "PLANO_DE_ACAO", effect: "OPEN" as const }], inconclusiveActions: [] },
+    ],
+    types: [
+      { key: "PLANO_DE_ACAO", name: "Plano de ação", responsibleRole: "DIRECT_LEADER" as const, approval: { required: false as const }, sensitive: false, active: true },
+      { key: "INVESTIGAR", name: "Investigar causa", responsibleRole: "SUPERVISOR" as const, approval: { required: false as const }, sensitive: false, active: true },
+    ],
+  }
+
+  it("oferece um campo por tipo de intervenção da política, com valores de negócio — sem digitar caminho", () => {
+    const fields = resolveStructuredFields(graph, "policy", new Map(), new Map([["pol-1", policy]]))!
+    const perType = fields.filter((field) => field.path.startsWith("decisionsByType."))
+    expect(perType.map((field) => [field.path, field.label])).toEqual([
+      ["decisionsByType.INVESTIGAR", "Decisão — Investigar causa"],
+      ["decisionsByType.PLANO_DE_ACAO", "Decisão — Plano de ação"],
+    ])
+    expect(perType[0]!.fieldType).toBe("ENUM")
+    expect(perType[0]!.enumOptions?.find((option) => option.value === "RECOMMENDED")?.label).toBe("Recomendada ao responsável")
+    expect(fields.some((field) => field.path === "createdTypeKeys")).toBe(false)
+  })
+
+  it("sem a política carregada, ficam os campos gerais", () => {
+    const fields = resolveStructuredFields(graph, "policy", new Map())!
+    expect(fields[0]!.path).toBe("outcome")
+    expect(fields.some((field) => field.path.startsWith("decisionsByType."))).toBe(false)
+  })
+})

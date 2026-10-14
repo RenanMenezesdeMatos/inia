@@ -12,24 +12,25 @@ import type { Permission } from "./permissions.js"
 export type RoleDefinition = { code: string; name: string; description: string; permissions: readonly Permission[]; allowedScopes: readonly AccessScopeType[]; delegates: readonly string[]; system: true }
 
 const ACCESS_ADMIN_PERMISSIONS: readonly Permission[] = ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign"]
+const INTERVENTION_POLICY_PERMISSIONS: readonly Permission[] = ["intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"]
 
 export const SYSTEM_ROLES: readonly RoleDefinition[] = [
   {
     code: "ADMINISTRADOR_GERAL",
     name: "Administrador geral",
-    description: "Autoridade ampla no tenant: todas as permissões, sempre na organização inteira. Pode cadastrar outros administradores.",
-    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage"],
+    description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
+    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
     allowedScopes: ["ORGANIZATION"],
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE"],
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE"],
     system: true,
   },
   {
     code: "ADMINISTRADOR",
     name: "Administrador",
     description: "Administra usuários, agentes, workflows e configurações e vê Indicadores, dados de gestão da Estrutura e o Calendário da equipe dentro do escopo atribuído. Não usa o QA Lab nem altera IA.",
-    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "indicators.view", "structure.metrics.view", "calendar.manage"],
+    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "indicators.view", "structure.metrics.view", "calendar.manage", ...INTERVENTION_POLICY_PERMISSIONS],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE"],
+    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"],
     system: true,
   },
   {
@@ -38,7 +39,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Administra contas, papéis e concessões dentro do escopo — sem agentes, workflows, configurações ou QA.",
     permissions: ACCESS_ADMIN_PERMISSIONS,
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE"],
+    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"],
     system: true,
   },
   {
@@ -79,6 +80,36 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Vê só os números agregados da Monitoria de usabilidade no escopo — sem nomes, ids, detalhe individual nem exportação.",
     permissions: ["usability.view"],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Configura o QUANDO das intervenções (catálogo, competências, políticas) — sem acesso a colaboradores: simular com uma
+    // pessoa real exige também enxergá-la por outra concessão (estrutura própria, Indicadores ou Workflows no escopo).
+    code: "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO",
+    name: "Gestor de políticas de acompanhamento",
+    description: "Edita tipos de intervenção, competências e políticas de acompanhamento, simula, publica e consulta a auditoria, no escopo. Não vê nem age sobre colaboradores por este papel.",
+    permissions: INTERVENTION_POLICY_PERMISSIONS,
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
+    delegates: [],
+    system: true,
+  },
+  {
+    code: "ANALISTA_DE_ACOMPANHAMENTO",
+    name: "Analista de acompanhamento",
+    description: "Vê, executa e aprova intervenções de colaboradores do escopo (além do que a cadeia de gestão já faz). Não decide avaliações de continuidade.",
+    permissions: ["interventions.view", "interventions.execute", "interventions.approve"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Concessão explícita e restrita: só o Administrador geral delega. Nenhuma decisão possível altera situação funcional.
+    code: "AVALIADOR_DE_CONTINUIDADE",
+    name: "Avaliador de continuidade",
+    description: "Decide, com justificativa, as solicitações de avaliação de continuidade de colaboradores do escopo. A decisão é registrada e auditada; a INIA nunca executa desligamento nem altera a situação funcional.",
+    permissions: ["interventions.view", "interventions.sensitive_decide"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: [],
     system: true,
   },

@@ -42,6 +42,24 @@ const DETAIL: HumanReviewDetail = {
   previousOutputs: [{ nodeId: "orch", nodeLabel: "Diagnóstico", text: "texto" }],
   timeline: [{ eventType: "human_review_requested", nodeId: "review", createdAt: "2026-09-14T10:00:00.000Z" }],
 }
+const INTERVENTION_ITEM: PendingActionsSummary["pending"][number] = {
+  id: "intervention:int-1",
+  kind: "INTERVENTION",
+  status: "PENDING",
+  interventionId: "int-1",
+  caseId: "case-9",
+  operator: { personId: "op-3", name: "Marcela", teamName: "Atendimento", jobTitle: null },
+  typeName: "Plano de ação",
+  reason: "Q4 oficial em dois fechamentos com diagnóstico sustentado.",
+  pendingReason: "APPROVE",
+  pendingLabel: "Aguardando sua aprovação",
+  dueAt: "2026-10-30T12:00:00.000Z",
+  overdue: true,
+  sensitive: false,
+  requestedAt: "2026-10-13T12:00:00.000Z",
+  decidedAt: null,
+  reviewer: null,
+}
 const DECIDED: HumanReviewDetail = { ...DETAIL, status: "DECIDED", decision: "approved", decidedAt: "2026-09-15T12:00:00.000Z", reviewer: { personId: "sup-1", name: "Vanessa" } }
 
 beforeAll(installJsdomStubs)
@@ -79,6 +97,24 @@ describe("Pendências — lista e detalhe", () => {
     expect(screen.getByRole("button", { name: "Aprovar" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Reprovar" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Escalar" })).not.toBeInTheDocument()
+  })
+})
+
+describe("Pendências — intervenções", () => {
+  it("a pendência de intervenção abre o contexto dela no caso (não um detalhe próprio) e mostra o atraso derivado", async () => {
+    service.fetchPendingActions.mockResolvedValue({ pending: [INTERVENTION_ITEM, PENDING_ITEM], history: [], pendingCount: 2 })
+    renderWithQuery(<PendingActionsView state={{ review: null, operator: null }} onStateChange={() => {}} />)
+    const row = await screen.findByTestId("pending-intervention-row")
+    expect(row).toHaveAttribute("href", "/supervisor/cases/case-9?intervention=int-1")
+    expect(row).toHaveTextContent("Plano de ação · Aguardando sua aprovação")
+    expect(row).toHaveTextContent("Atrasada")
+    expect(service.fetchHumanReviewDetail).not.toHaveBeenCalled()
+  })
+
+  it("solicitação de avaliação de continuidade aparece com o nome do processo, nunca como decisão tomada", async () => {
+    service.fetchPendingActions.mockResolvedValue({ pending: [{ ...INTERVENTION_ITEM, sensitive: true, typeName: "Solicitar avaliação de continuidade", pendingReason: "DECIDE", pendingLabel: "Aguardando sua decisão", overdue: false }], history: [], pendingCount: 1 })
+    renderWithQuery(<PendingActionsView state={{ review: null, operator: null }} onStateChange={() => {}} />)
+    expect(await screen.findByTestId("pending-intervention-row")).toHaveTextContent("Solicitação de avaliação de continuidade · Aguardando sua decisão")
   })
 })
 

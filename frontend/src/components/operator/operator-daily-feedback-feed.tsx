@@ -12,8 +12,9 @@ import { FeedbackRating } from "@/components/feedbacks/feedback-rating"
 import { IniaFeed, IniaFeedItem } from "./inia-feed"
 import { DeliveredFeedbackEntry } from "./delivered-feedback-entry"
 import { useMyDeliveredFeedbackQuery } from "@/queries/feedback-delivery/use-delivered-feedback"
+import { useOperatorFeedbackHistory } from "@/queries/operator/use-operator-feedback-history"
 import { formatDateTime } from "@/lib/format/date"
-import { buildFollowUpTimeline, followUpDayKey, followUpDayLabel, type FollowUpEntry } from "./follow-up-timeline"
+import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayKey, followUpDayLabel, type FollowUpEntry } from "./follow-up-timeline"
 import { FeedbackApplicationButton } from "./feedback-application/feedback-application-button"
 import { useFeedbackWorkspace } from "./feedback-application/feedback-workspace-context"
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
@@ -32,11 +33,14 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   const [loading, setLoading] = useState(false)
   // Feedback de atendimento (V1.5.6): mais uma FONTE deste mesmo feed — entregas ao próprio colaborador (flag OFF = nenhuma).
   const delivered = useMyDeliveredFeedbackQuery()
+  // Feedbacks publicados por página: a primeira veio no SSR, as seguintes o servidor manda pelo cursor quando o feed chega ao fim
+  // do que já tem.
+  const { history, hasMoreHistory, loadingMoreHistory, loadMoreError, loadMoreHistory } = useOperatorFeedbackHistory(indicators.history, indicators.historyNextCursor ?? null)
   const loaderRef = useRef<HTMLDivElement>(null)
   // Uma timeline só, MAIS RECENTE PRIMEIRO (feedbacks publicados + entregas de atendimento); o "carregar mais" revela os
-  // progressivamente mais antigos da lista já ordenada.
-  const timeline = buildFollowUpTimeline(indicators.history, delivered.data ?? [])
-  const hasMore = visibleCount < timeline.length
+  // progressivamente mais antigos da lista já ordenada — e busca a próxima página quando o que chegou acabou.
+  const timeline = boundFollowUpTimeline(buildFollowUpTimeline(history, delivered.data ?? []), hasMoreHistory)
+  const hasMore = visibleCount < timeline.length || hasMoreHistory
   // Aplicação de feedback: o item aberto no painel da INIA fica destacado; "Ler feedback" (convite) leva ao item e o abre.
   const workspace = useFeedbackWorkspace()
   const rootRef = useRef<HTMLDivElement>(null)
@@ -52,6 +56,12 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
     setOpenEntries((current) => ({ ...current, [timeline[readIndex]!.key]: true }))
     setFlashKey(timeline[readIndex]!.key)
   }
+  // "Ler feedback" de um item que ainda não chegou: busca as páginas seguintes até ele aparecer (ou o histórico acabar) — uma por
+  // vez; cada página que chega (o tamanho do histórico muda) reavalia.
+  const readPending = readTarget !== null && readIndex < 0 && handledRead !== readTarget.nonce
+  useEffect(() => {
+    if (readPending && hasMoreHistory && !loadingMoreHistory && !loadMoreError) loadMoreHistory()
+  }, [readPending, hasMoreHistory, loadingMoreHistory, loadMoreError, loadMoreHistory, history.length])
   useEffect(() => {
     if (!flashKey) return
     const element = rootRef.current?.querySelector<HTMLElement>(`[data-entry-key="${CSS.escape(flashKey)}"]`)
@@ -62,15 +72,17 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
 
   useEffect(() => {
     const target = loaderRef.current
-    if (!target || !hasMore) return
+    if (!target || !hasMore || loadMoreError) return
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || loading) return
+      if (!entry.isIntersecting || loading || loadingMoreHistory) return
+      // Tudo o que chegou já está à mostra: pede a próxima página (o observer é recriado quando ela chega).
+      if (visibleCount >= timeline.length) return loadMoreHistory()
       setLoading(true)
       window.setTimeout(() => { setVisibleCount((count) => Math.min(count + PAGE_SIZE, timeline.length)); setLoading(false) }, 650)
     }, { threshold: 0.8 })
     observer.observe(target)
     return () => observer.disconnect()
-  }, [hasMore, timeline.length, loading])
+  }, [hasMore, timeline.length, loading, visibleCount, loadingMoreHistory, loadMoreError, loadMoreHistory])
 
   // O feed chega do servidor já renderizado; a ciência confirmada nesta sessão (aqui ou dentro da sessão com a INIA) vem do mapa
   // compartilhado do controle de confirmação até o próximo carregamento — a fonte de verdade é o backend (`acknowledged_at`).
@@ -117,7 +129,8 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
           <div className={cn("-mx-3 rounded-2xl px-3 transition-[background-color,box-shadow] duration-500 motion-reduce:transition-none", active && "bg-primary/5 ring-1 ring-primary/30", flashKey === entry.key && "bg-primary/10 ring-2 ring-primary/50")}>{renderEntry(entry)}</div>
         </div>
       })}
-      {hasMore ? <div ref={loaderRef} className="space-y-3 py-5" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="size-2 animate-pulse rounded-full bg-primary"/>Carregando feedbacks...</div><div className="flex gap-3"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-3/4"/></div></div></div> : <p className="py-5 text-center text-xs text-muted-foreground">Fim dos feedbacks deste período.</p>}
+      {loadMoreError ? <p role="alert" className="py-4 text-center text-sm text-muted-foreground">Não foi possível carregar feedbacks mais antigos. <button type="button" className="underline" onClick={loadMoreHistory}>Tentar de novo</button></p>
+      : hasMore ? <div ref={loaderRef} className="space-y-3 py-5" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="size-2 animate-pulse rounded-full bg-primary"/>Carregando feedbacks...</div><div className="flex gap-3"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-3/4"/></div></div></div> : <p className="py-5 text-center text-xs text-muted-foreground">Fim dos feedbacks deste período.</p>}
   </IniaFeed></div>
 }
 

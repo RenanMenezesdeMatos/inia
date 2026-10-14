@@ -8,13 +8,16 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
 import type { OperatorIndicatorHistory } from "@/schemas/operator"
 
-import { buildFollowUpTimeline, followUpDayLabel } from "./follow-up-timeline"
+import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayLabel } from "./follow-up-timeline"
 import { OperatorDailyFeedbackFeed } from "./operator-daily-feedback-feed"
+import { FeedbackWorkspaceContext, type FeedbackWorkspace } from "./feedback-application/feedback-workspace-context"
 
 const service = vi.hoisted(() => ({ fetchMyDeliveredFeedback: vi.fn() }))
 vi.mock("@/services/feedback-delivery/feedback-delivery-service", () => service)
 const confirmation = vi.hoisted(() => ({ confirmFeedbackReading: vi.fn(), recordReadConfirmationEvent: vi.fn(async () => undefined) }))
 vi.mock("@/services/feedback-read-confirmations/feedback-read-confirmations-service", () => confirmation)
+const feedPages = vi.hoisted(() => ({ fetchOperatorFeedbackPage: vi.fn() }))
+vi.mock("@/services/operator/operator-feed", () => feedPages)
 
 let intersect: (() => void) | null = null
 class IntersectionObserverStub {
@@ -91,5 +94,45 @@ describe("Timeline do Acompanhamento — mais recente primeiro", () => {
     renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [legacy] }} />)
     expect(await screen.findByRole("heading", { name: "Segunda via de fatura" })).toBeInTheDocument()
     expect(screen.getByText("Atendimento de 14/09/2026")).toBeInTheDocument()
+  })
+
+  it("fronteira: com página por vir, nada mais antigo que o último feedback carregado aparece; sem página por vir, vale tudo", () => {
+    const timeline = buildFollowUpTimeline([history("h1", "2026-09-29T12:00:00.000Z"), history("h2", "2026-09-27T12:00:00.000Z")], [delivered("novo", "2026-09-28T12:00:00.000Z"), delivered("antigo", "2026-09-20T12:00:00.000Z")])
+    expect(boundFollowUpTimeline(timeline, true).map((entry) => entry.key)).toEqual(["history:h1", "delivered:novo", "history:h2"])
+    expect(boundFollowUpTimeline(timeline, false).map((entry) => entry.key)).toEqual(["history:h1", "delivered:novo", "history:h2", "delivered:antigo"])
+  })
+
+  it("carregar mais: quando o que chegou acaba, pede a página seguinte pelo cursor; a entrega antiga só entra no lugar certo", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const now = new Date()
+    const at = (daysAgo: number, hour: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, hour, 0).toISOString()
+    service.fetchMyDeliveredFeedback.mockResolvedValue([delivered("entrega", at(3, 16))])
+    feedPages.fetchOperatorFeedbackPage.mockResolvedValue({ history: [history("h3", at(1, 10)), history("h4", at(5, 10))], nextCursor: null })
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: [history("h1", at(0, 9)), history("h2", at(0, 8))], historyNextCursor: "cursor-1" }} />)
+    const order = () => screen.getAllByTestId("follow-up-entry").map((entry) => entry.textContent?.match(/Feedback h\d|Entrega entrega/)?.[0])
+    await screen.findByText("Feedback h2")
+    // A entrega (3 dias) é mais antiga que o último feedback carregado: espera a página seguinte.
+    expect(order()).toEqual(["Feedback h1", "Feedback h2"])
+    expect(feedPages.fetchOperatorFeedbackPage).not.toHaveBeenCalled()
+    await act(async () => { intersect?.() })
+    expect(feedPages.fetchOperatorFeedbackPage).toHaveBeenCalledWith("cursor-1")
+    await act(async () => { intersect?.(); await vi.advanceTimersByTimeAsync(700) })
+    expect(order()).toEqual(["Feedback h1", "Feedback h2", "Feedback h3", "Entrega entrega"])
+    await act(async () => { intersect?.(); await vi.advanceTimersByTimeAsync(700) })
+    expect(order()).toEqual(["Feedback h1", "Feedback h2", "Feedback h3", "Entrega entrega", "Feedback h4"])
+    expect(screen.getByText("Fim dos feedbacks deste período.")).toBeInTheDocument()
+    expect(feedPages.fetchOperatorFeedbackPage).toHaveBeenCalledTimes(1)
+  })
+
+  it("\"Ler feedback\" de um item que ainda não chegou: busca as páginas seguintes até ele e o abre", async () => {
+    service.fetchMyDeliveredFeedback.mockResolvedValue([])
+    feedPages.fetchOperatorFeedbackPage
+      .mockResolvedValueOnce({ history: [history("h3", "2026-09-20T10:00:00.000Z")], nextCursor: "cursor-2" })
+      .mockResolvedValueOnce({ history: [history("alvo", "2026-09-10T10:00:00.000Z")], nextCursor: null })
+    const workspace = { readTarget: { key: "PUBLISHED_FEEDBACK:alvo", nonce: 1 }, activeSourceKey: null } as unknown as FeedbackWorkspace
+    renderWithQuery(<FeedbackWorkspaceContext.Provider value={workspace}><OperatorDailyFeedbackFeed indicators={{ current: [], history: [history("h1", "2026-09-29T10:00:00.000Z")], historyNextCursor: "cursor-1" }} /></FeedbackWorkspaceContext.Provider>)
+    const target = await screen.findByText("Feedback alvo")
+    expect(target.closest("[data-entry-key]")).toHaveAttribute("data-entry-key", "history:alvo")
+    expect(feedPages.fetchOperatorFeedbackPage.mock.calls.map((call) => call[0])).toEqual(["cursor-1", "cursor-2"])
   })
 })

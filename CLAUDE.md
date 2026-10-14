@@ -23,7 +23,7 @@ Existem dois tipos principais de feedback:
 
 Um feedback publicável deve conter indicador impactado, evidência encontrada, comportamento observado, procedimento relacionado e recomendação. Texto gerado por IA nunca é evidência. Toda conclusão acionável deve apontar para uma fonte verificável.
 
-O escalonamento de performance segue, em ordem: `OBSERVE`, `ORIENT`, `COACH`, `ACTION_PLAN`, `MANAGER`. Um resultado abaixo da meta, isoladamente, não determina escalonamento; considere causa, recorrência, evidências, evolução e intervenções anteriores. Bons resultados também podem gerar elogio e reconhecimento.
+O escalonamento de performance não é uma escada fixa no código: observar, orientar, treinar, plano de ação, encaminhar à liderança e solicitar avaliação de continuidade são tipos de intervenção administráveis, e quando cada um cabe é decidido por políticas de acompanhamento versionadas (a sequência `OBSERVE` → `ORIENT` → `COACH` → `ACTION_PLAN` → `MANAGER` é só exemplo e leitura do legado `performance_escalations`). Um resultado abaixo da meta, isoladamente, não determina escalonamento; considere causa, recorrência, evidências, evolução e intervenções anteriores. Dado ausente nunca é desempenho ruim. Bons resultados também podem gerar elogio e reconhecimento. Nenhuma regra, IA ou configuração decide desligamento, aprova a avaliação de continuidade ou altera a situação funcional — isso é sempre decisão humana restrita e auditada.
 
 ## Organização do código
 
@@ -109,12 +109,16 @@ Memória nova de uma área vai para o arquivo dela, nunca para este arquivo. Aqu
 - [Investigação — Tools para Agents e evolução V1.1–V1.3.4.2](docs/dev/memoria/investigacao.md) — Tools de investigação para Agents e a evolução V1.1–V1.3.4.2 (eficiência, Zero-ID, gating fail-closed, suficiência da evidência, recall, integridade literal, semântica temporal).
 - [IA — provedores, modelos, roteamento e custos](docs/dev/memoria/ia-provedores-e-custos.md) — provedores, conexões e modelos de IA, policies de roteamento por Use Case, segredos, uso, custo e orçamento.
 - [Indicadores, Equipe e organograma](docs/dev/memoria/indicadores-e-estrutura.md) — analytics compartilhado de Indicadores e Equipe (escopo, PRV, atingimento consolidado, comparação operacional) e o organograma “Minha estrutura” (métricas gerenciais, “Ir até mim”).
+- [Read model do analytics da liderança e ciclo de vida dos dados](docs/dev/memoria/read-model-e-ciclo-de-vida.md) — componentes por pessoa × janela (idênticos ao caminho original, provados), escopo pelo grafo em cache, versões por trigger, atividade diária, caches, resumo diário de IA, fim do outbox e retenção com políticas desligadas.
 - [Central de Dados, calendário operacional e instalação](docs/dev/memoria/central-de-dados-e-instalacao.md) — Central de Dados (fontes, feeds, contratos, quarentena, lineage), situação funcional, escala e calendário operacional, disponibilidade × classificação, conector de banco externo, instalação e publicação em Windows/IIS.
 - [Acesso — contas, papéis, permissões e primeiro login](docs/dev/memoria/acesso.md) — contas × papéis × permissões × escopos, delegação, liberação de acesso com senha temporária e primeiro login.
 - [Massa demo e holdout de avaliação](docs/dev/memoria/massa-demo-e-holdout.md) — massa demo grande (`db:seed:demo`, população e lotes de diagnóstico, gabarito isolado) e o holdout independente `inia_holdout_v2`.
 - [Wiki geral da INIA](docs/dev/memoria/wiki.md) — `/wiki` como documentação oficial do produto: sitemap, catálogos cobertos pelo tipo, testes de links e âncoras.
 - [Monitoria de usabilidade](docs/dev/memoria/monitoria-de-usabilidade.md) — coleta no navegador e no servidor, painel, permissões, flags, worker e provas.
 - [Segurança — controles transversais](docs/dev/memoria/seguranca.md) — escopo sempre do servidor, catálogos da organização, sessão (jti, nível ao vivo), CSRF, política de destinos de saída, arquivos e limites; auditoria completa em `docs/security/`.
+- [Políticas de acompanhamento e intervenções](docs/dev/memoria/politicas-de-acompanhamento.md) — tipos de intervenção por capacidade, políticas versionadas (regras, prioridade, dados insuficientes, conflitos, carência), avaliação e relatório de inteligência, nó “Avaliar política de acompanhamento”, intervenção no caso (Pendências, sino, ficha) e avaliação de continuidade sempre humana.
+- [Banco interno — caminho quente, índices e pool](docs/dev/memoria/banco-e-consultas.md) — leituras do caminho quente com LIMIT e keyset, conteúdo depois do LIMIT, aviso × entrega pelo id, pendente com aviso vivo, escrita em lote, limites de sessão do pool por papel e índices 130 e 132–134.
+- [Escala horizontal e operação](docs/dev/memoria/escala-e-operacao.md) — N APIs/interfaces e M workers: estado compartilhado no PostgreSQL (limites, pausa da IA, avisos), prontidão e desligamento, SSE com cancelamento, métricas internas, logs assíncronos, web farm do IIS e cache dos estáticos.
 
 Histórico (linhas encerradas ou caminhos substituídos — para ler artefatos antigos):
 

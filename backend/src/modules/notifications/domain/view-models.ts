@@ -4,7 +4,7 @@
  * pelo backend; o frontend só traduz o destino em rota. Ler ≠ resolver: marcar como lida
  * altera só `readAt`; decidir uma revisão é outra operação (pending-actions).
  */
-export type NotificationKind = "HUMAN_REVIEW" | "WORKFLOW_OUTPUT" | "INIA_MESSAGE" | "ESCALATION" | "WORKDAY_RECONCILIATION" | "CALENDAR_NOTICE" | "OTHER"
+export type NotificationKind = "HUMAN_REVIEW" | "WORKFLOW_OUTPUT" | "INIA_MESSAGE" | "ESCALATION" | "WORKDAY_RECONCILIATION" | "CALENDAR_NOTICE" | "INTERVENTION" | "OTHER"
 
 export type NotificationTarget =
   | { type: "PENDING_ACTION"; actionId: string }
@@ -20,6 +20,8 @@ export type NotificationTarget =
   | { type: "INIA_CONVERSATION"; conversationId: string }
   /** Workflow Outputs V1 — recado de voz (Output → Avatar): destaca o convite no painel da INIA (nunca toca sozinho). */
   | { type: "INIA_AVATAR_DELIVERY"; deliveryId: string }
+  /** Intervenção (atribuição, aprovação, decisão, novo sinal): abre a intervenção DENTRO do caso de supervisão. */
+  | { type: "INTERVENTION"; caseId: string; interventionId: string }
   | { type: "NONE" }
 
 export type NotificationItem = {

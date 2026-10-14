@@ -5,15 +5,16 @@ import { ZodError } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
+import type { FollowUpItem } from "../domain/view-models.js"
 import { fixtureOrg, IDS } from "../testing/fixture-org.js"
-import { InMemoryAnalyticsRepository, ORG } from "../testing/in-memory-analytics-repository.js"
+import { InMemoryAnalyticsRepository, ORG, type InMemoryOrg } from "../testing/in-memory-analytics-repository.js"
 import { createAnalyticsRouter } from "./analytics-router.js"
 
 const noDatabase = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
 
 /** App mínimo com o mesmo error handler de app.ts e uma sessão injetada por header — testa o
  * router (parsing, escopo, mapeamento de erro) sem depender de JWT/cookie nem de Postgres. */
-function appAs(user: AuthTokenPayload | null) {
+function appAs(user: AuthTokenPayload | null, org: InMemoryOrg = fixtureOrg()) {
   const app = express()
   app.use((requestObject, _response, next) => {
     if (user) requestObject.user = user
@@ -21,7 +22,7 @@ function appAs(user: AuthTokenPayload | null) {
   })
   app.use("/analytics", (requestObject, response, next) => (requestObject.user ? next() : response.status(401).json({ error: { code: "UNAUTHENTICATED" } })), // Relógio em outubro: a fixture fecha em 2026-09 e o guard central do fechamento oficial só
   // enxerga competências <= último mês fechado (em 15/09, setembro NÃO seria fechamento).
-  createAnalyticsRouter(noDatabase, new InMemoryAnalyticsRepository(fixtureOrg()), () => new Date("2026-10-05T12:00:00Z")))
+  createAnalyticsRouter(noDatabase, new InMemoryAnalyticsRepository(org), () => new Date("2026-10-05T12:00:00Z")))
   const errorHandler: ErrorRequestHandler = (error, _request, response, next) => {
     if (error instanceof DomainError) return response.status(error.statusCode).json({ error: { code: error.code, message: error.message } })
     if (error instanceof ZodError) return response.status(400).json({ error: { code: "VALIDATION_ERROR" } })
@@ -102,5 +103,45 @@ describe("GET /analytics — autenticação e escopo via API", () => {
     const employee = await request(app).get(`/analytics/indicators?subjectKind=EMPLOYEE&subjectId=${IDS.op1}&period=2026-09`)
     expect(employee.body.data.mode).toBe("EMPLOYEE")
     expect(employee.body.data.breadcrumb).toHaveLength(6)
+  })
+})
+
+describe("GET /analytics/follow-ups — feed da estrutura por cursor", () => {
+  const item = (id: string, createdAt: string, overrides: Partial<FollowUpItem> = {}): FollowUpItem => ({
+    id, kind: "FEEDBACK", category: "MONITORING", title: id, summary: "", detail: null, severity: null, operator: { personId: IDS.op1, name: "Ana Operadora" },
+    caseId: null, createdAt, acknowledgedAt: null, feedback: null, ...overrides,
+  })
+  const feed = [
+    item("00000000-0000-4000-8000-0000000000a1", "2026-09-20T10:00:00.000Z"),
+    item("00000000-0000-4000-8000-0000000000a3", "2026-09-20T10:00:00.000Z", { operator: { personId: IDS.op2, name: "Bia Operadora" } }),
+    item("00000000-0000-4000-8000-0000000000a2", "2026-09-20T10:00:00.000Z"),
+    item("00000000-0000-4000-8000-0000000000a4", "2026-09-25T09:00:00.000Z", { kind: "ALERT", category: "WORKFLOW_OUTPUT" }),
+    item("00000000-0000-4000-8000-0000000000a5", "2026-09-18T09:00:00.000Z", { acknowledgedAt: "2026-09-18T10:00:00.000Z" }),
+  ]
+
+  it("páginas pelo cursor somam o feed em ordem, sem repetir nem pular (empate no instante desempata por id), e a última vem sem cursor", async () => {
+    const app = appAs(user(IDS.director, "DIRECTOR"), { ...fixtureOrg(), feed })
+    const collected: string[] = []
+    let cursor: string | null = null
+    for (let page = 0; page < 5; page++) {
+      const response: request.Response = await request(app).get(`/analytics/follow-ups?limit=2${cursor ? `&cursor=${cursor}` : ""}`)
+      expect(response.status).toBe(200)
+      expect(Object.keys(response.body.data).sort()).toEqual(["items", "nextCursor"])
+      collected.push(...response.body.data.items.map((entry: FollowUpItem) => entry.id))
+      cursor = response.body.data.nextCursor
+      if (!cursor) break
+    }
+    expect(collected).toEqual(["a4", "a3", "a2", "a1", "a5"].map((suffix) => `00000000-0000-4000-8000-0000000000${suffix}`))
+    expect(cursor).toBeNull()
+  })
+
+  it("\"aguardando ciência\" tira avisos e confirmados; cursor adulterado → 400 INVALID_CURSOR", async () => {
+    const app = appAs(user(IDS.director, "DIRECTOR"), { ...fixtureOrg(), feed })
+    const pending = await request(app).get("/analytics/follow-ups?ack=pending&limit=10")
+    expect(pending.body.data.items.map((entry: FollowUpItem) => entry.id.slice(-2))).toEqual(["a3", "a2", "a1"])
+    expect(pending.body.data.nextCursor).toBeNull()
+    const invalid = await request(app).get("/analytics/follow-ups?cursor=bm9wZQ")
+    expect(invalid.status).toBe(400)
+    expect(invalid.body.error.code).toBe("INVALID_CURSOR")
   })
 })

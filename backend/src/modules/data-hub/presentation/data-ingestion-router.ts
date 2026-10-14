@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { createDataHubContext, type DataHubContext } from "../application/data-hub-context.js"
-import { authenticatePush, checkRateLimit, receivePush } from "../application/push-ingestion.js"
+import { authenticatePush, consumePushQuota, receivePush } from "../application/push-ingestion.js"
 import { kickWorker } from "../application/run-service.js"
 
 /**
@@ -27,7 +27,11 @@ export function createDataIngestionRouter(db: Database, contextOverrides: Partia
     // Antes de autenticar, só o limite por IP (app.ts); o balde por token usa o id do token JÁ validado (achado I-F6: antes a
     // chave era o texto enviado — tokens forjados únicos enchiam a memória do processo).
     const auth = await authenticatePush(ctx, { sourcePublicId: params.data.sourcePublicId, feedKey: params.data.feedKey, token })
-    if (!checkRateLimit(auth.tokenId)) throw new DomainError("Limite de requisições excedido. Tente novamente em instantes.", "DATA_PUSH_RATE_LIMITED", 429)
+    const quota = await consumePushQuota(ctx, auth.tokenId)
+    if (!quota.allowed) {
+      response.set("Retry-After", String(quota.retryAfterSeconds))
+      throw new DomainError("Limite de requisições excedido. Tente novamente em instantes.", "DATA_PUSH_RATE_LIMITED", 429, { retryAfterSeconds: quota.retryAfterSeconds })
+    }
     const idempotencyKey = request.header("idempotency-key")?.trim().slice(0, 200) || null
     const body = request.body
     if (body === undefined || body === null || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)) {

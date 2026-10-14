@@ -10,6 +10,7 @@ import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
 import type { WorkflowVariable, WorkflowVariableType } from "@/schemas/admin/workflow-variable.schema"
 import type { ActionConfig, FlowGraph, FlowNode } from "@/schemas/admin/workflow-graph.schema"
+import { usePolicyResultCatalog } from "@/components/admin/workflows/use-policy-result-catalog"
 
 /** As 3 fontes de valor dinâmico oferecidas hoje pra "Definir variável" (Parte 6 do pedido de
  * variáveis dinâmicas) — deliberadamente sem expression language: sempre uma referência a algo
@@ -63,7 +64,8 @@ function DynamicVariableSourceForm({
   const variableId = decoded?.kind === "variable" ? decoded.variableId : ""
   const fonte = dynamicFonteKindOf(sourcePath)
 
-  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById) : undefined
+  const policies = usePolicyResultCatalog(graph)
+  const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById, policies) : undefined
   const compatibleFields = structuredFields?.filter((field) => mapOutputFieldTypeToVariableType(field.type) === variableType)
   const currentFieldPath = decoded?.kind === "node" && decoded.field ? decodeStructuredFieldPath(decoded.field) : null
   const compatibleVariables = (variablesQuery.data ?? []).filter((candidate) => candidate.type === variableType && candidate.id !== currentVariableId)
@@ -99,7 +101,7 @@ function DynamicVariableSourceForm({
             <Label>Resultado de</Label>
             {nodeOptions.length === 0 ? (
               <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                Nenhum resultado disponível ainda — conecte este nó depois de um Agente ou Orquestrador.
+                Nenhum resultado disponível ainda — conecte este nó depois de um Agente, Orquestrador ou Avaliar política de acompanhamento.
               </p>
             ) : (
               <Select value={nodeId} onValueChange={(next) => onChange(encodeSourcePath(next, ""))}>

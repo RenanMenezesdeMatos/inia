@@ -64,7 +64,28 @@ export const workdayReconciliationSummarySchema = z.object({
 })
 export type WorkdayReconciliationSummary = z.infer<typeof workdayReconciliationSummarySchema>
 
-export const pendingActionSummarySchema = z.discriminatedUnion("kind", [humanReviewSummarySchema, workdayReconciliationSummarySchema])
+/** Intervenção que exige resposta agora (aceitar, aprovar, decidir ou item vencendo) — o detalhe e os controles ficam no CASO. */
+export const interventionPendingSummarySchema = z.object({
+  id: z.string(),
+  kind: z.literal("INTERVENTION"),
+  status: pendingActionStatusSchema,
+  interventionId: z.string(),
+  caseId: z.string(),
+  operator: personSchema.nullable(),
+  typeName: z.string(),
+  reason: z.string(),
+  pendingReason: z.enum(["ACCEPT", "APPROVE", "DECIDE", "EXECUTE"]),
+  pendingLabel: z.string(),
+  dueAt: z.string(),
+  overdue: z.boolean(),
+  sensitive: z.boolean(),
+  requestedAt: z.string(),
+  decidedAt: z.null(),
+  reviewer: z.null(),
+})
+export type InterventionPendingSummary = z.infer<typeof interventionPendingSummarySchema>
+
+export const pendingActionSummarySchema = z.discriminatedUnion("kind", [humanReviewSummarySchema, workdayReconciliationSummarySchema, interventionPendingSummarySchema])
 export type PendingActionSummary = z.infer<typeof pendingActionSummarySchema>
 
 export const pendingActionsSummarySchema = z.object({

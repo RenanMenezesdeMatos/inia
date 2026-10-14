@@ -29,6 +29,8 @@ function kindOf(alertType: string): NotificationKind {
     case "DATA_SOURCE_AVAILABILITY_DELAYED":
       return "CALENDAR_NOTICE"
     default:
+      // Políticas de acompanhamento: atribuição, aprovação/decisão pedida, aprovada/devolvida/decidida, encaminhada, novo sinal.
+      if (alertType.startsWith("INTERVENTION_")) return "INTERVENTION"
       return "OTHER"
   }
 }
@@ -63,6 +65,10 @@ function targetOf(alert: AlertRow, kind: NotificationKind, workdayActionId: stri
     return { type: "TEAM_CALENDAR", operatorId: match?.[2] ?? null, date: match?.[3] ?? null }
   }
   if (alert.alertType === "AI_BUDGET_THRESHOLD") return { type: "ADMIN_AI_USAGE" }
+  if (kind === "INTERVENTION") {
+    const intervention = /^intervention:([0-9a-f-]{36}):/.exec(alert.dedupeKey)
+    return intervention && alert.caseId ? { type: "INTERVENTION", caseId: alert.caseId, interventionId: intervention[1]! } : { type: "NONE" }
+  }
   if (kind === "INIA_MESSAGE") {
     // A conversa/entrega é resolvida pela chave gravada na entrega (`workflow_chat:<outputId>` / `workflow_avatar:<outputId>`).
     const avatar = /^workflow_avatar:([0-9a-f-]{36})$/.exec(alert.dedupeKey)
@@ -78,12 +84,15 @@ function targetOf(alert: AlertRow, kind: NotificationKind, workdayActionId: stri
  * vinda da MESMA definição de pendente usada pela Surface Pendências e pelos contadores da Equipe.
  */
 export async function buildNotificationSummary(repository: NotificationsRepository, pendingActions: PendingActionsRepository, viewer: Viewer): Promise<NotificationSummary> {
-  const [alerts, unreadCount, reviewRows, pendingActionCount] = await Promise.all([
+  const [alerts, unreadCount, pendingActionCount] = await Promise.all([
     repository.loadRecentAlerts(viewer.personId, viewer.organizationId, NOTIFICATION_LIST_LIMIT),
     repository.countUnread(viewer.personId, viewer.organizationId),
-    pendingActions.loadReviewAlerts(viewer.personId, viewer.organizationId),
     pendingActions.countPending(viewer.personId, viewer.organizationId),
   ])
+  // Situação (pendente/decidida/indisponível) só das revisões que o sino está mostrando — nunca as últimas 200 com o Execution
+  // Context (o sino roda para todo mundo a cada minuto).
+  const reviewAlertIds = alerts.filter((alert) => kindOf(alert.alertType) === "HUMAN_REVIEW").map((alert) => alert.id)
+  const reviewRows = reviewAlertIds.length > 0 ? await pendingActions.loadReviewAlerts(viewer.personId, viewer.organizationId, { alertIds: reviewAlertIds }) : []
   const reviewByAlert = new Map(reviewRows.map((row) => [row.alertId, row] as const))
   // Pendências de produção: o alerta aponta para a reconciliação real (id) — abertas continuam acionáveis.
   const workdayRows = alerts.some((alert) => kindOf(alert.alertType) === "WORKDAY_RECONCILIATION") ? await pendingActions.loadWorkdayReconciliations(viewer.personId, viewer.organizationId) : []

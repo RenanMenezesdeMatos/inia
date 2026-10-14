@@ -55,7 +55,9 @@ O supervisor acessa somente equipes dentro do seu escopo. A UI de demonstração
 
 ## Escalonamento por performance
 
-A IA recomenda o nível usando causa, evidências, recorrência, evolução e intervenções anteriores. Estar abaixo de uma meta, isoladamente, não determina escalonamento.
+> Atualizado em 13/10/2026: a sequência abaixo deixou de ser uma escada fixa no código. O que fazer em cada situação é decidido por **políticas de acompanhamento** configuráveis (tipos de intervenção, regras com condições e ações, versões publicadas com vigência) — ver `docs/dev/memoria/politicas-de-acompanhamento.md` e a Wiki `/wiki/administracao/politicas-de-acompanhamento`. Os níveis abaixo ficam como exemplo de política e como leitura dos escalonamentos antigos (`performance_escalations`, legado só leitura).
+
+A recomendação usa causa, evidências, recorrência, evolução e intervenções anteriores. Estar abaixo de uma meta, isoladamente, não determina escalonamento.
 
 1. `OBSERVE`: primeiro sinal ou oscilação sem padrão.
 2. `ORIENT`: desvio confirmado com causa e evidência.
@@ -63,4 +65,4 @@ A IA recomenda o nível usando causa, evidências, recorrência, evolução e in
 4. `ACTION_PLAN`: persistência após coaching.
 5. `MANAGER`: ausência de evolução após plano ou evento crítico.
 
-Melhorias e bons resultados também geram ações da IA: elogio, reconhecimento e recomendação para manter a prática observada.
+Melhorias e bons resultados também geram ações: elogio, reconhecimento e recomendação para manter a prática observada.

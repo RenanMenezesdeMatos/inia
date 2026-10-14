@@ -49,6 +49,30 @@ import { ConnectionTestResultView, ConnectionTestStatusBadge, EnabledBadge, Info
  */
 const DEFAULT_TIMEOUT_SECONDS = 60
 
+/** Vagas da conexão: em branco = sem limite próprio; senão um inteiro de 1 a 1000. */
+function parseConcurrentCalls(text: string): { value: number | null; valid: boolean } {
+  if (text.trim() === "") return { value: null, valid: true }
+  const value = Number(text)
+  return { value, valid: Number.isInteger(value) && value >= 1 && value <= 1000 }
+}
+
+/**
+ * Chamadas simultâneas da conexão em TODAS as instâncias da INIA (APIs e processamentos) — o limite por acesso que o provedor
+ * informa. A INIA divide essas vagas entre as instâncias e guarda um quarto delas para chat e voz.
+ */
+function ConcurrentCallsField({ id, value, disabled, onChange }: { id: string; value: string; disabled?: boolean; onChange: (value: string) => void }) {
+  const { valid } = parseConcurrentCalls(value)
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>Chamadas simultâneas</Label>
+      <Input id={id} type="number" min={1} max={1000} className="w-32" placeholder="Sem limite" disabled={disabled} value={value} aria-invalid={!valid} onChange={(event) => onChange(event.target.value)} />
+      <p className={cn("text-xs", valid ? "text-muted-foreground" : "text-destructive")}>
+        {valid ? "Quantas chamadas esta conexão aceita ao mesmo tempo, somando todas as instâncias da INIA (o limite por acesso do provedor). Um quarto fica reservado para chat e voz. Em branco = sem limite próprio." : "Use um número inteiro de 1 a 1000, ou deixe em branco."}
+      </p>
+    </div>
+  )
+}
+
 function isLocalProvider(provider: AiProvider): boolean {
   return provider.deployment === "LOCAL" || provider.deployment === "REMOTE_OR_LOCAL"
 }
@@ -375,6 +399,7 @@ export function NewConnectionForm({ mode, providers, canWriteSecrets, onDone }: 
   const [baseUrl, setBaseUrl] = useState("")
   const [isLocal, setIsLocal] = useState(mode === "local")
   const [timeoutSeconds, setTimeoutSeconds] = useState(String(DEFAULT_TIMEOUT_SECONDS))
+  const [concurrentText, setConcurrentText] = useState("")
   const [apiKey, setApiKey] = useState("")
   const [headers, setHeaders] = useState<HeaderRow[]>([])
 
@@ -382,7 +407,8 @@ export function NewConnectionForm({ mode, providers, canWriteSecrets, onDone }: 
   const timeout = Number(timeoutSeconds)
   const timeoutValid = Number.isFinite(timeout) && timeout >= 1 && timeout <= 300
   const credentialMissing = provider?.credential === "REQUIRED" && apiKey.trim().length < 4
-  const canSubmit = provider !== null && name.trim().length > 0 && (!endpointRequired || baseUrl.trim().length > 0) && timeoutValid && !credentialMissing && (provider.credential === "NONE" || canWriteSecrets || provider.credential === "OPTIONAL")
+  const concurrent = parseConcurrentCalls(concurrentText)
+  const canSubmit = provider !== null && name.trim().length > 0 && (!endpointRequired || baseUrl.trim().length > 0) && timeoutValid && concurrent.valid && !credentialMissing && (provider.credential === "NONE" || canWriteSecrets || provider.credential === "OPTIONAL")
 
   async function handleSubmit() {
     if (!provider) return
@@ -393,6 +419,7 @@ export function NewConnectionForm({ mode, providers, canWriteSecrets, onDone }: 
       baseUrl: baseUrl.trim() ? baseUrl.trim() : null,
       ...(provider.deployment === "REMOTE_OR_LOCAL" ? { isLocal } : {}),
       timeoutMs: Math.round(timeout * 1000),
+      ...(concurrent.value !== null ? { maxConcurrentCalls: concurrent.value } : {}),
       ...(provider.credential !== "NONE" && apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       ...(Object.keys(customHeaders).length > 0 ? { customHeaders } : {}),
     })
@@ -483,6 +510,8 @@ export function NewConnectionForm({ mode, providers, canWriteSecrets, onDone }: 
             <Input id="ai-connection-timeout" type="number" min={1} max={300} className="w-32" value={timeoutSeconds} onChange={(event) => setTimeoutSeconds(event.target.value)} />
           </div>
 
+          <ConcurrentCallsField id="ai-connection-concurrent" value={concurrentText} onChange={setConcurrentText} />
+
           {create.isError ? <p className="text-sm text-destructive">{(create.error as Error).message}</p> : null}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onDone}>
@@ -554,10 +583,12 @@ function ConnectionSettingsForm({ connection, provider, canWrite }: { connection
   const [baseUrl, setBaseUrl] = useState(connection.baseUrl ?? "")
   const [isLocal, setIsLocal] = useState(connection.isLocal)
   const [timeoutSeconds, setTimeoutSeconds] = useState(String(Math.round(connection.timeoutMs / 1000)))
+  const [concurrentText, setConcurrentText] = useState(connection.maxConcurrentCalls === null ? "" : String(connection.maxConcurrentCalls))
   const timeout = Number(timeoutSeconds)
   const timeoutValid = Number.isFinite(timeout) && timeout >= 1 && timeout <= 300
+  const concurrent = parseConcurrentCalls(concurrentText)
   const endpointRequired = Boolean(provider?.baseUrlRequired && !provider.defaultBaseUrl)
-  const canSave = canWrite && name.trim().length > 0 && timeoutValid && (!endpointRequired || baseUrl.trim().length > 0)
+  const canSave = canWrite && name.trim().length > 0 && timeoutValid && concurrent.valid && (!endpointRequired || baseUrl.trim().length > 0)
 
   return (
     <section className="space-y-3">
@@ -588,6 +619,7 @@ function ConnectionSettingsForm({ connection, provider, canWrite }: { connection
         <Label htmlFor="ai-edit-timeout">Timeout (segundos)</Label>
         <Input id="ai-edit-timeout" type="number" min={1} max={300} className="w-32" disabled={!canWrite} value={timeoutSeconds} onChange={(event) => setTimeoutSeconds(event.target.value)} />
       </div>
+      <ConcurrentCallsField id="ai-edit-concurrent" value={concurrentText} disabled={!canWrite} onChange={setConcurrentText} />
       {update.isError ? <p className="text-sm text-destructive">{(update.error as Error).message}</p> : null}
       {canWrite ? (
         <div className="flex justify-end">
@@ -599,6 +631,7 @@ function ConnectionSettingsForm({ connection, provider, canWrite }: { connection
                 name: name.trim(),
                 baseUrl: baseUrl.trim() ? baseUrl.trim() : null,
                 timeoutMs: Math.round(timeout * 1000),
+                maxConcurrentCalls: concurrent.value,
                 ...(provider?.deployment === "REMOTE_OR_LOCAL" ? { isLocal } : {}),
               })
             }

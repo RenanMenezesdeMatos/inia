@@ -113,7 +113,6 @@ export function createIngestionRouter(db: Database) {
         }
       }
 
-      await client.query(`insert into outbox_events(aggregate_type,aggregate_id,event_type,payload) values('Interaction',$1,'InteractionTranscriptReceived',$2)`, [id, { interactionId: id, operatorId: input.operatorId, reason: input.reason }])
       await client.query("commit")
     } catch (error) { await client.query("rollback"); throw error } finally { client.release() }
 

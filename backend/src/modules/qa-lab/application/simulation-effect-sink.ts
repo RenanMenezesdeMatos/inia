@@ -282,6 +282,41 @@ export class SimulationEffectSink implements WorkflowEffectSink {
     return { id, reused: false }
   }
 
+  /**
+   * "Avaliar política de acompanhamento" simulado: a avaliação é a MESMA (leitura real, só SELECT); aqui nada é gravado —
+   * ids sintéticos para as decisões que abririam intervenção, e a narrativa nunca é pedida à IA (só fica indicado que seria).
+   */
+  readonly interventions: WorkflowEffectSink["interventions"] = {
+    recorded: async () => {
+      const existing = this.effects.find((effect): effect is Extract<QaEffect, { kind: "INTERVENTION_POLICY" }> => effect.kind === "INTERVENTION_POLICY" && effect.nodeId === this.currentNodeId)
+      if (!existing) return null
+      return { evaluationId: `qa-evaluation-${existing.id}`, reportId: existing.reportWouldBeCreated ? `qa-report-${existing.id}` : null, caseId: existing.reportWouldBeCreated ? `qa-case-${existing.id}` : null, outcome: existing.outcome as never, decisions: existing.decisions.map((decision) => ({ typeKey: decision.typeKey, typeName: decision.typeName, status: decision.status as never, ruleKey: decision.ruleKey, interventionId: ["CREATED", "PENDING_APPROVAL", "RECOMMENDED"].includes(decision.status) ? `qa-intervention-${existing.id}-${decision.typeKey}` : null, updated: false, note: null })), reused: true }
+    },
+    apply: async (_db, input) => {
+      const id = this.nextId()
+      const evaluation = input.evaluation
+      const decisions = evaluation.decisions.map((decision) => {
+        const assignment = evaluation.assignments.get(decision.typeKey)
+        return { typeKey: decision.typeKey, typeName: decision.typeName, status: decision.status, ruleKey: decision.ruleKey, responsibleName: assignment?.responsible?.name ?? null, approverName: assignment?.approver?.name ?? null, dueAt: assignment?.dueAt ?? null }
+      })
+      const reportWouldBeCreated = evaluation.decisions.length > 0
+      this.effects.push({ kind: "INTERVENTION_POLICY", id, nodeId: this.currentNodeId, policyId: evaluation.policy.id, policyName: evaluation.policy.name, policyVersion: evaluation.version?.version ?? null, personId: evaluation.person.id, outcome: evaluation.outcome, decisions, justification: evaluation.justification, reportWouldBeCreated, narrativeWouldBeGenerated: false })
+      return {
+        evaluationId: `qa-evaluation-${id}`,
+        reportId: reportWouldBeCreated ? `qa-report-${id}` : null,
+        caseId: reportWouldBeCreated ? (input.preferredCaseId ?? `qa-case-${id}`) : null,
+        outcome: evaluation.outcome,
+        decisions: evaluation.decisions.map((decision) => ({ typeKey: decision.typeKey, typeName: decision.typeName, status: decision.status, ruleKey: decision.ruleKey, interventionId: ["CREATED", "PENDING_APPROVAL", "RECOMMENDED"].includes(decision.status) ? `qa-intervention-${id}-${decision.typeKey}` : decision.existingInterventionId, updated: decision.updated, note: decision.note })),
+        reused: false,
+      }
+    },
+    generateNarrative: async () => {
+      const last = [...this.effects].reverse().find((effect): effect is Extract<QaEffect, { kind: "INTERVENTION_POLICY" }> => effect.kind === "INTERVENTION_POLICY" && effect.nodeId === this.currentNodeId)
+      if (last) last.narrativeWouldBeGenerated = true
+      return { status: "READY" as const, attempt: 0, error: null }
+    },
+  }
+
   readonly conversational: WorkflowEffectSink["conversational"] = {
     reliableProjectionSource: async (_db, input) => {
       // Artefato gerado fora deste store (simulação injetada nos testes): a projeção sai do próprio nó. Com o artefato no

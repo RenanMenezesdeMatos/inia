@@ -11,5 +11,5 @@ export const analyticsKeys = {
   indicatorMembers: (subject: SubjectRef | null, period: string | null, code: string, params: unknown) => ["analytics", "indicator-members", subject, period, code, params] as const,
   team: (subject: SubjectRef | null, period: string | null) => ["analytics", "team", subject, period] as const,
   teamMembers: (subject: SubjectRef | null, period: string | null, params: unknown) => ["analytics", "team-members", subject, period, params] as const,
-  followUps: (subject: SubjectRef | null, pageSize: number, unacknowledgedOnly: boolean) => ["analytics", "follow-ups", subject, pageSize, unacknowledgedOnly] as const,
+  followUps: (subject: SubjectRef | null, limit: number, unacknowledgedOnly: boolean) => ["analytics", "follow-ups", subject, limit, unacknowledgedOnly] as const,
 }

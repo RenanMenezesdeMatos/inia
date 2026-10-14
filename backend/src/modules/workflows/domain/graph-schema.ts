@@ -344,6 +344,22 @@ export const orchestratorNodeConfigSchema = z.object({
 })
 export type OrchestratorNodeConfig = z.infer<typeof orchestratorNodeConfigSchema>
 
+/**
+ * "Avaliar política de acompanhamento" — nó PRÓPRIO (não é uma ação de "Ação" nem parte do Escalar): QUAIS intervenções cabem,
+ * segundo uma política PUBLICADA (módulo interventions). Os critérios, prazos, responsáveis e aprovações são da política; o
+ * nó só escolhe a política, o modo e quais nós anteriores entram como referência de análise. Gatilho continua dizendo QUANDO
+ * começa; Escalar continua encaminhando responsabilidade; Revisão humana continua esperando uma decisão.
+ */
+export const interventionPolicyModeSchema = z.enum(["RECOMMEND_ONLY", "APPLY_POLICY"])
+export const interventionPolicyNodeConfigSchema = z.object({
+  policyId: z.string().uuid(),
+  /** RECOMMEND_ONLY = toda intervenção nasce proposta (o responsável aceita); APPLY_POLICY = abre conforme a política. */
+  mode: interventionPolicyModeSchema,
+  /** Nós anteriores cujos registros (feedback publicado, caso, atendimento) entram como referência de análise do relatório. */
+  analysisSourceNodeIds: z.array(z.string().min(1)).max(5),
+})
+export type InterventionPolicyNodeConfig = z.infer<typeof interventionPolicyNodeConfigSchema>
+
 const positionSchema = z.object({ x: z.number(), y: z.number() })
 
 const baseNodeFields = { id: z.string().min(1), label: z.string(), position: positionSchema }
@@ -507,6 +523,7 @@ export const flowNodeSchema = z.discriminatedUnion("type", [
   // node que tem permissão de gerar efeito visível pro operador/gestor. Nenhum outro node
   // (Agent, Orchestrator) publica nada por conta própria.
   z.object({ ...baseNodeFields, type: z.literal("output"), config: outputNodeConfigSchema }),
+  z.object({ ...baseNodeFields, type: z.literal("intervention_policy"), config: interventionPolicyNodeConfigSchema }),
   z.object({ ...baseNodeFields, type: z.literal("end"), config: z.object({}) }),
 ])
 export type FlowNode = z.infer<typeof flowNodeSchema>
@@ -555,6 +572,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
     case "select_employees":
     case "apply_individually":
     case "consolidate_results":
+    case "intervention_policy":
       return [{ id: "always", label: "Sempre" }]
     case "action":
       // Escalonar "Encerrar branch" (Parte 12/13 do pedido) conclui a execução sem precisar de

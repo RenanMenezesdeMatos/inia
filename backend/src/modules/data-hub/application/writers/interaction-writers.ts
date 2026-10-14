@@ -5,8 +5,8 @@ import { withLineage } from "./master-data-writers.js"
 
 /**
  * Writers de interação — mesmo modelo e mesmos efeitos da ingestão em tempo real (`/ingestion`):
- * interação idempotente por `external_id`, transcrição por versão, evento `InteractionTranscriptReceived`
- * no outbox, e flag aplicada matricula Workflows por Flag (nova/alterada — inalterada não rematricula).
+ * interação idempotente por `external_id`, transcrição por versão e flag aplicada matricula Workflows
+ * por Flag (nova/alterada — inalterada não rematricula).
  * Assim QA Lab, Agents, retrieval de transcrição e gatilhos continuam funcionando sem saber por
  * onde o dado entrou.
  */
@@ -70,22 +70,13 @@ export const interactionsWriter: DomainWriter<PreparedInteraction> = {
       const ids = await client.query<{ id: string; external_id: string }>(`select id, external_id from interactions where organization_id = $1 and external_id = any($2::text[])`, [org, withTranscript.map((row) => row.externalId)])
       const idByExternal = new Map(ids.rows.map((row) => [row.external_id, row.id]))
       const rows = withTranscript.map((row) => ({ interactionId: idByExternal.get(row.externalId)!, ...row.transcript! }))
-      const transcriptResult = await client.query<{ interaction_id: string; inserted: boolean }>(
+      await client.query(
         `insert into transcripts (organization_id, interaction_id, version, content, language, confidence)
          select $1, interaction_id, 1, content, language, confidence from unnest($2::uuid[], $3::text[], $4::text[], $5::numeric[]) as t(interaction_id, content, language, confidence)
          on conflict (interaction_id, version) do update set content = excluded.content, language = excluded.language, confidence = excluded.confidence
-         where transcripts.content is distinct from excluded.content or transcripts.language is distinct from excluded.language or transcripts.confidence is distinct from excluded.confidence
-         returning interaction_id, (xmax = 0) inserted`,
+         where transcripts.content is distinct from excluded.content or transcripts.language is distinct from excluded.language or transcripts.confidence is distinct from excluded.confidence`,
         [org, rows.map((r) => r.interactionId), rows.map((r) => r.content), rows.map((r) => r.language), rows.map((r) => r.confidence)],
       )
-      // Mesmo evento de domínio da ingestão em tempo real, para cada transcrição nova/alterada.
-      for (const row of transcriptResult.rows) {
-        const source = withTranscript.find((candidate) => idByExternal.get(candidate.externalId) === row.interaction_id)!
-        await client.query(`insert into outbox_events(aggregate_type, aggregate_id, event_type, payload) values ('Interaction', $1, 'InteractionTranscriptReceived', $2)`, [
-          row.interaction_id,
-          JSON.stringify({ interactionId: row.interaction_id, operatorId: source.operatorId, reason: source.reason }),
-        ])
-      }
     }
     return outcome
   },
@@ -124,13 +115,6 @@ export const transcriptsWriter: DomainWriter<PreparedTranscript> = {
        returning id, interaction_id, version, (xmax = 0) inserted`,
       [context.organizationId, batch.map((r) => r.interactionId), batch.map((r) => r.version), batch.map((r) => r.content), batch.map((r) => r.language), batch.map((r) => r.confidence)],
     )
-    for (const row of result.rows) {
-      const source = batch.find((candidate) => candidate.interactionId === row.interaction_id && candidate.version === row.version)!
-      await client.query(`insert into outbox_events(aggregate_type, aggregate_id, event_type, payload) values ('Interaction', $1, 'InteractionTranscriptReceived', $2)`, [
-        row.interaction_id,
-        JSON.stringify({ interactionId: row.interaction_id, operatorId: source.operatorId, version: row.version }),
-      ])
-    }
     return withLineage("transcripts", batch, (row) => `${row.interactionId}|${row.version}`, result.rows.map((row) => ({ key: `${row.interaction_id}|${row.version}`, id: row.id, inserted: row.inserted })))
   },
 }
@@ -195,8 +179,18 @@ export const interactionFlagsWriter: DomainWriter<PreparedFlag> = {
     const outcome = withLineage("interaction_flags", batch, (row) => `${row.interactionId}|${row.flag.id}`, result.rows.map((row) => ({ key: `${row.interaction_id}|${row.channel_flag_id}`, id: row.id, inserted: row.inserted })))
     // Flag nova/alterada matricula Workflows por Flag — exatamente como a ingestão em tempo real.
     const touched = new Set(result.rows.map((row) => `${row.interaction_id}|${row.channel_flag_id}`))
-    for (const row of batch) {
-      if (!touched.has(`${row.interactionId}|${row.flag.id}`)) continue
+    const touchedRows = batch.filter((row) => touched.has(`${row.interactionId}|${row.flag.id}`))
+    if (touchedRows.length === 0) return outcome
+    // Mesmo filtro das medições: UMA consulta por lote diz quais flags têm Workflow publicado; a matrícula (candidatos,
+    // elegibilidade, grafo) só roda para essas. Antes cada flag gravada consultava os candidatos, mesmo sem Workflow nenhum.
+    const triggered = await client.query<{ channel_flag_id: string }>(
+      `select distinct trigger_config->>'channelFlagId' channel_flag_id from workflows
+       where organization_id = $1 and active and active_version_id is not null and trigger_config->>'kind' = 'channel_flag'`,
+      [context.organizationId],
+    )
+    const triggeredFlags = new Set(triggered.rows.map((row) => row.channel_flag_id))
+    for (const row of touchedRows) {
+      if (!triggeredFlags.has(row.flag.id)) continue
       await enrollFlagWorkflows(client, { organizationId: context.organizationId, interactionId: row.interactionId, operatorId: row.operatorId, channelFlagId: row.flag.id, flagName: row.flag.flagName, value: row.value })
     }
     return outcome

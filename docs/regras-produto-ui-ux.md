@@ -54,7 +54,7 @@ O operador verá a projeção autorizada da mesma informação em `/operator/fee
 3. Contratos HTTP são versionados, validados com Zod e documentados em OpenAPI.
 4. PostgreSQL usa migrations aditivas, transações, constraints, índices, chaves UUID e isolamento por `organization_id`.
 5. Comandos mutáveis críticos aceitam idempotência e registram auditoria.
-6. Eventos confiáveis usam transactional outbox.
+6. Eventos confiáveis usam transactional outbox — introduzido junto com o primeiro consumidor real, com `processed_at`, tentativas e expurgo (o `outbox_events` antigo, sem leitor, foi descontinuado em 13/10/2026).
 7. Dependências externas (IA, storage, filas e fontes operacionais) ficam atrás de interfaces.
 8. Segredos nunca entram no repositório; arquivos `.env.example` documentam somente nomes e valores seguros.
 

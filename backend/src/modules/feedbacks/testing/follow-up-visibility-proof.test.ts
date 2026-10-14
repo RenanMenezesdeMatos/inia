@@ -75,7 +75,7 @@ describe.skipIf(!ENABLED)("Visibilidade no Acompanhamento — prova Postgres (mi
     const counts = await analytics.loadFollowUpCounts([operator, other])
     expect(counts.get(operator)).toEqual({ total: 3, unacknowledged: 3 })
     expect(counts.get(other)).toEqual({ total: 1, unacknowledged: 1 })
-    const structure = await analytics.loadFollowUpFeed({ organizationId: ORG, viewerId: operator, operatorIds: [operator, other], includeViewerAlerts: false, unacknowledgedOnly: false, page: 1, pageSize: 50 })
+    const structure = await analytics.loadFollowUpFeed({ organizationId: ORG, viewerId: operator, operatorIds: [operator, other], includeViewerAlerts: false, unacknowledgedOnly: false, limit: 50, before: null })
     const structureIds = structure.items.map((item) => item.id)
     expect(structureIds).toEqual(expect.arrayContaining([tieHigh, tieLow, kept, othersFeedback]))
     expect(structureIds).not.toContain(legacyA)

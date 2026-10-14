@@ -152,4 +152,5 @@ export const WORKFLOW_NODE_TYPES = {
   select_employees: WorkflowNode,
   apply_individually: WorkflowNode,
   consolidate_results: WorkflowNode,
+  intervention_policy: WorkflowNode,
 } satisfies Record<Exclude<FlowNodeType, "output"> | "workflow_output", typeof WorkflowNode>

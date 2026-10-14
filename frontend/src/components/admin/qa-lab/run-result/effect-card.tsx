@@ -5,6 +5,7 @@ import { FEEDBACK_DISPOSITION_REASON_LABELS, type QaEffect, type QaRun } from "@
 import { personLabel } from "../qa-lab-format"
 import { StructuredOutput } from "../structured-output"
 import { scalar, surfaceLabel } from "./run-format"
+import { OUTCOME_LABELS } from "@/schemas/admin/intervention-policy.schema"
 
 export function EffectCard({ effect, people }: { effect: QaEffect; people: QaRun["trace"]["people"] }) {
   const recipient = (id: string) => personLabel(people, id)
@@ -86,6 +87,17 @@ export function EffectCard({ effect, people }: { effect: QaEffect; people: QaRun
       ...(effect.text ? [{ label: "Texto que seguiria", value: <span className="whitespace-pre-wrap">{effect.text}</span> }] : []),
       { label: "Política", value: effect.policyVersion },
       { label: "Registro", value: "Nada gravado, entregue ou notificado (simulação)" },
+    ]
+  } else if (effect.kind === "INTERVENTION_POLICY") {
+    Icon = Send
+    title = "AVALIAÇÃO DE POLÍTICA DE ACOMPANHAMENTO SIMULADA"
+    const decisionLabel: Record<string, string> = { CREATED: "abriria", PENDING_APPROVAL: "abriria aguardando aprovação", RECOMMENDED: "recomendaria", EXISTING: "já existe ativa", SUPPRESSED: "não reabre (carência)", CONFLICT: "conflito — nada aplicado" }
+    rows = [
+      { label: "Política", value: `${effect.policyName}${effect.policyVersion ? ` · v${effect.policyVersion}` : ""}` },
+      { label: "Resultado", value: OUTCOME_LABELS[effect.outcome as keyof typeof OUTCOME_LABELS] ?? effect.outcome },
+      ...(effect.decisions.length > 0 ? [{ label: "Ações", value: <ul className="space-y-0.5">{effect.decisions.map((decision) => <li key={decision.typeKey}>{decision.typeName}: {decisionLabel[decision.status] ?? decision.status}{decision.responsibleName ? ` · responsável ${decision.responsibleName}` : ""}{decision.approverName ? ` · aprovação ${decision.approverName}` : ""}</li>)}</ul> }] : []),
+      { label: "Justificativa", value: <span className="whitespace-pre-wrap">{effect.justification}</span> },
+      { label: "Registro", value: `Nada gravado nem avisado (simulação)${effect.reportWouldBeCreated ? " · relatório de inteligência seria criado" : ""}${effect.narrativeWouldBeGenerated ? " · narrativa da INIA seria pedida (não chamada aqui)" : ""}` },
     ]
   } else if (effect.kind === "RELIABLE_FEEDBACK_EMISSION") {
     Icon = Send

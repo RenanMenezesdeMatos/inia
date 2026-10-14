@@ -91,7 +91,10 @@ export const operatorIndicatorHistorySchema = z.object({
 
 export const operatorIndicatorsDataSchema = z.object({
   current: z.array(operatorIndicatorSchema),
+  /** Primeira página do Acompanhamento (mais recente primeiro). */
   history: z.array(operatorIndicatorHistorySchema),
+  /** Cursor da página seguinte (`/operator/feedbacks`); null/ausente = o histórico acaba nesta página. */
+  historyNextCursor: z.string().nullable().optional(),
 })
 
 export type IndicatorStatus = z.infer<typeof indicatorStatusSchema>

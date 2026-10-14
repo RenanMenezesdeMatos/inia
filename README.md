@@ -374,7 +374,10 @@ npm run examples:up
 ```
 
 Sobe um PostgreSQL, um MariaDB e um MySQL com o banco `inia_exemplo` (tabelas `colaboradores`, `medicoes_diarias` e
-a visão `vw_colaboradores_em_producao`) e o usuário somente leitura `inia_leitura`. A senha dele é o valor de
+a visão `vw_colaboradores_em_producao`, mais `grupos`, `subgrupos`, `metas`, `fechamento_mensal` e `chamadas` com
+transcrição — o que uma instalação limpa precisa para chegar ao primeiro feedback; roteiro em
+[docs/instalacao/primeiro-feedback-exemplo](docs/instalacao/primeiro-feedback-exemplo/README.md)) e o usuário somente
+leitura `inia_leitura`. A senha dele é o valor de
 `INIA_EXAMPLES_READER_PASSWORD` no `.env` da raiz — gerada pelo `npm run env:init` (ou pelo próprio `examples:up`, se
 faltar). Use servidor `localhost` e a porta do banco: PostgreSQL `55432`, MariaDB `53306`, MySQL `53307`.
 

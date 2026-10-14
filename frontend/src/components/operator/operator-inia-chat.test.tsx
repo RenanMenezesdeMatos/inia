@@ -168,6 +168,13 @@ beforeEach(() => {
   utterances = []
   speechSynthesisMock = { speak: vi.fn(), cancel: vi.fn() }
   vi.stubGlobal("speechSynthesis", speechSynthesisMock)
+  // O avatar 3D monta quando o navegador fica ocioso (use-browser-idle.ts); estes testes são sobre voz e driver, não sobre
+  // QUANDO ele monta: ocioso na hora.
+  vi.stubGlobal("requestIdleCallback", (callback: () => void) => {
+    callback()
+    return 1
+  })
+  vi.stubGlobal("cancelIdleCallback", () => {})
   vi.stubGlobal(
     "SpeechSynthesisUtterance",
     class {
@@ -215,6 +222,22 @@ async function openVoice() {
   })
   return doubles.transports[0]
 }
+
+describe("OperatorIniaChat — avatar 3D depois do idle do navegador", () => {
+  it("a tela abre sem o 3D (mesmo lugar reservado) e a INIA aparece sozinha quando o navegador fica ocioso", async () => {
+    let idle: (() => void) | null = null
+    vi.stubGlobal("requestIdleCallback", (callback: () => void) => {
+      idle = callback
+      return 1
+    })
+    renderChat()
+    await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+    expect(screen.queryByTestId("avatar-stub")).not.toBeInTheDocument()
+    expect(doubles.avatarProps).toHaveLength(0)
+    act(() => idle!())
+    expect(await screen.findByTestId("avatar-stub")).toBeInTheDocument()
+  })
+})
 
 describe("OperatorIniaChat — voz e avatar", () => {
   it("o avatar recebe sempre o MESMO driver, com as novas props, e o estado vai para o driver", async () => {

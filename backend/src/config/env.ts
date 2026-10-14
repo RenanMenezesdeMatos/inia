@@ -12,6 +12,17 @@ export const envSchema = z.object({
   /** Conexões do pool do Postgres por processo — dimensionado para o worker de Workflow + API ao mesmo tempo. */
   DATABASE_POOL_MAX: z.coerce.number().int().min(2).max(200).default(20),
   /**
+   * Limites de sessão do pool no SERVIDOR (infrastructure/database/session-limits.ts) — migrations, seeds, scripts e testes
+   * não os recebem. 0 = sem limite. Espera por uma conexão livre do pool (pool esgotado = erro, nunca espera infinita).
+   */
+  DATABASE_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(0).max(600_000).default(10_000),
+  /** Duração máxima de um comando no processo `api` (telas, chat, admin). */
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(30_000),
+  /** Duração máxima de um comando nos processos `worker` e `all` e nas cargas da Central de Dados (mesmo quando rodam na API). */
+  DATABASE_WORKER_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(300_000),
+  /** Transação aberta e parada (sem comando) além disso é encerrada pelo banco — solta os bloqueios de uma transação esquecida. */
+  DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: z.coerce.number().int().min(0).max(3_600_000).default(60_000),
+  /**
    * Matrículas de Workflow executadas AO MESMO TEMPO por processo (workflow-worker.ts). Um workflow sozinho ocupa no
    * máximo metade das vagas. O teto real costuma ser o limite de requisições do provedor de IA, não a CPU.
    */
@@ -21,13 +32,28 @@ export const envSchema = z.object({
    * `worker` = só o processamento (motor de Workflow + tarefas periódicas), com um /health mínimo. Também por `--role=`.
    */
   INIA_PROCESS_ROLE: z.enum(["all", "api", "worker"]).default("all"),
+  /**
+   * Desligamento (main/process-lifecycle.ts): ao receber o sinal de parada a API deixa de estar pronta (/ready = 503) e espera
+   * INIA_SHUTDOWN_DRAIN_MS para o balanceador (web farm do ARR) tirá-la, antes de parar de aceitar conexões. Padrão: 5 s em
+   * produção, 0 fora dela (o `tsx watch` reinicia na hora). INIA_SHUTDOWN_TIMEOUT_MS = prazo máximo do desligamento inteiro;
+   * estourou, as conexões que sobraram são cortadas e o processo sai com código 1. Fica abaixo do <stoptimeout> do serviço.
+   */
+  INIA_SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).max(120_000).optional(),
+  INIA_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(25_000),
+  /**
+   * Métricas internas (`GET /internal/metrics` da API; `/health` do worker): só de 127.0.0.1 e nunca pelo proxy. Com este
+   * token, também exigem `Authorization: Bearer <token>` (ex.: máquina compartilhada com outros serviços).
+   */
+  INIA_METRICS_TOKEN: z.string().trim().min(16).optional(),
   /** /health do processo `worker` (só 127.0.0.1 por padrão — ver WORKER_HEALTH_HOST). 0 = não abre porta. */
   WORKER_HEALTH_PORT: z.coerce.number().int().min(0).max(65_535).default(3334),
   WORKER_HEALTH_HOST: z.string().trim().min(1).default("127.0.0.1"),
   /**
    * Limitador de chamadas de IA (model-routing/ai-call-limiter.ts) — por processo. ON (padrão): no máximo
-   * INIA_AI_MAX_CONCURRENT_CALLS chamadas ao provedor ao mesmo tempo, das quais INIA_AI_RESERVED_INTERACTIVE_CALLS só para o
-   * chat/voz/telas (o lote de Workflow nunca as ocupa); 429/503 no lote = backoff com Retry-After. OFF = sai direto, como antes.
+   * INIA_AI_MAX_CONCURRENT_CALLS chamadas ao provedor ao mesmo tempo neste processo, das quais INIA_AI_RESERVED_INTERACTIVE_CALLS
+   * só para o chat/voz/telas (o lote de Workflow nunca as ocupa); 429/503 no lote = backoff com Retry-After. O limite do
+   * PROVEDOR é por conexão (vagas da conexão + pausa depois de um 429, divididas por todas as instâncias —
+   * provider-call-gate.ts). OFF = sai direto, como antes.
    */
   INIA_AI_LIMITER: z.enum(["ON", "OFF"]).default("ON"),
   INIA_AI_MAX_CONCURRENT_CALLS: z.coerce.number().int().min(2).max(512).default(16),
@@ -98,8 +124,16 @@ export const envSchema = z.object({
    * (nenhum: vale o IP da conexão). Nunca `true`: qualquer cliente forjaria o próprio IP.
    */
   TRUST_PROXY: z.string().trim().min(1).default("loopback").refine((value) => value.toLowerCase() !== "true", "TRUST_PROXY=true confiaria em qualquer cliente; informe os proxies (ex.: loopback)."),
-  /** Tentativas de login por IP a cada 5 minutos (além da trava por e-mail). 0 desliga este limite. */
-  LOGIN_RATE_LIMIT_PER_IP: z.coerce.number().int().min(0).max(100_000).default(30),
+  /**
+   * Tentativas de login por IP + e-mail digitado a cada 5 minutos (além da trava por e-mail: 5 falhas em 15 min). Cada pessoa
+   * tem o seu contador mesmo quando centenas saem pelo mesmo IP (Citrix, VDI, NAT) na virada de turno. 0 desliga este limite.
+   */
+  LOGIN_RATE_LIMIT_PER_IP_EMAIL: z.coerce.number().int().min(0).max(100_000).default(20),
+  /**
+   * Tentativas de login RECUSADAS por IP a cada 5 minutos — contra quem testa uma senha em muitas contas a partir de um
+   * endereço. Login certo não conta (a virada de turno atrás de um NAT não esgota o limite). 0 desliga este limite.
+   */
+  LOGIN_RATE_LIMIT_PER_IP: z.coerce.number().int().min(0).max(100_000).default(200),
   /**
    * Destinos de saída das integrações configuradas na tela (Central de Dados, provedores de IA) — ver
    * shared/infrastructure/outbound-destination-policy.ts. OPEN (padrão) = qualquer destino, exceto metadados de nuvem,
@@ -136,4 +170,5 @@ export const env = {
     parsed.NODE_ENV === "test" ? parsed.TEST_DATABASE_URL : parsed.DATABASE_URL,
   allowedOrigins: parseAllowedOrigins(parsed.CORS_ORIGIN),
   sessionCookieSecure: parsed.SESSION_COOKIE_SECURE === "auto" ? parsed.NODE_ENV === "production" : parsed.SESSION_COOKIE_SECURE === "true",
+  shutdownDrainMs: parsed.INIA_SHUTDOWN_DRAIN_MS ?? (parsed.NODE_ENV === "production" ? 5_000 : 0),
 }

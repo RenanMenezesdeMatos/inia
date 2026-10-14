@@ -61,6 +61,17 @@ export function categorizeFetchError(error: unknown): AiErrorCategory {
 }
 
 /**
+ * Quem pediu foi embora (fechou o chat, recarregou a página, a conexão caiu): a chamada de IA foi cancelada — saiu da fila do
+ * limitador ou teve o fetch interrompido. Não é falha do provedor: nunca dispara fallback nem nova tentativa.
+ */
+export class AiCallCancelledError extends DomainError {
+  constructor() {
+    super("A solicitação à INIA foi cancelada.", "AI_CALL_CANCELLED", 499)
+    this.name = "AiCallCancelledError"
+  }
+}
+
+/**
  * Erro de provider para quem chama: categoria + mensagem segura. `details` nunca carrega corpo do
  * provider (o error handler HTTP devolve `details` ao navegador).
  */

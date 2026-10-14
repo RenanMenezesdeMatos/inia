@@ -48,11 +48,12 @@ Agora toda chamada do gateway (`generateForRoute`, `createChatStreamer`, `create
   `INIA_AI_BATCH_BACKOFF_MAX_MS` 60 s), com o **Retry-After como mínimo** (cabeçalhos `retry-after-ms`/`Retry-After` nos
   adapters — `http.ts` — e o `RetryInfo.retryDelay` do corpo do 429 do Google no legado), até `INIA_AI_BATCH_MAX_RETRIES`
   (5) novas tentativas; depois devolve o erro ORIGINAL (a política de retentativa do nó do Workflow decide). Um 429 também
-  **pausa o início de novas chamadas de lote** pelo tempo pedido — sobra cota para o chat. INTERATIVA tenta no máximo UMA
+  **pausa o início de novas chamadas de lote** deste processo pelo tempo pedido — sobra cota para o chat. INTERATIVA tenta no máximo UMA
   vez a mais, rápido (≤ 2 s, mesmo com Retry-After maior), e falha com `AI_RATE_LIMIT` 429 e mensagem clara
   (`INTERACTIVE_RATE_LIMIT_MESSAGE`). O cliente legado já repete o 503 uma vez: a interativa não empilha outra.
 - **Nunca repete**: credencial, pedido inválido, orçamento, QA Lab bloqueado, `transport.retries: 0` (Feedback Writer — o
-  pipeline decide a falha) e stream de chat que já entregou texto.
+  pipeline decide a falha), stream de chat que já entregou texto e chamada CANCELADA (quem pediu foi embora:
+  `runWithAiCancellation` → sai da fila/backoff, fetch interrompido, `AI_CALL_CANCELLED`, nunca fallback).
 - **Fallback da policy continua por dentro**: FALLBACK_CHAIN troca de modelo na hora dentro da mesma vaga; o limitador só
   repete quando a rota INTEIRA devolveu 429/503 — repete a policy (mesmo `correlation_id`), nunca cai no legado.
 - **Telemetria**: `ai_usage_events` ganhou `call_priority`, `call_priority_reason`, `queue_wait_ms`, `queue_reason`
@@ -61,7 +62,16 @@ Agora toda chamada do gateway (`generateForRoute`, `createChatStreamer`, `create
   (espera ≥ 250 ms), `ai_call_retry`, `ai_call_capacity_busy`. O `/health` do processo de processamento mostra a fila.
 - `INIA_AI_LIMITER=OFF` = sai direto, como antes (a classe continua gravada, com espera 0).
 - **Por processo**: com API e processamento separados (`INIA_PROCESS_ROLE`), a API só tem interativas e o processamento só
-  lote (até `max − reservadas`). Os processos dividem a cota da chave: some os tetos e fique abaixo dela.
+  lote (até `max − reservadas`).
+- **Por CONEXÃO, em todas as instâncias (13/10/2026 — `provider-call-gate.ts`, migrations 127 + 135)**: quem tem cota é o
+  ACESSO (a conexão desta tela, com a própria chave), não cada processo. Cada conexão tem **Chamadas simultâneas**
+  (`ai_connections.max_concurrent_calls`; em branco = sem teto próprio) — vagas divididas por N APIs + M workers numa tabela
+  UNLOGGED com prazo renovado (`ai_call_slot_leases`); ¼ do teto (≥ 1) é reservado à interativa; interativa espera no máximo
+  20 s (`AI_CAPACITY_BUSY`), lote espera o quanto precisar. Um 429/503 da conexão grava a pausa dela em `ai_provider_cooldowns`
+  (Retry-After ou 5 s/2 s, ≤ 60 s) ANTES de o erro voltar; os lotes de todas as instâncias esperam naquela conexão e, numa
+  FALLBACK_CHAIN que permite RATE_LIMIT, vão direto para o próximo modelo (`FALLBACK_RATE_LIMIT`, nada sai para a conexão
+  pausada). A interativa nunca é pausada. Rota do ambiente (sem policy): chave `legacy:<provedor>`, só a pausa. Nada no
+  portão conhece provedor específico. Banco fora = a chamada sai sem vaga compartilhada (aviso no log).
 - Exceção: "Testar modelo" do admin chama o adapter direto (sonda sem repetição) — fora da fila.
 
 Prova/demonstração (provider falso com latência 300 ms e cota de 6 simultâneas; lote de 12 matrículas × 4 chamadas + chat

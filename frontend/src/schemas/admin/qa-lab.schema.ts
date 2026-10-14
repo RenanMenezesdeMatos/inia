@@ -143,6 +143,21 @@ export const qaEffectSchema = z.discriminatedUnion("kind", [
     text: z.string(),
   }),
   z.object({ kind: z.literal("RELIABLE_FEEDBACK_EMISSION"), id: z.number(), nodeId: z.string().nullable(), surface: z.literal("FOLLOW_UP"), recipientId: z.string(), artifactId: z.string(), caseId: z.string(), feedbackId: z.string(), reused: z.boolean() }),
+  // "Avaliar política de acompanhamento" simulado: avaliação e decisões por ação que seriam gravadas (nada gravado nem avisado).
+  z.object({
+    kind: z.literal("INTERVENTION_POLICY"),
+    id: z.number(),
+    nodeId: z.string().nullable(),
+    policyId: z.string(),
+    policyName: z.string(),
+    policyVersion: z.number().nullable(),
+    personId: z.string(),
+    outcome: z.string(),
+    decisions: z.array(z.object({ typeKey: z.string(), typeName: z.string(), status: z.string(), ruleKey: z.string(), responsibleName: z.string().nullable(), approverName: z.string().nullable(), dueAt: z.string().nullable() })),
+    justification: z.string(),
+    reportWouldBeCreated: z.boolean(),
+    narrativeWouldBeGenerated: z.boolean(),
+  }),
 ])
 export type QaEffect = z.infer<typeof qaEffectSchema>
 

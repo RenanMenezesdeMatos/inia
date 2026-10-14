@@ -45,7 +45,7 @@ export function useStageSpeech(voice: IniaVoiceEngine) {
    * ritmo do texto: sem ele, o da VOZ (alinhamento do lip-sync no instante ouvido — também com ela no mudo, o áudio segue sem som;
    * sem alinhamento, pelo tempo); texto sem voz passa o relógio de leitura.
    */
-  function beginStageUtterance(text: string, landOn: number | null, options: { heard?: () => number; markdown?: boolean } = {}): number {
+  function beginStageUtterance(text: string, landOn: number | null, options: { heard?: () => number } = {}): number {
     const startedAt = performance.now()
     const heard = options.heard ?? (() => {
       const at = voice.playback.heardTime()
@@ -53,7 +53,7 @@ export function useStageSpeech(voice: IniaVoiceEngine) {
       return aligned > 0 ? aligned : Math.floor((performance.now() - startedAt) / STAGE_WORD_MS)
     })
     const key = ++stageKeyRef.current
-    setStage({ key, text, ended: false, landOn: landOn === null ? null : String(landOn), heard, ...(options.markdown ? { markdown: true } : {}) })
+    setStage({ key, text, ended: false, landOn: landOn === null ? null : String(landOn), heard })
     setStageGreeting(false)
     return key
   }

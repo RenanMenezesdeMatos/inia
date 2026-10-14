@@ -112,38 +112,70 @@ const usageOf = (row: UsageSqlRow): UsageTotals => ({
 /**
  * CTE dos disparos (params $1 org, $2 workflow, $3..$5 escopo, depois o recorte: período OU um disparo). Devolve uma linha
  * por disparo visível com todos os agregados; resumo, lista e cabeçalho do detalhe leem a MESMA definição.
+ *
+ * ESCALA (14/10/2026): com 30 dias de monitoria (~30 mil disparos) a versão anterior levava mais de 1 minuto por consulta.
+ *   - `keys` = o barato de cada disparo (status, gatilho, pessoas visíveis), por agregação — nunca subconsulta correlacionada
+ *     sobre uma CTE (sem índice, ela relia a CTE inteira para cada disparo: trabalho quadrático);
+ *   - `selection` escolhe os disparos (filtro, ordem e página) ANTES dos agregados pesados — uso de IA, feedbacks, artefatos e
+ *     emissões só rodam para os escolhidos (a página da lista, ou todos os filtrados no resumo);
+ *   - `node_outputs` (o JSON grande de cada execução) não atravessa as CTEs: só o ramo de feedback do Output legado o lê, e
+ *     só dos disparos escolhidos.
  */
-function dispatchCte(rootClause: string): string {
+function dispatchCte(rootClause: string, selection = "select d.* from keys d", collaboratorPattern: string | null = null): string {
   return `
   roots as (
-    select r.id, r.version_id, r.status, r.created_at, r.updated_at, r.interaction_id, r.indicator_measurement_id, r.scheduled_subject_id, r.matched_flag_name, r.parent_enrollment_id, r.node_outputs, r.manual_run_id
+    select r.id, r.version_id, r.status, r.created_at, r.updated_at, r.interaction_id, r.indicator_measurement_id, r.scheduled_subject_id, r.matched_flag_name, r.parent_enrollment_id, r.manual_run_id
       from workflow_enrollments r
      where r.organization_id = $1 and r.workflow_id = $2 and r.parent_enrollment_id is null and ${rootClause}
   ),
   tree as (
-    select r.id root_id, r.id, r.version_id, r.status, r.created_at, r.updated_at, r.interaction_id, r.indicator_measurement_id, r.scheduled_subject_id, r.parent_enrollment_id, r.node_outputs from roots r
+    select r.id root_id, r.id, r.version_id, r.status, r.created_at, r.updated_at, r.interaction_id, r.indicator_measurement_id, r.scheduled_subject_id, r.parent_enrollment_id from roots r
     union all
-    select c.parent_enrollment_id, c.id, c.version_id, c.status, c.created_at, c.updated_at, c.interaction_id, c.indicator_measurement_id, c.scheduled_subject_id, c.parent_enrollment_id, c.node_outputs
+    select c.parent_enrollment_id, c.id, c.version_id, c.status, c.created_at, c.updated_at, c.interaction_id, c.indicator_measurement_id, c.scheduled_subject_id, c.parent_enrollment_id
       from workflow_enrollments c join roots r on c.parent_enrollment_id = r.id
      where c.organization_id = $1
   ),
   wf as (select consolidated_structure is not null consolidated, active_version_id from workflows where id = $2 and organization_id = $1),
   persons as (
-    select t.root_id, t.id enrollment_id, t.version_id, t.node_outputs, p.id person_id, p.name,
+    select t.root_id, t.id enrollment_id, t.version_id, p.id person_id, p.name,
            ($3::boolean or p.team_id = any($4::uuid[]) or p.subteam_id = any($5::uuid[])) visible
       from tree t
       cross join wf
-      left join interactions i on i.id = t.interaction_id and i.organization_id = $1
-      left join indicator_measurements m on m.id = t.indicator_measurement_id and m.subject_type = 'PERSON'
+      -- Busca pela chave, uma por execução (LATERAL com limit: o planejador não a transforma de volta num join e não troca o
+      -- índice por varrer as medições inteiras — 1,6 milhão de linhas no dev — com hash join).
+      left join lateral (select i.operator_id from interactions i where i.id = t.interaction_id and i.organization_id = $1 limit 1) i on true
+      left join lateral (select m.subject_id from indicator_measurements m where m.id = t.indicator_measurement_id and m.subject_type = 'PERSON' limit 1) m on true
       join people p on p.id = coalesce(t.scheduled_subject_id, i.operator_id, m.subject_id) and p.organization_id = $1
      where t.parent_enrollment_id is not null or not wf.consolidated
   ),
   visible_persons as (select * from persons where visible),
+  persons_by_root as (select root_id, count(*)::int persons from visible_persons group by root_id),
+  -- Filtro "colaborador" como coluna de \`keys\` (hash join), nunca como subconsulta por disparo: com IN/EXISTS o planejador
+  -- chegou a reler o conjunto inteiro para cada disparo (28 mil × 15 mil linhas, 28 s).
+  collaborator_roots as (${collaboratorPattern ? `select root_id from visible_persons where name ilike ${collaboratorPattern} group by root_id` : "select null::uuid root_id where false"}),
+  tree_stats as (
+    select root_id, ${DISPATCH_STATUS_SQL("status")} status,
+           case when bool_or(status in ('active', 'waiting')) then null else extract(epoch from max(updated_at) - min(created_at)) * 1000 end duration_ms
+      from tree group by root_id
+  ),
+  keys as (
+    select r.id root_id, r.created_at, r.version_id, r.manual_run_id, r.interaction_id, r.indicator_measurement_id, r.matched_flag_name,
+           ts.status, ts.duration_ms, wf.consolidated, wf.active_version_id, coalesce(pr.persons, 0) persons, (cr.root_id is not null) collaborator_match,
+           case when r.manual_run_id is not null then 'MANUAL' when r.interaction_id is not null then 'FLAG' when r.indicator_measurement_id is not null then 'INDICATOR' else 'SCHEDULE' end trigger_kind
+      from roots r
+      cross join wf
+      join tree_stats ts on ts.root_id = r.id
+      left join persons_by_root pr on pr.root_id = r.id
+      left join collaborator_roots cr on cr.root_id = r.id
+     where wf.consolidated or pr.root_id is not null
+  ),
+  selected as (${selection}),
+  selected_persons as (select vp.* from visible_persons vp join selected s on s.root_id = vp.root_id),
   -- Enrollments cujo consumo de IA entra no disparo: pessoas visíveis + a raiz de um Workflow Consolidado.
   usage_enrollments as (
-    select root_id, enrollment_id from visible_persons
+    select root_id, enrollment_id from selected_persons
     union
-    select r.id, r.id from roots r cross join wf where wf.consolidated
+    select s.root_id, s.root_id from selected s where s.consolidated
   ),
   usage_rows as (
     select ue.root_id, u.* from usage_enrollments ue
@@ -159,7 +191,7 @@ function dispatchCte(rootClause: string): string {
     select vp.root_id,
            (count(*) filter (where m.status = 'PUBLISHABLE'))::int produced,
            (count(*) filter (where m.status = 'ABSTAINED'))::int abstained
-      from visible_persons vp join feedback_engine_messages m on m.organization_id = $1 and m.enrollment_id = vp.enrollment_id
+      from selected_persons vp join feedback_engine_messages m on m.organization_id = $1 and m.enrollment_id = vp.enrollment_id
      group by vp.root_id
   ),
   artifact_stats as (
@@ -167,20 +199,21 @@ function dispatchCte(rootClause: string): string {
            (count(*) filter (where a.status = 'COMPLETED' and a.disposition in ('READY', 'HOLD_FOR_QA', 'REJECTED')))::int produced,
            (count(*) filter (where a.status = 'COMPLETED' and a.disposition = 'HOLD_FOR_QA'))::int awaiting_qa,
            (count(*) filter (where a.status = 'COMPLETED' and a.disposition = 'BLOCKED'))::int blocked
-      from visible_persons vp join reliable_feedback_artifacts a on a.organization_id = $1 and a.enrollment_id = vp.enrollment_id
+      from selected_persons vp join reliable_feedback_artifacts a on a.organization_id = $1 and a.enrollment_id = vp.enrollment_id
      group by vp.root_id
   ),
   -- Feedback emitido ao colaborador: emissão do feedback confiável (efeito persistido) ou feedbackId do nó Output legado
   -- (a saída do nó é a única ligação ali). Sempre conferido contra o registro real em "feedbacks".
   emitted as (
     select vp.root_id, vp.person_id, e.feedback_id, true reliable
-      from visible_persons vp join workflow_output_emissions e on e.enrollment_id = vp.enrollment_id and e.surface = 'FOLLOW_UP' and e.recipient_id = vp.person_id and e.feedback_id is not null
+      from selected_persons vp join workflow_output_emissions e on e.enrollment_id = vp.enrollment_id and e.surface = 'FOLLOW_UP' and e.recipient_id = vp.person_id and e.feedback_id is not null
     union all
-    select vp.root_id, vp.person_id, case when (vp.node_outputs -> (n ->> 'id') ->> 'feedbackId') ~ '${UUID_RE}' then (vp.node_outputs -> (n ->> 'id') ->> 'feedbackId')::uuid end, false
-      from visible_persons vp
+    select vp.root_id, vp.person_id, case when (we.node_outputs -> (n ->> 'id') ->> 'feedbackId') ~ '${UUID_RE}' then (we.node_outputs -> (n ->> 'id') ->> 'feedbackId')::uuid end, false
+      from selected_persons vp
       join workflow_versions v on v.id = vp.version_id
       cross join lateral jsonb_array_elements(v.graph -> 'nodes') n
-     where n ->> 'type' = 'output' and (vp.node_outputs -> (n ->> 'id') ->> 'feedbackId') ~ '${UUID_RE}'
+      join workflow_enrollments we on we.id = vp.enrollment_id
+     where n ->> 'type' = 'output' and (we.node_outputs -> (n ->> 'id') ->> 'feedbackId') ~ '${UUID_RE}'
   ),
   feedback_stats as (
     select x.root_id,
@@ -190,39 +223,33 @@ function dispatchCte(rootClause: string): string {
       join feedbacks f on f.id = x.feedback_id and f.organization_id = $1 and f.operator_id = x.person_id
      group by x.root_id
   ),
-  tree_stats as (
-    select root_id, ${DISPATCH_STATUS_SQL("status")} status,
-           case when bool_or(status in ('active', 'waiting')) then null else extract(epoch from max(updated_at) - min(created_at)) * 1000 end duration_ms
-      from tree group by root_id
-  ),
+  -- Número da versão = quantas versões do Workflow foram criadas até ela (inclusive).
+  version_numbers as (select id, count(*) over (order by created_at)::int version_number from workflow_versions where workflow_id = $2),
   dispatches as (
-    select r.id root_id, r.created_at, ts.status, ts.duration_ms, wf.consolidated,
-           case when r.manual_run_id is not null then 'MANUAL' when r.interaction_id is not null then 'FLAG' when r.indicator_measurement_id is not null then 'INDICATOR' else 'SCHEDULE' end trigger_kind,
+    select s.root_id, s.created_at, s.status, s.duration_ms, s.consolidated, s.trigger_kind,
            coalesce(case
              -- Disparo manual: quem executou (a origem manual continua visível mesmo com interação/medição associada).
-             when r.manual_run_id is not null then (select 'por ' || rb.name from workflow_manual_runs mr join people rb on rb.id = mr.requested_by where mr.id = r.manual_run_id)
-             when r.interaction_id is not null then r.matched_flag_name
-             when r.indicator_measurement_id is not null then idef.name
+             when s.manual_run_id is not null then mr.requested_by_label
+             when s.interaction_id is not null then s.matched_flag_name
+             when s.indicator_measurement_id is not null then idef.name
            end, '') trigger_detail,
-           r.version_id, (select count(*) from workflow_versions v2 where v2.workflow_id = $2 and v2.created_at <= v.created_at)::int version_number, (r.version_id = wf.active_version_id) version_active,
-           (select count(*) from visible_persons vp where vp.root_id = r.id)::int persons,
+           s.version_id, coalesce(vn.version_number, 0) version_number, (s.version_id = s.active_version_id) version_active,
+           s.persons,
            coalesce(ast.produced, 0) + coalesce(es.produced, 0) + coalesce(fs.legacy_produced, 0) feedbacks_produced,
            coalesce(fs.sent, 0) feedbacks_sent,
            coalesce(ast.awaiting_qa, 0) awaiting_qa,
            coalesce(ast.blocked, 0) blocked,
            coalesce(us.calls, 0) calls, us.input_tokens, us.output_tokens, us.total_tokens, coalesce(us.incomplete, false) incomplete, coalesce(us.cost_unknown_calls, 0) cost_unknown_calls, uc.costs
-      from roots r
-      cross join wf
-      join tree_stats ts on ts.root_id = r.id
-      left join workflow_versions v on v.id = r.version_id
-      left join indicator_measurements im on im.id = r.indicator_measurement_id
+      from selected s
+      left join version_numbers vn on vn.id = s.version_id
+      left join lateral (select 'por ' || rb.name requested_by_label from workflow_manual_runs wmr join people rb on rb.id = wmr.requested_by where wmr.id = s.manual_run_id) mr on true
+      left join indicator_measurements im on im.id = s.indicator_measurement_id
       left join indicator_definitions idef on idef.id = im.indicator_definition_id
-      left join artifact_stats ast on ast.root_id = r.id
-      left join engine_stats es on es.root_id = r.id
-      left join feedback_stats fs on fs.root_id = r.id
-      left join usage_stats us on us.root_id = r.id
-      left join usage_costs uc on uc.root_id = r.id
-     where wf.consolidated or exists (select 1 from visible_persons vp where vp.root_id = r.id)
+      left join artifact_stats ast on ast.root_id = s.root_id
+      left join engine_stats es on es.root_id = s.root_id
+      left join feedback_stats fs on fs.root_id = s.root_id
+      left join usage_stats us on us.root_id = s.root_id
+      left join usage_costs uc on uc.root_id = s.root_id
   )`
 }
 
@@ -280,25 +307,27 @@ function baseParams(organizationId: string, workflowId: string, scopes: Manageab
   return new Params([organizationId, workflowId, scope.allTeams, scope.teamIds, scope.subteamIds])
 }
 
-/** WHERE sobre `dispatches` (status/tipo do gatilho/colaborador) — tudo no banco, para total e páginas baterem. */
-function dispatchWhere(params: Params, filters: ResultsFilters): string {
+/** WHERE sobre `keys` (status/tipo do gatilho/colaborador) — tudo no banco, para total e páginas baterem. O padrão do
+ * colaborador vai para a CTE (`collaborator_roots`), que marca `collaborator_match` em cada disparo. */
+function dispatchWhere(params: Params, filters: ResultsFilters): { where: string; collaboratorPattern: string | null } {
   const clauses: string[] = []
   if (filters.statuses?.length) clauses.push(`d.status = any(${params.add(filters.statuses)}::text[])`)
   if (filters.triggerKinds?.length) clauses.push(`d.trigger_kind = any(${params.add(filters.triggerKinds)}::text[])`)
+  let collaboratorPattern: string | null = null
   if (filters.collaborator) {
-    const pattern = params.add(`%${filters.collaborator.replace(/[\\%_]/g, (char) => `\\${char}`)}%`)
-    clauses.push(`exists (select 1 from visible_persons vp where vp.root_id = d.root_id and vp.name ilike ${pattern})`)
+    collaboratorPattern = params.add(`%${filters.collaborator.replace(/[\\%_]/g, (char) => `\\${char}`)}%`)
+    clauses.push("d.collaborator_match")
   }
-  return clauses.length ? `where ${clauses.join(" and ")}` : ""
+  return { where: clauses.length ? `where ${clauses.join(" and ")}` : "", collaboratorPattern }
 }
 
 export async function loadResultsSummary(db: Database, organizationId: string, workflowId: string, scopes: ManageableScopes, filters: ResultsFilters): Promise<ResultsSummary> {
   const params = baseParams(organizationId, workflowId, scopes)
   const periodClause = `r.created_at >= ${params.add(filters.from)} and r.created_at < ${params.add(filters.to)}`
-  const where = dispatchWhere(params, filters)
+  const { where, collaboratorPattern } = dispatchWhere(params, filters)
   const result = await db.query<UsageSqlRow & { dispatches: number; persons: number; produced: number; sent: number; awaiting_qa: number; blocked: number }>(
-    `with ${dispatchCte(periodClause)},
-     filtered as (select d.* from dispatches d ${where})
+    `with ${dispatchCte(periodClause, `select d.* from keys d ${where}`, collaboratorPattern)},
+     filtered as (select d.* from dispatches d)
      select count(*)::int dispatches,
             coalesce(sum(persons), 0)::int persons,
             coalesce(sum(feedbacks_produced), 0)::int produced,
@@ -338,13 +367,13 @@ export async function loadResultsPage(
 ): Promise<{ items: DispatchRow[]; total: number; page: number; pageSize: number }> {
   const params = baseParams(organizationId, workflowId, scopes)
   const periodClause = `r.created_at >= ${params.add(filters.from)} and r.created_at < ${params.add(filters.to)}`
-  const where = dispatchWhere(params, filters)
+  const { where, collaboratorPattern } = dispatchWhere(params, filters)
   const limit = params.add(pageSize)
   const offset = params.add((page - 1) * pageSize)
   const result = await db.query<DispatchSqlRow & { total: number }>(
-    `with ${dispatchCte(periodClause)}
-     select d.*, count(*) over ()::int total from dispatches d ${where}
-      order by d.created_at desc, d.root_id limit ${limit} offset ${offset}`,
+    `with ${dispatchCte(periodClause, `select d.* from keys d ${where} order by d.created_at desc, d.root_id limit ${limit} offset ${offset}`, collaboratorPattern)}
+     select d.*, (select count(*) from keys d ${where})::int total from dispatches d
+      order by d.created_at desc, d.root_id`,
     params.values,
   )
   return { items: result.rows.map(dispatchOf), total: result.rows[0]?.total ?? (page > 1 ? await countDispatches(db, organizationId, workflowId, scopes, filters) : 0), page, pageSize }
@@ -353,8 +382,8 @@ export async function loadResultsPage(
 async function countDispatches(db: Database, organizationId: string, workflowId: string, scopes: ManageableScopes, filters: ResultsFilters): Promise<number> {
   const params = baseParams(organizationId, workflowId, scopes)
   const periodClause = `r.created_at >= ${params.add(filters.from)} and r.created_at < ${params.add(filters.to)}`
-  const where = dispatchWhere(params, filters)
-  const result = await db.query<{ total: number }>(`with ${dispatchCte(periodClause)} select count(*)::int total from dispatches d ${where}`, params.values)
+  const { where, collaboratorPattern } = dispatchWhere(params, filters)
+  const result = await db.query<{ total: number }>(`with ${dispatchCte(periodClause, undefined, collaboratorPattern)} select count(*)::int total from keys d ${where}`, params.values)
   return result.rows[0]?.total ?? 0
 }
 

@@ -54,7 +54,7 @@ export default function NotificationsPage() {
           </Table>
         </WikiTable>
         <p>
-          O número no sino é a quantidade de avisos não lidos; a faixa &quot;N revisões aguardam sua decisão&quot; é um atalho para Pendências e usa a
+          O número no sino é a quantidade de avisos não lidos; a faixa &quot;N pendências aguardam você&quot; é um atalho para Pendências e usa a
           mesma contagem real de revisões pendentes.
         </p>
       </WikiSection>

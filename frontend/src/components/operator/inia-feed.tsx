@@ -7,6 +7,7 @@ import { Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader } 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { OperatorDateFilter } from "./operator-date-filter"
+import { publicAsset } from "@/lib/assets/public-asset"
 
 export function IniaFeed({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return <section className="flex h-full min-h-0 flex-col bg-card"><header className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-semibold">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div><OperatorDateFilter defaultMode="today"/></header><Separator/><ScrollArea className="min-h-0 flex-1"><div className="px-5 py-2">{children}</div></ScrollArea></section>
@@ -24,7 +25,7 @@ export function IniaFeedItem({ timestamp, recipient, meta, footer, children }: {
     <Message align="start" className="gap-3 py-5">
       <MessageAvatar className="self-start bg-transparent group-has-data-[slot=message-footer]/message:translate-y-0">
         <Avatar className="size-9">
-          <AvatarImage src="/INIA.png" alt="INIA" />
+          <AvatarImage src={publicAsset("/inia-avatar.webp")} alt="INIA" />
           <AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4" /></AvatarFallback>
         </Avatar>
       </MessageAvatar>

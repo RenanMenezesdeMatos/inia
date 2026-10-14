@@ -1,3 +1,5 @@
+// PRIMEIRO import: marca o processo como servidor antes de o pool do banco nascer (limites de sessão por papel).
+import "./server-database-session.js"
 import type { Server } from "node:http"
 import { env } from "../config/env.js"
 import { pool } from "../infrastructure/database/pool.js"
@@ -5,7 +7,9 @@ import { createExclusiveJobRunner, startPeriodicJobs } from "../infrastructure/j
 import { startWorkflowWorker } from "../modules/workflows/application/workflow-worker.js"
 import { runScheduleCheck } from "../modules/workflows/application/schedule-check.js"
 import { createDataHubContext } from "../modules/data-hub/application/data-hub-context.js"
-import { runDataHubTick } from "../modules/data-hub/application/run-service.js"
+import { runAnalyticsRollup } from "../modules/performance-analytics/application/analytics-rollup.js"
+import { runDataRetention } from "../modules/data-lifecycle/application/run-data-retention.js"
+import { kickWorker, runDataHubTick } from "../modules/data-hub/application/run-service.js"
 import { runEmploymentStatusProjection } from "../modules/people/application/employment-status-service.js"
 import { runScheduleHorizonAlerts } from "../modules/people/application/schedule-horizon-alert-service.js"
 import { runWorkdayReconciliation } from "../modules/people/application/workday-reconciliation-service.js"
@@ -14,21 +18,52 @@ import { startUsageAnalyticsWorker } from "../modules/usage-analytics/applicatio
 import { createAiRuntime } from "../modules/ai-management/application/ai-runtime-service.js"
 import { registerAiRuntime } from "../shared/application/model-routing/ai-runtime.js"
 import { aiCallLimiter } from "../shared/application/model-routing/ai-call-limiter.js"
+import { purgeExpiredRateLimitHits } from "../shared/infrastructure/rate-limit/postgres-rate-limit-store.js"
 import { createApp } from "./app.js"
 import { componentsOf, resolveProcessRole } from "./process-role.js"
+import { installSharedRuntimeState } from "./shared-runtime-state.js"
+import { DATA_HUB_WAKE_CHANNEL, listenForWake, notifyWake } from "../shared/infrastructure/process-wake/postgres-wake-channel.js"
 import { startWorkerHealthServer } from "./worker-health.js"
+import { createReadiness } from "./readiness.js"
+import { applyHttpTimeouts, createShutdown, installProcessHandlers, processFaults, type LifecycleLog } from "./process-lifecycle.js"
+import { createRuntimeMetrics } from "./runtime-metrics.js"
+import { droppedLogLines, flushLogs, routeConsoleToLog } from "../shared/infrastructure/logging/logger.js"
+
+// Todo log (console.* e pino) num destino assíncrono: no Windows a saída do serviço é um pipe, e escrever em pipe ali é síncrono.
+routeConsoleToLog()
 
 // Papel do processo (process-role.ts): `all` (padrão) = API + processamento juntos, como sempre; `api` = só HTTP; `worker` = só
 // o processamento de IA e as tarefas periódicas — um lote pesado deixa de dividir o event loop com as telas.
 const role = resolveProcessRole(process.argv.slice(2), env.INIA_PROCESS_ROLE)
 const parts = componentsOf(role)
+// Limites de requisição e pausa do provedor de IA divididos com os outros processos (PostgreSQL).
+const shared = installSharedRuntimeState(pool, role)
+
+const lifecycleLog: LifecycleLog = {
+  info: (event) => console.info(JSON.stringify({ role, ...event })),
+  error: (event) => console.error(JSON.stringify({ role, ...event })),
+}
+// Prontidão (/ready) que o balanceador consulta: banco respondendo e processo não desligando.
+const readiness = parts.http ? createReadiness(pool) : null
+// Métricas do processo (event loop, pool, HTTP por rota, limitador de IA): /internal/metrics na API, /health no worker.
+const metrics = createRuntimeMetrics({
+  role,
+  pool,
+  sections: () => ({ aiCalls: aiCallLimiter().stats(), aiConnections: shared.providerGate.stats(), draining: readiness?.draining ?? false, faults: { ...processFaults }, droppedLogLines: droppedLogLines() }),
+})
 
 let server: Server | null = null
 if (parts.http) {
   // O app registra o runtime de IA da organização (policy/uso/orçamento) — a mesma instância atende o admin.
-  const app = createApp(pool, { registerAiRuntime: true })
+  // Limites de requisição no PostgreSQL: N processos de API atrás do IIS dividem o mesmo contador.
+  // Papel `api`: carga da Central de Dados só é enfileirada aqui; o processamento é acordado por NOTIFY e roda a carga lá.
+  const dataHubWakeWorker = parts.processing
+    ? undefined
+    : () => notifyWake(pool, DATA_HUB_WAKE_CHANNEL).catch((error: unknown) => console.warn("Aviso à Central de Dados não enviado (o tick de 15 s do processamento pega a carga):", error instanceof Error ? error.message : error))
+  const app = createApp(pool, { registerAiRuntime: true, rateLimitStore: shared.rateLimitStore, readiness: readiness!, metrics, ...(dataHubWakeWorker ? { dataHubWakeWorker } : {}) })
   const onListening = () => process.stdout.write(`INIA API (${role}) listening on http://${env.HOST ?? "localhost"}:${env.PORT}\n`)
   server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening)
+  applyHttpTimeouts(server)
 } else {
   // Processamento sem HTTP: o MESMO runtime de IA (policy/uso/orçamento da organização). Escrita no admin (outro processo)
   // chega aqui pelo cache de 15 s do runtime.
@@ -57,6 +92,10 @@ function startProcessing() {
     },
     // Central de Dados: agenda feeds vencidos, processa a fila de cargas e purga o raw expirado.
     { name: "data-hub", intervalMs: 15_000, run: () => runDataHubTick(dataHubContext), errorLabel: "Falha no tick da Central de Dados:" },
+    // Read model do analytics da liderança: refaz tudo depois da meia-noite local e recalcula quem tem marca pendente.
+    { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: () => runAnalyticsRollup(pool), errorLabel: "Falha no read model do analytics:" },
+    // Retenção: só as políticas LIGADAS em data_retention_policies (todas nascem desligadas — prazo é decisão de produto/LGPD).
+    { name: "data-retention", intervalMs: 3_600_000, run: () => runDataRetention(pool), errorLabel: "Falha na retenção de dados:" },
     {
       // Calendário operacional: reconciliação PLANEJADO × OBSERVADO e alerta de horizonte da escala — determinísticos,
       // idempotentes, sem IA. Na subida e a cada 5 minutos.
@@ -69,7 +108,12 @@ function startProcessing() {
           .then(() => runScheduleHorizonAlerts(pool))
           .catch((error) => console.error("Falha no alerta de horizonte da escala:", error)),
     },
+    // Contadores dos limites de requisição que já não contam (janelas vencidas — migration 126).
+    { name: "rate-limit-purge", intervalMs: 10 * 60_000, run: () => purgeExpiredRateLimitHits(pool), errorLabel: "Falha na limpeza dos limites de requisição:" },
   ])
+  // Processamento sem HTTP (papel `worker`): a API avisa por NOTIFY que há carga nova na Central de Dados — processa na hora
+  // (o tick de 15 s continua sendo a garantia). Com o papel `all` a própria API processa, sem aviso.
+  const dataHubWake = parts.http ? null : listenForWake({ connectionString: env.activeDatabaseUrl, channel: DATA_HUB_WAKE_CHANNEL, onWake: () => kickWorker(dataHubContext) })
   // Feedback de atendimento: entrega idempotente ao Acompanhamento do que já está pronto. Só com
   // INIA_INTERACTION_FEEDBACK_PIPELINE=ON — com OFF devolve null e nada roda.
   const stopFeedbackDeliverySweeper = startFeedbackDeliverySweeper(pool, { exclusive })
@@ -81,6 +125,7 @@ function startProcessing() {
     async stop() {
       stopFeedbackDeliverySweeper?.()
       stopUsageAnalyticsWorker?.()
+      await dataHubWake?.stop()
       // Para de reivindicar e dá até 10 s para os nós em execução terminarem (reinício do `tsx watch` não fica preso a um nó de
       // 12 min); o que sobrar é retomado quando a posse vencer.
       const [{ abandoned }] = await Promise.all([workflowWorker.stop(10_000), jobs.stop(10_000)])
@@ -92,21 +137,26 @@ function startProcessing() {
 const processing = parts.processing ? startProcessing() : null
 const health =
   parts.workerHealth && processing && env.WORKER_HEALTH_PORT > 0
-    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, aiCalls: aiCallLimiter().stats(), jobs: processing.jobs.status() }) })
+    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, jobs: processing.jobs.status(), ...metrics.snapshot() }) })
     : null
 if (role === "worker") process.stdout.write("INIA processamento (worker) iniciado — motor de Workflow e tarefas periódicas, sem HTTP público.\n")
 
-const closeServer = (target: Server | null) => new Promise<void>((resolve) => (target ? target.close(() => resolve()) : resolve()))
-
-let stopping = false
-async function shutdown() {
-  if (stopping) return
-  stopping = true
-  await processing?.stop()
-  await Promise.all([closeServer(server), closeServer(health)])
-  await pool.end()
-  process.exit(0)
-}
-
-process.on("SIGINT", shutdown)
-process.on("SIGTERM", shutdown)
+const shutdown = createShutdown({
+  readiness,
+  servers: () => [server, health],
+  stopProcessing: async () => {
+    await processing?.stop()
+  },
+  closeResources: async () => {
+    shared.stop()
+    metrics.stop()
+    await pool.end()
+  },
+  drainMs: parts.http ? env.shutdownDrainMs : 0,
+  timeoutMs: env.INIA_SHUTDOWN_TIMEOUT_MS,
+  exit: (code) => {
+    void flushLogs().finally(() => process.exit(code))
+  },
+  log: lifecycleLog,
+})
+installProcessHandlers(shutdown, lifecycleLog)

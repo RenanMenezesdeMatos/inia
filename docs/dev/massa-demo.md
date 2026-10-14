@@ -271,7 +271,7 @@ com as personas. Idempotente: reseed restaura o estado canônico (inclusive a ci
 Mariana e a pendência em `waiting`).
 
 **Decisão real na Pendência demo (aprovar/reprovar/escalar):** o runtime gera artefatos com id de
-runtime (aprovar → caso + evidência + feedback publicado ao Thiago + linha do tempo + outbox; escalar →
+runtime (aprovar → caso + evidência + feedback publicado ao Thiago + linha do tempo; escalar →
 alerta ao Gerente; qualquer decisão → eventos/outputs da matrícula). Eles NÃO são hardcoded: seed e
 reset os descobrem por **lineage real** (`findDemoDerivedArtifacts` em `demo-follow-ups.ts`) — do
 Workflow demo (id determinístico) às matrículas (FK), dos eventos/`node_outputs` ao `caseId`/

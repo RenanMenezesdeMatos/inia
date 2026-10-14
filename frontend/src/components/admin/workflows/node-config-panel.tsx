@@ -14,6 +14,7 @@ import { ConditionForm } from "./node-config/condition-form"
 import { ApplyIndividuallyPanel, ConsolidateResultsPanel } from "./node-config/fan-out-panels"
 import { HumanReviewForm } from "./node-config/human-review-form"
 import { OrchestratorForm } from "./node-config/orchestrator-form"
+import { InterventionPolicyForm } from "./node-config/intervention-policy-form"
 import { OutputForm } from "./node-config/output-form"
 import { SelectEmployeesForm } from "./node-config/select-employees-form"
 import { WaitForm } from "./node-config/wait-form"
@@ -170,6 +171,7 @@ export function NodeConfigPanel({
           onChange={onChange}
         />
       ) : null}
+      {node.type === "intervention_policy" ? <InterventionPolicyForm node={node} graph={graph} onChange={onChange} /> : null}
       {node.type === "end" ? <p className="text-sm text-muted-foreground">Marca o fim desta jornada.</p> : null}
     </aside>
   )

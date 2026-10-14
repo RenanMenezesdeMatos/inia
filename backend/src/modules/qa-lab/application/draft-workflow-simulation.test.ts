@@ -313,7 +313,7 @@ describe("QA Lab — testar Workflow em RASCUNHO (sem publicar)", () => {
     ])
     expect(enrollments).toEqual([])
     expect(writes.every((sql) => sql.startsWith("insert into qa_runs") || sql.startsWith("update qa_runs"))).toBe(true)
-    expect(writes.some((sql) => /interactions|workflow_enrollments|outbox_events|into alerts|workflow_outputs|feedbacks|agent_runs|org_config_values/.test(sql))).toBe(false)
+    expect(writes.some((sql) => /interactions|workflow_enrollments|into alerts|workflow_outputs|feedbacks|agent_runs|org_config_values/.test(sql))).toBe(false)
   })
 
   it("scheduler real: um rascunho testado no QA Lab NUNCA é matriculado; só depois de publicar explicitamente", async () => {

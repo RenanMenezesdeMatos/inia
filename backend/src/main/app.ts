@@ -10,6 +10,8 @@ import { createCaseRouter } from "../modules/supervision-cases/presentation/case
 import { loadCaseVisibility } from "../modules/supervision-cases/application/case-visibility.js"
 import { createFeedbackRouter } from "../modules/feedbacks/presentation/feedback-router.js"
 import { createGovernanceRouter } from "../modules/governance/presentation/governance-router.js"
+import { createInterventionAdminRouter } from "../modules/interventions/presentation/intervention-admin-router.js"
+import { createInterventionRouter } from "../modules/interventions/presentation/intervention-router.js"
 import { createDiagnosticsRouter } from "../modules/diagnostics/presentation/diagnostics-router.js"
 import { createIngestionRouter } from "../modules/ingestion/presentation/ingestion-router.js"
 import { createEphemeralRealtimeSession } from "../modules/realtime/infrastructure/gemini-realtime-client.js"
@@ -59,10 +61,14 @@ import { createNotificationsRouter } from "../modules/notifications/presentation
 import { createDataHubRouter } from "../modules/data-hub/presentation/data-hub-router.js"
 import { createDataIngestionRouter } from "../modules/data-hub/presentation/data-ingestion-router.js"
 import { DomainError } from "../shared/domain/domain-error.js"
+import { createResponseCompression } from "../shared/presentation/compression.js"
 import { createOriginGuard } from "../shared/presentation/origin-guard.js"
-import { accountKey, clientIpKey, createRateLimiter, type RateLimitRule } from "../shared/presentation/rate-limit.js"
+import { accountKey, clientIpAndEmailKey, clientIpKey, createRateLimiter, type RateLimitRule } from "../shared/presentation/rate-limit.js"
+import { createMemoryRateLimitStore, type RateLimitStore } from "../shared/application/rate-limit/rate-limit-store.js"
+import { createReadiness, type Readiness } from "./readiness.js"
+import { isInternalRequest, type RuntimeMetrics } from "./runtime-metrics.js"
 import { SESSION_COOKIE_NAME } from "../modules/auth/presentation/session-cookie.js"
-import pino from "pino"
+import { createLogger } from "../shared/infrastructure/logging/logger.js"
 import { createChatStreamer, createRoutedSpeechSynthesizer, createSpeechSynthesizer, createVoiceSessionStarter, speechCacheIdentity } from "../shared/application/model-routing/llm-gateway.js"
 import { registerAiRuntime } from "../shared/application/model-routing/ai-runtime.js"
 import { createAiRuntime } from "../modules/ai-management/application/ai-runtime-service.js"
@@ -84,11 +90,23 @@ export type CreateAppOptions = {
   usabilityPanel?: boolean
   /** Limites de requisições (padrão ligados). Os testes de abuso passam valores pequenos; `false` desliga todos. */
   rateLimits?: Partial<RateLimitSettings> | false
+  /** Onde os limites contam. O servidor real passa a do PostgreSQL (todos os processos de API dividem o contador); sem ela,
+   * memória deste app (testes e scripts). */
+  rateLimitStore?: RateLimitStore
+  /** Central de Dados com o processamento em OUTRO processo (papel `api`): a carga enfileirada só avisa o worker. Ausente =
+   * processa aqui mesmo, fora do request (papel `all`, testes). */
+  dataHubWakeWorker?: () => void
+  /** Prontidão para o balanceador (`/ready`): o servidor passa a dele (desligamento → 503). Ausente = confere só o banco. */
+  readiness?: Readiness
+  /** Métricas do processo: mede cada request e expõe `GET /internal/metrics` (só da própria máquina, nunca pelo proxy). */
+  metrics?: RuntimeMetrics
 }
 
 /** Tetos por janela — generosos para o uso humano, baixos para laço/automação abusiva. Ver docs/security/configuracao-segura.md. */
 export type RateLimitSettings = {
-  /** Login por IP a cada 5 min (a trava por e-mail continua: 5 falhas/15 min). */
+  /** Login por IP + e-mail a cada 5 min (a trava por e-mail continua: 5 falhas/15 min). */
+  loginPerIpAndEmail: number
+  /** Logins RECUSADOS por IP a cada 5 min (anti "uma senha em muitas contas"); login certo não conta. */
   loginPerIp: number
   /** Criação de senha do primeiro acesso por IP a cada 15 min. */
   firstPasswordPerIp: number
@@ -107,6 +125,7 @@ export type RateLimitSettings = {
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
+  loginPerIpAndEmail: env.LOGIN_RATE_LIMIT_PER_IP_EMAIL,
   loginPerIp: env.LOGIN_RATE_LIMIT_PER_IP,
   firstPasswordPerIp: 20,
   readConfirmationFailuresPerAccount: 10,
@@ -117,7 +136,7 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   adminCostlyActionsPerAccount: 30,
 }
 
-const httpLog = pino({ name: "http", level: env.LOG_LEVEL, enabled: env.NODE_ENV !== "test" })
+const httpLog = createLogger("http")
 
 /** TRUST_PROXY (sintaxe do Express): `false`, número de saltos ou lista de endereços/sub-redes/apelidos (loopback…). */
 export function parseTrustProxy(value: string): boolean | number | string {
@@ -140,9 +159,12 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const aiRuntime = createAiRuntime(database, { adapters: aiAdapters })
   if (options.registerAiRuntime) registerAiRuntime(aiRuntime)
   app.disable("x-powered-by")
+  if (options.metrics) app.use(options.metrics.middleware)
   // IP real do cliente atrás do IIS/proxy (limites de tentativas) — só de proxies explicitamente confiáveis.
   app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY))
   app.use(helmet())
+  // JSON e texto da API comprimidos (o IIS não comprime para não segurar o streaming do chat) — nunca o SSE.
+  app.use(createResponseCompression())
   // content-disposition não é safelisted no CORS — sem expor, o browser esconde o nome do arquivo
   // do download da base de conhecimento.
   app.use(cors({ origin: env.allowedOrigins, credentials: true, exposedHeaders: ["content-disposition"] }))
@@ -160,11 +182,14 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
     next()
   })
   const limits: RateLimitSettings | null = options.rateLimits === false ? null : { ...DEFAULT_RATE_LIMITS, ...options.rateLimits }
+  const rateLimitStore = options.rateLimitStore ?? createMemoryRateLimitStore()
   const limit = (rule: Omit<RateLimitRule, "max"> & { max: keyof RateLimitSettings }) =>
-    limits ? createRateLimiter({ ...rule, max: limits[rule.max] }) : (_request: express.Request, _response: express.Response, next: express.NextFunction) => next()
+    limits ? createRateLimiter({ ...rule, max: limits[rule.max] }, rateLimitStore) : (_request: express.Request, _response: express.Response, next: express.NextFunction) => next()
   const onlyMethods = (methods: readonly string[], handler: express.RequestHandler): express.RequestHandler => (request, response, next) =>
     methods.includes(request.method) ? handler(request, response, next) : next()
-  app.post("/api/v1/auth/login", limit({ name: "login-ip", windowMs: 5 * 60_000, max: "loginPerIp", key: clientIpKey, message: "Muitas tentativas de acesso deste endereço. Aguarde alguns minutos e tente novamente." }))
+  // Login: por IP + e-mail (cada pessoa com o seu contador, mesmo atrás de um NAT) e um teto de RECUSAS por IP.
+  app.post("/api/v1/auth/login", limit({ name: "login-ip-email", windowMs: 5 * 60_000, max: "loginPerIpAndEmail", key: clientIpAndEmailKey, message: "Muitas tentativas de acesso com este e-mail. Aguarde alguns minutos e tente novamente." }))
+  app.post("/api/v1/auth/login", limit({ name: "login-ip-failures", windowMs: 5 * 60_000, max: "loginPerIp", key: clientIpKey, countOnlyFailures: true, message: "Muitas tentativas de acesso recusadas deste endereço. Aguarde alguns minutos e tente novamente." }))
   app.post("/api/v1/auth/password", limit({ name: "first-password-ip", windowMs: 15 * 60_000, max: "firstPasswordPerIp", key: clientIpKey }))
   app.use("/api/v1/data-ingestion", limit({ name: "push-ip", windowMs: 60_000, max: "pushIngestionPerIp", key: clientIpKey }))
   app.use("/api/v1/data-ingestion", limit({ name: "push-failures-ip", windowMs: 15 * 60_000, max: "pushIngestionFailuresPerIp", key: clientIpKey, countOnlyFailures: true, message: "Muitas requisições recusadas deste endereço. Aguarde e confira o token e o formato do envio." }))
@@ -184,8 +209,29 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const can = (permission: Parameters<typeof requirePermission>[1], options?: Parameters<typeof requirePermission>[2]) => requirePermission(database, permission, options)
   // Sessão conferida NO BANCO a cada request (conta habilitada, versão de sessão, troca de senha pendente) — ver require-auth.ts.
   const requireAuth = createRequireAuth(database)
+  // Central de Dados: aviso ao processamento (papel `api`) e o limite por token do API Push na MESMA loja dos outros limites.
+  const dataHubOverrides = { pushRateLimits: rateLimitStore, ...(options.dataHubWakeWorker ? { wakeWorker: options.dataHubWakeWorker } : {}) }
 
+  // /health = o processo está de pé (sempre ok). /ready = pode receber tráfego: banco respondendo e não está desligando — é o
+  // que o health check da web farm do ARR consulta (deploy/windows/iis), procurando "ready" no corpo: a resposta de "não
+  // pronto" nunca contém essa palavra.
   app.get("/health", (_request, response) => response.json({ status: "ok" }))
+  const readiness = options.readiness ?? createReadiness(database)
+  app.get("/ready", async (_request, response) => {
+    const result = await readiness.check()
+    response.set("Cache-Control", "no-store")
+    response.status(result.ready ? 200 : 503).json(result.ready ? { status: "ready" } : { status: "unavailable", reason: result.reason })
+  })
+  // Métricas internas: só quem está na própria máquina e não veio pelo IIS (o web.config nunca encaminha /internal). Fora disso,
+  // o mesmo 404 de qualquer rota inexistente.
+  if (options.metrics) {
+    const metrics = options.metrics
+    app.get("/internal/metrics", (request, response, next) => {
+      if (!isInternalRequest(request, env.INIA_METRICS_TOKEN)) return next()
+      response.set("Cache-Control", "no-store")
+      response.json(metrics.snapshot())
+    })
+  }
   app.use("/api/v1/auth", createAuthRouter(database, { features: { interactionFeedbackQa: interactionFeedbackEnabled, usageCollection: usageCollectionEnabled, usabilityPanel: usabilityPanelEnabled } }))
   // Preferências pessoais do perfil (nome de tratamento, foto, capa) — sempre da pessoa da sessão; imagens da mesma organização.
   app.use("/api/v1/me/profile", requireAuth, createMyProfileRouter(database))
@@ -234,11 +280,16 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // API Push (autenticado por token de push, nunca por sessão de usuário).
   // Os dados da Central valem para a organização inteira (pessoas, hierarquia, e-mail de login, medições) e os conectores
   // carregam credenciais dos sistemas do cliente: só quem tem `data_hub.manage` com escopo de ORGANIZAÇÃO (achado I-F1).
-  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources\/[^/]+\/(test-connection|preview)|feeds\/[^/]+\/preview)$/), createDataHubRouter(database))
+  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources\/[^/]+\/(test-connection|preview)|feeds\/[^/]+\/preview)$/), createDataHubRouter(database, dataHubOverrides))
+  // Políticas de acompanhamento e intervenções — permissões próprias (editar/simular/publicar/auditar; `workflows.manage` lê o
+  // resumo publicado para o nó do Workflow e simula). Cada rota confere a permissão e o escopo. Montada ANTES da governança.
+  app.use("/api/v1/admin/intervention-policies", requireAuth, costly(/\/simulate$/), createInterventionAdminRouter(database))
+  // Experiência do líder: pendências, caso, ficha, relatório e comandos — autorização pela relação com a intervenção.
+  app.use("/api/v1/interventions", requireAuth, costly(/\/(narrative|ai-draft)$/), createInterventionRouter(database))
   // Governança (assuntos proibidos, glossário) no prefixo raiz da Administração: montada DEPOIS das áreas específicas para o
   // guard dela não interceptar as outras rotas /admin/*.
   app.use("/api/v1/admin", can("configuration.manage"), orgWideWrites, createGovernanceRouter(database))
-  app.use("/api/v1/data-ingestion", createDataIngestionRouter(database))
+  app.use("/api/v1/data-ingestion", createDataIngestionRouter(database, dataHubOverrides))
   app.use("/api/v1/diagnostics", requireAuth, createDiagnosticsRouter(database))
   app.use("/api/v1/ingestion", can("data_hub.manage", { organizationWide: true }), createIngestionRouter(database))
   app.use(

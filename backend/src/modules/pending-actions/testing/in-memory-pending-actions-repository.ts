@@ -1,6 +1,7 @@
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
 import type { PendingActionPerson, ReviewTimelineEvent } from "../domain/view-models.js"
-import type { PendingActionsRepository, ReviewAlertRow, ReviewCase, WorkdayReconciliationRecord } from "../application/pending-actions-repository.js"
+import type { PendingActionsRepository, ReviewAlertDetailRow, ReviewAlertRow, ReviewCase, WorkdayReconciliationRecord } from "../application/pending-actions-repository.js"
+import type { PendingIntervention } from "../../interventions/application/intervention-service.js"
 
 export const ORG = "00000000-0000-4000-8000-000000000001"
 export const ENROLLMENT = "11111111-1111-4111-8111-111111111111"
@@ -60,6 +61,7 @@ export class InMemoryPendingActionsRepository implements PendingActionsRepositor
     return repository
   }
 
+  /** Lista: da execução, só o que foi gravado no próprio nó de revisão (como o SQL) — o Execution Context só no detalhe. */
   private toRow(alert: Alert): ReviewAlertRow {
     const enrollment = this.enrollments.get(alert.enrollmentId)
     return {
@@ -69,22 +71,30 @@ export class InMemoryPendingActionsRepository implements PendingActionsRepositor
       caseId: alert.caseId,
       enrollmentId: alert.enrollmentId,
       nodeId: alert.nodeId,
-      enrollment: enrollment ? { status: enrollment.status, currentNodeId: enrollment.currentNodeId, nodeOutputs: enrollment.nodeOutputs, versionId: enrollment.versionId, workflowName: enrollment.workflowName, operatorId: enrollment.operatorId } : null,
+      enrollment: enrollment ? { status: enrollment.status, currentNodeId: enrollment.currentNodeId, reviewOutput: enrollment.nodeOutputs[alert.nodeId] ?? null, versionId: enrollment.versionId, workflowName: enrollment.workflowName, operatorId: enrollment.operatorId } : null,
     }
   }
 
+  /** Mesma definição do SQL: aviso vivo + execução em `waiting` no nó de revisão. */
   private isPending(alert: Alert): boolean {
     const enrollment = this.enrollments.get(alert.enrollmentId)
-    return Boolean(enrollment && enrollment.status === "waiting" && enrollment.currentNodeId === alert.nodeId)
+    return ["OPEN", "SEEN", "ACKNOWLEDGED"].includes(alert.status) && Boolean(enrollment && enrollment.status === "waiting" && enrollment.currentNodeId === alert.nodeId)
   }
 
-  async loadReviewAlerts(viewerId: string, organizationId: string): Promise<ReviewAlertRow[]> {
-    return this.alerts.filter((alert) => alert.recipientId === viewerId && alert.organizationId === organizationId).map((alert) => this.toRow(alert))
+  /** Quantas vezes a lista/sino leu revisões, e quais avisos pediu — o sino só pode pedir os que está mostrando. */
+  reviewListReads: (readonly string[] | null)[] = []
+
+  async loadReviewAlerts(viewerId: string, organizationId: string, options: { alertIds?: readonly string[] } = {}): Promise<ReviewAlertRow[]> {
+    this.reviewListReads.push(options.alertIds ?? null)
+    return this.alerts.filter((alert) => alert.recipientId === viewerId && alert.organizationId === organizationId && (!options.alertIds || options.alertIds.includes(alert.id))).map((alert) => this.toRow(alert))
   }
 
-  async loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertRow | null> {
+  async loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertDetailRow | null> {
     const alert = this.alerts.find((candidate) => candidate.recipientId === viewerId && candidate.organizationId === organizationId && candidate.enrollmentId === enrollmentId && candidate.nodeId === nodeId)
-    return alert ? this.toRow(alert) : null
+    if (!alert) return null
+    const row = this.toRow(alert)
+    const enrollment = this.enrollments.get(alert.enrollmentId)
+    return { ...row, enrollment: row.enrollment && enrollment ? { ...row.enrollment, nodeOutputs: enrollment.nodeOutputs } : null }
   }
 
   async loadWorkdayReconciliations(viewerId: string, organizationId: string): Promise<WorkdayReconciliationRecord[]> {
@@ -136,8 +146,15 @@ export class InMemoryPendingActionsRepository implements PendingActionsRepositor
     return counts
   }
 
+  /** Intervenções pendentes por viewer (a definição real é SQL; aqui o teste diz quais são). */
+  interventionPendings = new Map<string, PendingIntervention[]>()
+
+  async loadInterventionPendings(viewerId: string): Promise<PendingIntervention[]> {
+    return this.interventionPendings.get(viewerId) ?? []
+  }
+
   async countPending(viewerId: string, organizationId: string): Promise<number> {
-    return this.alerts.filter((alert) => alert.recipientId === viewerId && alert.organizationId === organizationId && this.isPending(alert)).length + this.openReconciliations(viewerId, organizationId).length
+    return this.alerts.filter((alert) => alert.recipientId === viewerId && alert.organizationId === organizationId && this.isPending(alert)).length + this.openReconciliations(viewerId, organizationId).length + (this.interventionPendings.get(viewerId)?.length ?? 0)
   }
 
   /** Simula submit-human-review-decision.ts: grava a decisão em node_outputs e retoma. */

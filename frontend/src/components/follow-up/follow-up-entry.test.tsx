@@ -188,20 +188,20 @@ describe("Acompanhamento da estrutura — o item tem a apresentação do Acompan
 })
 
 describe("Acompanhamento da estrutura — timeline", () => {
-  const page = (items: FollowUpItem[], pageNumber: number, total: number): FollowUpFeed => ({ items, total, page: pageNumber, pageSize: 8 })
+  const page = (items: FollowUpItem[], nextCursor: string | null): FollowUpFeed => ({ items, nextCursor })
 
   it("rótulo do dia como no colaborador e \"carregar mais\" anexando a próxima página ao chegar ao fim", async () => {
     const today = new Date()
     const first = Array.from({ length: 8 }, (_, index) => legacyFeedback({ id: `fb-${index}`, title: `Feedback ${index}`, createdAt: new Date(today.getTime() - index * 60_000).toISOString() }))
     const older = legacyFeedback({ id: "fb-old", title: "Feedback antigo", createdAt: "2026-01-05T12:00:00.000Z" })
-    service.fetchFollowUpFeed.mockImplementation(async (_subject: unknown, pageNumber: number) => (pageNumber === 1 ? page(first, 1, 9) : page([older], 2, 9)))
+    service.fetchFollowUpFeed.mockImplementation(async (_subject: unknown, cursor: string | null) => (cursor === null ? page(first, "cursor-fb-7") : page([older], null)))
     renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" />)
     expect(await screen.findByRole("heading", { name: "Feedback 0" })).toBeInTheDocument()
     expect(screen.getAllByTestId("follow-up-day").map((label) => label.textContent)).toEqual(["Hoje"])
     expect(screen.getByText("Carregando feedbacks...")).toBeInTheDocument()
     await act(async () => intersect?.())
     expect(await screen.findByRole("heading", { name: "Feedback antigo" })).toBeInTheDocument()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, 2, 8, false)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false)
     expect(screen.getAllByTestId("follow-up-day")).toHaveLength(2)
     expect(screen.getByText("Fim dos feedbacks deste período.")).toBeInTheDocument()
     expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(9)

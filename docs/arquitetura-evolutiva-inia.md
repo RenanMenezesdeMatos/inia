@@ -192,6 +192,8 @@ Banco existente + extensões aditivas ── Outbox ── Worker ┘
 
 Começar com outbox no banco e worker com filas lógicas. Um broker externo só deve ser introduzido quando throughput, retries ou isolamento justificarem.
 
+> Estado em 13/10/2026 (`docs/dev/escala-read-model-e-ciclo-de-vida.md`): a tabela `outbox_events` recebia eventos de 6 gravadores e nunca teve consumidor; o código parou de gravar nela (migration 139 a marcou como descontinuada) e a migration 142 apaga a tabela. A fila lógica que roda de fato é `workflow_enrollments` (SKIP LOCKED + lease). O outbox volta junto com o PRIMEIRO consumidor real, já com `processed_at`, tentativas e expurgo — nunca como escrita sem leitor.
+
 ## 3. Estrutura completa de pastas proposta
 
 Estrutura alvo incremental; pastas atuais permanecem enquanto cada feature migra:

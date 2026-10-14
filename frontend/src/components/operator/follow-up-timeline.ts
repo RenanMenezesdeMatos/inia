@@ -4,8 +4,9 @@ import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-del
 /**
  * Timeline do Acompanhamento: as duas fontes do feed (feedbacks publicados e feedbacks de atendimento entregues) numa ÚNICA
  * ordem — MAIS RECENTE PRIMEIRO pelo instante canônico de cada fonte (`occurredAt` = publicação do feedback; `deliveredAt` =
- * entrega), com desempate determinístico por id. As duas fontes chegam inteiras do backend, então a "paginação" do feed
- * (revelar N por vez) corta a lista JÁ ordenada: página 1 = os mais recentes, "carregar mais" = progressivamente mais antigos.
+ * entrega), com desempate determinístico por id. As entregas chegam inteiras; os feedbacks publicados chegam por página
+ * (cursor) — `boundFollowUpTimeline` corta a timeline enquanto houver página por vir. O feed revela N por vez da lista JÁ
+ * ordenada: página 1 = os mais recentes, "carregar mais" = progressivamente mais antigos.
  * Só o Acompanhamento usa isto — o chat da INIA continua em ordem de conversa.
  */
 export type FollowUpEntry =
@@ -23,6 +24,17 @@ export function buildFollowUpTimeline(history: readonly OperatorIndicatorHistory
     ...delivered.map((item) => ({ key: `delivered:${item.id}`, at: instant(item.deliveredAt), source: "delivered" as const, item })),
   ]
   return entries.sort((a, b) => (b.at !== a.at ? (b.at > a.at ? 1 : -1) : b.key < a.key ? -1 : b.key > a.key ? 1 : 0))
+}
+
+/**
+ * Enquanto o servidor ainda tem feedbacks publicados mais antigos que o último carregado, nada mais antigo que esse último pode
+ * aparecer: uma entrega anterior a ele seria mostrada ANTES de feedbacks que ainda não chegaram. Sem página por vir, a timeline
+ * vale inteira.
+ */
+export function boundFollowUpTimeline(timeline: FollowUpEntry[], hasMoreHistory: boolean): FollowUpEntry[] {
+  if (!hasMoreHistory) return timeline
+  const oldestLoaded = timeline.reduce((oldest, entry) => (entry.source === "history" && entry.at < oldest ? entry.at : oldest), Number.POSITIVE_INFINITY)
+  return timeline.filter((entry) => entry.at > oldestLoaded || (entry.source === "history" && entry.at === oldestLoaded))
 }
 
 const dayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`

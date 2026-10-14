@@ -1,12 +1,13 @@
 import { EMPLOYMENT_STATUS_LABELS, type EmploymentStatus } from "../../people/domain/employment-status.js"
 import { SCHEDULE_EXCEPTION_LABELS, type ScheduleExceptionCode } from "../../people/domain/schedule-exception.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { loadIndicatorOperationalDefinition, resolveEligibleDaysBySubject, resolveOperationalWindow, resolveOperationalWindowBySubject, type IndicatorOperationalDefinition, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
-import { defaultMeasurementAggregation, MEASUREMENT_AGGREGATION_LABELS } from "../../indicators/domain/operational-aggregation.js"
+import { absenceDaysWithDataOf, finishWindow, finishWindowBySubject, ignoredOf, loadIndicatorOperationalDefinition, resolveEligibleDaysBySubject, resolveOperationalWindow, resolveOperationalWindowBySubject, toRaw, type IndicatorOperationalDefinition, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
+import { defaultMeasurementAggregation, MEASUREMENT_AGGREGATION_LABELS, type MeasurementAggregation } from "../../indicators/domain/operational-aggregation.js"
 import { percentageChange } from "../../workflows/application/condition-evaluator.js"
 import { resolveOperationalQuartiles } from "../../workflows/application/operational-quartile-resolver.js"
 import { businessDaysInWindow, describeTimeWindow, localDatesInWindow, resolveFullCurrentCalendarPeriod, resolvePreviousTimeWindow, resolveTimeWindow, type TimeWindow } from "../../workflows/application/time-window.js"
 import { DEFAULT_OPERATIONAL_COMPARISON, describeOperationalComparison, operationalComparisonPeriod, type OperationalComparison, type OperationalComparisonView } from "../domain/operational-comparison.js"
+import { readStructureWindows, type StructureReadModelWindows } from "../infrastructure/operational-read-model.js"
 import type { OperationalQuartileView, OperationalStructureIndicatorSummary, OperationalStructureSummary, OperationalTrendView, OperationalWindowView, PerformanceTrend } from "../domain/view-models.js"
 
 /**
@@ -257,12 +258,66 @@ export async function buildEmployeeOperationalTrends(db: Database, input: Operat
   return trends
 }
 
+/** Janelas de uma estrutura por indicador: o caminho original (consultas por indicador) ou o read model. */
+type StructureWindows = {
+  eligibleMemberCount: number
+  forIndicator(definition: DailyDefinition, aggregation: MeasurementAggregation): Promise<{ current: OperationalWindowResult; previous: OperationalWindowResult; byMember: Map<string, OperationalWindowResult> }>
+}
+
+/** Caminho ORIGINAL: elegibilidade da estrutura uma vez e três consultas por indicador — a referência da prova de igualdade. */
+async function rawStructureWindows(db: Database, input: OperationalTrendInput, window: TimeWindow, previousWindow: TimeWindow, expectedDays: number): Promise<StructureWindows> {
+  // Elegibilidade da estrutura na janela (uma vez, independente de indicador): quem tem ao menos
+  // 1 dia elegível. Férias/afastamento a janela inteira saem da população operacional — nunca
+  // entram como 0 de produção.
+  const workdayCache: WorkdayResolutionCache = new Map()
+  const eligibility = await resolveEligibleDaysBySubject(db, input.personIds, window, input.timeZone, { cache: workdayCache })
+  return {
+    eligibleMemberCount: input.personIds.filter((id) => (eligibility.get(id)?.eligibleDays ?? 0) > 0).length,
+    async forIndicator(definition, aggregation) {
+      const [current, previous, byMember] = await Promise.all([
+        resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: input.personIds, window, aggregation, timeZone: input.timeZone, workdayCache }, definition),
+        resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: input.personIds, window: previousWindow, aggregation, timeZone: input.timeZone, workdayCache }, definition),
+        resolveOperationalWindowBySubject(db, { indicatorCode: definition.code, subjectIds: input.personIds, window, aggregation, expectedDays, timeZone: input.timeZone, workdayCache }, definition),
+      ])
+      return { current, previous, byMember }
+    },
+  }
+}
+
+/** READ MODEL (infrastructure/operational-read-model.ts): componentes já agregados por membro, aplicados pelas MESMAS funções finais. */
+function readModelStructureWindows(model: StructureReadModelWindows, input: OperationalTrendInput, window: TimeWindow, previousWindow: TimeWindow, expectedDays: number): StructureWindows {
+  return {
+    eligibleMemberCount: input.personIds.filter((id) => (model.eligibility.get(id)?.eligibleDays ?? 0) > 0).length,
+    async forIndicator(definition, aggregation) {
+      const pooled = (phase: "CURRENT" | "PREVIOUS", phaseWindow: TimeWindow) => {
+        const row = model.pooled[phase].get(definition.code)
+        return finishWindow(toRaw(row), { aggregation, window: phaseWindow }, definition, undefined, ignoredOf(row), absenceDaysWithDataOf(row))
+      }
+      return {
+        current: pooled("CURRENT", window),
+        previous: pooled("PREVIOUS", previousWindow),
+        byMember: finishWindowBySubject(model.currentByMember.get(definition.code) ?? [], { aggregation, window, expectedDays }, definition, model.eligibility),
+      }
+    },
+  }
+}
+
+export type StructureSummarySource = "read-model" | "raw"
+
 /**
  * Resumo operacional pequeno de uma ESTRUTURA: por indicador diário, o valor agregado dos membros
  * (pooled — Σ numerador ÷ Σ denominador, nunca média de médias) na janela atual × anterior da
  * comparação escolhida e quantos membros têm dado suficiente. Sem quartil aqui (a população seria a própria estrutura).
+ * Fonte: o read model do analytics da liderança (padrão de quem pede `read-model`) ou o caminho original — o número é o
+ * mesmo; o read model devolve `null` (organização inteira pendente, ou pendência demais) e aí vale o original.
  */
-export async function buildStructureOperationalSummary(db: Database, input: OperationalTrendInput): Promise<OperationalStructureSummary | null> {
+export type StructureSummaryObservation = { source: StructureSummarySource; liveMembers: number; validUntilMs: number | null }
+
+export async function buildStructureOperationalSummary(
+  db: Database,
+  input: OperationalTrendInput,
+  options: { source?: StructureSummarySource; observe?: (observation: StructureSummaryObservation) => void } = {},
+): Promise<OperationalStructureSummary | null> {
   const definitions = await loadDailyDefinitions(db, input.organizationId)
   if (definitions.length === 0 || input.personIds.length === 0) return null
   const comparison = describeOperationalComparison(input.comparison ?? DEFAULT_OPERATIONAL_COMPARISON)
@@ -270,20 +325,17 @@ export async function buildStructureOperationalSummary(db: Database, input: Oper
   const window = resolveTimeWindow(period, input.now, input.timeZone)
   const previousWindow = resolvePreviousTimeWindow(period, input.now, input.timeZone)
   const expectedDays = businessDaysInWindow(window, input.timeZone)
-  // Elegibilidade da estrutura na janela (uma vez, independente de indicador): quem tem ao menos
-  // 1 dia elegível. Férias/afastamento a janela inteira saem da população operacional — nunca
-  // entram como 0 de produção.
-  const workdayCache: WorkdayResolutionCache = new Map()
-  const eligibility = await resolveEligibleDaysBySubject(db, input.personIds, window, input.timeZone, { cache: workdayCache })
-  const eligibleMemberCount = input.personIds.filter((id) => (eligibility.get(id)?.eligibleDays ?? 0) > 0).length
+  const model =
+    options.source === "read-model"
+      ? await readStructureWindows(db, { organizationId: input.organizationId, personIds: input.personIds, comparison: comparison.kind, window, previousWindow, now: input.now, timeZone: input.timeZone, indicatorCodes: definitions.map((definition) => definition.code) })
+      : null
+  options.observe?.(model ? { source: "read-model", liveMembers: model.liveMembers, validUntilMs: model.validUntilMs } : { source: "raw", liveMembers: input.personIds.length, validUntilMs: null })
+  const windows = model ? readModelStructureWindows(model, input, window, previousWindow, expectedDays) : await rawStructureWindows(db, input, window, previousWindow, expectedDays)
+  const eligibleMemberCount = windows.eligibleMemberCount
   const indicators: OperationalStructureIndicatorSummary[] = []
   for (const definition of definitions) {
     const aggregation = defaultMeasurementAggregation(definition.kind)
-    const [current, previous, byMember] = await Promise.all([
-      resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: input.personIds, window, aggregation, timeZone: input.timeZone, workdayCache }, definition),
-      resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: input.personIds, window: previousWindow, aggregation, timeZone: input.timeZone, workdayCache }, definition),
-      resolveOperationalWindowBySubject(db, { indicatorCode: definition.code, subjectIds: input.personIds, window, aggregation, expectedDays, timeZone: input.timeZone, workdayCache }, definition),
-    ])
+    const { current, previous, byMember } = await windows.forIndicator(definition, aggregation)
     const membersWithSufficientData = [...byMember.values()].filter((result) => isSufficient({ value: result.value, coverage: result.coverage, sampleCount: result.sampleCount }, definition)).length
     const changeUnavailable = changeUnavailableReason(aggregation, comparison.currentIsPartial)
     const changePercent = changeUnavailable === null && current.value !== null && previous.value !== null ? percentageChange(current.value, previous.value) : null

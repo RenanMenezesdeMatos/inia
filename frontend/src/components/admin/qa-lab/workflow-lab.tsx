@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useOrchestratorsQuery } from "@/queries/admin/use-assistant-queries"
+import { usePublishedPolicySummariesQuery } from "@/queries/admin/use-intervention-policy-queries"
 import { useRunWorkflowSimulationMutation } from "@/queries/admin/use-qa-lab-queries"
 import { useWorkflowQuery, useWorkflowsQuery } from "@/queries/admin/use-workflow-queries"
 import { useWorkflowVariablesQuery } from "@/queries/admin/use-workflow-variable-queries"
@@ -125,6 +126,8 @@ export function WorkflowLab() {
 
   const agentsQuery = useAgentsQuery()
   const orchestratorsQuery = useOrchestratorsQuery()
+  // Só para o nome no card do nó "Avaliar política de acompanhamento" (resumo publicado — lido com workflows.manage).
+  const policySummariesQuery = usePublishedPolicySummariesQuery()
   const variablesQuery = useWorkflowVariablesQuery(workflowId)
 
   // Trocar de workflow zera a seleção de contexto — "UM RECURSO + UM CONTEXTO" nunca vaza de
@@ -165,13 +168,14 @@ export function WorkflowLab() {
       triggerKind: workflow?.trigger.kind,
       getAgentName: (agentId) => agentsQuery.data?.find((agent) => agent.id === agentId)?.name,
       getOrchestratorName: (orchestratorId) => orchestratorsQuery.data?.find((item) => item.id === orchestratorId)?.name,
+      getPolicyName: (policyId) => policySummariesQuery.data?.find((policy) => policy.id === policyId)?.name,
       getVariable: (variableId) => {
         const variable = variablesQuery.data?.find((candidate) => candidate.id === variableId)
         return variable ? { label: variable.name, type: variable.type } : undefined
       },
       getNodeLabel: (nodeId) => graph?.nodes.find((node) => node.id === nodeId)?.label,
     }),
-    [workflow, agentsQuery.data, orchestratorsQuery.data, variablesQuery.data, graph],
+    [workflow, agentsQuery.data, orchestratorsQuery.data, policySummariesQuery.data, variablesQuery.data, graph],
   )
 
   const canRun = Boolean(workflow && subject && !runMutation.isPending && (mode !== "UNTIL_NODE" || untilNodeId))

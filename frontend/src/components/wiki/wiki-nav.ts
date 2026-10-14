@@ -156,6 +156,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
     description: "Áreas administrativas reais, escopo, elegibilidade, validação no backend e segurança da camada de IA.",
     pages: [
       { href: "/wiki/administracao", title: "Administração", description: "As áreas do Admin que existem hoje e o que cada uma configura." },
+      { href: "/wiki/administracao/politicas-de-acompanhamento", title: "Políticas de acompanhamento", description: "Tipos de intervenção, políticas versionadas, o nó do Workflow, relatório de inteligência, experiência do líder e avaliação de continuidade (sempre decisão humana)." },
       { href: "/wiki/administracao/ia-modelos", title: "IA / Modelos", description: "Conexões com providers de IA (inclusive modelo local), modelos, roteamento por função da INIA, fallback, custos, orçamentos e segurança das API keys." },
       { href: "/wiki/seguranca", title: "Segurança e Escopo", description: "Backend valida organização, hierarquia, escopo e capability; elegibilidade de Workflow; hierarquia de instruções da IA; observabilidade." },
     ],

@@ -571,6 +571,15 @@ export const OPERATIONAL_QUARTILE_LABELS: Record<"Q1" | "Q2" | "Q3" | "Q4", stri
   Q4: "Q4 operacional — piores 25%",
 }
 
+/**
+ * "Avaliar política de acompanhamento" — nó PRÓPRIO: quais intervenções cabem segundo uma política PUBLICADA (critérios,
+ * prazos, responsáveis e aprovações são da política). Espelho de `interventionPolicyNodeConfigSchema` do backend.
+ */
+export const interventionPolicyModeSchema = z.enum(["RECOMMEND_ONLY", "APPLY_POLICY"])
+export const interventionPolicyNodeConfigSchema = z.object({ policyId: z.string(), mode: interventionPolicyModeSchema, analysisSourceNodeIds: z.array(z.string()) })
+export type InterventionPolicyNodeConfig = z.infer<typeof interventionPolicyNodeConfigSchema>
+export const INTERVENTION_POLICY_MODE_LABELS: Record<InterventionPolicyNodeConfig["mode"], string> = { RECOMMEND_ONLY: "Somente recomendar", APPLY_POLICY: "Abrir intervenções conforme a política" }
+
 export const flowNodeSchema = z.discriminatedUnion("type", [
   z.object({ ...baseNodeFields, type: z.literal("trigger"), config: z.object({}) }),
   z.object({ ...baseNodeFields, type: z.literal("wait"), config: z.object({ durationMs: z.number() }) }),
@@ -616,6 +625,7 @@ export const flowNodeSchema = z.discriminatedUnion("type", [
   z.object({ ...baseNodeFields, type: z.literal("orchestrator"), config: orchestratorNodeConfigSchema }),
   z.object({ ...baseNodeFields, type: z.literal("human_review"), config: humanReviewNodeConfigSchema }),
   z.object({ ...baseNodeFields, type: z.literal("output"), config: outputNodeConfigSchema }),
+  z.object({ ...baseNodeFields, type: z.literal("intervention_policy"), config: interventionPolicyNodeConfigSchema }),
   z.object({ ...baseNodeFields, type: z.literal("end"), config: z.object({}) }),
 ])
 export type FlowNode = z.infer<typeof flowNodeSchema>
@@ -638,6 +648,7 @@ export const NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
   orchestrator: "Orquestrador",
   human_review: "Revisão humana",
   output: "Output",
+  intervention_policy: "Avaliar política de acompanhamento",
   end: "Fim",
 }
 
@@ -663,6 +674,7 @@ export function nodeBranches(node: FlowNode): FlowBranch[] {
     case "select_employees":
     case "apply_individually":
     case "consolidate_results":
+    case "intervention_policy":
       return [{ id: "always", label: "Sempre" }]
     case "action":
       if (node.config.actionType === "ESCALATE" && node.config.continuation === "END_BRANCH") return []

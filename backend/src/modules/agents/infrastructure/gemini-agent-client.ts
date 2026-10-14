@@ -1,6 +1,8 @@
 import { env } from "../../../config/env.js"
 import { beforeLlmCall, countTechnicalIdsInPrompt, recordLlmCall, usageFromGeminiPayload, type LlmRouteRecord, type LlmUsage } from "../../../shared/application/llm-telemetry.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
+import { currentAiAbortSignal, withAiCancellation } from "../../../shared/application/model-routing/ai-runtime.js"
 
 const MODEL = "gemini-3.1-flash-lite"
 const generateUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
@@ -83,9 +85,11 @@ async function fetchWithRetry(model: string, systemPrompt: string, inputContext:
           ...(cachedContent ? { cachedContent } : { systemInstruction: { parts: [{ text: systemPrompt }] } }),
           ...(structuredOutput || maxOutputTokens ? { generationConfig: { ...(structuredOutput ? { responseMimeType: "application/json" } : {}), ...(structuredOutput && responseSchema ? { responseSchema } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}) } } : {}),
         }),
-        signal: AbortSignal.timeout(transport?.timeoutMs ?? REQUEST_TIMEOUT_MS),
+        // Prazo da chamada + cancelamento de quem pediu (SSE do chat fechado): o fetch para e a vaga do limitador volta.
+        signal: withAiCancellation(AbortSignal.timeout(transport?.timeoutMs ?? REQUEST_TIMEOUT_MS)),
       })
     } catch (error) {
+      if (currentAiAbortSignal()?.aborted) throw new AiCallCancelledError()
       const timedOut = error instanceof Error && error.name === "TimeoutError"
       throw new DomainError(
         timedOut ? "O agente demorou demais para responder." : "Não foi possível contatar o modelo de IA.",

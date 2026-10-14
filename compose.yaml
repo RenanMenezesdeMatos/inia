@@ -117,8 +117,9 @@ services:
     depends_on:
       example-sqlserver:
         condition: service_healthy
-    # -v: a senha do inia_leitura entra no init.sql como variável do sqlcmd, $(READER_PASSWORD).
-    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "example-sqlserver", "-U", "sa", "-P", "${INIA_EXAMPLES_ADMIN_PASSWORD:-}", "-b", "-v", "READER_PASSWORD=${INIA_EXAMPLES_READER_PASSWORD:-}", "-i", "/init.sql"]
+    # -v: a senha do inia_leitura entra no init.sql como variável do sqlcmd, $(READER_PASSWORD). -f 65001: o init.sql é
+    # UTF-8 sem BOM (nomes e conversas com acento).
+    entrypoint: ["/opt/mssql-tools18/bin/sqlcmd", "-C", "-S", "example-sqlserver", "-U", "sa", "-P", "${INIA_EXAMPLES_ADMIN_PASSWORD:-}", "-b", "-f", "65001", "-v", "READER_PASSWORD=${INIA_EXAMPLES_READER_PASSWORD:-}", "-i", "/init.sql"]
     restart: "no"
 
 volumes:

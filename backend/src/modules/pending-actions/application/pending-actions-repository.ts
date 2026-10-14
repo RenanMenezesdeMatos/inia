@@ -3,6 +3,7 @@ import { toReconciliation, type ReconciliationRow } from "../../people/applicati
 import type { ClassificationSupersededReason, JustifiedAbsenceReason, WorkdayClassificationKind } from "../../people/domain/workday-classification.js"
 import { flowGraphSchema, type FlowGraph } from "../../workflows/domain/graph-schema.js"
 import type { PendingActionPerson, ReviewEvidence, ReviewTimelineEvent } from "../domain/view-models.js"
+import { listPendingInterventions, pendingInterventionsCondition, type PendingIntervention } from "../../interventions/application/intervention-service.js"
 
 /**
  * Leitura de "revisão humana endereçada a mim". A FONTE da pendência é a execução real
@@ -19,15 +20,23 @@ export type ReviewAlertRow = {
   caseId: string | null
   enrollmentId: string
   nodeId: string
-  enrollment: {
-    status: string
-    currentNodeId: string
-    nodeOutputs: Record<string, unknown>
-    versionId: string
-    workflowName: string
-    operatorId: string | null
-  } | null
+  enrollment: ReviewEnrollment | null
 }
+
+/** O que a LISTA precisa da execução: estado, nó atual e o que foi gravado no PRÓPRIO nó de revisão (a decisão). O Execution
+ * Context inteiro (`node_outputs`, dezenas de KB por execução) só vem no detalhe — sino e Pendências nunca o carregam em lote. */
+export type ReviewEnrollment = {
+  status: string
+  currentNodeId: string
+  /** `node_outputs[<nó de revisão>]` — a decisão gravada, quando houver. */
+  reviewOutput: unknown
+  versionId: string
+  workflowName: string
+  operatorId: string | null
+}
+
+/** Detalhe de UMA revisão: também o Execution Context (conteúdo a revisar, resultados anteriores). */
+export type ReviewAlertDetailRow = Omit<ReviewAlertRow, "enrollment"> & { enrollment: (ReviewEnrollment & { nodeOutputs: Record<string, unknown> }) | null }
 
 export type ReviewCase = { title: string; summary: string; evidences: ReviewEvidence[] }
 
@@ -39,8 +48,9 @@ export type WorkdayReconciliationRecord = ReconciliationRow & {
 }
 
 export interface PendingActionsRepository {
-  loadReviewAlerts(viewerId: string, organizationId: string): Promise<ReviewAlertRow[]>
-  loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertRow | null>
+  /** `alertIds` = só esses avisos (o sino resolve a situação dos que está mostrando, nunca das 200 últimas revisões). */
+  loadReviewAlerts(viewerId: string, organizationId: string, options?: { alertIds?: readonly string[] }): Promise<ReviewAlertRow[]>
+  loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertDetailRow | null>
   /** Pendências de produção do viewer: abertas + resolvidas recentes (histórico). Só MISSING_EXPECTED_PRODUCTION é acionável. */
   loadWorkdayReconciliations(viewerId: string, organizationId: string): Promise<WorkdayReconciliationRecord[]>
   loadWorkdayReconciliation(viewerId: string, organizationId: string, reconciliationId: string): Promise<WorkdayReconciliationRecord | null>
@@ -52,22 +62,38 @@ export interface PendingActionsRepository {
   resolveAlert(alertId: string): Promise<void>
   countPendingByOperator(viewerId: string, organizationId: string, operatorIds: string[]): Promise<Map<string, number>>
   countPending(viewerId: string, organizationId: string): Promise<number>
+  /** Intervenções que exigem resposta do viewer (a definição única mora em interventions/application/intervention-service.ts). */
+  loadInterventionPendings(viewerId: string, organizationId: string): Promise<PendingIntervention[]>
 }
 
-const REVIEW_ALERTS_CTE = `
+/** "Hoje" na data civil da organização — o mesmo critério de prazo que a lista de intervenções usa. */
+const ORGANIZATION_TODAY = `(now() at time zone coalesce((select o.timezone from operations o where o.organization_id = $2 order by o.created_at limit 1), 'America/Fortaleza'))::date`
+const INTERVENTION_PENDING = pendingInterventionsCondition("iv", "$1::uuid", ORGANIZATION_TODAY)
+
+const REVIEW_KEY_PREFIX = "workflow_human_review:"
+
+/** `filter` = condição extra sobre o aviso `a` (ids do sino, só vivos nas contagens). O formato da chave é validado UMA vez
+ * pela expressão regular; execução e nó saem por posição (`<prefixo><uuid de 36>:<nó>`) — três regex por aviso pesavam na
+ * contagem que o sino faz a cada minuto. */
+const reviewAlertsCte = (filter = "") => `
   with review_alerts as (
     select a.id, a.status, a.created_at, a.case_id,
-           substring(a.dedupe_key from '^workflow_human_review:([0-9a-f-]{36}):') enrollment_key,
-           substring(a.dedupe_key from '^workflow_human_review:[0-9a-f-]{36}:(.+)$') node_key
+           substr(a.dedupe_key, ${REVIEW_KEY_PREFIX.length + 1}, 36) enrollment_key,
+           substr(a.dedupe_key, ${REVIEW_KEY_PREFIX.length + 38}) node_key
     from alerts a
     where a.recipient_id = $1 and a.organization_id = $2 and a.alert_type = 'WORKFLOW_HUMAN_REVIEW'
-      and a.dedupe_key ~ '^workflow_human_review:[0-9a-f-]{36}:.+$'
+      and a.dedupe_key ~ '^workflow_human_review:[0-9a-f-]{36}:.+$' ${filter}
   )`
 
-const REVIEW_ALERT_SELECT = `
+/** Aviso de revisão ainda vivo. A decisão resolve o aviso DEPOIS de gravada no nó (build-pending-actions.ts) e nada o expira:
+ * aviso resolvido nunca é pendência — sem este filtro as contagens juntavam o histórico inteiro de revisões de quem decide. */
+const LIVE_REVIEW_ALERT = `and a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED')` // = predicado do parcial idx_alerts_recipient_live_review (132)
+
+const reviewAlertSelect = (withExecutionContext: boolean) => `
   select ra.id "alertId", ra.status::text "alertStatus", ra.created_at "requestedAt", ra.case_id "caseId",
          ra.enrollment_key "enrollmentId", ra.node_key "nodeId",
-         e.id "enrollmentExists", e.status "enrollmentStatus", e.current_node_id "currentNodeId", e.node_outputs "nodeOutputs",
+         e.id "enrollmentExists", e.status "enrollmentStatus", e.current_node_id "currentNodeId", e.node_outputs -> ra.node_key "reviewOutput",
+         ${withExecutionContext ? `e.node_outputs "nodeOutputs",` : ""}
          e.version_id "versionId", w.name "workflowName",
          coalesce(c.operator_id, e.scheduled_subject_id, m.subject_id, i.operator_id) "operatorId"
   from review_alerts ra
@@ -79,7 +105,7 @@ const REVIEW_ALERT_SELECT = `
 
 type ReviewAlertDbRow = {
   alertId: string; alertStatus: string; requestedAt: string; caseId: string | null; enrollmentId: string; nodeId: string
-  enrollmentExists: string | null; enrollmentStatus: string | null; currentNodeId: string | null; nodeOutputs: Record<string, unknown> | null
+  enrollmentExists: string | null; enrollmentStatus: string | null; currentNodeId: string | null; reviewOutput: unknown; nodeOutputs?: Record<string, unknown> | null
   versionId: string | null; workflowName: string | null; operatorId: string | null
 }
 
@@ -95,7 +121,7 @@ function mapReviewAlert(row: ReviewAlertDbRow): ReviewAlertRow {
       ? {
           status: row.enrollmentStatus ?? "unknown",
           currentNodeId: row.currentNodeId ?? "",
-          nodeOutputs: row.nodeOutputs ?? {},
+          reviewOutput: row.reviewOutput ?? null,
           versionId: row.versionId ?? "",
           workflowName: row.workflowName ?? "Workflow",
           operatorId: row.operatorId,
@@ -128,18 +154,23 @@ function mapReconciliation(row: ReconciliationDbRow): WorkdayReconciliationRecor
 export class PgPendingActionsRepository implements PendingActionsRepository {
   constructor(private readonly db: Database) {}
 
-  async loadReviewAlerts(viewerId: string, organizationId: string): Promise<ReviewAlertRow[]> {
-    const result = await this.db.query<ReviewAlertDbRow>(`${REVIEW_ALERTS_CTE} ${REVIEW_ALERT_SELECT} order by ra.created_at desc limit 200`, [viewerId, organizationId])
+  async loadReviewAlerts(viewerId: string, organizationId: string, options: { alertIds?: readonly string[] } = {}): Promise<ReviewAlertRow[]> {
+    if (options.alertIds && options.alertIds.length === 0) return []
+    const result = options.alertIds
+      ? await this.db.query<ReviewAlertDbRow>(`${reviewAlertsCte("and a.id = any($3::uuid[])")} ${reviewAlertSelect(false)}`, [viewerId, organizationId, options.alertIds])
+      : await this.db.query<ReviewAlertDbRow>(`${reviewAlertsCte()} ${reviewAlertSelect(false)} order by ra.created_at desc limit 200`, [viewerId, organizationId])
     return result.rows.map(mapReviewAlert)
   }
 
-  async loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertRow | null> {
+  async loadReviewAlert(viewerId: string, organizationId: string, enrollmentId: string, nodeId: string): Promise<ReviewAlertDetailRow | null> {
     const result = await this.db.query<ReviewAlertDbRow>(
-      `${REVIEW_ALERTS_CTE} ${REVIEW_ALERT_SELECT} where ra.enrollment_key = $3 and ra.node_key = $4 limit 1`,
+      `${reviewAlertsCte()} ${reviewAlertSelect(true)} where ra.enrollment_key = $3 and ra.node_key = $4 limit 1`,
       [viewerId, organizationId, enrollmentId, nodeId],
     )
     const row = result.rows[0]
-    return row ? mapReviewAlert(row) : null
+    if (!row) return null
+    const base = mapReviewAlert(row)
+    return { ...base, enrollment: base.enrollment ? { ...base.enrollment, nodeOutputs: row.nodeOutputs ?? {} } : null }
   }
 
   async loadWorkdayReconciliations(viewerId: string, organizationId: string): Promise<WorkdayReconciliationRecord[]> {
@@ -210,7 +241,7 @@ export class PgPendingActionsRepository implements PendingActionsRepository {
     const counts = new Map<string, number>()
     if (operatorIds.length === 0) return counts
     const result = await this.db.query<{ operator_id: string; pending: number }>(
-      `${REVIEW_ALERTS_CTE}
+      `${reviewAlertsCte(LIVE_REVIEW_ALERT)}
        select operator_id, sum(pending)::int pending from (
          select coalesce(c.operator_id, e.scheduled_subject_id, m.subject_id, i.operator_id) operator_id, count(*)::int pending
          from review_alerts ra
@@ -223,6 +254,8 @@ export class PgPendingActionsRepository implements PendingActionsRepository {
          group by 1
          union all
          select r.person_id operator_id, count(*)::int pending from workday_reconciliations r where ${OPEN_RECONCILIATION_CONDITION} and r.person_id = any($3::uuid[]) group by 1
+         union all
+         select iv.person_id operator_id, count(*)::int pending from interventions iv where iv.organization_id = $2 and ${INTERVENTION_PENDING} and iv.person_id = any($3::uuid[]) group by 1
        ) t group by operator_id`,
       [viewerId, organizationId, operatorIds],
     )
@@ -230,11 +263,16 @@ export class PgPendingActionsRepository implements PendingActionsRepository {
     return counts
   }
 
+  async loadInterventionPendings(viewerId: string, organizationId: string): Promise<PendingIntervention[]> {
+    return listPendingInterventions(this.db as Database, { organizationId, personId: viewerId })
+  }
+
   async countPending(viewerId: string, organizationId: string): Promise<number> {
     const result = await this.db.query<{ pending: number }>(
-      `${REVIEW_ALERTS_CTE}
+      `${reviewAlertsCte(LIVE_REVIEW_ALERT)}
        select ((select count(*) from review_alerts ra join workflow_enrollments e on e.id = ra.enrollment_key::uuid where ${PENDING_CONDITION})
-             + (select count(*) from workday_reconciliations r where ${OPEN_RECONCILIATION_CONDITION}))::int pending`,
+             + (select count(*) from workday_reconciliations r where ${OPEN_RECONCILIATION_CONDITION})
+             + (select count(*) from interventions iv where iv.organization_id = $2 and ${INTERVENTION_PENDING}))::int pending`,
       [viewerId, organizationId],
     )
     return Number(result.rows[0]?.pending ?? 0)

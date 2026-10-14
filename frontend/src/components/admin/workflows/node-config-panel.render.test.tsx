@@ -44,6 +44,7 @@ const DEFAULT_CONFIG: Record<FlowNodeType, Record<string, unknown>> = {
   orchestrator: { orchestratorId: "", instruction: "Analise esta ocorrência." },
   human_review: { reviewTarget: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" } },
   output: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "" },
+  intervention_policy: { policyId: "", mode: "RECOMMEND_ONLY", analysisSourceNodeIds: [] },
 }
 
 function renderPanel(node: FlowNode, graph: FlowGraph): void {

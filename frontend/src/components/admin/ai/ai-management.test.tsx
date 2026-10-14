@@ -68,6 +68,7 @@ const CONNECTION: AiConnection = {
   apiVersion: null,
   isLocal: false,
   timeoutMs: 60_000,
+  maxConcurrentCalls: null,
   enabled: true,
   credential: { configured: true, maskedValue: "••••••••abcd", updatedAt: "2026-09-20T10:00:00.000Z" },
   customHeaderNames: [],
@@ -168,8 +169,13 @@ describe("IA / Modelos — Conexões", () => {
     fireEvent.change(screen.getByLabelText("Nome *"), { target: { value: "OpenAI teste" } })
     expect(screen.getByRole("button", { name: "Criar conexão" })).toBeDisabled()
     fireEvent.change(screen.getByLabelText("API key *"), { target: { value: "sk-test-1234567890" } })
+    // Vagas da conexão (limite por acesso do provedor, somando todas as instâncias): inválido trava o envio; em branco = sem limite.
+    fireEvent.change(screen.getByLabelText("Chamadas simultâneas"), { target: { value: "0" } })
+    expect(screen.getByText("Use um número inteiro de 1 a 1000, ou deixe em branco.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Criar conexão" })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Chamadas simultâneas"), { target: { value: "12" } })
     fireEvent.click(screen.getByRole("button", { name: "Criar conexão" }))
-    await waitFor(() => expect(service.createAiConnection.mock.calls[0]?.[0]).toEqual({ providerKey: "OPENAI", name: "OpenAI teste", baseUrl: null, timeoutMs: 60_000, apiKey: "sk-test-1234567890" }))
+    await waitFor(() => expect(service.createAiConnection.mock.calls[0]?.[0]).toEqual({ providerKey: "OPENAI", name: "OpenAI teste", baseUrl: null, timeoutMs: 60_000, maxConcurrentCalls: 12, apiKey: "sk-test-1234567890" }))
   })
 
   it("Adicionar modelo local: só providers locais, com o LM Studio pré-selecionado", async () => {

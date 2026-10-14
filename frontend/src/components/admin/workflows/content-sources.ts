@@ -1,6 +1,7 @@
 import { findAncestorNodeIds, findNode, resolveNodeContexts, type FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
+import type { PublishedPolicySummary } from "@/schemas/admin/intervention-policy.schema"
 import { flattenOutputSchema, type FlatOutputSchemaField, type OutputSchemaFieldType } from "@/schemas/admin/output-schema-fields"
 import type { WorkflowVariableType } from "@/schemas/admin/workflow-variable.schema"
 
@@ -29,9 +30,67 @@ export function resolveContentSources(
     } else if (node.type === "orchestrator") {
       const orchestratorName = orchestratorsById.get(node.config.orchestratorId)?.name
       sources.push({ nodeId: node.id, label: `Resultado de: ${orchestratorName ?? "Orquestrador (não configurado)"}` })
+    } else if (node.type === "intervention_policy") {
+      sources.push({ nodeId: node.id, label: `Resultado de: ${node.label || "Avaliar política de acompanhamento"}` })
     }
   }
   return sources
+}
+
+const OUTCOME_OPTIONS = [
+  { value: "CREATED", label: "Intervenção criada" },
+  { value: "PENDING_APPROVAL", label: "Aprovação pendente" },
+  { value: "RECOMMENDED", label: "Intervenção recomendada" },
+  { value: "EXISTING", label: "Intervenção já existente" },
+  { value: "NO_MATCH", label: "Nenhuma regra atendida" },
+  { value: "INCONCLUSIVE", label: "Avaliação inconclusiva" },
+  { value: "CONFLICT", label: "Conflito entre intervenções" },
+  { value: "SUPPRESSED", label: "Suprimida pela carência" },
+  { value: "NOT_APPLICABLE", label: "Política não aplicável" },
+]
+
+const DECISION_OPTIONS = [
+  { value: "CREATED", label: "Aberta" },
+  { value: "PENDING_APPROVAL", label: "Aberta aguardando aprovação" },
+  { value: "RECOMMENDED", label: "Recomendada ao responsável" },
+  { value: "EXISTING", label: "Já existia em andamento" },
+  { value: "SUPPRESSED", label: "Não reaberta (carência)" },
+  { value: "CONFLICT", label: "Não aplicada (conflito)" },
+  { value: "NOT_DECIDED", label: "Não pedida nesta avaliação" },
+]
+
+/** O que o editor sabe de cada política publicada para montar o seletor das Conditions (tipos citados nas regras). */
+export type PolicyResultCatalog = ReadonlyMap<string, Pick<PublishedPolicySummary, "rules" | "types">>
+
+/** Campos do resultado estruturado do nó "Avaliar política de acompanhamento" (contrato fixo do backend). */
+export const INTERVENTION_POLICY_RESULT_FIELDS: FlatOutputSchemaField[] = [
+  { path: "outcome", label: "Resultado geral", type: "STRING", fieldType: "ENUM", enumValues: OUTCOME_OPTIONS.map((option) => option.value), enumOptions: OUTCOME_OPTIONS },
+  { path: "created", label: "Abriu intervenção", type: "BOOLEAN" },
+  { path: "pendingApproval", label: "Tem aprovação pendente", type: "BOOLEAN" },
+  { path: "recommended", label: "Recomendou intervenção", type: "BOOLEAN" },
+  { path: "existing", label: "Encontrou intervenção já ativa", type: "BOOLEAN" },
+  { path: "suppressed", label: "Suprimiu pela carência", type: "BOOLEAN" },
+  { path: "conflict", label: "Teve conflito", type: "BOOLEAN" },
+  { path: "inconclusive", label: "Ficou inconclusiva", type: "BOOLEAN" },
+  { path: "noMatch", label: "Nenhuma regra atendida", type: "BOOLEAN" },
+  { path: "notApplicable", label: "Política não aplicável", type: "BOOLEAN" },
+  { path: "counts.CREATED", label: "Quantidade criada", type: "NUMBER" },
+  { path: "counts.PENDING_APPROVAL", label: "Quantidade aguardando aprovação", type: "NUMBER" },
+  { path: "counts.RECOMMENDED", label: "Quantidade recomendada", type: "NUMBER" },
+]
+
+/**
+ * Campos do nó de política: os gerais + UM por tipo de intervenção citado nas regras da versão em vigor ("Decisão — Plano de
+ * ação"), com os valores em linguagem de negócio. O backend grava `decisionsByType.<CHAVE>` para todos esses tipos.
+ */
+export function interventionPolicyResultFields(policy: Pick<PublishedPolicySummary, "rules" | "types"> | undefined): FlatOutputSchemaField[] {
+  if (!policy) return INTERVENTION_POLICY_RESULT_FIELDS
+  const keys = [...new Set(policy.rules.flatMap((rule) => [...rule.actions, ...rule.inconclusiveActions].map((action) => action.typeKey)))]
+  const nameOf = (key: string) => policy.types.find((type) => type.key === key)?.name ?? key
+  const perType = keys
+    .sort((a, b) => nameOf(a).localeCompare(nameOf(b), "pt-BR"))
+    .map((key): FlatOutputSchemaField => ({ path: `decisionsByType.${key}`, label: `Decisão — ${nameOf(key)}`, type: "STRING", fieldType: "ENUM", enumValues: DECISION_OPTIONS.map((option) => option.value), enumOptions: DECISION_OPTIONS }))
+  return [...INTERVENTION_POLICY_RESULT_FIELDS.slice(0, 1), ...perType, ...INTERVENTION_POLICY_RESULT_FIELDS.slice(1)]
 }
 
 /**
@@ -120,8 +179,10 @@ export function resolveStructuredFields(
   graph: FlowGraph,
   nodeId: string,
   orchestratorsById: Map<string, Orchestrator>,
+  policies?: PolicyResultCatalog,
 ): FlatOutputSchemaField[] | undefined {
   const node = findNode(graph, nodeId)
+  if (node?.type === "intervention_policy") return interventionPolicyResultFields(policies?.get(node.config.policyId))
   if (node?.type !== "orchestrator") return undefined
   const orchestrator = orchestratorsById.get(node.config.orchestratorId)
   // Fonte única (071): o catálogo já vem achatado do backend (definição nova OU legado

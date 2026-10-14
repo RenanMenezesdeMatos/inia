@@ -35,7 +35,6 @@ export class PublishFeedback {
 
       await client.query("update feedbacks set status = 'PUBLISHED', published_at = now(), updated_at = now(), version = version + 1 where id = $1", [id])
       await client.query("insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'FEEDBACK_PUBLISHED', $3)", [feedback.organization_id, feedback.case_id, { feedbackId: id }])
-      await client.query("insert into outbox_events (aggregate_type, aggregate_id, event_type, payload) values ('Feedback', $1, 'FeedbackPublished', $2)", [id, { feedbackId: id, caseId: feedback.case_id }])
       await client.query("commit")
       return { id, status: "PUBLISHED" as const }
     } catch (error) {

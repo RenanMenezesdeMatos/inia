@@ -109,7 +109,7 @@ describe("V1.5.7 — cenários de aceitação", () => {
     expect(await assignRole(s.deps, s.actor("ana"), { accountId: accountOf("pedro").id, roleCode: "QA_DE_FEEDBACK", scope: { type: "GROUP", teamId: T_COB } })).toEqual({ id: expect.any(String) })
     // Não pode conceder o que dá mais autoridade do que ela está autorizada a delegar.
     await expect(assignRole(s.deps, s.actor("ana"), { accountId: accountOf("joao").id, roleCode: "ADMINISTRADOR", scope: { type: "SUBGROUP", subteamId: S_CONTAS } })).rejects.toMatchObject({ code: "ACCESS_ROLE_NOT_DELEGABLE" })
-    expect((await listRoles(s.deps, s.actor("ana"))).filter((role) => role.assignableByYou).map((role) => role.code)).toEqual(["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE"])
+    expect((await listRoles(s.deps, s.actor("ana"))).filter((role) => role.assignableByYou).map((role) => role.code)).toEqual(["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"])
   })
   it("E — Administrador geral cria a conta de um colaborador e o torna Administrador escopado, sem mexer no cargo", async () => {
     const s = setup()
@@ -338,5 +338,19 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar (
     const deps: AccountAccessDeps = { ...s.accountDeps, accounts: { ...s.accountDeps.accounts, targetByAccount: async (organizationId, accountId) => { const found = await s.accountDeps.accounts.targetByAccount(organizationId, accountId); return found && found.account ? { ...found, account: { ...found.account, sessionVersion: 99 } } : found } } }
     await expect(issueTemporaryPassword(deps, s.actor("geral"), { accountId: accountOf("maria").id })).rejects.toMatchObject({ code: "ACCESS_CONCURRENT_CHANGE", statusCode: 409 })
     expect(accountFor(s, "maria").passwordChangeRequired).toBeFalsy()
+  })
+})
+
+describe("Políticas de acompanhamento — configurar não é agir sobre colaboradores", () => {
+  it("o gestor de políticas não tem nenhuma permissão sobre colaboradores; a decisão sensível nunca vem com papel administrativo", async () => {
+    const { systemRoleCatalog } = await import("../domain/roles.js")
+    const manager = systemRoleCatalog.find("GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO")!
+    expect(manager.permissions).toEqual(["intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"])
+    for (const code of ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ANALISTA_DE_ACOMPANHAMENTO"]) {
+      expect(systemRoleCatalog.find(code)!.permissions, code).not.toContain("interventions.sensitive_decide")
+    }
+    expect(systemRoleCatalog.find("ADMINISTRADOR_GERAL")!.permissions).not.toContain("interventions.execute")
+    // Só o Administrador geral delega a decisão sensível.
+    expect(systemRoleCatalog.all().filter((role) => role.delegates.includes("AVALIADOR_DE_CONTINUIDADE")).map((role) => role.code)).toEqual(["ADMINISTRADOR_GERAL"])
   })
 })

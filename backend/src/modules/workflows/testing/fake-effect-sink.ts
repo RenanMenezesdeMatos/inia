@@ -2,7 +2,7 @@ import { vi, type Mock } from "vitest"
 import type { WorkflowEffectSink } from "../application/effect-sink.js"
 
 type Spied<T> = { [K in keyof T]: T[K] extends (...args: infer A) => infer R ? Mock<(...args: A) => R> : T[K] }
-export type FakeEffects = Omit<Spied<WorkflowEffectSink>, "agentRuns" | "interactionFeedback" | "reliableFeedback" | "conversational" | "feedbackEngine"> & { agentRuns: Spied<WorkflowEffectSink["agentRuns"]>; interactionFeedback: Spied<WorkflowEffectSink["interactionFeedback"]>; reliableFeedback: Spied<WorkflowEffectSink["reliableFeedback"]>; conversational: Spied<WorkflowEffectSink["conversational"]>; feedbackEngine: Spied<WorkflowEffectSink["feedbackEngine"]> }
+export type FakeEffects = Omit<Spied<WorkflowEffectSink>, "agentRuns" | "interactionFeedback" | "reliableFeedback" | "conversational" | "feedbackEngine" | "interventions"> & { agentRuns: Spied<WorkflowEffectSink["agentRuns"]>; interactionFeedback: Spied<WorkflowEffectSink["interactionFeedback"]>; reliableFeedback: Spied<WorkflowEffectSink["reliableFeedback"]>; conversational: Spied<WorkflowEffectSink["conversational"]>; feedbackEngine: Spied<WorkflowEffectSink["feedbackEngine"]>; interventions: Spied<WorkflowEffectSink["interventions"]> }
 
 /**
  * Sink de efeitos com espiões — só pra testes (nunca importado por código de produção). Cada
@@ -46,6 +46,11 @@ export function createFakeEffects(overrides: Partial<FakeEffects> = {}): FakeEff
       markDelivered: vi.fn(async () => {}),
       deliveredMonitoring: vi.fn(async () => null),
       deliverySkip: vi.fn(async () => null),
+    },
+    interventions: {
+      recorded: vi.fn(async () => null),
+      apply: vi.fn(async () => { throw new Error("interventions.apply não configurado neste teste") }),
+      generateNarrative: vi.fn(async () => ({ status: "READY" as const, attempt: 1, error: null })),
     },
     ...overrides,
   }

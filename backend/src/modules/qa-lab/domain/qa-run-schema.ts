@@ -175,6 +175,21 @@ export type QaEffect =
     }
   /** V1.5.12 — o Output publicaria o feedback confiável no Acompanhamento (simulado: ids sintéticos). */
   | { kind: "RELIABLE_FEEDBACK_EMISSION"; id: number; nodeId: string | null; surface: "FOLLOW_UP"; recipientId: string; artifactId: string; caseId: string; feedbackId: string; reused: boolean }
+  /** "Avaliar política de acompanhamento" SIMULADO: a avaliação e as decisões por ação que seriam gravadas (nada gravado, nada avisado). */
+  | {
+      kind: "INTERVENTION_POLICY"
+      id: number
+      nodeId: string | null
+      policyId: string
+      policyName: string
+      policyVersion: number | null
+      personId: string
+      outcome: string
+      decisions: { typeKey: string; typeName: string; status: string; ruleKey: string; responsibleName: string | null; approverName: string | null; dueAt: string | null }[]
+      justification: string
+      reportWouldBeCreated: boolean
+      narrativeWouldBeGenerated: boolean
+    }
 
 export type QaStepStatus = "completed" | "waiting" | "paused_before_ai" | "failed" | "stopped_here"
 

@@ -1,11 +1,13 @@
 "use client"
 
 import { ClipboardCheck, Inbox } from "lucide-react"
+import Link from "next/link"
 
 import { AnalyticsCard, AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
+import { interventionHref } from "@/lib/interventions/intervention-href"
 import { usePendingActionsQuery } from "@/queries/pending-actions/use-pending-actions"
 import { DECISION_DONE_LABELS, parseReviewKey, parseWorkdayKey, PENDING_STATUS_LABELS, type PendingActionSummary } from "@/schemas/pending-actions/pending-actions.schema"
 
@@ -35,7 +37,7 @@ export function PendingActionsView({ state, onStateChange, employeeHref }: { sta
         <div>
           <p className="font-heading text-sm text-muted-foreground">Ação requerida</p>
           <h2 className="text-2xl font-semibold tracking-tight">Pendências</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Revisões de workflow e pendências de produção da sua equipe que aguardam sua decisão. Ler um item não decide nada — a decisão é registrada dentro do item.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Revisões de workflow, intervenções e pendências de produção da sua equipe que aguardam sua resposta. Ler um item não decide nada — a decisão é registrada dentro do item.</p>
         </div>
         {operatorFilter ? (
           <Button variant="outline" size="sm" onClick={() => onStateChange({ operator: null })}>
@@ -92,6 +94,24 @@ export function PendingActionsView({ state, onStateChange, employeeHref }: { sta
 }
 
 function PendingRow({ item, onOpen }: { item: PendingActionSummary; onOpen: () => void }) {
+  // Intervenção: a pendência abre o CONTEXTO dela no caso de supervisão (relatório, evidências, controles, histórico).
+  if (item.kind === "INTERVENTION") {
+    return (
+      <li>
+        <Link href={interventionHref(item.caseId, item.interventionId)} data-testid="pending-intervention-row" className="flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-1 rounded-lg px-2 py-3 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">{item.operator?.name ?? "Colaborador não identificado"}{item.operator?.teamName ? <span className="font-normal text-muted-foreground"> · {item.operator.teamName}</span> : null}</span>
+            <span className="block truncate text-sm text-muted-foreground">{item.sensitive ? "Solicitação de avaliação de continuidade" : item.typeName} · {item.pendingLabel}</span>
+            <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{item.reason}</span>
+          </span>
+          <span className="flex shrink-0 flex-col items-end gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-amber-700 dark:text-amber-300">{item.overdue ? "Atrasada" : PENDING_STATUS_LABELS.PENDING}</span>
+            <span>Prazo {formatCivilDate(item.dueAt)}</span>
+          </span>
+        </Link>
+      </li>
+    )
+  }
   return (
     <li>
       <button type="button" onClick={onOpen} data-testid={item.kind === "WORKDAY_RECONCILIATION" ? "pending-workday-row" : "pending-review-row"} className="flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-1 rounded-lg px-2 py-3 text-left transition hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
@@ -113,7 +133,7 @@ function PendingRow({ item, onOpen }: { item: PendingActionSummary; onOpen: () =
   )
 }
 
-function StatusText({ item }: { item: PendingActionSummary }) {
+function StatusText({ item }: { item: Exclude<PendingActionSummary, { kind: "INTERVENTION" }> }) {
   if (item.status === "PENDING") return <span className="font-medium text-amber-700 dark:text-amber-300">{PENDING_STATUS_LABELS.PENDING}</span>
   if (item.kind === "WORKDAY_RECONCILIATION") return <span className="text-emerald-700 dark:text-emerald-300">{item.resolutionLabel ?? PENDING_STATUS_LABELS.DECIDED}{item.reviewer ? ` · ${item.reviewer.name}` : ""}</span>
   if (item.status === "DECIDED" && item.decision) return <span className="text-emerald-700 dark:text-emerald-300">{DECISION_DONE_LABELS[item.decision]}{item.reviewer ? ` · ${item.reviewer.name}` : ""}</span>

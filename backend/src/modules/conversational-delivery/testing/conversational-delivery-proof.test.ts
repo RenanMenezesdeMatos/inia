@@ -112,7 +112,6 @@ describe.skipIf(!ENABLED)("Workflow Outputs V1 — Chat + Avatar: prova Postgres
     await pool.query("delete from alerts where recipient_id = any($1::uuid[])", [created.people])
     await pool.query("delete from workflow_output_emissions where enrollment_id = any($1::uuid[])", [created.enrollments])
     await pool.query("delete from feedback_support_materials where feedback_id = any($1::uuid[])", [feedbacks]).catch(() => undefined)
-    await pool.query("delete from outbox_events where aggregate_id = any($1::uuid[])", [feedbacks])
     await pool.query("delete from feedbacks where id = any($1::uuid[])", [feedbacks])
     await pool.query("delete from case_timeline_events where case_id = any($1::uuid[])", [cases])
     await pool.query("delete from evidences where case_id = any($1::uuid[])", [cases])
@@ -226,7 +225,7 @@ describe.skipIf(!ENABLED)("Workflow Outputs V1 — Chat + Avatar: prova Postgres
     expect(await inboxIds()).toContain(laterId)
     expect((await avatarTargets()).sort()).toEqual([voiceOnly, laterId].sort())
     expect(await notifications.countUnread(larissa, ORG)).toBe(unreadBefore + 1)
-    const feedAlerts = async () => (await new PgAnalyticsReadRepository(pooled).loadFollowUpFeed({ organizationId: ORG, viewerId: larissa, operatorIds: [], includeViewerAlerts: true, unacknowledgedOnly: false, page: 1, pageSize: 50 })).items.map((item) => item.id)
+    const feedAlerts = async () => (await new PgAnalyticsReadRepository(pooled).loadFollowUpFeed({ organizationId: ORG, viewerId: larissa, operatorIds: [], includeViewerAlerts: true, unacknowledgedOnly: false, limit: 50, before: null })).items.map((item) => item.id)
     const laterAlertId = (await pool.query<{ id: string }>("select id from alerts where dedupe_key = $1", [`workflow_avatar:${laterId}`])).rows[0]!.id
     expect(await feedAlerts()).toContain(laterAlertId)
     const published = await executeOutput({ ...CONFIG, surfaces: ["FOLLOW_UP"] }, { ...laterCovered.context(pooled), nodeId: "out-follow-up" })

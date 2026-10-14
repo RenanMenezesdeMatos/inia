@@ -22,6 +22,7 @@ import type { SupervisorOperatorDetail } from "@/services/supervisor"
 
 import { ProfileTabsList } from "./profile-tabs"
 import { ChartNoAxesCombined, MessagesSquare, Network, UserRound } from "lucide-react"
+import { PersonInterventions } from "@/components/interventions/person-interventions"
 
 const TABS = [
   { value: "followup" as const, label: "Acompanhamentos", icon: MessagesSquare },
@@ -129,6 +130,10 @@ function EmployeeProfileContent({ detail, context, capabilities }: { detail: Sup
   )
 }
 
+/** Nível do escalonamento LEGADO (`performance_escalations`, anterior às políticas de acompanhamento) — só leitura. */
+const LEGACY_LEVEL_LABELS: Record<string, string> = { OBSERVE: "Observar", ORIENT: "Orientar", COACH: "Treinar", ACTION_PLAN: "Plano de ação", MANAGER: "Gestor" }
+const LEGACY_PLAN_STATUS_LABELS: Record<string, string> = { DRAFT: "Rascunho", ACTIVE: "Ativo", COMPLETED: "Concluído", CANCELLED: "Cancelado", PENDING: "Pendente", IN_PROGRESS: "Em andamento" }
+
 function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
   const activePlans = detail.plans.filter((plan) => plan.status === "ACTIVE")
   return (
@@ -145,8 +150,7 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">{activePlans.length} plano(s) ativo(s)</Badge>
-              {detail.escalation ? <Badge variant="destructive">Nível: {detail.escalation.currentLevel}</Badge> : null}
+              {activePlans.length > 0 ? <Badge variant="outline">{activePlans.length} plano(s) anterior(es) ativo(s)</Badge> : null}
             </div>
           </div>
         </CardHeader>
@@ -166,11 +170,13 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
         </CardContent>
       </Card>
 
+      <PersonInterventions personId={detail.profile.id} />
+
       {detail.escalation ? (
         <Card className="bg-amber-500/5">
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Escalonamento por performance</Badge>
+              <Badge variant="outline">Escalonamento anterior às políticas · {LEGACY_LEVEL_LABELS[detail.escalation.currentLevel] ?? detail.escalation.currentLevel}</Badge>
               <Badge variant="secondary">Confiança IA {Math.round(detail.escalation.confidence * 100)}%</Badge>
             </div>
             <CardTitle>{detail.escalation.reason}</CardTitle>
@@ -182,10 +188,10 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
       ) : null}
 
       <section className="space-y-3">
-        <h3 className="px-1 text-base font-semibold">Planos de ação</h3>
+        <h3 className="px-1 text-base font-semibold">Planos de desenvolvimento anteriores</h3>
         {detail.plans.length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum plano de ação registrado.</CardContent>
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum plano anterior registrado. Planos novos nascem como intervenções, acima.</CardContent>
           </Card>
         ) : (
           detail.plans.map((plan) => (
@@ -196,7 +202,7 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
                     <CardTitle>{plan.title}</CardTitle>
                     <CardDescription>{plan.objective}</CardDescription>
                   </div>
-                  <Badge variant="outline">{plan.status}</Badge>
+                  <Badge variant="outline">{LEGACY_PLAN_STATUS_LABELS[plan.status] ?? plan.status}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -208,7 +214,7 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
                         {action.type} · prazo {String(action.dueAt).slice(0, 10)}
                       </p>
                     </div>
-                    <Badge variant="outline">{action.status}</Badge>
+                    <Badge variant="outline">{LEGACY_PLAN_STATUS_LABELS[action.status] ?? action.status}</Badge>
                   </div>
                 ))}
               </CardContent>

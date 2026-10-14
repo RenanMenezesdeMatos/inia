@@ -9,7 +9,8 @@ import { addCost, estimateCost, pricingFor, type CostEstimate } from "./model-pr
 import { observedCacheRecord } from "./cache-record.js"
 import { escalateRoute, resolveRoute, type RouteDecision, type RouteSignals, type RoutingMode } from "./route-policy.js"
 import type { PromptComponentUsage } from "../prompting/prompt-components.js"
-import { aiRuntime, currentAiOrganizationId, type AiUsageEventInput, type AiUsageOrigin, type ResolvedAiRoute, type SpeechCacheIdentity } from "./ai-runtime.js"
+import { legacyGateKey, runThroughProviderGate } from "./provider-call-gate.js"
+import { aiRuntime, currentAiAbortSignal, currentAiOrganizationId, type AiUsageEventInput, type AiUsageOrigin, type ResolvedAiRoute, type SpeechCacheIdentity } from "./ai-runtime.js"
 import { useCaseForPurpose, type AiUseCaseKey } from "./ai-use-cases.js"
 import { categorizeHttpStatus, retryAfterMsFrom, type AiErrorCategory } from "./ai-errors.js"
 import { runLimitedAiCall } from "./ai-call-limiter.js"
@@ -155,15 +156,18 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
       const adapter = providerAdapterFor(request.route.profile)
       const providerKey = legacyProviderKey(request.route.profile.provider)
       const startedAt = Date.now()
-      let raw: AdapterResponse
-      try {
-        raw = await adapter.generate({ systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools ?? [], structuredOutput: request.structuredOutput ?? false, route: request.route, cache: request.cache, ...(request.transport ? { transport: request.transport } : {}), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}) })
-      } catch (error) {
-        if (error instanceof AiCallBlockedError) throw error
-        const sanitized = sanitizeLegacyError(error)
-        await recordLegacyUsage({ organizationId, useCase, classification: request.classification, route: request.route, providerKey, modelName: request.route.profile.model, correlationId, usage: null, durationMs: Date.now() - startedAt, status: "ERROR", errorCategory: sanitized.category, legacyCost: null })
-        throw sanitized.error
-      }
+      // Rota do ambiente (sem conexão cadastrada): sem teto compartilhado, mas a pausa depois de um 429 vale para todas as
+      // instâncias (chave do provedor da rota).
+      const raw: AdapterResponse = await runThroughProviderGate(legacyGateKey(providerKey), null, async () => {
+        try {
+          return await adapter.generate({ systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools ?? [], structuredOutput: request.structuredOutput ?? false, route: request.route, cache: request.cache, ...(request.transport ? { transport: request.transport } : {}), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}) })
+        } catch (error) {
+          if (error instanceof AiCallBlockedError) throw error
+          const sanitized = sanitizeLegacyError(error)
+          await recordLegacyUsage({ organizationId, useCase, classification: request.classification, route: request.route, providerKey, modelName: request.route.profile.model, correlationId, usage: null, durationMs: Date.now() - startedAt, status: "ERROR", errorCategory: sanitized.category, legacyCost: null })
+          throw sanitized.error
+        }
+      })
       // Adapters (e clientes mockados em teste) podem não informar uso/modelo — nunca inventamos números.
       const response: AdapterResponse = { ...raw, usage: raw.usage ?? EMPTY_USAGE, durationMs: raw.durationMs ?? 0, model: raw.model ?? request.route.profile.model, provider: raw.provider ?? request.route.profile.provider }
       const { createdTokens, ...declaredCache } = response.cache ?? { ...observedCacheRecord(response.usage, request.cache?.cacheKeyVersion ?? null), createdTokens: 0 }
@@ -185,7 +189,7 @@ export function routeRecordOf(route: RouteDecision): LlmRouteRecord {
 }
 
 export type ChatHistoryTurn = { role: "user" | "model"; text: string }
-export type LegacyChatStream = (history: ChatHistoryTurn[], systemInstruction: string, onChunk: (text: string) => void) => Promise<LlmUsage | null | void>
+export type LegacyChatStream = (history: ChatHistoryTurn[], systemInstruction: string, onChunk: (text: string) => void, cancel?: AbortSignal | null) => Promise<LlmUsage | null | void>
 
 /**
  * CHAT sem Orquestrador (antes: bypass do gateway — §90). Mesma assinatura do cliente de streaming
@@ -212,20 +216,24 @@ export function createChatStreamer(legacy: LegacyChatStream): (history: ChatHist
         await runtime.assertLegacyCallAllowed({ organizationId, useCase: "CHAT", providerKey: "GOOGLE_GENAI" })
       }
       const startedAt = Date.now()
-      try {
-        const usage = await legacy(history, systemInstruction, onChunk)
-        await recordLegacyUsage({ organizationId, useCase: "CHAT", classification, route: null, providerKey: "GOOGLE_GENAI", modelName: LEGACY_CHAT_MODEL, correlationId, usage: usage ?? null, durationMs: Date.now() - startedAt, status: "SUCCESS", errorCategory: null, legacyCost: null })
-      } catch (error) {
-        const sanitized = sanitizeLegacyError(error)
-        await recordLegacyUsage({ organizationId, useCase: "CHAT", classification, route: null, providerKey: "GOOGLE_GENAI", modelName: LEGACY_CHAT_MODEL, correlationId, usage: null, durationMs: Date.now() - startedAt, status: "ERROR", errorCategory: sanitized.category, legacyCost: null })
-        throw sanitized.error
-      }
+      await runThroughProviderGate(legacyGateKey(LEGACY_CHAT_PROVIDER_KEY), null, async () => {
+        try {
+          const usage = await legacy(history, systemInstruction, onChunk, currentAiAbortSignal())
+          await recordLegacyUsage({ organizationId, useCase: "CHAT", classification, route: null, providerKey: LEGACY_CHAT_PROVIDER_KEY, modelName: LEGACY_CHAT_MODEL, correlationId, usage: usage ?? null, durationMs: Date.now() - startedAt, status: "SUCCESS", errorCategory: null, legacyCost: null })
+        } catch (error) {
+          const sanitized = sanitizeLegacyError(error)
+          await recordLegacyUsage({ organizationId, useCase: "CHAT", classification, route: null, providerKey: LEGACY_CHAT_PROVIDER_KEY, modelName: LEGACY_CHAT_MODEL, correlationId, usage: null, durationMs: Date.now() - startedAt, status: "ERROR", errorCategory: sanitized.category, legacyCost: null })
+          throw sanitized.error
+        }
+      })
     })
   }
 }
 
 /** Modelo do streaming legado do chat (gemini-text-client.ts) — só para o registro de uso. */
 export const LEGACY_CHAT_MODEL = "gemini-3.1-flash-lite"
+/** Provedor do streaming legado do chat (registro de uso e chave da pausa compartilhada). */
+const LEGACY_CHAT_PROVIDER_KEY = "GOOGLE_GENAI"
 
 /**
  * VOZ em tempo real (§90 — exceção documentada): a sessão Live roda no navegador com token efêmero;

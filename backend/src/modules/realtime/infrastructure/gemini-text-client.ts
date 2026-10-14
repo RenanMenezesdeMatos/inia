@@ -1,6 +1,8 @@
 import { env } from "../../../config/env.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { usageFromGeminiPayload, type LlmUsage } from "../../../shared/application/llm-telemetry.js"
+import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
+import { createStreamDeadline, type StreamDeadline } from "../../../shared/infrastructure/http/stream-deadline.js"
 
 // Chosen over gemini-3.6-flash after live testing on 2026-09-09: this one
 // skips the model's default "thinking" pass entirely (0 thought tokens vs.
@@ -13,7 +15,12 @@ const STREAM_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MO
 // 2026-09-09), an unbounded call here means the frontend's request hangs
 // too, `textReplyPending` never clears, and the composer gets stuck
 // disabled with an empty "thinking" bubble until the page is reloaded.
-const REQUEST_TIMEOUT_MS = 15_000
+// Até 13/10/2026 era um AbortSignal.timeout(15 s) no fetch, que vale para a
+// resposta INTEIRA: uma resposta longa e saudável era cortada no meio. Agora
+// são dois prazos (stream-deadline.ts): 15 s até a resposta começar e 30 s de
+// silêncio máximo entre dois pedaços.
+const CONNECT_TIMEOUT_MS = 15_000
+const IDLE_TIMEOUT_MS = 30_000
 // Google's own 503 message says demand spikes are "usually temporary" —
 // confirmed live: 2 of 3 back-to-back calls failed with 503 while the 2nd
 // succeeded fine, so one short-delay retry meaningfully improves the odds
@@ -45,6 +52,8 @@ export async function streamTextReply(
   history: HistoryTurn[],
   systemInstruction: string,
   onChunk: (text: string) => void,
+  /** Quem pediu foi embora (SSE fechado): o fetch para na hora. */
+  cancel?: AbortSignal | null,
 ): Promise<LlmUsage | null> {
   if (!env.GEMINI_API_KEY) {
     throw new DomainError(
@@ -54,8 +63,9 @@ export async function streamTextReply(
     )
   }
 
-  const response = await connectWithRetry(history, systemInstruction)
+  const { response, deadline } = await connectWithRetry(history, systemInstruction, cancel ?? null)
   if (!response.body) {
+    deadline.dispose()
     throw new DomainError("A INIA não retornou uma resposta.", "TEXT_REPLY_EMPTY", 502)
   }
 
@@ -67,8 +77,15 @@ export async function streamTextReply(
   let buffer = ""
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      let read: ReadableStreamReadResult<Uint8Array>
+      try {
+        read = await reader.read()
+      } catch (error) {
+        throw abortedReadError(deadline, error)
+      }
+      const { done, value } = read
       if (done) break
+      deadline.progressed()
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split("\n")
       buffer = lines.pop() ?? ""
@@ -87,6 +104,7 @@ export async function streamTextReply(
       }
     }
   } finally {
+    deadline.dispose()
     reader.releaseLock()
   }
 
@@ -96,8 +114,16 @@ export async function streamTextReply(
   return usage
 }
 
-async function connectWithRetry(history: HistoryTurn[], systemInstruction: string): Promise<Response> {
+/** Erro de leitura do corpo: prazo de silêncio estourado, cancelamento de quem pediu ou falha de rede. */
+function abortedReadError(deadline: StreamDeadline, error: unknown): unknown {
+  if (deadline.cancelled) return new AiCallCancelledError()
+  if (deadline.timedOut) return new DomainError("A INIA demorou demais para responder.", "TEXT_REPLY_TIMEOUT", 504)
+  return error
+}
+
+async function connectWithRetry(history: HistoryTurn[], systemInstruction: string, cancel: AbortSignal | null): Promise<{ response: Response; deadline: StreamDeadline }> {
   for (let attempt = 1; attempt <= 2; attempt++) {
+    const deadline = createStreamDeadline({ connectTimeoutMs: CONNECT_TIMEOUT_MS, idleTimeoutMs: IDLE_TIMEOUT_MS, cancel })
     let response: Response
     try {
       response = await fetch(STREAM_URL, {
@@ -110,10 +136,12 @@ async function connectWithRetry(history: HistoryTurn[], systemInstruction: strin
           contents: history.map((turn) => ({ role: turn.role, parts: [{ text: turn.text }] })),
           systemInstruction: { parts: [{ text: systemInstruction }] },
         }),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: deadline.signal,
       })
     } catch (error) {
-      const timedOut = error instanceof Error && error.name === "TimeoutError"
+      deadline.dispose()
+      if (deadline.cancelled) throw new AiCallCancelledError()
+      const timedOut = deadline.timedOut || (error instanceof Error && error.name === "TimeoutError")
       throw new DomainError(
         timedOut ? "A INIA demorou demais para responder." : "Não foi possível contatar a INIA.",
         timedOut ? "TEXT_REPLY_TIMEOUT" : "TEXT_REPLY_NETWORK_ERROR",
@@ -121,7 +149,11 @@ async function connectWithRetry(history: HistoryTurn[], systemInstruction: strin
       )
     }
 
-    if (response.ok) return response
+    if (response.ok) {
+      deadline.started()
+      return { response, deadline }
+    }
+    deadline.dispose()
     if (response.status !== 503 || attempt === 2) {
       const body = await response.text()
       throw new DomainError(

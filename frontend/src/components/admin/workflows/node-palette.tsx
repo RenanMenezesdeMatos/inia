@@ -4,7 +4,7 @@ import { NODE_TYPE_LABELS, type FlowNodeType } from "@/schemas/admin/workflow-gr
 import { cn } from "@/lib/utils"
 import { NODE_COLORS, NODE_ICONS } from "./node-visuals"
 
-const ADDABLE_TYPES: FlowNodeType[] = ["wait", "condition", "action", "orchestrator", "human_review", "output", "end"]
+const ADDABLE_TYPES: FlowNodeType[] = ["wait", "condition", "action", "orchestrator", "intervention_policy", "human_review", "output", "end"]
 
 // "Selecionar colaboradores", "Aplicar individualmente" e "Consolidar resultados"
 // (EMPLOYEE_COLLECTION + fan-in/JOIN) só existem dentro de um Workflow em modo Consolidado — fora

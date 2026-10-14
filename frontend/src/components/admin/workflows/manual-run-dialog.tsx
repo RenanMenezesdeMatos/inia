@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Play, RotateCcw, XCircle } from "lucide-react"
 
@@ -12,7 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { AdminApiError } from "@/lib/admin/admin-api"
+import { formatCivilDate } from "@/lib/format/date"
+import { interventionHref } from "@/lib/interventions/intervention-href"
 import { cn } from "@/lib/utils"
+import { INTERVENTION_STATUS_LABELS } from "@/schemas/interventions/intervention.schema"
 import { adminQueryKeys } from "@/queries/admin/admin-query-keys"
 import {
   fetchManualRun,
@@ -56,6 +60,7 @@ const EVENT_LABELS: Record<string, string> = {
   node_advanced: "Etapa concluída",
   action_executed: "Ação executada",
   condition_evaluated: "Condição avaliada",
+  intervention_policy_evaluated: "Política de acompanhamento avaliada",
   orchestrator_executed: "Orquestrador executado",
   output_dispatched: "Saída entregue",
   human_review_requested: "Revisão humana solicitada",
@@ -127,7 +132,9 @@ function ManualRunStatus({ workflowId, runId, onShowExecutions, onShowResults }:
 
       <div className="space-y-1">
         <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Entregas registradas</p>
-        {run.deliveries.length === 0 ? (
+        {run.deliveries.length === 0 && run.interventions.length > 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma entrega de conteúdo — o resultado foram as intervenções da política (abaixo).</p>
+        ) : run.deliveries.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {run.execution.stage === "COMPLETED"
               ? "A execução terminou sem nenhuma entrega (o fluxo não chegou a um Output ou nada era entregável)."
@@ -146,6 +153,24 @@ function ManualRunStatus({ workflowId, runId, onShowExecutions, onShowResults }:
         )}
         {avatarPending ? <p className="text-xs text-muted-foreground">No Avatar, o recado só conta como entregue depois que {run.collaborator.name} aceitar e a fala terminar.</p> : null}
       </div>
+
+      {run.interventions.length > 0 ? (
+        <div className="space-y-1" data-testid="manual-run-interventions">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Intervenções da política</p>
+          <ul className="space-y-1 text-sm">
+            {run.interventions.map((item) => (
+              <li key={item.id}>
+                <Link href={interventionHref(item.caseId, item.id)} className="underline-offset-2 hover:underline">
+                  {item.typeName}
+                </Link>{" "}
+                <span className="text-muted-foreground">
+                  · {INTERVENTION_STATUS_LABELS[item.status] ?? item.status} · responsável {item.responsibleName} · prazo {formatCivilDate(item.dueAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <details className="rounded-md border p-2 text-xs">
         <summary className="cursor-pointer text-muted-foreground">Linha do tempo ({run.execution.events.length} evento(s))</summary>

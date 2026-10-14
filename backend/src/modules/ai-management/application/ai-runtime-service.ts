@@ -1,10 +1,11 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { beforeLlmCall, countTechnicalIdsInPrompt, EMPTY_USAGE, hasLlmTelemetryStore, recordLlmCall, type LlmUsage } from "../../../shared/application/llm-telemetry.js"
 import { observedCacheRecord } from "../../../shared/application/model-routing/cache-record.js"
-import { AiBudgetExceededError, AiProviderError, canFallbackOn, type AiErrorCategory } from "../../../shared/application/model-routing/ai-errors.js"
+import { AiBudgetExceededError, AiCallCancelledError, AiProviderError, canFallbackOn, type AiErrorCategory } from "../../../shared/application/model-routing/ai-errors.js"
 import type { AiRuntime, AiUsageEventInput, PolicyExecutionRequest, PolicyExecutionResult, PolicySpeechRequest, PolicySpeechResult, PolicyStreamRequest, ResolvedAiRoute, SpeechCacheIdentity } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentAiCallLimiterRecord } from "../../../shared/application/model-routing/ai-call-limiter.js"
+import { connectionGateKey, providerCallGate, runThroughProviderGate } from "../../../shared/application/model-routing/provider-call-gate.js"
 import { findUseCase, type AiUseCaseKey } from "../../../shared/application/model-routing/ai-use-cases.js"
 import type { CostEstimate } from "../../../shared/application/model-routing/model-pricing.js"
 import type { ModelProvider } from "../../../shared/application/model-routing/model-profile.js"
@@ -287,13 +288,23 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
     for (let index = 0; index < prepared.candidates.length; index++) {
       const candidate = prepared.candidates[index]!
       const attempt = index + 1
+      const hasNext = index + 1 < prepared.candidates.length
+      const gateKey = connectionGateKey(candidate.model.connection.id)
+      // Conexão em pausa por 429 (em QUALQUER instância): o lote passa para o próximo modelo da cadeia, quando a policy permite
+      // fallback por limite de requisições — nenhuma chamada sai para a conexão pausada. Sem próximo, o portão espera a pausa.
+      if (hasNext && canRetry() && currentAiCallLimiterRecord()?.priority === "BATCH" && (providerCallGate()?.cooldownRemainingMs(gateKey) ?? 0) > 0 && canFallbackOn("RATE_LIMIT", prepared.policy.fallbackOn)) {
+        fallbackReason = "FALLBACK_RATE_LIMIT"
+        console.warn(JSON.stringify({ event: "ai_route_fallback", organizationId: request.organizationId, useCase: request.useCase, correlationId: request.correlationId, from: candidate.model.id, category: "RATE_LIMIT", attempt, reason: "CONNECTION_COOLDOWN" }))
+        continue
+      }
       const startedAt = now().getTime()
       try {
         const connectionRuntime = prepared.snap.connections.get(candidate.model.connection.id)
         if (!connectionRuntime) throw new AiProviderError("ROUTE_UNAVAILABLE")
         const connection = resolveConnection(connectionRuntime)
         const timeoutMs = candidate.model.timeoutMs ?? connection.timeoutMs
-        const { value, usage, durationMs } = await run(candidate, connection, timeoutMs)
+        // Vagas da conexão em todas as instâncias (configuradas na conexão) + pausa depois de um 429 dela.
+        const { value, usage, durationMs } = await runThroughProviderGate(gateKey, connectionRuntime.maxConcurrentCalls, () => run(candidate, connection, timeoutMs))
         const cost = computeCallCost(usage, candidate.model.pricing)
         await persist({ ...baseEvent(request, prepared.policy, candidate, attempt, fallbackReason), usage, durationMs, status: "SUCCESS", errorCategory: null, ...costRow(cost) })
         return { value, candidate, attempt, fallbackReason, cost, usage }
@@ -301,13 +312,12 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
         const category: AiErrorCategory = error instanceof AiProviderError ? error.category : "UNKNOWN"
         await persist({ ...baseEvent(request, prepared.policy, candidate, attempt, fallbackReason), usage: null, durationMs: now().getTime() - startedAt, status: "ERROR", errorCategory: category, cost: null, currency: null, costStatus: "UNKNOWN", costUnknownReason: null, pricingId: null, pricingSource: "NONE" })
         if (category === "RATE_LIMIT") markRateLimited(prepared.snap, candidate.model)
-        const hasNext = index + 1 < prepared.candidates.length
         if (hasNext && canRetry() && canFallbackOn(category, prepared.policy.fallbackOn)) {
           fallbackReason = `FALLBACK_${category}`
           console.warn(JSON.stringify({ event: "ai_route_fallback", organizationId: request.organizationId, useCase: request.useCase, correlationId: request.correlationId, from: candidate.model.id, category, attempt }))
           continue
         }
-        if (error instanceof AiProviderError) throw error
+        if (error instanceof AiProviderError || error instanceof AiCallCancelledError) throw error
         throw new AiProviderError("UNKNOWN")
       }
     }
