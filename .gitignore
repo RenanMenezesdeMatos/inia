@@ -52,3 +52,7 @@ __pycache__/
 
 # Saída do teste de carga (logs, PIDs, resultados)
 tools/loadtest/out/
+
+# Gerados no servidor Windows pelo deploy/windows/servicos/instalar-servicos.ps1 (WinSW e registros dos serviços).
+/deploy/windows/servicos/bin/
+/logs/
