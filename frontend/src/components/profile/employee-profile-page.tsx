@@ -20,6 +20,7 @@ import type { AnalyticsContext } from "@/schemas/analytics/analytics.schema"
 import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from "@/schemas/auth/auth.schema"
 import type { SupervisorOperatorDetail } from "@/services/supervisor"
 
+import { backLinkFor } from "./employee-profile-exit"
 import { ProfileTabsList } from "./profile-tabs"
 import { ChartNoAxesCombined, MessagesSquare, Network, UserRound } from "lucide-react"
 import { PersonInterventions } from "@/components/interventions/person-interventions"
@@ -62,10 +63,11 @@ function EmployeeProfileContent({ detail, context, capabilities }: { detail: Sup
     router.push(`/supervisor?${params.toString()}`)
   }
 
+  const back = backLinkFor(context, detail.profile.id)
   const backAction = (
     <Button variant="ghost" asChild>
-      <Link href="/supervisor?tab=people">
-        <ArrowLeft aria-hidden /> Voltar para a equipe
+      <Link href={back.href}>
+        <ArrowLeft aria-hidden /> {back.label}
       </Link>
     </Button>
   )
