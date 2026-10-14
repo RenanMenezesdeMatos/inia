@@ -519,6 +519,12 @@ vira um commit novo sobre o `main` do GitHub, enviado por URL com a credencial d
 local não tem remote. `-- --verificar` roda typecheck, lint e testes numa cópia do snapshot antes de perguntar. Testes
 do próprio comando: `node --test scripts/github/*.test.mjs`.
 
+A mensagem do commit no GitHub conta o que mudou: o título é o assunto do primeiro commit local desde a publicação
+anterior (sem o `fix(...)`/`feat(...)`, com "+N mudanças" quando há mais) e o corpo traz um item por commit local, com o
+corpo dele, o resumo dos arquivos e o commit local de origem — que a publicação seguinte lê para saber de onde partir.
+Merges e commits que só mexem no que fica de fora não são listados. A mensagem passa pela mesma conferência de segredos
+e aparece no resumo antes da confirmação. `-- -m "título"` troca só o título; `-- --sem-corpo` deixa só os assuntos.
+
 ## Segurança
 
 - **Sem segredos no repositório.** Chaves, senhas e tokens vivem só nos arquivos `.env` (fora do Git), gerados pelo

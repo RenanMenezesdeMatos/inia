@@ -8,18 +8,26 @@ import { dirname, join } from "node:path"
 import { after, before, describe, test } from "node:test"
 import {
   buildSnapshot,
+  cleanSubject,
+  commitBody,
+  composeMessage,
+  excludedPath,
   findEnvFiles,
   findKeyPatterns,
   findValuesInTree,
   fingerprint,
   formatBytes,
+  FULL_BODY_LIMIT,
   git,
   globToRegExp,
+  localCommitsSince,
   matchesPattern,
+  messageLeaks,
   MIN_SECRET_LENGTH,
   parseAllowedPatternHits,
   parseEnv,
   parseExclusions,
+  publishedLocalCommit,
   secretValues,
   sensitiveFiles,
 } from "./publicar.mjs"
@@ -159,6 +167,13 @@ describe("snapshot num repositório descartável", () => {
     assert.equal(git(repo, ["ls-files"]).stdout.trim().split("\n").length, Object.keys(files).length)
   })
 
+  test("o predicado de exclusão concorda com o snapshot, arquivo por arquivo", () => {
+    const exclusions = parseExclusions(EXCLUSIONS)
+    const isExcluded = excludedPath(exclusions)
+    const kept = buildSnapshot(repo, head, exclusions).files.map(({ path }) => path).sort()
+    assert.deepEqual(Object.keys(files).filter((path) => !isExcluded(path)).sort(), kept)
+  })
+
   test("acha o valor de um .env sem devolvê-lo e só aponta a origem e o arquivo", () => {
     const snapshot = buildSnapshot(repo, head, parseExclusions(EXCLUSIONS))
     const found = findValuesInTree(repo, snapshot.tree, [
@@ -265,4 +280,123 @@ test("formata tamanhos em pt-BR", () => {
   assert.equal(formatBytes(512), "512 B")
   assert.equal(formatBytes(1536), "1,5 KB")
   assert.equal(formatBytes(53.3 * 1024 * 1024), "53,3 MB")
+})
+
+const IDENTITY = { GIT_AUTHOR_NAME: "Teste", GIT_AUTHOR_EMAIL: "teste@example.com", GIT_COMMITTER_NAME: "Teste", GIT_COMMITTER_EMAIL: "teste@example.com" }
+
+describe("commits locais desde a publicação anterior", () => {
+  let repo
+  let published
+  const commitFile = (path, content, message) => {
+    mkdirSync(dirname(join(repo, path)), { recursive: true })
+    writeFileSync(join(repo, path), content)
+    git(repo, ["add", "-A"])
+    git(repo, ["commit", "--quiet", "-F", "-"], { env: IDENTITY, input: message })
+  }
+
+  before(() => {
+    repo = mkdtempSync(join(tmpdir(), "inia-publicar-commits-"))
+    git(repo, ["init", "--quiet", "--initial-branch=main"])
+    commitFile("src/app.ts", "export const a = 1\n", "feat: começo")
+    published = git(repo, ["rev-parse", "HEAD"]).stdout.trim()
+    commitFile("src/app.ts", "export const a = 2\n", "fix(app): corrige o valor\n\nO valor era 1.\n\nCo-Authored-By: Alguém <a@example.com>\n")
+    commitFile("docs/manuais/IT-009.md", "manual\n", "docs(manuais): IT-009")
+    // Um merge: fica de fora da lista (o conteúdo dele já vem pelos commits do ramo).
+    git(repo, ["switch", "--quiet", "-c", "ramo"])
+    commitFile("src/outro.ts", "export {}\n", "feat: outro arquivo")
+    git(repo, ["switch", "--quiet", "main"])
+    git(repo, ["merge", "--quiet", "--no-ff", "-m", "Merge branch 'ramo'", "ramo"], { env: IDENTITY })
+  })
+
+  after(() => rmSync(repo, { recursive: true, force: true }))
+
+  test("lista do mais antigo ao mais novo, sem merges, e só conta os que mexem apenas no que fica de fora", () => {
+    const { commits, skipped } = localCommitsSince(repo, published, "HEAD", excludedPath(parseExclusions(EXCLUSIONS)))
+    assert.deepEqual(
+      commits.map(({ subject, body }) => [subject, body]),
+      [
+        ["fix(app): corrige o valor", "O valor era 1."],
+        ["feat: outro arquivo", ""],
+      ],
+    )
+    assert.equal(skipped, 1)
+  })
+})
+
+describe("mensagem do commit no GitHub", () => {
+  const changes = [
+    { status: "A", path: "src/novo.ts" },
+    { status: "M", path: "src/app.ts" },
+    { status: "M", path: "README.md" },
+  ]
+  const head = "7dfe6516aaaabbbbccccddddeeeeffff00001111"
+  const commit = (sha, subject, body = "") => ({ sha: sha.padEnd(40, "0"), subject, body })
+
+  test("lê o commit local das mensagens já publicadas, nos formatos antigos", () => {
+    assert.equal(publishedLocalCommit("Atualiza o código da INIA (14/10/2026)\n\nCópia do código do commit local 58f85de7, sem o histórico local e sem o que scripts/github/exclusoes.txt exclui.\n"), "58f85de7")
+    assert.equal(publishedLocalCommit("Acompanhamento do líder\n\nO feed… Cópia do código do commit local 053c84bf, sem o histórico local."), "053c84bf")
+    assert.equal(publishedLocalCommit("INIA — Supervisora Virtual com IA\n\nPrimeira versão publicada."), null)
+  })
+
+  test("o título é frase: sem o tipo do commit e com maiúscula", () => {
+    assert.equal(cleanSubject("fix(perfil): ficha indisponível volta ao organograma"), "Ficha indisponível volta ao organograma")
+    assert.equal(cleanSubject("docs: roteiro da Azure"), "Roteiro da Azure")
+    assert.equal(cleanSubject("feat!: troca o contrato"), "Troca o contrato")
+    assert.equal(cleanSubject("Nota: isto não é tipo de commit"), "Nota: isto não é tipo de commit")
+  })
+
+  test("o corpo perde só os trailers", () => {
+    assert.equal(commitBody("Primeira linha.\n\n- item\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nSigned-off-by: Fulano <f@example.com>\n"), "Primeira linha.\n\n- item")
+  })
+
+  test("um commit: o assunto vira o título e o corpo vem inteiro, com a origem que a próxima publicação lê", () => {
+    const message = composeMessage({ commits: [commit("8dd407ba", "fix(perfil): ficha volta ao organograma", "Antes caía em Acompanhamentos.\n\n- Teste: admin.")], head, changes, today: "14/10/2026" })
+    assert.equal(
+      message,
+      [
+        "Ficha volta ao organograma",
+        "",
+        "- Ficha volta ao organograma (8dd407ba)",
+        "  Antes caía em Acompanhamentos.",
+        "",
+        "  - Teste: admin.",
+        "",
+        "Arquivos: 1 novo(s), 2 alterado(s), 0 removido(s).",
+        "",
+        "Cópia do código do commit local 7dfe6516, sem o histórico local e sem o que scripts/github/exclusoes.txt exclui.",
+        "",
+      ].join("\n"),
+    )
+    assert.equal(publishedLocalCommit(message), "7dfe6516")
+  })
+
+  test("vários commits: o título conta os demais; -m troca só o título; --sem-corpo deixa só os assuntos", () => {
+    const commits = [commit("aaaa1111", "fix: primeiro", "Corpo do primeiro."), commit("bbbb2222", "feat(x): segundo", "Corpo do segundo."), commit("cccc3333", "docs: terceiro")]
+    const message = composeMessage({ commits, skipped: 2, head, changes, today: "14/10/2026" })
+    assert.match(message, /^Primeiro \(\+2 mudanças\)\n\n- Primeiro \(aaaa1111\)\n  Corpo do primeiro\.\n\n- Segundo \(bbbb2222\)\n  Corpo do segundo\.\n\n- Terceiro \(cccc3333\)\n\nMais 2 commit/)
+    assert.match(composeMessage({ commits: commits.slice(0, 2), head, changes, today: "x" }), /^Primeiro \(\+1 mudança\)\n/)
+    assert.match(composeMessage({ title: "Ficha para o admin", commits, head, changes, today: "x" }), /^Ficha para o admin\n\n- Primeiro \(aaaa1111\)\n  Corpo/)
+    assert.ok(!composeMessage({ commits, head, changes, today: "x", withBodies: false }).includes("Corpo"))
+  })
+
+  test(`acima de ${FULL_BODY_LIMIT} commits, cada item leva só o primeiro parágrafo do corpo`, () => {
+    const commits = Array.from({ length: FULL_BODY_LIMIT + 1 }, (_, index) => commit(`${index}`.padStart(8, "a"), `fix: item ${index}`, "Problema.\n\nDetalhe longo."))
+    const message = composeMessage({ commits, head, changes, today: "x" })
+    assert.ok(message.includes("  Problema."))
+    assert.ok(!message.includes("Detalhe longo."))
+  })
+
+  test("sem saber o que entrou (primeiro envio ou commit anterior ausente), título com a data e o aviso", () => {
+    const message = composeMessage({ commits: null, head, changes: [], today: "14/10/2026" })
+    assert.match(message, /^Atualiza o código da INIA \(14\/10\/2026\)\n\nOs commits locais desde a publicação anterior não foram identificados\./)
+    assert.equal(publishedLocalCommit(message), "7dfe6516")
+  })
+
+  test("a mensagem passa pela conferência de segredos sem devolver o trecho", () => {
+    const message = composeMessage({ commits: [commit("aaaa1111", "fix: senha", `Testado com ${FAKE_SECRET} e ${FAKE_GOOGLE_KEY}.`)], head, changes, today: "x" })
+    const leaks = messageLeaks(message, [{ key: "INIA_DEMO_PASSWORD", value: FAKE_SECRET, source: "backend/.env" }])
+    assert.deepEqual(leaks, ["o valor de INIA_DEMO_PASSWORD (backend/.env)", "chave de API do Google (AIza…)"])
+    assert.ok(!JSON.stringify(leaks).includes(FAKE_SECRET))
+    assert.deepEqual(messageLeaks(composeMessage({ commits: [commit("aaaa1111", "fix: nada")], head, changes, today: "x" }), [{ key: "K", value: FAKE_SECRET }]), [])
+  })
 })

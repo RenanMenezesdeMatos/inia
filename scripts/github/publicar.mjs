@@ -12,7 +12,12 @@
 //   npm run github:publish                     monta, confere, mostra o resumo, pergunta e envia
 //   npm run github:publish -- --simular        monta, confere e mostra o resumo; não envia nada
 //   npm run github:publish -- --verificar      antes de perguntar, roda typecheck, lint e testes numa cópia do snapshot
-//   npm run github:publish -- -m "mensagem"    mensagem do commit no GitHub (padrão: "Atualiza o código da INIA (data)")
+//   npm run github:publish -- -m "título"      título do commit no GitHub (o corpo continua listando os commits locais)
+//   npm run github:publish -- --sem-corpo      lista só o assunto de cada commit local, sem o corpo
+//
+// A mensagem do commit no GitHub conta o que mudou: um item por commit local desde a publicação anterior (o script grava
+// "commit local <sha>" em cada envio e lê de volta no seguinte), com o corpo dele. Ela também sai do computador, então
+// passa pela mesma conferência de valores dos .env e padrões de chave que o snapshot.
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs"
@@ -129,6 +134,14 @@ export function matchesPattern(regex, path) {
   if (regex.test(path)) return true
   for (let slash = path.indexOf("/"); slash !== -1; slash = path.indexOf("/", slash + 1)) if (regex.test(path.slice(0, slash))) return true
   return false
+}
+
+/** "Este caminho fica de fora do snapshot": casa com uma regra e com nenhuma exceção — o mesmo critério de buildSnapshot. */
+export function excludedPath({ rules, exceptions }) {
+  const ruleRegexes = rules.map(globToRegExp)
+  const exceptionRegexes = exceptions.map(globToRegExp)
+  const matchesAny = (regexes, path) => regexes.some((regex) => matchesPattern(regex, path))
+  return (path) => matchesAny(ruleRegexes, path) && !matchesAny(exceptionRegexes, path)
 }
 
 /**
@@ -309,6 +322,86 @@ export function findKeyPatterns(cwd, tree, allowed = new Set()) {
   })
 }
 
+/** O commit local que uma publicação copiou, lido da mensagem dela ("Cópia do código do commit local <sha>, …"). */
+export function publishedLocalCommit(message) {
+  return /commit local ([0-9a-f]{7,40})\b/.exec(message ?? "")?.[1] ?? null
+}
+
+/** "fix(perfil): ficha indisponível …" → "Ficha indisponível …": no GitHub os títulos são frases, sem o tipo do commit. */
+export function cleanSubject(subject) {
+  const text = subject.replace(/^(feat|fix|docs|test|chore|perf|refactor|style|build|ci|revert)(\([^)]*\))?!?:\s*/, "").trim()
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** Corpo do commit sem os trailers (Co-Authored-By, Signed-off-by…). */
+export function commitBody(body) {
+  return body
+    .split("\n")
+    .filter((line) => !/^[A-Za-z][A-Za-z-]*-[Bb]y:\s/.test(line))
+    .join("\n")
+    .trim()
+}
+
+/**
+ * Commits locais entre a publicação anterior e o HEAD, do mais antigo ao mais novo, sem os merges. Os que só mexem no
+ * que fica de fora do snapshot (manuais, resultados de benchmark…) não são citados, só contados em `skipped`.
+ */
+export function localCommitsSince(cwd, since, head, isExcluded) {
+  const log = git(cwd, ["log", "--no-merges", "--reverse", "--format=%H%x00%s%x00%b%x1e", `${since}..${head}`]).stdout
+  const commits = []
+  let skipped = 0
+  for (const record of log.split("\x1e")) {
+    const [sha, subject, body = ""] = record.replace(/^\n/, "").split("\0")
+    if (!sha) continue
+    const paths = splitNul(git(cwd, ["diff-tree", "--no-commit-id", "-r", "--name-only", "-z", "--root", sha]).stdout)
+    if (paths.length > 0 && paths.every(isExcluded)) skipped += 1
+    else commits.push({ sha, subject, body: commitBody(body) })
+  }
+  return { commits, skipped }
+}
+
+/** Acima disso cada item leva só o primeiro parágrafo do corpo, para a mensagem continuar legível. */
+export const FULL_BODY_LIMIT = 10
+
+/**
+ * Mensagem do commit no GitHub. Título: o `title` (-m) ou o assunto do primeiro commit local ("… (+N mudanças)" quando
+ * há mais). Corpo: um item por commit local com o corpo dele, o resumo dos arquivos e a origem — "commit local <sha>",
+ * que a próxima publicação lê para saber de onde partir. `commits` null = não deu para saber o que entrou desde a
+ * publicação anterior (primeiro envio, ou o commit dela não existe neste repositório).
+ */
+export function composeMessage({ title = null, commits, skipped = 0, head, changes, today, withBodies = true }) {
+  const subjects = (commits ?? []).map(({ subject }) => cleanSubject(subject))
+  const more = subjects.length - 1
+  const heading =
+    title ?? (subjects.length === 0 ? `Atualiza o código da INIA (${today})` : more === 0 ? subjects[0] : `${subjects[0]} (+${more} ${more === 1 ? "mudança" : "mudanças"})`)
+
+  const sections = []
+  if (commits === null) sections.push("Os commits locais desde a publicação anterior não foram identificados.")
+  const fullBodies = (commits?.length ?? 0) <= FULL_BODY_LIMIT
+  for (const [index, { sha, body }] of (commits ?? []).entries()) {
+    const text = !withBodies || !body ? "" : fullBodies ? body : body.split(/\n\s*\n/)[0]
+    const indented = text ? text.split("\n").map((line) => (line.trim() ? `  ${line}` : "")) : []
+    sections.push([`- ${subjects[index]} (${sha.slice(0, 8)})`, ...indented].join("\n"))
+  }
+  if (skipped > 0) sections.push(`Mais ${skipped} commit(s) local(is) que só mexem no que fica de fora da publicação.`)
+
+  const count = (status) => changes.filter((change) => (status === "M" ? change.status !== "A" && change.status !== "D" : change.status === status)).length
+  sections.push(`Arquivos: ${count("A")} novo(s), ${count("M")} alterado(s), ${count("D")} removido(s).`)
+  sections.push(`Cópia do código do commit local ${head.slice(0, 8)}, sem o histórico local e sem o que ${EXCLUSIONS_FILE} exclui.`)
+  return `${heading}\n\n${sections.join("\n\n")}\n`
+}
+
+/**
+ * A mensagem também sai do computador (e os commits locais antigos chegaram a guardar senhas de demo): devolve o que nela
+ * casa com um valor dos .env ou com um padrão de chave, sem nunca devolver o trecho.
+ */
+export function messageLeaks(message, secrets) {
+  const leaks = new Set()
+  for (const { key, value, source } of secrets) if (message.includes(value)) leaks.add(`o valor de ${source ? `${key} (${source})` : key}`)
+  for (const { name, regex } of KEY_PATTERNS) if (new RegExp(regex, "m").test(message)) leaks.add(name)
+  return [...leaks]
+}
+
 /** Nomes alterados entre duas árvores (A, M, D, T). */
 export function diffNames(cwd, fromTree, toTree) {
   const parts = splitNul(git(cwd, ["diff-tree", "-r", "-z", "--no-renames", "--name-status", fromTree, toTree]).stdout)
@@ -332,17 +425,18 @@ export function formatBytes(bytes) {
 }
 
 function parseArgs(argv) {
-  const options = { dryRun: false, verify: false, full: false, message: null, help: false }
+  const options = { dryRun: false, verify: false, full: false, title: null, withBodies: true, help: false }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === "--simular" || arg === "--dry-run") options.dryRun = true
     else if (arg === "--verificar") options.verify = true
     else if (arg === "--completo") options.full = true
+    else if (arg === "--sem-corpo") options.withBodies = false
     else if (arg === "-h" || arg === "--ajuda" || arg === "--help") options.help = true
-    else if (arg === "-m" || arg === "--mensagem") {
-      options.message = argv[index + 1]
+    else if (arg === "-m" || arg === "--mensagem" || arg === "--titulo") {
+      options.title = argv[index + 1]?.trim()
       index += 1
-      if (!options.message?.trim()) throw new PublishError(`${arg} precisa de um texto`)
+      if (!options.title) throw new PublishError(`${arg} precisa de um texto`)
     } else throw new PublishError(`opção desconhecida: ${arg} (veja --ajuda)`)
   }
   return options
@@ -353,8 +447,11 @@ const HELP = `Publica o código atual no repositório privado ${REPOSITORY} (${B
   npm run github:publish                     monta, confere, mostra o resumo, pergunta e envia
   npm run github:publish -- --simular        só monta, confere e mostra o resumo (nada é enviado)
   npm run github:publish -- --verificar      também roda typecheck, lint e testes numa cópia do snapshot
-  npm run github:publish -- --completo       lista todas as mudanças no resumo, sem cortar
-  npm run github:publish -- -m "mensagem"    mensagem do commit no GitHub
+  npm run github:publish -- --completo       lista todas as mudanças e a mensagem inteira no resumo, sem cortar
+  npm run github:publish -- -m "título"      título do commit no GitHub (o corpo continua listando os commits locais)
+  npm run github:publish -- --sem-corpo      a mensagem lista só o assunto de cada commit local
+
+A mensagem do commit lista os commits locais desde a publicação anterior, com o corpo de cada um.
 
 O que fica de fora: ${EXCLUSIONS_FILE}.`
 
@@ -388,6 +485,7 @@ function fetchRemoteMain() {
     commit,
     tree: git(ROOT, ["rev-parse", `${commit}^{tree}`]).stdout.trim(),
     date: git(ROOT, ["log", "-1", "--format=%cd", "--date=format:%d/%m/%Y %H:%M", commit]).stdout.trim(),
+    message: git(ROOT, ["log", "-1", "--format=%B", commit]).stdout,
   }
 }
 
@@ -502,6 +600,20 @@ async function main(argv) {
   printList(removedFiles, 100, options.full)
   printList(modified, 40, options.full)
 
+  // O que entrou desde a publicação anterior: o commit local que ela copiou precisa existir aqui.
+  const since = remote ? publishedLocalCommit(remote.message) : null
+  const known = since !== null && git(ROOT, ["cat-file", "-e", `${since}^{commit}`], { allowFailure: true }).status === 0
+  const local = known ? localCommitsSince(ROOT, since, head, excludedPath(exclusions)) : { commits: null, skipped: 0 }
+  const message = composeMessage({
+    title: options.title,
+    commits: local.commits,
+    skipped: local.skipped,
+    head,
+    changes,
+    today: new Date().toLocaleDateString("pt-BR"),
+    withBodies: options.withBodies,
+  })
+
   console.log("\nConferência de segredos")
   const problems = []
   const sensitive = sensitiveFiles(snapshot.files.map(({ path }) => path))
@@ -529,6 +641,12 @@ async function main(argv) {
     )
   }
 
+  const messageProblems = messageLeaks(message, secrets.searchable)
+  if (messageProblems.length === 0) console.log("  ✓ mensagem do commit sem valores dos .env nem padrões de chave")
+  for (const leak of messageProblems) {
+    problems.push(`a mensagem do commit (montada dos commits locais) traz ${leak} — publique com --sem-corpo, ou com -m se estiver no título`)
+  }
+
   if (problems.length > 0) {
     throw new PublishError(`nada foi enviado — a conferência de segredos barrou o snapshot:\n${problems.map((problem) => `  ✗ ${problem}`).join("\n")}`)
   }
@@ -537,6 +655,10 @@ async function main(argv) {
     console.log("\nO main do GitHub já tem exatamente este código — nada a publicar.")
     return
   }
+
+  // Só depois da conferência: a mensagem nunca vai para a tela com um segredo dentro.
+  console.log(`\nMensagem do commit${local.commits ? ` — ${formatCount(local.commits.length)} commit(s) local(is) desde ${since.slice(0, 8)}` : ""}`)
+  printList(message.trimEnd().split("\n"), 60, options.full)
 
   if (options.verify) runVerification(snapshot.tree)
 
@@ -551,10 +673,6 @@ async function main(argv) {
     return
   }
 
-  const today = new Date().toLocaleDateString("pt-BR")
-  const message =
-    options.message ??
-    `Atualiza o código da INIA (${today})\n\nCópia do código do commit local ${head.slice(0, 8)}, sem o histórico local e sem o que ${EXCLUSIONS_FILE} exclui.\n`
   const commit = git(ROOT, ["commit-tree", snapshot.tree, ...(remote ? ["-p", remote.commit] : []), "-F", "-"], { input: message }).stdout.trim()
   // Garantia de que só vai um commit: os pais dele são exatamente o main do GitHub (ou nenhum, no primeiro envio).
   const parents = git(ROOT, ["rev-list", "--parents", "-n", "1", commit]).stdout.trim().split(" ").slice(1)
