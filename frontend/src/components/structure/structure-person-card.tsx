@@ -4,12 +4,12 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowUp, ChevronDown, CircleHelp, Footprints, Network, ShieldAlert, UserRound } from "lucide-react"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { formatCount, initials } from "@/lib/analytics/format"
+import { formatCount } from "@/lib/analytics/format"
 import { cn } from "@/lib/utils"
 import { ROLE_PLURAL_LABELS, ROLE_UNIT_LABELS, STRUCTURE_STATUS_BUCKET_LABELS, type ManagementMetrics, type StructurePerson } from "@/schemas/org-structure/person-structure.schema"
 
@@ -118,10 +118,7 @@ export function StructurePersonCard({ person, expanded, variant = "node", isView
           aria-label={`Ver detalhes de ${person.name}${expanded ? " (selecionada)" : ""}${pathNext ? `. ${person.roleLabel}. ${VIEWER_PATH_TOOLTIP}` : ""}`}
           className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-muted", !root && "min-h-[3.75rem]")}
         >
-          <Avatar className={cn("shrink-0", root ? "size-16" : "size-11")}>
-            <AvatarImage src={person.avatarUrl ?? undefined} alt={person.name} />
-            <AvatarFallback className={root ? "text-base" : "text-xs"}>{initials(person.name)}</AvatarFallback>
-          </Avatar>
+          <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className={cn("shrink-0", root ? "size-16" : "size-11")} fallbackClassName={root ? "text-base" : "text-xs"} />
           <span className="min-w-0 flex-1">
             <span className={cn("flex items-center gap-1.5 leading-tight", root ? "text-lg font-semibold" : "text-sm font-medium")}>
               <span className="truncate">{person.name}</span>
@@ -364,10 +361,7 @@ function ReportsToSection({ manager, note, onOpenStructure }: { manager: Structu
   return (
     <div className="flex items-center gap-2.5" data-testid="reports-to">
       <button type="button" onClick={canOpen ? () => onOpenStructure(manager.personId) : undefined} disabled={!canOpen} aria-label={canOpen ? `Abrir estrutura de ${manager.name}` : `${manager.name}, ${title}`} className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", canOpen ? "hover:bg-muted/40" : "cursor-default")}>
-        <Avatar className="size-9 shrink-0">
-          <AvatarImage src={manager.avatarUrl ?? undefined} alt={manager.name} />
-          <AvatarFallback className="text-[10px]">{initials(manager.name)}</AvatarFallback>
-        </Avatar>
+        <PersonAvatar name={manager.name} avatarUrl={manager.avatarUrl} className="size-9 shrink-0" fallbackClassName="text-[10px]" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-medium">{manager.name}</span>
           <span className="block truncate text-[11px] text-muted-foreground">{title}</span>
@@ -403,10 +397,7 @@ function ManagerCard({ person, isViewer, arrived, viewerPath, onOpenStructure, c
         title={canOpen ? "Subir um nível" : undefined}
         className={cn("flex min-h-[4.5rem] w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-muted", canOpen ? "hover:bg-muted/40" : "cursor-default")}
       >
-        <Avatar className="size-10 shrink-0">
-          <AvatarImage src={person.avatarUrl ?? undefined} alt={person.name} />
-          <AvatarFallback className="text-xs">{initials(person.name)}</AvatarFallback>
-        </Avatar>
+        <PersonAvatar name={person.name} avatarUrl={person.avatarUrl} className="size-10 shrink-0" fallbackClassName="text-xs" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5 text-sm font-medium leading-tight">
             <span className="truncate">{person.name}</span>

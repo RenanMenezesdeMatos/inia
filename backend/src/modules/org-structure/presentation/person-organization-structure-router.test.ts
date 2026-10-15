@@ -26,6 +26,7 @@ function appAs(user: AuthTokenPayload | null) {
       analytics: new InMemoryAnalyticsRepository(org),
       hierarchy: inMemoryHierarchyReader(org.people.map((node) => ({ ...node }))),
       corporateEmails: async (ids) => new Map(ids.map((id) => [id, `${id}@inia.com`])),
+      personAvatars: async () => new Map(),
       structureFreshness: async () => ({ state: "UNKNOWN", configured: false, feeds: [], consideredFeedIds: [], lastSuccessAt: null, lastDataAt: null, lastSuccessLocalDate: null }),
     }),
   )

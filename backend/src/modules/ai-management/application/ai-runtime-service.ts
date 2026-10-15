@@ -3,7 +3,7 @@ import { beforeLlmCall, countTechnicalIdsInPrompt, EMPTY_USAGE, hasLlmTelemetryS
 import { observedCacheRecord } from "../../../shared/application/model-routing/cache-record.js"
 import { AiBudgetExceededError, AiCallCancelledError, AiProviderError, canFallbackOn, type AiErrorCategory } from "../../../shared/application/model-routing/ai-errors.js"
 import type { AiRuntime, AiUsageEventInput, PolicyExecutionRequest, PolicyExecutionResult, PolicySpeechRequest, PolicySpeechResult, PolicyStreamRequest, ResolvedAiRoute, SpeechCacheIdentity } from "../../../shared/application/model-routing/ai-runtime.js"
-import { currentAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
+import { currentAiRequesterPersonId, currentAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { currentAiCallLimiterRecord } from "../../../shared/application/model-routing/ai-call-limiter.js"
 import { connectionGateKey, providerCallGate, runThroughProviderGate } from "../../../shared/application/model-routing/provider-call-gate.js"
 import { findUseCase, type AiUseCaseKey } from "../../../shared/application/model-routing/ai-use-cases.js"
@@ -196,7 +196,8 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
     try {
       // V1.5.13 — ponto ÚNICO de registro: a execução de Workflow em curso (contexto do motor) vai junto, sem heurística.
       // Capacidade (migration 121): classe, espera na fila e motivo desta tentativa, do limitador de chamadas.
-      await insertUsageEvent(db, { ...row, workflow: row.workflow ?? currentAiWorkflowCorrelation(), limiter: row.limiter ?? currentAiCallLimiterRecord() })
+      // Quem pediu (migration 143): a pessoa da sessão do request, do mesmo contexto assíncrono que já trazia a organização.
+      await insertUsageEvent(db, { ...row, workflow: row.workflow ?? currentAiWorkflowCorrelation(), limiter: row.limiter ?? currentAiCallLimiterRecord(), requesterPersonId: row.requesterPersonId ?? currentAiRequesterPersonId() })
       if (row.organizationId && row.cost !== null && parseDecimal(row.cost) > 0n) afterCostlyEvent(row.organizationId)
     } catch (error) {
       // Nunca derruba a chamada de IA por falha de registro; a falha fica no log (sem conteúdo).

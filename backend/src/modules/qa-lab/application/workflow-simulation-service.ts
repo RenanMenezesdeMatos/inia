@@ -3,7 +3,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { EnrollmentRow, WorkflowScope } from "../../workflows/application/node-handlers.js"
 import { flowGraphSchema, type HumanReviewDecision } from "../../workflows/domain/graph-schema.js"
 import type { PersistedWorkflowState, QaTrace, WorkflowSimulationInput, WorkflowSimulationState, WorkflowSnapshot } from "../domain/qa-run-schema.js"
-import { buildSimulatedEnrollment, captureWorkflowSnapshot, loadWorkflowForSimulation, resolveSimulationGraph, rowFromSnapshot, type FrozenEvidence } from "./build-simulated-enrollment.js"
+import { buildSimulatedEnrollment, captureWorkflowSnapshot, loadWorkflowForSimulation, resolveSimulationGraph, rowFromSnapshot, withSimulationConfiguration, type FrozenEvidence } from "./build-simulated-enrollment.js"
 import { graphNeedsTranscript } from "./interaction-evidence.js"
 import { getQaRun, insertQaRun, statusFromState, updateQaRun, type QaRunRecord } from "./qa-run-repository.js"
 import { createReadOnlyDatabase } from "./read-only-database.js"
@@ -92,9 +92,10 @@ export type PreviousRun = { snapshot: WorkflowSnapshot; frozen?: FrozenEvidence 
 export async function startWorkflowSimulation(db: Database, organizationId: string, input: WorkflowSimulationInput, executedBy: string, previous?: PreviousRun): Promise<QaRunRecord> {
   const readDb = createReadOnlyDatabase(db)
   const fromSnapshot = previous?.snapshot
-  const row = fromSnapshot ? rowFromSnapshot(fromSnapshot) : await loadWorkflowForSimulation(readDb, organizationId, input.workflowId)
-  if (!row) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
-  const { graph, source } = resolveSimulationGraph(row, fromSnapshot ? fromSnapshot.workflowState : input.graphSource)
+  const loaded = fromSnapshot ? rowFromSnapshot(fromSnapshot) : await loadWorkflowForSimulation(readDb, organizationId, input.workflowId)
+  if (!loaded) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
+  const { graph, source } = resolveSimulationGraph(loaded, fromSnapshot ? fromSnapshot.workflowState : input.graphSource)
+  const row = fromSnapshot ? loaded : withSimulationConfiguration(loaded, source)
   const snapshot = fromSnapshot ?? captureWorkflowSnapshot(row, graph, source, new Date())
   const simulatedNow = input.simulatedNow ? new Date(input.simulatedNow) : new Date()
   const simulated = await buildSimulatedEnrollment(

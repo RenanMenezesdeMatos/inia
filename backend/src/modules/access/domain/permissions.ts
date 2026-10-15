@@ -16,6 +16,9 @@ export const PERMISSIONS = {
   "data_hub.manage": "Administrar a Central de Dados e cargas",
   "ai.view": "Ver configuração, uso e custo de IA",
   "ai.manage": "Administrar provedores, modelos, roteamento e orçamentos de IA",
+  // Ranking "Quem mais usa" (IA / Modelos): nomes de líderes, Grupos e Subgrupos com o uso de IA da estrutura deles. Concessão
+  // SEPARADA de `ai.view`/`ai.manage` (nunca derivada delas) e sempre recortada pelo escopo — fora dele, nem nome nem número.
+  "ai.usage_ranking.view": "Ver quem mais usa a IA por estrutura (Diretoria, Gerência, Grupo, Subgrupo, Supervisor), só no escopo",
   "qa_lab.use": "Usar o QA Lab (testes isolados de Agents, Orquestradores e Workflows)",
   // V1.5.8 — visões AMPLIADAS (além da própria estrutura por reports_to, que continua sendo regra operacional de quem lidera):
   "indicators.view": "Ver Indicadores e Equipe de colaboradores do escopo (além da própria estrutura)",

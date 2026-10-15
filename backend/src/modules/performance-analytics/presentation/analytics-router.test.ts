@@ -5,6 +5,7 @@ import { ZodError } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
+import type { PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import type { FollowUpItem } from "../domain/view-models.js"
 import { fixtureOrg, IDS } from "../testing/fixture-org.js"
 import { InMemoryAnalyticsRepository, ORG, person, type InMemoryOrg } from "../testing/in-memory-analytics-repository.js"
@@ -14,7 +15,7 @@ const noDatabase = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown
 
 /** App mínimo com o mesmo error handler de app.ts e uma sessão injetada por header — testa o
  * router (parsing, escopo, mapeamento de erro) sem depender de JWT/cookie nem de Postgres. */
-function appAs(user: AuthTokenPayload | null, org: InMemoryOrg = fixtureOrg()) {
+function appAs(user: AuthTokenPayload | null, org: InMemoryOrg = fixtureOrg(), personAvatars?: PersonAvatarLoader) {
   const app = express()
   app.use((requestObject, _response, next) => {
     if (user) requestObject.user = user
@@ -22,7 +23,7 @@ function appAs(user: AuthTokenPayload | null, org: InMemoryOrg = fixtureOrg()) {
   })
   app.use("/analytics", (requestObject, response, next) => (requestObject.user ? next() : response.status(401).json({ error: { code: "UNAUTHENTICATED" } })), // Relógio em outubro: a fixture fecha em 2026-09 e o guard central do fechamento oficial só
   // enxerga competências <= último mês fechado (em 15/09, setembro NÃO seria fechamento).
-  createAnalyticsRouter(noDatabase, new InMemoryAnalyticsRepository(org), () => new Date("2026-10-05T12:00:00Z")))
+  createAnalyticsRouter(noDatabase, new InMemoryAnalyticsRepository(org), () => new Date("2026-10-05T12:00:00Z"), personAvatars))
   const errorHandler: ErrorRequestHandler = (error, _request, response, next) => {
     if (error instanceof DomainError) return response.status(error.statusCode).json({ error: { code: error.code, message: error.message } })
     if (error instanceof ZodError) return response.status(400).json({ error: { code: "VALIDATION_ERROR" } })
@@ -185,5 +186,59 @@ describe("GET /analytics/follow-ups — feed da estrutura por cursor", () => {
     const invalid = await request(app).get("/analytics/follow-ups?cursor=bm9wZQ")
     expect(invalid.status).toBe(400)
     expect(invalid.body.error.code).toBe("INVALID_CURSOR")
+  })
+})
+
+describe("GET /analytics — foto das pessoas pela apresentação", () => {
+  /** Imagens do cadastro do cliente (as que o grafo em cache traz) e fotos escolhidas no perfil (`person_profile_preferences`). */
+  const REGISTERED: Record<string, string> = { [IDS.managerA]: "https://cdn.cliente/roberto.jpg", [IDS.managerB]: "https://cdn.cliente/roberta.jpg", [IDS.op1]: "https://cdn.cliente/ana.jpg", [IDS.op2]: "https://cdn.cliente/bia.jpg" }
+  const PROFILE: Record<string, string> = { [IDS.managerA]: "/api/v1/profile-images/foto-roberto", [IDS.op1]: "/api/v1/profile-images/foto-ana" }
+
+  function setup(viewer: AuthTokenPayload) {
+    const org = fixtureOrg()
+    org.people = org.people.map((node) => ({ ...node, avatarUrl: REGISTERED[node.id] ?? null }))
+    const calls: string[][] = []
+    // Como a apresentação real: personalizada > corporativa > nenhuma.
+    const loader: PersonAvatarLoader = async (organizationId, ids) => {
+      expect(organizationId).toBe(ORG)
+      calls.push(ids)
+      return new Map(ids.map((id) => [id, PROFILE[id] ?? REGISTERED[id] ?? null]))
+    }
+    return { app: appAs(viewer, org, loader), calls }
+  }
+  const avatars = (people: { personId: string; avatarUrl: string | null }[]) => Object.fromEntries(people.map((person) => [person.personId, person.avatarUrl]))
+
+  it("Equipe/Estrutura: o líder de cada unidade vem com a foto do perfil (senão a do cadastro), numa leitura em lote por request", async () => {
+    const { app, calls } = setup(user(IDS.senior, "SENIOR_MANAGER"))
+    const response = await request(app).get("/analytics/team?period=2026-09")
+    expect(response.status).toBe(200)
+    const leaders = response.body.data.units.map((unit: { leader: { personId: string; avatarUrl: string | null } }) => unit.leader)
+    expect(avatars(leaders)).toEqual({ [IDS.managerA]: "/api/v1/profile-images/foto-roberto", [IDS.managerB]: "https://cdn.cliente/roberta.jpg" })
+    expect(calls).toEqual([leaders.map((leader: { personId: string }) => leader.personId)])
+
+    // Equipe de operadores (sem unidades): nenhuma leitura de foto — os membros vêm pela rota paginada.
+    const supervisor = setup(user(IDS.vanessa, "SUPERVISOR"))
+    expect((await request(supervisor.app).get("/analytics/team?period=2026-09")).body.data.units).toEqual([])
+    expect(supervisor.calls).toEqual([])
+  })
+
+  it("membros da equipe: foto do perfil vence a do cadastro e só as pessoas da PÁGINA são lidas, uma vez", async () => {
+    const { app, calls } = setup(user(IDS.vanessa, "SUPERVISOR"))
+    const all = await request(app).get("/analytics/team/members?period=2026-09&sort=name")
+    expect(avatars(all.body.data.items)).toEqual({ [IDS.op1]: "/api/v1/profile-images/foto-ana", [IDS.op2]: "https://cdn.cliente/bia.jpg" })
+    expect(calls).toEqual([[IDS.op1, IDS.op2]])
+
+    const firstPage = await request(app).get("/analytics/team/members?period=2026-09&sort=name&pageSize=1")
+    expect(firstPage.body.data.total).toBe(2)
+    expect(calls.at(-1)).toEqual([firstPage.body.data.items[0].personId])
+  })
+
+  it("membros de um indicador: foto do perfil vence a do cadastro, uma leitura em lote por request", async () => {
+    const { app, calls } = setup(user(IDS.vanessa, "SUPERVISOR"))
+    const response = await request(app).get("/analytics/indicators/NOTA_URA/members?period=2026-09")
+    expect(response.status).toBe(200)
+    expect(avatars(response.body.data.items)).toEqual({ [IDS.op1]: "/api/v1/profile-images/foto-ana", [IDS.op2]: "https://cdn.cliente/bia.jpg" })
+    expect(calls).toHaveLength(1)
+    expect([...calls[0]!].sort()).toEqual([IDS.op1, IDS.op2])
   })
 })

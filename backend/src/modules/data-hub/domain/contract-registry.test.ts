@@ -3,7 +3,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import { WRITER_CONTRACT_KEYS } from "../application/writers/writer-registry.js"
-import { contractOrder, DATA_CONTRACT_KEYS, DATA_CONTRACTS, findDataContract, requireDataContract } from "./contract-registry.js"
+import { contractOrder, DATA_CONTRACT_KEYS, DATA_CONTRACTS, findDataContract, PREVIOUS_DATA_CONTRACT_VERSIONS, requireDataContract } from "./contract-registry.js"
 import { DATA_RECORD_ERROR_CODES, DATA_RUN_ERROR_CODES } from "./error-codes.js"
 import { mapRecord } from "./mapping.js"
 import { computeFreshness, expectedIntervalMinutes, nextSyncAt } from "./freshness.js"
@@ -32,8 +32,22 @@ describe("registro de contratos", () => {
     expect(() => requireDataContract("NOPE")).toThrow(/não existe/)
   })
 
+  it("versões anteriores continuam resolvíveis para feeds e cargas antigos; sem versão = a atual", () => {
+    expect(findDataContract("EMPLOYEE_ABSENCES")?.version).toBe(2)
+    expect(findDataContract("EMPLOYEE_ABSENCES", 2)?.fields.map((field) => field.key)).toContain("active")
+    expect(findDataContract("EMPLOYEE_ABSENCES", 1)?.fields.map((field) => field.key)).toEqual(["externalEmployeeId", "type", "startDate", "endDate", "sourceUpdatedAt"])
+    expect(findDataContract("EMPLOYEE_ABSENCES", 3)).toBeUndefined()
+    for (const previous of PREVIOUS_DATA_CONTRACT_VERSIONS) {
+      const current = requireDataContract(previous.key)
+      expect(previous.version, `${previous.key}@${previous.version} precisa ser anterior à atual`).toBeLessThan(current.version)
+      expect(current.naturalKey, `${previous.key}: a identidade não muda entre versões`).toEqual(previous.naturalKey)
+      // Evolução compatível: todo campo da versão anterior continua na atual com o mesmo tipo (feed antigo remapeado não perde nada).
+      for (const field of previous.fields) expect(current.fields.find((entry) => entry.key === field.key)?.type, `${previous.key}.${field.key}`).toBe(field.type)
+    }
+  })
+
   it("os exemplos de cada contrato passam pelo próprio contrato (mapping identidade)", () => {
-    for (const contract of DATA_CONTRACTS) {
+    for (const contract of [...DATA_CONTRACTS, ...PREVIOUS_DATA_CONTRACT_VERSIONS]) {
       const mapping = { fields: contract.fields.map((field) => ({ target: field.key, source: field.key, transforms: [] })) }
       for (const example of contract.examples) {
         const { errors } = mapRecord(contract, mapping, example, { timeZone: "America/Fortaleza" })

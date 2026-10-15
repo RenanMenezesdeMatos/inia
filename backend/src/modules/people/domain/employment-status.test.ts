@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { addDaysToDate, EMPLOYMENT_STATUS_LABELS, EMPLOYMENT_STATUSES, employmentStatusOn, findOverlap, isOperationallyEligibleStatus, LEGACY_EMPLOYMENT_STATUS_MAP, NON_ELIGIBLE_EMPLOYMENT_STATUSES, normalizeEmploymentStatus, resolveStatusBasis, toCanonicalEmploymentStatus } from "./employment-status.js"
+import { addDaysToDate, EMPLOYMENT_STATUS_LABELS, EMPLOYMENT_STATUSES, employmentStatusOn, findOverlap, isOperationallyEligibleStatus, LEGACY_EMPLOYMENT_STATUS_MAP, NON_ELIGIBLE_EMPLOYMENT_STATUSES, normalizeEmploymentStatus, planStatusPeriodCancellation, resolveStatusBasis, toCanonicalEmploymentStatus, type StatusPeriod } from "./employment-status.js"
 
 describe("situação funcional — domínio (nove situações reais)", () => {
   it("as nove situações existem com rótulos em pt-BR", () => {
@@ -54,5 +54,87 @@ describe("situação funcional — domínio (nove situações reais)", () => {
     expect(findOverlap([{ effectiveFrom: "2026-09-01", effectiveTo: null }, { effectiveFrom: "2026-09-09", effectiveTo: null }])).toEqual([0, 1])
     expect(addDaysToDate("2026-09-30", 1)).toBe("2026-10-01")
     expect(addDaysToDate("2026-09-01", -1)).toBe("2026-08-31")
+  })
+})
+
+describe("cancelamento de período pela fonte — o que volta a valer nos dias liberados", () => {
+  let next = 0
+  const period = (status: StatusPeriod["status"], effectiveFrom: string, effectiveTo: string | null, extra: Partial<StatusPeriod> = {}): StatusPeriod => ({
+    id: `p${(next += 1)}`,
+    personId: "pessoa",
+    status,
+    rawStatus: null,
+    legacyStatus: null,
+    effectiveFrom,
+    effectiveTo,
+    effectiveFromInferred: false,
+    effectiveToExplicit: false,
+    authoritative: true,
+    observedAt: "2026-09-01 12:00:00+00",
+    sourceUpdatedAt: null,
+    source: "rh",
+    sourceReference: "OP-1",
+    ...extra,
+  })
+  const summary = (plan: ReturnType<typeof planStatusPeriodCancellation>) => ({
+    removed: plan.remove.map((entry) => entry.id),
+    restore: plan.restore ? { id: plan.restore.period.id, effectiveTo: plan.restore.effectiveTo, mergedWith: plan.restore.mergedWith?.id ?? null } : null,
+  })
+
+  it("férias que dividiram o EM PRODUÇÃO do cadastro: cancelar junta as duas metades (como se as férias nunca tivessem chegado)", () => {
+    const before = period("EM_PRODUCAO", "2026-01-05", "2026-10-04")
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true, source: "rh-ausencias", observedAt: "2026-09-30 12:00:00+00" })
+    const after = period("EM_PRODUCAO", "2026-10-15", null)
+    expect(summary(planStatusPeriodCancellation([before, vacation, after], vacation))).toEqual({ removed: [vacation.id, after.id], restore: { id: before.id, effectiveTo: null, mergedWith: after.id } })
+  })
+
+  it("metade posterior renovada por snapshot depois (outra observação) também volta a ser uma só quando o fim anterior não veio da fonte", () => {
+    const before = period("EM_PRODUCAO", "2026-01-05", "2026-10-04")
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const after = period("EM_PRODUCAO", "2026-10-15", null, { observedAt: "2026-10-16 12:00:00+00" })
+    expect(summary(planStatusPeriodCancellation([before, vacation, after], vacation)).removed).toEqual([vacation.id, after.id])
+  })
+
+  it("ausência em aberto: o período anterior, fechado só porque ela começou, volta a ficar em aberto", () => {
+    const before = period("EM_PRODUCAO", "2026-01-05", "2026-10-04")
+    const leave = period("INSS", "2026-10-05", null, { effectiveFromInferred: false })
+    expect(summary(planStatusPeriodCancellation([before, leave], leave))).toEqual({ removed: [leave.id], restore: { id: before.id, effectiveTo: null, mergedWith: null } })
+  })
+
+  it("situação diferente depois da ausência: o anterior vale até a véspera da próxima situação registrada — o início dela nunca é antecipado", () => {
+    const before = period("EM_PRODUCAO", "2026-01-05", "2026-10-04")
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const transfer = period("TRANSFERIDO", "2026-10-20", null)
+    expect(summary(planStatusPeriodCancellation([transfer, vacation, before], vacation))).toEqual({ removed: [vacation.id], restore: { id: before.id, effectiveTo: "2026-10-19", mergedWith: null } })
+  })
+
+  it("fim informado pela fonte é respeitado: anterior explícito não cresce, e os dias ficam presumidos (EM PRODUÇÃO, não confirmado)", () => {
+    const leave = period("INSS", "2026-08-01", "2026-10-04", { effectiveToExplicit: true, observedAt: "2026-07-30 12:00:00+00" })
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const plan = planStatusPeriodCancellation([leave, vacation], vacation)
+    expect(summary(plan)).toEqual({ removed: [vacation.id], restore: null })
+    expect(resolveStatusBasis([leave], "2026-10-07")).toMatchObject({ status: "EM_PRODUCAO", basis: "PRESUMED_AFTER_PERIOD", confirmed: false })
+  })
+
+  it("período explícito dividido pela ausência volta inteiro só quando a metade posterior é a cópia (mesma evidência); dois registros explícitos diferentes nunca se fundem", () => {
+    const first = period("INSS", "2026-08-01", "2026-10-04", { effectiveToExplicit: true })
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const copy = period("INSS", "2026-10-15", "2026-12-31", { effectiveToExplicit: true })
+    expect(summary(planStatusPeriodCancellation([first, vacation, copy], vacation))).toEqual({ removed: [vacation.id, copy.id], restore: { id: first.id, effectiveTo: "2026-12-31", mergedWith: copy.id } })
+    const otherRecord = period("INSS", "2026-10-15", "2026-12-31", { effectiveToExplicit: true, observedAt: "2026-10-01 12:00:00+00" })
+    expect(summary(planStatusPeriodCancellation([first, vacation, otherRecord], vacation))).toEqual({ removed: [vacation.id], restore: null })
+  })
+
+  it("nada antes da ausência: só ela sai, e o posterior continua começando onde estava", () => {
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const after = period("EM_PRODUCAO", "2026-10-15", null)
+    expect(summary(planStatusPeriodCancellation([vacation, after], vacation))).toEqual({ removed: [vacation.id], restore: null })
+  })
+
+  it("mesma situação de outra fonte depois da lacuna não é a outra metade: o anterior só preenche a lacuna", () => {
+    const before = period("EM_PRODUCAO", "2026-01-05", "2026-10-04")
+    const vacation = period("FERIAS", "2026-10-05", "2026-10-14", { effectiveToExplicit: true })
+    const manual = period("EM_PRODUCAO", "2026-10-15", null, { source: "MANUAL" })
+    expect(summary(planStatusPeriodCancellation([before, vacation, manual], vacation))).toEqual({ removed: [vacation.id], restore: { id: before.id, effectiveTo: "2026-10-14", mergedWith: null } })
   })
 })

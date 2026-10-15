@@ -7,12 +7,14 @@ import type { FlowGraph } from "../../domain/graph-schema.js"
 import { normalizeManualTrigger, validateManualTrigger, validateScheduleTrigger } from "../../application/validate-workflow-for-publish.js"
 import { triggerConfigSchema, type TriggerConfig } from "../../domain/trigger-config-schema.js"
 import { resolveOrganizationTimezone } from "../../application/organization-timezone.js"
-import { localDateParts, nextOccurrences } from "../../application/schedule-recurrence.js"
+import { isDateDue, localDateParts, nextOccurrences, zonedTimeToIso } from "../../application/schedule-recurrence.js"
 import { isAssumedWorkday, resolveRelativeInstant, type EmployeeShift } from "../../application/shift-schedule.js"
 import { consolidatedStructureAnchorId } from "../../domain/consolidated-structure-schema.js"
 import { populationFilterAnchorId, populationFilterGroupRef } from "../../domain/population-filter-schema.js"
 import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js"
-import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter, fetchScopedRow } from "./shared.js"
+import { assertGoLiveConfirmed, computeGoLiveImpact } from "../../application/go-live-impact.js"
+import { writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
+import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 
 const createWorkflowSchema = z.object({
   name: z.string().trim().min(2),
@@ -31,6 +33,8 @@ const updateWorkflowSchema = z.object({
   subteamId: z.string().uuid().nullable().optional(),
   trigger: triggerConfigSchema.optional(),
   active: z.boolean().optional(),
+  /** Ativar uma Agenda publicada pode exigir confirmação do impacto (go-live-impact.ts): o `fingerprint` que a pessoa viu. */
+  confirmation: z.string().trim().min(1).max(64).optional(),
 })
 
 const schedulePreviewSchema = z.object({
@@ -53,9 +57,9 @@ function starterGraph(): FlowGraph {
 // Carimba a data de hoje como âncora do gatilho por agenda na primeira vez que ele é
 // definido — fica estável em edições seguintes (reaproveita a âncora anterior se o gatilho já
 // era "schedule"), pra não reiniciar o ciclo de "a cada N dias" só por editar horário/intervalo.
-function withScheduleAnchor(trigger: TriggerConfig, previous?: TriggerConfig): TriggerConfig {
+function withScheduleAnchor(trigger: TriggerConfig, ...previous: (TriggerConfig | undefined)[]): TriggerConfig {
   if (trigger.kind !== "schedule" || trigger.anchorDate) return trigger
-  const previousAnchor = previous?.kind === "schedule" ? previous.anchorDate : undefined
+  const previousAnchor = previous.map((candidate) => (candidate?.kind === "schedule" ? candidate.anchorDate : undefined)).find(Boolean)
   return { ...trigger, anchorDate: previousAnchor ?? new Date().toISOString().slice(0, 10) }
 }
 
@@ -93,9 +97,11 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     await validateTriggerExists(db, organizationId, input.trigger)
     const trigger = normalizeManualTrigger(input.trigger)
 
+    // Nunca publicado: rascunho e configuração viva nascem iguais (não há runtime sem versão publicada).
     const result = await db.query<{ id: string }>(
-      `insert into workflows(organization_id, name, description, scope_type, team_id, subteam_id, trigger_config, draft_graph, created_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+      `insert into workflows(organization_id, name, description, scope_type, team_id, subteam_id, trigger_config, draft_graph, created_by,
+                             draft_scope_type, draft_team_id, draft_subteam_id, draft_trigger_config)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$5,$6,$7) returning id`,
       [
         organizationId,
         input.name,
@@ -178,13 +184,18 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
       return
     }
 
-    const occurrences = nextOccurrences(
-      { times: input.trigger.times ?? [], intervalDays: input.trigger.intervalDays, anchorDate: input.trigger.anchorDate ?? null, frequency: input.trigger.frequency },
-      { timezone, from: new Date(), count: 5 },
-    )
-    response.json({ data: { mode: "CALENDAR", occurrences: occurrences.map((occurrence) => occurrence.iso), timezone } })
+    const recurrence = { times: input.trigger.times ?? [], intervalDays: input.trigger.intervalDays, anchorDate: input.trigger.anchorDate ?? null, frequency: input.trigger.frequency }
+    const now = new Date()
+    const occurrences = nextOccurrences(recurrence, { timezone, from: now, count: 5 })
+    // Horários de HOJE que já passaram: o checador recupera o dia corrente (catch-up), então entrar no ar
+    // agora (publicar/ativar) os dispararia em até 1 minuto — a prévia nunca esconde isso (incidente 2026-10-05).
+    const { date: today, time: nowHHmm } = localDateParts(now, timezone)
+    const catchUpToday = isDateDue(recurrence, today) ? [...recurrence.times].sort().filter((time) => time <= nowHHmm).map((time) => zonedTimeToIso(today, time, timezone)) : []
+    response.json({ data: { mode: "CALENDAR", occurrences: occurrences.map((occurrence) => occurrence.iso), catchUpToday, timezone } })
   })
 
+  // Nome/descrição/ativo valem na hora. Abrangência e Gatilho vão para o RASCUNHO da configuração —
+  // num Workflow publicado nada que o runtime lê muda até Publicar (ver domain/workflow-configuration.ts).
   router.patch("/:id", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = updateWorkflowSchema.parse(request.body)
@@ -192,7 +203,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     if (!current) return response.status(404).json(NOT_FOUND)
 
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const nextScopeType = input.scopeType ?? current.scopeType
     const nextTeamId = input.scopeType !== undefined ? (input.teamId ?? null) : current.teamId
@@ -202,21 +213,15 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     }
 
     // Trocar a Abrangência não pode deixar uma referência cross-group inválida silenciosamente
-    // pra trás (Parte 9 do pedido) — reavalia todo Orchestrator já referenciado no rascunho E na
-    // versão publicada contra o escopo NOVO antes de aceitar a troca.
+    // pra trás (Parte 9 do pedido) — reavalia todo Orchestrator já referenciado no RASCUNHO contra o
+    // escopo NOVO antes de aceitar a troca. A versão publicada continua rodando com a Abrangência
+    // publicada até a próxima publicação (que valida o rascunho inteiro de novo).
     const scopeIsChanging =
       input.scopeType !== undefined && (nextScopeType !== current.scopeType || nextTeamId !== current.teamId || nextSubteamId !== current.subteamId)
     if (scopeIsChanging) {
-      const graphsResult = await db.query<{ draftGraph: FlowGraph; publishedGraph: FlowGraph | null }>(
-        `select draft_graph "draftGraph", (select graph from workflow_versions where id = w.active_version_id) "publishedGraph"
-         from workflows w where w.id = $1`,
-        [request.params.id],
-      )
       const referencedOrchestratorIds = new Set<string>()
-      for (const graph of [graphsResult.rows[0]?.draftGraph, graphsResult.rows[0]?.publishedGraph]) {
-        for (const node of graph?.nodes ?? []) {
-          if (node.type === "orchestrator") referencedOrchestratorIds.add(node.config.orchestratorId)
-        }
+      for (const node of (current.draftGraph as FlowGraph | null)?.nodes ?? []) {
+        if (node.type === "orchestrator") referencedOrchestratorIds.add(node.config.orchestratorId)
       }
       const nextScope = { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId }
       if (referencedOrchestratorIds.size > 0) {
@@ -291,31 +296,36 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
       }
     }
 
+    // Ativar faz a configuração PUBLICADA valer de novo na hora — uma Agenda publicada pode recuperar
+    // horários de hoje já vencidos ou atingir uma população grande: exige a confirmação do impacto,
+    // como a publicação (go-live-impact.ts). Desativar nunca precisa.
+    if (input.active === true && !current.active && current.published) {
+      const impact = await computeGoLiveImpact(db, organizationId, {
+        workflowId: request.params.id!,
+        reason: "ACTIVATE",
+        configuration: current.live,
+        published: current.live,
+        active: true,
+        now: new Date(),
+      })
+      assertGoLiveConfirmed(impact, input.confirmation)
+    }
+
+    if (input.trigger || input.scopeType !== undefined) {
+      await writeDraftConfiguration(db, organizationId, request.params.id!, {
+        ...(input.trigger ? { trigger: withScheduleAnchor(normalizeManualTrigger(input.trigger), current.triggerConfig, current.live.triggerConfig) } : {}),
+        ...(input.scopeType !== undefined ? { scope: { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId } } : {}),
+      })
+    }
     const updated = await db.query<{ id: string }>(
       `update workflows set
          name = coalesce($1, name),
          description = case when $2::boolean then $3 else description end,
-         scope_type = $4,
-         team_id = $5,
-         subteam_id = $6,
-         trigger_config = case when $7::boolean then $8 else trigger_config end,
-         active = coalesce($9, active),
+         active = coalesce($4, active),
          updated_at = now()
-       where id = $10 and organization_id = $11
+       where id = $5 and organization_id = $6
        returning id`,
-      [
-        input.name ?? null,
-        input.description !== undefined,
-        input.description ?? null,
-        nextScopeType,
-        nextTeamId,
-        nextSubteamId,
-        input.trigger !== undefined,
-        input.trigger ? JSON.stringify(withScheduleAnchor(normalizeManualTrigger(input.trigger), current.triggerConfig)) : null,
-        input.active ?? null,
-        request.params.id,
-        organizationId,
-      ],
+      [input.name ?? null, input.description !== undefined, input.description ?? null, input.active ?? null, request.params.id, organizationId],
     )
     if (!updated.rows[0]) return response.status(404).json(NOT_FOUND)
     const listResult = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])

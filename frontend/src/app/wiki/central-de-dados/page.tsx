@@ -134,7 +134,7 @@ export default function DataHubPage() {
         </p>
         <ul className="list-inside list-disc space-y-1">
           <li><strong className="font-medium text-foreground">Cadência</strong> (API Pull, SFTP e banco de dados): manual, a cada 15 min / 1 h / 6 h ou diária num horário no fuso da operação. Arquivo e push são sob demanda.</li>
-          <li><strong className="font-medium text-foreground">Modo de carga</strong>: Delta (só o que veio muda) ou Snapshot (estado completo). Em ambos, ausência de um registro <strong>nunca</strong> desativa nada nesta versão.</li>
+          <li><strong className="font-medium text-foreground">Modo de carga</strong>: Delta (só o que veio muda) ou Snapshot (estado completo). Em ambos, ausência de um registro <strong>nunca</strong> desativa nada nesta versão; desfazer é sempre explícito (<strong>Vigente? = não</strong> em Ausências e em Exceções de calendário).</li>
           <li><strong className="font-medium text-foreground">Fonte autoritativa</strong>: um único feed autoritativo ativo por contrato de dado mestre por organização — duas fontes nunca brigam pelo mesmo cadastro.</li>
           <li><strong className="font-medium text-foreground">Exigir carga íntegra</strong>: qualquer rejeição impede a carga inteira (opt-in por feed).</li>
           <li><strong className="font-medium text-foreground">Namespace de origem</strong>: identidade da origem em medições e fechamentos (coluna <code className="font-mono text-xs">source</code>); padrão = id público da fonte.</li>
@@ -148,6 +148,11 @@ export default function DataHubPage() {
           obrigatórios, campo identidade, chave natural, dependências, semântica de escrita (upsert de dado mestre ou evento idempotente), política de
           aplicação (parcial ou atômica), campo de tempo de negócio e exemplos. Feeds e cargas guardam contrato + versão. A tela Contratos de dados mostra
           tudo isso e o payload de exemplo do API Push, gerado do próprio contrato.
+        </p>
+        <p>
+          Mudar um contrato cria uma <strong>versão nova</strong>, e feed nenhum muda de versão em silêncio: feed novo nasce na versão atual; feed criado antes
+          continua lendo pela versão dele (o detalhe do feed avisa) e passa para a atual quando o mapeamento é salvo de novo — a troca fica na auditoria. Exemplo:{" "}
+          <code className="font-mono text-xs">EMPLOYEE_ABSENCES@2</code> acrescentou o campo opcional <strong>Vigente?</strong> às Ausências.
         </p>
         <ExampleCard title="Identidade: identificador externo estável, nunca nome">
           Colaborador = matrícula (<code className="font-mono text-xs">externalEmployeeId</code>); Grupo/Subgrupo = código externo (
@@ -305,6 +310,17 @@ export default function DataHubPage() {
           &quot;não deveria produzir&quot; (férias/afastamento confirmados). O perfil mostra &quot;Situação funcional atualizada pela última vez em…&quot; só quando isso importa;
           um período explícito que cobre a data (férias com fim futuro) dispensa o aviso.
         </p>
+        <p>
+          <strong>Ausência cancelada pela fonte.</strong> Quando o RH cancela umas férias inteiras, a mesma fonte reenvia a ausência — matrícula, tipo e início
+          iguais — com <strong>Vigente? = não</strong>. O período sai da situação funcional, a carga conta 1 &quot;desativado&quot; e o registro completo fica na
+          auditoria (<code>DATA_HUB_EMPLOYEE_ABSENCE_CANCELLED</code>, com o que voltou a valer). Os dias voltam a seguir as outras fontes: o EM PRODUÇÃO do
+          cadastro, que as férias tinham dividido, volta a ser um período só; sem outra evidência, os dias ficam EM PRODUÇÃO presumido — nunca uma situação
+          inventada. Cancelar de novo, ou cancelar uma ausência que nunca chegou, não muda nada; reenviar como vigente recria o período. Ausência registrada por
+          outra origem (outra fonte, ajuste manual) não é apagada pela carga: fica, e o pedido vira o aviso <code>DATA_EMPLOYMENT_STATUS_CONFLICT</code>. Na
+          sugestão de mapeamento, colunas &quot;vigente&quot; ou &quot;ativo&quot; viram Vigente? direto, e &quot;cancelado&quot; vira Vigente? com o sim/não
+          invertido (cancelado = S → vigente = não), visível no mapeamento para conferir. Um período alterado depois por outra carga (início diferente) não é
+          mais aquela identidade: a correção de datas é feita reenviando a ausência com o início certo.
+        </p>
       </WikiSection>
 
       <WikiSection id="escalas" title="Escalas de trabalho: Jornadas + calendário" eyebrow="Regime é metadata; a folga tem data">
@@ -345,7 +361,7 @@ export default function DataHubPage() {
       <WikiSection id="cargas" title="Cargas (Runs)" eyebrow="O que aconteceu nessa execução">
         <p>
           Toda sincronização, importação, envio ou reprocessamento cria uma carga com linha do tempo por etapa, métricas completas (bytes, recebidos,
-          lidos, válidos, rejeitados, inseridos, atualizados, inalterados, desativados, erros, duração, tentativas), checkpoint antes/depois e o maior
+          lidos, válidos, rejeitados, inseridos, atualizados, inalterados, desativados — ex.: ausência cancelada pela fonte —, erros, duração, tentativas), checkpoint antes/depois e o maior
           tempo de negócio recebido. O processamento é assíncrono (fila + worker com lease); a tela consulta o status. Uma carga falhada por erro
           transitório (fonte inalcançável, timeout) volta à fila com backoff limitado (até 3 tentativas); credencial, mapeamento, esquema e validação
           nunca ficam tentando para sempre. Um feed nunca tem duas execuções em andamento.

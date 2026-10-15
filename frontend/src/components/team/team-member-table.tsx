@@ -6,11 +6,11 @@ import { ArrowUpDown, ClipboardCheck, Clock3, UserRound } from "lucide-react"
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { TrendIndicator } from "@/components/analytics/trend-indicator"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatPercent, initials } from "@/lib/analytics/format"
+import { formatPercent } from "@/lib/analytics/format"
 import { MEMBER_SITUATION_LABELS, type MemberSituation, type TeamMembersPage, type TeamMemberSummary } from "@/schemas/analytics/analytics.schema"
 import type { TeamMembersParams } from "@/services/analytics/analytics-service"
 
@@ -121,10 +121,7 @@ function MemberRow({ member, href }: { member: TeamMemberSummary; href: string }
     <TableRow>
       <TableCell className="max-w-60">
         <div className="flex items-center gap-3">
-          <Avatar className="size-9">
-            <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
-            <AvatarFallback className="text-xs">{initials(member.name)}</AvatarFallback>
-          </Avatar>
+          <PersonAvatar name={member.name} avatarUrl={member.avatarUrl} alt="" className="size-9" fallbackClassName="text-xs" />
           <div className="min-w-0">
             <Link href={href} className="block truncate font-medium hover:underline">
               {member.name}

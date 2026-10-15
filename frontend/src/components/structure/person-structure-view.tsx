@@ -6,13 +6,13 @@ import { ChevronRight, CircleHelp, Footprints, ListTree, Loader2, Network, Searc
 
 import { FLOW_TRAVEL_DURATION_MS, usePrefersReducedMotion } from "@/components/flow/flow-travel-signal"
 import { AnalyticsErrorState } from "@/components/analytics/analytics-states"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { formatCount, initials } from "@/lib/analytics/format"
+import { formatCount } from "@/lib/analytics/format"
 import { cn } from "@/lib/utils"
 import { usePersonStructureQuery } from "@/queries/org-structure/use-person-structure-query"
 import type { PersonOrganizationStructure, StructurePerson } from "@/schemas/org-structure/person-structure.schema"
@@ -285,10 +285,7 @@ export function LeadershipChainList({ chain, subject, viewerId, onOpenStructure 
           const canOpen = !isSubject && entry.capabilities.hasReports && entry.capabilities.canViewStructure
           return (
             <li key={entry.personId} className={cn("flex items-center gap-2 rounded-md px-1.5 py-1", isSubject && "bg-muted/60")} style={{ marginLeft: `${Math.min(index, 4) * 0.5}rem` }}>
-              <Avatar className="size-7 shrink-0">
-                <AvatarImage src={entry.avatarUrl ?? undefined} alt={entry.name} />
-                <AvatarFallback className="text-[10px]">{initials(entry.name)}</AvatarFallback>
-              </Avatar>
+              <PersonAvatar name={entry.name} avatarUrl={entry.avatarUrl} className="size-7 shrink-0" fallbackClassName="text-[10px]" />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1 text-xs font-medium">
                   <span className="truncate">{entry.name}</span>

@@ -18,6 +18,7 @@ import { parseReferencePeriod } from "../domain/reference-period.js"
 import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
+import { loadAvatarPresenter, personAvatarLoader, type PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 
 const followUpQuerySchema = z.object({
   ack: z.enum(["all", "pending"]).default("all"),
@@ -64,7 +65,14 @@ function requireStructure(subject: AnalyticsSubject) {
 
 const sortSchema = z.object({ order: z.enum(["asc", "desc"]).default("desc") })
 
-export function createAnalyticsRouter(db: Database, repository: AnalyticsReadRepository = new PgAnalyticsReadRepository(db), now: () => Date = () => new Date()) {
+export function createAnalyticsRouter(
+  db: Database,
+  repository: AnalyticsReadRepository = new PgAnalyticsReadRepository(db),
+  now: () => Date = () => new Date(),
+  /** Foto da apresentação (personalizada > corporativa > iniciais) das pessoas da resposta, aplicada DEPOIS do builder: o
+   * builder (e a prova de igualdade do read model) segue com a imagem do cadastro do grafo em cache. */
+  personAvatars: PersonAvatarLoader = personAvatarLoader(db),
+) {
   const router = Router()
 
   router.get("/context", async (request, response, next) => {
@@ -110,7 +118,9 @@ export function createAnalyticsRouter(db: Database, repository: AnalyticsReadRep
       const scope = await loadViewerScope(repository, request.user!)
       const subject = requireStructure(subjectFrom(request, scope))
       const query = paginationQuerySchema.merge(sortSchema).extend({ search: searchParam, sort: z.enum(["achievement", "name", "delta"]).default("achievement") }).parse(request.query)
-      response.json({ data: await buildIndicatorMembers(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), request.params.code!, query) })
+      const page = await buildIndicatorMembers(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), request.params.code!, query)
+      const present = await loadAvatarPresenter(personAvatars, scope.organizationId, page.items.map((item) => item.personId))
+      response.json({ data: { ...page, items: page.items.map(present) } })
     } catch (error) {
       next(error)
     }
@@ -120,7 +130,9 @@ export function createAnalyticsRouter(db: Database, repository: AnalyticsReadRep
     try {
       const scope = await loadViewerScope(repository, request.user!)
       const subject = requireStructure(subjectFrom(request, scope))
-      response.json({ data: await buildTeamOverview(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now()))) })
+      const overview = await buildTeamOverview(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())))
+      const present = await loadAvatarPresenter(personAvatars, scope.organizationId, overview.units.flatMap((unit) => (unit.leader ? [unit.leader.personId] : [])))
+      response.json({ data: { ...overview, units: overview.units.map((unit) => (unit.leader ? { ...unit, leader: present(unit.leader) } : unit)) } })
     } catch (error) {
       next(error)
     }
@@ -144,7 +156,9 @@ export function createAnalyticsRouter(db: Database, repository: AnalyticsReadRep
           order: z.enum(["asc", "desc"]).default("asc"),
         })
         .parse(request.query)
-      response.json({ data: await buildTeamMembersPage(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), query) })
+      const page = await buildTeamMembersPage(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), query)
+      const present = await loadAvatarPresenter(personAvatars, scope.organizationId, page.items.map((item) => item.personId))
+      response.json({ data: { ...page, items: page.items.map(present) } })
     } catch (error) {
       next(error)
     }

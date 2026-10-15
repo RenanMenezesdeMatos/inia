@@ -3,6 +3,7 @@ import { DataRunError } from "./error-codes.js"
 import { INTERACTION_FLAGS_CONTRACT, INTERACTIONS_CONTRACT, TRANSCRIPTS_CONTRACT } from "./contracts/interaction-contracts.js"
 import {
   EMPLOYEE_ABSENCES_CONTRACT,
+  EMPLOYEE_ABSENCES_CONTRACT_V1,
   EMPLOYEES_CONTRACT,
   GOALS_CONTRACT,
   GROUPS_CONTRACT,
@@ -36,15 +37,21 @@ export const DATA_CONTRACTS: readonly DataContract[] = [
   INTERACTION_FLAGS_CONTRACT,
 ]
 
+/**
+ * Versões ANTERIORES ainda em uso: feeds e cargas guardam contrato + versão, e uma versão nova nunca
+ * migra feed em silêncio. Feed novo nasce na versão atual (`DATA_CONTRACTS`); um feed antigo passa
+ * para ela quando o administrador salva o mapeamento de novo (a tela mapeia sempre a versão atual).
+ */
+export const PREVIOUS_DATA_CONTRACT_VERSIONS: readonly DataContract[] = [EMPLOYEE_ABSENCES_CONTRACT_V1]
+
 const byKey = new Map(DATA_CONTRACTS.map((contract) => [contract.key, contract]))
+const byKeyAndVersion = new Map([...DATA_CONTRACTS, ...PREVIOUS_DATA_CONTRACT_VERSIONS].map((contract) => [`${contract.key}@${contract.version}`, contract]))
 
 export const DATA_CONTRACT_KEYS = DATA_CONTRACTS.map((contract) => contract.key)
 
+/** Sem versão = a versão atual; com versão = exatamente aquela (atual ou anterior ainda suportada). */
 export function findDataContract(key: string, version?: number): DataContract | undefined {
-  const contract = byKey.get(key)
-  if (!contract) return undefined
-  if (version !== undefined && contract.version !== version) return undefined
-  return contract
+  return version === undefined ? byKey.get(key) : byKeyAndVersion.get(`${key}@${version}`)
 }
 
 export function requireDataContract(key: string, version?: number): DataContract {

@@ -119,6 +119,7 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
       analytics: new PgAnalyticsReadRepository(db),
       hierarchy: postgresHierarchyReader(db),
       corporateEmails: async () => new Map(),
+      personAvatars: async () => new Map(),
       structureFreshness: async () => ({ state: "UNKNOWN", configured: false, feeds: [], consideredFeedIds: [], lastSuccessAt: null, lastDataAt: null, lastSuccessLocalDate: null }),
       managementMetrics: (organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at),
     }
@@ -160,6 +161,7 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
       analytics: new PgAnalyticsReadRepository(db),
       hierarchy: postgresHierarchyReader(db),
       corporateEmails: async () => new Map(),
+      personAvatars: async () => new Map(),
       structureFreshness: async () => ({ state: "UNKNOWN", configured: false, feeds: [], consideredFeedIds: [], lastSuccessAt: null, lastDataAt: null, lastSuccessLocalDate: null }),
       managementMetrics: (organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at),
       now: () => new Date("2026-09-17T15:00:00.000Z"),

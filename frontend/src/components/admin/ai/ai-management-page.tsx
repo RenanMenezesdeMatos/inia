@@ -4,15 +4,18 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Cpu } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAiCan } from "@/queries/admin/use-ai-management-queries"
 
 import { BudgetsTab } from "./budgets-tab"
 import { ConnectionsTab } from "./connections-tab"
 import { ModelsTab } from "./models-tab"
 import { OverviewTab } from "./overview-tab"
 import { RoutingTab } from "./routing-tab"
+import { UsageRankingTab } from "./usage-ranking-tab"
 
 export const AI_TABS = [
   { value: "overview", label: "Visão geral" },
+  { value: "ranking", label: "Quem mais usa" },
   { value: "connections", label: "Conexões" },
   { value: "models", label: "Modelos" },
   { value: "routing", label: "Roteamento" },
@@ -29,8 +32,11 @@ export function AiManagementPage() {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const can = useAiCan()
+  // "Quem mais usa" só com a permissão explícita do ranking (decidida no backend a cada request); sem ela a aba nem aparece.
+  const tabs = AI_TABS.filter((entry) => entry.value !== "ranking" || can("AI_USAGE_RANKING_READ"))
   const requested = searchParams.get("tab")
-  const tab: AiTabValue = AI_TABS.some((entry) => entry.value === requested) ? (requested as AiTabValue) : "overview"
+  const tab: AiTabValue = tabs.some((entry) => entry.value === requested) ? (requested as AiTabValue) : "overview"
 
   function setTab(next: string) {
     const params = new URLSearchParams(searchParams.toString())
@@ -55,7 +61,7 @@ export function AiManagementPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <div className="overflow-x-auto">
           <TabsList>
-            {AI_TABS.map((entry) => (
+            {tabs.map((entry) => (
               <TabsTrigger key={entry.value} value={entry.value} className="whitespace-nowrap">
                 {entry.label}
               </TabsTrigger>
@@ -65,6 +71,11 @@ export function AiManagementPage() {
         <TabsContent value="overview" className="mt-4">
           <OverviewTab onOpenTab={setTab} />
         </TabsContent>
+        {tab === "ranking" ? (
+          <TabsContent value="ranking" className="mt-4">
+            <UsageRankingTab />
+          </TabsContent>
+        ) : null}
         <TabsContent value="connections" className="mt-4">
           <ConnectionsTab />
         </TabsContent>

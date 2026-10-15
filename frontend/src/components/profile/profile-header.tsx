@@ -6,12 +6,11 @@ import { AlarmClock, BadgeCheck, Camera, ChartPie, ChevronLeft, CircleCheckBig, 
 import { ProfileSeal, sealLevelPriority, type SealLevel } from "@/components/operator/profile-seal"
 import { CoverArt } from "@/components/profile/cover-art"
 import { useProfileEditor } from "@/components/profile/edit-profile/profile-editor-context"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { profileImageSrc } from "@/lib/profile/profile-image-src"
 import { cn } from "@/lib/utils"
-import { DEFAULT_COVER, initialsOf, professionalLineOf, type CoverPresentation } from "@/schemas/profile/my-profile.schema"
+import { DEFAULT_COVER, professionalLineOf, type CoverPresentation } from "@/schemas/profile/my-profile.schema"
 
 /** A pessoa EXIBIDA no perfil (a visitada — ou a própria, quando é o próprio perfil). Sempre vinda do backend. */
 export type ProfileHeaderPerson = {
@@ -49,7 +48,6 @@ export function ProfileHeader({ person, isOwn, actions, variant = "profile", att
   const preview = variant === "preview"
   const canEdit = isOwn && !preview
   const Title = preview ? "p" : "h1"
-  const avatarSrc = profileImageSrc(person.avatarUrl)
   const professional = professionalLineOf(person.jobTitle, person.teamName)
   const identityLine = [
     person.registeredName !== person.displayName ? `Nome cadastrado: ${person.registeredName}` : null,
@@ -71,10 +69,13 @@ export function ProfileHeader({ person, isOwn, actions, variant = "profile", att
       <div className={cn("px-4 sm:px-6", preview ? "pb-3 sm:pb-4" : "pb-4")}>
         <div className="flex items-end justify-between gap-3">
           <div className={cn("relative shrink-0", preview ? "-mt-8 sm:-mt-12" : "-mt-12 sm:-mt-16")}>
-            <Avatar className={cn("border-4 border-card bg-card shadow-sm ring-2 ring-primary/40", preview ? "size-16 sm:size-24" : "size-24 sm:size-32")}>
-              {avatarSrc ? <AvatarImage src={avatarSrc} alt={`Foto de ${person.displayName}`} className="object-cover" /> : null}
-              <AvatarFallback className="bg-primary text-2xl font-semibold text-primary-foreground sm:text-3xl">{initialsOf(person.displayName)}</AvatarFallback>
-            </Avatar>
+            <PersonAvatar
+              name={person.displayName}
+              avatarUrl={person.avatarUrl}
+              alt={`Foto de ${person.displayName}`}
+              className={cn("border-4 border-card bg-card shadow-sm ring-2 ring-primary/40", preview ? "size-16 sm:size-24" : "size-24 sm:size-32")}
+              fallbackClassName="bg-primary text-2xl font-semibold text-primary-foreground sm:text-3xl"
+            />
             {canEdit ? (
               <Tooltip>
                 <TooltipTrigger asChild>

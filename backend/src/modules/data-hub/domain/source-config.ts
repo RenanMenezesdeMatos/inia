@@ -136,7 +136,8 @@ export const feedInputSchema = z.object({
   feedKey: z.string().regex(/^[a-z0-9][a-z0-9-_]{1,63}$/, "Use letras minúsculas, números, hífen ou underscore."),
   name: z.string().trim().min(2).max(120),
   contractKey: z.string().min(1),
-  contractVersion: z.number().int().min(1).default(1),
+  /** Ausente = versão atual do contrato (feed novo nunca nasce numa versão anterior por omissão). */
+  contractVersion: z.number().int().min(1).optional(),
   connectorConfig: feedConnectorConfigSchema,
   mapping: feedMappingSchema.default({ fields: [] }),
   loadMode: z.enum(LOAD_MODES).default("DELTA"),

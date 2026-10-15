@@ -10,6 +10,7 @@ import { createConnection, deleteConnection, getConnection, listConnections, lis
 import { addPricing, createModel, deleteModel, getModel, listModels, listPricing, testModel, updateModel } from "../application/ai-model-service.js"
 import { activateDraft, deactivatePolicy, discardDraft, legacyEnvironmentSummary, listRouting, saveDraft, testRouting } from "../application/ai-policy-service.js"
 import { connectionsHealth, usageDashboard } from "../application/ai-usage-service.js"
+import { usageRanking, usageRankingContext, type RankingViewer } from "../application/ai-usage-ranking-service.js"
 
 /**
  * /api/v1/admin/ai — administração de Providers, Conexões, Modelos, Roteamento, Custos e
@@ -36,6 +37,7 @@ export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & {
   router.use(async (request: Request, _response: Response, next: NextFunction) => {
     try {
       const access = request.access ?? (await createPostgresAccessRepository(context.db).loadContext(request.user!.organizationId, request.user!.sub))
+      request.access = access
       request.aiPermissions = aiPermissionsFor(access)
       next()
     } catch (error) {
@@ -82,6 +84,12 @@ export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & {
   })
   router.get("/usage", can("AI_USAGE_READ"), async (request, response) => response.json({ data: await usageDashboard(context, actorOf(request).organizationId, request.query) }))
   router.get("/health", can("AI_USAGE_READ"), async (request, response) => response.json({ data: await connectionsHealth(context, actorOf(request).organizationId) }))
+
+  // Quem mais usa (ranking por estrutura): permissão explícita; o recorte de pessoas sai do escopo da conta, no serviço.
+  // Pessoa = a da CONTA lida do banco neste request (escopo "Minha estrutura"), não a foto do JWT.
+  const rankingViewer = (request: Request): RankingViewer => ({ organizationId: request.user!.organizationId, personId: request.access!.personId, access: request.access! })
+  router.get("/usage/ranking/context", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRankingContext(context, rankingViewer(request)) }))
+  router.get("/usage/ranking", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRanking(context, rankingViewer(request), request.query) }))
 
   // Conexões
   router.get("/connections", can("AI_CONFIG_READ"), async (request, response) => response.json({ data: await listConnections(context, actorOf(request).organizationId) }))

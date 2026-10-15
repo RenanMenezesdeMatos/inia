@@ -18,6 +18,7 @@ const TOC: WikiTocEntry[] = [
   { id: "fallback", label: "Como funciona o fallback" },
   { id: "custos", label: "Como entender os custos" },
   { id: "orcamento", label: "Orçamentos" },
+  { id: "quem-mais-usa", label: "Quem mais usa" },
   { id: "saude", label: "Saúde das conexões" },
   { id: "seguranca", label: "Segurança das API keys" },
   { id: "legado", label: "Configuração legada do ambiente" },
@@ -244,6 +245,27 @@ export default function AiModelsPage() {
         </p>
       </WikiSection>
 
+      <WikiSection id="quem-mais-usa" title="Quem mais usa" eyebrow="Diretoria · Gerência Sênior · Gerência · Grupo · Subgrupo · Supervisor">
+        <p>
+          A aba <strong className="font-medium text-foreground">Quem mais usa</strong> mostra um ranking do uso de IA pela estrutura. Escolha a visão
+          (Diretoria, Gerência Sênior, Gerência, Grupo, Subgrupo ou Supervisor) e, se quiser, filtre por período, Grupo, origem, provider, modelo e
+          função. Cada linha soma o uso da pessoa e de toda a estrutura abaixo dela — ou das pessoas do Grupo/Subgrupo — com chamadas, participação no
+          total, tokens, custo por moeda e quantas pessoas usaram.
+        </p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>Uso de Workflow conta para o colaborador da execução (a IA trabalhou para ele); o resto conta para quem fez o pedido na tela.</li>
+          <li>
+            O que não chega a ninguém da visão aparece na linha <strong className="font-medium text-foreground">Sem vínculo</strong>, com o motivo: sem
+            pessoa identificada, Workflow sem colaborador ou pessoa sem aquele nível acima dela. Esse uso nunca é atribuído a alguém nem some.
+          </li>
+          <li>
+            Precisa da permissão “Ver quem mais usa a IA por estrutura” (vem com os papéis Administrador geral e Administrador). Quem tem escopo de Grupo ou
+            Subgrupo vê só as pessoas desse escopo — de um ramo fora dele, nem o nome nem o número.
+          </li>
+          <li>A estrutura usada é a de hoje: quem mudou de equipe leva o uso antigo para a equipe atual.</li>
+        </ul>
+      </WikiSection>
+
       <WikiSection id="saude" title="Saúde das conexões" eyebrow="Sem verificação periódica cara">
         <p>
           Saudável, degradada, fora do ar ou desconhecida — calculada a partir do último “Testar conexão” e das chamadas reais das últimas 24 horas
@@ -284,6 +306,7 @@ export default function AiModelsPage() {
           <li>Não há custo “exato” (nenhum provider informa o valor cobrado por chamada) nem conversão de moeda.</li>
           <li>Preços por modalidade (entrada de áudio) e o armazenamento de cache por hora não são modelados — o preço cadastrado é o de texto.</li>
           <li>Não há playground de chat; “Testar modelo” faz uma única requisição mínima real e avisa que pode gerar custo.</li>
+          <li>Em “Quem mais usa”, os pedidos feitos antes de 15/10/2026 não guardavam quem pediu e aparecem como “Sem vínculo”.</li>
         </ul>
       </WikiSection>
 

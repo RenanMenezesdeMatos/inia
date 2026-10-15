@@ -2,7 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
 import { triggerDataOriginOf, triggerIndicatorCodeOf } from "../domain/trigger-config-schema.js"
 import type { PublishCatalogContext, PublishGraphContext, PublishTriggerContext, PublishValidationOptions, PublishValidationRow } from "./publish-validation/context.js"
-import { validateGraphShape, validateInteractionFeedbackSource, validateManualTriggerMode, validateScheduleDataSources, validateTranscriptRequirements } from "./publish-validation/trigger-context.js"
+import { validateDraftConfigurationModes, validateGraphShape, validateInteractionFeedbackSource, validateManualTriggerMode, validateScheduleDataSources, validateTranscriptRequirements } from "./publish-validation/trigger-context.js"
 import { validateConditions } from "./publish-validation/conditions.js"
 import { validateAgentHasOutput, validateAgentReferences, validateVariables } from "./publish-validation/actions.js"
 import { loadWorkflowOrchestrators, validateOrchestratorReferences } from "./publish-validation/orchestrators.js"
@@ -15,7 +15,7 @@ import { validateInterventionPolicyReferences, validateInterventionPolicySources
 
 export { type PublishValidationRow, type PublishValidationOptions } from "./publish-validation/context.js"
 export { parseSourcePath } from "./publish-validation/source-paths.js"
-export { validateScheduleTrigger, validateManualTrigger, normalizeManualTrigger } from "./publish-validation/trigger-context.js"
+export { validateScheduleTrigger, validateManualTrigger, normalizeManualTrigger, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./publish-validation/trigger-context.js"
 export { validateDataConditionConfig } from "./publish-validation/conditions.js"
 export { type IndividualOnlyConflict, findIndividualOnlyConflict, findEmployeeCollectionConflict, validateFanOutConvergence, throwConflict } from "./publish-validation/fan-out.js"
 export { validateReliableFeedbackFlow } from "./publish-validation/reliable-feedback.js"
@@ -91,6 +91,7 @@ export async function validateWorkflowForPublish(db: Database, organizationId: s
   await validateOrchestratorReferences(catalogContext)
   await validateFixedRecipients(catalogContext)
   await validateInterventionPolicyReferences(catalogContext)
+  validateDraftConfigurationModes(catalogContext)
 
   return graph
 }

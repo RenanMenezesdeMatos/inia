@@ -174,6 +174,8 @@ export type FeedInput = {
   feedKey: string
   name: string
   contractKey: string
+  /** Ausente = versão atual (feed novo) ou a do feed (edição). A tela envia a versão que mapeou. */
+  contractVersion?: number
   connectorConfig: Record<string, unknown>
   mapping: FeedMapping
   loadMode?: "DELTA" | "SNAPSHOT"

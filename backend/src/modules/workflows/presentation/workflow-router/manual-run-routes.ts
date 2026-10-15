@@ -1,9 +1,9 @@
 import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../../infrastructure/database/pool.js"
-import { canManageScope, getManageableScopes, type ManageableScopes } from "../../../auth/application/manageable-scopes.js"
+import { getManageableScopes, type ManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import { listManualRunCollaborators, listManualRunInteractions, listManualRunMeasurements, listManualRuns, loadManualRun, loadManualRunTarget, manualRunBlockers, requestManualRun, type CollaboratorScopeCheck } from "../../application/manual-run.js"
-import { NOT_FOUND, fetchScopedRow, type WorkflowRouterOptions } from "./shared.js"
+import { NOT_FOUND, canManageWorkflow, fetchScopedRow, type WorkflowRouterOptions } from "./shared.js"
 
 
 /** Gatilho Manual — "Executar agora". Registradas na ordem original (ver workflow-router.ts). */
@@ -30,7 +30,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
     const current = await fetchScopedRow(db, organizationId, workflowId)
     if (!current) return null
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return null
+    if (!canManageWorkflow(scopes, current)) return null
     const target = await loadManualRunTarget(db, organizationId, workflowId)
     return target ? { target, canAccess: collaboratorScopeCheck(scopes) } : null
   }

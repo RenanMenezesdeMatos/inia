@@ -3,10 +3,12 @@ import { z } from "zod"
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
 import {
+  goLiveImpactSchema,
   workflowDetailSchema,
   workflowEnrollmentSchema,
   workflowSchema,
   workflowValidationResultSchema,
+  type GoLiveImpact,
   type ManualTriggerContext,
   type RelativeSchedule,
   type ScheduleFrequency,
@@ -47,7 +49,8 @@ export type WorkflowTriggerInput =
   | { kind: "manual"; context: ManualTriggerContext; indicatorCode?: string }
 
 const schedulePreviewResultSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("CALENDAR"), occurrences: z.array(z.string()), timezone: z.string() }),
+  // `catchUpToday`: horários de HOJE que já passaram — o agendador os recupera se o gatilho entrar no ar hoje.
+  z.object({ mode: z.literal("CALENDAR"), occurrences: z.array(z.string()), catchUpToday: z.array(z.string()).default([]), timezone: z.string() }),
   z.object({
     mode: z.literal("RELATIVE_TO_SHIFT"),
     previewDate: z.string(),
@@ -130,8 +133,11 @@ export type UpdateWorkflowInput = {
   orgScope?: OrgScopeValue
   trigger?: WorkflowTriggerInput
   active?: boolean
+  /** Ativar uma Agenda publicada pode exigir a confirmação do impacto: o `fingerprint` que a pessoa viu. */
+  confirmation?: string
 }
 
+/** Gatilho e Abrangência gravam no RASCUNHO; nome, descrição e ativo valem na hora. */
 export async function updateWorkflow(input: UpdateWorkflowInput): Promise<Workflow> {
   return workflowSchema.parse(
     await adminSend(`/api/v1/admin/workflows/${input.id}`, "PATCH", {
@@ -142,6 +148,7 @@ export async function updateWorkflow(input: UpdateWorkflowInput): Promise<Workfl
       subteamId: input.orgScope?.subteamId,
       trigger: input.trigger,
       active: input.active,
+      confirmation: input.confirmation,
     }),
   )
 }
@@ -164,8 +171,19 @@ export async function validateWorkflowDraft(id: string): Promise<WorkflowValidat
   return workflowValidationResultSchema.parse(await adminSend(`/api/v1/admin/workflows/${id}/validate`, "POST"))
 }
 
-export async function publishWorkflow(id: string): Promise<Workflow> {
-  return workflowSchema.parse(await adminSend(`/api/v1/admin/workflows/${id}/publish`, "POST"))
+/** O que publicar o rascunho AGORA faria no runtime (zero escrita) — abre o diálogo de publicação. */
+export async function fetchPublishImpact(id: string): Promise<GoLiveImpact> {
+  return goLiveImpactSchema.parse(await adminGet(`/api/v1/admin/workflows/${id}/publish-impact`))
+}
+
+/** `confirmation` = fingerprint do impacto confirmado; sem ele, um impacto que exige confirmação volta 409 com o impacto. */
+export async function publishWorkflow(id: string, confirmation?: string): Promise<Workflow> {
+  return workflowSchema.parse(await adminSend(`/api/v1/admin/workflows/${id}/publish`, "POST", confirmation ? { confirmation } : {}))
+}
+
+/** O rascunho da configuração volta a ser a publicada (o grafo em rascunho não muda). */
+export async function discardWorkflowConfiguration(id: string): Promise<Workflow> {
+  return workflowSchema.parse(await adminSend(`/api/v1/admin/workflows/${id}/configuration/discard`, "POST"))
 }
 
 export async function deleteWorkflow(id: string): Promise<void> {

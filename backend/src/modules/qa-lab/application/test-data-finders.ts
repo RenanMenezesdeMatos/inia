@@ -7,7 +7,7 @@ import { resolveStructureAnchorOperatorIds } from "../../workflows/application/h
 import { consolidatedStructureAnchorId, consolidatedStructureSchema, type ConsolidatedStructure } from "../../workflows/domain/consolidated-structure-schema.js"
 import { structureAnchorGroupRef } from "../../workflows/domain/structure-anchor-schema.js"
 import { comparatorSchema, flowGraphSchema, type FlowNode } from "../../workflows/domain/graph-schema.js"
-import { loadWorkflowForSimulation, resolveSimulationGraph } from "./build-simulated-enrollment.js"
+import { loadWorkflowForSimulation, resolveSimulationGraph, withSimulationConfiguration } from "./build-simulated-enrollment.js"
 import { resolveEligibleOperatorIds } from "./interaction-evidence.js"
 
 
@@ -264,9 +264,10 @@ export function summarizeEvaluation(evaluation: Record<string, unknown>, branch:
  * 100% determinístico, só leitura, zero IA, nunca cria qa_run.
  */
 export async function previewConditionForOperators(db: Database, organizationId: string, input: PreviewConditionInput): Promise<{ node: FlowNode; rows: ConditionPreviewRow[] }> {
-  const workflow = await loadWorkflowForSimulation(db, organizationId, input.workflowId)
-  if (!workflow) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
-  const { graph } = resolveSimulationGraph(workflow, input.graphSource)
+  const loaded = await loadWorkflowForSimulation(db, organizationId, input.workflowId)
+  if (!loaded) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
+  const { graph, source } = resolveSimulationGraph(loaded, input.graphSource)
+  const workflow = withSimulationConfiguration(loaded, source)
   const node = flowGraphSchema.parse(graph).nodes.find((candidate) => candidate.id === input.nodeId)
   if (!node || node.type !== "condition") throw new DomainError("Selecione um node de Condição.", "QA_NODE_NOT_CONDITION", 422)
   // Mesmo contexto organizacional (timezone IANA) que a execução real usa — a prévia nunca

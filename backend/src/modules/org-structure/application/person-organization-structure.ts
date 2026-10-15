@@ -4,6 +4,7 @@ import { accessDenied, activeDirectReportsOf, canFocusStructure, canOpenEmployee
 import { HIERARCHY_ROLES, ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
 import type { EmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { findBrazilianCapital } from "../../people/domain/brazilian-capitals.js"
+import { presentedAvatar, type PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import type { OrganizationalHierarchyReader, OrganizationalPerson } from "../../workflows/application/organizational-recipient.js"
 import type { ManagementMetrics } from "../domain/management-metrics.js"
 import type { ManagementMetricsLoader } from "./load-management-metrics.js"
@@ -35,9 +36,13 @@ import type { ManagementMetricsLoader } from "./load-management-metrics.js"
  *  - Origem: metadata dos feeds do contrato ORGANIZATIONAL_STRUCTURE da Central de Dados quando
  *    existem; sem feed configurado, nada é mostrado (nunca uma origem inventada).
  *
+ *  - Foto: a da apresentação da pessoa (`person-presentation.ts` — a escolhida no perfil, senão a
+ *    imagem corporativa do cadastro, senão iniciais), lida em LOTE a cada request e nunca guardada
+ *    no grafo em cache: trocar a foto não sobe a versão STRUCTURE.
+ *
  * Tudo determinístico, sem LLM, sem N+1: número FIXO de consultas por request (viewer, subárvore
  * do viewer, cadeia acima do viewer, cadeia acima da focal, contagem da estrutura imediata,
- * e-mails em lote, feeds de estrutura, métricas gerenciais de TODOS os líderes do payload em um
+ * e-mails em lote, fotos em lote, feeds de estrutura, métricas gerenciais de TODOS os líderes do payload em um
  * único lote; focal ANCESTRAL soma três leituras pontuais — a pessoa, os subordinados diretos
  * dela e a contagem de subordinados desses em lote — nunca a subárvore).
  */
@@ -58,6 +63,7 @@ export type StructurePerson = {
   role: string
   roleLabel: string
   jobTitle: string | null
+  /** Foto a exibir (personalizada > corporativa); null = iniciais. */
   avatarUrl: string | null
   /** E-mail corporativo da conta (nunca contato pessoal); null sem conta. */
   email: string | null
@@ -139,6 +145,9 @@ export type PersonOrganizationStructureDeps = {
   hierarchy: OrganizationalHierarchyReader
   /** E-mail corporativo (conta de acesso) por pessoa, em LOTE — uma consulta por request. */
   corporateEmails: (personIds: string[]) => Promise<Map<string, string>>
+  /** Foto resolvida pela apresentação da pessoa, em LOTE e filtrada pela organização — uma consulta por request.
+   * Pessoa ausente do mapa fica com a imagem do cadastro que já veio no nó. */
+  personAvatars: PersonAvatarLoader
   /** Freshness dos feeds ORGANIZATIONAL_STRUCTURE — injetada pra testar sem banco. */
   structureFreshness: (organizationId: string) => Promise<EmploymentStatusFreshness>
   /** Métricas gerenciais de N líderes em LOTE (número fixo de consultas) — só chamada para quem pode ver. */
@@ -187,7 +196,10 @@ function describeCapital(code: string | null): NonNullable<StructurePerson["oper
   return capital ? { code: capital.code, name: capital.name, stateCode: capital.stateCode, label: `${capital.name} / ${capital.stateCode}` } : null
 }
 
-function fromNode(access: StructureAccess, node: PersonNode, emails: Map<string, string>, knownDirectReports: number | null = null): StructurePerson {
+/** O que cada nó recebe das leituras em lote do request (e-mail da conta e foto da apresentação). */
+type PersonLookups = { emails: Map<string, string>; avatars: Map<string, string | null> }
+
+function fromNode(access: StructureAccess, node: PersonNode, lookups: PersonLookups, knownDirectReports: number | null = null): StructurePerson {
   const inScope = structureSubjectInScope(access.scope, node.id) !== null
   return {
     personId: node.id,
@@ -195,8 +207,8 @@ function fromNode(access: StructureAccess, node: PersonNode, emails: Map<string,
     role: node.role,
     roleLabel: roleLabelOf(node.role),
     jobTitle: node.jobTitle,
-    avatarUrl: node.avatarUrl,
-    email: emails.get(node.id) ?? null,
+    avatarUrl: presentedAvatar(lookups.avatars, node.id, node.avatarUrl),
+    email: lookups.emails.get(node.id) ?? null,
     group: node.teamId && node.teamName ? { id: node.teamId, name: node.teamName } : null,
     subgroup: node.subteamId && node.subteamName ? { id: node.subteamId, name: node.subteamName } : null,
     operationalCapital: describeCapital(node.operationalCapitalCode),
@@ -205,20 +217,20 @@ function fromNode(access: StructureAccess, node: PersonNode, emails: Map<string,
   }
 }
 
-function fromAncestor(access: StructureAccess, person: OrganizationalPerson, level: number, emails: Map<string, string>): StructureChainEntry {
+function fromAncestor(access: StructureAccess, person: OrganizationalPerson, level: number, lookups: PersonLookups): StructureChainEntry {
   // Ancestral dentro da subárvore (drill-down) tem Grupo/Subgrupo no escopo; acima do viewer o
   // Grupo/Subgrupo dele fica AUSENTE (não é dado do escopo do viewer — e não é "não informado").
   const node = structureSubjectInScope(access.scope, person.id)
   const base: StructurePerson = node
-    ? fromNode(access, node, emails)
+    ? fromNode(access, node, lookups)
     : {
         personId: person.id,
         name: person.name,
         role: person.role,
         roleLabel: roleLabelOf(person.role),
         jobTitle: person.jobTitle,
-        avatarUrl: person.avatarUrl,
-        email: emails.get(person.id) ?? null,
+        avatarUrl: presentedAvatar(lookups.avatars, person.id, person.avatarUrl),
+        email: lookups.emails.get(person.id) ?? null,
         directReportCount: null,
         capabilities: structureCapabilitiesOf(access, person.id),
       }
@@ -279,26 +291,28 @@ export async function buildPersonOrganizationStructure(deps: PersonOrganizationS
 
   const ancestors = subject.id === scope.viewer.id ? viewerAncestors : await deps.hierarchy.loadAncestors(subject.id)
   const leader = ancestors[0] ?? null
-  const emailIds = [subject.id, ...ancestors.map((person) => person.id), ...directReports.map((node) => node.id)]
+  const payloadIds = [subject.id, ...ancestors.map((person) => person.id), ...directReports.map((node) => node.id)]
 
   // Líderes que podem expandir no organograma (focal + subordinados diretos com equipe): as
   // métricas gerenciais deles vêm em UM lote — só para quem ocupa cargo de gestão ou tem
   // `structure.metrics.view` com escopo que alcança o líder (o Operador nunca recebe; sem ninguém autorizado a consulta nem é feita).
   const leaders = [...(directReports.length > 0 ? [subject] : []), ...directReports.filter((node) => structureCapabilitiesOf(access, node.id, knownCount(node)).hasReports)].filter((node) => canViewManagementMetrics({ role: scope.role, access: metricsAccess }, node))
-  const [memberCount, emails, freshness, metrics] = await Promise.all([
+  const [memberCount, emails, avatars, freshness, metrics] = await Promise.all([
     leader ? deps.hierarchy.countActiveOperators(leader.id, memberCountKindOf(leader) === "DIRECT_OPERATORS" ? "DIRECT" : "ANY") : Promise.resolve(0),
-    deps.corporateEmails(emailIds),
+    deps.corporateEmails(payloadIds),
+    deps.personAvatars(scope.organizationId, payloadIds),
     deps.structureFreshness(scope.organizationId),
     leaders.length > 0 ? deps.managementMetrics(scope.organizationId, leaders.map((node) => ({ id: node.id, role: node.role, teamId: node.teamId })), (deps.now ?? (() => new Date()))()) : Promise.resolve(new Map<string, ManagementMetrics>()),
   ])
   const withMetrics = (person: StructurePerson): StructurePerson => ({ ...person, managementMetrics: metrics.get(person.personId) ?? null })
+  const lookups: PersonLookups = { emails, avatars }
 
-  const managementChain = ancestors.map((person, index) => fromAncestor(access, person, index + 1, emails))
+  const managementChain = ancestors.map((person, index) => fromAncestor(access, person, index + 1, lookups))
   const directManagerStatus: DirectManagerStatus = subject.reportsToId === null ? "NOT_INFORMED" : leader?.id === subject.reportsToId ? "PRESENT" : "INACTIVE"
   const memberCountKind = leader ? memberCountKindOf(leader) : null
 
   return {
-    subject: { ...withMetrics(fromNode(access, subject, emails, inScope ? null : directReports.length)), isViewer: subject.id === scope.viewer.id },
+    subject: { ...withMetrics(fromNode(access, subject, lookups, inScope ? null : directReports.length)), isViewer: subject.id === scope.viewer.id },
     breadcrumb: buildStructureBreadcrumb(access, subject, ancestors, viewerAncestors),
     organizationalContext: {
       group: subject.teamId && subject.teamName ? { id: subject.teamId, name: subject.teamName } : null,
@@ -307,7 +321,7 @@ export async function buildPersonOrganizationStructure(deps: PersonOrganizationS
       team: leader && memberCountKind ? { label: describeImmediateStructure(leader), leader: managementChain[0]!, memberCount, memberCountKind, memberCountLabel: MEMBER_COUNT_LABELS[memberCountKind] } : null,
     },
     managementChain,
-    directReports: directReports.map((node) => withMetrics(fromNode(access, node, emails, knownCount(node)))),
+    directReports: directReports.map((node) => withMetrics(fromNode(access, node, lookups, knownCount(node)))),
     viewerOrganizationPath: [...[...viewerAncestors].reverse(), scope.viewer].map((person) => ({ personId: person.id, name: person.name, roleLabel: roleLabelOf(person.role) })),
     sourceMetadata: describeStructureSource(freshness),
   }

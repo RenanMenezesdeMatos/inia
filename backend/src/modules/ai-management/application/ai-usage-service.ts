@@ -67,8 +67,8 @@ function metricsOf(row: MetricRow | undefined, costs: CostRow[]): Metrics {
   }
 }
 
-/** Janela do período no fuso da organização. */
-async function resolvePeriod(context: AiAdminContext, organizationId: string, query: UsageQuery): Promise<{ from: Date; to: Date; label: string; timezone: string }> {
+/** Janela do período no fuso da organização (também usada pelo ranking "Quem mais usa"). */
+export async function resolvePeriod(context: AiAdminContext, organizationId: string, query: Pick<UsageQuery, "period" | "from" | "to">): Promise<{ from: Date; to: Date; label: string; timezone: string }> {
   const now = context.now()
   const tzRow = await context.db.query<{ timezone: string; today_start: Date; month_start: Date }>(
     `select ${ORG_TIMEZONE_SQL} timezone,

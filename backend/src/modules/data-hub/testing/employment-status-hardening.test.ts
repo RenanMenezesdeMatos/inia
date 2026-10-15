@@ -8,7 +8,7 @@ import { applyEmployeeStatusSnapshot, loadEmploymentStatusHistory, resetEmployme
 import { evaluateDataCondition } from "../../workflows/application/condition-evaluator.js"
 import { resolveOperationalQuartiles } from "../../workflows/application/operational-quartile-resolver.js"
 import { createDataHubContext, type DataHubContext } from "../application/data-hub-context.js"
-import { createFeed, setFeedStatus } from "../application/feed-service.js"
+import { createFeed, setFeedStatus, updateFeed } from "../application/feed-service.js"
 import { buildOverview, lineageOf } from "../application/overview-service.js"
 import { type DataFeedRow, type DataRunRow, type DataSourceRow } from "../application/records.js"
 import { enqueueRun } from "../application/run-service.js"
@@ -27,7 +27,8 @@ import { loadWorkScheduleSummary, resolveWorkScheduleHorizon } from "../../peopl
  * inferido; conflito nunca é silencioso; situação por data e projeção diária; retorno não
  * inventado; freshness funcional derivada da Central; STALE vira "não sei" (nunca "não produziu")
  * sem invalidar medição real; ausência explícita continua confiável com fonte atrasada; lineage
- * chega ao período; job em lote sem N+1.
+ * chega ao período; job em lote sem N+1. Ausências @2: "Vigente? = não" desfaz o período pela
+ * própria carga (auditado), cancelar o inexistente não muda nada, reenviar recria; feed @1 segue @1.
  */
 const ENABLED = process.env.INIA_DB_PROOF === "1"
 /** Organização PRÓPRIA da prova (autoridade de feed e freshness são por organização — nada interfere na demo nem em outras provas rodando em paralelo). */
@@ -506,5 +507,74 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       expect(overview.calendarQuality.sixByOne.total).toBeGreaterThanOrEqual(1)
       expect(overview.calendarQuality).toMatchObject({ activeExceptionsAhead: 0 })
     })
+  })
+
+  it("Ausências @2: 'Vigente? = não' desfaz o período (auditado) e a situação volta ao cadastro; cancelar de novo ou o que nunca chegou não muda nada; reenviar como vigente recria; período de outra origem fica e vira aviso", async () => {
+    const hire = await run(employeesFeed, csv([["externalEmployeeId", "name", "role", "hiredAt", "currentStatus", "statusEffectiveFrom"], ["TH-OP-09", "Gabriel TH", "OPERATOR", "2024-01-08", "EM PRODUÇÃO", ""]]), "th-op09.csv")
+    expect(hire.status).toBe("COMPLETED")
+    const op9 = await personId("TH-OP-09")
+    expect(absencesFeed.contractVersion).toBe(2) // feed novo nasce na versão atual
+    absencesFeed = await updateFeed(ctx, ORG, null, absencesFeed.id, { mapping: { fields: [...identity(["externalEmployeeId", "type", "startDate", "endDate"]).fields, { target: "active", source: "vigente", transforms: [] }] } })
+    const header = ["externalEmployeeId", "type", "startDate", "endDate", "vigente"]
+    const shape = async () => (await loadEmploymentStatusHistory(db, op9)).map((period) => [period.status, period.effectiveFrom, period.effectiveTo])
+    const split = [["EM_PRODUCAO", "2026-09-16", "2026-10-04"], ["FERIAS", "2026-10-05", "2026-10-14"], ["EM_PRODUCAO", "2026-10-15", null]]
+
+    const vacation = await run(absencesFeed, csv([header, ["TH-OP-09", "FERIAS", "2026-10-05", "2026-10-14", "S"]]), "th-op09-ferias.csv")
+    expect(vacation).toMatchObject({ status: "COMPLETED", recordsInserted: 1, warningCount: 0 })
+    expect(await shape()).toEqual(split)
+    const vacationId = (await loadEmploymentStatusHistory(db, op9)).find((period) => period.status === "FERIAS")!.id
+
+    // O RH cancelou as férias inteiras: a mesma fonte manda a identidade com vigente = N.
+    const cancel = await run(absencesFeed, csv([header, ["TH-OP-09", "FERIAS", "2026-10-05", "2026-10-14", "N"]]), "th-op09-cancela.csv")
+    expect(cancel).toMatchObject({ status: "COMPLETED", recordsRejected: 0, recordsInserted: 0, recordsUpdated: 0, recordsUnchanged: 0, recordsDeactivated: 1, warningCount: 0 })
+    expect(await shape()).toEqual([["EM_PRODUCAO", "2026-09-16", null]]) // as duas metades do cadastro voltam a ser uma só
+    expect(await resolveEmployeeStatusAt(db, op9, "2026-10-07")).toMatchObject({ status: "EM_PRODUCAO", basis: "OPEN_PERIOD", confirmed: true })
+    const audit = (await db.query<{ entity_id: string; actor_id: string | null; payload: Record<string, unknown> }>(`select entity_id, actor_id, payload from audit_logs where organization_id = $1 and action = 'DATA_HUB_EMPLOYEE_ABSENCE_CANCELLED'`, [ORG])).rows
+    expect(audit).toHaveLength(1)
+    expect(audit[0]).toMatchObject({
+      entity_id: vacationId,
+      actor_id: null,
+      payload: { runId: cancel.id, feedId: absencesFeed.id, contract: "EMPLOYEE_ABSENCES@2", matricula: "TH-OP-09", removed: { status: "FERIAS", effectiveFrom: "2026-10-05", effectiveTo: "2026-10-14", effectiveToExplicit: true, source: "th-rh-ausencias" }, restored: { status: "EM_PRODUCAO", effectiveFrom: "2026-09-16", effectiveTo: null } },
+    })
+    const current = (await loadEmploymentStatusHistory(db, op9))[0]!
+    expect((await lineageOf(ctx, ORG, "employee_status_periods", current.id)).map((entry) => [entry.runId, entry.action])).toContainEqual([cancel.id, "UPDATED"])
+
+    // Cancelar de novo e cancelar uma ausência que nunca chegou: nada muda, nada vira aviso, nada é inventado.
+    const noop = await run(absencesFeed, csv([header, ["TH-OP-09", "FERIAS", "2026-10-05", "2026-10-14", "N"], ["TH-OP-09", "INSS", "2026-11-02", "", "N"]]), "th-op09-nada.csv")
+    expect(noop).toMatchObject({ status: "COMPLETED", recordsRejected: 0, recordsDeactivated: 0, recordsUnchanged: 2, warningCount: 0 })
+    expect(await shape()).toEqual([["EM_PRODUCAO", "2026-09-16", null]])
+    expect((await db.query(`select count(*)::int c from audit_logs where organization_id = $1 and action = 'DATA_HUB_EMPLOYEE_ABSENCE_CANCELLED'`, [ORG])).rows[0]).toEqual({ c: 1 })
+
+    // Reativar: a mesma identidade como vigente recria o período.
+    const reactivate = await run(absencesFeed, csv([header, ["TH-OP-09", "FERIAS", "2026-10-05", "2026-10-14", "s"]]), "th-op09-reativa.csv")
+    expect(reactivate).toMatchObject({ status: "COMPLETED", recordsInserted: 1, recordsDeactivated: 0 })
+    expect(await shape()).toEqual(split)
+    expect(await resolveEmployeeStatusAt(db, op9, "2026-10-07")).toMatchObject({ status: "FERIAS", basis: "EXPLICIT_PERIOD", confirmed: true })
+
+    // Período de outra origem (ajuste manual do admin) não é cancelado pela carga: fica, e o pedido vira aviso rastreável.
+    await applyEmployeeStatusSnapshot(db, { organizationId: ORG, personId: op9, status: "INSS", effectiveFrom: "2026-12-01", effectiveTo: "2026-12-20", observedAt: NOW, source: "MANUAL", timeZone: TZ, authoritative: true })
+    const foreign = await run(absencesFeed, csv([header, ["TH-OP-09", "INSS", "2026-12-01", "2026-12-20", "N"]]), "th-op09-manual.csv")
+    expect(foreign).toMatchObject({ status: "COMPLETED", recordsRejected: 0, recordsDeactivated: 0, recordsUnchanged: 1, warningCount: 1 })
+    const notes = await rejections(foreign.id)
+    expect(notes).toHaveLength(1)
+    expect(notes[0]!.error_code).toBe("DATA_EMPLOYMENT_STATUS_CONFLICT")
+    expect(notes[0]!.message).toMatch(/foi informado por MANUAL\. Decisão: mantido o período existente/)
+    expect(await shape()).toContainEqual(["INSS", "2026-12-01", "2026-12-20"])
+  })
+
+  it("feed criado na versão 1 continua na versão 1 (sem 'Vigente?') até o mapeamento ser salvo na versão atual — a troca fica auditada", async () => {
+    const legacy = await createFeed(ctx, ORG, null, source.id, { feedKey: "ausencias-v1", name: "Ausências v1", contractKey: "EMPLOYEE_ABSENCES", contractVersion: 1, connectorConfig: fileFeedConfig, sourceNamespace: "th-rh-ausencias", mapping: identity(["externalEmployeeId", "type", "startDate", "endDate", "active"]) })
+    expect(legacy.contractVersion).toBe(1)
+    await expect(setFeedStatus(ctx, ORG, null, legacy.id, "ACTIVATE")).rejects.toThrow(/"active" não existe no contrato EMPLOYEE_ABSENCES/)
+    const kept = await setFeedStatus(ctx, ORG, null, (await updateFeed(ctx, ORG, null, legacy.id, { mapping: identity(["externalEmployeeId", "type", "startDate", "endDate"]) })).id, "ACTIVATE")
+    expect(kept.contractVersion).toBe(1)
+    // Carga num feed @1: lê pelo contrato @1 (o registro guarda a versão anterior), como antes.
+    const load = await run(kept, csv([["externalEmployeeId", "type", "startDate", "endDate"], ["TH-OP-09", "PATERNIDADE", "2027-01-04", "2027-01-08"]]), "th-v1.csv")
+    expect(load).toMatchObject({ status: "COMPLETED", contractVersion: 1, recordsInserted: 1 })
+    const upgraded = await updateFeed(ctx, ORG, null, legacy.id, { contractVersion: 2, mapping: identity(["externalEmployeeId", "type", "startDate", "endDate", "active"]) })
+    expect(upgraded.contractVersion).toBe(2)
+    const audit = (await db.query<{ payload: Record<string, unknown> }>(`select payload from audit_logs where organization_id = $1 and entity_id = $2 and action = 'DATA_HUB_FEED_UPDATED' order by created_at desc limit 1`, [ORG, legacy.id])).rows[0]!
+    expect(audit.payload).toMatchObject({ mappingChanged: true, contract: "EMPLOYEE_ABSENCES@2", previousContract: "EMPLOYEE_ABSENCES@1" })
+    await expect(updateFeed(ctx, ORG, null, legacy.id, { contractVersion: 3 })).rejects.toThrow(/EMPLOYEE_ABSENCES@3/)
   })
 })

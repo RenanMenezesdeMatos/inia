@@ -55,6 +55,9 @@ function counting(reader: OrganizationalHierarchyReader, calls: string[]): Organ
 }
 
 /** Situação funcional atual por pessoa (o que os períodos diriam hoje); quem não está aqui está EM_PRODUCAO presumido. */
+/** Fotos escolhidas no perfil (`person_profile_images`) — quem não está aqui fica com a imagem do cadastro, como na apresentação real. */
+const PROFILE_AVATARS: Record<string, string> = { [IDS.op1]: "/api/v1/profile-images/foto-ana", [IDS.vanessa]: "/api/v1/profile-images/foto-vanessa" }
+
 const STATUS: Record<string, string> = { [IDS.op2]: "FERIAS", [IDS.op3]: "INSS", [IDS.op4]: "MATERNIDADE", [EXTRA.fabio]: "VACATION" /* legado → FERIAS */, [EXTRA.gil]: "PILOTO" }
 const TODAY = "2026-09-17"
 
@@ -62,6 +65,7 @@ function setup(freshness: EmploymentStatusFreshness = NO_FEED, nodes: PersonNode
   const analytics = new InMemoryAnalyticsRepository({ people: nodes, access })
   const hierarchyCalls: string[] = []
   const emailCalls: string[][] = []
+  const avatarCalls: string[][] = []
   /** Cada chamada do carregador de métricas = UM lote de raízes (número de chamadas = número de consultas em lote). */
   const metricsCalls: string[][] = []
   const below = (personId: string): PersonNode[] => {
@@ -85,6 +89,7 @@ function setup(freshness: EmploymentStatusFreshness = NO_FEED, nodes: PersonNode
     analytics,
     hierarchy,
     corporateEmails: async (ids) => (emailCalls.push(ids), new Map(ids.map((id) => [id, `${nodes.find((node) => node.id === id)?.name.split(" ")[0]?.toLowerCase() ?? id}@inia.com`]))),
+    personAvatars: async (_organizationId, ids) => (avatarCalls.push(ids), new Map(ids.map((id) => [id, PROFILE_AVATARS[id] ?? nodes.find((node) => node.id === id)?.avatarUrl ?? null]))),
     structureFreshness: async () => freshness,
     managementMetrics: async (_organizationId, roots: ManagementMetricsRoot[]) => {
       metricsCalls.push(roots.map((root) => root.id))
@@ -100,7 +105,7 @@ function setup(freshness: EmploymentStatusFreshness = NO_FEED, nodes: PersonNode
     },
     now: () => new Date(`${TODAY}T12:00:00.000Z`),
   }
-  return { deps, analytics, hierarchyCalls, emailCalls, metricsCalls }
+  return { deps, analytics, hierarchyCalls, emailCalls, avatarCalls, metricsCalls }
 }
 
 function user(personId: string, role: AuthTokenPayload["role"]): AuthTokenPayload {
@@ -120,6 +125,19 @@ describe("Estrutura — cadeia de liderança real", () => {
       [5, "Paulo Diretor", "Diretor"],
     ])
     expect(result.organizationalContext.directManagerStatus).toBe("PRESENT")
+  })
+
+  it("foto: a escolhida no perfil vence a imagem do cadastro em todo nó (focal, cadeia e subordinados), lida num lote só", async () => {
+    const { deps, avatarCalls } = setup(NO_FEED, people().map((node) => (node.id === IDS.op2 ? { ...node, avatarUrl: "https://cdn.cliente/bia.jpg" } : node)))
+    const asOperator = await buildPersonOrganizationStructure(deps, user(IDS.op1, "OPERATOR"), IDS.op1)
+    expect(asOperator.subject.avatarUrl).toBe("/api/v1/profile-images/foto-ana")
+    expect(asOperator.managementChain[0]).toMatchObject({ personId: IDS.vanessa, avatarUrl: "/api/v1/profile-images/foto-vanessa" })
+    expect(asOperator.managementChain[1]!.avatarUrl).toBeNull()
+    const asSupervisor = await buildPersonOrganizationStructure(deps, user(IDS.vanessa, "SUPERVISOR"), IDS.vanessa)
+    const reports = new Map(asSupervisor.directReports.map((report) => [report.personId, report.avatarUrl]))
+    expect(reports.get(IDS.op1)).toBe("/api/v1/profile-images/foto-ana")
+    expect(reports.get(IDS.op2)).toBe("https://cdn.cliente/bia.jpg")
+    expect(avatarCalls).toHaveLength(2)
   })
 
   it("cadeia parcial (sem Coordenador): renderiza exatamente os níveis existentes — nenhum nível fictício", async () => {

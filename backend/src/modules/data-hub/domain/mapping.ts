@@ -362,7 +362,7 @@ const SYNONYMS: Record<string, string[]> = {
   subgroupExternalCode: ["subgrupo", "codigosubgrupo", "codsubgrupo", "subteam", "subteamcode", "subequipe"],
   reportsToExternalId: ["gestor", "matriculagestor", "gestormatricula", "supervisor", "matriculasupervisor", "reportsto", "lider", "managerid", "idgestor"],
   hiredAt: ["admissao", "dataadmissao", "hiredat", "dtadmissao"],
-  active: ["ativo", "situacao", "status", "active"],
+  active: ["ativo", "vigente", "situacao", "status", "active"],
   email: ["email", "emailacesso", "usuario"],
   externalCode: ["codigo", "cod", "code", "id", "externalcode"],
   operationName: ["operacao", "operation"],
@@ -403,6 +403,19 @@ const SYNONYMS: Record<string, string[]> = {
   flagName: ["flag", "nomeflag", "sinal", "flagname"],
 }
 
+/**
+ * Colunas que dizem o CONTRÁRIO do campo sim/não ("cancelado = S" é "vigente = não"): a sugestão
+ * associa com um "Mapear sim/não" invertido, visível e editável — nunca uma leitura direta.
+ */
+const INVERTED_BOOLEAN_SYNONYMS: Record<string, string[]> = {
+  active: ["cancelado", "cancelada", "cancelamento", "cancelled", "canceled"],
+}
+const INVERTED_BOOLEAN_MAP: Transform = {
+  kind: "BOOLEAN_MAP",
+  trueValues: ["N", "NAO", "NÃO", "0", "FALSE", "F", "FALSO", "NO"],
+  falseValues: ["S", "SIM", "1", "TRUE", "T", "VERDADEIRO", "YES", "Y"],
+}
+
 export function normalizeColumnName(name: string): string {
   return name
     .normalize("NFD")
@@ -416,12 +429,12 @@ export function normalizeColumnName(name: string): string {
  * associação cujos valores claramente não são daquele campo — ex.: coluna "situacao" com EM_PRODUCAO/FERIAS não vira
  * o campo sim/não "Ativo". Texto aceita qualquer valor.
  */
-export function sampleFitsField(field: DataContractField, values: readonly unknown[], timeZone = "UTC"): boolean {
+export function sampleFitsField(field: DataContractField, values: readonly unknown[], timeZone = "UTC", transforms: readonly Transform[] = []): boolean {
   if (field.type === "STRING") return true
   const present = values.filter((value) => !isEmpty(value)).slice(0, 50)
   if (present.length === 0) return true
   return present.every((value) => {
-    const transformed = applyTransforms(value, [])
+    const transformed = applyTransforms(value, transforms)
     return !transformed.error && !coerce(field, transformed.value, { timeZone }).error
   })
 }
@@ -433,12 +446,16 @@ export function suggestMapping(contract: DataContract, sourceColumns: readonly s
   const fields: FieldMapping[] = []
   for (const field of contract.fields) {
     const candidates = [normalizeColumnName(field.key), normalizeColumnName(field.label), ...(SYNONYMS[field.key] ?? []).map(normalizeColumnName)]
-    const match = candidates
-      .flatMap((candidate) => normalized.filter((entry) => entry.key === candidate && !used.has(entry.column)))
-      .find((entry) => sampleFitsField(field, sampleRecords.map((record) => extractPath(record, entry.column))))
-    if (!match) continue
-    used.add(match.column)
-    fields.push({ target: field.key, source: match.column, transforms: field.type === "STRING" ? [{ kind: "TRIM" }] : [] })
+    const findColumn = (names: readonly string[], transforms: readonly Transform[] = []) =>
+      names
+        .flatMap((candidate) => normalized.filter((entry) => entry.key === candidate && !used.has(entry.column)))
+        .find((entry) => sampleFitsField(field, sampleRecords.map((record) => extractPath(record, entry.column)), "UTC", transforms))
+    const match = findColumn(candidates)
+    const inverted = !match && field.type === "BOOLEAN" ? findColumn((INVERTED_BOOLEAN_SYNONYMS[field.key] ?? []).map(normalizeColumnName), [INVERTED_BOOLEAN_MAP]) : undefined
+    const column = match ?? inverted
+    if (!column) continue
+    used.add(column.column)
+    fields.push({ target: field.key, source: column.column, transforms: inverted ? [INVERTED_BOOLEAN_MAP] : field.type === "STRING" ? [{ kind: "TRIM" }] : [] })
   }
   return { fields }
 }

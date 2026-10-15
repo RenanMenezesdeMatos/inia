@@ -4,13 +4,19 @@ import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import { flowGraphSchema } from "../../domain/graph-schema.js"
-import { findEmployeeCollectionConflict, findIndividualOnlyConflict, throwConflict, validateFanOutConvergence, validateWorkflowForPublish, type PublishValidationRow } from "../../application/validate-workflow-for-publish.js"
+import { findEmployeeCollectionConflict, findIndividualOnlyConflict, throwConflict, validateFanOutConvergence, validateWorkflowForPublish } from "../../application/validate-workflow-for-publish.js"
+import { computeGoLiveImpact } from "../../application/go-live-impact.js"
+import { draftConfigurationOf, publishWorkflow } from "../../application/publish-workflow.js"
+import { discardDraftConfiguration, writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
 import { consolidatedStructureAnchorId, consolidatedStructureSchema } from "../../domain/consolidated-structure-schema.js"
 import { populationFilterAnchorId, populationFilterGroupRef, populationFilterSchema } from "../../domain/population-filter-schema.js"
 import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js"
-import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter, fetchScopedRow } from "./shared.js"
+import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, normalizedPopulationFilter, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 
 const saveDraftSchema = z.object({ graph: flowGraphSchema })
+
+/** O `fingerprint` do impacto que a pessoa viu e confirmou (go-live-impact.ts) — exigido quando o impacto pede confirmação. */
+const publishSchema = z.object({ confirmation: z.string().trim().min(1).max(64).optional() })
 
 // Modo de avaliação (Individual x Consolidado): nunca uma coluna própria — derivado de
 // `consolidated_structure` (presente = Consolidado). O corpo da requisição é explícito sobre o
@@ -21,18 +27,6 @@ const updateAnalysisConfigSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("CONSOLIDATED"), consolidatedStructure: consolidatedStructureSchema }),
 ])
 
-/** Linha mínima que a validação de publicação precisa (ver validate-workflow-for-publish.ts) —
- * compartilhada por `POST /:id/validate` (dry-run) e `POST /:id/publish`. */
-async function fetchPublishRow(db: Database, organizationId: string, id: string): Promise<PublishValidationRow | null> {
-  const result = await db.query<PublishValidationRow>(
-    `select scope_type "scopeType", team_id "teamId", subteam_id "subteamId", draft_graph "draftGraph", trigger_config "triggerConfig",
-            consolidated_structure "consolidatedStructure"
-     from workflows where id = $1 and organization_id = $2`,
-    [id, organizationId],
-  )
-  return result.rows[0] ?? null
-}
-
 /** Rascunho do grafo, configuração da análise, validação (dry-run), publicação e exclusão. Registradas na ordem original (ver workflow-router.ts). */
 export function registerWorkflowLifecycleRoutes(router: Router, db: Database): void {
 
@@ -42,7 +36,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`update workflows set draft_graph = $1, updated_at = now() where id = $2 and organization_id = $3`, [
       JSON.stringify(input.graph),
@@ -53,9 +47,9 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
   })
 
   // Modo de avaliação — configuração própria do Workflow, nunca repetida em Node nenhum (mesmo
-  // espírito de Abrangência). Vive fora do grafo/versão publicada (mesma coluna mutável de
-  // scope_type) porque é uma decisão operacional que pode mudar sem gerar uma nova versão do
-  // fluxo. Individual x Consolidado NUNCA é uma escolha real fora de Agenda de calendário — Flag/
+  // espírito de Abrangência). Como o Gatilho e a Abrangência, é RASCUNHO até Publicar: grava só
+  // `draft_consolidated_structure`/`draft_population_filter` (workflow-configuration-store.ts) e é
+  // registrada na versão publicada. Individual x Consolidado NUNCA é uma escolha real fora de Agenda de calendário — Flag/
   // Indicador já têm um sujeito individual implícito no próprio evento, e Agenda relativa ao
   // expediente é por definição individual (uma jornada é de uma pessoa só) — o backend rejeita
   // essas combinações mesmo se o payload vier manual, nunca confia só no frontend escondendo a
@@ -66,7 +60,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     if (input.mode === "CONSOLIDATED") {
       if (!triggerAllowsConsolidatedMode(current.triggerConfig)) {
@@ -97,11 +91,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
         "WORKFLOW_CONSOLIDATED_STRUCTURE_OUT_OF_SCOPE",
         422,
       )
-      await db.query(`update workflows set consolidated_structure = $1, population_filter = null, updated_at = now() where id = $2 and organization_id = $3`, [
-        JSON.stringify(input.consolidatedStructure),
-        request.params.id,
-        organizationId,
-      ])
+      await writeDraftConfiguration(db, organizationId, request.params.id!, { analysis: { consolidatedStructure: input.consolidatedStructure, populationFilter: null } })
     } else {
       if (input.populationFilter && input.populationFilter.kind !== "ALL" && !triggerAllowsPopulationFilter(current.triggerConfig)) {
         throw new DomainError("Filtro Populacional só está disponível para Agenda.", "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER", 422)
@@ -118,11 +108,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
           422,
         )
       }
-      await db.query(`update workflows set consolidated_structure = null, population_filter = $1, updated_at = now() where id = $2 and organization_id = $3`, [
-        input.populationFilter ? JSON.stringify(input.populationFilter) : null,
-        request.params.id,
-        organizationId,
-      ])
+      await writeDraftConfiguration(db, organizationId, request.params.id!, { analysis: { consolidatedStructure: null, populationFilter: normalizedPopulationFilter(input.populationFilter) } })
     }
 
     const result = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])
@@ -137,10 +123,10 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
    */
   router.post("/:id/validate", async (request, response) => {
     const organizationId = request.user!.organizationId
-    const current = await fetchPublishRow(db, organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
     try {
       await validateWorkflowForPublish(db, organizationId, request.params.id!, current)
       response.json({ data: { valid: true, error: null } })
@@ -151,31 +137,59 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
     }
   })
 
-  router.post("/:id/publish", async (request, response) => {
+  /**
+   * Prévia do que PUBLICAR o rascunho agora faria no runtime (go-live-impact.ts): o que muda na
+   * configuração e, para Agenda, a população, o catch-up imediato de hoje e o primeiro disparo. Zero
+   * escrita. A tela abre o diálogo de publicação com isto; `POST /:id/publish` recalcula e recusa
+   * (409) quando o impacto exige confirmação e o fingerprint não veio — o mesmo cálculo, nunca dois.
+   */
+  router.get("/:id/publish-impact", async (request, response) => {
     const organizationId = request.user!.organizationId
-    const current = await fetchPublishRow(db, organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
+    const impact = await computeGoLiveImpact(db, organizationId, {
+      workflowId: request.params.id!,
+      reason: "PUBLISH",
+      configuration: draftConfigurationOf(current),
+      published: current.published ? current.live : null,
+      active: current.active,
+      now: new Date(),
+    })
+    response.json({ data: impact })
+  })
 
-    const graph = await validateWorkflowForPublish(db, organizationId, request.params.id!, current)
+  // Publicar: o ÚNICO caminho do rascunho (grafo + configuração) para o que o runtime lê (publish-workflow.ts).
+  router.post("/:id/publish", async (request, response) => {
+    const organizationId = request.user!.organizationId
+    const input = publishSchema.parse(request.body ?? {})
+    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const published = await publishWorkflow(db, {
+      organizationId,
+      workflowId: request.params.id!,
+      actorPersonId: request.user?.personId ?? null,
+      confirmation: input.confirmation ?? null,
+      canManageScope: (scope) => canManageScope(scopes, scope),
+    })
+    if (!published) return response.status(404).json(NOT_FOUND)
 
-    const client = await db.connect()
-    try {
-      await client.query("begin")
-      const version = await client.query<{ id: string }>(
-        `insert into workflow_versions(workflow_id, graph, created_by) values ($1,$2,$3) returning id`,
-        [request.params.id, JSON.stringify(graph), request.user?.personId ?? null],
-      )
-      await client.query(`update workflows set active_version_id = $1, updated_at = now() where id = $2`, [version.rows[0]!.id, request.params.id])
-      await client.query("commit")
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
+    const listResult = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])
+    response.json({ data: listResult.rows[0] })
+  })
+
+  // "Descartar alterações de configuração": o rascunho volta a ser a configuração publicada (o grafo
+  // em rascunho não é tocado). Sem versão publicada não há configuração publicada para voltar.
+  router.post("/:id/configuration/discard", async (request, response) => {
+    const organizationId = request.user!.organizationId
+    const current = await fetchScopedRow(db, organizationId, request.params.id!)
+    if (!current) return response.status(404).json(NOT_FOUND)
+    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!current.published) {
+      throw new DomainError("Este workflow ainda não foi publicado — não há configuração publicada para restaurar.", "WORKFLOW_NOT_PUBLISHED", 409)
     }
-
+    await discardDraftConfiguration(db, organizationId, request.params.id!)
     const listResult = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])
     response.json({ data: listResult.rows[0] })
   })
@@ -185,7 +199,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`delete from workflows where id = $1 and organization_id = $2`, [request.params.id, organizationId])
     response.status(204).send()

@@ -27,16 +27,35 @@ export type QaWorkflowRow = {
   active_version_id: string | null
   draft_graph: unknown
   published_graph: unknown
+  /** Configuração PUBLICADA (o que o runtime lê) — os campos acima são a do RASCUNHO até `withSimulationConfiguration`. */
+  published_configuration?: PublishedConfiguration | null
 }
 
+type PublishedConfiguration = Pick<QaWorkflowRow, "scope_type" | "team_id" | "subteam_id" | "trigger_config" | "consolidated_structure" | "population_filter">
+
+/**
+ * Carrega o Workflow com a configuração do RASCUNHO nos campos de cima (Gatilho, Abrangência, Modo de
+ * avaliação — o QA Lab testa o rascunho por padrão, e os seletores de massa seguem o que está sendo
+ * editado) e a PUBLICADA em `published_configuration`. Quem testa a versão publicada troca para ela
+ * com `withSimulationConfiguration` — nunca mistura grafo publicado com configuração do rascunho.
+ */
 export async function loadWorkflowForSimulation(db: Database, organizationId: string, workflowId: string): Promise<QaWorkflowRow | null> {
   const result = await db.query<QaWorkflowRow>(
-    `select w.id, w.name, w.scope_type, w.team_id, w.subteam_id, w.trigger_config, w.consolidated_structure, w.population_filter, w.active_version_id, w.draft_graph,
-            (select graph from workflow_versions where id = w.active_version_id) published_graph
+    `select w.id, w.name, w.draft_scope_type scope_type, w.draft_team_id team_id, w.draft_subteam_id subteam_id, w.draft_trigger_config trigger_config,
+            w.draft_consolidated_structure consolidated_structure, w.draft_population_filter population_filter, w.active_version_id, w.draft_graph,
+            (select graph from workflow_versions where id = w.active_version_id) published_graph,
+            jsonb_build_object('scope_type', w.scope_type, 'team_id', w.team_id, 'subteam_id', w.subteam_id, 'trigger_config', w.trigger_config,
+                               'consolidated_structure', w.consolidated_structure, 'population_filter', w.population_filter) published_configuration
      from workflows w where w.id = $1 and w.organization_id = $2`,
     [workflowId, organizationId],
   )
   return result.rows[0] ?? null
+}
+
+/** A configuração que acompanha o grafo testado: rascunho com rascunho, publicada com publicada. */
+export function withSimulationConfiguration(row: QaWorkflowRow, state: WorkflowState): QaWorkflowRow {
+  if (state !== "PUBLISHED" || !row.published_configuration) return row
+  return { ...row, ...row.published_configuration }
 }
 
 /**

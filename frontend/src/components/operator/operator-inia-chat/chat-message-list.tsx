@@ -1,6 +1,7 @@
 "use client"
 
 import { BarChart3, Bot, Mic, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bubble, BubbleContent, BubbleReactions } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,6 @@ import type { ConversationSummary } from "@/lib/realtime/gemini-text-client"
 import { dateSeparatorLabel, dayKey } from "@/lib/realtime/conversation-format"
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
 import type { OperatorProfile } from "@/schemas/operator"
-import { initialsOf } from "@/schemas/profile/my-profile.schema"
 import { RichContent } from "@/components/rich-content/rich-content"
 import type { FeedbackApplicationDetail } from "@/schemas/feedback-applications/feedback-application.schema"
 import type { ChatMessage } from "./chat-message"
@@ -83,7 +83,7 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
       {showSeparator ? <div className="flex justify-center" role="separator" aria-label={dateSeparatorLabel(message.occurredAt)}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{dateSeparatorLabel(message.occurredAt)}</span></div> : null}
       {/* `data-message-id`: onde a fala da INIA pousa no palco (a mensagem inteira nasce do balão). */}
       <Message align={assistant ? "start" : "end"} data-message-id={message.id}>
-        <MessageAvatar><Avatar className="size-8">{assistant ? <AvatarImage src={operator.assistantImage} alt="INIA"/> : operator.avatarUrl ? <AvatarImage src={operator.avatarUrl} alt={operator.displayName ?? operator.name}/> : null}<AvatarFallback className={assistant ? "bg-primary text-primary-foreground" : "bg-secondary"}>{assistant ? <Bot className="size-4"/> : initialsOf(operator.displayName ?? operator.name)}</AvatarFallback></Avatar></MessageAvatar>
+        <MessageAvatar>{assistant ? <Avatar className="size-8"><AvatarImage src={operator.assistantImage} alt="INIA"/><AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4"/></AvatarFallback></Avatar> : <PersonAvatar name={operator.displayName ?? operator.name} avatarUrl={operator.avatarUrl} className="size-8" fallbackClassName="bg-secondary"/>}</MessageAvatar>
         <MessageContent className="max-w-[88%]">
           <MessageHeader className="flex items-center gap-1.5 px-1">{assistant ? "INIA" : operator.displayName ?? operator.name}{fromWorkflow ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Recado</span> : null}{presentation ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Apresentação do feedback</span> : null}</MessageHeader>
           <Bubble variant={assistant ? "muted" : "default"} className={fromWorkflow ? "max-w-full border border-primary/40 bg-primary/10" : "max-w-full"} data-origin={fromWorkflow ? "workflow" : presentation ? "feedback-presentation" : undefined}><BubbleContent className="space-y-2 px-4 py-3">{fromWorkflow && workflowConversation ? <p className="text-sm font-semibold text-primary dark:text-chart-4">{workflowConversation.title}</p> : null}{presentation ? <PresentationText text={message.text} compact={sessionOpen}/> : assistant ? <RichContent text={message.text}/> : message.text}</BubbleContent>{message.rating ? <BubbleReactions side="bottom" align="end">{message.rating === "up" ? "👍" : "👎"}</BubbleReactions> : null}</Bubble>

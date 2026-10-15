@@ -52,6 +52,7 @@ export function createRequireAuth(db: Pick<Database, "query">, options: { allowP
     request.session = { passwordChangeRequired: decision.passwordChangeRequired, temporaryPasswordExpiresAt: decision.temporaryPasswordExpiresAt }
     // Organização das chamadas de IA feitas neste request (policy/uso/orçamento — AI Providers V1): vem
     // SEMPRE da sessão verificada, nunca do corpo/URL. Origem = request de uma pessoa → prioridade INTERATIVA no limitador.
-    return runWithAiOrganization(user.organizationId, () => next(), { origin: "USER_REQUEST" })
+    // A pessoa da sessão vai junto e fica no evento de uso (quem pediu — ranking "Quem mais usa", migration 143).
+    return runWithAiOrganization(user.organizationId, () => next(), { origin: "USER_REQUEST", requesterPersonId: user.personId })
   }
 }

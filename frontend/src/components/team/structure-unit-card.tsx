@@ -4,10 +4,10 @@ import { ChevronRight } from "lucide-react"
 
 import { ReferenceStatusText, referenceStatusFromAchievement } from "@/components/analytics/reference-status"
 import { TrendIndicator } from "@/components/analytics/trend-indicator"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { formatCount, formatPercent, initials } from "@/lib/analytics/format"
+import { formatCount, formatPercent } from "@/lib/analytics/format"
 import { subjectToRef, type SubjectRef } from "@/lib/analytics/subject-params"
 import { ROLE_LABELS, type PlatformRole } from "@/schemas/auth/auth.schema"
 import type { StructureUnitSummary } from "@/schemas/analytics/analytics.schema"
@@ -21,10 +21,7 @@ export function StructureUnitCard({ unit, onOpen }: { unit: StructureUnitSummary
       <CardContent className="p-4 sm:p-5">
         <div className="flex items-start gap-3">
           {unit.leader ? (
-            <Avatar className="size-11">
-              <AvatarImage src={unit.leader.avatarUrl ?? undefined} alt="" />
-              <AvatarFallback>{initials(unit.leader.name)}</AvatarFallback>
-            </Avatar>
+            <PersonAvatar name={unit.leader.name} avatarUrl={unit.leader.avatarUrl} alt="" className="size-11" />
           ) : null}
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-medium">{unit.label}</h3>

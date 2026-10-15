@@ -2,7 +2,7 @@
 
 import { ClipboardCheck, History, Megaphone, MessageCircle, MessageCircleQuestion, type LucideIcon } from "lucide-react"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { conversationLabel, conversationStatusLabel } from "@/lib/realtime/conversation-format"
 import { cn } from "@/lib/utils"
 import type { MonitoredConversation, MonitoredOwner } from "@/services/admin/assistant-conversations-service"
@@ -33,15 +33,8 @@ export function conversationTitleOf(conversation: MonitoredConversation): string
   return conversationLabel(conversation)
 }
 
-export const initialsOf = (name: string) => name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase()
-
 export function OwnerAvatar({ owner, className }: { owner: MonitoredOwner; className?: string }) {
-  return (
-    <Avatar className={cn("size-9", className)}>
-      {owner.avatarUrl ? <AvatarImage src={owner.avatarUrl} alt={owner.name} /> : null}
-      <AvatarFallback className="bg-secondary text-xs">{initialsOf(owner.name)}</AvatarFallback>
-    </Avatar>
-  )
+  return <PersonAvatar name={owner.name} avatarUrl={owner.avatarUrl} className={cn("size-9", className)} fallbackClassName="bg-secondary text-xs" />
 }
 
 /** Estado com um ponto de cor (em andamento = verde, encerrada = neutro) e o rótulo escrito ao lado. */

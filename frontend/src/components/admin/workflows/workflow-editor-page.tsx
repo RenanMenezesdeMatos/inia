@@ -43,14 +43,13 @@ import { useOrchestratorsQuery } from "@/queries/admin/use-assistant-queries"
 import { usePublishedPolicySummariesQuery } from "@/queries/admin/use-intervention-policy-queries"
 import {
   useDeleteWorkflowMutation,
-  usePublishWorkflowMutation,
   useSaveWorkflowDraftMutation,
   useUpdateWorkflowMutation,
   useWorkflowQuery,
 } from "@/queries/admin/use-workflow-queries"
 import { useWorkflowVariablesQuery } from "@/queries/admin/use-workflow-variable-queries"
 import { type FlowGraph, type FlowNode, type FlowNodeType } from "@/schemas/admin/workflow-graph.schema"
-import { triggerBadgeText, triggerLabel, triggerProvidesValue, triggerValueIsBoolean, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
+import { goLiveImpactFromError, triggerBadgeText, triggerLabel, triggerProvidesValue, triggerValueIsBoolean, withDraftConfiguration, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
 import { validateWorkflowGraph } from "@/schemas/admin/workflow-validation"
 
 import { resolveStructuredFields } from "./content-sources"
@@ -66,6 +65,10 @@ import { WorkflowResultsTab } from "./workflow-results-tab"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { CONSOLIDATED_STRUCTURE_LABELS } from "@/schemas/admin/consolidated-structure-schema"
 import { WorkflowSettingsSheet } from "./workflow-settings-sheet"
+import { GoLiveImpactDialog } from "./go-live-impact-dialog"
+import { usePublishFlow } from "./use-publish-flow"
+import { describeConfigurationChanges } from "./workflow-configuration-summary"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 /** Badge "Individual"/"Consolidado · <estrutura>" ao lado da Abrangência — herança visual do
  * Modo de avaliação, nunca uma pergunta de novo dentro do editor (mesmo espírito da Abrangência). */
@@ -194,7 +197,12 @@ function WorkflowNameEditor({ workflow }: { workflow: WorkflowDetail }) {
   )
 }
 
+/**
+ * `workflow` = como a API devolve: campos de topo = configuração PUBLICADA (o que roda). O canvas edita e valida o
+ * RASCUNHO inteiro — grafo E configuração (`editable`), que só passam a valer ao Publicar.
+ */
 function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
+  const editable = useMemo(() => withDraftConfiguration(workflow), [workflow])
   const colorMode = useReactFlowColorMode()
   const agentsQuery = useAgentsQuery()
   const orchestratorsQuery = useOrchestratorsQuery()
@@ -203,7 +211,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
   const variablesQuery = useWorkflowVariablesQuery(workflow.id)
   const orchestratorsById = useMemo(() => new Map((orchestratorsQuery.data ?? []).map((orchestrator) => [orchestrator.id, orchestrator])), [orchestratorsQuery.data])
   const saveDraftMutation = useSaveWorkflowDraftMutation(workflow.id)
-  const publishMutation = usePublishWorkflowMutation(workflow.id)
+  const publishFlow = usePublishFlow(workflow.id)
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   const initial = useMemo(() => toReactFlow(workflow.draftGraph), [workflow.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -225,16 +233,16 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
   // Espelha a validação do publish no backend — sinaliza no próprio nó em vez de só estourar
   // erro quando o usuário clicar em Publicar.
   const graphIssues = useMemo(
-    () => validateWorkflowGraph(currentGraph, workflow.trigger, orchestratorsById, variablesById, Boolean(workflow.consolidatedStructure)),
-    [currentGraph, workflow.trigger, orchestratorsById, variablesById, workflow.consolidatedStructure],
+    () => validateWorkflowGraph(currentGraph, editable.trigger, orchestratorsById, variablesById, Boolean(editable.consolidatedStructure)),
+    [currentGraph, editable.trigger, orchestratorsById, variablesById, editable.consolidatedStructure],
   )
   // Dry-run do backend sobre o rascunho PERSISTIDO — "Pronto para publicar" = local + servidor.
   // A revisão muda a cada save e a cada mudança de configuração (Abrangência/Estrutura/Gatilho);
   // nunca a cada tecla (ver use-publish-validation.ts).
   const [savedRevision, setSavedRevision] = useState(0)
   const revision = useMemo(
-    () => JSON.stringify([savedRevision, workflow.scopeType, workflow.teamId, workflow.subteamId, workflow.trigger, workflow.consolidatedStructure ?? null, workflow.populationFilter ?? null]),
-    [savedRevision, workflow.scopeType, workflow.teamId, workflow.subteamId, workflow.trigger, workflow.consolidatedStructure, workflow.populationFilter],
+    () => JSON.stringify([savedRevision, editable.scopeType, editable.teamId, editable.subteamId, editable.trigger, editable.consolidatedStructure ?? null, editable.populationFilter ?? null]),
+    [savedRevision, editable.scopeType, editable.teamId, editable.subteamId, editable.trigger, editable.consolidatedStructure, editable.populationFilter],
   )
   const publishValidation = usePublishValidation({ workflowId: workflow.id, revision, isDirty, localIssueCount: graphIssues.length })
   const allIssues = useMemo(() => combineIssues(graphIssues, publishValidation.backendIssue), [graphIssues, publishValidation.backendIssue])
@@ -286,7 +294,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
           type,
           label: "",
           position: { x: 0, y: 0 },
-          config: defaultConfigFor(type, workflow.trigger),
+          config: defaultConfigFor(type, editable.trigger),
         } as FlowNode,
       },
     }
@@ -351,20 +359,19 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
 
   // Publicar só habilita com o rascunho salvo E o dry-run do servidor válido (`ready`) — e mesmo
   // assim o backend valida de novo dentro do publish: a organização pode ter mudado entre o
-  // dry-run e o clique, e o backend continua sendo a autoridade final.
-  async function handlePublish() {
-    try {
-      await publishMutation.mutateAsync()
-    } catch {
-      // já sinalizado via publishMutation.isError / toast do useAdminMutation
-    }
+  // dry-run e o clique, e o backend continua sendo a autoridade final. Antes de publicar, a prévia
+  // do impacto decide se precisa do diálogo (configuração mudando, Agenda que dispara agora…).
+  function handlePublish() {
+    void publishFlow.start()
   }
+  // 409 "confirme o impacto" não é erro para o rodapé: vira o diálogo.
+  const publishError = publishFlow.isError && !goLiveImpactFromError(publishFlow.error) ? (publishFlow.error as Error).message : null
 
   const editorContextValue = useMemo(
     () => ({
-      triggerLabel: triggerLabel(workflow.trigger),
-      triggerKind: workflow.trigger.kind,
-      isConsolidatedMode: Boolean(workflow.consolidatedStructure),
+      triggerLabel: triggerLabel(editable.trigger),
+      triggerKind: editable.trigger.kind,
+      isConsolidatedMode: Boolean(editable.consolidatedStructure),
       getAgentName: (agentId: string) => agentsQuery.data?.find((agent) => agent.id === agentId)?.name,
       getOrchestratorName: (orchestratorId: string) => orchestratorsQuery.data?.find((orchestrator) => orchestrator.id === orchestratorId)?.name,
       getPolicyName: (policyId: string) => policySummariesQuery.data?.find((policy) => policy.id === policyId)?.name,
@@ -381,7 +388,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
       getNodeLabel: (nodeId: string) => currentGraph.nodes.find((candidate) => candidate.id === nodeId)?.label,
       issuesByNodeId,
     }),
-    [workflow.trigger, workflow.consolidatedStructure, agentsQuery.data, orchestratorsQuery.data, policySummariesQuery.data, orchestratorsById, currentGraph, variablesQuery.data, issuesByNodeId],
+    [editable.trigger, editable.consolidatedStructure, agentsQuery.data, orchestratorsQuery.data, policySummariesQuery.data, orchestratorsById, currentGraph, variablesQuery.data, issuesByNodeId],
   )
 
   return (
@@ -394,7 +401,7 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
     <div className="flex h-[calc(100vh-18rem)] min-h-[480px] flex-col">
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1 rounded-lg border">
         <ResizablePanel defaultSize="16" minSize="10" maxSize="28" className="overflow-y-auto p-3">
-          <NodePalette isConsolidatedMode={Boolean(workflow.consolidatedStructure)} onAddNode={addNodeAtDefaultPosition} />
+          <NodePalette isConsolidatedMode={Boolean(editable.consolidatedStructure)} onAddNode={addNodeAtDefaultPosition} />
         </ResizablePanel>
         <ResizableHandle withHandle />
 
@@ -438,12 +445,12 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
               <NodeConfigPanel
                 node={configNode}
                 graph={currentGraph}
-                trigger={workflow.trigger}
+                trigger={editable.trigger}
                 workflowId={workflow.id}
-                scope={{ scopeType: workflow.scopeType, teamId: workflow.teamId ?? undefined, subteamId: workflow.subteamId ?? undefined }}
-                evaluationMode={workflow.consolidatedStructure ? "CONSOLIDATED" : "INDIVIDUAL"}
-                consolidatedStructure={workflow.consolidatedStructure ?? null}
-                populationFilter={workflow.populationFilter ?? null}
+                scope={{ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined, subteamId: editable.subteamId ?? undefined }}
+                evaluationMode={editable.consolidatedStructure ? "CONSOLIDATED" : "INDIVIDUAL"}
+                consolidatedStructure={editable.consolidatedStructure ?? null}
+                populationFilter={editable.populationFilter ?? null}
                 issues={allIssues.filter((issue) => issue.nodeId === configNode.id).map((issue) => issue.message)}
                 onChange={updateConfigNode}
                 onDelete={deleteConfigNode}
@@ -458,12 +465,12 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
         <WorkflowIssuesPanel issues={allIssues} status={publishValidation.status} nodeLabelById={(nodeId) => currentGraph.nodes.find((node) => node.id === nodeId)?.label || undefined} onSelectIssue={focusNode} onRevalidate={publishValidation.revalidate} />
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           {saveDraftMutation.isError ? <p className="max-w-md truncate text-sm text-destructive" title={(saveDraftMutation.error as Error).message}>{(saveDraftMutation.error as Error).message}</p> : null}
-          {publishMutation.isError ? <p className="max-w-md truncate text-sm text-destructive" title={(publishMutation.error as Error).message}>{(publishMutation.error as Error).message}</p> : null}
+          {publishError ? <p className="max-w-md truncate text-sm text-destructive" title={publishError}>{publishError}</p> : null}
           <Button variant="outline" disabled={!isDirty || saveDraftMutation.isPending} onClick={handleSaveDraft}>
             {saveDraftMutation.isPending ? "Salvando..." : "Salvar rascunho"}
           </Button>
           <Button
-            disabled={publishMutation.isPending || saveDraftMutation.isPending || publishValidation.status !== "ready"}
+            disabled={publishFlow.isPending || publishFlow.checking || saveDraftMutation.isPending || publishValidation.status !== "ready"}
             title={
               publishValidation.status === "stale"
                 ? "Salve o rascunho para validar a publicação."
@@ -475,10 +482,20 @@ function WorkflowCanvas({ workflow }: { workflow: WorkflowDetail }) {
             }
             onClick={handlePublish}
           >
-            {publishMutation.isPending ? "Publicando..." : "Publicar"}
+            {publishFlow.isPending ? "Publicando..." : publishFlow.checking ? "Verificando..." : "Publicar"}
           </Button>
         </div>
       </div>
+      <GoLiveImpactDialog
+        key={publishFlow.dialog?.impact.fingerprint ?? "none"}
+        open={publishFlow.dialog !== null}
+        onOpenChange={(open) => !open && publishFlow.close()}
+        impact={publishFlow.dialog?.impact ?? null}
+        impactChanged={publishFlow.dialog?.impactChanged ?? false}
+        changes={publishFlow.dialog ? describeConfigurationChanges(workflow, publishFlow.dialog.impact.configurationChanges) : []}
+        pending={publishFlow.isPending}
+        onConfirm={(fingerprint) => void publishFlow.confirm(fingerprint)}
+      />
     </div>
   )
 }
@@ -491,6 +508,8 @@ export function WorkflowEditorPage({ workflowId }: { workflowId: string }) {
   // Gatilho Manual: cada abertura do "Executar agora" remonta o diálogo (nova intenção = nova chave de idempotência).
   const [manualRunSession, setManualRunSession] = useState(0)
   const [manualRunOpen, setManualRunOpen] = useState(false)
+  const editable = useMemo(() => (workflowQuery.data ? withDraftConfiguration(workflowQuery.data) : null), [workflowQuery.data])
+  const pendingChanges = useMemo(() => (workflowQuery.data ? describeConfigurationChanges(workflowQuery.data) : []), [workflowQuery.data])
 
   return (
     <div className="space-y-4">
@@ -500,21 +519,41 @@ export function WorkflowEditorPage({ workflowId }: { workflowId: string }) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        {workflowQuery.data ? (
+        {workflowQuery.data && editable ? (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <WorkflowNameEditor workflow={workflowQuery.data} />
             <Badge variant={workflowQuery.data.published ? "default" : "outline"}>
               {workflowQuery.data.published ? "Publicado" : "Rascunho"}
             </Badge>
-            <Badge variant="outline">{triggerBadgeText(workflowQuery.data.trigger)}</Badge>
+            {/* Os badges mostram o RASCUNHO (o que se edita aqui); o que roda hoje aparece no aviso de pendência. */}
+            <Badge variant="outline">{triggerBadgeText(editable.trigger)}</Badge>
             {/* Herança visual da Abrangência (Parte 8 do pedido) — nunca uma pergunta "qual
               * grupo?" de novo dentro do editor, só o contexto já escolhido no modal inicial. */}
             <Badge variant="outline" title="Abrangência do workflow">
-              {formatScopeLabel(workflowQuery.data)}
+              {formatScopeLabel(editable)}
             </Badge>
             <Badge variant="outline" title="Modo de avaliação">
-              {describeAnalysisMode(workflowQuery.data)}
+              {describeAnalysisMode(editable)}
             </Badge>
+            {pendingChanges.length > 0 ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-300" data-testid="workflow-pending-configuration">
+                    Configuração não publicada
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm">
+                  <p className="mb-1 font-medium">Só passa a valer ao Publicar. Hoje roda:</p>
+                  <ul className="space-y-0.5">
+                    {pendingChanges.map((item) => (
+                      <li key={item.change}>
+                        {item.label}: {item.published} → {item.draft}
+                      </li>
+                    ))}
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
             {workflowQuery.data.trigger.kind === "manual" ? (
               <Button
                 type="button"

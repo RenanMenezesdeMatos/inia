@@ -1,9 +1,11 @@
+import type pg from "pg"
 import type { Database } from "../../../../infrastructure/database/pool.js"
-import { applyEmployeeStatusSnapshot, type SnapshotOutcome } from "../../../people/application/employment-status-service.js"
+import { applyEmployeeStatusSnapshot, cancelEmployeeStatusPeriod, type SnapshotOutcome } from "../../../people/application/employment-status-service.js"
 import { BRAZILIAN_CAPITAL_CODES, normalizeCapitalCode } from "../../../people/domain/brazilian-capitals.js"
-import { EMPLOYMENT_STATUS_LABELS, normalizeEmploymentStatus, type EmploymentStatus } from "../../../people/domain/employment-status.js"
+import { EMPLOYMENT_STATUS_LABELS, normalizeEmploymentStatus, type EmploymentStatus, type StatusPeriod } from "../../../people/domain/employment-status.js"
 import { normalizeScheduleExceptionCode, SCHEDULE_EXCEPTION_EFFECT_BY_CODE, SCHEDULE_EXCEPTION_LABELS, type ScheduleExceptionCode } from "../../../people/domain/schedule-exception.js"
 import { normalizeScheduleType, type ScheduleType } from "../../../people/domain/work-schedule.js"
+import { recordAudit } from "../records.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
 import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResult, type ApplyWarning, type DomainWriter, type LineageEntry, type Rejection, type ValidRecord, type WriteContext } from "./domain-writer.js"
 import { linkByAccountEmail, linkedWarnings, possibleDuplicateWarnings } from "./person-identity.js"
@@ -312,11 +314,14 @@ function collectStatusOutcome(outcome: SnapshotOutcome, row: ValidRecord, lineag
 
 // ---------------------------------------------------------------------------------------------
 // EMPLOYEE_ABSENCES → employee_status_periods (pelo serviço canônico, com datas explícitas)
+// "Vigente? = não" (versão 2) CANCELA a ausência daquela identidade: o período sai pelo mesmo
+// serviço, a remoção fica em `audit_logs` e conta como "desativado" na carga. Cancelar o que não
+// existe (ou já foi cancelado) não muda nada; período de outra origem fica e vira aviso.
 // ---------------------------------------------------------------------------------------------
 /** Situações que uma AUSÊNCIA pode representar (temporais). EM_PRODUCAO nunca; TRANSFERIDO/PILOTO/APOSENTADO vêm pelo cadastro. */
 const ABSENCE_STATUSES: ReadonlySet<EmploymentStatus> = new Set<EmploymentStatus>(["FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE", "ATIVIDADE_OFF"])
 
-type PreparedAbsence = ValidRecord & { personId: string; matricula: string; status: EmploymentStatus; rawType: string; startDate: string; endDate: string | null; sourceUpdatedAt: string | null }
+type PreparedAbsence = ValidRecord & { personId: string; matricula: string; status: EmploymentStatus; rawType: string; startDate: string; endDate: string | null; active: boolean; sourceUpdatedAt: string | null }
 
 export const employeeAbsencesWriter: DomainWriter<PreparedAbsence> = {
   contractKey: "EMPLOYEE_ABSENCES",
@@ -342,7 +347,7 @@ export const employeeAbsencesWriter: DomainWriter<PreparedAbsence> = {
         rejections.push(reject(record, "DATA_CONTRACT_VIOLATION", "type", `"${EMPLOYMENT_STATUS_LABELS[status]}" não é uma ausência temporal — situações como TRANSFERIDO, PILOTO e APOSENTADO entram pelo cadastro de Colaboradores (situação funcional).`))
         continue
       }
-      ready.push({ ...record, personId: person.id, matricula, status, rawType, startDate: str(record.record, "startDate")!, endDate: str(record.record, "endDate"), sourceUpdatedAt: str(record.record, "sourceUpdatedAt") })
+      ready.push({ ...record, personId: person.id, matricula, status, rawType, startDate: str(record.record, "startDate")!, endDate: str(record.record, "endDate"), active: bool(record.record, "active") ?? true, sourceUpdatedAt: str(record.record, "sourceUpdatedAt") })
     }
     return { ready, rejections }
   },
@@ -351,6 +356,12 @@ export const employeeAbsencesWriter: DomainWriter<PreparedAbsence> = {
     const result = emptyApply()
     const observedAt = context.ctx.clock.now()
     for (const row of batch) {
+      const start = `${row.startDate}T00:00:00.000Z`
+      if (!result.businessMaxEventTime || start > result.businessMaxEventTime) result.businessMaxEventTime = start
+      if (!row.active) {
+        await cancelAbsence(context, client, row, result)
+        continue
+      }
       const outcome = await applyEmployeeStatusSnapshot(client as unknown as Database, {
         organizationId: context.organizationId,
         personId: row.personId,
@@ -369,11 +380,62 @@ export const employeeAbsencesWriter: DomainWriter<PreparedAbsence> = {
       else if (outcome.action === "ADJUSTED") result.updated += 1
       else result.unchanged += 1
       collectStatusOutcome(outcome, row, result.lineage, result.warnings)
-      const start = `${row.startDate}T00:00:00.000Z`
-      if (!result.businessMaxEventTime || start > result.businessMaxEventTime) result.businessMaxEventTime = start
     }
     return result
   },
+}
+
+async function cancelAbsence(context: WriteContext, client: pg.PoolClient, row: PreparedAbsence, result: ApplyResult): Promise<void> {
+  const outcome = await cancelEmployeeStatusPeriod(client as unknown as Database, {
+    personId: row.personId,
+    status: row.status,
+    effectiveFrom: row.startDate,
+    source: context.sourceNamespace,
+    timeZone: context.timeZone,
+  })
+  if (outcome.action === "NOT_FOUND") {
+    result.unchanged += 1
+    return
+  }
+  if (outcome.action === "CONFLICT") {
+    result.unchanged += 1
+    const { period } = outcome
+    result.warnings.push({
+      recordNumber: row.recordNumber,
+      sourceRecordKey: row.sourceRecordKey,
+      error: {
+        code: "DATA_EMPLOYMENT_STATUS_CONFLICT",
+        field: "active",
+        message: `Recebido o cancelamento de ${EMPLOYMENT_STATUS_LABELS[row.status]} desde ${row.startDate} para ${row.matricula}; o período ${period.effectiveFrom}${period.effectiveTo ? `–${period.effectiveTo}` : " em aberto"} foi informado por ${period.source}. Decisão: mantido o período existente (a carga só cancela o que a própria fonte informou).`,
+      },
+    })
+    return
+  }
+  result.deactivated += 1
+  const { removed, restored, mergedWith } = outcome
+  const periodOf = (period: StatusPeriod) => ({ id: period.id, status: period.status, rawStatus: period.rawStatus, effectiveFrom: period.effectiveFrom, effectiveTo: period.effectiveTo, effectiveToExplicit: period.effectiveToExplicit, source: period.source, sourceReference: period.sourceReference, observedAt: period.observedAt, sourceUpdatedAt: period.sourceUpdatedAt })
+  // O período removido só sobrevive aqui: o audit trail guarda o registro inteiro e o que voltou a valer.
+  await recordAudit(client, {
+    organizationId: context.organizationId,
+    actorId: null,
+    action: "DATA_HUB_EMPLOYEE_ABSENCE_CANCELLED",
+    entityType: "employee_status_periods",
+    entityId: removed.id,
+    payload: {
+      runId: context.runId,
+      feedId: context.feed.id,
+      contract: `${context.feed.contractKey}@${context.feed.contractVersion}`,
+      recordNumber: row.recordNumber,
+      sourceRecordKey: row.sourceRecordKey,
+      personId: row.personId,
+      matricula: row.matricula,
+      removed: periodOf(removed),
+      mergedWith: mergedWith ? periodOf(mergedWith) : null,
+      restored: restored ? { id: restored.id, status: restored.status, effectiveFrom: restored.effectiveFrom, effectiveTo: restored.effectiveTo } : null,
+      currentStatus: outcome.currentStatus,
+    },
+  })
+  if (restored) result.lineage.push({ entityType: "employee_status_periods", entityId: restored.id, action: "UPDATED", recordNumber: row.recordNumber, sourceRecordKey: row.sourceRecordKey })
 }
 
 // ---------------------------------------------------------------------------------------------

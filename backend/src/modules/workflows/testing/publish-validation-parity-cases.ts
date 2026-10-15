@@ -169,13 +169,15 @@ export const MIRRORED: MirroredCase[] = [
   { family: "trigger-context", name: "Agenda relativa por percentual sem o percentual", setup: setup(schedule({ mode: "RELATIVE_TO_SHIFT", relative: { anchor: "PERCENTAGE" } }), chain(triggerNode(), endNode())), code: "WORKFLOW_INVALID_TRIGGER", nodeId: "trigger" },
   { family: "trigger-context", name: "Manual com medição sem indicador", setup: setup({ trigger: trigger({ kind: "manual", context: "INDICATOR_MEASUREMENT" }) }, chain(triggerNode(), endNode())), code: "WORKFLOW_INVALID_TRIGGER", nodeId: "trigger" },
   { family: "trigger-context", name: "Manual em modo Consolidado", setup: setup(MANUAL_COLLABORATOR, chain(triggerNode(), endNode()), { consolidated: true }), code: "WORKFLOW_MANUAL_TRIGGER_CONSOLIDATED", nodeId: "trigger" },
+  { family: "trigger-context", name: "Estrutura Consolidada com gatilho por Flag", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), endNode()), { consolidated: true }), code: "WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER", nodeId: "trigger" },
+  { family: "trigger-context", name: "Estrutura Consolidada com Agenda relativa ao expediente", setup: setup(schedule({ mode: "RELATIVE_TO_SHIFT", relative: { anchor: "START", offsetMinutes: 30 } }), chain(triggerNode(), endNode()), { consolidated: true }), code: "WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER", nodeId: "trigger" },
   { family: "trigger-context", name: "Agenda: 'Chamar agente' sem fonte de dados", setup: setup(SCHEDULE, chain(triggerNode(), agent(), output(), endNode())), code: "WORKFLOW_INVALID_ACTION", nodeId: "agent" },
   { family: "trigger-context", name: "Manual por colaborador: 'Chamar agente' sem fonte de dados", setup: setup(MANUAL_COLLABORATOR, chain(triggerNode(), agent(), output(), endNode())), code: "WORKFLOW_INVALID_ACTION", nodeId: "agent" },
   { family: "trigger-context", name: "Conformidade de processo com gatilho por Indicador", setup: setup(INDICATOR, chain(triggerNode(), agent("agent", { outputContract: "PROCESS_AUDIT" }), output(), endNode())), code: "WORKFLOW_PROCESS_AUDIT_REQUIRES_FLAG", nodeId: "agent" },
   { family: "trigger-context", name: "Avaliação de processo (Chamar agente) com Agenda", setup: setup(SCHEDULE, chain(triggerNode(), scheduledAgent("agent", { outputContract: "PROCESS_ASSESSMENT" }), output(), endNode())), code: "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG", nodeId: "agent" },
   { family: "trigger-context", name: "Avaliação de processo (Orquestrador) com Manual por colaborador", setup: setup(MANUAL_COLLABORATOR, chain(triggerNode(), orchestrator("orq", { specialistOutputContract: "PROCESS_ASSESSMENT" }), endNode())), code: "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG", nodeId: "orq" },
   { family: "trigger-context", name: "Feedback direto 'interação do gatilho' com Agenda", setup: setup(SCHEDULE, chain(triggerNode(), interactionFeedback("ifb", { kind: "TRIGGER_INTERACTION" }), endNode())), code: "WORKFLOW_INTERACTION_FEEDBACK_NO_INTERACTION", nodeId: "ifb" },
-  { family: "trigger-context", name: "Feedback direto 'interação do gatilho' em modo Consolidado (caminho individual)", setup: consolidated(consolidatedGraph({ outOp: interactionFeedback("out-op", { kind: "TRIGGER_INTERACTION" }) }), { trigger: FLAG_BOOLEAN.trigger, flagValueType: "BOOLEAN" }), code: "WORKFLOW_INTERACTION_FEEDBACK_NO_INTERACTION", nodeId: "out-op" },
+  { family: "trigger-context", name: "Feedback direto 'interação do gatilho' em modo Consolidado (caminho individual)", setup: consolidated(consolidatedGraph({ outOp: interactionFeedback("out-op", { kind: "TRIGGER_INTERACTION" }) }), { trigger: FLAG_BOOLEAN.trigger, flagValueType: "BOOLEAN" }), code: "WORKFLOW_INTERACTION_FEEDBACK_NO_INTERACTION", nodeId: "out-op", alsoCodes: ["WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER"] },
   { family: "conditions", name: "Condition sobre o valor do gatilho com Manual por colaborador", setup: conditionCase({ thresholdNumeric: 3 }, MANUAL_COLLABORATOR), code: "WORKFLOW_INVALID_CONDITION", nodeId: "cond" },
   { family: "conditions", name: "Condition sobre o valor do gatilho com Manual com interação", setup: conditionCase({ thresholdNumeric: 3 }, MANUAL_INTERACTION), code: "WORKFLOW_INVALID_CONDITION", nodeId: "cond" },
 
@@ -455,6 +457,13 @@ const indicatorDiagnosisFlow = setup(INDICATOR, chain(triggerNode(), agent("agen
 const directDiagnosisFlow = setup(SCHEDULE, chain(triggerNode(), agent("agent", { outputContract: "INDICATOR_DIAGNOSIS", scheduledDataSource: { kind: "PERFORMANCE", closures: 1, indicatorCode: "TMA" } }), output(), endNode()))
 
 export const BACKEND_ONLY: BackendOnlyCase[] = [
+  {
+    name: "Filtro Populacional com gatilho por Flag",
+    reason: "Filtro Populacional do rascunho: o editor não o recebe e as rotas do rascunho já recusam a combinação",
+    setup: setup(FLAG_BOOLEAN, chain(triggerNode(), endNode()), { populationFilter: { kind: "EMPLOYEE", employeeId: "0a7a0000-0000-4000-8000-0000000000a7" } }),
+    code: "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
+    nodeId: "trigger",
+  },
   { name: "agente que não existe", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: () => null }), code: "WORKFLOW_AGENT_NOT_FOUND", nodeId: "agent" },
   { name: "agente inativo", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ active: false }) }), code: "WORKFLOW_AGENT_INACTIVE", nodeId: "agent" },
   { name: "agente de outro Grupo", reason: "abrangência do agente", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ scope_type: "TEAM", team_id: PARITY_TEAM_ID, subteam_id: null }) }), code: "WORKFLOW_AGENT_SCOPE_FORBIDDEN", nodeId: "agent" },
@@ -526,6 +535,7 @@ export const BACKEND_ONLY_CODES = [
   "WORKFLOW_INTERVENTION_POLICY_INACTIVE",
   "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED",
   "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH",
+  "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
 ]
 
 /** Mensagens do backend de regras "só backend" que compartilham código com regras espelhadas (varredura aleatória). */

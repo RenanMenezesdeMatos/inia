@@ -3,13 +3,14 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
-import { addDaysToDate, employmentStatusOn, evidenceRank, findOverlap, isLegacyEmploymentStatus, normalizeEmploymentStatus, resolveStatusBasis, toCanonicalEmploymentStatus, type EmploymentStatus, type LegacyEmploymentStatus, type ResolvedStatus, type StatusPeriod } from "../domain/employment-status.js"
+import { addDaysToDate, employmentStatusOn, evidenceRank, findOverlap, isLegacyEmploymentStatus, normalizeEmploymentStatus, planStatusPeriodCancellation, resolveStatusBasis, toCanonicalEmploymentStatus, type EmploymentStatus, type LegacyEmploymentStatus, type ResolvedStatus, type StatusPeriod } from "../domain/employment-status.js"
 
 /**
  * Serviço CANÔNICO de situação funcional — o único caminho que escreve em
  * `employee_status_periods` e sincroniza `people.current_employment_status`. Quem alimenta:
- * seed demo, ajuste manual do admin e, no futuro, a Central de Dados (snapshot EMPLOYEES e
- * dataset EMPLOYEE_ABSENCES) — todos pela MESMA função, nunca dois cálculos de elegibilidade.
+ * seed demo, ajuste manual do admin e a Central de Dados (snapshot EMPLOYEES e dataset
+ * EMPLOYEE_ABSENCES, que também cancela pelo "Vigente? = não") — todos pelas MESMAS funções,
+ * nunca dois cálculos de elegibilidade.
  *
  * Política de datas (Parte F do hardening):
  *  - `effectiveFrom` explícito da fonte → usado tal qual (`effectiveFromInferred = false`);
@@ -190,6 +191,48 @@ export async function applyEmployeeStatusSnapshot(db: Database, snapshot: Employ
   const created = await insertPeriod(db, { ...snapshot, status, effectiveFrom, effectiveTo, observedAt, sourceUpdatedAt, effectiveToExplicit: incomingEvidence.effectiveToExplicit, authoritative: incomingEvidence.authoritative }, inferred)
   const currentStatus = await syncCurrentStatus(db, snapshot.personId, timeZone)
   return { action: "CREATED", period: created, currentStatus, ...(conflict ? { conflict } : {}) }
+}
+
+/**
+ * CANCELAMENTO de um período pela fonte que o informou (ausência desfeita no RH). Identidade =
+ * pessoa + situação + início. O período sai e os vizinhos seguem `planStatusPeriodCancellation`:
+ * a situação volta a ser calculada pelas outras evidências, nunca por uma situação inventada.
+ * Autoridade por origem: só a mesma fonte (`source`) cancela; período de outra fonte, do ajuste
+ * manual do admin ou da demo continua e volta como CONFLICT para quem chamou registrar. Identidade
+ * sem período = NOT_FOUND (cancelar 2× ou cancelar o que nunca chegou não muda nada).
+ * Quem chama audita: depois daqui, o período removido só existe no audit trail.
+ */
+export type StatusPeriodCancellation = { personId: string; status: EmploymentStatus; effectiveFrom: string; source: string; timeZone?: string }
+
+export type CancellationOutcome =
+  | { action: "CANCELLED"; removed: StatusPeriod; restored: StatusPeriod | null; mergedWith: StatusPeriod | null; currentStatus: EmploymentStatus }
+  | { action: "CONFLICT"; period: StatusPeriod }
+  | { action: "NOT_FOUND" }
+
+export async function cancelEmployeeStatusPeriod(db: Database, input: StatusPeriodCancellation): Promise<CancellationOutcome> {
+  const periods = await loadEmploymentStatusHistory(db, input.personId)
+  const target = periods.find((period) => period.status === input.status && period.effectiveFrom === input.effectiveFrom)
+  if (!target) return { action: "NOT_FOUND" }
+  if (target.source !== input.source) return { action: "CONFLICT", period: target }
+  const plan = planStatusPeriodCancellation(periods, target)
+  // Exclusion constraint: primeiro sai quem libera os dias, depois cresce o período restaurado.
+  for (const period of plan.remove) await db.query(`delete from employee_status_periods where id = $1`, [period.id])
+  let restored: StatusPeriod | null = null
+  if (plan.restore) {
+    const { period, effectiveTo, mergedWith } = plan.restore
+    const result = await db.query<Row>(
+      `update employee_status_periods
+          set effective_to = $2::date, effective_to_explicit = $3,
+              observed_at = greatest(observed_at, $4::timestamptz), source_updated_at = greatest(source_updated_at, $5::timestamptz),
+              authoritative = authoritative or $6, updated_at = now()
+        where id = $1
+        returning ${RETURNING}`,
+      [period.id, effectiveTo, (mergedWith ?? period).effectiveToExplicit, mergedWith?.observedAt ?? null, mergedWith?.sourceUpdatedAt ?? null, mergedWith?.authoritative ?? false],
+    )
+    restored = toPeriod(result.rows[0]!)
+  }
+  const currentStatus = await syncCurrentStatus(db, input.personId, input.timeZone ?? DEFAULT_ORGANIZATION_TIMEZONE)
+  return { action: "CANCELLED", removed: target, restored, mergedWith: plan.restore?.mergedWith ?? null, currentStatus }
 }
 
 /** Quem vence entre um período existente e a evidência que chegou (regra única, determinística). */

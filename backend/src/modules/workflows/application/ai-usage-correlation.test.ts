@@ -63,13 +63,27 @@ describe("V1.5.13 — correlação do uso de IA", () => {
     const correlation = { workflowId: "wf-1", workflowVersionId: "ver-1", enrollmentId: "child-1", rootEnrollmentId: "root-1", nodeId: "gen" }
     await runWithAiWorkflowCorrelation("org-1", correlation, () => createAiRuntime(db).recordUsage(event()))
     const params = insertParams(calls)
-    expect(params.slice(-5)).toEqual(["wf-1", "ver-1", "child-1", "root-1", "gen"])
+    // Correlação = os 5 parâmetros antes do último (o último é quem pediu, migration 143).
+    expect(params.slice(-6, -1)).toEqual(["wf-1", "ver-1", "child-1", "root-1", "gen"])
+    expect(params.at(-1)).toBeNull()
     expect(params.slice(15, 20)).toEqual([300, 120, null, null, 420])
   })
 
   it("fora do motor (chat, teste de modelo, QA Lab) não há correlação — nunca inventada", async () => {
     const { db, calls } = fakeDb()
     await runWithAiOrganization("org-1", () => createAiRuntime(db).recordUsage(event()))
-    expect(insertParams(calls).slice(-5)).toEqual([null, null, null, null, null])
+    expect(insertParams(calls).slice(-6)).toEqual([null, null, null, null, null, null])
+  })
+
+  it("migration 143 — request de uma pessoa grava quem pediu; o motor de Workflow aberto dentro dele não herda a pessoa", async () => {
+    const request = fakeDb()
+    await runWithAiOrganization("org-1", () => createAiRuntime(request.db).recordUsage(event()), { origin: "USER_REQUEST", requesterPersonId: "person-9" })
+    expect(insertParams(request.calls).at(-1)).toBe("person-9")
+
+    const nested = fakeDb()
+    const correlation = { workflowId: "wf-1", workflowVersionId: "ver-1", enrollmentId: "child-1", rootEnrollmentId: "root-1", nodeId: "gen" }
+    await runWithAiOrganization("org-1", () => runWithAiWorkflowCorrelation("org-1", correlation, () => createAiRuntime(nested.db).recordUsage(event())), { origin: "USER_REQUEST", requesterPersonId: "person-9" })
+    // Uso de Workflow é atribuído pelo colaborador da matrícula, nunca por quem estava logado quando o nó rodou.
+    expect(insertParams(nested.calls).slice(-6)).toEqual(["wf-1", "ver-1", "child-1", "root-1", "gen", null])
   })
 })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { CalendarClock, MessagesSquare, Plus, ShieldCheck, Trash2, TriangleAlert, Users, Waypoints, Workflow } from "lucide-react"
@@ -21,11 +21,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -44,26 +39,22 @@ import {
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { AgentPicker } from "@/components/admin/workflows/agent-picker"
-import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { formatScopeLabel } from "@/lib/admin/scope-compatibility"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
-import { useManageableTeamsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import {
-  useCreateOrchestratorMutation,
   useDeleteOrchestratorMutation,
   useOrchestratorsPageQuery,
   useToggleOrchestratorActiveMutation,
 } from "@/queries/admin/use-assistant-queries"
 import type { OrchestratorListParams } from "@/services/admin/assistant-service"
 import { AGENT_TYPE_COLORS } from "@/schemas/admin/agent.schema"
-import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator, type OrchestratorInvocationMode } from "@/schemas/admin/assistant.schema"
+import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator } from "@/schemas/admin/assistant.schema"
 import { describeBusinessDomain } from "@/schemas/admin/business-domain.schema"
-import { describeRoutingProblem, ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy, routingDomainPayload, type RoutingPolicy } from "@/schemas/admin/orchestrator-policy"
-import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
-import { OrchestratorPolicyFields } from "./orchestrator-policy-fields"
+import { ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy } from "@/schemas/admin/orchestrator-policy"
 
 const groupLabel = formatScopeLabel
+const NEW_HREF = "/admin/assistant/new"
 
 /** Rótulo curto da política no card/tabela — "Sem política" é o aviso do legado (migration 054). */
 function policyTagLabel(orchestrator: Orchestrator): string {
@@ -78,138 +69,6 @@ function policyTagLabel(orchestrator: Orchestrator): string {
     case "LEGACY":
       return `Legado: ${routing.legacy.kind ? ORCHESTRATOR_POLICY_KIND_SHORT_LABELS[routing.legacy.kind] : "sem política"}`
   }
-}
-
-function CreateOrchestratorDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (id: string) => void }) {
-  const manageableTeamsQuery = useManageableTeamsQuery()
-  const agentsQuery = useAgentsQuery()
-  const createMutation = useCreateOrchestratorMutation()
-  const orchestratorAgents = agentsQuery.data?.filter((agent) => agent.agentType === "ORCHESTRATOR") ?? []
-
-  const [name, setName] = useState("")
-  const [orchestratorAgentId, setOrchestratorAgentId] = useState("")
-  const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
-  // Escolhido já na criação (não só no editor): só pode existir UM orquestrador ativo atendendo o
-  // chat/voz por escopo — um orquestrador de domínio para Workflows ("Só workflows") precisa
-  // nascer com esse acionamento, senão a criação é recusada antes mesmo de abrir o editor.
-  const [invocationMode, setInvocationMode] = useState<OrchestratorInvocationMode>("BOTH")
-  // O Orquestrador nasce ATIVO — e ativo nunca fica sem política (migration 054): a política é
-  // escolhida já aqui, não só no editor.
-  const [routing, setRouting] = useState<RoutingPolicy>({ kind: null })
-  // Catálogo dinâmico de domínios (só ativos) para "Domínios específicos".
-  const businessDomainsQuery = useBusinessDomainsQuery()
-
-  // Escopo Administrativo (Parte 10/11): admin restrito nunca começa em "Todos os grupos".
-  const [scopeCheckedFor, setScopeCheckedFor] = useState<typeof manageableTeamsQuery.data>(undefined)
-  if (scopeCheckedFor !== manageableTeamsQuery.data) {
-    setScopeCheckedFor(manageableTeamsQuery.data)
-    if (manageableTeamsQuery.data && !manageableTeamsQuery.data.unrestricted && orgScope.scopeType === "ALL_TEAMS") {
-      setOrgScope({ scopeType: "TEAM" })
-    }
-  }
-
-  async function handleCreate() {
-    try {
-      const orchestrator = await createMutation.mutateAsync({
-        name,
-        orgScope,
-        orchestratorAgentId,
-        specialistAgentIds: [],
-        invocationMode,
-        routingPolicy: routing.kind === "DOMAINS" || routing.kind === "OPEN" ? routing.kind : null,
-        ...routingDomainPayload(routing),
-      })
-      setName("")
-      setOrchestratorAgentId("")
-      setOrgScope({ scopeType: "ALL_TEAMS" })
-      setInvocationMode("BOTH")
-      setRouting({ kind: null })
-      onOpenChange(false)
-      onCreated(orchestrator.id)
-    } catch {
-      // já sinalizado via createMutation.isError / toast do useAdminMutation
-    }
-  }
-
-  const policyProblem = describeRoutingProblem(routing, { active: true, invocationMode })
-  const canCreate = name.trim().length > 1 && Boolean(orchestratorAgentId) && policyProblem === null
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Novo orquestrador</DialogTitle>
-          <DialogDescription>Escolha o agente que atende o operador por chat e voz — os especialistas que ele pode acionar entram na tela seguinte.</DialogDescription>
-        </DialogHeader>
-        <div className="min-w-0 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="orchestrator-name">Nome</Label>
-            <Input id="orchestrator-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: INIA — Time de Contas" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Agente orquestrador</Label>
-            {!agentsQuery.data ? (
-              <Skeleton className="h-10 w-full" />
-            ) : orchestratorAgents.length === 0 ? (
-              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                Nenhum agente do tipo &quot;Orquestrador&quot; ainda.{" "}
-                <Link href="/admin/agents/new" className="underline underline-offset-2">
-                  Crie um em Agentes
-                </Link>{" "}
-                antes de continuar — é ele quem identifica o pedido do operador e decide quais especialistas acionar.
-              </p>
-            ) : (
-              <AgentPicker agents={orchestratorAgents} value={orchestratorAgentId} onChange={setOrchestratorAgentId} />
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Grupo</Label>
-            {manageableTeamsQuery.data ? (
-              <OrgScopeSelect
-                teams={manageableTeamsQuery.data.teams}
-                value={orgScope}
-                onChange={setOrgScope}
-                allowAllTeams={manageableTeamsQuery.data.unrestricted}
-              />
-            ) : (
-              <Skeleton className="h-10 w-full" />
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Onde pode ser acionado</Label>
-            <Select value={invocationMode} onValueChange={(value) => setInvocationMode(value as OrchestratorInvocationMode)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(ORCHESTRATOR_INVOCATION_MODE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">Orquestrador de domínio usado por Workflows: escolha &quot;Só workflows&quot; — assim ele coexiste com o orquestrador que atende o chat/voz.</p>
-          </div>
-          <OrchestratorPolicyFields routing={routing} domains={businessDomainsQuery.data ?? []} domainsLoading={businessDomainsQuery.isPending} onChange={setRouting} />
-          {policyProblem && routing.kind !== null ? (
-            <p className="text-xs text-destructive" role="alert">
-              {policyProblem}
-            </p>
-          ) : null}
-          {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button disabled={!canCreate || createMutation.isPending} onClick={handleCreate}>
-            {createMutation.isPending ? "Criando..." : "Criar e abrir"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 function DeleteOrchestratorButton({ orchestrator }: { orchestrator: Orchestrator }) {
@@ -379,8 +238,7 @@ export function AssistantPage() {
   const router = useRouter()
   const teamsQuery = useTeamsQuery()
   const agentsQuery = useAgentsQuery()
-  const [autoOpen, setAutoOpen] = useAutoOpenFromQuery("new")
-  const [createOpen, setCreateOpen] = useState(false)
+  const [autoOpen] = useAutoOpenFromQuery("new")
 
   const list = useAdminListState({ storageKey: "assistant-orchestrators", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useOrchestratorsPageQuery(list.params)
@@ -388,12 +246,10 @@ export function AssistantPage() {
   const orchestratorAgentOptions = (agentsQuery.data ?? []).filter((agent) => agent.agentType === "ORCHESTRATOR").map((agent) => ({ value: agent.id, label: agent.name }))
   const specialistAgentOptions = (agentsQuery.data ?? []).filter((agent) => agent.agentType !== "ORCHESTRATOR").map((agent) => ({ value: agent.id, label: agent.name }))
 
-  // `?new` na URL abre o diálogo (ajuste na renderização, sem render extra) e consome o pedido: cada nova navegação com
-  // `?new` abre de novo.
-  if (autoOpen) {
-    setAutoOpen(false)
-    setCreateOpen(true)
-  }
+  // Compatibilidade com o atalho antigo "?new" — o cadastro agora tem rota própria, como Agentes e Base de conhecimento.
+  useEffect(() => {
+    if (autoOpen) router.replace(NEW_HREF)
+  }, [autoOpen, router])
 
   return (
     <Card>
@@ -406,8 +262,10 @@ export function AssistantPage() {
               resposta final.
             </CardDescription>
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus /> Novo orquestrador
+          <Button asChild>
+            <Link href={NEW_HREF}>
+              <Plus /> Novo orquestrador
+            </Link>
           </Button>
         </div>
       </CardHeader>
@@ -459,8 +317,10 @@ export function AssistantPage() {
             title: "Nenhum orquestrador configurado ainda",
             description: "Sem orquestrador, a INIA responde com a persona genérica, sem acionar especialistas.",
             action: (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus /> Novo orquestrador
+              <Button asChild>
+                <Link href={NEW_HREF}>
+                  <Plus /> Novo orquestrador
+                </Link>
               </Button>
             ),
           }}
@@ -477,7 +337,6 @@ export function AssistantPage() {
         />
       </CardContent>
 
-      <CreateOrchestratorDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => router.push(`/admin/assistant/${id}`)} />
     </Card>
   )
 }

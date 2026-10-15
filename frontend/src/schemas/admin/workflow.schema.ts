@@ -183,6 +183,32 @@ export function triggerBadgeText(trigger: WorkflowTrigger): string {
   return `Agenda · ${describeScheduleFrequency(trigger)}`
 }
 
+/** O que difere entre a configuração do RASCUNHO e a PUBLICADA (backend `configurationChanges`). */
+export const workflowConfigurationChangeSchema = z.enum(["TRIGGER", "SCOPE", "ANALYSIS"])
+export type WorkflowConfigurationChange = z.infer<typeof workflowConfigurationChangeSchema>
+export const WORKFLOW_CONFIGURATION_CHANGE_LABELS: Record<WorkflowConfigurationChange, string> = {
+  TRIGGER: "Gatilho",
+  SCOPE: "Abrangência",
+  ANALYSIS: "Alvo da avaliação / população",
+}
+
+/**
+ * Configuração do RASCUNHO (Gatilho, Abrangência, Modo de avaliação) — o que o editor edita. Só passa a valer no
+ * runtime ao Publicar; até lá os campos de topo do Workflow (`trigger`, `scopeType`…) continuam sendo a configuração
+ * PUBLICADA, que é a que o agendador, a ingestão e o "Executar agora" usam (incidente de 2026-10-05).
+ */
+export const workflowDraftConfigurationSchema = z.object({
+  trigger: workflowTriggerSchema,
+  scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]),
+  teamId: z.string().nullable(),
+  teamName: z.string().nullable(),
+  subteamId: z.string().nullable(),
+  subteamName: z.string().nullable(),
+  consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
+  populationFilter: populationFilterSchema.nullable().optional(),
+})
+export type WorkflowDraftConfiguration = z.infer<typeof workflowDraftConfigurationSchema>
+
 export const workflowSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -202,8 +228,67 @@ export const workflowSchema = z.object({
   // Individual (ausente = todos os colaboradores elegíveis da Abrangência).
   consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
   populationFilter: populationFilterSchema.nullable().optional(),
+  draftConfiguration: workflowDraftConfigurationSchema.optional(),
+  configurationChanges: z.array(workflowConfigurationChangeSchema).default([]),
 })
 export type Workflow = z.infer<typeof workflowSchema>
+
+/**
+ * O Workflow como o EDITOR o enxerga: a configuração do rascunho no lugar da publicada (grafo, validação, nó Gatilho,
+ * Configurações). Quem precisa do que está rodando (Executar agora, listagem) usa o próprio `workflow`.
+ */
+export function withDraftConfiguration<T extends Workflow>(workflow: T): T {
+  const draft = workflow.draftConfiguration
+  if (!draft) return workflow
+  return {
+    ...workflow,
+    trigger: draft.trigger,
+    scopeType: draft.scopeType,
+    teamId: draft.teamId,
+    teamName: draft.teamName,
+    subteamId: draft.subteamId,
+    subteamName: draft.subteamName,
+    consolidatedStructure: draft.consolidatedStructure ?? null,
+    populationFilter: draft.populationFilter ?? null,
+  }
+}
+
+/** Impacto de pôr uma configuração no ar — publicar um Workflow ativo ou ativar um publicado (backend go-live-impact.ts). */
+export const goLiveImpactSchema = z.object({
+  reason: z.enum(["PUBLISH", "ACTIVATE"]),
+  triggerKind: z.enum(["channel_flag", "indicator", "schedule", "manual"]),
+  goesLive: z.boolean(),
+  firstPublication: z.boolean(),
+  configurationChanges: z.array(workflowConfigurationChangeSchema),
+  schedule: z
+    .object({
+      mode: z.enum(["CALENDAR", "RELATIVE_TO_SHIFT"]),
+      evaluation: z.enum(["INDIVIDUAL", "CONSOLIDATED"]),
+      population: z.number(),
+      enrollmentsPerOccurrence: z.number(),
+      immediate: z.object({ enrollments: z.number(), alreadyEnrolled: z.number(), scheduledFor: z.array(z.string()) }),
+      firstFireAt: z.string().nullable(),
+      firesImmediately: z.boolean(),
+      timezone: z.string(),
+    })
+    .nullable(),
+  requiresConfirmation: z.boolean(),
+  reasons: z.array(z.enum(["IMMEDIATE_CATCH_UP", "LARGE_POPULATION"])),
+  threshold: z.number(),
+  fingerprint: z.string(),
+})
+export type GoLiveImpact = z.infer<typeof goLiveImpactSchema>
+
+/** Códigos do 409 "confirme o impacto" — a tela trata como diálogo, nunca como toast de erro. */
+export const GO_LIVE_CONFIRMATION_CODES = ["WORKFLOW_PUBLISH_CONFIRMATION_REQUIRED", "WORKFLOW_ACTIVATION_CONFIRMATION_REQUIRED"]
+
+/** Impacto que veio no `details` de um 409 de confirmação (null quando o erro é outro). */
+export function goLiveImpactFromError(error: unknown): GoLiveImpact | null {
+  const candidate = error as { code?: unknown; details?: { impact?: unknown } } | null
+  if (!candidate || typeof candidate.code !== "string" || !GO_LIVE_CONFIRMATION_CODES.includes(candidate.code)) return null
+  const parsed = goLiveImpactSchema.safeParse(candidate.details?.impact)
+  return parsed.success ? parsed.data : null
+}
 
 /** Resultado do dry-run de publicação (`POST /admin/workflows/:id/validate`) — a MESMA validação
  * do botão Publicar, sem gravar nada. `error.nodeId` aponta o nó responsável quando a regra é de

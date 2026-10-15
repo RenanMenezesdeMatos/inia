@@ -5,7 +5,7 @@ import { ArrowDown, ArrowLeft, Bot, Lock, Mic } from "lucide-react"
 
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
 import { RichContent } from "@/components/rich-content/rich-content"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
 import { Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message"
@@ -16,7 +16,7 @@ import { dateSeparatorLabel, dayKey, messageTime } from "@/lib/realtime/conversa
 import type { ConversationMessage } from "@/lib/realtime/gemini-text-client"
 import { fetchMonitoredMessages, type MonitoredConversation } from "@/services/admin/assistant-conversations-service"
 
-import { ConversationStatus, conversationKindOf, conversationTitleOf, initialsOf, messagesLabel, OwnerAvatar } from "./conversation-presentation"
+import { ConversationStatus, conversationKindOf, conversationTitleOf, messagesLabel, OwnerAvatar } from "./conversation-presentation"
 
 const PAGE_LIMIT = 30
 /** Conversa em andamento: busca mensagens NOVAS (depois da última) nesse intervalo. */
@@ -169,7 +169,7 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
                 <div key={message.id} className="space-y-5">
                   {separator ? <div className="flex justify-center" role="separator" aria-label={dateSeparatorLabel(message.occurredAt)}><span className="rounded-full bg-background px-3 py-0.5 text-[11px] font-medium text-muted-foreground shadow-xs">{dateSeparatorLabel(message.occurredAt)}</span></div> : null}
                   <Message align={assistant ? "start" : "end"} data-testid="monitored-message" data-role={message.role}>
-                    <MessageAvatar><Avatar className="size-8">{!assistant && owner.avatarUrl ? <AvatarImage src={owner.avatarUrl} alt={owner.name} /> : null}<AvatarFallback className={assistant ? "bg-primary text-primary-foreground" : "bg-secondary text-xs"}>{assistant ? <Bot className="size-4" /> : initialsOf(owner.name)}</AvatarFallback></Avatar></MessageAvatar>
+                    <MessageAvatar>{assistant ? <Avatar className="size-8"><AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4" /></AvatarFallback></Avatar> : <OwnerAvatar owner={owner} className="size-8" />}</MessageAvatar>
                     <MessageContent className="max-w-[85%]">
                       <MessageHeader className="px-1">{assistant ? "INIA" : owner.name}{originLabel ? <span className="ml-1.5 font-normal text-muted-foreground">· {originLabel}</span> : null}</MessageHeader>
                       <Bubble variant={assistant ? "muted" : "default"} className="max-w-full"><BubbleContent className="space-y-2 px-4 py-3">{assistant ? <RichContent text={message.content} /> : <span className="whitespace-pre-wrap">{message.content}</span>}</BubbleContent></Bubble>

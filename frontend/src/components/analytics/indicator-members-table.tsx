@@ -5,13 +5,13 @@ import Link from "next/link"
 import { ArrowUpDown, Search, UserRound } from "lucide-react"
 
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import { formatIndicatorValue, formatPercent, initials } from "@/lib/analytics/format"
+import { formatIndicatorValue, formatPercent } from "@/lib/analytics/format"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import { useIndicatorMembersQuery } from "@/queries/analytics/use-analytics-queries"
 import type { IndicatorMembersParams } from "@/services/analytics/analytics-service"
@@ -85,10 +85,7 @@ export function IndicatorMembersTable({ subject, period, code, employeeHref }: {
                   <TableRow key={row.personId}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <Avatar className="size-8">
-                          <AvatarImage src={row.avatarUrl ?? undefined} alt="" />
-                          <AvatarFallback className="text-xs">{initials(row.name)}</AvatarFallback>
-                        </Avatar>
+                        <PersonAvatar name={row.name} avatarUrl={row.avatarUrl} alt="" className="size-8" fallbackClassName="text-xs" />
                         <div className="min-w-0">
                           <p className="truncate font-medium">{row.name}</p>
                           <ReferenceStatusText status={referenceStatusFrom(row.withinTarget)} />

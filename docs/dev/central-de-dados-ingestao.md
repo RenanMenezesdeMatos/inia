@@ -99,10 +99,17 @@ carga"). **Nunca inferir** "provavelmente entrou de férias na sexta": a sexta a
 de segunda continua elegível. `observed_at` (quando a INIA recebeu) é sempre distinto de
 `source_updated_at` (quando a fonte diz que mudou) e de `effective_from` (quando passou a valer).
 
-**Dataset futuro EMPLOYEE_ABSENCES** (fontes que entregam períodos explícitos):
+**Dataset EMPLOYEE_ABSENCES** (fontes que entregam períodos explícitos):
 `externalEmployeeId`, `type` (bruto → normalizado VACATION/LEAVE), `startDate`, `endDate`
 (opcional), `sourceUpdatedAt`. Cada linha vira UM `applyEmployeeStatusSnapshot` com
 `effectiveFrom`/`effectiveTo` explícitos — mesma camada canônica, mesmo resolvedor de elegibilidade.
+Versão 2 (2026-10-15): `active` ("Vigente?", opcional, padrão sim). `false` vira
+`cancelEmployeeStatusPeriod` para a identidade matrícula + tipo + início: o período sai (só se a
+`source` dele for o namespace do feed; outra origem = aviso `DATA_EMPLOYMENT_STATUS_CONFLICT`), os
+vizinhos seguem `planStatusPeriodCancellation` (metades do período dividido voltam a ser uma; o
+anterior sem fim informado pela fonte volta a valer até a próxima situação; nada é inventado) e a
+remoção fica em `audit_logs` (`DATA_HUB_EMPLOYEE_ABSENCE_CANCELLED`) + `records_deactivated`.
+Identidade inexistente = inalterado. Feeds `@1` continuam no contrato `@1` até salvarem o mapeamento.
 
 **Prioridade/conflito** (hardening 2026-09-16, migration 061): cada período carrega a evidência
 que o sustenta — `effective_to_explicit` (fim informado pela fonte) e `authoritative` (feed

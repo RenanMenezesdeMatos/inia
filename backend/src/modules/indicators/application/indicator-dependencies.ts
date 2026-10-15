@@ -4,14 +4,14 @@ import type { Database } from "../../../infrastructure/database/pool.js"
  * O que já depende de um indicador — base da proteção de alteração semântica e da exclusão.
  * Medições, metas e fechamentos apontam por FK (`indicator_definition_id`); Workflows apontam
  * por CÓDIGO dentro do grafo (Condition/Ranking/critério/agendamento) e do gatilho
- * (`trigger_config.indicatorCode`) — por isso o código também é um campo semântico: renomear
+ * (`trigger_config.indicatorCode`, publicado ou em rascunho) — por isso o código também é um campo semântico: renomear
  * quebraria referências silenciosamente.
  */
 export type IndicatorDependencies = {
   measurements: number
   goals: number
   officialClosures: number
-  /** Workflows (rascunho, versão ativa ou gatilho) que referenciam o código. */
+  /** Workflows (rascunho, versão ativa ou gatilho publicado/em rascunho) que referenciam o código. */
   workflows: { id: string; name: string }[]
   hasHistory: boolean
 }
@@ -29,6 +29,7 @@ export async function loadIndicatorDependencies(db: Database, organizationId: st
       where w.organization_id = $1 and (
         jsonb_path_exists(w.draft_graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text))
         or (w.trigger_config is not null and jsonb_path_exists(w.trigger_config, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
+        or (w.draft_trigger_config is not null and jsonb_path_exists(w.draft_trigger_config, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
         or exists (select 1 from workflow_versions v where v.id = w.active_version_id and jsonb_path_exists(v.graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
       )
       order by w.name`,

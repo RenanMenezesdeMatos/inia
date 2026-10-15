@@ -2041,6 +2041,8 @@ describe("workflow-router", () => {
     const anchorPerson = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
     const flagId = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 
+    const updates: string[] = []
+
     function fakeDatabaseForTriggerConflict(current: { consolidatedStructure?: unknown; populationFilter?: unknown }) {
       return (passwordHash: string) =>
         fakeDatabase([], passwordHash, (sql) => {
@@ -2061,7 +2063,10 @@ describe("workflow-router", () => {
             }
           }
           if (sql.includes("select id from channel_flags where id = $1")) return { rows: [{ id: flagId }], rowCount: 1 }
-          if (sql.includes("update workflows set") && sql.includes("trigger_config")) return { rows: [{ id: "wf-2" }], rowCount: 1 }
+          if (sql.includes("update workflows set")) {
+            updates.push(sql)
+            return { rows: [{ id: "wf-2" }], rowCount: 1 }
+          }
           if (sql.includes("from workflows w") && sql.includes("w.id = $2")) return { rows: [WORKFLOW_TEAM_A], rowCount: 1 }
           return undefined
         })
@@ -2105,8 +2110,12 @@ describe("workflow-router", () => {
       const database = fakeDatabaseForTriggerConflict({})(passwordHash)
       const agent = request.agent(createApp(database))
       await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+      updates.length = 0
       const response = await agent.patch("/api/v1/admin/workflows/wf-2").send({ trigger: { kind: "channel_flag", channelFlagId: flagId } })
       expect(response.status).toBe(200)
+      // O gatilho vai para o RASCUNHO; a coluna que o runtime lê só muda quando não há versão publicada.
+      const triggerWrite = updates.find((sql) => sql.includes("draft_trigger_config = case"))!
+      expect(triggerWrite).toContain("trigger_config = case when active_version_id is null and $1::boolean then $2::jsonb else trigger_config end")
     })
   })
 

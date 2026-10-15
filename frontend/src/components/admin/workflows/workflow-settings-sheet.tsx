@@ -3,6 +3,17 @@
 import { useMemo, useState } from "react"
 import { Settings } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,9 +25,10 @@ import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/or
 import { TriggerConfigEditor } from "./trigger-fields"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useUserAccountsQuery } from "@/queries/admin/use-user-account-queries"
-import { useUpdateWorkflowAnalysisConfigMutation, useUpdateWorkflowMutation } from "@/queries/admin/use-workflow-queries"
+import { useDiscardWorkflowConfigurationMutation, useUpdateWorkflowAnalysisConfigMutation, useUpdateWorkflowMutation } from "@/queries/admin/use-workflow-queries"
 import type { AnalysisConfigInput } from "@/services/admin/workflow-service"
-import type { WorkflowDetail } from "@/schemas/admin/workflow.schema"
+import { withDraftConfiguration, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
+import { describeConfigurationChanges } from "./workflow-configuration-summary"
 import {
   CONSOLIDATED_STRUCTURE_ANCHOR_ROLE,
   CONSOLIDATED_STRUCTURE_LABELS,
@@ -115,6 +127,10 @@ function SectionHeading({ n, title }: { n: number; title: string }) {
  * Flag/Indicador são sempre Individual por definição, nunca uma pergunta ao usuário).
  */
 export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }) {
+  // Tudo aqui edita o RASCUNHO da configuração; os campos de topo de `workflow` são a publicada (o que roda hoje).
+  const editable = useMemo(() => withDraftConfiguration(workflow), [workflow])
+  const pendingChanges = useMemo(() => describeConfigurationChanges(workflow), [workflow])
+  const discardMutation = useDiscardWorkflowConfigurationMutation(workflow.id)
   const [open, setOpen] = useState(false)
   const manageableTeamsQuery = useManageableTeamsQuery()
   const usersQuery = useUserAccountsQuery()
@@ -122,20 +138,20 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   const updateAnalysisMutation = useUpdateWorkflowAnalysisConfigMutation(workflow.id)
 
   const [orgScope, setOrgScope] = useState<OrgScopeValue>({
-    scopeType: workflow.scopeType,
-    teamId: workflow.teamId ?? undefined,
-    subteamId: workflow.subteamId ?? undefined,
+    scopeType: editable.scopeType,
+    teamId: editable.teamId ?? undefined,
+    subteamId: editable.subteamId ?? undefined,
   })
 
-  // Abrangência salva mudou: o formulário acompanha (ajuste na renderização, sem render extra).
-  const [syncedScope, setSyncedScope] = useState({ scopeType: workflow.scopeType, teamId: workflow.teamId, subteamId: workflow.subteamId })
-  if (syncedScope.scopeType !== workflow.scopeType || syncedScope.teamId !== workflow.teamId || syncedScope.subteamId !== workflow.subteamId) {
-    setSyncedScope({ scopeType: workflow.scopeType, teamId: workflow.teamId, subteamId: workflow.subteamId })
-    setOrgScope({ scopeType: workflow.scopeType, teamId: workflow.teamId ?? undefined, subteamId: workflow.subteamId ?? undefined })
+  // Abrangência do rascunho mudou: o formulário acompanha (ajuste na renderização, sem render extra).
+  const [syncedScope, setSyncedScope] = useState({ scopeType: editable.scopeType, teamId: editable.teamId, subteamId: editable.subteamId })
+  if (syncedScope.scopeType !== editable.scopeType || syncedScope.teamId !== editable.teamId || syncedScope.subteamId !== editable.subteamId) {
+    setSyncedScope({ scopeType: editable.scopeType, teamId: editable.teamId, subteamId: editable.subteamId })
+    setOrgScope({ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined, subteamId: editable.subteamId ?? undefined })
   }
 
   const scopeChanged =
-    orgScope.scopeType !== workflow.scopeType || (orgScope.teamId ?? null) !== workflow.teamId || (orgScope.subteamId ?? null) !== workflow.subteamId
+    orgScope.scopeType !== editable.scopeType || (orgScope.teamId ?? null) !== editable.teamId || (orgScope.subteamId ?? null) !== editable.subteamId
 
   async function handleSaveScope() {
     try {
@@ -150,32 +166,32 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
   // uma equipe") — o backend rejeita Consolidado mesmo com um payload manual, isto só evita
   // oferecer a escolha onde ela nunca seria aceita. Flag/Indicador já têm sujeito individual
   // implícito no próprio evento — nem Filtro Populacional faz sentido pra eles.
-  const isSchedule = workflow.trigger.kind === "schedule"
-  const isRelativeToShift = workflow.trigger.kind === "schedule" && workflow.trigger.mode === "RELATIVE_TO_SHIFT"
+  const isSchedule = editable.trigger.kind === "schedule"
+  const isRelativeToShift = editable.trigger.kind === "schedule" && editable.trigger.mode === "RELATIVE_TO_SHIFT"
   const supportsConsolidatedMode = isSchedule && !isRelativeToShift
   const supportsPopulationFilter = isSchedule
 
-  const currentStructure = workflow.consolidatedStructure ?? null
+  const currentStructure = editable.consolidatedStructure ?? null
   const [mode, setMode] = useState<"INDIVIDUAL" | "CONSOLIDATED">(currentStructure ? "CONSOLIDATED" : "INDIVIDUAL")
   const [structureKind, setStructureKind] = useState<ConsolidatedStructureKind>(currentStructure?.kind ?? "SUPERVISOR_TEAM")
   const [structureAnchorId, setStructureAnchorId] = useState<string>(structureGroupId(currentStructure?.kind ?? "SUPERVISOR_TEAM", currentStructure))
 
-  const currentFilter = workflow.populationFilter ?? { kind: "ALL" as const }
+  const currentFilter = editable.populationFilter ?? { kind: "ALL" as const }
   const [filterKind, setFilterKind] = useState<PopulationFilterKind>(currentFilter.kind)
   const [filterAnchorId, setFilterAnchorId] = useState<string>(
     currentFilter.kind === "EMPLOYEE" ? currentFilter.employeeId : structureGroupId(currentFilter.kind as ConsolidatedStructureKind, currentFilter as ConsolidatedStructure),
   )
 
-  // Modo/estrutura/filtro salvos mudaram: o formulário recomeça deles (ajuste na renderização, sem render extra).
-  const [syncedAnalysis, setSyncedAnalysis] = useState({ structure: workflow.consolidatedStructure, filter: workflow.populationFilter })
-  if (syncedAnalysis.structure !== workflow.consolidatedStructure || syncedAnalysis.filter !== workflow.populationFilter) {
-    setSyncedAnalysis({ structure: workflow.consolidatedStructure, filter: workflow.populationFilter })
-    const structure = workflow.consolidatedStructure ?? null
+  // Modo/estrutura/filtro do rascunho mudaram: o formulário recomeça deles (ajuste na renderização, sem render extra).
+  const [syncedAnalysis, setSyncedAnalysis] = useState({ structure: editable.consolidatedStructure, filter: editable.populationFilter })
+  if (syncedAnalysis.structure !== editable.consolidatedStructure || syncedAnalysis.filter !== editable.populationFilter) {
+    setSyncedAnalysis({ structure: editable.consolidatedStructure, filter: editable.populationFilter })
+    const structure = editable.consolidatedStructure ?? null
     setMode(structure ? "CONSOLIDATED" : "INDIVIDUAL")
     setStructureKind(structure?.kind ?? "SUPERVISOR_TEAM")
     setStructureAnchorId(structureGroupId(structure?.kind ?? "SUPERVISOR_TEAM", structure))
 
-    const filter = workflow.populationFilter ?? { kind: "ALL" as const }
+    const filter = editable.populationFilter ?? { kind: "ALL" as const }
     setFilterKind(filter.kind)
     setFilterAnchorId(filter.kind === "EMPLOYEE" ? filter.employeeId : structureGroupId(filter.kind as ConsolidatedStructureKind, filter as ConsolidatedStructure))
   }
@@ -187,21 +203,21 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
 
   const structurePeopleOptions = useMemo(() => {
     if (!structureAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === structureAnchorRole && (workflow.scopeType === "ALL_TEAMS" || person.teamId === workflow.teamId))
-  }, [usersQuery.data, structureAnchorRole, workflow.scopeType, workflow.teamId])
+    return usersQuery.data.filter((person) => person.role === structureAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId))
+  }, [usersQuery.data, structureAnchorRole, editable.scopeType, editable.teamId])
 
   const filterPeopleOptions = useMemo(() => {
     if (!filterAnchorRole || !usersQuery.data) return []
-    return usersQuery.data.filter((person) => person.role === filterAnchorRole && (workflow.scopeType === "ALL_TEAMS" || person.teamId === workflow.teamId))
-  }, [usersQuery.data, filterAnchorRole, workflow.scopeType, workflow.teamId])
+    return usersQuery.data.filter((person) => person.role === filterAnchorRole && (editable.scopeType === "ALL_TEAMS" || person.teamId === editable.teamId))
+  }, [usersQuery.data, filterAnchorRole, editable.scopeType, editable.teamId])
 
   const structureGroupOptions = useMemo(
-    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, workflow.scopeType, workflow.teamId),
-    [manageableTeamsQuery.data, structureKind, workflow.scopeType, workflow.teamId],
+    () => groupOptionsFor(structureKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId),
+    [manageableTeamsQuery.data, structureKind, editable.scopeType, editable.teamId],
   )
   const filterGroupOptions = useMemo(
-    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, workflow.scopeType, workflow.teamId),
-    [manageableTeamsQuery.data, filterKind, workflow.scopeType, workflow.teamId],
+    () => groupOptionsFor(filterKind, manageableTeamsQuery.data, editable.scopeType, editable.teamId),
+    [manageableTeamsQuery.data, filterKind, editable.scopeType, editable.teamId],
   )
 
   const nextStructure = buildConsolidatedStructure(structureKind, structureAnchorId)
@@ -235,8 +251,42 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           <SheetTitle>Configurações do workflow</SheetTitle>
           <SheetDescription>
             Onde, quando e o que este workflow avalia — em sequência, configurado uma vez aqui, nunca repetido em cada nó do canvas.
+            {workflow.published ? " As alterações ficam no rascunho e só passam a valer quando você Publicar." : ""}
           </SheetDescription>
         </SheetHeader>
+
+        {pendingChanges.length > 0 ? (
+          <div className="mx-4 space-y-2 rounded-md border border-amber-500/50 bg-amber-500/5 p-3 text-sm" data-testid="workflow-settings-pending">
+            <p className="font-medium">Alterações não publicadas</p>
+            <p className="text-xs text-muted-foreground">O workflow continua rodando com a configuração publicada até você Publicar:</p>
+            <ul className="space-y-0.5 text-xs">
+              {pendingChanges.map((item) => (
+                <li key={item.change}>
+                  <span className="font-medium">{item.label}:</span> {item.published} → {item.draft}
+                </li>
+              ))}
+            </ul>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="outline" disabled={discardMutation.isPending}>
+                  Descartar alterações de configuração
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Descartar alterações de configuração?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Gatilho, Abrangência e Alvo da avaliação voltam a ser os publicados. O fluxo em rascunho no canvas não muda.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => discardMutation.mutate()}>Descartar</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        ) : null}
 
         <div className="space-y-3 px-4">
           <SectionHeading n={1} title="Abrangência" />
@@ -260,15 +310,16 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
         <div className="space-y-3 px-4">
           <SectionHeading n={2} title="Gatilho" />
           <p className="text-xs text-muted-foreground">
-            Quando e por que este workflow começa. É a mesma configuração do nó Gatilho no canvas — editar aqui ou lá dá no mesmo.
+            Quando e por que este workflow começa. É a mesma configuração do nó Gatilho no canvas — editar aqui ou lá dá no mesmo. Fica no
+            rascunho: nada muda nas execuções até Publicar.
           </p>
           <TriggerConfigEditor
-            trigger={workflow.trigger}
+            trigger={editable.trigger}
             workflowId={workflow.id}
-            scope={{ scopeType: workflow.scopeType, teamId: workflow.teamId ?? undefined }}
+            scope={{ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined }}
             graph={workflow.draftGraph}
-            consolidatedStructure={workflow.consolidatedStructure ?? null}
-            populationFilter={workflow.populationFilter ?? null}
+            consolidatedStructure={editable.consolidatedStructure ?? null}
+            populationFilter={editable.populationFilter ?? null}
           />
         </div>
 
@@ -279,7 +330,7 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
 
           {!isSchedule ? (
             <p className="text-sm text-muted-foreground">
-              {workflow.trigger.kind === "channel_flag"
+              {editable.trigger.kind === "channel_flag"
                 ? "Colaborador da interação (automático) — o sujeito é sempre o operador da interação que disparou este workflow."
                 : "Colaborador da medição (automático) — o sujeito é sempre o colaborador da medição que disparou este workflow."}
             </p>

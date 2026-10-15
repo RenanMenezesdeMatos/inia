@@ -2,7 +2,7 @@ import type { Orchestrator } from "./assistant.schema"
 import type { FlowGraph } from "./workflow-graph.schema"
 import type { WorkflowTrigger } from "./workflow.schema"
 import type { ValidationContext, ValidationIssue, VariableInfo } from "./workflow-validation/types"
-import { validateGraphShape, validateInteractionFeedbackSource, validateManualTrigger, validateScheduleDataSources, validateScheduleTrigger, validateTranscriptRequirements } from "./workflow-validation/trigger-context"
+import { validateGraphShape, validateInteractionFeedbackSource, validateManualTrigger, validateConsolidatedTrigger, validateScheduleDataSources, validateScheduleTrigger, validateTranscriptRequirements } from "./workflow-validation/trigger-context"
 import { validateConditions } from "./workflow-validation/conditions"
 import { validateAgentHasOutput, validateNoVariableCycles, validateSetVariableNode } from "./workflow-validation/actions"
 import { validateOrchestratorNode } from "./workflow-validation/orchestrators"
@@ -54,6 +54,7 @@ export function validateWorkflowGraph(
   validateStructuredSources(context)
   validateEscalations(context)
   validateManualTrigger(context)
+  validateConsolidatedTrigger(context)
   validateScheduleDataSources(context)
   validateInteractionFeedbackSource(context)
 

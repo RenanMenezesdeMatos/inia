@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
+import { loadAvatarPresenter, personAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
 import { decodeCursor } from "../domain/assistant-conversation.js"
 import { CONVERSATION_LAST_MESSAGE_JOIN, CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
@@ -73,6 +74,11 @@ const toMonitored = (row: Row): MonitoredConversation => ({
   owner: { personId: row.owner_id, name: row.owner_name, jobTitle: row.owner_job_title, avatarUrl: row.owner_avatar_url, teamName: row.team_name, subteamName: row.subteam_name },
   voiceMessageCount: row.voice_message_count ?? 0,
 })
+/** Foto do dono pela apresentação (personalizada > corporativa > iniciais): UMA leitura em lote para as conversas da resposta. */
+async function presentOwners(db: Queryable, organizationId: string, rows: Row[]): Promise<MonitoredConversation[]> {
+  const present = await loadAvatarPresenter(personAvatarLoader(db), organizationId, rows.map((row) => row.owner_id))
+  return rows.map(toMonitored).map((conversation) => ({ ...conversation, owner: present(conversation.owner) }))
+}
 
 function filterSql(filters: MonitoringFilters, params: unknown[]): string {
   const clauses: string[] = []
@@ -133,7 +139,7 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
     if (row.subteam_id && row.subteam_name) subteamOptions.set(row.subteam_id, { id: row.subteam_id, name: row.subteam_name, teamId: row.team_id })
   }
   return {
-    items: rows.rows.map(toMonitored),
+    items: await presentOwners(db, viewer.organizationId, rows.rows),
     total: total.rows[0]?.n ?? 0,
     filterOptions: {
       operators: owners.rows.slice(0, 500).map((row) => ({ id: row.id, name: row.name })),
@@ -149,7 +155,7 @@ export async function requireMonitoredConversation(db: Queryable, viewer: Monito
   const result = await db.query<Row>(`${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${CONVERSATION_LAST_MESSAGE_JOIN} where ${VISIBLE} and c.id = $4::uuid`, params)
   const row = result.rows[0]
   if (!row) throw new DomainError("Conversa não encontrada.", "ASSISTANT_CONVERSATION_NOT_FOUND", 404)
-  return toMonitored(row)
+  return (await presentOwners(db, viewer.organizationId, [row]))[0]!
 }
 
 /** Mensagens da conversa (já autorizada aqui), com materiais de apoio resolvidos pelo acesso do LEITOR. */

@@ -7,6 +7,7 @@ import { emptyStrategyConfig } from "../../indicator-diagnosis/domain/diagnostic
 import type { OperationalAggregationKind } from "../../indicators/domain/operational-aggregation.js"
 import { normalizeManualTrigger, validateScheduleTrigger, validateWorkflowForPublish, type PublishValidationRow } from "../application/validate-workflow-for-publish.js"
 import type { ConsolidatedStructure } from "../domain/consolidated-structure-schema.js"
+import type { PopulationFilter } from "../domain/population-filter-schema.js"
 import { triggerConfigSchema, type TriggerConfig } from "../domain/trigger-config-schema.js"
 import { inMemoryHierarchyReader } from "./in-memory-hierarchy-reader.js"
 
@@ -77,6 +78,8 @@ export type ParitySetup = {
   /** `indicator_definitions.operational_aggregation` por código (padrão: "WEIGHTED_AVERAGE"). */
   operationalAggregation?: Record<string, OperationalAggregationKind>
   db?: Partial<ParityDbFacts>
+  /** Filtro Populacional do rascunho — só o backend o recebe (o editor valida o grafo; as rotas do rascunho recusam a combinação). */
+  populationFilter?: PopulationFilter
   /** Abrangência do Workflow (padrão: todos os Grupos). */
   scope?: { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId: string | null; subteamId: string | null }
 }
@@ -170,6 +173,7 @@ export async function backendVerdict(setup: ParitySetup): Promise<BackendVerdict
       draftGraph: setup.graph,
       triggerConfig: trigger,
       consolidatedStructure: setup.consolidated ? (setup.structure ?? PARITY_STRUCTURE) : null,
+      populationFilter: setup.populationFilter ?? null,
     }
     await validateWorkflowForPublish(fakeDb(setup), ORGANIZATION_ID, WORKFLOW_ID, row, { hierarchy: PARITY_HIERARCHY })
     return null

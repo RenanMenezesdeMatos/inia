@@ -163,7 +163,7 @@ export function FileImportFlow() {
       let feedId = chosen?.feed.id ?? null
       const connectorConfig = toConnectorConfig("FILE_UPLOAD", connector)
       if (feedId) {
-        await updateFeed.mutateAsync({ id: feedId, input: { mapping: effectiveMapping, connectorConfig } })
+        await updateFeed.mutateAsync({ id: feedId, input: { contractVersion: contract.version, mapping: effectiveMapping, connectorConfig } })
       } else {
         const created = await createFeed.mutateAsync({ sourceId: source.id, input: { feedKey: slug(newFeedName || contract.label), name: newFeedName || contract.label, contractKey: contract.key, connectorConfig, mapping: effectiveMapping } })
         feedId = created.id
@@ -375,6 +375,8 @@ export function FileImportFlow() {
                     ["Inseridos", run.recordsInserted],
                     ["Atualizados", run.recordsUpdated],
                     ["Inalterados", run.recordsUnchanged],
+                    // Ex.: ausência cancelada pela fonte (Vigente? = não) — só aparece quando houve.
+                    ...(run.recordsDeactivated > 0 ? [["Desativados", run.recordsDeactivated]] : []),
                     ["Rejeitados", run.recordsRejected],
                   ].map(([label, value]) => (
                     <div key={String(label)} className="rounded-lg border border-border p-2">

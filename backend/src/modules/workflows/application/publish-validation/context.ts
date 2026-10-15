@@ -2,6 +2,7 @@ import type { Database } from "../../../../infrastructure/database/pool.js"
 import type { FlatOutputSchemaField } from "../../../assistant/domain/output-schema-fields.js"
 import type { FlowGraph, FlowNode } from "../../domain/graph-schema.js"
 import type { ConsolidatedStructure } from "../../domain/consolidated-structure-schema.js"
+import type { PopulationFilter } from "../../domain/population-filter-schema.js"
 import type { TriggerConfig, TriggerDataOrigin } from "../../domain/trigger-config-schema.js"
 import type { OrganizationalHierarchyReader } from "../organizational-recipient.js"
 
@@ -41,6 +42,8 @@ export type PublishValidationRow = {
   draftGraph: unknown
   triggerConfig: TriggerConfig
   consolidatedStructure: ConsolidatedStructure | null
+  /** Filtro Populacional do rascunho (null/ausente = todos os elegíveis da Abrangência). */
+  populationFilter?: PopulationFilter | null
 }
 
 export type PublishValidationOptions = {

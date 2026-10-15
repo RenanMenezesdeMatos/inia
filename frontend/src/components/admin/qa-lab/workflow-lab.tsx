@@ -26,7 +26,7 @@ import {
   type ConsolidatedStructureKind,
 } from "@/schemas/admin/consolidated-structure-schema"
 import { NODE_TYPE_LABELS, type Comparator, type FlowGraph, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
-import { triggerBadgeText, triggerLabel, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
+import { triggerBadgeText, triggerLabel, withDraftConfiguration, type WorkflowDetail } from "@/schemas/admin/workflow.schema"
 
 import { AiControls, type AiControlsValue } from "./ai-controls"
 import { InteractionEvidencePicker } from "./interaction-evidence"
@@ -108,7 +108,7 @@ function WorkflowSelect({ value, onChange }: { value: string; onChange: (id: str
 export function WorkflowLab() {
   const [workflowId, setWorkflowId] = useState("")
   const workflowQuery = useWorkflowQuery(workflowId)
-  const workflow = workflowQuery.data ?? null
+  const loadedWorkflow = workflowQuery.data ?? null
   // null = automático (publicada quando existe, senão rascunho).
   const [graphSourceChoice, setGraphSourceChoice] = useState<"PUBLISHED" | "DRAFT" | null>(null)
   const [subject, setSubject] = useState<WorkflowSubject | null>(null)
@@ -143,12 +143,18 @@ export function WorkflowLab() {
     setGraphSourceChoice(null)
   }
 
-  // "Publicado · alterações não publicadas" existe quando o rascunho persistido difere do grafo
-  // pinado pela publicação — informação já disponível no detalhe (draftGraph x publishedGraph).
-  const hasUnpublishedChanges = Boolean(workflow?.publishedGraph && JSON.stringify(workflow.draftGraph) !== JSON.stringify(workflow.publishedGraph))
+  // "Publicado · alterações não publicadas" existe quando o rascunho persistido difere da publicação —
+  // o grafo (draftGraph x publishedGraph) OU a configuração (Gatilho/Abrangência/população, `configurationChanges`).
+  const hasUnpublishedChanges = Boolean(
+    loadedWorkflow?.publishedGraph &&
+      (JSON.stringify(loadedWorkflow.draftGraph) !== JSON.stringify(loadedWorkflow.publishedGraph) || (loadedWorkflow.configurationChanges ?? []).length > 0),
+  )
   // Padrão: o rascunho atual (o QA Lab existe pra testar ANTES de publicar); só cai na versão
   // publicada quando ela é idêntica ao rascunho — aí é o que está em operação.
-  const graphSource: "PUBLISHED" | "DRAFT" = graphSourceChoice ?? (workflow?.publishedGraph && !hasUnpublishedChanges ? "PUBLISHED" : "DRAFT")
+  const graphSource: "PUBLISHED" | "DRAFT" = graphSourceChoice ?? (loadedWorkflow?.publishedGraph && !hasUnpublishedChanges ? "PUBLISHED" : "DRAFT")
+  // A configuração acompanha o grafo testado — rascunho com rascunho, publicada com publicada (mesma regra do backend,
+  // withSimulationConfiguration): o gatilho/Abrangência/estrutura exibidos e enviados são os da versão em teste.
+  const workflow = loadedWorkflow ? (graphSource === "PUBLISHED" ? loadedWorkflow : withDraftConfiguration(loadedWorkflow)) : null
   const graph: FlowGraph | null = workflow ? (graphSource === "PUBLISHED" ? (workflow.publishedGraph ?? workflow.draftGraph) : workflow.draftGraph) : null
   const structure = workflow ? readConsolidatedStructure(workflow) : null
   const hint = graph ? triggerConditionHint(graph) : null

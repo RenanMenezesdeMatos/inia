@@ -2,7 +2,7 @@ import { BRAZILIAN_CAPITALS, capitalLabel, normalizeCapitalCode } from "../../..
 import { EMPLOYMENT_STATUS_LABELS, normalizeEmploymentStatus } from "../../../people/domain/employment-status.js"
 import { normalizeScheduleExceptionCode, SCHEDULE_EXCEPTION_CODES, SCHEDULE_EXCEPTION_LABELS } from "../../../people/domain/schedule-exception.js"
 import { normalizeScheduleType, SCHEDULE_TYPE_LABELS } from "../../../people/domain/work-schedule.js"
-import type { DataContract } from "../data-contract.js"
+import type { DataContract, DataContractField } from "../data-contract.js"
 
 /**
  * Contratos de DADO MESTRE: colaboradores, estrutura hierárquica, grupos, subgrupos, jornadas
@@ -287,20 +287,11 @@ export const GOALS_CONTRACT: DataContract = {
 
 export const ABSENCE_TYPES_HELP = "Tipo como a fonte entrega, normalizado para uma situação TEMPORAL real: FÉRIAS, INSS, MATERNIDADE, PATERNIDADE ou ATIVIDADE OFF (EM PRODUÇÃO não é ausência). Valores próprios da fonte (FER, LIC…) entram por 'Mapear códigos'; desconhecido vai para a quarentena."
 
-export const EMPLOYEE_ABSENCES_CONTRACT: DataContract = {
+const ABSENCE_ENTITY = {
   key: "EMPLOYEE_ABSENCES",
-  version: 1,
   label: "Ausências (férias/afastamentos)",
-  description: "Períodos explícitos de férias, INSS, maternidade, paternidade ou atividade off por colaborador. Cada linha vira um período na situação funcional (mesma camada canônica do cadastro), com datas efetivas que têm precedência sobre a inferência do snapshot. Destino: `employee_status_periods`.",
   category: "MASTER",
   targetEntity: "employee_status_periods",
-  fields: [
-    { key: "externalEmployeeId", label: "Matrícula / ID externo", type: "STRING", required: true, identity: true, maxLength: 64, description: "Matrícula do colaborador (precisa existir).", example: "OP-10234" },
-    { key: "type", label: "Tipo (bruto)", type: "STRING", required: true, maxLength: 40, description: ABSENCE_TYPES_HELP, example: "FERIAS" },
-    { key: "startDate", label: "Início", type: "DATE", required: true, description: "Primeiro dia da ausência.", example: "2026-09-09" },
-    { key: "endDate", label: "Fim", type: "DATE", required: false, description: "Último dia (inclusivo). Vazio = em aberto.", example: "2026-09-20" },
-    { key: "sourceUpdatedAt", label: "Atualizado na fonte em", type: "DATETIME", required: false, description: "Quando a fonte diz que o registro mudou, se confiável.", example: "2026-09-08T18:00:00-03:00" },
-  ],
   naturalKey: ["externalEmployeeId", "type", "startDate"],
   dependencies: ["EMPLOYEES"],
   writeSemantics: "UPSERT",
@@ -313,5 +304,41 @@ export const EMPLOYEE_ABSENCES_CONTRACT: DataContract = {
     }
     return []
   },
+} satisfies Omit<DataContract, "version" | "description" | "fields" | "examples">
+
+const ABSENCE_FIELDS_V1 = [
+  { key: "externalEmployeeId", label: "Matrícula / ID externo", type: "STRING", required: true, identity: true, maxLength: 64, description: "Matrícula do colaborador (precisa existir).", example: "OP-10234" },
+  { key: "type", label: "Tipo (bruto)", type: "STRING", required: true, maxLength: 40, description: ABSENCE_TYPES_HELP, example: "FERIAS" },
+  { key: "startDate", label: "Início", type: "DATE", required: true, description: "Primeiro dia da ausência.", example: "2026-09-09" },
+  { key: "endDate", label: "Fim", type: "DATE", required: false, description: "Último dia (inclusivo). Vazio = em aberto.", example: "2026-09-20" },
+  { key: "sourceUpdatedAt", label: "Atualizado na fonte em", type: "DATETIME", required: false, description: "Quando a fonte diz que o registro mudou, se confiável.", example: "2026-09-08T18:00:00-03:00" },
+] as const satisfies readonly DataContractField[]
+
+/** Versão 1 (sem "Vigente?"), congelada: feeds criados antes da versão 2 continuam nela até o mapeamento ser salvo de novo. */
+export const EMPLOYEE_ABSENCES_CONTRACT_V1: DataContract = {
+  ...ABSENCE_ENTITY,
+  version: 1,
+  description: "Períodos explícitos de férias, INSS, maternidade, paternidade ou atividade off por colaborador. Cada linha vira um período na situação funcional (mesma camada canônica do cadastro), com datas efetivas que têm precedência sobre a inferência do snapshot. Destino: `employee_status_periods`.",
+  fields: ABSENCE_FIELDS_V1,
   examples: [{ externalEmployeeId: "OP-10234", type: "FERIAS", startDate: "2026-09-09", endDate: "2026-09-20", sourceUpdatedAt: null }],
+}
+
+/**
+ * Versão 2: "Vigente? = não" desfaz a ausência daquela identidade (matrícula + tipo + início) — o
+ * RH cancelou as férias inteiras. O período sai da situação funcional (auditado em `audit_logs`),
+ * e os dias voltam a seguir as outras fontes; nada é inventado no lugar.
+ */
+export const EMPLOYEE_ABSENCES_CONTRACT: DataContract = {
+  ...ABSENCE_ENTITY,
+  version: 2,
+  description: "Períodos explícitos de férias, INSS, maternidade, paternidade ou atividade off por colaborador. Cada linha vira um período na situação funcional (mesma camada canônica do cadastro), com datas efetivas que têm precedência sobre a inferência do snapshot. \"Vigente? = não\" cancela a ausência já recebida: o período sai (auditado) e os dias voltam a seguir as outras fontes. Destino: `employee_status_periods`.",
+  fields: [
+    ...ABSENCE_FIELDS_V1.slice(0, 4),
+    { key: "active", label: "Vigente?", type: "BOOLEAN", required: false, description: "false cancela a ausência desta matrícula, tipo e início, se ela veio desta fonte: o período sai da situação funcional (registro auditado) e os dias voltam a seguir as outras fontes. Ausente = vigente; reenviar como vigente recria o período.", example: true },
+    ABSENCE_FIELDS_V1[4],
+  ],
+  examples: [
+    { externalEmployeeId: "OP-10234", type: "FERIAS", startDate: "2026-09-09", endDate: "2026-09-20", active: true, sourceUpdatedAt: null },
+    { externalEmployeeId: "OP-10234", type: "FERIAS", startDate: "2026-10-05", endDate: "2026-10-14", active: false, sourceUpdatedAt: "2026-09-30T18:00:00-03:00" },
+  ],
 }

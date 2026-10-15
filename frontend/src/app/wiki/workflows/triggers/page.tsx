@@ -20,6 +20,7 @@ const TOC: WikiTocEntry[] = [
   { id: "agenda-relativa", label: "Agenda relativa ao expediente" },
   { id: "manual", label: "Manual (Executar agora)" },
   { id: "trocar-tipo", label: "Trocar o tipo do gatilho" },
+  { id: "rascunho-publicado", label: "Rascunho × publicado" },
   { id: "surface-nao-e-trigger", label: "Surface não é Trigger" },
 ]
 
@@ -77,7 +78,8 @@ export default function TriggersPage() {
         <FieldRow label="Transcrição" value="Fica disponível para Chamar agente/Orquestrador (evidência literal) e é obrigatória para Conformidade de processo e Avaliação de processo." />
         <WarningCallout title="Uma interação dispara TODOS os Workflows publicados com aquela flag">
           Cada Workflow publicado que usa a flag matricula o operador separadamente. Em ambientes de teste, uma ingestão real pode acionar vários
-          Workflows e vários Agents de uma vez — use o QA Lab para testar um de cada vez.
+          Workflows e vários Agents de uma vez — use o QA Lab para testar um de cada vez. Trocar a flag de um Workflow publicado só vale depois
+          de Publicar (ver <WikiLink href="/wiki/workflows/triggers#rascunho-publicado">Rascunho × publicado</WikiLink>).
         </WarningCallout>
       </WikiSection>
 
@@ -162,12 +164,44 @@ export default function TriggersPage() {
 
       <WikiSection id="trocar-tipo" title="Trocar o tipo do gatilho" eyebrow="Mudança estrutural">
         <WarningCallout title="Trocar o TIPO do Gatilho é uma mudança estrutural">
-          Editar os detalhes do MESMO tipo (horário da Agenda, a Flag escolhida, o Indicador escolhido) salva na hora — e é a mesma configuração
-          tanto no Sheet de Configurações quanto no nó Gatilho do canvas. Já trocar o TIPO em si (Agenda↔Flag↔Indicador↔Manual) pode invalidar a
-          Estrutura Consolidada/Filtro Populacional e Conditions em modo &quot;Valor do gatilho&quot; — o editor mostra uma análise de impacto
-          antes de aplicar, listando o que precisa ser revisado primeiro, nunca troca e apaga configuração silenciosamente. O backend continua
-          validando de novo na gravação, mesmo por um payload manual.
+          Editar os detalhes do MESMO tipo (horário da Agenda, a Flag escolhida, o Indicador escolhido) salva na hora no rascunho — e é a mesma
+          configuração tanto no Sheet de Configurações quanto no nó Gatilho do canvas. Já trocar o TIPO em si (Agenda↔Flag↔Indicador↔Manual) pode
+          invalidar a Estrutura Consolidada/Filtro Populacional e Conditions em modo &quot;Valor do gatilho&quot; — o editor mostra uma análise de
+          impacto UMA vez antes de aplicar, listando o que precisa ser revisado primeiro, nunca troca e apaga configuração silenciosamente. Depois
+          de confirmar, completar os campos do tipo novo não pergunta de novo. O backend continua validando de novo na gravação, mesmo por um
+          payload manual.
         </WarningCallout>
+      </WikiSection>
+
+      <WikiSection id="rascunho-publicado" title="Rascunho × publicado" eyebrow="Editar nunca dispara">
+        <p>
+          Gatilho, Abrangência e Alvo da avaliação (Estrutura Consolidada ou Filtro Populacional) são parte do{" "}
+          <strong className="font-medium text-foreground">rascunho</strong>, como o fluxo do canvas. Num Workflow publicado, editar qualquer um
+          deles não muda nada nas execuções: o agendador, a chegada de interações e medições e o Executar agora continuam usando a configuração
+          publicada até alguém clicar em <strong className="font-medium text-foreground">Publicar</strong>. Enquanto houver diferença, o editor e a
+          lista mostram <strong className="font-medium text-foreground">Configuração não publicada</strong> (com o que roda hoje × o que vai rodar),
+          e as Configurações oferecem <strong className="font-medium text-foreground">Descartar alterações de configuração</strong>.
+        </p>
+        <WikiFlow
+          compact
+          steps={[
+            { label: "Editar gatilho, Abrangência ou população", detail: "grava só o rascunho — nenhuma execução nasce", tone: "input" },
+            { label: "Publicar", detail: "mostra o que muda e, na Agenda, quantas pessoas e quando dispara", tone: "core" },
+            { label: "Versão publicada", detail: "fluxo + configuração passam a valer juntos; a versão guarda os dois", tone: "core" },
+          ]}
+        />
+        <WarningCallout title="Agenda com horário de hoje que já passou dispara na hora">
+          O agendador recupera os horários de HOJE que já venceram (se o serviço cair e voltar no mesmo dia, nada se perde). Por isso, pôr no ar
+          hoje uma Agenda cujo horário de hoje já passou — publicando um Workflow ativo ou ativando um publicado — cria as execuções desse horário
+          no minuto seguinte. A prévia de &quot;Próximas execuções&quot; avisa quando isso acontece, e o diálogo de publicação mostra{" "}
+          <strong>Dispara agora</strong> com a quantidade e o horário.
+        </WarningCallout>
+        <FieldRow
+          label="Confirmação obrigatória"
+          value="Quando a Agenda dispararia na hora ou atinge mais de 50 pessoas por ocorrência com configuração nova (primeira publicação, configuração alterada ou ativação), Publicar/Ativar só libera com “Entendi o impacto e quero publicar mesmo assim” marcado. Se os números mudarem entre a prévia e o clique, o diálogo volta com os novos."
+        />
+        <FieldRow label="Workflow desativado" value="Publicar não põe nada no ar. Ao ativar, o impacto da configuração publicada é calculado e mostrado de novo." />
+        <FieldRow label="Flag, Indicador e Manual" value="Nunca disparam ao publicar ou ativar: a próxima interação/medição que chegar (ou o próximo Executar agora) usa a configuração publicada." />
       </WikiSection>
 
       <WikiSection id="surface-nao-e-trigger" title="Surface não é Trigger" eyebrow="Duas coisas diferentes">

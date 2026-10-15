@@ -15,7 +15,7 @@ import { z } from "zod"
 // Vocabulário (tipos do produto, não dados da organização)
 // ---------------------------------------------------------------------------------------------
 
-export const AI_PERMISSIONS = ["AI_CONFIG_READ", "AI_CONFIG_WRITE", "AI_SECRETS_WRITE", "AI_USAGE_READ", "AI_BUDGET_WRITE"] as const
+export const AI_PERMISSIONS = ["AI_CONFIG_READ", "AI_CONFIG_WRITE", "AI_SECRETS_WRITE", "AI_USAGE_READ", "AI_BUDGET_WRITE", "AI_USAGE_RANKING_READ"] as const
 export type AiPermission = (typeof AI_PERMISSIONS)[number]
 
 export const AI_CAPABILITIES = ["STRUCTURED_OUTPUT", "TOOLS", "STREAMING", "REASONING", "VISION", "AUDIO", "PROMPT_CACHE"] as const

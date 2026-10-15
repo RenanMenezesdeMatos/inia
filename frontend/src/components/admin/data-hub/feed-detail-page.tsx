@@ -93,7 +93,8 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
 
   function save() {
     const connectorConfig = databaseConfig && databaseSync ? { connector: "DATABASE", database: configFromSyncDraft(databaseConfig, databaseSync) } : toConnectorConfig(kind, connector)
-    update.mutate({ id: feed.id, input: { mapping, cadence, authoritative, failOnAnyRejection, availabilityPolicy, connectorConfig } })
+    // O editor mostra sempre a versão atual do contrato: salvar grava o feed nela (troca auditada no servidor).
+    update.mutate({ id: feed.id, input: { contractVersion: contract?.version, mapping, cadence, authoritative, failOnAnyRejection, availabilityPolicy, connectorConfig } })
   }
 
   return (
@@ -188,6 +189,11 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
                 ) : null}
                 <span className="text-xs text-muted-foreground">Colunas conhecidas: {columns.length}{feed.schemaFingerprint ? ` (esquema observado ${formatDateTime(feed.schemaFingerprint.observedAt)})` : ""}</span>
               </div>
+              {contract.version > feed.contractVersion ? (
+                <p className="text-xs text-muted-foreground">
+                  Este conjunto lê os dados pela versão {feed.contractVersion} do contrato. O mapeamento abaixo já é o da versão {contract.version}: ao salvar, ele passa para essa versão e os campos novos podem ser mapeados.
+                </p>
+              ) : null}
               <MappingEditor contract={contract} columns={columns} value={mapping} onChange={(next) => { setMapping(next); setPreview(null) }} suggestion={sample?.suggestedMapping ?? null} />
               {preview ? <PreviewTable preview={preview} contract={contract} /> : null}
             </>

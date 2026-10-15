@@ -196,6 +196,51 @@ export function findOverlap(periods: Pick<StatusPeriod, "effectiveFrom" | "effec
   return null
 }
 
+/**
+ * CANCELAMENTO de um período pela própria fonte (ausência desfeita no RH): o que muda na linha do
+ * tempo para ela voltar a refletir só as OUTRAS evidências. Regra única, pura:
+ *  - o período cancelado sai;
+ *  - o período anterior que termina na véspera volta a valer sobre os dias liberados quando o fim
+ *    dele NÃO veio da fonte (só fechou porque a ausência começou): vale até a próxima situação
+ *    registrada, ou em aberto. Se o posterior for a outra metade dele (mesma situação e mesma
+ *    fonte, adjacente), os dois voltam a ser um só;
+ *  - fim informado pela fonte é respeitado: as duas metades de um período explícito só se juntam
+ *    quando são a mesma evidência (a cópia que a divisão criou);
+ *  - fora isso os dias ficam sem período — EM PRODUÇÃO presumido, nunca uma situação inventada.
+ * O início de um período posterior nunca é antecipado: a INIA não retroage por suposição.
+ */
+export type StatusCancellationPlan = {
+  /** Saem, nesta ordem: o período cancelado e, numa fusão, a metade posterior. */
+  remove: StatusPeriod[]
+  /** Período anterior que passa a cobrir os dias liberados (null = os dias ficam presumidos). */
+  restore: { period: StatusPeriod; effectiveTo: string | null; mergedWith: StatusPeriod | null } | null
+}
+
+export function planStatusPeriodCancellation(periods: readonly StatusPeriod[], target: StatusPeriod): StatusCancellationPlan {
+  const others = periods.filter((period) => period.id !== target.id).sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
+  const previous = others.find((period) => period.effectiveTo === addDaysToDate(target.effectiveFrom, -1))
+  const following = target.effectiveTo === null ? undefined : others.find((period) => period.effectiveFrom > target.effectiveTo!)
+  if (!previous) return { remove: [target], restore: null }
+  const adjacent = following && following.effectiveFrom === addDaysToDate(target.effectiveTo!, 1) ? following : undefined
+  const halves = adjacent !== undefined && adjacent.status === previous.status && adjacent.source === previous.source && (!previous.effectiveToExplicit || sameEvidence(previous, adjacent))
+  if (halves) return { remove: [target, adjacent], restore: { period: previous, effectiveTo: adjacent.effectiveTo, mergedWith: adjacent } }
+  if (previous.effectiveToExplicit) return { remove: [target], restore: null }
+  return { remove: [target], restore: { period: previous, effectiveTo: following ? addDaysToDate(following.effectiveFrom, -1) : null, mergedWith: null } }
+}
+
+/** A metade posterior de uma divisão é cópia da anterior: mesma situação, fonte e evidência. */
+function sameEvidence(a: StatusPeriod, b: StatusPeriod): boolean {
+  const instant = (value: string | null) => (value === null ? null : Date.parse(value))
+  return (
+    a.rawStatus === b.rawStatus &&
+    a.sourceReference === b.sourceReference &&
+    a.effectiveToExplicit === b.effectiveToExplicit &&
+    a.authoritative === b.authoritative &&
+    instant(a.observedAt) === instant(b.observedAt) &&
+    instant(a.sourceUpdatedAt) === instant(b.sourceUpdatedAt)
+  )
+}
+
 export function addDaysToDate(date: string, days: number): string {
   const [year, month, day] = date.split("-").map(Number)
   const shifted = new Date(Date.UTC(year!, month! - 1, day! + days))

@@ -156,10 +156,11 @@ describe("saúde, permissões e custo local", () => {
   })
   it("permissões derivadas do papel + escopo existentes (sem backdoor)", () => {
     // V1.5.7: derivadas das atribuições de papel (nunca do cargo). Administrador geral (organização) = tudo; Administrador
-    // (qualquer escopo) = leitura; sem papel = nada, qualquer que seja o cargo.
+    // (qualquer escopo) = leitura; sem papel = nada, qualquer que seja o cargo. "Quem mais usa" (AI_USAGE_RANKING_READ) vem da
+    // concessão explícita `ai.usage_ranking.view` que os dois papéis carregam — nunca de ai.manage/ai.view.
     const ctx = (roleCode: string | null, scope: { type: "ORGANIZATION" } | { type: "GROUP"; teamId: string } = { type: "ORGANIZATION" }) => ({ organizationId: "o", accountId: "a", personId: "p", assignments: roleCode ? [{ id: "x", roleCode, scope }] : [] })
-    expect(aiPermissionsFor(ctx("ADMINISTRADOR_GERAL"))).toEqual(["AI_CONFIG_READ", "AI_CONFIG_WRITE", "AI_SECRETS_WRITE", "AI_USAGE_READ", "AI_BUDGET_WRITE"])
-    expect(aiPermissionsFor(ctx("ADMINISTRADOR", { type: "GROUP", teamId: "t" }))).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ"])
+    expect(aiPermissionsFor(ctx("ADMINISTRADOR_GERAL"))).toEqual(["AI_CONFIG_READ", "AI_CONFIG_WRITE", "AI_SECRETS_WRITE", "AI_USAGE_READ", "AI_BUDGET_WRITE", "AI_USAGE_RANKING_READ"])
+    expect(aiPermissionsFor(ctx("ADMINISTRADOR", { type: "GROUP", teamId: "t" }))).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ", "AI_USAGE_RANKING_READ"])
     expect(aiPermissionsFor(ctx("ADMINISTRADOR_DE_ACESSOS"))).toEqual([])
     expect(aiPermissionsFor(ctx(null))).toEqual([])
   })

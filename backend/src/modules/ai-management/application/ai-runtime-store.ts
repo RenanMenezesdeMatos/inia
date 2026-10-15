@@ -222,7 +222,7 @@ export async function loadMonthSpendRaw(db: Queryable, organizationId: string, n
   return result.rows
 }
 
-export type UsageRow = AiUsageEventInput & { workflow?: AiWorkflowCorrelation | null; limiter?: AiCallLimiterRecord | null; cost: string | null; currency: string | null; costStatus: "EXACT" | "ESTIMATED" | "UNKNOWN"; costUnknownReason: "NO_PRICING" | "NO_USAGE" | null; pricingId: string | null; pricingSource: "TABLE" | "LEGACY_ENV" | "NONE"; policyId: string | null }
+export type UsageRow = AiUsageEventInput & { workflow?: AiWorkflowCorrelation | null; limiter?: AiCallLimiterRecord | null; requesterPersonId?: string | null; cost: string | null; currency: string | null; costStatus: "EXACT" | "ESTIMATED" | "UNKNOWN"; costUnknownReason: "NO_PRICING" | "NO_USAGE" | null; pricingId: string | null; pricingSource: "TABLE" | "LEGACY_ENV" | "NONE"; policyId: string | null }
 
 export async function insertUsageEvent(db: Queryable, row: UsageRow): Promise<void> {
   const usage = row.usage
@@ -230,14 +230,15 @@ export async function insertUsageEvent(db: Queryable, row: UsageRow): Promise<vo
     `insert into ai_usage_events (organization_id, occurred_at, use_case, purpose, phase, source, origin, provider_key, connection_id, model_id, model_name, is_local, correlation_id, attempt, fallback_index,
        input_tokens, output_tokens, reasoning_tokens, cached_tokens, total_tokens, cost, currency, cost_status, cost_unknown_reason, pricing_id, pricing_source, duration_ms, status, error_category, routing_mode, policy_id, route_reason, fallback_reason,
        call_priority, call_priority_reason, queue_wait_ms, queue_reason, limiter_attempt,
-       workflow_id, workflow_version_id, enrollment_id, root_enrollment_id, workflow_node_id)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43)`,
+       workflow_id, workflow_version_id, enrollment_id, root_enrollment_id, workflow_node_id, requester_person_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)`,
     [
       row.organizationId, row.occurredAt, row.useCase, row.purpose, row.phase, row.source, row.origin, row.providerKey, row.connectionId, row.modelId, row.modelName, row.isLocal, row.correlationId, row.attempt, row.fallbackIndex,
       usage?.promptTokens ?? null, usage?.outputTokens ?? null, usage?.reasoningTokens ?? null, usage?.cachedInputTokens ?? null, usage?.totalTokens ?? null,
       row.cost, row.currency, row.costStatus, row.costUnknownReason, row.pricingId, row.pricingSource, row.durationMs, row.status, row.errorCategory, row.routingMode, row.policyId, row.routeReason, row.fallbackReason,
       row.limiter?.priority ?? null, row.limiter?.priorityReason ?? null, row.limiter?.queueWaitMs ?? null, row.limiter?.queueReason ?? null, row.limiter?.attempt ?? null,
       row.workflow?.workflowId ?? null, row.workflow?.workflowVersionId ?? null, row.workflow?.enrollmentId ?? null, row.workflow?.rootEnrollmentId ?? null, row.workflow?.nodeId ?? null,
+      row.requesterPersonId ?? null,
     ],
   )
 }

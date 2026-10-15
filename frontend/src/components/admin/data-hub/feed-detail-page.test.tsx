@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 
-const service = vi.hoisted(() => ({ fetchFeed: vi.fn(), fetchContracts: vi.fn(), deleteFeed: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchFeed: vi.fn(), fetchContracts: vi.fn(), deleteFeed: vi.fn(), updateFeed: vi.fn() }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }))
 vi.mock("@/services/admin/data-hub-service", async (importOriginal) => ({ ...(await importOriginal<object>()), ...service }))
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => router }))
@@ -98,5 +98,59 @@ describe("Remover um conjunto de dados sozinho", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Remover" }))
     await waitFor(() => expect(service.deleteFeed).toHaveBeenCalledWith("feed-1"))
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/admin/data-hub/sources/src-file"))
+  })
+})
+
+describe("Conjunto de dados numa versão anterior do contrato", () => {
+  const ABSENCES_V2 = {
+    key: "EMPLOYEE_ABSENCES",
+    version: 2,
+    label: "Ausências (férias/afastamentos)",
+    description: "Períodos explícitos.",
+    category: "MASTER",
+    targetEntity: "employee_status_periods",
+    fields: [
+      { key: "externalEmployeeId", label: "Matrícula / ID externo", type: "STRING", required: true, identity: true, description: "Matrícula.", example: "OP-1" },
+      { key: "type", label: "Tipo (bruto)", type: "STRING", required: true, description: "Tipo.", example: "FERIAS" },
+      { key: "startDate", label: "Início", type: "DATE", required: true, description: "Início.", example: "2026-10-05" },
+      { key: "active", label: "Vigente?", type: "BOOLEAN", required: false, description: "false cancela a ausência.", example: true },
+    ],
+    naturalKey: ["externalEmployeeId", "type", "startDate"],
+    dependencies: ["EMPLOYEES"],
+    writeSemantics: "UPSERT",
+    writePolicy: "PARTIAL_ALLOWED",
+    businessTimeField: "startDate",
+    examples: [],
+  }
+  const absencesFeed = (contractVersion: number) => ({
+    ...FEED,
+    name: "Ausências (CSV)",
+    contractKey: "EMPLOYEE_ABSENCES",
+    contractVersion,
+    contractLabel: "Ausências (férias/afastamentos)",
+    mapping: { fields: ["externalEmployeeId", "type", "startDate"].map((target) => ({ target, source: target, transforms: [] })) },
+  })
+
+  beforeEach(() => {
+    Object.values(service).forEach((fn) => fn.mockReset())
+    service.fetchContracts.mockResolvedValue({ contracts: [ABSENCES_V2], dependencies: [], errorCodes: { run: [], record: [] } })
+  })
+
+  it("feed @1 avisa que o mapeamento já é o da versão 2 e, ao salvar, grava o feed na versão 2", async () => {
+    service.fetchFeed.mockResolvedValue(absencesFeed(1))
+    service.updateFeed.mockResolvedValue({ ...absencesFeed(2), updatedAt: "2026-10-15T11:00:00Z" })
+    renderPage()
+    expect(await screen.findByText(/Este conjunto lê os dados pela versão 1 do contrato\. O mapeamento abaixo já é o da versão 2/)).toBeInTheDocument()
+    expect(screen.getAllByText("Vigente?").length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("button", { name: /Salvar feed/ }))
+    await waitFor(() => expect(service.updateFeed).toHaveBeenCalledWith("feed-1", expect.objectContaining({ contractVersion: 2 })))
+  })
+
+  it("feed já na versão atual não mostra aviso", async () => {
+    service.fetchFeed.mockResolvedValue(absencesFeed(2))
+    renderPage()
+    expect(await screen.findByRole("heading", { name: "Ausências (CSV)" })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText("Vigente?").length).toBeGreaterThan(0))
+    expect(screen.queryByText(/lê os dados pela versão/)).not.toBeInTheDocument()
   })
 })

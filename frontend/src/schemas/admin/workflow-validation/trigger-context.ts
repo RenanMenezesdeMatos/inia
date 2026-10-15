@@ -63,6 +63,18 @@ export function validateManualTrigger(context: ValidationContext): void {
   }
 }
 
+/** Estrutura Consolidada só com Agenda de calendário (o Manual tem a regra própria, acima) — espelha `validateDraftConfigurationModes`. */
+export function validateConsolidatedTrigger(context: ValidationContext): void {
+  const { trigger, isConsolidatedMode, triggerNodes, issues } = context
+  if (!isConsolidatedMode || trigger.kind === "manual") return
+  if (trigger.kind === "schedule" && trigger.mode !== "RELATIVE_TO_SHIFT") return
+  issues.push({
+    nodeId: triggerNodes[0]?.id ?? "",
+    code: "WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER",
+    message: "A Estrutura Consolidada só é válida para Agenda de calendário — troque o Alvo da avaliação para Individual.",
+  })
+}
+
 /** Agenda e Manual por colaborador não trazem interação nem medição: o "Chamar agente" define a fonte de dados. */
 export function validateScheduleDataSources(context: ValidationContext): void {
   const { graph, trigger, isConsolidatedMode, issues } = context

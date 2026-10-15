@@ -46,7 +46,8 @@ import { isTriggerComplete, TriggerFields } from "@/components/admin/workflows/t
 import { useManageableTeamsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { useCreateWorkflowMutation, useDeleteWorkflowMutation, useUpdateWorkflowMutation, useWorkflowsPageQuery } from "@/queries/admin/use-workflow-queries"
 import type { WorkflowListParams, WorkflowTriggerInput } from "@/services/admin/workflow-service"
-import { triggerBadgeText, type Workflow, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
+import { goLiveImpactFromError, triggerBadgeText, type GoLiveImpact, type Workflow, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
+import { GoLiveImpactDialog } from "@/components/admin/workflows/go-live-impact-dialog"
 
 const groupLabel = formatScopeLabel
 
@@ -165,21 +166,57 @@ function DeleteWorkflowButton({ workflow }: { workflow: Workflow }) {
   )
 }
 
-function ActiveSwitch({ workflow }: { workflow: Workflow }) {
+/**
+ * Ativar faz a configuração PUBLICADA valer de novo na hora: uma Agenda pode recuperar o horário de hoje que já passou
+ * ou atingir muita gente. O backend recusa (409 com o impacto) até a confirmação explícita — o mesmo diálogo da
+ * publicação (go-live-impact.ts). Desativar nunca pede confirmação.
+ */
+export function ActiveSwitch({ workflow }: { workflow: Workflow }) {
   const updateMutation = useUpdateWorkflowMutation()
+  const [activation, setActivation] = useState<{ impact: GoLiveImpact; impactChanged: boolean } | null>(null)
+
+  async function setActive(active: boolean, confirmation?: string) {
+    try {
+      await updateMutation.mutateAsync({ id: workflow.id, active, confirmation })
+      setActivation(null)
+    } catch (error) {
+      const impact = goLiveImpactFromError(error)
+      if (impact) setActivation({ impact, impactChanged: Boolean(confirmation) })
+    }
+  }
+
   return (
-    <Switch
-      checked={workflow.active}
-      disabled={updateMutation.isPending}
-      aria-label={workflow.active ? "Desativar workflow" : "Ativar workflow"}
-      onClick={(event) => event.stopPropagation()}
-      onCheckedChange={(checked) => updateMutation.mutate({ id: workflow.id, active: checked })}
-    />
+    <span onClick={(event) => event.stopPropagation()}>
+      <Switch
+        checked={workflow.active}
+        disabled={updateMutation.isPending}
+        aria-label={workflow.active ? "Desativar workflow" : "Ativar workflow"}
+        onCheckedChange={(checked) => void setActive(checked)}
+      />
+      <GoLiveImpactDialog
+        key={activation?.impact.fingerprint ?? "none"}
+        open={activation !== null}
+        onOpenChange={(open) => !open && setActivation(null)}
+        impact={activation?.impact ?? null}
+        impactChanged={activation?.impactChanged ?? false}
+        pending={updateMutation.isPending}
+        onConfirm={(fingerprint) => void setActive(true, fingerprint)}
+      />
+    </span>
   )
 }
 
 function PublishedBadge({ workflow }: { workflow: Workflow }) {
-  return <Badge variant={workflow.published ? "default" : "outline"}>{workflow.published ? "Publicado" : "Rascunho"}</Badge>
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <Badge variant={workflow.published ? "default" : "outline"}>{workflow.published ? "Publicado" : "Rascunho"}</Badge>
+      {(workflow.configurationChanges ?? []).length > 0 ? (
+        <Badge variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-300" title="Gatilho, Abrangência ou população alterados no rascunho — só valem ao Publicar.">
+          Configuração não publicada
+        </Badge>
+      ) : null}
+    </span>
+  )
 }
 
 const TRIGGER_KIND_LABELS: Record<WorkflowTrigger["kind"], string> = {

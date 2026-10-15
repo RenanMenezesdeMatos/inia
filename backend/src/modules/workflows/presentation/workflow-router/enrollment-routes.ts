@@ -3,9 +3,9 @@ import { z } from "zod"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { submitHumanReviewDecision } from "../../application/submit-human-review-decision.js"
 import { dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../../shared/presentation/list-query.js"
-import { canManageScope, getManageableScopes } from "../../../auth/application/manageable-scopes.js"
+import { getManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import { humanReviewDecisionSchema } from "../../domain/graph-schema.js"
-import { NOT_FOUND, fetchScopedRow } from "./shared.js"
+import { NOT_FOUND, canManageWorkflow, fetchScopedRow } from "./shared.js"
 
 const submitHumanReviewDecisionSchema = z.object({ nodeId: z.string().min(1), decision: humanReviewDecisionSchema })
 
@@ -39,7 +39,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const input = listEnrollmentsSchema.parse(request.query)
     const filter = new SqlFilter([request.params.id])
@@ -63,7 +63,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     // Gravação compartilhada com a Surface Pendências do revisor (submit-human-review-decision.ts).
     await submitHumanReviewDecision(db, { enrollmentId: request.params.enrollmentId!, workflowId: request.params.id!, nodeId: input.nodeId, decision: input.decision, reviewerId: request.user!.personId })

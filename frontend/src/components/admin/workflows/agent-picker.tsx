@@ -159,7 +159,7 @@ export function AgentPicker({
       )}
 
       {/* O Radix envolve o conteúdo num `display: table` que ignora a largura disponível: sem o `block`, nomes longos não truncam
-          e empurram o contêiner (o diálogo "Novo orquestrador" escondia o botão de criar). */}
+          e empurram o contêiner (no antigo diálogo "Novo orquestrador", escondiam o botão de criar). */}
       {showList ? (
         <ScrollArea className="h-64 rounded-md border [&_[data-slot=scroll-area-viewport]>div]:!block">
           <div className="space-y-3 p-3">

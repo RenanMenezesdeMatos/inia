@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { resolveOrganizationalStructureFreshness } from "../../people/application/employment-status-freshness.js"
+import { personAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { postgresHierarchyReader } from "../../workflows/application/organizational-recipient.js"
 import { loadManagementMetrics } from "../application/load-management-metrics.js"
@@ -30,6 +31,7 @@ export function createPersonOrganizationStructureRouter(db: Database, deps?: Par
     analytics: deps?.analytics ?? new PgAnalyticsReadRepository(db),
     hierarchy: deps?.hierarchy ?? postgresHierarchyReader(db),
     corporateEmails: deps?.corporateEmails ?? (async (personIds) => loadCorporateEmails(db, personIds)),
+    personAvatars: deps?.personAvatars ?? personAvatarLoader(db),
     structureFreshness: deps?.structureFreshness ?? (async (organizationId) => resolveOrganizationalStructureFreshness(db, organizationId, now(), await resolveOrganizationTimezone(db, organizationId))),
     managementMetrics: deps?.managementMetrics ?? ((organizationId, roots, at) => loadManagementMetrics(db, organizationId, roots, at)),
     now,

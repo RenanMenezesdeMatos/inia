@@ -4,6 +4,7 @@ import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import {
   createWorkflow,
   deleteWorkflow,
+  discardWorkflowConfiguration,
   fetchSchedulePreview,
   fetchWorkflow,
   fetchWorkflowEnrollmentsPage,
@@ -21,7 +22,7 @@ import {
   type WorkflowTriggerInput,
 } from "@/services/admin/workflow-service"
 import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
-import type { Workflow } from "@/schemas/admin/workflow.schema"
+import { GO_LIVE_CONFIRMATION_CODES, type Workflow } from "@/schemas/admin/workflow.schema"
 
 import { adminQueryKeys } from "./admin-query-keys"
 
@@ -69,7 +70,8 @@ export function useCreateWorkflowMutation() {
 }
 
 export function useUpdateWorkflowMutation() {
-  return useAdminMutation({ mutationFn: updateWorkflow, invalidateKey: adminQueryKeys.workflows(), successMessage: "Workflow atualizado." })
+  // 409 "confirme o impacto" (ativar uma Agenda) vira diálogo na tela — nunca toast de erro.
+  return useAdminMutation({ mutationFn: updateWorkflow, invalidateKey: adminQueryKeys.workflows(), successMessage: "Workflow atualizado.", silentErrorCodes: GO_LIVE_CONFIRMATION_CODES })
 }
 
 export function useUpdateWorkflowAnalysisConfigMutation(id: string) {
@@ -98,10 +100,19 @@ export function useSaveWorkflowDraftMutation(id: string) {
 }
 
 export function usePublishWorkflowMutation(id: string) {
-  return useAdminMutation<Workflow, void>({
-    mutationFn: () => publishWorkflow(id),
+  return useAdminMutation<Workflow, { confirmation?: string } | void>({
+    mutationFn: (variables) => publishWorkflow(id, variables?.confirmation),
+    silentErrorCodes: GO_LIVE_CONFIRMATION_CODES,
     invalidateKey: adminQueryKeys.workflow(id),
     successMessage: "Workflow publicado.",
+  })
+}
+
+export function useDiscardWorkflowConfigurationMutation(id: string) {
+  return useAdminMutation<Workflow, void>({
+    mutationFn: () => discardWorkflowConfiguration(id),
+    invalidateKey: adminQueryKeys.workflow(id),
+    successMessage: "Alterações de configuração descartadas.",
   })
 }
 

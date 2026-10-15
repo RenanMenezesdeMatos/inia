@@ -255,12 +255,21 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
           <p className="text-xs text-muted-foreground">Complete a configuração pra ver a prévia.</p>
         ) : previewQuery.isLoading ? (
           <p className="text-xs text-muted-foreground">Calculando…</p>
-        ) : previewQuery.data?.mode === "CALENDAR" && previewQuery.data.occurrences.length > 0 ? (
-          <ul className="space-y-0.5 text-xs text-muted-foreground">
-            {previewQuery.data.occurrences.map((iso) => (
-              <li key={iso}>{new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</li>
-            ))}
-          </ul>
+        ) : previewQuery.data?.mode === "CALENDAR" && (previewQuery.data.occurrences.length > 0 || previewQuery.data.catchUpToday.length > 0) ? (
+          <div className="space-y-1">
+            {previewQuery.data.catchUpToday.length > 0 ? (
+              // O agendador recupera os horários de HOJE já vencidos: entrar no ar hoje (publicar/ativar) dispara na hora.
+              <p className="rounded-md border border-amber-500/50 bg-amber-500/5 p-1.5 text-xs text-amber-800 dark:text-amber-200" data-testid="schedule-preview-catch-up">
+                Hoje às {previewQuery.data.catchUpToday.map((iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })).join(", ")} já passou: se este
+                gatilho entrar no ar hoje (ao publicar ou ativar), essa execução começa em até 1 minuto.
+              </p>
+            ) : null}
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
+              {previewQuery.data.occurrences.map((iso) => (
+                <li key={iso}>{new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</li>
+              ))}
+            </ul>
+          </div>
         ) : (
           <p className="text-xs text-muted-foreground">Nenhuma execução encontrada nos próximos dias.</p>
         )}
@@ -622,10 +631,12 @@ export function analyzeTriggerKindChangeImpact({
 /**
  * Edição do Gatilho como UMA configuração, reaproveitada em DUAS superfícies visuais — o nó
  * Gatilho do canvas e a seção "Gatilho" do Sheet de Configurações (Parte 8/9 do pedido: nunca
- * dois estados independentes `triggerConfigSheet`/`triggerConfigNode`). Estado local desacoplado
- * do valor salvo: ajustar um campo do MESMO tipo (horário, flag, indicador) reflete e salva na
- * hora, como sempre. Trocar o TIPO em si (Parte 37-40) é diferente — pausa numa confirmação com
- * análise de impacto antes de aplicar, nunca troca silenciosamente.
+ * dois estados independentes `triggerConfigSheet`/`triggerConfigNode`). `trigger` é o do RASCUNHO:
+ * tudo o que se salva aqui fica no rascunho e só vale no runtime ao Publicar (incidente de
+ * 2026-10-05). Estado local desacoplado do valor salvo: ajustar um campo do MESMO tipo (horário,
+ * flag, indicador) reflete e salva no rascunho na hora. Trocar o TIPO em si (Parte 37-40) pausa
+ * numa confirmação com análise de impacto — comparando com o tipo que está NA TELA, não com o
+ * salvo: depois de confirmar a troca, completar os campos do tipo novo nunca pergunta de novo.
  */
 export function TriggerConfigEditor({
   trigger,
@@ -646,15 +657,18 @@ export function TriggerConfigEditor({
   const [draft, setDraft] = useState<WorkflowTriggerInput>(() => triggerToInput(trigger))
   const [pendingKindChange, setPendingKindChange] = useState<WorkflowTriggerInput | null>(null)
 
-  // Gatilho salvo mudou: o rascunho recomeça dele (ajuste na renderização, sem render extra).
-  const [syncedTrigger, setSyncedTrigger] = useState(trigger)
-  if (syncedTrigger !== trigger) {
-    setSyncedTrigger(trigger)
-    setDraft(triggerToInput(trigger))
+  // Gatilho salvo mudou: o rascunho recomeça dele (ajuste na renderização, sem render extra). Só quando o CONTEÚDO
+  // muda: o refetch devolve outro objeto igual a cada gravação de outra configuração — comparar a referência fazia um
+  // tipo novo ainda incompleto voltar ao tipo salvo.
+  const savedKey = JSON.stringify(triggerToInput(trigger))
+  const [syncedKey, setSyncedKey] = useState(savedKey)
+  if (syncedKey !== savedKey) {
+    setSyncedKey(savedKey)
+    setDraft(JSON.parse(savedKey) as WorkflowTriggerInput)
   }
 
   function handleChange(next: WorkflowTriggerInput) {
-    if (next.kind !== trigger.kind) {
+    if (next.kind !== draft.kind) {
       setPendingKindChange(next)
       return
     }
@@ -679,7 +693,8 @@ export function TriggerConfigEditor({
           <AlertDialogHeader>
             <AlertDialogTitle>Alterar tipo de gatilho</AlertDialogTitle>
             <AlertDialogDescription>
-              {TRIGGER_KIND_LABELS[trigger.kind]} → {pendingKindChange ? TRIGGER_KIND_LABELS[pendingKindChange.kind] : ""}. Essa alteração muda o contexto do Workflow.
+              {TRIGGER_KIND_LABELS[draft.kind]} → {pendingKindChange ? TRIGGER_KIND_LABELS[pendingKindChange.kind] : ""}. Essa alteração muda o contexto do Workflow.
+              A troca fica no rascunho: o workflow publicado continua com o gatilho atual até você Publicar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {impact.length > 0 ? (

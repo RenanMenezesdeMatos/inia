@@ -39,13 +39,18 @@ export type AiWorkflowCorrelation = {
  */
 export type AiCallOrigin = "USER_REQUEST"
 
-export type AiExecutionContext = { organizationId: string; workflow?: AiWorkflowCorrelation; origin?: AiCallOrigin }
+/**
+ * `requesterPersonId` (migration 143) = a pessoa da SESSÃO verificada do request que faz a chamada — gravada no evento de uso
+ * (`ai_usage_events.requester_person_id`) para o ranking "Quem mais usa". Só o middleware de auth preenche; o motor de
+ * Workflow abre um contexto próprio sem ela (o uso de Workflow é atribuído pelo colaborador da matrícula).
+ */
+export type AiExecutionContext = { organizationId: string; workflow?: AiWorkflowCorrelation; origin?: AiCallOrigin; requesterPersonId?: string }
 
 const contextStorage = new AsyncLocalStorage<AiExecutionContext>()
 
 /** Organização das chamadas de IA feitas dentro de `fn` (middleware de auth, motor de Workflow). */
-export function runWithAiOrganization<T>(organizationId: string, fn: () => T, options: { origin?: AiCallOrigin } = {}): T {
-  return contextStorage.run({ organizationId, ...(options.origin ? { origin: options.origin } : {}) }, fn)
+export function runWithAiOrganization<T>(organizationId: string, fn: () => T, options: { origin?: AiCallOrigin; requesterPersonId?: string | null } = {}): T {
+  return contextStorage.run({ organizationId, ...(options.origin ? { origin: options.origin } : {}), ...(options.requesterPersonId ? { requesterPersonId: options.requesterPersonId } : {}) }, fn)
 }
 
 /** Organização + execução de Workflow (motor, por nó) das chamadas de IA feitas dentro de `fn`. */
@@ -63,6 +68,10 @@ export function currentAiWorkflowCorrelation(): AiWorkflowCorrelation | null {
 
 export function currentAiCallOrigin(): AiCallOrigin | null {
   return contextStorage.getStore()?.origin ?? null
+}
+
+export function currentAiRequesterPersonId(): string | null {
+  return contextStorage.getStore()?.requesterPersonId ?? null
 }
 
 /**

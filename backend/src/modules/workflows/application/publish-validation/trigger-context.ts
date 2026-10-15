@@ -64,6 +64,43 @@ export function normalizeManualTrigger(trigger: TriggerConfig): TriggerConfig {
   return { kind: "manual", context: trigger.context }
 }
 
+// Um Trigger só permite Estrutura Consolidada/Filtro Populacional quando é Agenda — e, no caso da
+// Estrutura Consolidada, só quando a Agenda é de Calendário (Relativa ao expediente é sempre
+// individual, a jornada pertence ao colaborador). Gatilho Manual = UM colaborador escolhido por
+// disparo: nunca Consolidado nem Filtro Populacional (a pessoa é escolhida). Usadas na edição do
+// rascunho (`PUT /:id/analysis-config`, `PATCH /:id`) e de novo na publicação.
+export function triggerAllowsConsolidatedMode(trigger: TriggerConfig): boolean {
+  return trigger.kind === "schedule" && trigger.mode !== "RELATIVE_TO_SHIFT"
+}
+export function triggerAllowsPopulationFilter(trigger: TriggerConfig): boolean {
+  return trigger.kind === "schedule"
+}
+
+/**
+ * Configuração do rascunho que vai junto com o grafo (gatilho × modo de avaliação) — já validada a cada
+ * gravação do rascunho; conferida de novo na publicação porque é ela que passa a valer ao publicar.
+ */
+export function validateDraftConfigurationModes(context: PublishTriggerContext): void {
+  const { row, trigger, triggerNodes } = context
+  const details = { nodeId: triggerNodes[0]?.id }
+  if (row.consolidatedStructure && !triggerAllowsConsolidatedMode(trigger)) {
+    throw new DomainError(
+      "A Estrutura Consolidada configurada só é válida para Agenda de calendário — troque o Alvo da avaliação para Individual antes de publicar.",
+      "WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER",
+      422,
+      details,
+    )
+  }
+  if (row.populationFilter && row.populationFilter.kind !== "ALL" && !triggerAllowsPopulationFilter(trigger)) {
+    throw new DomainError(
+      'O Filtro Populacional configurado só é válido para Agenda — troque o filtro para "Todos os colaboradores elegíveis" antes de publicar.',
+      "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
+      422,
+      details,
+    )
+  }
+}
+
 /** Exatamente um nó Gatilho e ao menos um nó Fim. */
 export function validateGraphShape(context: PublishGraphContext): void {
   const { graph, triggerNodes } = context

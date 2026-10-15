@@ -132,8 +132,8 @@ export default function DataHubGuidesPage() {
               </TableRow>
               <TableRow>
                 <TableCell>Aviso DATA_EMPLOYMENT_STATUS_CONFLICT na quarentena, registro aplicado</TableCell>
-                <TableCell>Colaboradores e Ausências discordaram sobre a mesma pessoa e a precedência decidiu (período explícito &gt; fonte autoritativa &gt; evidência mais nova).</TableCell>
-                <TableCell>Confira a linhagem do período; se a fonte errada venceu, marque a certa como autoritativa ou envie o período com início e fim.</TableCell>
+                <TableCell>Colaboradores e Ausências discordaram sobre a mesma pessoa e a precedência decidiu (período explícito &gt; fonte autoritativa &gt; evidência mais nova). Ou a carga cancelou (Vigente? = não) uma ausência que outra origem registrou — o período fica.</TableCell>
+                <TableCell>Confira a linhagem do período; se a fonte errada venceu, marque a certa como autoritativa ou envie o período com início e fim. Ausência de outra origem se cancela por ela.</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell>Feed &quot;Degradado&quot;</TableCell>

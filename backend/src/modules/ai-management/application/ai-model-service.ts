@@ -331,7 +331,7 @@ export async function testModel(context: AiAdminContext, actor: Actor, id: strin
   const pricing = pricingAt(pricingRows.rows.map(pricingFromRow), testedAt)
   const startedAt = Date.now()
   const correlationId = crypto.randomUUID()
-  const base = { organizationId: actor.organizationId, occurredAt: testedAt, useCase: "MODEL_TEST" as const, purpose: "MODEL_TEST", phase: null, source: null, origin: "ADMIN_TEST" as const, providerKey: connectionRuntime.providerKey, connectionId: connectionRuntime.id, modelId: id, modelName: model.providerModelId, isLocal: model.isLocal, correlationId, attempt: 1, fallbackIndex: 0, routingMode: "PINNED" as const, routeReason: "ADMIN_MODEL_TEST", fallbackReason: null, policyId: null }
+  const base = { organizationId: actor.organizationId, occurredAt: testedAt, useCase: "MODEL_TEST" as const, purpose: "MODEL_TEST", phase: null, source: null, origin: "ADMIN_TEST" as const, providerKey: connectionRuntime.providerKey, connectionId: connectionRuntime.id, modelId: id, modelName: model.providerModelId, isLocal: model.isLocal, correlationId, attempt: 1, fallbackIndex: 0, routingMode: "PINNED" as const, routeReason: "ADMIN_MODEL_TEST", fallbackReason: null, policyId: null, requesterPersonId: actor.personId }
   try {
     const connection = resolveConnection(connectionRuntime)
     const adapter = context.adapters(provider.adapterType)

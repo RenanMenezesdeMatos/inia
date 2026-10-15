@@ -144,3 +144,29 @@ describe("sugestão de mapeamento conferida pela amostra", () => {
     expect(Object.fromEntries(suggestMapping(contract, columns).fields.map((field) => [field.target, field.source])).active).toBe("situacao")
   })
 })
+
+describe("sugestão de mapeamento — Vigente? das Ausências", () => {
+  it("'vigente' e 'ativo' viram Vigente? direto; 'cancelado' vira Vigente? com sim/não INVERTIDO (cancelado = S → vigente = não)", async () => {
+    const { EMPLOYEE_ABSENCES_CONTRACT } = await import("./contracts/master-data-contracts.js")
+    const records = [{ matricula: "A1", vigente: "S", ativo: "S", cancelado: "N" }, { matricula: "A2", vigente: "N", ativo: "N", cancelado: "S" }]
+    const activeOf = (columns: string[]) => suggestMapping(EMPLOYEE_ABSENCES_CONTRACT, columns, records).fields.find((field) => field.target === "active")
+    expect(activeOf(["matricula", "vigente"])).toEqual({ target: "active", source: "vigente", transforms: [] })
+    expect(activeOf(["matricula", "ativo"])).toEqual({ target: "active", source: "ativo", transforms: [] })
+    const inverted = activeOf(["matricula", "Cancelado"])!
+    expect(inverted.source).toBe("Cancelado")
+    expect(inverted.transforms).toEqual([expect.objectContaining({ kind: "BOOLEAN_MAP" })])
+    expect(applyTransforms("S", inverted.transforms).value).toBe(false)
+    expect(applyTransforms("não", inverted.transforms).value).toBe(true)
+    // Coluna direta vence a invertida; valores que não são sim/não não viram Vigente?.
+    expect(activeOf(["matricula", "cancelado", "vigente"])?.source).toBe("vigente")
+    expect(suggestMapping(EMPLOYEE_ABSENCES_CONTRACT, ["cancelado"], [{ cancelado: "pelo RH em 30/09" }]).fields.find((field) => field.target === "active")).toBeUndefined()
+  })
+
+  it("o registro carregado pela sugestão invertida chega ao contrato como vigente = false", async () => {
+    const { EMPLOYEE_ABSENCES_CONTRACT } = await import("./contracts/master-data-contracts.js")
+    const mapping = suggestMapping(EMPLOYEE_ABSENCES_CONTRACT, ["externalEmployeeId", "type", "startDate", "cancelado"], [{ externalEmployeeId: "A1", type: "FERIAS", startDate: "2026-10-05", cancelado: "S" }])
+    const { record, errors } = mapRecord(EMPLOYEE_ABSENCES_CONTRACT, mapping, { externalEmployeeId: "A1", type: "FERIAS", startDate: "2026-10-05", cancelado: "S" }, { timeZone: "America/Fortaleza" })
+    expect(errors).toEqual([])
+    expect(record).toMatchObject({ externalEmployeeId: "A1", type: "FERIAS", startDate: "2026-10-05", active: false })
+  })
+})

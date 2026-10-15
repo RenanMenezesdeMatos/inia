@@ -50,14 +50,14 @@ async function assertDatabaseFeed(ctx: DataHubContext, source: DataSourceRow, in
 export async function createFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: unknown): Promise<DataFeedRow> {
   const source = await requireSource(ctx.db, organizationId, sourceId)
   const input = feedInputSchema.parse(rawInput)
-  requireDataContract(input.contractKey, input.contractVersion)
+  const contractVersion = requireDataContract(input.contractKey, input.contractVersion).version
   assertConnectorMatchesSource(source, input)
   await assertDatabaseFeed(ctx, source, input)
   try {
     const result = await ctx.db.query<{ id: string }>(
       `insert into data_feeds (organization_id, source_id, feed_key, name, contract_key, contract_version, connector_config, mapping, load_mode, cadence, expected_interval_minutes, status, authoritative, fail_on_any_rejection, source_namespace, created_by, updated_by, availability_policy)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'DRAFT', $12, $13, $14, $15, $15, $16) returning id`,
-      [organizationId, sourceId, input.feedKey, input.name, input.contractKey, input.contractVersion, JSON.stringify(input.connectorConfig), JSON.stringify(input.mapping), input.loadMode, JSON.stringify(input.cadence), expectedIntervalMinutes(input.cadence), input.authoritative, input.failOnAnyRejection, input.sourceNamespace ?? null, actorId, input.availabilityPolicy ? JSON.stringify(input.availabilityPolicy) : null],
+      [organizationId, sourceId, input.feedKey, input.name, input.contractKey, contractVersion, JSON.stringify(input.connectorConfig), JSON.stringify(input.mapping), input.loadMode, JSON.stringify(input.cadence), expectedIntervalMinutes(input.cadence), input.authoritative, input.failOnAnyRejection, input.sourceNamespace ?? null, actorId, input.availabilityPolicy ? JSON.stringify(input.availabilityPolicy) : null],
     )
     const feed = (await findFeed(ctx.db, organizationId, result.rows[0]!.id))!
     await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_CREATED", entityType: "data_feed", entityId: feed.id, payload: { sourceId, contract: `${feed.contractKey}@${feed.contractVersion}` } })
@@ -84,7 +84,8 @@ export async function updateFeed(ctx: DataHubContext, organizationId: string, ac
     feedKey: partial.feedKey ?? current.feedKey,
     name: partial.name ?? current.name,
     contractKey: partial.contractKey ?? current.contractKey,
-    contractVersion: partial.contractVersion ?? current.contractVersion,
+    // Trocar de contrato (feed sem cargas) leva à versão atual do novo; o mesmo contrato mantém a versão do feed.
+    contractVersion: partial.contractVersion ?? (partial.contractKey && partial.contractKey !== current.contractKey ? undefined : current.contractVersion),
     connectorConfig: partial.connectorConfig ?? current.connectorConfig,
     mapping: partial.mapping ?? current.mapping,
     loadMode: partial.loadMode ?? current.loadMode,
@@ -94,7 +95,7 @@ export async function updateFeed(ctx: DataHubContext, organizationId: string, ac
     sourceNamespace: partial.sourceNamespace ?? current.sourceNamespace ?? undefined,
     availabilityPolicy: partial.availabilityPolicy === undefined ? current.availabilityPolicy : partial.availabilityPolicy,
   })
-  requireDataContract(merged.contractKey, merged.contractVersion)
+  const contractVersion = requireDataContract(merged.contractKey, merged.contractVersion).version
   assertConnectorMatchesSource(source, merged)
   if (partial.connectorConfig) await assertDatabaseFeed(ctx, source, merged)
   const contractChanged = merged.contractKey !== current.contractKey
@@ -109,12 +110,12 @@ export async function updateFeed(ctx: DataHubContext, organizationId: string, ac
          expected_interval_minutes = $10, authoritative = $11, fail_on_any_rejection = $12, source_namespace = $13, next_sync_at = $14, updated_by = $15, updated_at = now(),
          availability_policy = $16
        where id = $1`,
-      [feedId, merged.feedKey, merged.name, merged.contractKey, merged.contractVersion, JSON.stringify(merged.connectorConfig), JSON.stringify(merged.mapping), merged.loadMode, JSON.stringify(merged.cadence), expectedIntervalMinutes(merged.cadence), merged.authoritative, merged.failOnAnyRejection, merged.sourceNamespace ?? null, nextSync, actorId, merged.availabilityPolicy ? JSON.stringify(merged.availabilityPolicy) : null],
+      [feedId, merged.feedKey, merged.name, merged.contractKey, contractVersion, JSON.stringify(merged.connectorConfig), JSON.stringify(merged.mapping), merged.loadMode, JSON.stringify(merged.cadence), expectedIntervalMinutes(merged.cadence), merged.authoritative, merged.failOnAnyRejection, merged.sourceNamespace ?? null, nextSync, actorId, merged.availabilityPolicy ? JSON.stringify(merged.availabilityPolicy) : null],
     )
   } catch (error) {
     throw translateUniqueViolation(error, merged)
   }
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_UPDATED", entityType: "data_feed", entityId: feedId, payload: { mappingChanged: Boolean(partial.mapping), cadenceChanged: Boolean(partial.cadence), availabilityPolicyChanged: partial.availabilityPolicy !== undefined } })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_UPDATED", entityType: "data_feed", entityId: feedId, payload: { mappingChanged: Boolean(partial.mapping), cadenceChanged: Boolean(partial.cadence), availabilityPolicyChanged: partial.availabilityPolicy !== undefined, ...(contractVersion !== current.contractVersion ? { contract: `${merged.contractKey}@${contractVersion}`, previousContract: `${current.contractKey}@${current.contractVersion}` } : {}) } })
   return (await findFeed(ctx.db, organizationId, feedId))!
 }
 
@@ -196,7 +197,7 @@ export function draftFeed(source: DataSourceRow, connectorConfig: FeedInput["con
     feedKey: "draft",
     name: "draft",
     contractKey,
-    contractVersion: 1,
+    contractVersion: requireDataContract(contractKey).version,
     connectorConfig,
     mapping: { fields: [] },
     loadMode: "DELTA",
