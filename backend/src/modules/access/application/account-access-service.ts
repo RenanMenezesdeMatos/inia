@@ -66,6 +66,18 @@ export async function assertCredentialChangeAllowed(deps: AccountAccessDeps, act
   await authorizedTarget(deps, actor, target)
 }
 
+/**
+ * Custódia para MOVER a conta de login de uma pessoa para outra (vínculo do cadastro manual à pessoa da base): a mesma régua de
+ * credencial sobre a origem e sobre o destino já com a conta e os papéis dela — quem age precisa alcançar as duas pessoas (e a
+ * estrutura que o destino lidera, que a conta passa a enxergar) e poderia conceder todos os papéis da conta no lugar novo.
+ * Nunca a própria conta.
+ */
+export async function assertAccountRelinkAllowed(deps: AccountAccessDeps, actor: SessionActor, fromPersonId: string, toPersonId: string): Promise<void> {
+  const [from, to] = await Promise.all([deps.accounts.targetByPerson(actor.organizationId, fromPersonId), deps.accounts.targetByPerson(actor.organizationId, toPersonId)])
+  await authorizedTarget(deps, actor, from)
+  await authorizedTarget(deps, actor, to ? { ...to, account: from?.account ?? to.account } : null)
+}
+
 const conflict = () => new DomainError("Outra pessoa alterou este acesso agora há pouco. Atualize a lista e tente de novo.", "ACCESS_CONCURRENT_CHANGE", 409)
 const emailInUse = () => new DomainError("Já existe uma conta com este e-mail.", "EMAIL_ALREADY_IN_USE", 409)
 

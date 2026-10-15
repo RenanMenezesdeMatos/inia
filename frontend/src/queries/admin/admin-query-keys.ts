@@ -29,6 +29,7 @@ export const adminQueryKeys = {
   argumentScriptScopeOptions: () => [...adminQueryKeys.all, "argument-script-scope-options"] as const,
   users: () => [...adminQueryKeys.all, "users"] as const,
   usersList: (params: ListKeyParams) => [...adminQueryKeys.users(), "list", params] as const,
+  userDetail: (personId: string) => [...adminQueryKeys.users(), "detail", personId] as const,
   prohibitedTopics: () => [...adminQueryKeys.all, "prohibited-topics"] as const,
   prohibitedTopicsList: (params: ListKeyParams) => [...adminQueryKeys.prohibitedTopics(), "list", params] as const,
   glossary: () => [...adminQueryKeys.all, "glossary"] as const,

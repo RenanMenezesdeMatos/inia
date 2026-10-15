@@ -24,6 +24,8 @@ import { TemporaryPasswordDialog } from "./temporary-password-dialog"
 const DEFAULT_FILTERS: { search: string; status: AccessStatus | undefined } = { search: "", status: undefined }
 const STATUS_OPTIONS = optionsFromLabels(ACCESS_STATUS_LABELS)
 type PendingAction = { kind: "enable" | "regenerate" | "disable"; user: IdentifiedUser } | null
+/** Abrir Acessos já numa pessoa: busca (ex.: a matrícula) e, se der, "Habilitar acesso" dela. */
+export type AccessFocus = { search: string; personId: string | null }
 
 /**
  * Acessos: as pessoas que a plataforma JÁ identifica (cadastro vindo da base do cliente) com a situação do acesso ao INIA.
@@ -31,11 +33,19 @@ type PendingAction = { kind: "enable" | "regenerate" | "disable"; user: Identifi
  * no primeiro login ela é obrigada a criar a própria senha. A lista vem do backend restrita ao seu escopo; cada ação é
  * validada de novo no servidor (permissão, escopo e se você poderia conceder os papéis da pessoa).
  */
-export function AccessUsersView({ canManageUsers, canAssignRoles }: { canManageUsers: boolean; canAssignRoles: boolean }) {
-  const list = useAdminListState({ storageKey: "access-users", defaultFilters: DEFAULT_FILTERS, defaultPageSize: 20 })
+export function AccessUsersView({ canManageUsers, canAssignRoles, focus = null }: { canManageUsers: boolean; canAssignRoles: boolean; focus?: AccessFocus | null }) {
+  const list = useAdminListState({ storageKey: "access-users", defaultFilters: DEFAULT_FILTERS, initialFilters: focus ? { ...DEFAULT_FILTERS, search: focus.search } : undefined, defaultPageSize: 20 })
   const query = useIdentifiedUsersQuery({ search: list.params.search || undefined, status: list.params.status, page: list.params.page, pageSize: list.params.pageSize })
   const [openAccountId, setOpenAccountId] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingAction>(null)
+  // Chamada pelo "Novo usuário" com uma matrícula que já existe: abre "Habilitar acesso" da pessoa assim que ela aparece na
+  // lista (uma vez; ajuste na renderização, sem efeito). Fora do seu escopo ela não aparece e nada abre.
+  const [autoEnablePersonId, setAutoEnablePersonId] = useState(focus?.personId ?? null)
+  if (autoEnablePersonId && query.data && !query.isPlaceholderData) {
+    const user = query.data.items.find((item) => item.personId === autoEnablePersonId)
+    setAutoEnablePersonId(null)
+    if (user && canManageUsers && user.accessStatus === "DISABLED" && !user.self) setPending({ kind: "enable", user })
+  }
   const [issued, setIssued] = useState<IssuedTemporaryPassword | null>(null)
   const ttlHours = query.data?.temporaryPasswordTtlHours ?? null
   return (

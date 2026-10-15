@@ -32,7 +32,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Automação", area: "Workflows", configures: "Criação, editor (canvas, Configurações do workflow, Salvar rascunho, Publicar), Execuções.", href: "/wiki/workflows/criacao" },
   { menu: "Automação", area: "Políticas de acompanhamento", configures: "Tipos de intervenção (capacidades, responsável, prazo, evidências, aprovação, formulário, conclusão, incompatíveis), competências (diagnóstico → conteúdo aprovado → atividades) e políticas versionadas (regras com prioridade, condições, ações, dados insuficientes, simulação, publicação com vigência, auditoria e reavaliação).", href: "/wiki/administracao/politicas-de-acompanhamento" },
   { menu: "Automação", area: "QA Lab", configures: "Simulação de Workflows, Agents e Orchestrators; Histórico de QA; Feedbacks (QA de feedback). Só com o papel Administrador geral (Feedbacks: papel QA de feedback).", href: "/wiki/qa-lab" },
-  { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional) e Papéis (pacotes de permissões).", href: "#usuarios" },
+  { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
 ]
 
 export default function AdministrationPage() {
@@ -97,6 +97,44 @@ export default function AdministrationPage() {
           próprio papel dele permite delegar, dentro do escopo dele, e nunca a si mesmo; toda concessão e revogação fica auditada. Ver{" "}
           <WikiLink href="/wiki/introducao/papeis#admin">escopo administrativo</WikiLink>. A edição da pessoa mostra ainda a jornada prevista, a situação
           funcional, a escala e a <strong className="font-medium text-foreground">Capital operacional</strong> (jurisdição de feriados).
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">O que vem da base é só leitura.</strong> Quando um conjunto de dados ativo de{" "}
+          <em>Colaboradores</em> ou de <em>Estrutura organizacional</em> na <WikiLink href="/wiki/central-de-dados#master-event">Central de Dados</WikiLink>{" "}
+          traz um campo (está no mapeamento) e já carregou a pessoa, esse campo aparece desabilitado em Pessoas com o aviso{" "}
+          <em>“Vem da base &lt;fonte&gt; · &lt;conjunto&gt; — altere na origem”</em>, e a INIA recusa a alteração mesmo por chamada direta à API
+          (<code className="font-mono text-xs">PERSON_FIELD_MANAGED_BY_SOURCE</code>). O motivo: a próxima carga sobrescreveria a edição sem avisar ninguém.
+          Vale para nome, nível hierárquico, cargo, Grupo, Subgrupo, gestor direto, admissão, ativo, e-mail da conta e capital operacional — só os que o
+          conjunto de dados traz. O que a base não manda continua editável (ex.: o e-mail, se o mapeamento não tem e-mail), e quem não tem integração
+          cadastra e edita as pessoas aqui normalmente. Se mais de um conjunto de dados traz o mesmo campo, vale o autoritativo. A situação funcional
+          tem regra própria: o registro manual continua possível e os conflitos com a fonte seguem a precedência descrita na{" "}
+          <WikiLink href="/wiki/central-de-dados#situacao-funcional">Central de Dados</WikiLink>.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Pertence a × Administra / acessos.</strong> A ficha da pessoa separa as duas coisas.{" "}
+          <em>Pertence a</em> é onde ela está na estrutura da empresa — Grupo, Subgrupo, gestor direto, cargo — e vem da base.{" "}
+          <em>Administra / acessos</em> é o que ela administra na INIA: os papéis com escopo, que só a INIA define e que a base nunca concede. Os dois
+          são independentes: uma Supervisora que pertence ao Grupo Atendimento pode administrar também o Grupo Retenção. Para administrar vários Grupos,
+          atribua o papel uma vez para cada Grupo — ali mesmo na ficha ou na aba Acessos.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Uma pessoa, um cadastro.</strong> A base identifica cada pessoa pela matrícula. Por isso,
+          quando a organização recebe <em>Colaboradores</em> pela Central, o <strong className="font-medium text-foreground">Novo usuário</strong> sem
+          matrícula só aceita <em>Fora da hierarquia</em> (TI, consultoria, QA): quem é da operação vem pela base, e o acesso é liberado em Acessos ›
+          Habilitar acesso. O campo <em>Matrícula</em> é opcional e serve para cadastrar alguém antes da carga: escrita exatamente como a base vai
+          mandar, a carga atualiza essa mesma pessoa em vez de criar outra. Se a matrícula já existe, nada é cadastrado e a tela leva para Habilitar
+          acesso dessa pessoa. Sem integração, nada disso muda.
+        </p>
+        <p>
+          Quando a carga traz uma matrícula nova com o e-mail da conta de login de uma pessoa cadastrada à mão (sem matrícula), a INIA grava a
+          matrícula nessa pessoa: login e papéis continuam, a base passa a mandar no cadastro, e o vínculo fica na auditoria e como aviso na carga.
+          Só o nome igual não basta — duas “Ana Souza” são duas pessoas: a pessoa nova entra e a carga avisa de um possível duplicado. Para corrigir
+          um duplicado que já existe, abra a ficha da pessoa cadastrada à mão e use{" "}
+          <strong className="font-medium text-foreground">Vincular à pessoa da base</strong>: escolha a pessoa que veio da base (com matrícula e ainda
+          sem conta). A conta de login e os papéis passam para ela, as sessões abertas são encerradas (a pessoa entra de novo com a mesma senha), e o
+          cadastro feito à mão fica inativo, marcado como vinculado. Conversas, avisos e histórico ficam com o cadastro antigo. Exige administrar as
+          duas pessoas e poder alterar o acesso delas; ninguém vincula a própria conta. Se a pessoa da base já tem conta, a INIA recusa: decida antes
+          qual conta fica.
         </p>
         <p>
           <strong className="font-medium text-foreground">Liberação de acesso.</strong> A aba Acessos lista as pessoas que a plataforma já identifica

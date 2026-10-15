@@ -17,6 +17,8 @@ type Options<F extends BaseFilters> = {
   // Identifica a tela — a preferência lista/cards é guardada por tela, não globalmente.
   storageKey: string
   defaultFilters: F
+  /** Filtros com que a tela abre quando outra tela a chama já filtrada; "Limpar filtros" continua voltando a `defaultFilters`. */
+  initialFilters?: F
   defaultPageSize?: number
   defaultView?: ListViewMode
 }
@@ -66,8 +68,8 @@ function writeStoredView(storageKey: string, view: ListViewMode) {
 // Estado comum das listagens administrativas: filtros (com busca debounced), página, tamanho da
 // página e modo de visualização. Qualquer mudança de filtro ou de tamanho volta para a primeira
 // página; trocar lista/cards não mexe em nada disso.
-export function useAdminListState<F extends BaseFilters>({ storageKey, defaultFilters, defaultPageSize = 10, defaultView = "list" }: Options<F>) {
-  const [filters, setFiltersState] = useState<F>(defaultFilters)
+export function useAdminListState<F extends BaseFilters>({ storageKey, defaultFilters, initialFilters, defaultPageSize = 10, defaultView = "list" }: Options<F>) {
+  const [filters, setFiltersState] = useState<F>(initialFilters ?? defaultFilters)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSizeState] = useState(defaultPageSize)
   const view = useSyncExternalStore(

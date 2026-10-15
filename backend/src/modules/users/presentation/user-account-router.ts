@@ -9,7 +9,7 @@ import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { coversOrganization, getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { PASSWORD_POLICY_MESSAGES, passwordPolicyViolations } from "../../auth/domain/password-policy.js"
 import { wouldRemoveLastTenantAdmin } from "../../access/application/access-service.js"
-import { assertCredentialChangeAllowed, type AccountAccessDeps } from "../../access/application/account-access-service.js"
+import { assertAccountRelinkAllowed, assertCredentialChangeAllowed, type AccountAccessDeps } from "../../access/application/account-access-service.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 import { createPostgresAccountAccessRepository } from "../../access/infrastructure/postgres-account-access-repository.js"
 import { isHierarchyRole } from "../../performance-analytics/domain/hierarchy-levels.js"
@@ -17,6 +17,10 @@ import { applyEmployeeStatusSnapshot, loadEmploymentStatusHistory } from "../../
 import { EMPLOYMENT_STATUS_LABELS, EMPLOYMENT_STATUSES, LEGACY_EMPLOYMENT_STATUSES, toCanonicalEmploymentStatus } from "../../people/domain/employment-status.js"
 import { loadWorkScheduleSummary } from "../../people/application/work-schedule-service.js"
 import { capitalLabel, findBrazilianCapital, isBrazilianCapitalCode } from "../../people/domain/brazilian-capitals.js"
+import { loadLivePersonFeeds, loadPersonFieldControl } from "../../data-hub/application/person-field-control.js"
+import { ORGANIZATIONAL_LEVELS } from "../../data-hub/domain/contracts/master-data-contracts.js"
+import { linkPersonToSourcePerson, loadPersonLink } from "../../people/application/person-source-link.js"
+import { describeManagedFieldViolations, emptyPersonFieldControl, managedFieldViolations, type PersonSourceField } from "../../data-hub/domain/person-field-control.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 
@@ -34,13 +38,15 @@ const listUsersSchema = z.object({
   active: booleanParam,
   teamId: z.string().uuid().optional(),
   hasAccount: booleanParam,
+  /** Com matrícula = veio (ou virá) da base do cliente; sem = cadastro manual. */
+  hasMatricula: booleanParam,
   lastLoginFrom: dateParam,
   lastLoginTo: dateParam,
 })
 
 const SELECT_USERS = `
   select
-    p.id, p.name, p.role, p.job_title "jobTitle", p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
+    p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
     p.current_employment_status "employmentStatus",
     p.operational_capital_code "operationalCapitalCode",
     ua.id "accountId", ua.email, ua.last_login_at "lastLoginAt"
@@ -54,11 +60,15 @@ const createUserSchema = z.object({
   name: z.string().trim().min(2),
   role: z.enum(ROLES),
   teamId: z.string().uuid().optional(),
+  /** Matrícula exatamente como a base do cliente vai mandar: quando a carga chegar, ela ATUALIZA esta pessoa (nunca cria outra). */
+  matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
   email: z.string().trim().email(),
   // Provisória (troca obrigatória no primeiro login) — mas dentro da MESMA política de senha da plataforma (≤ 72 bytes).
   password: z.string().min(1).max(256),
 })
 
+// Campo que um feed da Central controla para a pessoa é recusado (422 PERSON_FIELD_MANAGED_BY_SOURCE) — ver
+// data-hub/domain/person-field-control.ts. Os demais continuam editáveis aqui.
 const updateUserSchema = z.object({
   name: z.string().trim().min(2).optional(),
   email: z.string().trim().email().optional(),
@@ -92,6 +102,33 @@ const employmentStatusSchema = z.object({
 })
 
 /**
+ * Campos da pessoa que esta edição MUDA de verdade (valor diferente do atual) — reenviar o mesmo valor não conta como
+ * alteração, então um formulário que manda tudo de novo não esbarra num campo da base que ninguém tocou.
+ */
+type CurrentPerson = { name: string; role: string; team_id: string | null; active: boolean; operational_capital_code: string | null; email: string | null }
+function changedPersonFields(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean, current: CurrentPerson): PersonSourceField[] {
+  const changed: PersonSourceField[] = []
+  if (input.name !== undefined && input.name !== current.name) changed.push("name")
+  if (input.role !== undefined && input.role !== current.role) changed.push("role")
+  if (teamIdSent && (input.teamId ?? null) !== current.team_id) changed.push("teamId")
+  if (input.active !== undefined && input.active !== current.active) changed.push("active")
+  if (input.email !== undefined && input.email.toLowerCase() !== (current.email ?? "").toLowerCase()) changed.push("email")
+  if (input.operationalCapitalCode !== undefined && (input.operationalCapitalCode ?? null) !== current.operational_capital_code) changed.push("operationalCapitalCode")
+  return changed
+}
+
+/** Campos que o PATCH pode receber, no vocabulário de `person-field-control`. */
+function editedFieldsOf(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean): PersonSourceField[] {
+  const fields: PersonSourceField[] = (["name", "role", "active", "email", "operationalCapitalCode"] as const).filter((field) => input[field] !== undefined)
+  return teamIdSent ? [...fields, "teamId"] : fields
+}
+
+/** Nível da hierarquia operacional (o que a base manda em Colaboradores) — tudo menos "Fora da hierarquia" (ADMIN legado). */
+const isOrganizationalLevel = (role: string) => (ORGANIZATIONAL_LEVELS as readonly string[]).includes(role)
+
+const linkSchema = z.object({ targetPersonId: z.string().uuid() }).strict()
+
+/**
  * NÍVEL HIERÁRQUICO é organizacional, mas a regra operacional de quem LIDERA (visão da operação, métricas de gestão de
  * qualquer líder) vale para a organização inteira — então criar ou mudar um nível de liderança exige `people.manage` com
  * escopo de ORGANIZAÇÃO (achado U-F2). Operador ↔ ADMIN legado (fora da hierarquia) segue no escopo do administrador.
@@ -115,6 +152,23 @@ export function createUserAccountRouter(db: Database) {
     const row = person.rows[0]
     return Boolean(row && ((row.team_id && scopes.teamIds.has(row.team_id)) || (row.subteam_id && scopes.subteamIds.has(row.subteam_id))))
   }
+  // Matrícula já existe: a pessoa veio (ou já foi cadastrada) — o id só volta para quem administra essa pessoa, para a tela
+  // levar a "Habilitar acesso" dela; fora do escopo, só o aviso (não revela quem existe fora do alcance).
+  const matriculaInUse = async (request: Request, personId: string | null) => {
+    const visible = personId !== null && (await personInScope(request, personId))
+    return new DomainError("Já existe uma pessoa com esta matrícula na organização. Não cadastre de novo: libere o acesso dela em Acessos › Habilitar acesso.", "PERSON_MATRICULA_IN_USE", 409, visible ? { personId } : undefined)
+  }
+
+  /**
+   * Uma porta só para a hierarquia: com Colaboradores vigente na Central, quem é da operação vem pela base (o acesso é liberado
+   * em "Habilitar acesso"); o cadastro manual sem matrícula fica para quem está fora da hierarquia. Fica ANTES do guarda de
+   * escopo por pessoa (`/:id`), que trataria "creation-policy" como id.
+   */
+  router.get("/creation-policy", async (request, response) => {
+    const sources = await loadLivePersonFeeds(db, request.user!.organizationId, "EMPLOYEES")
+    response.json({ data: { hierarchyRequiresMatricula: sources.length > 0, sources } })
+  })
+
   router.use("/:id", async (request, response, next) => {
     try {
       if (!(await personInScope(request, request.params.id!))) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
@@ -180,15 +234,58 @@ export function createUserAccountRouter(db: Database) {
     const input = listUsersSchema.parse(request.query)
     const scopes = await scopesOf(request)
     const filter = new SqlFilter([organizationId])
-      .search(input.search, ["q.name", "q.email"])
+      .search(input.search, ["q.name", "q.email", "q.matricula"])
       .in("q.role", input.role)
       .equals("q.active", input.active)
       .equals('q."teamId"', input.teamId)
       .dateRange('q."lastLoginAt"', input.lastLoginFrom, input.lastLoginTo)
     if (input.hasAccount !== undefined) filter.add(`q."accountId" is ${input.hasAccount ? "not null" : "null"}`)
+    if (input.hasMatricula !== undefined) filter.add(`q.matricula is ${input.hasMatricula ? "not null" : "null"}`)
     if (!scopes.unrestricted && !scopes.allTeams) filter.add(`(q."teamId" = any(${filter.param([...scopes.teamIds])}::uuid[]) or q."subteamId" = any(${filter.param([...scopes.subteamIds])}::uuid[]))`)
-    const data = await respondList(db, request.query, { select: SELECT_USERS, filter, orderBy: "q.name, q.id" })
-    response.json({ data })
+    const data = await respondList<{ id: string }>(db, request.query, { select: SELECT_USERS, filter, orderBy: "q.name, q.id" })
+    // Por campo, a fonte da Central que manda nele (null = editável na INIA) — uma consulta para a página inteira.
+    const rows = Array.isArray(data) ? data : data.items
+    const control = await loadPersonFieldControl(db, organizationId, rows.map((row) => row.id))
+    const withControl = <T extends { id: string }>(row: T) => ({ ...row, managedBy: control.get(row.id) ?? emptyPersonFieldControl() })
+    response.json({ data: Array.isArray(data) ? data.map(withControl) : { ...data, items: data.items.map(withControl) } })
+  })
+
+  // Detalhe da pessoa: a que ela PERTENCE na estrutura (Grupo, Subgrupo, gestor — dado da base) e quem controla cada campo.
+  // O que ela ADMINISTRA (papéis com escopo) é acesso e fica em /api/v1/admin/access.
+  router.get("/:id", async (request, response) => {
+    const organizationId = request.user!.organizationId
+    const result = await db.query<{
+      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null
+      team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; manager_id: string | null; manager_name: string | null
+      accountId: string | null; email: string | null; lastLoginAt: Date | null
+    }>(
+      `select p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, to_char(p.hired_at, 'YYYY-MM-DD') "hiredAt", p.active,
+              p.current_employment_status "employmentStatus", p.operational_capital_code "operationalCapitalCode",
+              t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name, m.id manager_id, m.name manager_name,
+              account.id "accountId", account.email, account.last_login_at "lastLoginAt"
+         from people p
+         left join teams t on t.id = p.team_id
+         left join subteams st on st.id = p.subteam_id
+         left join people m on m.id = p.reports_to_id
+         left join user_accounts account on account.person_id = p.id
+        where p.id = $1 and p.organization_id = $2`,
+      [request.params.id, organizationId],
+    )
+    const row = result.rows[0]
+    if (!row) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+    const [control, linkedTo] = await Promise.all([loadPersonFieldControl(db, organizationId, [row.id]), loadPersonLink(db, organizationId, row.id)])
+    const { team_id, team_name, subteam_id, subteam_name, manager_id, manager_name, ...person } = row
+    response.json({
+      data: {
+        ...person,
+        team: team_id ? { id: team_id, name: team_name ?? "" } : null,
+        subteam: subteam_id ? { id: subteam_id, name: subteam_name ?? "" } : null,
+        manager: manager_id ? { id: manager_id, name: manager_name ?? "" } : null,
+        managedBy: control.get(row.id) ?? emptyPersonFieldControl(),
+        // Pessoa cadastrada à mão que já foi vinculada à pessoa da base (conta e papéis foram para lá).
+        linkedTo,
+      },
+    })
   })
 
   router.post("/", async (request, response) => {
@@ -204,6 +301,21 @@ export function createUserAccountRouter(db: Database) {
     if (!accessScopes.unrestricted && !accessScopes.allTeams && !(input.teamId && accessScopes.teamIds.has(input.teamId))) {
       throw new DomainError("Criar uma conta de acesso exige administrar acessos no Grupo da pessoa.", "FORBIDDEN", 403)
     }
+    // Uma porta só para a hierarquia (ver /creation-policy). Com matrícula, a pessoa nasce com ela e a base a assume na carga.
+    if (input.matricula) {
+      const existing = await db.query<{ id: string }>(`select known.id from people known where known.organization_id = $1 and known.matricula = $2`, [organizationId, input.matricula])
+      if (existing.rows[0]) throw await matriculaInUse(request, existing.rows[0].id)
+    } else if (isOrganizationalLevel(input.role)) {
+      const sources = await loadLivePersonFeeds(db, organizationId, "EMPLOYEES")
+      if (sources.length > 0) {
+        throw new DomainError(
+          `Quem é da hierarquia vem pela base (${sources.map((source) => `${source.sourceName} · ${source.feedName}`).join("; ")}): espere a carga e libere o acesso em Acessos › Habilitar acesso. Para cadastrar antes da carga, informe a matrícula exatamente como a base vai mandar. Sem matrícula, só "Fora da hierarquia".`,
+          "PERSON_HIERARCHY_REQUIRES_SOURCE",
+          422,
+          { sources },
+        )
+      }
+    }
     const violations = passwordPolicyViolations(input.password, { login: input.email })
     if (violations.length > 0) {
       throw new DomainError("A senha provisória não atende à política de segurança.", "PASSWORD_POLICY_VIOLATION", 422, { violations: violations.map((code) => ({ code, message: PASSWORD_POLICY_MESSAGES[code] })) })
@@ -212,8 +324,8 @@ export function createUserAccountRouter(db: Database) {
     try {
       await client.query("begin")
       const person = await client.query<{ id: string }>(
-        `insert into people(organization_id, team_id, name, role) values ($1,$2,$3,$4) returning id`,
-        [organizationId, input.teamId ?? null, input.name, input.role],
+        `insert into people(organization_id, team_id, name, role, matricula) values ($1,$2,$3,$4,$5) returning id`,
+        [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null],
       )
       const personId = person.rows[0]!.id
       const passwordHash = await hashPassword(input.password)
@@ -228,13 +340,15 @@ export function createUserAccountRouter(db: Database) {
       // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
-        [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
+        [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
       )
       await client.query("commit")
       response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email: input.email } })
     } catch (error) {
       await client.query("rollback")
       if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
+        // Matrícula gravada por outra pessoa/carga entre a checagem e o insert.
+        if ((error as { constraint?: string }).constraint === "people_matricula_unique") throw await matriculaInUse(request, null)
         throw new DomainError("Já existe uma conta com este e-mail.", "EMAIL_ALREADY_IN_USE", 409)
       }
       throw error
@@ -247,6 +361,24 @@ export function createUserAccountRouter(db: Database) {
     const organizationId = request.user!.organizationId
     const input = updateUserSchema.parse(request.body)
     const personId = request.params.id!
+    const teamIdSent = "teamId" in request.body
+    // O que vem da base do cliente vale sempre: campo controlado por um feed da Central não é editado aqui (a próxima carga
+    // sobrescreveria em silêncio). Só recusa o que MUDA — o mesmo valor reenviado passa.
+    const control = (await loadPersonFieldControl(db, organizationId, [personId])).get(personId) ?? emptyPersonFieldControl()
+    if (editedFieldsOf(input, teamIdSent).some((field) => control[field])) {
+      const current = await db.query<CurrentPerson>(
+        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, account.email
+           from people person left join user_accounts account on account.person_id = person.id
+          where person.id = $1 and person.organization_id = $2`,
+        [personId, organizationId],
+      )
+      if (!current.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+      const violations = managedFieldViolations(control, changedPersonFields(input, teamIdSent, current.rows[0]))
+      if (violations.length > 0) {
+        const sources = [...new Map(violations.map((violation) => [JSON.stringify([violation.sourceName, violation.feedName]), { sourceName: violation.sourceName, feedName: violation.feedName }])).values()]
+        throw new DomainError(describeManagedFieldViolations(violations), "PERSON_FIELD_MANAGED_BY_SOURCE", 422, { fields: violations, sources })
+      }
+    }
     const changesAccess = input.role !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined
     // Ninguém altera o próprio nível, Grupo, e-mail de login ou situação de acesso — outra pessoa autorizada precisa fazer isso.
     if (changesAccess && personId === request.user!.personId) {
@@ -281,7 +413,7 @@ export function createUserAccountRouter(db: Database) {
            operational_capital_code = case when $8::boolean then $9 else operational_capital_code end
          where id = $6 and organization_id = $7
          returning id, name, role, active, team_id "teamId", operational_capital_code "operationalCapitalCode"`,
-        [input.name ?? null, input.role ?? null, "teamId" in request.body, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null],
+        [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null],
       )
       if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
       if (input.active !== undefined || input.email !== undefined) {
@@ -316,6 +448,25 @@ export function createUserAccountRouter(db: Database) {
       }
       throw error
     }
+  })
+
+  /**
+   * "Vincular à pessoa da base": a pessoa cadastrada à mão (origem, sem matrícula) é a mesma que chegou pela base (destino,
+   * com matrícula e sem conta). A conta e os papéis vão para o destino, as sessões caem, a origem fica inativa e marcada.
+   * Exige administrar pessoas nas DUAS (o guarda `/:id` cobre a origem) e a custódia da credencial sobre as duas — nunca a
+   * própria conta. Pré-condições do dado: ver people/application/person-source-link.ts.
+   */
+  router.post("/:id/link", async (request, response) => {
+    const organizationId = request.user!.organizationId
+    const fromPersonId = request.params.id!
+    const { targetPersonId } = linkSchema.parse(request.body)
+    if (fromPersonId === request.user!.personId) {
+      throw new DomainError("Você não pode vincular a sua própria conta — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
+    }
+    if (targetPersonId !== fromPersonId && !(await personInScope(request, targetPersonId))) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+    await assertAccountRelinkAllowed(accountDeps, actorOf(request), fromPersonId, targetPersonId)
+    const result = await linkPersonToSourcePerson(db, { organizationId, fromPersonId, toPersonId: targetPersonId, actorPersonId: request.user!.personId, actorAccountId: request.user!.sub })
+    response.json({ data: result })
   })
 
   // Jornada prevista do colaborador (evolução do Trigger "Por agenda" — agendamento relativo ao

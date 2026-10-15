@@ -2,7 +2,19 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type PageResult } from "@/lib/admin/list-query"
-import { userAccountSchema, type UserAccount, employmentStatusDetailSchema, type EmploymentStatus, type EmploymentStatusDetail } from "@/schemas/admin/user-account.schema"
+import {
+  creationPolicySchema,
+  employmentStatusDetailSchema,
+  personLinkResultSchema,
+  userAccountSchema,
+  userDetailSchema,
+  type CreationPolicy,
+  type EmploymentStatus,
+  type EmploymentStatusDetail,
+  type PersonLinkResult,
+  type UserAccount,
+  type UserDetail,
+} from "@/schemas/admin/user-account.schema"
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
 
 export async function fetchUserAccounts(): Promise<UserAccount[]> {
@@ -14,6 +26,8 @@ export type UserListParams = ListParams & {
   active?: boolean
   teamId?: string
   hasAccount?: boolean
+  /** true = veio da base (tem matrícula); false = cadastrada à mão. */
+  hasMatricula?: boolean
   lastLoginAt: DateRangeFilter
 }
 
@@ -24,10 +38,21 @@ export async function fetchUserAccountsPage(params: UserListParams): Promise<Pag
   )
 }
 
+/** Detalhe da pessoa: estrutura a que pertence e quem controla cada campo (base do cliente × INIA). */
+export async function fetchUserDetail(personId: string): Promise<UserDetail> {
+  return userDetailSchema.parse(await adminGet(`/api/v1/admin/users/${personId}`))
+}
+
+export async function fetchCreationPolicy(): Promise<CreationPolicy> {
+  return creationPolicySchema.parse(await adminGet("/api/v1/admin/users/creation-policy"))
+}
+
 export type CreateUserInput = {
   name: string
   role: PlatformRole
   teamId?: string
+  /** Matrícula como a base vai mandar: a carga atualiza esta pessoa em vez de criar outra. */
+  matricula?: string
   email: string
   password: string
 }
@@ -36,21 +61,22 @@ export async function createUserAccount(input: CreateUserInput): Promise<void> {
   await adminSend("/api/v1/admin/users", "POST", input)
 }
 
+/** Só os campos enviados são alterados: o que vem da base do cliente fica de fora (o backend recusa com 422). `teamId: null` tira do Grupo. */
 export type UpdateUserDetailsInput = {
   personId: string
-  name: string
-  email: string
-  role: PlatformRole
-  teamId?: string
+  name?: string
+  email?: string
+  role?: PlatformRole
+  teamId?: string | null
 }
 
-export async function updateUserDetails(input: UpdateUserDetailsInput): Promise<void> {
-  await adminSend(`/api/v1/admin/users/${input.personId}`, "PATCH", {
-    name: input.name,
-    email: input.email,
-    role: input.role,
-    teamId: input.teamId ?? null,
-  })
+export async function updateUserDetails({ personId, ...fields }: UpdateUserDetailsInput): Promise<void> {
+  await adminSend(`/api/v1/admin/users/${personId}`, "PATCH", Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)))
+}
+
+/** "Vincular à pessoa da base": a conta e os papéis da pessoa cadastrada à mão vão para a pessoa que veio da base. */
+export async function linkUserToSourcePerson(personId: string, targetPersonId: string): Promise<PersonLinkResult> {
+  return personLinkResultSchema.parse(await adminSend(`/api/v1/admin/users/${personId}/link`, "POST", { targetPersonId }))
 }
 
 export async function updateUserRole(personId: string, role: PlatformRole): Promise<void> {

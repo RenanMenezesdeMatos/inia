@@ -354,12 +354,12 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
     metrics.recordsDeactivated = total.deactivated
     metrics.businessMaxEventTime = total.businessMaxEventTime
     total.lineage = []
-    // Avisos de registros APLICADOS (ex.: conflito de situação funcional): rastro na quarentena com
-    // severidade própria — warningCount, nunca errorCount nem registro rejeitado.
+    // Avisos de registros APLICADOS (ex.: conflito de situação funcional, pessoa ligada pela conta): rastro
+    // na quarentena com severidade própria — warningCount, nunca errorCount nem registro rejeitado.
     if (total.warnings.length > 0) {
       await persistRejections(ctx.db, run, total.warnings)
       metrics.warningCount += total.warnings.length
-      stages = closeStages(stages, `${total.warnings.length} aviso(s) de conflito de situação funcional`)
+      stages = closeStages(stages, `${total.warnings.length} aviso(s) na quarentena (registros aplicados)`)
     }
 
     if (sftpFile) {

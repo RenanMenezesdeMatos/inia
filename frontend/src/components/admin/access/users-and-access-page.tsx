@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { KeyRound, ShieldCheck, UsersRound } from "lucide-react"
 
 import { UsersPage } from "@/components/admin/users/users-page"
@@ -7,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 
-import { AccessUsersView } from "./access-users-view"
+import { AccessUsersView, type AccessFocus } from "./access-users-view"
 import { AccessRolesView } from "./access-roles-view"
 
 /**
@@ -22,7 +23,16 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
     capabilities.canManagePeople ? { value: "people", label: "Pessoas", icon: UsersRound } : null,
     capabilities.canViewRoles ? { value: "roles", label: "Papéis", icon: ShieldCheck } : null,
   ].filter((tab) => tab !== null)
+  const [tab, setTab] = useState<string | null>(null)
+  // Pessoas → Acessos já na pessoa (ex.: matrícula que já existe no "Novo usuário"); a chave remonta a lista com o foco novo.
+  const [accessFocus, setAccessFocus] = useState<(AccessFocus & { key: number }) | null>(null)
   if (tabs.length === 0) return <p className="text-sm text-muted-foreground">Você não tem permissão para ver usuários, pessoas ou papéis.</p>
+  const openAccess = capabilities.canViewUsers
+    ? (focus: AccessFocus) => {
+        setAccessFocus({ ...focus, key: (accessFocus?.key ?? 0) + 1 })
+        setTab("access")
+      }
+    : undefined
   return (
     <Card>
       <CardHeader>
@@ -30,12 +40,12 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
         <CardDescription>Cargo e nível hierárquico vêm da estrutura organizacional e não dão acesso. Acesso ao INIA = papel atribuído a uma conta, com escopo.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue={tabs[0]!.value} className="space-y-4">
+        <Tabs value={tab ?? tabs[0]!.value} onValueChange={setTab} className="space-y-4">
           <TabsList>
             {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="gap-1"><tab.icon className="size-4" aria-hidden />{tab.label}</TabsTrigger>)}
           </TabsList>
-          {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} /></TabsContent> : null}
-          {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage /></TabsContent> : null}
+          {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView key={accessFocus?.key ?? 0} canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} focus={accessFocus} /></TabsContent> : null}
+          {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} onOpenAccess={openAccess} /></TabsContent> : null}
           {capabilities.canViewRoles ? <TabsContent value="roles"><AccessRolesView /></TabsContent> : null}
         </Tabs>
       </CardContent>

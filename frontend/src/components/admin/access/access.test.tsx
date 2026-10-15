@@ -291,6 +291,15 @@ describe("Liberação de acesso — habilitar, senha temporária e desabilitar",
     expect(within(eu!).queryByRole("button", { name: /Nova senha|Desabilitar|Habilitar/ })).not.toBeInTheDocument()
   })
 
+  it("aberta pelo Novo usuário com uma matrícula que já existe: filtra pela matrícula e abre \"Habilitar acesso\" da pessoa", async () => {
+    service.fetchIdentifiedUsers.mockResolvedValue(page([SEM_CONTA]))
+    renderWithQuery(<AccessUsersView canManageUsers canAssignRoles={false} focus={{ search: "OP-10234", personId: "p-ana" }} />)
+    expect(await screen.findByRole("form", { name: "Habilitar acesso" })).toBeInTheDocument()
+    expect(screen.getByText("Habilitar acesso de Ana Prado")).toBeInTheDocument()
+    expect(service.fetchIdentifiedUsers).toHaveBeenCalledWith(expect.objectContaining({ search: "OP-10234" }))
+    expect(screen.getByLabelText("Buscar pessoa")).toHaveValue("OP-10234")
+  })
+
   it("sem permissão de gerenciar: só leitura (nenhuma ação de acesso)", async () => {
     service.fetchIdentifiedUsers.mockResolvedValue(page([SEM_CONTA, PENDENTE]))
     renderWithQuery(<AccessUsersView canManageUsers={false} canAssignRoles={false} />)

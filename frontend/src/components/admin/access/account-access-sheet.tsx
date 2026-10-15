@@ -52,15 +52,27 @@ function AccountBody({ account, canAssign }: { account: AccessAccount; canAssign
             {!collaborator.active ? <p className="col-span-2 text-xs text-amber-700 dark:text-amber-300">Colaborador inativo: os papéis ficam registrados, mas não se aplicam enquanto ele estiver inativo.</p> : null}
           </dl>
         </section>
-        <section aria-label="Papéis de acesso" className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-muted-foreground" aria-hidden />Papéis de acesso</h3>
-          {account.roles.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum papel — esta conta não tem acesso administrativo nem de QA.</p> : null}
-          <ul className="space-y-2">
-            {account.roles.map((role) => <RoleRow key={role.id} accountId={account.accountId} role={role} canAssign={canAssign} />)}
-          </ul>
-        </section>
-        {canAssign ? <AddRoleForm accountId={account.accountId} /> : null}
+        <AccountRolesEditor account={account} canAssign={canAssign} />
       </div>
+    </>
+  )
+}
+
+/**
+ * Papéis de acesso da conta, cada um com o escopo dele, e — para quem pode delegar — adicionar e revogar. Usado aqui e na
+ * ficha da pessoa (Pessoas › "Administra / acessos"): administrar vários Grupos = uma atribuição de papel por Grupo.
+ */
+export function AccountRolesEditor({ account, canAssign }: { account: AccessAccount; canAssign: boolean }) {
+  return (
+    <>
+      <section aria-label="Papéis de acesso" className="space-y-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck className="size-4 text-muted-foreground" aria-hidden />Papéis de acesso</h3>
+        {account.roles.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum papel — esta conta não tem acesso administrativo nem de QA.</p> : null}
+        <ul className="space-y-2">
+          {account.roles.map((role) => <RoleRow key={role.id} accountId={account.accountId} role={role} canAssign={canAssign} />)}
+        </ul>
+      </section>
+      {canAssign ? <AddRoleForm accountId={account.accountId} /> : null}
     </>
   )
 }

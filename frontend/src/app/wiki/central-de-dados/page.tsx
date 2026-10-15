@@ -244,13 +244,22 @@ export default function DataHubPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <ExampleCard title="Dado mestre (Colaboradores, Estrutura, Grupos, Subgrupos, Jornadas, Ausências)">
             Upsert controlado pela identidade externa. Campo opcional ausente mantém o atual. Uma fonte autoritativa ativa por contrato por organização;
-            uma segunda é bloqueada explicitamente — sem MDM completo nesta versão.
+            uma segunda é bloqueada explicitamente — sem MDM completo nesta versão. Campo de pessoa que Colaboradores ou Estrutura organizacional traz
+            fica só leitura na INIA para quem a carga já aplicou: corrige-se na origem (ver{" "}
+            <WikiLink href="/wiki/administracao#usuarios">Usuários e acessos</WikiLink>).
           </ExampleCard>
           <ExampleCard title="Dado de evento (Medições, Interações, Transcrições, Flags, Fechamentos, PRV)">
             Idempotência por identificador externo + namespace de origem: várias fontes podem coexistir se mantiverem identidades claras. Mesmo arquivo ou
             mesmo lote duas vezes nunca duplica.
           </ExampleCard>
         </div>
+        <p>
+          <strong>Identidade em Colaboradores.</strong> A matrícula é a identidade da pessoa. Uma matrícula nova que chega com o e-mail da conta de
+          login de uma pessoa cadastrada à mão na INIA (sem matrícula) é gravada nessa pessoa, em vez de criar outra: login e papéis continuam, e a
+          carga registra o aviso <code>DATA_PERSON_LINKED_BY_EMAIL</code>, com auditoria e linhagem. E-mail repetido na mesma carga não liga ninguém.
+          Nome igual ao de uma pessoa ativa cadastrada à mão, sem o e-mail, <strong>não</strong> junta: a pessoa nova entra e a carga avisa <code>DATA_POSSIBLE_DUPLICATE_PERSON</code> com os dois
+          ids. O duplicado se corrige em <WikiLink href="/wiki/administracao#usuarios">Usuários e acessos › Vincular à pessoa da base</WikiLink>.
+        </p>
       </WikiSection>
 
       <WikiSection id="situacao-funcional" title="Situação funcional: Colaboradores + Ausências" eyebrow="Uma camada canônica, duas portas de entrada">

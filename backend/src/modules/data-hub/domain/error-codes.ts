@@ -51,10 +51,14 @@ export const DATA_RECORD_ERROR_CODES = {
   DATA_EMPLOYMENT_STATUS_CONFLICT: "Conflito de situação funcional resolvido pela precedência de evidência (registro aplicado; veja a mensagem).",
   /** Aviso (não rejeição): a exceção de calendário recebida diverge do que o Supervisor registrou/cancelou — mantido o registro do Supervisor, nada sobrescrito em silêncio. */
   DATA_SCHEDULE_EXCEPTION_CONFLICT: "Conflito entre a exceção de calendário da Central e a registrada pelo Supervisor (mantido o registro do Supervisor; veja a mensagem).",
+  /** Aviso (não rejeição): a matrícula nova foi gravada na pessoa cadastrada à mão cuja conta de login tem o e-mail do registro — nenhuma pessoa nova. */
+  DATA_PERSON_LINKED_BY_EMAIL: "Matrícula ligada pela conta de login (mesmo e-mail) a uma pessoa já cadastrada na INIA sem matrícula (registro aplicado; veja a mensagem).",
+  /** Aviso (não rejeição): pessoa nova com o mesmo nome de uma pessoa ativa sem matrícula — a INIA nunca junta por nome. */
+  DATA_POSSIBLE_DUPLICATE_PERSON: "Possível pessoa duplicada: mesmo nome de uma pessoa cadastrada na INIA sem matrícula (registro aplicado; a INIA não junta por nome).",
 } as const
 
 /** Códigos que registram um AVISO rastreável na quarentena sem contar o registro como rejeitado. */
-export const WARNING_RECORD_ERROR_CODES: ReadonlySet<DataRecordErrorCode> = new Set(["DATA_EMPLOYMENT_STATUS_CONFLICT", "DATA_SCHEDULE_EXCEPTION_CONFLICT"])
+export const WARNING_RECORD_ERROR_CODES: ReadonlySet<DataRecordErrorCode> = new Set(["DATA_EMPLOYMENT_STATUS_CONFLICT", "DATA_SCHEDULE_EXCEPTION_CONFLICT", "DATA_PERSON_LINKED_BY_EMAIL", "DATA_POSSIBLE_DUPLICATE_PERSON"])
 export type DataRecordErrorCode = keyof typeof DATA_RECORD_ERROR_CODES
 
 /** Erros de execução que valem retry com backoff (transitórios). Os demais são definitivos. */

@@ -87,7 +87,9 @@ export default function RolesPage() {
           e Workflows dentro do escopo, e a opção &quot;Todos os grupos&quot; não aparece; o{" "}
           <strong className="font-medium text-foreground">Administrador de acessos</strong> cuida só de contas e papéis. Ver Indicadores e Equipe, os
           Dados da estrutura e o Calendário da equipe de outras pessoas também são permissões: estão no Administrador geral (organização) e no
-          Administrador (no escopo dele); o Administrador de acessos e o QA de feedback não as recebem.
+          Administrador (no escopo dele); o Administrador de acessos e o QA de feedback não as recebem. O que alguém administra não depende do Grupo a
+          que pertence: para administrar vários Grupos, a conta recebe o papel uma vez para cada Grupo (ver{" "}
+          <WikiLink href="/wiki/administracao#usuarios">Usuários e acessos</WikiLink>).
         </p>
         <SeeAlso
           links={[

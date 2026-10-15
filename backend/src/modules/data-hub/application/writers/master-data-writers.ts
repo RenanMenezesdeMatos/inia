@@ -6,6 +6,7 @@ import { normalizeScheduleExceptionCode, SCHEDULE_EXCEPTION_EFFECT_BY_CODE, SCHE
 import { normalizeScheduleType, type ScheduleType } from "../../../people/domain/work-schedule.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
 import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResult, type ApplyWarning, type DomainWriter, type LineageEntry, type Rejection, type ValidRecord, type WriteContext } from "./domain-writer.js"
+import { linkByAccountEmail, linkedWarnings, possibleDuplicateWarnings } from "./person-identity.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -189,6 +190,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
     const org = context.organizationId
+    // Passo 0: identidade — matrícula nova com o e-mail da conta de uma pessoa cadastrada à mão (sem matrícula) é gravada nela,
+    // e o upsert abaixo passa a ATUALIZAR essa pessoa em vez de criar outra (ver person-identity.ts).
+    const linked = await linkByAccountEmail(context, client, batch)
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
@@ -243,12 +247,16 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     }
     const touched = new Map(upsert.rows.map((row) => [row.matricula, { id: row.id, inserted: row.inserted }]))
     for (const row of managerUpdates.rows) if (!touched.has(row.matricula)) touched.set(row.matricula, { id: row.id, inserted: false })
+    // Pessoa ligada pela conta foi aplicada por esta carga mesmo que os dados já batessem: linhagem de alteração.
+    for (const { personId, row } of linked) if (!touched.has(row.matricula)) touched.set(row.matricula, { id: personId, inserted: false })
+    const byMatricula = new Map(batch.map((row) => [row.matricula, row]))
+    const duplicateWarnings = await possibleDuplicateWarnings(context, client, upsert.rows.filter((row) => row.inserted).map((row) => ({ personId: row.id, row: byMatricula.get(row.matricula)! })))
     // Passo 4: situação funcional — SEMPRE pelo serviço canônico (único que escreve em
     // employee_status_periods); snapshot repetido não cria período novo. O snapshot de EMPLOYEES
     // é evidência "a partir de uma data": uma ausência explícita e limitada já registrada vence
     // (CONFLICT), e o conflito vai para a quarentena como AVISO rastreável — nunca em silêncio.
     const statusLineage: LineageEntry[] = []
-    const warnings: ApplyWarning[] = []
+    const warnings: ApplyWarning[] = [...linkedWarnings(linked), ...duplicateWarnings]
     const withStatus = batch.filter((row) => row.employmentStatus)
     if (withStatus.length > 0) {
       const ids = await client.query<{ id: string; matricula: string }>(`select id, matricula from people where organization_id = $1 and matricula = any($2::text[])`, [org, withStatus.map((row) => row.matricula)])

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { KeyRound, LogIn, Pencil, Plus, UserRound, Users, UsersRound } from "lucide-react"
 
 import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
+import { AdminApiError } from "@/lib/admin/admin-api"
 import { formatCivilDate, formatShortDateTime } from "@/lib/format/date"
 
 import { Button } from "@/components/ui/button"
@@ -34,16 +35,25 @@ import { useUpdateUserShiftMutation, useUserShiftQuery } from "@/queries/admin/u
 import { useApplyEmploymentStatusMutation, useEmploymentStatusQuery, useUpdateOperationalCapitalMutation } from "@/queries/admin/use-employment-status-queries"
 import {
   useCreateUserAccountMutation,
+  useCreationPolicyQuery,
   useUpdateUserActiveMutation,
   useUpdateUserDetailsMutation,
   useUpdateUserRoleMutation,
   useUserAccountsPageQuery,
+  useUserDetailQuery,
 } from "@/queries/admin/use-user-account-queries"
-import type { UserListParams } from "@/services/admin/user-account-service"
+import type { UpdateUserDetailsInput, UserListParams } from "@/services/admin/user-account-service"
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
-import { EMPLOYMENT_STATUS_LABELS, ROLE_LABELS, employmentStatusLabel, type EmploymentStatus, type UserAccount } from "@/schemas/admin/user-account.schema"
+import { EMPLOYMENT_STATUS_LABELS, ROLE_LABELS, employmentStatusLabel, type EmploymentStatus, type SourceManager, type UserAccount } from "@/schemas/admin/user-account.schema"
 import { LineageButton } from "@/components/admin/data-hub/lineage-sheet"
 import { useCapitalsQuery } from "@/queries/admin/use-operational-calendar-queries"
+
+import type { AccessFocus } from "@/components/admin/access/access-users-view"
+
+import { PersonAccessSection } from "./person-access-section"
+import { PersonBelongsTo } from "./person-belongs-to"
+import { PersonSourceIdentity } from "./person-source-link"
+import { SourceManagedNotice, sourceManagedText } from "./source-managed-notice"
 
 
 /**
@@ -120,7 +130,7 @@ function ShiftSection({ userId }: { userId: string }) {
  * endereço, residência ou lotação). Catálogo fixo das 27 (reference data); a empresa normalmente
  * informa pela Central (EMPLOYEES.operationalCapitalCode) — aqui é registro/correção manual.
  */
-function OperationalCapitalField({ userId, current }: { userId: string; current: { code: string; label: string } | null }) {
+function OperationalCapitalField({ userId, current, managedBy }: { userId: string; current: { code: string; label: string } | null; managedBy: SourceManager | null }) {
   const capitals = useCapitalsQuery()
   const mutation = useUpdateOperationalCapitalMutation(userId)
   const NONE = "__none__"
@@ -130,8 +140,8 @@ function OperationalCapitalField({ userId, current }: { userId: string; current:
         Capital operacional: <span className="font-medium text-foreground" data-testid="operational-capital-current">{current?.label ?? "não informada"}</span>
       </span>
       <span className="text-muted-foreground">jurisdição de feriados (nacional + UF derivada + municipal) — não é endereço nem lotação</span>
-      <Select value={current?.code ?? NONE} onValueChange={(value) => mutation.mutate(value === NONE ? null : value)} disabled={mutation.isPending || capitals.isLoading}>
-        <SelectTrigger className="h-8 w-56" aria-label="Capital operacional">
+      <Select value={current?.code ?? NONE} onValueChange={(value) => mutation.mutate(value === NONE ? null : value)} disabled={managedBy !== null || mutation.isPending || capitals.isLoading}>
+        <SelectTrigger className="h-8 w-56" aria-label="Capital operacional" aria-describedby={managedBy ? "operational-capital-source" : undefined}>
           <SelectValue placeholder="Selecionar capital" />
         </SelectTrigger>
         <SelectContent>
@@ -143,11 +153,12 @@ function OperationalCapitalField({ userId, current }: { userId: string; current:
           ))}
         </SelectContent>
       </Select>
+      <SourceManagedNotice id="operational-capital-source" manager={managedBy} className="basis-full" />
     </div>
   )
 }
 
-function EmploymentStatusSection({ userId }: { userId: string }) {
+function EmploymentStatusSection({ userId, capitalManagedBy }: { userId: string; capitalManagedBy: SourceManager | null }) {
   const statusQuery = useEmploymentStatusQuery(userId)
   const applyMutation = useApplyEmploymentStatusMutation(userId)
   const [status, setStatus] = useState<EmploymentStatus>("FERIAS")
@@ -209,7 +220,7 @@ function EmploymentStatusSection({ userId }: { userId: string }) {
               {statusQuery.data.schedule.todayException ? <LineageButton entityType="employee_schedule_exceptions" entityId={statusQuery.data.schedule.todayException.id} title="Origem da exceção de hoje" size="xs" label="Origem da exceção" /> : null}
             </div>
           ) : null}
-          <OperationalCapitalField userId={userId} current={statusQuery.data.operationalCapital} />
+          <OperationalCapitalField userId={userId} current={statusQuery.data.operationalCapital} managedBy={capitalManagedBy} />
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label>Nova situação</Label>
@@ -246,36 +257,47 @@ function EmploymentStatusSection({ userId }: { userId: string }) {
   )
 }
 
+/** Campo da base na lista: desabilitado, com o aviso no `title` (o elemento desabilitado não recebe o hover). */
+function SourceManagedTitle({ manager, children }: { manager: SourceManager | null; children: ReactNode }) {
+  return manager ? <span title={sourceManagedText(manager)}>{children}</span> : children
+}
+
 function ActiveToggleButton({ user }: { user: UserAccount }) {
   const updateActiveMutation = useUpdateUserActiveMutation()
+  const managedBy = user.managedBy.active
   return (
-    <Button
-      size="sm"
-      variant={user.active ? "secondary" : "outline"}
-      disabled={updateActiveMutation.isPending}
-      aria-label={user.active ? "Desativar usuário" : "Ativar usuário"}
-      onClick={() => updateActiveMutation.mutate({ personId: user.id, active: !user.active })}
-    >
-      {user.active ? "Ativo" : "Inativo"}
-    </Button>
+    <SourceManagedTitle manager={managedBy}>
+      <Button
+        size="sm"
+        variant={user.active ? "secondary" : "outline"}
+        disabled={managedBy !== null || updateActiveMutation.isPending}
+        aria-label={user.active ? "Desativar usuário" : "Ativar usuário"}
+        onClick={() => updateActiveMutation.mutate({ personId: user.id, active: !user.active })}
+      >
+        {user.active ? "Ativo" : "Inativo"}
+      </Button>
+    </SourceManagedTitle>
   )
 }
 
 function RoleSelect({ user }: { user: UserAccount }) {
   const updateRoleMutation = useUpdateUserRoleMutation()
+  const managedBy = user.managedBy.role
   return (
-    <Select value={user.role} onValueChange={(value) => updateRoleMutation.mutate({ personId: user.id, role: value as PlatformRole })}>
-      <SelectTrigger className="w-44" aria-label={`Nível hierárquico de ${user.name}`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {Object.entries(ROLE_LABELS).map(([value, label]) => (
-          <SelectItem key={value} value={value}>
-            {label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SourceManagedTitle manager={managedBy}>
+      <Select value={user.role} onValueChange={(value) => updateRoleMutation.mutate({ personId: user.id, role: value as PlatformRole })} disabled={managedBy !== null}>
+        <SelectTrigger className="w-44" aria-label={`Nível hierárquico de ${user.name}`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(ROLE_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SourceManagedTitle>
   )
 }
 
@@ -372,7 +394,25 @@ type UserFilters = Omit<UserListParams, "page" | "pageSize" | "search"> & { sear
 const DEFAULT_FILTERS: UserFilters = { search: "", role: [], lastLoginAt: {} }
 const ROLE_OPTIONS = optionsFromLabels(ROLE_LABELS)
 
-export function UsersPage() {
+/**
+ * Pessoas (Usuários e acessos). Campo que a base do cliente controla (feed da Central de Dados) aparece desabilitado com a
+ * origem — a correção é na base; o que ela não manda continua editável. A ficha separa "Pertence a" (estrutura da empresa)
+ * de "Administra / acessos" (papéis com escopo, só da INIA). Uma porta só para a hierarquia: com Colaboradores vigente na
+ * Central, o "Novo usuário" sem matrícula é só para quem está fora dela (ver `GET /admin/users/creation-policy`).
+ */
+export function UsersPage({
+  canViewAccess,
+  canAssignRoles,
+  canManageAccess = false,
+  onOpenAccess,
+}: {
+  canViewAccess: boolean
+  canAssignRoles: boolean
+  /** Custódia de credencial (access.users.manage): habilita "Vincular à pessoa da base". */
+  canManageAccess?: boolean
+  /** Leva para a aba Acessos já na pessoa (ex.: matrícula que já existe → "Habilitar acesso"). */
+  onOpenAccess?: (focus: AccessFocus) => void
+}) {
   const teamsQuery = useTeamsQuery()
   const createMutation = useCreateUserAccountMutation()
   const updateDetailsMutation = useUpdateUserDetailsMutation()
@@ -389,6 +429,17 @@ export function UsersPage() {
   const [password, setPassword] = useState("")
   const [role, setRole] = useState<PlatformRole>("OPERATOR")
   const [teamId, setTeamId] = useState<string>("")
+  const [matricula, setMatricula] = useState("")
+  const creationPolicy = useCreationPolicyQuery(tab === "form" && editingUser === null)
+  // Com Colaboradores vigente, sem matrícula só dá para cadastrar "Fora da hierarquia"; com matrícula, a base vai assumir.
+  const hierarchyLocked = editingUser === null && creationPolicy.data?.hierarchyRequiresMatricula === true && matricula.trim() === ""
+  const effectiveRole: PlatformRole = hierarchyLocked ? "ADMIN" : role
+  const roleOptions = (Object.entries(ROLE_LABELS) as [PlatformRole, string][]).filter(([value]) => !hierarchyLocked || value === "ADMIN")
+  const detailQuery = useUserDetailQuery(editingUser?.id ?? null)
+  // Campos que a base controla para a pessoa em edição (null = editável); no cadastro novo, tudo é editável.
+  const managedBy = editingUser?.managedBy ?? null
+  // Na edição, e-mail só é exigido quando a pessoa tem conta e a base não manda nele (sem conta, o e-mail nasce em "Habilitar acesso").
+  const emailEditable = !editingUser || (editingUser.accountId !== null && !managedBy?.email)
 
   function openCreateForm() {
     setEditingUser(null)
@@ -397,6 +448,7 @@ export function UsersPage() {
     setPassword("")
     setRole("OPERATOR")
     setTeamId("")
+    setMatricula("")
     createMutation.reset()
     setTab("form")
   }
@@ -426,15 +478,34 @@ export function UsersPage() {
 
   async function handleSubmit() {
     if (editingUser) {
-      await updateDetailsMutation.mutateAsync({ personId: editingUser.id, name, email, role, teamId: teamId || undefined })
+      // Só vai o que a INIA controla e mudou: campo da base fica de fora (o backend recusaria com 422), e reenviar e-mail ou
+      // nível inalterados dispararia à toa as checagens de custódia e de "própria conta".
+      const fields: UpdateUserDetailsInput = { personId: editingUser.id }
+      if (!managedBy?.name && name !== editingUser.name) fields.name = name
+      if (emailEditable && email !== (editingUser.email ?? "")) fields.email = email
+      if (!managedBy?.role && role !== editingUser.role) fields.role = role
+      if (!managedBy?.teamId && (teamId || null) !== editingUser.teamId) fields.teamId = teamId || null
+      try {
+        await updateDetailsMutation.mutateAsync(fields)
+      } catch {
+        return // o erro fica na mutação e aparece no formulário
+      }
     } else {
-      await createMutation.mutateAsync({ name, email, password, role, teamId: teamId || undefined })
+      try {
+        await createMutation.mutateAsync({ name, email, password, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined })
+      } catch {
+        return
+      }
     }
     setTab("list")
   }
 
   const mutation = editingUser ? updateDetailsMutation : createMutation
-  const canSubmit = name.trim().length > 1 && email.includes("@") && (Boolean(editingUser) || password.length >= 6)
+  // Matrícula que já existe: não cadastra de novo — a saída é liberar o acesso da pessoa que já está lá.
+  const matriculaInUse = editingUser === null && createMutation.error instanceof AdminApiError && createMutation.error.code === "PERSON_MATRICULA_IN_USE" ? createMutation.error : null
+  const existingPersonId = (matriculaInUse?.details as { personId?: string } | undefined)?.personId ?? null
+  const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId
+  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@")) && (Boolean(editingUser) || password.length >= 6)
 
   return (
     <Card>
@@ -510,51 +581,104 @@ export function UsersPage() {
           <TabsContent value="form" className="mt-4 max-w-xl space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="user-name">Nome</Label>
-              <Input id="user-name" value={name} onChange={(event) => setName(event.target.value)} />
+              <Input id="user-name" value={name} onChange={(event) => setName(event.target.value)} disabled={Boolean(managedBy?.name)} aria-describedby={managedBy?.name ? "user-name-source" : undefined} />
+              <SourceManagedNotice id="user-name-source" manager={managedBy?.name ?? null} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="user-email">E-mail</Label>
-              <Input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <Input id="user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} disabled={!emailEditable} aria-describedby={managedBy?.email ? "user-email-source" : undefined} />
+              <SourceManagedNotice id="user-email-source" manager={managedBy?.email ?? null} />
+              {editingUser && !editingUser.accountId && !managedBy?.email ? <p className="text-xs text-muted-foreground">Sem conta de login — o e-mail é informado ao habilitar o acesso, na aba Acessos.</p> : null}
             </div>
             {editingUser ? null : (
-              <div className="space-y-1.5">
-                <Label htmlFor="user-password">Senha provisória</Label>
-                <Input id="user-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-              </div>
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="user-password">Senha provisória</Label>
+                  <Input id="user-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="user-matricula">Matrícula (opcional)</Label>
+                  <Input id="user-matricula" value={matricula} onChange={(event) => setMatricula(event.target.value)} maxLength={64} aria-describedby="user-matricula-help" />
+                  <p id="user-matricula-help" className="text-xs text-muted-foreground">Exatamente como a base do cliente vai mandar: quando a carga chegar, ela atualiza esta pessoa em vez de criar outra.</p>
+                </div>
+                {creationPolicy.data?.hierarchyRequiresMatricula ? (
+                  <p className="rounded-md border border-amber-500/40 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200" data-testid="hierarchy-requires-source">
+                    Esta organização recebe Colaboradores da base ({creationPolicy.data.sources.map((source) => `${source.sourceName} · ${source.feedName}`).join("; ")}). Quem é da
+                    operação vem por ela: espere a carga e libere o acesso em <strong>Acessos › Habilitar acesso</strong>. Sem matrícula, este cadastro é só para quem está{" "}
+                    <strong>fora da hierarquia</strong> (TI, consultoria, QA). Para alguém da operação antes da carga, informe a matrícula.
+                  </p>
+                ) : null}
+              </>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>Nível hierárquico</Label>
-                <Select value={role} onValueChange={(value) => setRole(value as PlatformRole)}>
-                  <SelectTrigger className="w-full">
+                <Label htmlFor="user-role">Nível hierárquico</Label>
+                <Select value={effectiveRole} onValueChange={(value) => setRole(value as PlatformRole)} disabled={Boolean(managedBy?.role)}>
+                  <SelectTrigger id="user-role" className="w-full" aria-describedby={managedBy?.role ? "user-role-source" : undefined}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                    {roleOptions.map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <SourceManagedNotice id="user-role-source" manager={managedBy?.role ?? null} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Grupo (opcional)</Label>
-                <Select value={teamId} onValueChange={setTeamId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Sem grupo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teamsQuery.data?.map((team) => (
-                      <SelectItem key={team.id} value={team.id}>
-                        {team.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {editingUser ? null : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="user-team">Grupo (opcional)</Label>
+                  <Select value={teamId} onValueChange={setTeamId}>
+                    <SelectTrigger id="user-team" className="w-full">
+                      <SelectValue placeholder="Sem grupo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teamsQuery.data?.map((team) => (
+                        <SelectItem key={team.id} value={team.id}>
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
-            {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+            {editingUser ? (
+              <PersonBelongsTo
+                detail={detailQuery.data}
+                detailFailed={detailQuery.isError}
+                teams={teamsQuery.data ?? []}
+                teamId={teamId}
+                onTeamChange={setTeamId}
+                teamManagedBy={managedBy?.teamId ?? null}
+                identity={
+                  detailQuery.data ? (
+                    <PersonSourceIdentity
+                      detail={detailQuery.data}
+                      canLink={canManageAccess}
+                      onLinked={() => {
+                        setEditingUser(null)
+                        setTab("list")
+                      }}
+                    />
+                  ) : null
+                }
+              />
+            ) : null}
+            {matriculaInUse ? (
+              <div className="space-y-2 rounded-md border border-destructive/40 p-3 text-sm" role="alert" data-testid="matricula-in-use">
+                <p className="text-destructive">{matriculaInUse.message}</p>
+                {onOpenAccess ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => onOpenAccess({ search: matricula.trim(), personId: existingPersonId })}>
+                    Ir para Habilitar acesso
+                  </Button>
+                ) : null}
+              </div>
+            ) : mutation.isError ? (
+              <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setTab("list")}>
                 Cancelar
@@ -566,9 +690,10 @@ export function UsersPage() {
 
             {editingUser ? (
               <>
-                <p className="rounded-md border p-3 text-xs text-muted-foreground">Nível hierárquico e cargo são dados organizacionais e não dão acesso ao INIA. Papéis de acesso (Administrador, QA de feedback…) ficam na aba <strong>Acessos</strong>.</p>
+                <PersonAccessSection accountId={editingUser.accountId} canViewAccess={canViewAccess} canAssignRoles={canAssignRoles} />
+                <p className="rounded-md border p-3 text-xs text-muted-foreground">Nível hierárquico e cargo são dados organizacionais e não dão acesso ao INIA. Papéis de acesso (Administrador, QA de feedback…) ficam em <strong>Administra / acessos</strong> e na aba <strong>Acessos</strong>.</p>
                 <ShiftSection userId={editingUser.id} />
-                <EmploymentStatusSection userId={editingUser.id} />
+                <EmploymentStatusSection userId={editingUser.id} capitalManagedBy={managedBy?.operationalCapitalCode ?? null} />
               </>
             ) : null}
           </TabsContent>
