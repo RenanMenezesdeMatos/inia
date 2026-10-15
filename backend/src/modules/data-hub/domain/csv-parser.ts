@@ -27,12 +27,19 @@ export function decodeBytes(bytes: Uint8Array, encoding: (typeof CSV_ENCODINGS)[
   return text
 }
 
+/** Quantas linhas lógicas (não vazias) a autodetecção lê, e até onde ela vai no texto (um campo entre aspas sem fim não varre o arquivo inteiro). */
+const DETECTION_ROWS = 10
+const DETECTION_MAX_CHARS = 1_000_000
+
+/**
+ * Autodetecção do separador pelas primeiras linhas LÓGICAS do arquivo, com a mesma leitura de aspas do `splitCsv`: um campo
+ * entre aspas com vírgulas ou quebras de linha (ex.: transcrição) não conta separador nem vira linha nova.
+ */
 export function detectDelimiter(text: string): string {
-  const sample = text.split(/\r?\n/).filter((line) => line.trim().length > 0).slice(0, 10)
   let best = ","
   let bestScore = -1
   for (const delimiter of CSV_DELIMITERS) {
-    const counts = sample.map((line) => countOutsideQuotes(line, delimiter))
+    const counts = countDelimitersPerRow(text, delimiter)
     if (counts.length === 0) continue
     const min = Math.min(...counts)
     const max = Math.max(...counts)
@@ -46,14 +53,36 @@ export function detectDelimiter(text: string): string {
   return best
 }
 
-function countOutsideQuotes(line: string, delimiter: string): number {
+/** Separadores fora de aspas em cada uma das primeiras linhas lógicas não vazias. */
+function countDelimitersPerRow(text: string, delimiter: string): number[] {
+  const counts: number[] = []
+  const end = Math.min(text.length, DETECTION_MAX_CHARS)
   let count = 0
+  let hasContent = false
   let inQuotes = false
-  for (const char of line) {
-    if (char === '"') inQuotes = !inQuotes
-    else if (!inQuotes && char === delimiter) count += 1
+  let index = 0
+  for (; index < end && counts.length < DETECTION_ROWS; index += 1) {
+    const char = text[index]!
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[index + 1] === '"') index += 1
+        else inQuotes = false
+      }
+      continue
+    }
+    if (char === "\n" || char === "\r") {
+      if (hasContent) counts.push(count)
+      count = 0
+      hasContent = false
+      continue
+    }
+    if (char === '"') inQuotes = true
+    else if (char === delimiter) count += 1
+    if (char.trim().length > 0) hasContent = true
   }
-  return count
+  // Última linha sem quebra no fim; uma linha cortada pelo limite só conta se for a única.
+  if (hasContent && counts.length < DETECTION_ROWS && (index >= text.length || counts.length === 0)) counts.push(count)
+  return counts
 }
 
 /** Divide o texto em linhas de células, respeitando aspas (quebra de linha dentro de aspas é preservada). */

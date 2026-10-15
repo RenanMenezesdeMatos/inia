@@ -2,8 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Pause, Play, RefreshCw, Save } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, Loader2, Pause, Play, RefreshCw, Save, Trash2 } from "lucide-react"
 
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,7 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { AdminApiError } from "@/lib/admin/admin-api"
-import { useDataContractsQuery, useDataFeedQuery, useSetFeedStatusMutation, useSyncFeedMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
+import { useDataContractsQuery, useDataFeedQuery, useDeleteFeedMutation, useSetFeedStatusMutation, useSyncFeedMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchFeedSample, previewFeedMapping } from "@/services/admin/data-hub-service"
 import { REMOTE_SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, type AvailabilityPolicy, type Cadence, type DatabaseFeedConfig, type FeedMapping, type Preview, type Sample, type SourceKind } from "@/schemas/admin/data-hub.schema"
 
@@ -37,10 +39,13 @@ export function FeedDetailPage({ feedId }: { feedId: string }) {
 type LoadedFeed = NonNullable<ReturnType<typeof useDataFeedQuery>["data"]>
 
 function FeedEditor({ feed }: { feed: LoadedFeed }) {
+  const router = useRouter()
   const contractsQuery = useDataContractsQuery()
   const update = useUpdateFeedMutation()
   const status = useSetFeedStatusMutation()
   const sync = useSyncFeedMutation()
+  const remove = useDeleteFeedMutation()
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [mapping, setMapping] = useState<FeedMapping>(feed.mapping)
   const [cadence, setCadence] = useState<Cadence>(feed.cadence)
   const [availabilityPolicy, setAvailabilityPolicy] = useState<AvailabilityPolicy | null>(feed.availabilityPolicy ?? null)
@@ -129,6 +134,25 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
               <Play /> {feed.status === "DRAFT" ? "Ativar" : "Retomar"}
             </Button>
           )}
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Remover conjunto de dados">
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remover {feed.name}?</AlertDialogTitle>
+                <AlertDialogDescription>Este conjunto de dados sai da Central e deixa de ser sincronizado{feed.source ? ` (a conexão ${feed.source.name} e os outros conjuntos dela continuam)` : ""}. O histórico de cargas e a linhagem são preservados para auditoria. Os dados já aplicados ao domínio continuam existindo — a Central nunca apaga dado do domínio.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <Button variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate(feed.id, { onSuccess: () => router.push(feed.source ? `/admin/data-hub/sources/${feed.source.id}` : "/admin/data-hub?tab=feeds") })}>
+                  Remover
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

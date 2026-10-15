@@ -100,8 +100,13 @@ GO
 
 Repita o `GRANT SELECT` por tabela ou visão; nunca `db_owner`. A INIA pede conexão criptografada aceitando o
 certificado do servidor; servidor antigo que recusar → "Desligada" nas **Opções avançadas** da conexão (rede interna)
-ou certificado no SQL Server. **Ainda não validado contra um SQL Server real** — a primeira conexão da POC é a
-validação.
+ou certificado no SQL Server. **Validado contra um SQL Server real em 15/10/2026** (SQL Server 2019 Developer
+15.0.2000.5 no Windows Server 2016 da homologação na Azure): "Obrigatória (sem validar certificado)" conectou com
+tráfego cifrado, e as 7 cargas do roteiro [primeiro-feedback-exemplo](primeiro-feedback-exemplo/README.md) concluíram
+sem rejeição. Na homologação o SQL Server ficou **na mesma máquina** da INIA: em produção a política de saída recusa o
+próprio servidor (`DATA_SOURCE_DESTINATION_DENIED`, "loopback só com liberação explícita"), e foi preciso
+`INIA_OUTBOUND_ALLOWED_DESTINATIONS=127.0.0.1:1433` no `backend/.env` e reiniciar a API e o Processamento. Com o SQL
+Server em outra máquina da rede (o caso da POC) nada disso é necessário.
 
 ## 3. Infraestrutura — preparar o Windows Server da aplicação
 
@@ -342,4 +347,5 @@ Confira depois: `select count(*) from pg_stat_activity where datname = 'inia';` 
 | API e processamento em processos separados (`--role=api` / `--role=worker`, dois processamentos ao mesmo tempo) | Testado em macOS — tarefas periódicas uma vez por rodada no conjunto, desligamento limpo |
 | `configurar-iis.ps1`, `instalar-servicos.ps1` (três serviços) | **Executados num Windows Server 2016 real em 14/10/2026** (homologação na Azure, uma VM, PostgreSQL 15.19 local): IIS + URL Rewrite 2.1 + ARR 3.0 (requestRouter 7.1.05311), HTTPS com certificado do Let's Encrypt, três serviços WinSW no ar e `https://…/health` respondendo de fora. Corrigido no ensaio: o atributo do ARR é `includePortInXForwardedFor` (o script usava `includePortInXFF`, que não existe) |
 | Web farm (N APIs/interfaces, M processamentos), health check do ARR, X-Forwarded-For sem porta | Web farm com **uma** instância de cada papel executada no Windows (14/10/2026, health check `/ready` e `/healthz`); **N instâncias ainda não executadas**. Na API: dois processos reais dividindo limite de login e pausa de IA (prova automatizada), `/ready`, desligamento com prazo e IP com porta tratado — testados em macOS |
-| SQL Server real; voz atrás do IIS | **Não validados** |
+| SQL Server real | **Validado em 15/10/2026** (homologação na Azure): SQL Server 2019 Developer no Windows Server 2016, conexão cifrada pela Central de Dados e as 7 cargas do primeiro feedback concluídas (1, 2, 30, 1, 560, 56 e 288 recebidos, 0 rejeitados). SQL Server na mesma máquina exige `INIA_OUTBOUND_ALLOWED_DESTINATIONS`; em outra máquina, não |
+| Voz atrás do IIS | **Não validada** |

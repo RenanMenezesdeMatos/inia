@@ -16,6 +16,10 @@ Os passos de instalação são os da **IT-INIA-004** (versão guiada) e de [dois
 Escrito em 14/10/2026 sem executar nada na Azure: os links de download e os nomes dos instaladores foram conferidos nesse
 dia; os preços vêm da API oficial de preços da Azure.
 
+**Executado em 14 e 15/10/2026** numa **única VM** (`inia-app`, Standard_D2as_v4, Windows Server 2016) com tudo junto:
+INIA, PostgreSQL 15 local e o SQL Server de exemplo. O passo a passo com prints, para leigos, é a **IT-INIA-007**; o que
+divergiu deste roteiro está no registro de achados (seção 12).
+
 ---
 
 ## 0. Antes de tudo: custo zero, com disciplina
@@ -226,6 +230,25 @@ No `postgresql.conf`: `ssl = on`, `ssl_cert_file = 'server.crt'`, `ssl_key_file 
 
 ### 5.3 SQL Server 2022 Developer — o "banco do cliente"
 
+> **Resultado em 14/10/2026: use o 2019.** O baixador do 2022 (`aka.ms/sqlserver2022developer`) parou com *"This
+> version of the installer is no longer supported. Please download again from the download site."* — recusado pela
+> própria Microsoft — e o 2025 não roda no Windows Server 2016. O **SQL Server 2019 Developer** funcionou, em instalação
+> silenciosa (sem janelas):
+>
+> ```powershell
+> Invoke-WebRequest 'https://go.microsoft.com/fwlink/?linkid=866662' -OutFile C:\instaladores\SQL2019-Dev.exe -UseBasicParsing
+> Start-Process C:\instaladores\SQL2019-Dev.exe -ArgumentList '/ACTION=Download /MEDIAPATH=C:\instaladores\sql2019 /MEDIATYPE=CAB /QUIET' -Wait
+> Start-Process C:\instaladores\sql2019\SQLServer2019-DEV-x64-ENU.exe -ArgumentList '/q /x:C:\sql2019' -Wait
+> $senhaSa = Read-Host 'Senha do sa'
+> Start-Process C:\sql2019\setup.exe -Wait -NoNewWindow -ArgumentList ('/Q /ACTION=Install /FEATURES=SQLENGINE /INSTANCENAME=MSSQLSERVER /SQLSVCACCOUNT="NT Service\MSSQLSERVER" /SQLSYSADMINACCOUNTS="BUILTIN\Administrators" /SECURITYMODE=SQL /TCPENABLED=1 /UPDATEENABLED=False /IACCEPTSQLSERVERLICENSETERMS /SAPWD=' + $senhaSa)
+> Get-Service MSSQLSERVER
+> ```
+>
+> Esperado: `MSSQLSERVER Running Automatic`. `/SECURITYMODE=SQL` (modo misto) e `/TCPENABLED=1` (porta 1433) já
+> resolvem os itens 1, 3 e 4 abaixo; o `sqlcmd` vem junto (`C:\Program Files\Microsoft SQL Server\Client
+> SDK\ODBC\170\Tools\Binn`). Os itens 5 a 7 continuam valendo. A senha não pode ter aspas e precisa de maiúscula,
+> minúscula e número.
+
 Valida a linha "SQL Server real: **não validado**". A edição Developer é gratuita para desenvolvimento e teste, com o
 mesmo motor do Standard. A 2022 é a mais nova que roda no Windows Server 2016. O link curto da Express 2022 está
 quebrado: ele redireciona para uma página 404.
@@ -432,6 +455,11 @@ indicador deve encontrar. Nunca use dado real de cliente: a VM está na internet
 Ao rodar os Workflows (Manual, uma chamada e uma pessoa), acompanhe o custo em Administração › IA e no painel da chave
 do Gemini.
 
+**Resultado em 15/10/2026 (H08 e H09):** com o SQL Server 2019 na mesma VM da INIA, "Testar conexão" deu **Conexão OK**
+(SQL Server 15.0.2000.5, tráfego cifrado, 8 tabelas/visões legíveis) depois de liberar `127.0.0.1:1433` (achado 3) e
+as **7 cargas concluíram**: 1, 2, 30, 1, 560, 56 e 288 recebidos, **0 rejeitados** — exatamente o esperado pelo
+roteiro.
+
 ---
 
 ## 12. Registro de achados
@@ -443,8 +471,13 @@ atualizada com o que passou.
 | # | Seção / teste | O que aconteceu (mensagem exata) | Como contornei | Corrigir em |
 | --- | --- | --- | --- | --- |
 | 0 | 9 (G) | Já conhecido: a IT-INIA-004 v1.0 descreve 2 serviços e "1/4 a 4/4"; o script cria 3 serviços (com o Processamento) | — | IT-INIA-004 (Etapas G, H e seção 13) |
-| 1 | | | | |
-| 2 | | | | |
+| 1 | 9 (F) | `configurar-iis.ps1` 2/6: atributo desconhecido `includePortInXFF` | O atributo do ARR é `includePortInXForwardedFor` | Corrigido no script (14/10/2026) |
+| 2 | 5.3 | SQL Server 2022: *"This version of the installer is no longer supported. Please download again from the download site."* | SQL Server 2019 Developer, instalação silenciosa (quadro da 5.3) | Este guia (5.3) e IT-INIA-007 |
+| 3 | H08 | `Destino não permitido pela política de saída da INIA (127.0.0.1:1433): a própria máquina do servidor (loopback) só com liberação explícita` · `DATA_SOURCE_DESTINATION_DENIED` (SQL Server na mesma VM) | `INIA_OUTBOUND_ALLOWED_DESTINATIONS=127.0.0.1:1433` no `backend\.env` + `Restart-Service INIA-API, INIA-Processamento` | Comportamento correto; documentado aqui, no roteiro do primeiro feedback e na IT-INIA-007 |
+| 4 | 4 | RDP (3389) bloqueado na rede corporativa; IP do 4G/5G muda a toda hora | **Azure Bastion Developer** (grátis, pelo navegador, porta 443) | IT-INIA-007 (seções I e J) |
+| 5 | 4 | Digitação pelo Bastion: letras dobradas às vezes chegam triplicadas (`MSSSQLSERVER`); a primeira tecla de uma sessão nova se perde | Comandos curtos, variáveis, a função `D` (`S*` → `SS`) e conferir antes de rodar | IT-INIA-007 (V5 e X) |
+| 6 | H09 | Central de Dados: "Adicionar outro conjunto desta conexão" não faz nada quando já se está no assistente "Adicionar conjunto de dados" da mesma conexão (mesmo endereço) | F5 na página | Corrigido no produto (15/10/2026) |
+| 7 | 13 | A VM desligou às 23:00 (desligamento automático) e no dia seguinte "nada conecta" | Portal → inia-app → Iniciar; a INIA volta sozinha em ~3 min (502 no meio-tempo) | IT-INIA-007 (seção X) |
 
 ---
 

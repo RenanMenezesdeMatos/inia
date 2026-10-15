@@ -45,6 +45,8 @@ export function FileImportFlow() {
   const [feedChoice, setFeedChoice] = useState<string>(presetFeedId ?? "")
   const [contractKey, setContractKey] = useState("")
   const [newFeedName, setNewFeedName] = useState("")
+  // O nome sugerido acompanha o tipo de dado até a pessoa digitar o próprio.
+  const [newFeedNameTyped, setNewFeedNameTyped] = useState(false)
   const [sample, setSample] = useState<Sample | null>(null)
   const [mapping, setMapping] = useState<FeedMapping>({ fields: [] })
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -67,6 +69,31 @@ export function FileImportFlow() {
     setError(err instanceof AdminApiError ? err.message : err instanceof Error ? err.message : fallback)
   }
 
+  function chooseContract(key: string) {
+    setContractKey(key)
+    setMapping({ fields: [] })
+    setSample(null)
+    setPreview(null)
+    const chosenContract = contracts.find((entry) => entry.key === key)
+    if (chosenContract && !newFeedNameTyped) setNewFeedName(suggestedFeedName(chosenContract, upload))
+  }
+
+  /** "Importar outro arquivo": recomeça do zero — nada do arquivo anterior (nome do feed, tipo, separador, mapeamento) passa adiante. */
+  function restart() {
+    setStep(0)
+    setUpload(null)
+    setConnector(emptyConnectorDraft())
+    setFeedChoice(presetFeedId ?? "")
+    setContractKey("")
+    setNewFeedName("")
+    setNewFeedNameTyped(false)
+    setSample(null)
+    setMapping({ fields: [] })
+    setPreview(null)
+    setError(null)
+    setRunId(null)
+  }
+
   async function doUpload(selected: File) {
     setBusy(true)
     setError(null)
@@ -74,6 +101,7 @@ export function FileImportFlow() {
       const uploaded = await uploadFile({ file: selected, sourceId: targetSource?.id, encoding: connector.encoding, delimiter: connector.delimiter })
       setUpload(uploaded)
       setConnector((current) => ({ ...current, format: uploaded.format, sheet: uploaded.sheets[0] ?? "" }))
+      if (contract && !newFeedNameTyped) setNewFeedName(suggestedFeedName(contract, uploaded))
       setSample(null)
       setPreview(null)
     } catch (err) {
@@ -262,7 +290,7 @@ export function FileImportFlow() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="import-contract">Tipo de dado (contrato)</Label>
-                  <Select value={contractKey} onValueChange={(value) => { setContractKey(value); setMapping({ fields: [] }); setSample(null); setPreview(null) }}>
+                  <Select value={contractKey} onValueChange={chooseContract}>
                     <SelectTrigger id="import-contract" className="w-full">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
@@ -278,7 +306,15 @@ export function FileImportFlow() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="import-feed-name">Nome do novo feed</Label>
-                  <Input id="import-feed-name" value={newFeedName} onChange={(event) => setNewFeedName(event.target.value)} placeholder={contract ? `${contract.label} (CSV)` : "Ex.: Colaboradores (CSV)"} />
+                  <Input
+                    id="import-feed-name"
+                    value={newFeedName}
+                    onChange={(event) => {
+                      setNewFeedName(event.target.value)
+                      setNewFeedNameTyped(event.target.value.trim().length > 0)
+                    }}
+                    placeholder={contract ? suggestedFeedName(contract, upload) : "Ex.: Colaboradores (CSV)"}
+                  />
                 </div>
               </div>
             ) : null}
@@ -353,7 +389,7 @@ export function FileImportFlow() {
                   <Button asChild>
                     <Link href={`/admin/data-hub/runs/${run.id}`}>Ver detalhe da carga</Link>
                   </Button>
-                  <Button variant="outline" onClick={() => { setStep(0); setUpload(null); setSample(null); setPreview(null); setRunId(null) }}>
+                  <Button variant="outline" onClick={restart}>
                     Importar outro arquivo
                   </Button>
                   <Button variant="ghost" asChild>
@@ -386,6 +422,10 @@ export function FileImportFlow() {
       </CardContent>
     </Card>
   )
+}
+
+function suggestedFeedName(contract: DataContract, upload: UploadResult | null): string {
+  return `${contract.label} (${upload?.format === "XLSX" ? "Excel" : "CSV"})`
 }
 
 function slug(value: string): string {

@@ -9,7 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { useDataSourcesQuery, useSetSourceStatusMutation, useSyncFeedMutation, useTestConnectionMutation } from "@/queries/admin/use-data-hub-queries"
-import { SOURCE_KIND_LABELS, type SourceSummary } from "@/schemas/admin/data-hub.schema"
+import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type SourceSummary } from "@/schemas/admin/data-hub.schema"
 
 import { formatCount, formatFuture, formatRelative } from "./data-hub-format"
 import { ConnectionHealthBadge, FreshnessBadge, SourceStatusBadge } from "./status-badges"
@@ -18,7 +18,7 @@ export function SourceActionsMenu({ source }: { source: SourceSummary }) {
   const test = useTestConnectionMutation()
   const status = useSetSourceStatusMutation()
   const sync = useSyncFeedMutation()
-  const remote = source.kind === "API_PULL" || source.kind === "SFTP"
+  const remote = REMOTE_SOURCE_KINDS.includes(source.kind)
   const syncable = source.feeds.filter((feed) => feed.status === "ACTIVE" || feed.status === "DEGRADED")
 
   async function syncAll() {
@@ -132,7 +132,7 @@ export function SourcesTab() {
               <TableCell>
                 <SourceStatusBadge status={source.status} />
               </TableCell>
-              <TableCell>{source.kind === "API_PULL" || source.kind === "SFTP" ? <ConnectionHealthBadge health={source.connectionHealth} error={source.connectionError} checkedAt={source.connectionCheckedAt} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+              <TableCell>{REMOTE_SOURCE_KINDS.includes(source.kind) ? <ConnectionHealthBadge health={source.connectionHealth} error={source.connectionError} checkedAt={source.connectionCheckedAt} /> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
               <TableCell>
                 <FreshnessBadge freshness={source.feedCount ? source.freshness : null} lastSuccessAt={source.lastSuccessAt} />
               </TableCell>

@@ -188,10 +188,23 @@ export async function setSourceStatus(ctx: DataHubContext, organizationId: strin
 
 export async function deleteSource(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string): Promise<void> {
   await requireSource(ctx.db, organizationId, sourceId)
-  await ctx.db.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId])
-  await ctx.db.query(`update data_sources set deleted_at = now(), status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
-  await ctx.db.query(`update data_push_tokens set revoked_at = now() where source_id = $1 and revoked_at is null`, [sourceId])
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId })
+  // Uma operação só: fonte removida nunca fica com feed agendado, token de push ou credencial ainda válidos.
+  const client = await ctx.db.connect()
+  try {
+    await client.query("begin")
+    await client.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId])
+    await client.query(`update data_sources set deleted_at = now(), status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
+    await client.query(`update data_push_tokens set revoked_at = now() where source_id = $1 and revoked_at is null`, [sourceId])
+    // A credencial continua cifrada para auditoria, mas revogada: nenhuma leitura do SecretStore a devolve mais.
+    const revoked = await client.query<{ purpose: SecretPurpose }>(`update data_secrets set revoked_at = now() where source_id = $1 and revoked_at is null returning purpose`, [sourceId])
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { secretsRevoked: revoked.rows.map((row) => row.purpose) } })
+    await client.query("commit")
+  } catch (error) {
+    await client.query("rollback")
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

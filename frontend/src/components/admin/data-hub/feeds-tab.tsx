@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { useDataSourcesQuery, useSetFeedStatusMutation, useSyncFeedMutation } from "@/queries/admin/use-data-hub-queries"
-import { cadenceLabel, type FeedSummary, type SourceSummary } from "@/schemas/admin/data-hub.schema"
+import { REMOTE_SOURCE_KINDS, cadenceLabel, type FeedSummary, type SourceSummary } from "@/schemas/admin/data-hub.schema"
 
 import { formatCount, formatRelative } from "./data-hub-format"
 import { FeedStatusBadge, FreshnessBadge } from "./status-badges"
@@ -16,7 +16,7 @@ import { FeedStatusBadge, FreshnessBadge } from "./status-badges"
 export function FeedRowActions({ feed, source }: { feed: FeedSummary; source: Pick<SourceSummary, "kind" | "status"> }) {
   const status = useSetFeedStatusMutation()
   const sync = useSyncFeedMutation()
-  const remote = source.kind === "API_PULL" || source.kind === "SFTP"
+  const remote = REMOTE_SOURCE_KINDS.includes(source.kind)
   return (
     <div className="flex items-center justify-end gap-1">
       {remote && feed.status !== "DRAFT" ? (

@@ -70,10 +70,12 @@ export function SourceWizard() {
 
 function AddFeedWizard({ sourceId, presetContractKey }: { sourceId: string; presetContractKey: string | null }) {
   const query = useDataSourceQuery(sourceId)
+  // "Adicionar outro conjunto desta conexão" aponta para este mesmo endereço: trocar a rodada remonta o assistente do zero.
+  const [round, setRound] = useState(0)
   if (query.isLoading) return <Skeleton className="h-96 rounded-xl" aria-hidden />
   if (query.isError || !query.data) return <ListErrorState message="Não foi possível carregar a fonte para adicionar o feed." onRetry={() => query.refetch()} />
   // Banco externo: a mesma conexão alimenta outro conjunto de dados — começa na escolha da tabela/visão.
-  if (query.data.kind === "DATABASE") return <DatabaseWizard key={query.data.id} existing={query.data} />
+  if (query.data.kind === "DATABASE") return <DatabaseWizard key={`${query.data.id}:${round}`} existing={query.data} onAddAnother={() => setRound((current) => current + 1)} />
   return <Wizard key={query.data.id} existing={query.data} presetContractKey={presetContractKey} />
 }
 

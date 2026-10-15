@@ -81,7 +81,7 @@ function message(error: unknown, fallback: string): string {
   return error instanceof AdminApiError ? error.message : error instanceof Error ? error.message : fallback
 }
 
-export function DatabaseWizard({ existing = null }: { existing?: Source | null }) {
+export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: Source | null; onAddAnother?: () => void }) {
   const contractsQuery = useDataContractsQuery()
   const createSource = useCreateSourceMutation()
   const updateSource = useUpdateSourceMutation()
@@ -272,9 +272,16 @@ export function DatabaseWizard({ existing = null }: { existing?: Source | null }
           <Button variant="outline" asChild>
             <Link href={`/admin/data-hub/feeds/${result.feedId}`}>Abrir o conjunto de dados</Link>
           </Button>
-          <Button variant="outline" asChild>
-            <Link href={`/admin/data-hub/sources/new?sourceId=${source.id}`}>Adicionar outro conjunto desta conexão</Link>
-          </Button>
+          {onAddAnother ? (
+            // Já no endereço "adicionar conjunto" desta conexão: navegar para ele não remontaria nada — quem nos montou recomeça.
+            <Button variant="outline" onClick={onAddAnother}>
+              Adicionar outro conjunto desta conexão
+            </Button>
+          ) : (
+            <Button variant="outline" asChild>
+              <Link href={`/admin/data-hub/sources/new?sourceId=${source.id}`}>Adicionar outro conjunto desta conexão</Link>
+            </Button>
+          )}
           <Button variant="ghost" asChild>
             <Link href={`/admin/data-hub/sources/${source.id}`}>Abrir a conexão</Link>
           </Button>

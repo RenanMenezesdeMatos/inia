@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useDataHubOverviewQuery } from "@/queries/admin/use-data-hub-queries"
-import { SOURCE_KIND_LABELS, type CalendarQuality, type DataMapEntry, type EmploymentStatusFreshness, type Overview } from "@/schemas/admin/data-hub.schema"
+import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type CalendarQuality, type DataMapEntry, type EmploymentStatusFreshness, type Overview } from "@/schemas/admin/data-hub.schema"
 import type { WorkScheduleHorizon } from "@/schemas/admin/operational-calendar.schema"
 import { formatCivilDate } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
@@ -313,7 +313,7 @@ export function OverviewTab({ onOpenTab }: { onOpenTab: (tab: string) => void })
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <SourceStatusBadge status={source.status} />
-                  {source.kind === "API_PULL" || source.kind === "SFTP" ? <ConnectionHealthBadge health={source.connectionHealth} error={source.connectionError} checkedAt={source.connectionCheckedAt} /> : null}
+                  {REMOTE_SOURCE_KINDS.includes(source.kind) ? <ConnectionHealthBadge health={source.connectionHealth} error={source.connectionError} checkedAt={source.connectionCheckedAt} /> : null}
                   <FreshnessBadge freshness={source.feedCount ? source.freshness : null} lastSuccessAt={source.lastSuccessAt} />
                 </div>
               </Link>

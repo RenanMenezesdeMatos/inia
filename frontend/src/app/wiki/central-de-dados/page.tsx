@@ -138,6 +138,7 @@ export default function DataHubPage() {
           <li><strong className="font-medium text-foreground">Fonte autoritativa</strong>: um único feed autoritativo ativo por contrato de dado mestre por organização — duas fontes nunca brigam pelo mesmo cadastro.</li>
           <li><strong className="font-medium text-foreground">Exigir carga íntegra</strong>: qualquer rejeição impede a carga inteira (opt-in por feed).</li>
           <li><strong className="font-medium text-foreground">Namespace de origem</strong>: identidade da origem em medições e fechamentos (coluna <code className="font-mono text-xs">source</code>); padrão = id público da fonte.</li>
+          <li><strong className="font-medium text-foreground">Remover</strong> (lixeira no detalhe do feed): o conjunto de dados sai da Central e para de sincronizar; a conexão e os outros feeds dela continuam, o histórico de cargas e a linhagem ficam para auditoria e os dados já aplicados continuam existindo.</li>
         </ul>
       </WikiSection>
 
@@ -419,7 +420,7 @@ export default function DataHubPage() {
       <WikiSection id="seguranca" title="Segurança" eyebrow="Backend valida; segredo nunca sai">
         <ul className="list-inside list-disc space-y-1">
           <li>Recurso administrativo: rotas exigem sessão de administrador; toda leitura/escrita é escopada pela organização da sessão — id de outra organização responde &quot;não encontrado&quot;.</li>
-          <li>Segredos (token, API key, senha, client secret, chave privada) ficam cifrados em repouso com AES-256-GCM e chave <em>fora do banco</em> (variável de ambiente, obrigatória em produção). Nunca voltam por API (a tela mostra só &quot;configurada em…&quot;), nunca vão para log nem para trace; a rotação revoga o anterior.</li>
+          <li>Segredos (token, API key, senha, client secret, chave privada) ficam cifrados em repouso com AES-256-GCM e chave <em>fora do banco</em> (variável de ambiente, obrigatória em produção). Nunca voltam por API (a tela mostra só &quot;configurada em…&quot;), nunca vão para log nem para trace; a rotação revoga o anterior e remover a fonte revoga todas as credenciais dela.</li>
           <li>Token de push: só o hash é guardado; o valor aparece uma única vez ao criar/rotacionar; revogável; rate limit por token.</li>
           <li>SFTP: verificação de host key nunca é desligada silenciosamente — com fingerprint configurada a conexão só é aceita se bater.</li>
           <li>PII: logs estruturados carregam ids, contrato, status e contagens — nunca payload completo; a quarentena guarda chave/campo/mensagem, não o registro inteiro.</li>

@@ -94,9 +94,11 @@ funcional precisa ser escolhida, porque `situacao` não é sim/não.
   Subgrupo e clique em **Sincronizar agora**. O script mudou o `atualizado_em` das 30 linhas, então a leitura
   incremental relê todas.
 - **Banco de exemplo na mesma máquina da INIA, em produção:** a política de saída recusa o próprio servidor
-  ("loopback só com liberação explícita"). Libere só esse destino no `backend/.env`, por exemplo
-  `INIA_OUTBOUND_ALLOWED_DESTINATIONS=127.0.0.1:55432`, e reinicie a API. Na homologação em duas VMs isso não acontece:
-  o SQL Server fica na outra máquina, na rede privada.
+  ("loopback só com liberação explícita", `DATA_SOURCE_DESTINATION_DENIED`). Libere só esse destino no `backend/.env`
+  — `INIA_OUTBOUND_ALLOWED_DESTINATIONS=127.0.0.1:1433` para o SQL Server na mesma máquina (foi o caso da homologação
+  na Azure, numa VM só, em 15/10/2026) ou `127.0.0.1:55432` para o PostgreSQL de exemplo do Docker — e reinicie a API e
+  o Processamento (a API testa a conexão; o Processamento faz as cargas). Com o banco em outra máquina, na rede
+  privada, isso não acontece.
 
 ## 5. O que conferir
 
