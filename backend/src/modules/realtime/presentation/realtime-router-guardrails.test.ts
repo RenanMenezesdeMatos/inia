@@ -76,8 +76,10 @@ describe("limites de atuação e assuntos proibidos em toda conversa com a INIA"
   it("com Orquestrador (chat e voz): o prompt dele já traz limites e restrições — nada é anexado de novo", async () => {
     const { app, send, sessions, orchestrated } = setup({ withOrchestrator: true })
     await send({})
-    expect(orchestrated[0]!.systemPrompt).toBe(orchestrator.systemPrompt)
-    expect(orchestrated[0]!.extraContext).not.toContain("LIMITES")
+    // A instrução da conversa vem depois do prompt dele (nunca como contexto extra, que chega aos especialistas como transcrição).
+    expect(orchestrated[0]!.systemPrompt.startsWith(`${orchestrator.systemPrompt}\n\n${INIA_CHAT_PERSONA}`)).toBe(true)
+    expect(orchestrated[0]!.systemPrompt).not.toContain("LIMITES")
+    expect(orchestrated[0]!.extraContext).toBe("")
     await request(app).post("/api/v1/realtime/sessions").send({})
     expect(sessions[0]!.systemInstruction).not.toContain("LIMITES")
   })

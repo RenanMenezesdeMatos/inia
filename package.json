@@ -19,6 +19,8 @@
     "setup": "npm --prefix backend run setup --",
     "update": "npm --prefix backend run update",
     "admin:create": "npm --prefix backend run admin:create --",
+    "config:exportar": "npm --prefix backend run config:exportar --",
+    "config:importar": "npm --prefix backend run config:importar --",
     "dev": "node scripts/install/run.mjs dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "start": "node scripts/install/run.mjs start",

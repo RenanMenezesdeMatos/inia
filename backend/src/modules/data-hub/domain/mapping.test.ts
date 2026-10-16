@@ -106,6 +106,23 @@ describe("mapping — mapRecord contra o contrato", () => {
     expect(bad.errors[0]?.code).toBe("DATA_CONTRACT_VIOLATION")
   })
 
+  it("INTERACTIONS@2: submotivo opcional — sugerido pela coluna \"Submotivo\", vazio vira nulo, acima de 200 caracteres é tipo inválido", () => {
+    const columns = ["Protocolo", "Matrícula", "Motivo", "Submotivo", "Início", "Fim"]
+    const suggestion = Object.fromEntries(suggestMapping(INTERACTIONS_CONTRACT, columns).fields.map((field) => [field.target, field.source]))
+    expect(suggestion.reason).toBe("Motivo")
+    expect(suggestion.subReason).toBe("Submotivo")
+    const mapping = { fields: (["externalInteractionId", "externalEmployeeId", "reason", "subReason", "startedAt", "endedAt"] as const).map((target) => ({ target, source: target, transforms: [] })) }
+    const base = { externalInteractionId: "C1", externalEmployeeId: "OP-1", reason: "Fatura", startedAt: "2026-09-15T14:00:00-03:00", endedAt: "2026-09-15T14:10:00-03:00" }
+    const full = mapRecord(INTERACTIONS_CONTRACT, mapping, { ...base, subReason: " Segunda via " }, { timeZone: TZ })
+    expect(full.errors).toEqual([])
+    expect(full.record.subReason).toBe("Segunda via")
+    const empty = mapRecord(INTERACTIONS_CONTRACT, mapping, { ...base, subReason: "" }, { timeZone: TZ })
+    expect(empty.errors).toEqual([])
+    expect(empty.record.subReason ?? null).toBeNull()
+    const long = mapRecord(INTERACTIONS_CONTRACT, mapping, { ...base, subReason: "x".repeat(201) }, { timeZone: TZ })
+    expect(long.errors.map((error) => [error.code, error.field])).toEqual([["DATA_TYPE_INVALID", "subReason"]])
+  })
+
   it("validateMapping aponta obrigatórios sem origem e alvos inexistentes", () => {
     const problems = validateMapping(EMPLOYEES_CONTRACT, { fields: [{ target: "nope", source: "x", transforms: [] }, { target: "name", source: null, transforms: [] }] })
     expect(problems.join(" ")).toMatch(/"nope" não existe/)

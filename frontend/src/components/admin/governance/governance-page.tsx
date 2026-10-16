@@ -2,13 +2,24 @@
 
 import { useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { BookA, Pencil, Plus, ShieldBan } from "lucide-react"
+import { BookA, Pencil, Plus, ShieldBan, Trash2 } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,8 +33,12 @@ import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import {
   useCreateGlossaryTermMutation,
   useCreateProhibitedTopicMutation,
+  useDeleteGlossaryTermMutation,
+  useDeleteProhibitedTopicMutation,
   useGlossaryTermsPageQuery,
   useProhibitedTopicsPageQuery,
+  useSetGlossaryTermActiveMutation,
+  useSetProhibitedTopicActiveMutation,
   useUpdateGlossaryTermMutation,
   useUpdateProhibitedTopicMutation,
 } from "@/queries/admin/use-governance-queries"
@@ -42,9 +57,70 @@ function ActiveBadge({ active }: { active: boolean }) {
   return <Badge variant={active ? "secondary" : "outline"}>{active ? "Ativo" : "Inativo"}</Badge>
 }
 
+type ActiveMutation = ReturnType<typeof useSetProhibitedTopicActiveMutation>
+type DeleteMutation = ReturnType<typeof useDeleteProhibitedTopicMutation>
+
+/** Inativo = guardado, mas fora do que a IA recebe; ativa de novo sem redigitar. */
+function ActiveSwitch({ id, active, label, mutation }: { id: string; active: boolean; label: string; mutation: ActiveMutation }) {
+  return (
+    <Switch
+      checked={active}
+      disabled={mutation.isPending}
+      aria-label={`${active ? "Desativar" : "Ativar"} ${label}`}
+      onCheckedChange={(checked) => mutation.mutate({ id, active: checked })}
+    />
+  )
+}
+
+/** Exclusão definitiva, com confirmação; o texto apagado fica no registro de auditoria. */
+function DeleteButton({ id, title, description, ariaLabel, mutation }: { id: string; title: string; description: string; ariaLabel: string; mutation: DeleteMutation }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) mutation.reset()
+        setOpen(next)
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button size="icon" variant="ghost" aria-label={ariaLabel} disabled={mutation.isPending}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <Button
+            variant="destructive"
+            disabled={mutation.isPending}
+            onClick={async () => {
+              try {
+                await mutation.mutateAsync(id)
+                setOpen(false)
+              } catch {
+                // o erro aparece no próprio diálogo (mutation.isError)
+              }
+            }}
+          >
+            {mutation.isPending ? "Excluindo..." : "Excluir"}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 function ProhibitedTopicsPanel() {
   const createMutation = useCreateProhibitedTopicMutation()
   const updateMutation = useUpdateProhibitedTopicMutation()
+  const activeMutation = useSetProhibitedTopicActiveMutation()
+  const deleteMutation = useDeleteProhibitedTopicMutation()
   const list = useAdminListState({ storageKey: "governance-prohibited-topics", defaultFilters: DEFAULT_FILTERS })
   const topicsQuery = useProhibitedTopicsPageQuery(list.params)
 
@@ -80,6 +156,22 @@ function ProhibitedTopicsPanel() {
 
   const isPending = editing ? updateMutation.isPending : createMutation.isPending
   const error = (editing ? updateMutation.error : createMutation.error) as Error | null
+
+  const topicActions = (topic: ProhibitedTopic) => (
+    <>
+      <ActiveSwitch id={topic.id} active={topic.active} label="assunto" mutation={activeMutation} />
+      <Button size="icon" variant="ghost" aria-label="Editar assunto" onClick={() => openEditForm(topic)}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <DeleteButton
+        id={topic.id}
+        title={`Excluir "${topic.name}"?`}
+        description="A IA deixa de receber esta restrição em todos os Agents e conversas, e o assunto some da lista. Para suspender sem perder o texto, desative-o."
+        ariaLabel="Excluir assunto"
+        mutation={deleteMutation}
+      />
+    </>
+  )
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
@@ -148,10 +240,8 @@ function ProhibitedTopicsPanel() {
                       <TableCell>
                         <ActiveBadge active={topic.active} />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="icon" variant="ghost" aria-label="Editar assunto" onClick={() => openEditForm(topic)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">{topicActions(topic)}</div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -169,11 +259,7 @@ function ProhibitedTopicsPanel() {
                   kicker={<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Assunto proibido</span>}
                   title={topic.name}
                   onOpen={() => openEditForm(topic)}
-                  actions={
-                    <Button size="icon" variant="ghost" aria-label="Editar assunto" onClick={() => openEditForm(topic)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  }
+                  actions={topicActions(topic)}
                   description={topic.requiredBehavior}
                   descriptionFallback="Sem comportamento esperado descrito."
                   footerStart={<span>Resposta obrigatória da IA</span>}
@@ -211,6 +297,8 @@ function ProhibitedTopicsPanel() {
 function GlossaryPanel() {
   const createMutation = useCreateGlossaryTermMutation()
   const updateMutation = useUpdateGlossaryTermMutation()
+  const activeMutation = useSetGlossaryTermActiveMutation()
+  const deleteMutation = useDeleteGlossaryTermMutation()
   const list = useAdminListState({ storageKey: "governance-glossary", defaultFilters: DEFAULT_FILTERS })
   const glossaryQuery = useGlossaryTermsPageQuery(list.params)
 
@@ -246,6 +334,22 @@ function GlossaryPanel() {
 
   const isPending = editing ? updateMutation.isPending : createMutation.isPending
   const error = (editing ? updateMutation.error : createMutation.error) as Error | null
+
+  const termActions = (item: GlossaryTerm) => (
+    <>
+      <ActiveSwitch id={item.id} active={item.active} label="termo" mutation={activeMutation} />
+      <Button size="icon" variant="ghost" aria-label="Editar termo" onClick={() => openEditForm(item)}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <DeleteButton
+        id={item.id}
+        title={`Excluir "${item.term}"?`}
+        description="A IA deixa de usar este termo e ele some da lista. Para suspender sem perder a definição, desative-o."
+        ariaLabel="Excluir termo"
+        mutation={deleteMutation}
+      />
+    </>
+  )
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
@@ -318,10 +422,8 @@ function GlossaryPanel() {
                       <TableCell>
                         <ActiveBadge active={item.active} />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="icon" variant="ghost" aria-label="Editar termo" onClick={() => openEditForm(item)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">{termActions(item)}</div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -339,11 +441,7 @@ function GlossaryPanel() {
                   kicker={<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Termo do glossário</span>}
                   title={item.term}
                   onOpen={() => openEditForm(item)}
-                  actions={
-                    <Button size="icon" variant="ghost" aria-label="Editar termo" onClick={() => openEditForm(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  }
+                  actions={termActions(item)}
                   description={item.definition}
                   descriptionFallback="Sem definição cadastrada."
                   footerStart={<span className="line-clamp-1">{item.feedbackApplication}</span>}

@@ -15,6 +15,8 @@ const measurementSchema = z.object({
 
 const interactionSchema = z.object({
   externalId: z.string().trim().min(1).max(200), operatorId: z.uuid(), reason: z.string().trim().min(2).max(500),
+  // Submotivo opcional (o recorte específico dentro do motivo); ausente/vazio mantém o já gravado — mesma regra da Central de Dados.
+  subReason: z.string().trim().max(500).nullish().transform((value) => (value ? value : null)),
   channel: z.string().trim().min(1).max(40).default("VOICE"), startedAt: z.iso.datetime(), endedAt: z.iso.datetime(),
   transcript: z.object({ content: z.string().trim().min(10).max(200_000), language: z.string().max(20).default("pt-BR"), confidence: z.number().min(0).max(1).optional() }),
   flags: z.record(z.string().max(100), z.union([z.boolean(), z.number()])).refine((flags) => Object.keys(flags).length <= 50, "No máximo 50 flags por interação.").default({}),
@@ -69,7 +71,7 @@ export function createIngestionRouter(db: Database) {
     let id: string
     try {
       await client.query("begin")
-      const interaction = await client.query<{ id: string }>(`insert into interactions(organization_id,operator_id,reason,channel,started_at,ended_at,external_id) values($1,$2,$3,$4,$5,$6,$7) on conflict(organization_id,external_id) do update set reason=excluded.reason returning id`, [organizationId, input.operatorId, input.reason, input.channel, input.startedAt, input.endedAt, input.externalId])
+      const interaction = await client.query<{ id: string }>(`insert into interactions(organization_id,operator_id,reason,sub_reason,channel,started_at,ended_at,external_id) values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(organization_id,external_id) do update set reason=excluded.reason,sub_reason=coalesce(excluded.sub_reason,interactions.sub_reason) returning id`, [organizationId, input.operatorId, input.reason, input.subReason, input.channel, input.startedAt, input.endedAt, input.externalId])
       id = interaction.rows[0]!.id
       await client.query(`insert into transcripts(organization_id,interaction_id,version,content,language,confidence) values($1,$2,1,$3,$4,$5) on conflict(interaction_id,version) do update set content=excluded.content,language=excluded.language,confidence=excluded.confidence`, [organizationId, id, input.transcript.content, input.transcript.language, input.transcript.confidence ?? null])
 

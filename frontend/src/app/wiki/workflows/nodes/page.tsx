@@ -186,9 +186,11 @@ export default function NodesPage() {
         </p>
         <ol className="list-decimal space-y-1 pl-5">
           <li>
-            <strong>Onde investigar.</strong> O sistema agrupa os atendimentos do colaborador no período da medição pelo motivo. Precisam existir pelo
-            menos 3 atendimentos transcritos no motivo (a estratégia pode exigir mais). Fora da meta, num indicador de tempo em que menor é melhor, escolhe o motivo em que o tempo
-            registrado mais passa da média geral, ponderado pelo volume. Nos outros casos, escolhe o motivo com mais atendimentos. Nenhum motivo é
+            <strong>Onde investigar.</strong> O sistema agrupa os atendimentos do colaborador no período da medição pelo assunto: o submotivo da
+            interação (sem submotivo, o motivo). Com a dimensão Motivo ligada na estratégia, o motivo genérico entra quando nenhum submotivo tem
+            atendimentos suficientes (ou sozinho, se for a única dimensão ligada). Precisam existir pelo
+            menos 3 atendimentos transcritos no recorte (a estratégia pode exigir mais). Fora da meta, num indicador de tempo em que menor é melhor, escolhe o recorte em que o tempo
+            registrado mais passa da média geral, ponderado pelo volume. Nos outros casos, escolhe o recorte com mais atendimentos. Nenhum assunto ou motivo é
             chamado de simples ou complexo, e a duração é identificada como aproximação: não é o cálculo oficial do indicador.
           </li>
           <li>

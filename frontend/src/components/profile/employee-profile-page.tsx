@@ -16,8 +16,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { useAnalyticsUrlState, type ProfileTab } from "@/hooks/use-analytics-url-state"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
+import { formatInteractionReason } from "@/lib/format/interaction-reason"
 import type { AnalyticsContext } from "@/schemas/analytics/analytics.schema"
 import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from "@/schemas/auth/auth.schema"
+import { professionalLineOf } from "@/schemas/profile/my-profile.schema"
 import type { SupervisorOperatorDetail } from "@/services/supervisor"
 
 import { backLinkFor } from "./employee-profile-exit"
@@ -146,10 +148,7 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
             <div>
               <CardDescription>Perfil do colaborador</CardDescription>
               <CardTitle className="text-xl">{detail.profile.name}</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {detail.profile.jobTitle}
-                {detail.profile.teamName ? ` · ${detail.profile.teamName}` : ""}
-              </p>
+              <p className="text-sm text-muted-foreground">{professionalLineOf(detail.profile.jobTitle, detail.profile.teamName)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {activePlans.length > 0 ? <Badge variant="outline">{activePlans.length} plano(s) anterior(es) ativo(s)</Badge> : null}
@@ -237,7 +236,7 @@ function OverviewTab({ detail }: { detail: SupervisorOperatorDetail }) {
               <CardHeader>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant={monitoring.severity === "HIGH" || monitoring.severity === "CRITICAL" ? "destructive" : "secondary"}>{monitoring.triggerTitle ?? "Amostra diária"}</Badge>
-                  <Badge variant="outline">{monitoring.interactionReason}</Badge>
+                  <Badge variant="outline">{formatInteractionReason(monitoring.interactionReason, monitoring.interactionSubReason)}</Badge>
                   <Badge variant="outline">Nota {monitoring.score}</Badge>
                 </div>
                 <CardTitle>{monitoring.triggerReason ?? "Monitoria processada pela IA"}</CardTitle>

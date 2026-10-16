@@ -7,6 +7,12 @@ type Block = (ctx: CallContext) => Turn[]
 export type ScenarioSpec = {
   key: ScenarioKey
   domains: readonly Domain[]
+  /**
+   * MOTIVO genérico do cenário, como uma fonte de contact center cadastra (ex.: "Fatura"); cada frase de `reasons` é um
+   * SUBMOTIVO dele (o recorte específico, ex.: "Segunda via de fatura"). Dado de demonstração — a aplicação nunca deriva
+   * motivo de submotivo.
+   */
+  motive: string
   reasons: readonly string[]
   /** Resumo em 1ª pessoa do operador pra "confirmação de entendimento". */
   summary: (ctx: CallContext) => string
@@ -33,6 +39,7 @@ const choice = <T>(ctx: CallContext, options: readonly T[]): T => options[ctx.va
 
 const duvidaFatura: ScenarioSpec = {
   key: "DUVIDA_FATURA",
+  motive: "Fatura",
   domains: ["FATURAMENTO", "ATENDIMENTO"],
   reasons: ["Dúvida sobre fatura", "Fatura veio com valor maior", "Dúvida sobre cobrança proporcional", "Esclarecimento de valores na fatura"],
   summary: (ctx) => `a fatura de ${ctx.monthName} veio com valor ${ctx.extraAmount} em vez dos ${ctx.amount} de costume e ${who(ctx)} quer entender essa diferença`,
@@ -109,6 +116,7 @@ const duvidaFatura: ScenarioSpec = {
 
 const contestacaoCobranca: ScenarioSpec = {
   key: "CONTESTACAO_COBRANCA",
+  motive: "Cobrança",
   domains: ["FATURAMENTO", "ATENDIMENTO"],
   reasons: ["Contestação de cobrança", "Contestação de cobrança duplicada", "Cobrança de serviço não reconhecido", "Contestação de cobrança após cancelamento"],
   summary: (ctx) => `${who(ctx)} não reconhece a cobrança de ${ctx.extraAmount} na fatura de ${ctx.monthName} e quer contestar`,
@@ -182,6 +190,7 @@ const contestacaoCobranca: ScenarioSpec = {
 
 const segundaVia: ScenarioSpec = {
   key: "SEGUNDA_VIA",
+  motive: "Fatura",
   domains: ["FATURAMENTO", "ATENDIMENTO"],
   reasons: ["Segunda via de fatura", "Segunda via de conta com falha no aplicativo", "Fatura não recebida por e-mail"],
   summary: (ctx) => `${who(ctx)} precisa da segunda via da fatura de ${ctx.monthName} porque não recebeu`,
@@ -248,6 +257,7 @@ const segundaVia: ScenarioSpec = {
 
 const alteracaoVencimento: ScenarioSpec = {
   key: "ALTERACAO_VENCIMENTO",
+  motive: "Fatura",
   domains: ["FATURAMENTO", "ATENDIMENTO"],
   reasons: ["Alteração de data de vencimento", "Mudança do dia de vencimento da fatura"],
   summary: (ctx) => `${who(ctx)} quer mudar o vencimento do dia ${ctx.dueDay} pro dia ${ctx.random.pick([5, 10, 15, 20])}`,
@@ -274,6 +284,7 @@ const alteracaoVencimento: ScenarioSpec = {
 
 const negociacaoDebito: ScenarioSpec = {
   key: "NEGOCIACAO_DEBITO",
+  motive: "Cobrança",
   domains: ["FATURAMENTO", "RETENCAO"],
   reasons: ["Negociação de débito", "Negociação de contas em atraso", "Parcelamento de faturas vencidas"],
   summary: (ctx) => `${who(ctx)} tem ${ctx.random.pick(["duas", "três"])} faturas em atraso e quer negociar pra regularizar`,
@@ -303,6 +314,7 @@ const negociacaoDebito: ScenarioSpec = {
 
 const suporteLentidao: ScenarioSpec = {
   key: "SUPORTE_LENTIDAO",
+  motive: "Suporte técnico",
   domains: ["SUPORTE", "ATENDIMENTO"],
   reasons: ["Internet fixa com lentidão", "Lentidão no Wi-Fi", "Banda larga lenta em horário de pico"],
   summary: (ctx) => `a internet está lenta, principalmente ${choice(ctx, ["à noite", "no fim de semana", "no horário comercial"])}, e ${who(ctx)} quer que a gente verifique`,
@@ -332,6 +344,7 @@ const suporteLentidao: ScenarioSpec = {
 
 const suporteQuedaConexao: ScenarioSpec = {
   key: "SUPORTE_QUEDA_CONEXAO",
+  motive: "Suporte técnico",
   domains: ["SUPORTE"],
   reasons: ["Queda de conexão recorrente", "Banda larga sem conexão", "Internet caindo várias vezes ao dia", "Reparo de banda larga"],
   summary: (ctx) => `a internet cai e volta ${choice(ctx, ["desde ontem", "desde a chuva de sábado", "faz uma semana"])} e ${who(ctx)} precisa de reparo`,
@@ -361,6 +374,7 @@ const suporteQuedaConexao: ScenarioSpec = {
 
 const suporteSemSinal: ScenarioSpec = {
   key: "SUPORTE_SEM_SINAL",
+  motive: "Suporte técnico",
   domains: ["SUPORTE", "ATENDIMENTO"],
   reasons: ["Internet móvel sem funcionamento", "Linha sem sinal", "Chip sem registro na rede"],
   summary: (ctx) => `o celular está sem sinal desde ${choice(ctx, ["hoje de manhã", "ontem", "a troca de chip"])} e ${who(ctx)} quer restabelecer`,
@@ -388,6 +402,7 @@ const suporteSemSinal: ScenarioSpec = {
 
 const suporteApp: ScenarioSpec = {
   key: "SUPORTE_APP",
+  motive: "Suporte técnico",
   domains: ["SUPORTE", "ATENDIMENTO"],
   reasons: ["Aplicativo não abre", "Dificuldade de acesso ao aplicativo", "Erro ao acessar a área do cliente"],
   summary: (ctx) => `${who(ctx)} não consegue acessar o aplicativo da ${BRAND} pra ver a fatura`,
@@ -413,6 +428,7 @@ const suporteApp: ScenarioSpec = {
 
 const cancelamento: ScenarioSpec = {
   key: "CANCELAMENTO",
+  motive: "Cancelamento",
   domains: ["RETENCAO"],
   reasons: ["Cancelamento de internet por mudança de endereço", "Pedido de cancelamento de linha", "Cancelamento por falhas recorrentes", "Cancelamento por dificuldade financeira"],
   summary: (ctx) => `${who(ctx)} quer cancelar o ${ctx.plan} por ${choice(ctx, ["mudança de endereço", "falhas recorrentes", "questão financeira", "preço da concorrência"])}`,
@@ -442,6 +458,7 @@ const cancelamento: ScenarioSpec = {
 
 const retencaoOferta: ScenarioSpec = {
   key: "RETENCAO_OFERTA",
+  motive: "Cancelamento",
   domains: ["RETENCAO"],
   reasons: ["Retenção após pedido de cancelamento", "Cliente ameaça cancelar por preço", "Proposta de retenção"],
   summary: (ctx) => `${who(ctx)} está pensando em cancelar porque ${choice(ctx, ["a concorrência ofereceu mais barato", "o valor subiu", "não usa tudo que paga"])} e quer saber se tem condição melhor`,
@@ -470,6 +487,7 @@ const retencaoOferta: ScenarioSpec = {
 
 const mudancaPlano: ScenarioSpec = {
   key: "MUDANCA_PLANO",
+  motive: "Plano",
   domains: ["ATENDIMENTO", "RETENCAO"],
   reasons: ["Alteração de plano", "Upgrade de velocidade", "Troca de plano por dificuldade financeira", "Redução de plano"],
   summary: (ctx) => `${who(ctx)} quer ${choice(ctx, ["aumentar a velocidade", "reduzir o plano", "trocar o plano"])} e saber quanto fica`,
@@ -496,6 +514,7 @@ const mudancaPlano: ScenarioSpec = {
 
 const informacaoGeral: ScenarioSpec = {
   key: "INFORMACAO_GERAL",
+  motive: "Informação",
   domains: ["ATENDIMENTO"],
   reasons: ["Informação sobre plano", "Dúvida sobre franquia de dados", "Informação sobre cobertura", "Dúvida sobre roaming"],
   summary: (ctx) => `${who(ctx)} quer saber ${choice(ctx, ["quanto de internet ainda tem no mês", "se o plano funciona em viagem", "como funciona o roaming internacional"])}`,
@@ -519,6 +538,7 @@ const informacaoGeral: ScenarioSpec = {
 
 const reclamacao: ScenarioSpec = {
   key: "RECLAMACAO",
+  motive: "Reclamação",
   domains: ["ATENDIMENTO", "RETENCAO", "FATURAMENTO"],
   reasons: ["Reclamação de atendimento anterior", "Reclamação sobre cobrança após cancelamento", "Reclamação de visita técnica não realizada", "Cobrança após pedido de cancelamento e ameaça de reclamação"],
   summary: (ctx) => `${who(ctx)} quer registrar reclamação porque ${choice(ctx, ["o técnico não apareceu", "foi cobrado depois de cancelar", "foi mal atendido na última ligação"])}`,
@@ -546,6 +566,7 @@ const reclamacao: ScenarioSpec = {
 
 const alteracaoCadastral: ScenarioSpec = {
   key: "ALTERACAO_CADASTRAL",
+  motive: "Cadastro",
   domains: ["ATENDIMENTO"],
   reasons: ["Alteração de dados cadastrais", "Alteração de e-mail e telefone", "Alteração de gestor empresarial", "Troca de titularidade"],
   summary: (ctx) => `${who(ctx)} quer atualizar ${choice(ctx, ["o e-mail e o telefone de contato", "o gestor do contrato", "o endereço de cobrança"])}`,

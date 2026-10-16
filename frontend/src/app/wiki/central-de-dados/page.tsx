@@ -151,13 +151,21 @@ export default function DataHubPage() {
         </p>
         <p>
           Mudar um contrato cria uma <strong>versão nova</strong>, e feed nenhum muda de versão em silêncio: feed novo nasce na versão atual; feed criado antes
-          continua lendo pela versão dele (o detalhe do feed avisa) e passa para a atual quando o mapeamento é salvo de novo — a troca fica na auditoria. Exemplo:{" "}
-          <code className="font-mono text-xs">EMPLOYEE_ABSENCES@2</code> acrescentou o campo opcional <strong>Vigente?</strong> às Ausências.
+          continua lendo pela versão dele (o detalhe do feed avisa) e passa para a atual quando o mapeamento é salvo de novo — a troca fica na auditoria. Exemplos:{" "}
+          <code className="font-mono text-xs">EMPLOYEE_ABSENCES@2</code> acrescentou o campo opcional <strong>Vigente?</strong> às Ausências;{" "}
+          <code className="font-mono text-xs">INTERACTIONS@2</code> acrescentou o <strong>Submotivo</strong> às Interações.
         </p>
         <ExampleCard title="Identidade: identificador externo estável, nunca nome">
           Colaborador = matrícula (<code className="font-mono text-xs">externalEmployeeId</code>); Grupo/Subgrupo = código externo (
           <code className="font-mono text-xs">externalCode</code>, único na organização); interação = <code className="font-mono text-xs">externalInteractionId</code>;
           indicador = <code className="font-mono text-xs">indicatorCode</code> do catálogo.
+        </ExampleCard>
+        <ExampleCard title="Interações: Motivo × Submotivo">
+          <strong>Motivo</strong> (obrigatório) é a categoria genérica do contato — ex.: Fatura. <strong>Submotivo</strong> (opcional, até 200
+          caracteres) é o recorte específico dentro dele — ex.: Segunda via, Dúvidas sobre faturamento. Os dois entram como a fonte cadastrou: a INIA
+          nunca deriva um do outro nem classifica com IA. Submotivo vazio mantém o que já foi recebido para a interação; texto longo demais vai para a
+          quarentena. Na sugestão de mapeamento, uma coluna &quot;Submotivo&quot; ou &quot;Subassunto&quot; já vira o campo. Nas comparações, o
+          assunto é o Submotivo (sem submotivo, o Motivo); o Motivo continua disponível como um recorte a mais.
         </ExampleCard>
       </WikiSection>
 
@@ -181,7 +189,9 @@ export default function DataHubPage() {
                   <TableCell className="whitespace-nowrap">
                     <span className="font-medium">{contract.label}</span>
                     <br />
-                    <span className="font-mono text-xs text-muted-foreground">{contract.key}@1</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {contract.key}@{contract.version ?? 1}
+                    </span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{contract.category}</TableCell>
                   <TableCell>{contract.target}</TableCell>
@@ -458,6 +468,8 @@ export default function DataHubPage() {
           <li>Snapshot com desativação por ausência não é aplicado (opt-in futuro com regra de domínio segura).</li>
           <li>Situação funcional não tem um estado &quot;desconhecido&quot; próprio: sem retorno confirmado a INIA presume ATIVO e marca a base (presumido) e a confiança (fonte atrasada) — nunca apresenta a presunção como certeza.</li>
           <li>Sem MDM: conflito entre duas fontes master do mesmo cadastro é bloqueado, não mesclado.</li>
+          <li>Submotivo de uma interação não é apagado por carga: vazio mantém o recebido (corrigir é enviar outro submotivo).</li>
+          <li>O catálogo de assuntos canônicos (aliases, inclusive o alias de um submotivo dentro de um motivo) ainda não tem tela nem API: sem ele, o assunto é o texto do submotivo como a fonte mandou.</li>
           <li>Sem Kafka/Spark/Airflow/dbt, sem CDC de bancos externos, sem conectores específicos (Salesforce, SAP, Genesys, Google Drive), sem IA para mapeamento, sem rollback temporal de carga.</li>
           <li>Cancelamento só para cargas ainda na fila; sem WebSocket (a tela consulta o status).</li>
           <li>Rate limit do push é por processo (token bucket em memória); atrás de um gateway, o dele prevalece.</li>

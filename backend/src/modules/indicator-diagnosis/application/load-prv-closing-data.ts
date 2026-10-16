@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { canonicalSubjectSql, subjectKeySql } from "../../interactions/domain/interaction-subject.js"
 import { BEHAVIOR_TITLES, type CanonicalBehavior } from "../../reliable-feedback/domain/canonical-behavior.js"
 import { eligibleObservationSql } from "../domain/observation-readiness.js"
 import type { ObservationDisplayContext, StoredObservation } from "../domain/observation-compatibility.js"
@@ -133,7 +133,8 @@ export async function loadPrvClosing(db: Queryable, input: { organizationId: str
   }
 }
 
-export const segmentKeySql = (alias: string) => `coalesce(${canonicalSubjectSql(alias)}, nullif(btrim(${alias}.reason), ''))`
+/** Assunto preferencial da `SUBJECT_RESOLUTION_V2` (submotivo; sem submotivo, o motivo) — o fechamento segmenta só neste nível. */
+export const segmentKeySql = (alias: string) => subjectKeySql(alias)
 
 export type SegmentRow = { key: string | null; canonical: boolean; interactions: number; withTranscript: number; totalDurationSeconds: number | null }
 

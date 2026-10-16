@@ -9,7 +9,7 @@ import { PeriodSelector } from "@/components/analytics/period-selector"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
 import { useTeamMembersQuery, useTeamOverviewQuery } from "@/queries/analytics/use-analytics-queries"
-import { GROUPING_LABELS, type AnalyticsContext } from "@/schemas/analytics/analytics.schema"
+import { GROUPING_LABELS, type AnalyticsContext, type MemberSituation } from "@/schemas/analytics/analytics.schema"
 import type { TeamMembersParams } from "@/services/analytics/analytics-service"
 
 import { StructureUnitCard } from "./structure-unit-card"
@@ -17,7 +17,12 @@ import { EMPTY_TEAM_FILTERS, hasActiveTeamFilters, TeamFilters, type TeamFilterS
 import { TeamMemberTable } from "./team-member-table"
 import { TeamSummary } from "./team-summary"
 
-export type TeamViewState = { subject: SubjectRef | null; period: string | null }
+export type TeamViewState = { subject: SubjectRef | null; period: string | null; situation?: MemberSituation | null; attention?: string | null }
+
+/** Filtros vindos da URL (link de um cartão da INIA: "pessoas sem dado", "fora em TMA"). */
+function filtersFromUrl(state: TeamViewState): TeamFilterState {
+  return { ...EMPTY_TEAM_FILTERS, situation: state.situation ?? null, attentionIndicatorCode: state.attention ?? null }
+}
 
 type Sort = NonNullable<TeamMembersParams["sort"]>
 
@@ -29,10 +34,18 @@ type Sort = NonNullable<TeamMembersParams["sort"]>
 export function TeamView({ context, state, onStateChange, employeeHref }: { context: AnalyticsContext; state: TeamViewState; onStateChange: (patch: Partial<TeamViewState>) => void; employeeHref: (personId: string) => string }) {
   const period = state.period ?? context.currentPeriod
   const overview = useTeamOverviewQuery(state.subject, period, context.defaultSubject !== null)
-  const [filters, setFilters] = useState<TeamFilterState>(EMPTY_TEAM_FILTERS)
+  const [filters, setFilters] = useState<TeamFilterState>(() => filtersFromUrl(state))
   const [sort, setSort] = useState<Sort>("situation")
   const [order, setOrder] = useState<"asc" | "desc">("asc")
   const [page, setPage] = useState(1)
+  // Um link novo (outra situação/indicador na URL) reaplica os filtros; mexer nos filtros na tela não toca na URL.
+  const urlFiltersKey = `${state.situation ?? ""}|${state.attention ?? ""}`
+  const [appliedUrlFilters, setAppliedUrlFilters] = useState(urlFiltersKey)
+  if (urlFiltersKey !== appliedUrlFilters) {
+    setAppliedUrlFilters(urlFiltersKey)
+    setFilters(filtersFromUrl(state))
+    setPage(1)
+  }
   const [pageSize, setPageSize] = useState(10)
   const debouncedSearch = useDebouncedValue(filters.search.trim(), 300)
 
@@ -68,7 +81,8 @@ export function TeamView({ context, state, onStateChange, employeeHref }: { cont
   function navigate(subject: SubjectRef | null) {
     setFilters(EMPTY_TEAM_FILTERS)
     setPage(1)
-    onStateChange({ subject })
+    // Os filtros que vieram por link ficam para trás ao descer/subir de estrutura.
+    onStateChange({ subject, ...(state.situation || state.attention ? { situation: null, attention: null } : {}) })
   }
 
   const peopleLabel = context.capabilities.peopleTabLabel ?? "Equipe"

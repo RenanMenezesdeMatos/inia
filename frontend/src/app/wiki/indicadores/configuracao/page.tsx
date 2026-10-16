@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ExampleCard, SeeAlso, StepList, WarningCallout, WikiArticle, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
 import type { WikiTocEntry } from "@/components/wiki/wiki-toc"
 
@@ -109,24 +109,26 @@ export default function ConfiguracaoIndicadoresPage() {
           nos Workflows (&quot;Cálculo no período: …&quot;) é derivado de estratégia + unidade, não digitado por indicador.
         </p>
         <WikiTable caption="Estratégias que a engine conhece e o texto funcional derivado">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Estratégia</TableHead>
-              <TableHead>Ajuda contextual</TableHead>
-              <TableHead>Componentes da medição</TableHead>
-              <TableHead>Texto funcional (por unidade)</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {STRATEGIES.map((strategy) => (
-              <TableRow key={strategy.label}>
-                <TableCell className="font-medium">{strategy.label}</TableCell>
-                <TableCell>{strategy.help}</TableCell>
-                <TableCell>{strategy.components}</TableCell>
-                <TableCell>{strategy.text}</TableCell>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Estratégia</TableHead>
+                <TableHead>Ajuda contextual</TableHead>
+                <TableHead>Componentes da medição</TableHead>
+                <TableHead>Texto funcional (por unidade)</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
+            </TableHeader>
+            <TableBody>
+              {STRATEGIES.map((strategy) => (
+                <TableRow key={strategy.label}>
+                  <TableCell className="font-medium">{strategy.label}</TableCell>
+                  <TableCell>{strategy.help}</TableCell>
+                  <TableCell>{strategy.components}</TableCell>
+                  <TableCell>{strategy.text}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </WikiTable>
         <p className="text-sm text-muted-foreground">Validações que o backend aplica: Taxa só em Percentual; amostra/cobertura mínimas só com medição operacional; todo indicador precisa de ao menos uma capacidade.</p>
       </WikiSection>
@@ -148,40 +150,42 @@ export default function ConfiguracaoIndicadoresPage() {
 
       <WikiSection id="onde-aparece" title="Onde o indicador passa a existir" eyebrow="Descoberta dinâmica pelo catálogo">
         <WikiTable caption="O que cada área lê da definição">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Área</TableHead>
-              <TableHead>Lê do catálogo</TableHead>
-              <TableHead>Efeito</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow>
-              <TableCell className="font-medium">Condition / Ranking / Quartil operacional</TableCell>
-              <TableCell>estratégia, direção, medição operacional, fechamento oficial, amostra/cobertura padrão</TableCell>
-              <TableCell>lista só indicadores ativos e compatíveis com o uso; oferece janelas de dias/semana só com medição operacional; agregações válidas pela estratégia; pré-preenche mínimos</TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell className="font-medium">Publicar (e dry-run)</TableCell>
-              <TableCell>ativo, capacidades, estratégia</TableCell>
-              <TableCell>rejeita indicador desativado, janela operacional sem medição operacional, fonte oficial sem fechamento oficial e agregação incompatível</TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell className="font-medium">QA Lab</TableCell>
-              <TableCell>estratégia e unidade</TableCell>
-              <TableCell>trace conforme a estratégia: numerador/denominador, valores/soma, último snapshot</TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell className="font-medium">Indicadores (perfil)</TableCell>
-              <TableCell>nome, unidade, direção, capacidades</TableCell>
-              <TableCell>formatação pela unidade; acompanhamento operacional só com medição operacional habilitada</TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell className="font-medium">Agentes e alertas</TableCell>
-              <TableCell>unidade, direção, meta</TableCell>
-              <TableCell>texto de contexto formatado pela unidade (&quot;Faltam 2,5% para atingir a meta&quot;)</TableCell>
-            </TableRow>
-          </TableBody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Área</TableHead>
+                <TableHead>Lê do catálogo</TableHead>
+                <TableHead>Efeito</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell className="font-medium">Condition / Ranking / Quartil operacional</TableCell>
+                <TableCell>estratégia, direção, medição operacional, fechamento oficial, amostra/cobertura padrão</TableCell>
+                <TableCell>lista só indicadores ativos e compatíveis com o uso; oferece janelas de dias/semana só com medição operacional; agregações válidas pela estratégia; pré-preenche mínimos</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Publicar (e dry-run)</TableCell>
+                <TableCell>ativo, capacidades, estratégia</TableCell>
+                <TableCell>rejeita indicador desativado, janela operacional sem medição operacional, fonte oficial sem fechamento oficial e agregação incompatível</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">QA Lab</TableCell>
+                <TableCell>estratégia e unidade</TableCell>
+                <TableCell>trace conforme a estratégia: numerador/denominador, valores/soma, último snapshot</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Indicadores (perfil)</TableCell>
+                <TableCell>nome, unidade, direção, capacidades</TableCell>
+                <TableCell>formatação pela unidade; acompanhamento operacional só com medição operacional habilitada</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Agentes e alertas</TableCell>
+                <TableCell>unidade, direção, meta</TableCell>
+                <TableCell>texto de contexto formatado pela unidade (&quot;Faltam 2,5% para atingir a meta&quot;)</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </WikiTable>
       </WikiSection>
 

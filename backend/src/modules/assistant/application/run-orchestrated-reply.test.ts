@@ -28,6 +28,64 @@ function orchestrator(overrides: Partial<ResolvedOrchestrator> = {}): ResolvedOr
   }
 }
 
+describe("runOrchestratedReply — ferramentas diretas do backend (liderança)", () => {
+  it("executa a ferramenta no backend, passa o texto factual à síntese e devolve o cartão à parte", async () => {
+    const declaration = { name: "leadership_indicator_analysis", description: "Análise de um indicador", parameters: { type: "object" as const, properties: { indicador: { type: "string" } }, required: ["indicador"] } }
+    const execute = vi.fn().mockResolvedValue({ text: "Fora da referência: 9 de 23 (39,1%).", card: { type: "INDICATOR_ANALYSIS", id: "card-1" } })
+    generateWithTools
+      .mockReset()
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "leadership_indicator_analysis", args: { indicador: "TMA" } }] })
+      .mockResolvedValueOnce({ kind: "text", text: "9 de 23 pessoas estão fora da referência em TMA." })
+    runSpecialistTool.mockReset()
+
+    const reply = await runOrchestratedReply(fakeDb, orchestrator(), [{ role: "user", text: "qual % do time está ruim em TMA?" }], "", "leader-1", {}, {}, { directTools: { declarations: [declaration], handles: (name) => name === declaration.name, execute } })
+
+    // A ferramenta foi oferecida no roteamento e executada pelo backend — nenhum especialista acionado.
+    expect(generateWithTools.mock.calls[0]![2]).toEqual(expect.arrayContaining([expect.objectContaining({ name: "leadership_indicator_analysis" })]))
+    expect(execute).toHaveBeenCalledWith("leadership_indicator_analysis", { indicador: "TMA" })
+    expect(runSpecialistTool).not.toHaveBeenCalled()
+    // A síntese recebe o texto factual como resposta da função.
+    expect(JSON.stringify(generateWithTools.mock.calls[1]![0])).toContain("9 de 23 (39,1%)")
+    expect(reply.text).toBe("9 de 23 pessoas estão fora da referência em TMA.")
+    expect(reply.directResults).toEqual([{ toolName: "leadership_indicator_analysis", args: { indicador: "TMA" }, card: { type: "INDICATOR_ANALYSIS", id: "card-1" } }])
+    expect(reply.agentId).toBeNull()
+  })
+
+  it("rodadas: a IA lê o resultado, consulta de novo e responde com tudo (sem síntese a mais)", async () => {
+    const declaration = { name: "leadership_indicator_query", description: "Consulta", parameters: { type: "object" as const, properties: {} } }
+    const execute = vi.fn().mockResolvedValueOnce({ text: "Piores: Ana, Bia.", card: { id: "c1" } }).mockResolvedValueOnce({ text: "Motivo: Fatura +30 s.", card: { id: "c2" } })
+    generateWithTools
+      .mockReset()
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "leadership_indicator_query", args: { agrupar_por: "PESSOA" } }] })
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "leadership_indicator_query", args: { visao: "DIAGNOSTICO" } }] })
+      .mockResolvedValueOnce({ kind: "text", text: "Os piores são Ana e Bia; o motivo Fatura pesa mais." })
+    const reply = await runOrchestratedReply(fakeDb, orchestrator(), [{ role: "user", text: "onde está o problema em TMA?" }], "", "leader-1", {}, {}, { directTools: { declarations: [declaration], handles: () => true, execute } })
+    expect(generateWithTools).toHaveBeenCalledTimes(3)
+    expect(JSON.stringify(generateWithTools.mock.calls[2]![0])).toContain("Motivo: Fatura +30 s.")
+    expect(reply.text).toBe("Os piores são Ana e Bia; o motivo Fatura pesa mais.")
+    expect(reply.directResults?.map((result) => result.card)).toEqual([{ id: "c1" }, { id: "c2" }])
+    expect(reply.calls).toHaveLength(2)
+  })
+
+  it("rodadas: no limite, a síntese sem ferramentas fecha a resposta", async () => {
+    const declaration = { name: "leadership_indicator_query", description: "Consulta", parameters: { type: "object" as const, properties: {} } }
+    const execute = vi.fn().mockResolvedValue({ text: "dados", card: null })
+    const toolCall = { kind: "functionCalls", calls: [{ name: "leadership_indicator_query", args: {} }] }
+    generateWithTools.mockReset().mockResolvedValueOnce(toolCall).mockResolvedValueOnce(toolCall).mockResolvedValueOnce(toolCall).mockResolvedValueOnce({ kind: "text", text: "Síntese final." })
+    const reply = await runOrchestratedReply(fakeDb, orchestrator(), [{ role: "user", text: "x" }], "", "leader-1", {}, {}, { directTools: { declarations: [declaration], handles: () => true, execute } })
+    expect(execute).toHaveBeenCalledTimes(3)
+    expect(generateWithTools.mock.calls[3]![2]).toEqual([])
+    expect(reply.text).toBe("Síntese final.")
+  })
+
+  it("sem ferramentas diretas, nada muda (o operador continua com os especialistas de sempre)", async () => {
+    generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "Olá!" })
+    const reply = await runOrchestratedReply(fakeDb, orchestrator(), [{ role: "user", text: "oi" }], "", "operator-1")
+    expect(reply.directResults).toBeUndefined()
+    expect(generateWithTools.mock.calls[0]![2]).toEqual([])
+  })
+})
+
 describe("runOrchestratedReply", () => {
   it("returns plain text with no structuredResult when the orchestrator has no outputInstructions", async () => {
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "Olá! Como posso ajudar?" })

@@ -131,7 +131,7 @@ export const POINT_GROUP_MODE_LABELS: Record<PointGroupMode, string> = {
 
 export const ARGUMENT_SCRIPT_STATUS_LABELS: Record<ArgumentScriptStatus, string> = {
   ACTIVE: "Ativo",
-  ARCHIVED: "Encerrado",
+  ARCHIVED: "Inativo",
 }
 
 export const LEGACY_CONVERSION_LABEL = "Convertido do cadastro antigo — revise os campos"

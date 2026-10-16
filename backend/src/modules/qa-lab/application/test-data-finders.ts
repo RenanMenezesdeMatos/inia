@@ -62,6 +62,7 @@ export async function findInteractions(db: Database, organizationId: string, inp
     id: string
     external_id: string
     reason: string
+    sub_reason: string | null
     channel: string
     started_at: string
     ended_at: string
@@ -73,7 +74,7 @@ export async function findInteractions(db: Database, organizationId: string, inp
     value_numeric: string | null
     has_transcript: boolean
   }>(
-    `select i.id, i.external_id, i.reason, i.channel, i.started_at, i.ended_at, i.operator_id, p.name operator_name, t.name team_name,
+    `select i.id, i.external_id, i.reason, i.sub_reason, i.channel, i.started_at, i.ended_at, i.operator_id, p.name operator_name, t.name team_name,
             cf.flag_name, f.value_boolean, f.value_numeric,
             exists(select 1 from transcripts tr where tr.interaction_id = i.id) has_transcript
      from interaction_flags f
@@ -90,6 +91,7 @@ export async function findInteractions(db: Database, organizationId: string, inp
     id: row.id,
     externalId: row.external_id,
     reason: row.reason,
+    subReason: row.sub_reason,
     channel: row.channel,
     startedAt: row.started_at,
     endedAt: row.ended_at,

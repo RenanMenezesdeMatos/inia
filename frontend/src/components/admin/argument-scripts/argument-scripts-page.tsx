@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarClock, Eye, Layers, Pencil, PhoneCall, Plus, Users } from "lucide-react"
+import { CalendarClock, Eye, Layers, Pencil, PhoneCall, Plus, Trash2, Users } from "lucide-react"
 
 import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
@@ -9,6 +9,7 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
@@ -24,12 +25,13 @@ import { ARGUMENT_SCRIPT_STATUS_LABELS, LEGACY_CONVERSION_LABEL, READ_ONLY_LABEL
 import type { ArgumentScriptListParams } from "@/services/admin/argument-script-service"
 
 import { ArgumentScriptCreateForm, ArgumentScriptDetailPanel } from "./argument-script-editor"
+import { ArgumentScriptLifecycleDialog, type ArgumentScriptLifecycleAction } from "./argument-script-lifecycle"
 import { scopeLabel, validityLabel } from "./argument-script-format"
 
 /**
  * Argumentários (substitui as antigas "Regras de chamada"): o que se espera do operador numa SITUAÇÃO da chamada — condição,
  * exceções, o que deve/pode fazer, o que precisa ser dito, o que evitar —, por área responsável e escopo. Rascunho → publicar
- * (com início de vigência, nunca retroativo) → encerrar/reativar; versões publicadas não mudam. Publicar é administrar
+ * (com início de vigência, nunca retroativo) → desativar/reativar; versões publicadas não mudam. Publicar é administrar
  * conteúdo, nunca aprovar feedback.
  */
 
@@ -53,11 +55,32 @@ function StatusBadge({ status }: { status: ArgumentScriptStatus }) {
   return <Badge variant={status === "ACTIVE" ? "secondary" : "outline"}>{ARGUMENT_SCRIPT_STATUS_LABELS[status]}</Badge>
 }
 
-function OpenButton({ item, onOpen }: { item: ArgumentScript; onOpen: (item: ArgumentScript) => void }) {
+/**
+ * Ações da linha/card: interruptor Ativo/Inativo (só para o que já foi publicado — o rascunho que nunca valeu se exclui), abrir e
+ * excluir. O interruptor não muda nada sozinho: abre a mesma confirmação do editor (desativar vale a partir de agora).
+ */
+function RowActions({ item, onOpen }: { item: ArgumentScript; onOpen: (item: ArgumentScript) => void }) {
+  const [action, setAction] = useState<ArgumentScriptLifecycleAction | null>(null)
+  const canToggle = item.canEdit && (item.currentVersion !== null || item.status === "ARCHIVED")
   return (
-    <Button size="icon" variant="ghost" aria-label={`${item.canEdit ? "Editar" : "Ver"} ${item.name}`} onClick={() => onOpen(item)}>
-      {item.canEdit ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-    </Button>
+    <>
+      {canToggle ? (
+        <Switch
+          checked={item.status === "ACTIVE"}
+          aria-label={`${item.status === "ACTIVE" ? "Desativar" : "Reativar"} ${item.name}`}
+          onCheckedChange={(checked) => setAction(checked ? "reactivate" : "archive")}
+        />
+      ) : null}
+      <Button size="icon" variant="ghost" aria-label={`${item.canEdit ? "Editar" : "Ver"} ${item.name}`} onClick={() => onOpen(item)}>
+        {item.canEdit ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </Button>
+      {item.canEdit ? (
+        <Button size="icon" variant="ghost" aria-label={`Excluir ${item.name}`} onClick={() => setAction("delete")}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ) : null}
+      {action ? <ArgumentScriptLifecycleDialog target={{ id: item.id, name: item.name, hasDraft: item.draftVersion !== null }} action={action} onClose={() => setAction(null)} /> : null}
+    </>
   )
 }
 
@@ -93,8 +116,8 @@ function ArgumentScriptsTable({ items, onOpen }: { items: ArgumentScript[]; onOp
                 <StatusBadge status={item.status} />
               </TableCell>
               <TableCell>
-                <div className="flex justify-end">
-                  <OpenButton item={item} onOpen={onOpen} />
+                <div className="flex items-center justify-end gap-2">
+                  <RowActions item={item} onOpen={onOpen} />
                 </div>
               </TableCell>
             </TableRow>
@@ -119,7 +142,7 @@ function ArgumentScriptCard({ item, onOpen }: { item: ArgumentScript; onOpen: (i
       }
       title={item.name}
       onOpen={() => onOpen(item)}
-      actions={<OpenButton item={item} onOpen={onOpen} />}
+      actions={<RowActions item={item} onOpen={onOpen} />}
       description={`Vale para ${scopeLabel(item).toLocaleLowerCase("pt-BR")}. ${currentVersionLabel(item)}.`}
       tags={
         <>
@@ -146,7 +169,7 @@ const DEFAULT_FILTERS: ArgumentScriptFilters = { search: "" }
 
 const STATUS_OPTIONS = [
   { value: "ACTIVE" as const, label: "Ativos" },
-  { value: "ARCHIVED" as const, label: "Encerrados" },
+  { value: "ARCHIVED" as const, label: "Inativos" },
 ]
 
 const CONVERSION_OPTIONS = [

@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { indicatorAnalysisCard } from "@/components/leadership/leadership-fixtures"
+
 import { ConversationClosedError, fetchConversationMessages, fetchTextReply } from "./gemini-text-client"
 
 function sseResponse(body: string): Response {
@@ -39,6 +41,15 @@ describe("fetchTextReply — materiais recomendados pelo Orquestrador chegam por
     vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "Olá!" })}\n\nevent: persisted\ndata: ${JSON.stringify({ interactionId: "int-9" })}\n\nevent: done\ndata: {}\n\n`))
     const reply = await fetchTextReply(MESSAGE("oi"), () => {})
     expect(reply).toEqual({ text: "Olá!", supportMaterials: [], interactionId: "int-9", conversationId: CONVERSATION_ID, persisted: true })
+  })
+})
+
+describe("fetchTextReply — cartões de dados da liderança", () => {
+  it("lê o evento analytics (números do backend) e ignora cartão de formato desconhecido", async () => {
+    const card = indicatorAnalysisCard()
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "9 de 23 fora." })}\n\nevent: persisted\ndata: ${JSON.stringify({ interactionId: "int-2" })}\n\nevent: analytics\ndata: ${JSON.stringify({ interactionId: "int-2", cards: [card, { type: "OUTRO" }] })}\n\nevent: done\ndata: {}\n\n`))
+    const reply = await fetchTextReply(MESSAGE("qual % fora em TMA?"), () => {})
+    expect(reply.analytics).toEqual([card])
   })
 })
 

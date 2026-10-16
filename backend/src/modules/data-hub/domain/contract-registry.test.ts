@@ -37,6 +37,10 @@ describe("registro de contratos", () => {
     expect(findDataContract("EMPLOYEE_ABSENCES", 2)?.fields.map((field) => field.key)).toContain("active")
     expect(findDataContract("EMPLOYEE_ABSENCES", 1)?.fields.map((field) => field.key)).toEqual(["externalEmployeeId", "type", "startDate", "endDate", "sourceUpdatedAt"])
     expect(findDataContract("EMPLOYEE_ABSENCES", 3)).toBeUndefined()
+    // INTERACTIONS@2 acrescentou o submotivo (opcional); @1 continua exatamente como era para feeds antigos.
+    expect(findDataContract("INTERACTIONS")?.version).toBe(2)
+    expect(findDataContract("INTERACTIONS", 2)?.fields.find((field) => field.key === "subReason")).toMatchObject({ label: "Submotivo", type: "STRING", required: false, maxLength: 200 })
+    expect(findDataContract("INTERACTIONS", 1)?.fields.map((field) => field.key)).toEqual(["externalInteractionId", "externalEmployeeId", "channel", "reason", "startedAt", "endedAt", "transcriptContent", "transcriptLanguage", "transcriptConfidence"])
     for (const previous of PREVIOUS_DATA_CONTRACT_VERSIONS) {
       const current = requireDataContract(previous.key)
       expect(previous.version, `${previous.key}@${previous.version} precisa ser anterior à atual`).toBeLessThan(current.version)
@@ -77,6 +81,15 @@ describe("registro de contratos", () => {
   })
 })
 
+describe("fechamento oficial — versões", () => {
+  it("OFFICIAL_INDICATOR_PERFORMANCE@2 acrescentou numerador e denominador (opcionais); @1 continua exatamente como era", () => {
+    expect(findDataContract("OFFICIAL_INDICATOR_PERFORMANCE")?.version).toBe(2)
+    expect(findDataContract("OFFICIAL_INDICATOR_PERFORMANCE", 2)?.fields.filter((field) => field.key === "numerator" || field.key === "denominator").map((field) => [field.key, field.type, field.required])).toEqual([["numerator", "DECIMAL", false], ["denominator", "DECIMAL", false]])
+    expect(findDataContract("OFFICIAL_INDICATOR_PERFORMANCE", 1)?.fields.map((field) => field.key)).toEqual(["externalEmployeeId", "indicatorCode", "referencePeriod", "value", "targetValue", "achievementPercent", "weightPercent", "quartile", "subgroupExternalCode"])
+    expect(findDataContract("OFFICIAL_INDICATOR_PERFORMANCE", 3)).toBeUndefined()
+  })
+})
+
 describe("Wiki × registro (fonte única)", () => {
   const wikiFile = join(MODULE_DIR, "../../../../frontend/src/components/wiki/data-hub-catalog-data.ts")
 
@@ -92,6 +105,16 @@ describe("Wiki × registro (fonte única)", () => {
     }
     const knownCodes = new Set([...Object.keys(DATA_RUN_ERROR_CODES), ...Object.keys(DATA_RECORD_ERROR_CODES)])
     for (const match of wiki.matchAll(/\{ code: "(DATA_[A-Z_]+)"/g)) expect(knownCodes.has(match[1]!), `código ${match[1]} não existe`).toBe(true)
+  })
+
+  it("a Wiki mostra a versão ATUAL de cada contrato (`version` ausente = 1)", () => {
+    const wiki = readFileSync(wikiFile, "utf8")
+    for (const contract of DATA_CONTRACTS) {
+      const start = wiki.indexOf(`{ key: "${contract.key}", label:`)
+      const row = wiki.slice(start, wiki.indexOf("\n", start))
+      const version = Number(/ version: (\d+),/.exec(row)?.[1] ?? 1)
+      expect(version, `${contract.key}: Wiki @${version}, registro @${contract.version}`).toBe(contract.version)
+    }
   })
 })
 

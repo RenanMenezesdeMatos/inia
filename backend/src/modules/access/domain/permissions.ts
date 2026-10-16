@@ -48,6 +48,9 @@ export const PERMISSIONS = {
   "interventions.execute": "Executar intervenções de colaboradores do escopo (aceitar, tarefas, checkpoints, concluir, cancelar, encaminhar)",
   "interventions.approve": "Aprovar ou devolver intervenções que exigem aprovação, no escopo",
   // Decisão SENSÍVEL — sempre concessão explícita; nenhum papel administrativo a recebe por padrão. Nunca altera situação funcional.
+  // Reports recorrentes: DISTRIBUIR para outras pessoas (níveis, cargos, Grupos, Subgrupos, pessoas) no escopo da atribuição.
+  // Nunca dá acesso a dado: cada destinatário recebe só o que o escopo DELE alcança, e quem distribui não vê o conteúdo entregue.
+  "reports.distribute": "Criar reports recorrentes para outras pessoas do escopo (cada uma recebe só os dados que já pode ver)",
   "interventions.sensitive_decide": "Decidir solicitações de avaliação de continuidade (decisão humana restrita; nunca altera situação funcional nem executa desligamento)",
 } as const
 

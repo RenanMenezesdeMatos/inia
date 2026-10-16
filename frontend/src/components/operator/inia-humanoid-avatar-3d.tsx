@@ -5,12 +5,14 @@
  * classes de `src/lib/avatar/animation` chamadas pelo `useFrame` — nada é mutado no render.
  */
 
-import { Component, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from "react"
+import { Component, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react"
 import { useProgress } from "@react-three/drei"
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
+import { Info } from "lucide-react"
 import type { Material, Mesh, Object3D, PerspectiveCamera, SkinnedMesh, Texture, WebGLRenderer } from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AvatarRig, cloneAvatarScene } from "@/lib/avatar/animation/avatar-rig"
 import { BehaviorController } from "@/lib/avatar/animation/behavior-controller"
 import { autoQuality, detectQualityEnvironment, FrameTimeMonitor, lowerQuality, QUALITY_SETTINGS } from "@/lib/avatar/animation/quality"
@@ -41,9 +43,12 @@ export type IniaHumanoidAvatar3DProps = {
   className?: string
   /** Para o gravador e o diagnóstico do laboratório (`renderer.info`: triângulos, draw calls). */
   onCanvasReady?: (canvas: HTMLCanvasElement, renderer: WebGLRenderer) => void
-  /** Padrão false: o crédito CC BY 4.0 do modelo base só aparece quando solicitado. */
+  /**
+   * Padrão true: o "i" discreto com o crédito que a CC BY 4.0 do modelo base exige (autor, obra, licença e a indicação de
+   * que foi modificado). Só desligue onde o modelo não for o da INIA.
+   */
   attribution?: boolean
-  /** Onde fica o crédito do modelo: embaixo (padrão) ou em cima — no painel, embaixo ficam os controles da chamada. */
+  /** Canto do "i" do crédito: embaixo (padrão) ou em cima — no painel, embaixo ficam os controles da chamada. */
   attributionPlacement?: "bottom" | "top"
   /** Estado mostrado no selo quando não é um estado da conversa (ex.: "Preparando a voz…"). Padrão: o rótulo de `state`. */
   statusLabel?: string | null
@@ -69,7 +74,9 @@ type LiveInputs = {
   onCanvasReady: ((canvas: HTMLCanvasElement, renderer: WebGLRenderer) => void) | undefined
 }
 
-const ATTRIBUTION_TEXT = "Base: “Pixar style girl (rigging)” por Black vizual (CC BY 4.0), modificada"
+/** Prova da licença (página do Sketchfab em PDF): `assets/avatar/inia/mentora/licenca/`. */
+const BASE_MODEL_URL = "https://sketchfab.com/3d-models/pixar-style-girl-rigging-c92355c9f57d467a9dfca2d05e52d376"
+const BASE_MODEL_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 
 export function IniaHumanoidAvatar3D({
   modelUrl,
@@ -80,7 +87,7 @@ export function IniaHumanoidAvatar3D({
   facing = "forward",
   className,
   onCanvasReady,
-  attribution = false,
+  attribution = true,
   attributionPlacement = "bottom",
   statusLabel = null,
   backdrop = "studio",
@@ -137,14 +144,90 @@ export function IniaHumanoidAvatar3D({
         <span className={`mr-1.5 inline-block size-1.5 rounded-full ${statusLabel ? "animate-pulse bg-amber-500 motion-reduce:animate-none" : state === "listening" ? "animate-pulse bg-emerald-500" : state === "speaking" ? "animate-pulse bg-primary" : "bg-emerald-500"}`} />
         {statusLabel ?? STATE_LABEL[state]}
       </span> : null}
-      {attribution ? (
-        attributionPlacement === "top" ? (
-          <span className="absolute top-3 right-2.5 max-w-[38%] truncate rounded-full bg-black/30 px-2 py-0.5 text-right text-[9px] text-white/80 backdrop-blur-sm" title={ATTRIBUTION_TEXT}>{ATTRIBUTION_TEXT}</span>
-        ) : (
-          <span className="absolute right-3 bottom-2 max-w-[calc(100%-1.5rem)] truncate text-right text-[9px] text-muted-foreground/70">{ATTRIBUTION_TEXT}</span>
-        )
-      ) : null}
+      {attribution ? <AvatarCredit placement={attributionPlacement} /> : null}
     </div>
+  )
+}
+
+/**
+ * O crédito do modelo base, escondido num "i" quase transparente no canto do palco. Abre ao passar o mouse e também ao
+ * tocar ou pelo teclado (Enter/Espaço) — hover sozinho deixaria o crédito inacessível no toque.
+ */
+function AvatarCredit({ placement }: { placement: "bottom" | "top" }) {
+  const [open, setOpen] = useState(false)
+  const hoverRef = useRef(false)
+  const closeTimerRef = useRef<number | null>(null)
+  const cancelClose = () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null
+  }
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current)
+  }, [])
+
+  const onPointerEnter = (event: PointerEvent) => {
+    if (event.pointerType !== "mouse") return
+    cancelClose()
+    hoverRef.current = true
+    setOpen(true)
+  }
+  // O atraso deixa o mouse atravessar o vão entre o "i" e o balão (o balão também cancela o fechamento).
+  const onPointerLeave = (event: PointerEvent) => {
+    if (event.pointerType !== "mouse") return
+    cancelClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      hoverRef.current = false
+      setOpen(false)
+    }, 200)
+  }
+  // Clicar com o mouse em cima de um balão aberto pelo hover não o fecha (o Radix pula o próprio toggle com preventDefault).
+  const onClick = (event: MouseEvent) => {
+    if (open && hoverRef.current) event.preventDefault()
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) hoverRef.current = false
+        setOpen(next)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Créditos do avatar 3D"
+          onPointerEnter={onPointerEnter}
+          onPointerLeave={onPointerLeave}
+          onClick={onClick}
+          className={cn(
+            "absolute right-2 flex size-5 items-center justify-center rounded-full text-foreground/20 transition-colors hover:text-foreground/55 focus-visible:text-foreground/55 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-foreground/55",
+            placement === "top" ? "top-2" : "bottom-2",
+          )}
+        >
+          <Info className="size-3" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side={placement === "top" ? "bottom" : "top"}
+        align="end"
+        className="w-64 text-xs leading-relaxed"
+        onPointerEnter={cancelClose}
+        onPointerLeave={onPointerLeave}
+        // Aberto pelo hover, o foco fica onde estava; pelo toque ou teclado, vai para o balão (e daí para os links).
+        onOpenAutoFocus={(event) => {
+          if (hoverRef.current) event.preventDefault()
+        }}
+      >
+        <p>
+          Avatar 3D baseado em{" "}
+          <a href={BASE_MODEL_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">“Pixar style girl (rigging)”</a>, de Black
+          vizual, sob a licença{" "}
+          <a href={BASE_MODEL_LICENSE_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">CC BY 4.0</a>. Modificado para a
+          INIA.
+        </p>
+      </PopoverContent>
+    </Popover>
   )
 }
 

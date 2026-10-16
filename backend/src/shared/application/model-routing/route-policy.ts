@@ -11,7 +11,7 @@ import { profilesForTier } from "./model-registry.js"
  */
 export type RoutingMode = "CURRENT" | "EFFICIENCY"
 
-export type RoutePurpose = "PLANNING" | "INVESTIGATION_NOTES" | "TOOL_ARGUMENT_GENERATION" | "ANALYZE_INTERACTIONS" | "ANALYZE_PEER_PATTERNS" | "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS" | "ORCHESTRATOR_ROUTING" | "ORCHESTRATOR_SYNTHESIS" | "POST_JOIN_SYNTHESIS" | "GATING_CORRECTION" | "FEEDBACK_WRITING" | "FEEDBACK_ANALYSIS" | "INTERVENTION_WRITING"
+export type RoutePurpose = "PLANNING" | "INVESTIGATION_NOTES" | "TOOL_ARGUMENT_GENERATION" | "ANALYZE_INTERACTIONS" | "ANALYZE_PEER_PATTERNS" | "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS" | "ORCHESTRATOR_ROUTING" | "ORCHESTRATOR_SYNTHESIS" | "POST_JOIN_SYNTHESIS" | "GATING_CORRECTION" | "FEEDBACK_WRITING" | "FEEDBACK_ANALYSIS" | "INTERVENTION_WRITING" | "REPORT_ANALYSIS"
 
 export type RouteSignals = {
   purpose: RoutePurpose
@@ -86,6 +86,10 @@ export function targetTier(signals: RouteSignals, mode: RoutingMode): { tier: Mo
       break
     case "INTERVENTION_WRITING":
       // Narrativa do relatório de intervenção e rascunho de treinamento/plano: redação sobre fatos prontos (sem investigação).
+      tier = "STANDARD"
+      break
+    case "REPORT_ANALYSIS":
+      // Resumo de um report recorrente: interpretação de números e comparação já calculados pela aplicação (texto livre).
       tier = "STANDARD"
       break
     case "INVESTIGATION_NOTES":

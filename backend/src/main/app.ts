@@ -54,6 +54,8 @@ import { createWorkflowRouter } from "../modules/workflows/presentation/workflow
 import { createAssistantRouter } from "../modules/assistant/presentation/assistant-router.js"
 import { createQaLabRouter } from "../modules/qa-lab/presentation/qa-lab-router.js"
 import { createAnalyticsRouter } from "../modules/performance-analytics/presentation/analytics-router.js"
+import { createLeadershipRouter } from "../modules/leadership-analytics/presentation/leadership-router.js"
+import { createReportsRouter } from "../modules/reports/presentation/reports-router.js"
 import { createPendingActionsRouter } from "../modules/pending-actions/presentation/pending-actions-router.js"
 import { createFeedbackReviewRouter } from "../modules/interaction-feedback/presentation/feedback-review-router.js"
 import { createFeedbackDeliveryRouter } from "../modules/interaction-feedback/presentation/feedback-delivery-router.js"
@@ -318,6 +320,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/operator", requireAuth, createOperatorRouter(database))
   // Indicadores e Equipe/Estrutura — escopo por papel resolvido no backend a cada request.
   app.use("/api/v1/analytics", requireAuth, createAnalyticsRouter(database))
+  // Leituras determinísticas da liderança (as mesmas das ferramentas do chat) — escopo da sessão, sem IA.
+  app.use("/api/v1/leadership", requireAuth, createLeadershipRouter(database))
+  // Reports recorrentes: permissões (líder × papel Report) e escopo de cada destinatário decididos no serviço, a cada pedido.
+  app.use("/api/v1/reports", requireAuth, createReportsRouter(database))
   // Aba Estrutura do perfil — posição na hierarquia real, mesma autoridade de escopo de analytics.
   app.use("/api/v1/people", requireAuth, createPersonOrganizationStructureRouter(database))
   // Pendências (ação requerida) e Sino (algo novo aconteceu) — sempre do viewer da sessão.

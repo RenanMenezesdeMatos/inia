@@ -25,7 +25,7 @@ export type FromScratchResult = {
   first: DemoSeedRunReport
   second: DemoSeedRunReport
   bootstrap: { first: BootstrapReport; second: BootstrapReport }
-  counts: { people: number; measurements: number; officialRows: number; officialRowsCurrentMonth: number; closedPeriods: string[]; capitals: number; holidays: number; holidaysWithVerification: number; scheduleExceptions: number; classifications: number; volumeMeasurements: number; volumeIndicators: number }
+  counts: { people: number; measurements: number; officialRows: number; officialRowsCurrentMonth: number; closedPeriods: string[]; capitals: number; holidays: number; holidaysWithVerification: number; scheduleExceptions: number; classifications: number; volumeMeasurements: number; volumeIndicators: number; officialWithComponents: number; officialComponentsMissing: number }
   /** A regra de FALTA INJUSTIFICADA demonstrada só com a massa oficial, logo após o bootstrap (relógio fixo no fim do dia de referência). */
   absenceProof: AbsenceProof
 }
@@ -62,7 +62,7 @@ export async function seedDemoFromScratch(adminUrl: string, log: (message: strin
       log(`${firstBootstrap.migrationsApplied.length} migrations aplicadas`)
       const secondBootstrap = await bootstrapEnvironment(client, { nodeEnv: "test", demoPassword: SCRATCH_DEMO_PASSWORD }, () => {})
       if (!firstBootstrap.demo || !secondBootstrap.demo) throw new Error("bootstrap do zero: etapa demo deveria ter rodado em NODE_ENV=test")
-      const [people, measurements, official, currentMonth, periods, capitals, holidays, verified, exceptions, classifications, volumeMeasurements, volumeIndicators] = await Promise.all([
+      const [people, measurements, official, currentMonth, periods, capitals, holidays, verified, exceptions, classifications, volumeMeasurements, volumeIndicators, withComponents, componentsMissing] = await Promise.all([
         client.query<{ n: string }>(`select count(*) n from people where organization_id = $1`, [ORG]),
         client.query<{ n: string }>(`select count(*) n from indicator_measurements where organization_id = $1 and source = 'DEMO_SEED'`, [ORG]),
         client.query<{ n: string }>(`select count(*) n from employee_indicator_performance where organization_id = $1`, [ORG]),
@@ -75,6 +75,9 @@ export async function seedDemoFromScratch(adminUrl: string, log: (message: strin
         client.query<{ n: string }>(`select count(*) n from workday_classifications where organization_id = $1`, [ORG]),
         client.query<{ n: string }>(`select count(*) n from indicator_measurements m join indicator_definitions i on i.id = m.indicator_definition_id where m.organization_id = $1 and i.code = 'ATENDIMENTOS' and m.source = 'DEMO_SEED'`, [ORG]),
         client.query<{ n: string }>(`select count(*) n from indicator_definitions where organization_id = $1 and code = 'ATENDIMENTOS' and operational_aggregation = 'SUM' and unit = 'COUNT' and daily_supported and proves_work_activity and unjustified_absence_policy = 'ZERO_CONTRIBUTION'`, [ORG]),
+        // Numerador/denominador nos fechamentos demo (migration 147): gerados pela massa e preenchidos no seed SQL 001.
+        client.query<{ n: string }>(`select count(*) n from employee_indicator_performance where organization_id = $1 and source = 'DEMO_SEED' and numerator is not null`, [ORG]),
+        client.query<{ n: string }>(`select count(*) n from employee_indicator_performance eip join indicator_definitions i on i.id = eip.indicator_definition_id where eip.organization_id = $1 and eip.source = 'DEMO_SEED' and eip.numerator is null and i.operational_aggregation in ('RATE', 'WEIGHTED_AVERAGE')`, [ORG]),
       ])
       const absenceProof = await proveUnjustifiedAbsence(pool)
       return {
@@ -97,6 +100,8 @@ export async function seedDemoFromScratch(adminUrl: string, log: (message: strin
           classifications: Number(classifications.rows[0]!.n),
           volumeMeasurements: Number(volumeMeasurements.rows[0]!.n),
           volumeIndicators: Number(volumeIndicators.rows[0]!.n),
+          officialWithComponents: Number(withComponents.rows[0]!.n),
+          officialComponentsMissing: Number(componentsMissing.rows[0]!.n),
         },
       }
     } finally {

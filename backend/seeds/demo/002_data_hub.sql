@@ -41,11 +41,13 @@ where not exists (select 1 from data_feeds where id = 'de00da7a-0000-4000-8000-0
 -- demonstração (nunca presumidas): medições operacionais chegam em D-1 até 11:00; colaboradores/RH em
 -- D-2 até 08:00; interações em D-1 até 09:00. Sem política a INIA fica em AVAILABILITY_UNKNOWN e não
 -- conclui ausência de ninguém. Idempotente: só preenche quando ainda não há política.
+-- Interações nascem no contrato INTERACTIONS@2 (motivo + submotivo, 2026-10-16); um banco que já tinha o feed na
+-- versão 1 continua nela até o mapeamento ser salvo de novo pela tela (a troca fica na auditoria).
 -- ------------------------------------------------------------------------------------------
 insert into data_feeds (id, organization_id, source_id, feed_key, name, contract_key, contract_version, connector_config, mapping, load_mode, cadence, status, authoritative, source_namespace, availability_policy)
-select 'de00da7a-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000001', 'de00da7a-0000-4000-8000-000000000001', 'interacoes', 'Interações (CSV)', 'INTERACTIONS', 1,
+select 'de00da7a-0000-4000-8000-000000000013', '00000000-0000-4000-8000-000000000001', 'de00da7a-0000-4000-8000-000000000001', 'interacoes', 'Interações (CSV)', 'INTERACTIONS', 2,
        '{"connector":"FILE_UPLOAD","file":{"format":"CSV","csv":{"encoding":"utf-8","delimiter":"auto","hasHeader":true,"skipRows":0},"excel":{"hasHeader":true,"skipRows":0}}}'::jsonb,
-       '{"fields":[{"target":"externalInteractionId","source":"protocolo","transforms":[{"kind":"TRIM"}]},{"target":"externalEmployeeId","source":"matricula","transforms":[{"kind":"TRIM"}]},{"target":"reason","source":"motivo","transforms":[]},{"target":"startedAt","source":"inicio","transforms":[]},{"target":"endedAt","source":"fim","transforms":[]}]}'::jsonb,
+       '{"fields":[{"target":"externalInteractionId","source":"protocolo","transforms":[{"kind":"TRIM"}]},{"target":"externalEmployeeId","source":"matricula","transforms":[{"kind":"TRIM"}]},{"target":"reason","source":"motivo","transforms":[]},{"target":"subReason","source":"submotivo","transforms":[{"kind":"TRIM"}]},{"target":"startedAt","source":"inicio","transforms":[]},{"target":"endedAt","source":"fim","transforms":[]}]}'::jsonb,
        'DELTA', '{"kind":"MANUAL"}'::jsonb, 'ACTIVE', false, 'DEMO_SEED', '{"lagDays":1,"availableByLocalTime":"09:00"}'::jsonb
 where not exists (select 1 from data_feeds where id = 'de00da7a-0000-4000-8000-000000000013');
 
@@ -53,3 +55,16 @@ update data_feeds set availability_policy = '{"lagDays":1,"availableByLocalTime"
  where id in ('de00da7a-0000-4000-8000-000000000012', 'de00da7a-0000-4000-8000-000000000021') and availability_policy is null;
 update data_feeds set availability_policy = '{"lagDays":2,"availableByLocalTime":"08:00"}'::jsonb
  where id = 'de00da7a-0000-4000-8000-000000000011' and availability_policy is null;
+
+-- ------------------------------------------------------------------------------------------
+-- FECHAMENTO OFICIAL com numerador e denominador (contrato OFFICIAL_INDICATOR_PERFORMANCE@2, migration 147):
+-- feed de arquivo já mapeado para a planilha mensal do cliente — valor, meta, atingimento, peso e quartil como a
+-- fonte calculou e, quando a estratégia do indicador define o valor por componentes (Taxa, Média ponderada), os
+-- dois componentes. Sem histórico fabricado: as cargas nascem pela tela. Namespace 'DEMO_SEED' (dado demo).
+-- ------------------------------------------------------------------------------------------
+insert into data_feeds (id, organization_id, source_id, feed_key, name, contract_key, contract_version, connector_config, mapping, load_mode, cadence, status, authoritative, source_namespace)
+select 'de00da7a-0000-4000-8000-000000000014', '00000000-0000-4000-8000-000000000001', 'de00da7a-0000-4000-8000-000000000001', 'fechamento', 'Fechamento oficial mensal (CSV/Excel)', 'OFFICIAL_INDICATOR_PERFORMANCE', 2,
+       '{"connector":"FILE_UPLOAD","file":{"format":"CSV","csv":{"encoding":"utf-8","delimiter":"auto","hasHeader":true,"skipRows":0},"excel":{"hasHeader":true,"skipRows":0}}}'::jsonb,
+       '{"fields":[{"target":"externalEmployeeId","source":"matricula","transforms":[{"kind":"TRIM"}]},{"target":"indicatorCode","source":"indicador","transforms":[{"kind":"UPPERCASE"}]},{"target":"referencePeriod","source":"competencia","transforms":[]},{"target":"value","source":"valor","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"numerator","source":"numerador","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"denominator","source":"denominador","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"targetValue","source":"meta","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"achievementPercent","source":"atingimento","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"weightPercent","source":"peso","transforms":[{"kind":"PARSE_DECIMAL","decimalSeparator":","}]},{"target":"quartile","source":"quartil","transforms":[]}]}'::jsonb,
+       'DELTA', '{"kind":"MANUAL"}'::jsonb, 'ACTIVE', false, 'DEMO_SEED'
+where not exists (select 1 from data_feeds where id = 'de00da7a-0000-4000-8000-000000000014');

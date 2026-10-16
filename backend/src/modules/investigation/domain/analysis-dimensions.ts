@@ -9,14 +9,14 @@
  *    denominador/amostra). Recortes possíveis: dia, dia da semana, semana. NÃO existe vínculo
  *    medição ↔ interação, logo um indicador NÃO pode ser segmentado por assunto/hora/flag a partir
  *    das medições.
- *  - INTERACTION: `interactions` (assunto = `reason`, canal, horário, duração) + `interaction_flags`.
- *    Recortes possíveis: assunto, canal, hora, dia da semana, flag. A métrica é da PRÓPRIA interação
+ *  - INTERACTION: `interactions` (assunto = submotivo, ou o motivo sem submotivo; motivo = `reason`; canal, horário, duração) +
+ *    `interaction_flags`. Recortes possíveis: assunto, motivo, canal, hora, dia da semana, flag. A métrica é da PRÓPRIA interação
  *    (duração registrada em segundos, volume) — uma PROXY declarada, nunca "o indicador".
  *
  * Compatibilidade indicador × dimensão de interação é por METADATA (unidade/semântica), nunca por
  * código: unidade SECONDS ↔ duração das interações; COUNT ↔ volume de interações.
  */
-export const ANALYSIS_DIMENSIONS = ["DAY", "DAY_OF_WEEK", "WEEK", "SUBJECT", "CHANNEL", "HOUR", "FLAG"] as const
+export const ANALYSIS_DIMENSIONS = ["DAY", "DAY_OF_WEEK", "WEEK", "SUBJECT", "REASON", "CHANNEL", "HOUR", "FLAG"] as const
 export type AnalysisDimension = (typeof ANALYSIS_DIMENSIONS)[number]
 
 export type DimensionSource = "MEASUREMENT" | "INTERACTION"
@@ -36,7 +36,8 @@ export const ANALYSIS_DIMENSION_DEFINITIONS: Record<AnalysisDimension, AnalysisD
   DAY: { key: "DAY", label: "Dia", source: "MEASUREMENT", field: "indicator_measurements.period_start (data local)", grouping: "uma medição por dia", privacy: "só o próprio colaborador" },
   DAY_OF_WEEK: { key: "DAY_OF_WEEK", label: "Dia da semana", source: "MEASUREMENT", field: "extract(isodow from period_start local)", grouping: "Σ componentes por dia da semana", privacy: "só o próprio colaborador" },
   WEEK: { key: "WEEK", label: "Semana", source: "MEASUREMENT", field: "date_trunc('week', period_start local)", grouping: "Σ componentes por semana ISO", privacy: "só o próprio colaborador" },
-  SUBJECT: { key: "SUBJECT", label: "Assunto", source: "INTERACTION", field: "interactions.reason", grouping: "duração média e volume por assunto", privacy: "interações do próprio colaborador; pares só agregados" },
+  SUBJECT: { key: "SUBJECT", label: "Assunto", source: "INTERACTION", field: "interactions.sub_reason (submotivo; sem ele, interactions.reason)", grouping: "duração média e volume por assunto", privacy: "interações do próprio colaborador; pares só agregados" },
+  REASON: { key: "REASON", label: "Motivo", source: "INTERACTION", field: "interactions.reason", grouping: "duração média e volume por motivo (junta os submotivos)", privacy: "interações do próprio colaborador; pares só agregados" },
   CHANNEL: { key: "CHANNEL", label: "Canal", source: "INTERACTION", field: "interactions.channel", grouping: "duração média e volume por canal", privacy: "interações do próprio colaborador; pares só agregados" },
   HOUR: { key: "HOUR", label: "Hora do dia", source: "INTERACTION", field: "extract(hour from started_at local)", grouping: "duração média e volume por hora", privacy: "interações do próprio colaborador" },
   FLAG: { key: "FLAG", label: "Flag", source: "INTERACTION", field: "interaction_flags.channel_flag_id", grouping: "duração média e volume por flag presente", privacy: "interações do próprio colaborador" },

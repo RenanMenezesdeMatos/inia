@@ -21,7 +21,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
     permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
     allowedScopes: ["ORGANIZATION"],
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE"],
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
     system: true,
   },
   {
@@ -30,7 +30,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Administra usuários, agentes, workflows e configurações e vê Indicadores, dados de gestão da Estrutura, o Calendário da equipe e quem mais usa a IA dentro do escopo atribuído. Não usa o QA Lab nem altera IA.",
     permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", ...INTERVENTION_POLICY_PERMISSIONS],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"],
+    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
     system: true,
   },
   {
@@ -39,7 +39,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Administra contas, papéis e concessões dentro do escopo — sem agentes, workflows, configurações ou QA.",
     permissions: ACCESS_ADMIN_PERMISSIONS,
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"],
+    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
     system: true,
   },
   {
@@ -100,6 +100,16 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Vê, executa e aprova intervenções de colaboradores do escopo (além do que a cadeia de gestão já faz). Não decide avaliações de continuidade.",
     permissions: ["interventions.view", "interventions.execute", "interventions.approve"],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Distribuição de reports recorrentes: público recortado pelo escopo da atribuição; NÃO amplia o acesso a dados.
+    code: "REPORT",
+    name: "Report",
+    description: "Cria reports recorrentes para todos os usuários elegíveis, níveis, cargos, Grupos, Subgrupos ou pessoas do escopo. Não amplia o acesso a dados: cada destinatário recebe só o que o próprio escopo alcança, e quem distribui não vê o conteúdo entregue a outros.",
+    permissions: ["reports.distribute"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: [],
     system: true,
   },

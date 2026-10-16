@@ -614,7 +614,7 @@ export default function InvestigationToolsWikiPage() {
 
       <WikiSection id="limitacoes" title="Limitações atuais" eyebrow="O que ainda não existe">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Dimensões disponíveis hoje: dia, dia da semana, semana (medição) e assunto, canal, hora, flag (interações). Perfil de cliente, produto e tipo de interação não existem nos dados.</li>
+          <li>Dimensões disponíveis hoje: dia, dia da semana, semana (medição) e assunto, motivo, canal, hora, flag (interações). O assunto é o submotivo da interação (sem submotivo, o motivo); o motivo junta os submotivos dele. Perfil de cliente, produto e tipo de interação não existem nos dados.</li>
           <li>O Orquestrador pós-Join (síntese gerencial) não investiga — trabalha só com os resultados consolidados.</li>
           <li>O node Orquestrador do Workflow não restringe capacidades dos especialistas (só o node Chamar agente restringe).</li>
           <li>A cobertura operacional só é determinada quando o volume do indicador coincide com as interações registradas; em todos os outros casos fica &quot;Não determinado&quot;.</li>

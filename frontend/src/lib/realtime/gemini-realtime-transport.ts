@@ -1,5 +1,6 @@
 "use client"
 
+import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
 import { createSpeechPlayback } from "@/lib/avatar/audio/speech-playback"
 import type { PlaybackTurnEvent, SpeechPlayback } from "@/lib/avatar/audio/types"
@@ -18,6 +19,7 @@ import {
 } from "./gemini-live-protocol"
 import { VoiceUsageRecorder } from "@/lib/usage/voice-usage"
 import { micCaptureErrorMessage, startMicCapture, type MicCapture, type StartMicCapture } from "./mic-capture"
+import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 
 export type { EphemeralSession } from "./gemini-live-protocol"
 
@@ -74,7 +76,7 @@ export type RealtimeTransportEvents = {
   /** Nível do microfone (RMS, ~0–1), ~19×/s com o microfone aberto. Frequente o bastante para exigir escrita direta no DOM, nunca estado do React. */
   onAudioLevel?: (level: number) => void
   /** Resposta escrita completa de um especialista acionado na voz — a fala da INIA é só um resumo verbal disso (áudio não "fala" uma tabela markdown). `conversation` = a conversa persistida em que o backend a gravou. */
-  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null) => void
+  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null, analytics?: LeadershipCard[], extras?: { reportOffer?: ReportOffer; navigate?: { href: string } }) => void
   /** Conversa persistida e turno em curso no instante da tool-call (a sessão de voz não é a conversa: o chat decide). Com
    * `feedbackApplicationId`, a consulta é de dentro de uma sessão de feedback: o backend decide a conversa e emoldura o especialista. */
   getToolCallContext?: () => { conversationId: string | null; turnId: string; feedbackApplicationId?: string | null }
@@ -864,13 +866,20 @@ export class GeminiRealtimeTransport {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ toolName: call.name, query, periodDays, ...(this.events.getToolCallContext?.() ?? { conversationId: null, turnId: `voice-${session}-${generationSeq}` }), callId: String(call.id ?? call.name).replace(/[^A-Za-z0-9:_-]/g, "_").slice(0, 120) }),
           })
-          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[] } & Partial<VoiceConversationResult> }
+          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[]; analytics?: unknown; reportOffer?: unknown; navigate?: { href?: unknown } | null } & Partial<VoiceConversationResult> }
           if (response.ok && payload.data?.text) {
             // O card de material vai pra tela (mesma semântica do chat); o modelo recebe
             // `modelText` — o texto + a instrução determinística de mencionar que há apoio na
             // tela, nunca uma URL (a voz não conhece rota nenhuma).
             const conversation = payload.data.conversationId ? { conversationId: payload.data.conversationId, created: payload.data.created ?? false, closed: payload.data.closed ?? false, activeConversationId: payload.data.activeConversationId ?? null } : null
-            if (stillCurrent()) this.events.onSpecialistResult?.(payload.data.text, payload.data.supportMaterials ?? [], conversation)
+            // Ferramenta da liderança: o cartão de dados (números do backend) vai para a tela junto do resumo.
+            const analytics = parseLeadershipCards(payload.data.analytics)
+            // Report recorrente: a oferta (botão) ou a navegação para a configuração quando o "sim" veio pela voz.
+            const offer = reportOfferSchema.safeParse(payload.data.reportOffer)
+            const href = payload.data.navigate?.href
+            const extras = { ...(offer.success ? { reportOffer: offer.data } : {}), ...(typeof href === "string" && href.startsWith("/reports/") ? { navigate: { href } } : {}) }
+            const hasExtras = Object.keys(extras).length > 0
+            if (stillCurrent()) this.events.onSpecialistResult?.(payload.data.text, payload.data.supportMaterials ?? [], conversation, ...(analytics.length > 0 || hasExtras ? [analytics.length > 0 ? analytics : undefined] : []), ...(hasExtras ? [extras] : []))
             return { id: call.id, name: call.name, response: { result: payload.data.modelText ?? payload.data.text } }
           }
           return { id: call.id, name: call.name, response: { result: SPECIALIST_UNAVAILABLE } }

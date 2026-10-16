@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation"
 import { useCallback, useMemo } from "react"
 
 import type { SubjectRef } from "@/lib/analytics/subject-params"
-import { analyticsSubjectKindSchema, groupingDimensionSchema, operationalComparisonSchema, type GroupingDimension, type OperationalComparison } from "@/schemas/analytics/analytics.schema"
+import { analyticsSubjectKindSchema, groupingDimensionSchema, memberSituationSchema, operationalComparisonSchema, type GroupingDimension, type MemberSituation, type OperationalComparison } from "@/schemas/analytics/analytics.schema"
 
 /**
  * Estado navegável da área de perfil (aba, competência, estrutura, indicador aberto, agrupamento)
@@ -33,6 +33,9 @@ export type AnalyticsUrlState = {
   calendarDate: string | null
   calendarPerson: string | null
   calendarAnchor: string | null
+  /** Equipe/Estrutura chegando já filtrada (links dos cartões da INIA): situação e indicador em atenção. */
+  situation: MemberSituation | null
+  attention: string | null
 }
 
 export type UrlUpdateOptions = {
@@ -59,6 +62,7 @@ export function useAnalyticsUrlState() {
     const period = searchParams.get("period")
     const groupBy = groupingDimensionSchema.safeParse(searchParams.get("groupBy"))
     const comparison = operationalComparisonSchema.safeParse(searchParams.get("compare"))
+    const situation = memberSituationSchema.safeParse(searchParams.get("situation"))
     return {
       tab: parseTab(searchParams.get("tab")),
       period: period && PERIOD_PATTERN.test(period) ? period : null,
@@ -74,6 +78,8 @@ export function useAnalyticsUrlState() {
       calendarDate: DATE_PATTERN.test(searchParams.get("calendarDate") ?? "") ? searchParams.get("calendarDate") : null,
       calendarPerson: searchParams.get("calendarPerson"),
       calendarAnchor: searchParams.get("calendarAnchor"),
+      situation: situation.success ? situation.data : null,
+      attention: searchParams.get("attention"),
     }
   }, [searchParams])
 
@@ -101,6 +107,8 @@ export function useAnalyticsUrlState() {
       if (patch.calendarDate !== undefined) set("calendarDate", patch.calendarDate)
       if (patch.calendarPerson !== undefined) set("calendarPerson", patch.calendarPerson)
       if (patch.calendarAnchor !== undefined) set("calendarAnchor", patch.calendarAnchor)
+      if (patch.situation !== undefined) set("situation", patch.situation)
+      if (patch.attention !== undefined) set("attention", patch.attention)
       const query = next.toString()
       // `history.replaceState`/`pushState` são integrados ao App Router (useSearchParams acompanha)
       // e NÃO refazem a renderização do servidor — trocar competência/estrutura não recarrega

@@ -72,7 +72,7 @@ const playbackDouble = vi.hoisted(() => {
   return { playback, state, drain, reset }
 })
 vi.mock("@/lib/avatar/audio/speech-playback", () => ({ createSpeechPlayback: () => playbackDouble.playback }))
-vi.mock("next/navigation", () => ({ useSearchParams: () => doubles.searchParams }))
+vi.mock("next/navigation", () => ({ useSearchParams: () => doubles.searchParams, useRouter: () => ({ push: () => undefined, replace: () => undefined, refresh: () => undefined, prefetch: () => undefined, back: () => undefined }) }))
 
 vi.mock("@/lib/realtime/gemini-realtime-transport", () => {
   class GeminiRealtimeTransport {

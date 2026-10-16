@@ -16,7 +16,9 @@ const API_URL = process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
 // backend call still in flight.
 const REQUEST_TIMEOUT_MS = 150_000
 
+import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
+import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 
 export type HistoryTurn = { role: "user" | "model"; text: string }
 
@@ -26,7 +28,7 @@ export type HistoryTurn = { role: "user" | "model"; text: string }
 /** Resposta de texto completa: o texto montado dos chunks, os materiais de apoio que o Orquestrador recomendou (evento SSE
  * próprio, já resolvidos pelo backend — a URL é montada na tela a partir do id, nunca vem do modelo), a conversa em que a
  * troca ficou gravada e se a RESPOSTA foi salva (`persisted = false` = apareceu mas não entrou no histórico). */
-export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean }
+export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean; analytics?: LeadershipCard[]; reportOffer?: ReportOffer; navigate?: { href: string } }
 
 /** A conversa pedida já foi encerrada (outra aba começou outra, ou ficou inativa): o chat troca para a atual. */
 export class ConversationClosedError extends Error {
@@ -83,6 +85,9 @@ export async function fetchTextReply(
   let full = ""
   let streamError: string | null = null
   let supportMaterials: FeedbackSupportMaterial[] = []
+  let analytics: LeadershipCard[] = []
+  let reportOffer: ReportOffer | null = null
+  let navigate: { href: string } | null = null
   let interactionId: string | null = null
   let conversationId: string | null = null
   let persisted = false
@@ -113,6 +118,17 @@ export async function fetchTextReply(
         const payload = JSON.parse(data) as { interactionId?: string; supportMaterials?: FeedbackSupportMaterial[] }
         supportMaterials = Array.isArray(payload.supportMaterials) ? payload.supportMaterials : []
         interactionId = payload.interactionId ?? interactionId
+      } else if (name === "analytics") {
+        // Cartões de dados da liderança: números do backend (nunca do texto do modelo), exibidos junto da resposta.
+        analytics = parseLeadershipCards((JSON.parse(data) as { cards?: unknown }).cards)
+      } else if (name === "report_offer") {
+        // Oferta "Criar report desta consulta" (proposta criada pelo backend a partir da consulta executada).
+        const parsed = reportOfferSchema.safeParse(JSON.parse(data))
+        if (parsed.success) reportOffer = parsed.data
+      } else if (name === "navigate") {
+        // "Sim" à oferta de report: o backend decide o destino (a configuração já preenchida).
+        const href = (JSON.parse(data) as { href?: unknown }).href
+        if (typeof href === "string" && href.startsWith("/reports/")) navigate = { href }
       } else if (name === "error") {
         streamError = (JSON.parse(data) as { message: string }).message
       }
@@ -121,7 +137,7 @@ export async function fetchTextReply(
 
   if (streamError) throw new Error(streamError)
   if (!full || !conversationId) throw new Error("Não foi possível obter uma resposta da INIA.")
-  return { text: full, supportMaterials, interactionId, conversationId, persisted }
+  return { text: full, supportMaterials, interactionId, conversationId, persisted, ...(analytics.length > 0 ? { analytics } : {}), ...(reportOffer ? { reportOffer } : {}), ...(navigate ? { navigate } : {}) }
 }
 
 export type ConversationSummary = {
@@ -153,6 +169,10 @@ export type ConversationMessage = {
   occurredAt: string
   cursor: string
   supportMaterials: FeedbackSupportMaterial[]
+  /** Cartões de dados gravados com a resposta (revalidados pelo backend contra o escopo atual). */
+  analytics?: unknown[]
+  /** Oferta de report recorrente feita nesta resposta (só para o dono). */
+  reportOffer?: unknown
   /** "WORKFLOW" = recado entregue por um fluxo da INIA (mensagem destacada); "FEEDBACK" = apresentação de uma aplicação de
    * feedback; null nas demais. */
   origin?: "WORKFLOW" | "FEEDBACK" | null

@@ -64,6 +64,15 @@ export type IndicatorPerformanceRow = {
   achievementPercent: number | null
   weightPercent: number | null
   quartile: Quartile | null
+  /**
+   * Componentes do valor oficial como a fonte mandou (contrato OFFICIAL_INDICATOR_PERFORMANCE@2, migration
+   * 147): só quando a estratégia do indicador define o valor por numerador ÷ denominador (Taxa, Média
+   * ponderada). null = a fonte não informou — nunca desempenho ruim. Servem para agregar uma estrutura em
+   * valor (Σ numerador ÷ Σ denominador × `componentValueScale` da ESTRATÉGIA) e para a participação de cada
+   * unidade; nenhum número oficial (atingimento, PRV, quartil, peso) é recalculado a partir deles.
+   */
+  numerator: number | null
+  denominator: number | null
   source: string
 }
 
@@ -107,6 +116,8 @@ export interface AnalyticsReadRepository {
   loadPrvPerformance(organizationId: string, personIds: string[], periods: string[]): Promise<PrvPerformanceRow[]>
   /** Competências com dado oficial no escopo, limitadas ao último fechamento possível (guard central). */
   loadAvailablePeriods(organizationId: string, personIds: string[], lastClosedPeriod: string): Promise<string[]>
+  /** Quantas pessoas distintas têm alguma linha oficial em cada competência (mais recente primeiro, até `limit`) — cobertura do fechamento. */
+  loadPeriodCoverage(organizationId: string, personIds: string[], lastClosedPeriod: string, limit: number): Promise<{ period: string; people: number }[]>
   loadFollowUpCounts(personIds: string[]): Promise<Map<string, FollowUpCounts>>
   /** Revisões humanas que AINDA exigem decisão do viewer, por operador — mesma definição de
    * "pendente" do módulo pending-actions (execução em espera no node), nunca o alerta solto. */
@@ -258,7 +269,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     if (personIds.length === 0 || periods.length === 0) return []
     const result = await this.db.query<Record<string, unknown>>(
       `select eip.person_id "personId", idef.code "indicatorCode", eip.reference_period "referencePeriod", eip.value, eip.target_value "targetValue",
-              eip.achievement_percent "achievementPercent", eip.weight_percent "weightPercent", eip.quartile, eip.source
+              eip.achievement_percent "achievementPercent", eip.weight_percent "weightPercent", eip.quartile, eip.numerator, eip.denominator, eip.source
        from employee_indicator_performance eip
        join indicator_definitions idef on idef.id = eip.indicator_definition_id
        where eip.organization_id = $1 and eip.person_id = any($2::uuid[]) and eip.reference_period = any($3::text[])`,
@@ -273,6 +284,8 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
       achievementPercent: toNumber(row.achievementPercent),
       weightPercent: toNumber(row.weightPercent),
       quartile: row.quartile ? quartileSchema.parse(row.quartile) : null,
+      numerator: toNumber(row.numerator),
+      denominator: toNumber(row.denominator),
       source: String(row.source),
     }))
   }
@@ -305,6 +318,19 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
       [organizationId, personIds, lastClosedPeriod],
     )
     return result.rows.map((row) => row.period)
+  }
+
+  async loadPeriodCoverage(organizationId: string, personIds: string[], lastClosedPeriod: string, limit: number): Promise<{ period: string; people: number }[]> {
+    if (personIds.length === 0) return []
+    const result = await this.db.query<{ period: string; people: string }>(
+      `select reference_period period, count(distinct person_id) people from (
+         select reference_period, person_id from employee_indicator_performance where organization_id = $1 and person_id = any($2::uuid[]) and reference_period <= $3
+         union all
+         select reference_period, person_id from employee_prv_performance where organization_id = $1 and person_id = any($2::uuid[]) and reference_period <= $3
+       ) rows group by reference_period order by reference_period desc limit $4`,
+      [organizationId, personIds, lastClosedPeriod, limit],
+    )
+    return result.rows.map((row) => ({ period: row.period, people: Number(row.people) }))
   }
 
   async loadFollowUpCounts(personIds: string[]): Promise<Map<string, FollowUpCounts>> {
@@ -426,7 +452,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // histórico da estrutura e sem OFFSET, que crescia com a profundidade da página. O item
     // extra só conta (`hasMore`): o conteúdo é montado para os `limit` exibidos.
     const params: unknown[] = [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.limit, query.unacknowledgedOnly]
-    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "" }
+    const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "" }
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
          select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
@@ -442,22 +468,31 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
            -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
            and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
            and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert}
+         union all
+         -- Reports recorrentes: entregas e avisos de "não encaminhado" endereçados a QUEM LÊ (cada um com a versão do escopo dele).
+         select r.delivery_id, 'REPORT', r.created_at
+         from report_delivery_recipients r
+         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report}
        ), probe as (
          select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
        ), page as (
          select id, kind, "createdAt" from probe order by "createdAt" desc, id desc limit $5
        )
        select page.id::text id, page.kind, page."createdAt", ${followUpCursorAtSql('page."createdAt"')} "cursorAt", (select count(*) from probe) > $5 "hasMore",
-              coalesce(f.feedback_kind::text, a.alert_type) category,
-              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) else a.title end title,
-              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') end subtitle,
-              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) else a.description end summary,
+              case when page.kind = 'REPORT' then case when rd.kind = 'DELIVERY' then 'REPORT' else 'REPORT_NOT_FORWARDED' end else coalesce(f.feedback_kind::text, a.alert_type) end category,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,title}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,title}', f.impacted_indicator) when page.kind = 'REPORT' then rp.name else a.title end title,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,heading,subtitle}', f.context_snapshot#>>'{reliableFeedback,feedbackView,heading,subtitle}') when page.kind = 'REPORT' then concat_ws(' · ', rd.structure_label, rd.period_label) end subtitle,
+              case when page.kind = 'FEEDBACK' then coalesce(f.context_snapshot#>>'{feedbackEngine,feedbackView,card}', f.context_snapshot#>>'{reliableFeedback,feedbackView,card}', f.observed_behavior) when page.kind = 'REPORT' then coalesce(rd.analysis_text, '') else a.description end summary,
               f.recommendation detail, a.severity, coalesce(f.operator_id, c.operator_id) "operatorId", p.name "operatorName", coalesce(f.case_id, a.case_id)::text "caseId",
-              case when page.kind = 'FEEDBACK' then f.acknowledged_at else a.read_at end "acknowledgedAt",
+              case when page.kind = 'FEEDBACK' then f.acknowledged_at when page.kind = 'REPORT' then rr.read_at else a.read_at end "acknowledgedAt",
+              case when page.kind = 'REPORT' then json_build_object('deliveryId', rd.id, 'reportId', rd.report_id, 'kind', rd.kind, 'reason', rd.reason, 'periodLabel', rd.period_label, 'structureLabel', rd.structure_label, 'sources', rd.sources, 'visualization', rd.visualization, 'dataset', rd.dataset, 'comparison', rd.comparison, 'analysisStatus', rd.analysis_status, 'analysisText', rd.analysis_text, 'empty', rd.empty, 'occurrences', rd.occurrences, 'lastCheckedAt', rd.last_checked_at, 'reportActive', rp.deleted_at is null and rp.status = 'ACTIVE') end report,
               case when page.kind = 'FEEDBACK' then json_build_object('evidenceFound', f.evidence_found, 'observedBehavior', f.observed_behavior, 'relatedProcedure', f.related_procedure, 'recommendation', f.recommendation, 'view', coalesce(f.context_snapshot->'feedbackEngine'->'feedbackView', f.context_snapshot->'reliableFeedback'->'feedbackView'), 'supervisorView', case when f.operator_id <> $4 then f.context_snapshot->'reliableFeedback'->'supervisorView' end) end feedback
        from page
        left join feedbacks f on page.kind = 'FEEDBACK' and f.id = page.id
        left join alerts a on page.kind = 'ALERT' and a.id = page.id
+       left join report_deliveries rd on page.kind = 'REPORT' and rd.id = page.id
+       left join reports rp on rp.id = rd.report_id
+       left join report_delivery_recipients rr on page.kind = 'REPORT' and rr.delivery_id = page.id and rr.recipient_person_id = $4
        left join supervision_cases c on c.id = a.case_id
        left join people p on p.id = coalesce(f.operator_id, c.operator_id)
        order by page."createdAt" desc, page.id desc`,
@@ -483,7 +518,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
       nextCursor,
       items: rows.map((row, index) => ({
         id: String(row.id),
-        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : "ALERT",
+        kind: row.kind === "FEEDBACK" ? "FEEDBACK" : row.kind === "REPORT" ? "REPORT" : "ALERT",
         category: normalizeCategory(String(row.category)),
         title: legacyHeadings.get(String(row.id))?.title ?? String(row.title),
         // Cabeçalho do feedback (`FEEDBACK_HEADING_V1`): o MESMO título/subtítulo do Acompanhamento do colaborador.
@@ -497,6 +532,7 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
         acknowledgedAt: row.acknowledgedAt ? new Date(String(row.acknowledgedAt)).toISOString() : null,
         origin: row.kind === "FEEDBACK" ? (origins.get(String(row.id)) ?? null) : null,
         feedback: row.feedback ? { ...(row.feedback as NonNullable<FollowUpItem["feedback"]>), view: views[index] ?? null, supportMaterials: supportMaterials.get(String(row.id)) ?? [] } : null,
+        ...(row.kind === "REPORT" && row.report ? { report: { ...(row.report as NonNullable<FollowUpItem["report"]>), lastCheckedAt: new Date(String((row.report as { lastCheckedAt: string }).lastCheckedAt)).toISOString() } } : {}),
       })),
     }
   }
@@ -509,6 +545,8 @@ function normalizeCategory(value: string): FollowUpItem["category"] {
     case "WORKFLOW_OUTPUT":
     case "WORKFLOW_HUMAN_REVIEW":
     case "WORKFLOW_ESCALATION":
+    case "REPORT":
+    case "REPORT_NOT_FORWARDED":
       return value
     default:
       return value.startsWith("INTERVENTION_") ? "INTERVENTION" : "OTHER"

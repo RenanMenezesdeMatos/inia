@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { DEFAULT_CONVERSATION_INACTIVITY_HOURS, decideConversationForWrite, encodeCursor, isInactive, previewOf, type ConversationRecord, type MessageCursor } from "../domain/assistant-conversation.js"
-import { messageOriginOf, type ConversationMessage, type ConversationScope, type ConversationStore, type ConversationSummary, type MessageInput } from "../application/assistant-conversations.js"
+import { analyticsCardsOf, messageOriginOf, type ConversationMessage, type ConversationScope, type ConversationStore, type ConversationSummary, type MessageInput } from "../application/assistant-conversations.js"
 
 /**
  * Store de conversas EM MEMÓRIA — mesma decisão de domínio (`decideConversationForWrite`) da implementação Postgres,
@@ -20,7 +20,7 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
   const ordered = (conversationId: string) => messages.filter((m) => m.conversationId === conversationId).sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime() || a.seq - b.seq)
   const toMessage = (m: MemoryMessage): ConversationMessage => {
     const occurredAt = m.occurredAt.toISOString()
-    return { id: m.id, channel: m.channel, role: m.role, content: m.content, agentId: m.agentId ?? null, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(m.seq) }), origin: messageOriginOf(m.role, m.clientMessageId) }
+    return { id: m.id, channel: m.channel, role: m.role, content: m.content, agentId: m.agentId ?? null, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(m.seq) }), origin: messageOriginOf(m.role, m.clientMessageId), analytics: m.role === "assistant" ? analyticsCardsOf(m.toolCalls) : [] }
   }
   const compare = (m: MemoryMessage, cursor: MessageCursor) => m.occurredAt.getTime() - new Date(cursor.occurredAt).getTime() || m.seq - Number(cursor.seq)
   const summary = (c: ConversationRecord): ConversationSummary => {

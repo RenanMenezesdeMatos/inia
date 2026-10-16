@@ -15,10 +15,10 @@ const full = (overrides: Partial<DiagnosticStrategyConfig> = {}): DiagnosticStra
 const codes = (config: DiagnosticStrategyConfig, unit = "SECONDS", domains: { id: string; active: boolean; exists: boolean }[] = []) => validateStrategyForPublish(config, { indicatorUnit: unit, domains }).map((issue) => issue.code)
 
 describe("V1.6.2 — catálogo de capacidades (só o que o runtime realmente faz)", () => {
-  it("P) indicador em segundos/contagem: só a dimensão MOTIVO; nada de produto, processo, canal ou flag", () => {
+  it("P) indicador em segundos/contagem: só as dimensões ASSUNTO (submotivo, a primeira) e MOTIVO; nada de produto, processo, canal ou flag", () => {
     const seconds = strategyCapabilities({ unit: "SECONDS" })
     expect(seconds.indicator).toEqual({ decomposable: true, metric: "INTERACTION_DURATION_SECONDS" })
-    expect(seconds.dimensions.map((dimension) => dimension.code)).toEqual(["SUBJECT"])
+    expect(seconds.dimensions.map((dimension) => dimension.code)).toEqual(["SUBJECT", "REASON"])
     expect(seconds.configurableSources.map((source) => source.code)).toEqual(["INTERACTIONS", "PROCESS_ASSESSMENT", "KNOWLEDGE", "PEER_COMPARISON"])
     expect(seconds.configurableSources.find((source) => source.code === "KNOWLEDGE")!.lockedOnWith).toBe("PROCESS_ASSESSMENT")
     expect(strategyCapabilities({ unit: "COUNT" }).indicator.metric).toBe("INTERACTION_COUNT")

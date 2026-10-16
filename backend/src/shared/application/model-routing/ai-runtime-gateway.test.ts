@@ -130,7 +130,7 @@ describe("gateway + runtime da organização", () => {
 
   // ZERO SPEND SEM EVENTO DE USO: toda chamada que sai pelo gateway — qualquer propósito, com ou sem
   // organização, sucesso ou erro — grava exatamente UM evento. O Record força cobrir cada RoutePurpose.
-  const EVERY_PURPOSE = { PLANNING: true, INVESTIGATION_NOTES: true, TOOL_ARGUMENT_GENERATION: true, ANALYZE_INTERACTIONS: true, ANALYZE_PEER_PATTERNS: true, AGENT_SYNTHESIS: true, SPECIALIST_SYNTHESIS: true, ORCHESTRATOR_ROUTING: true, ORCHESTRATOR_SYNTHESIS: true, POST_JOIN_SYNTHESIS: true, GATING_CORRECTION: true, FEEDBACK_WRITING: true, FEEDBACK_ANALYSIS: true, INTERVENTION_WRITING: true } satisfies Record<RoutePurpose, true>
+  const EVERY_PURPOSE = { PLANNING: true, INVESTIGATION_NOTES: true, TOOL_ARGUMENT_GENERATION: true, ANALYZE_INTERACTIONS: true, ANALYZE_PEER_PATTERNS: true, AGENT_SYNTHESIS: true, SPECIALIST_SYNTHESIS: true, ORCHESTRATOR_ROUTING: true, ORCHESTRATOR_SYNTHESIS: true, POST_JOIN_SYNTHESIS: true, GATING_CORRECTION: true, FEEDBACK_WRITING: true, FEEDBACK_ANALYSIS: true, INTERVENTION_WRITING: true, REPORT_ANALYSIS: true } satisfies Record<RoutePurpose, true>
 
   it("zero spend sem uso: cada RoutePurpose (com e sem organização, sucesso e erro) grava exatamente um evento", async () => {
     localProfiles()

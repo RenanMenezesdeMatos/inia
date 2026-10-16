@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { reasonKeySql, subjectKeySql } from "../../interactions/domain/interaction-subject.js"
 import { loadIndicatorCanonicalContext } from "../../indicators/application/load-indicator-canonical-context.js"
 import { resolveOfficialClosure } from "../../indicators/application/official-closure.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
@@ -12,8 +12,10 @@ import type { SignalCondition } from "../../indicator-diagnosis/domain/diagnosti
  * nunca uma por chamada). A MEMÓRIA (avaliações de chamada) não é lida aqui: vem da porta de memória (`currentMemory`), para que
  * banco, RAM e sobreposição enxerguem as mesmas avaliações. Números oficiais vêm prontos das tabelas oficiais; métricas por assunto são DERIVADAS das chamadas
  * (duração registrada, sinal, volume) e sempre rotuladas como tal por quem as usa.
+ *
+ * Assunto = nível preferencial da `SUBJECT_RESOLUTION_V2` (submotivo; sem submotivo, o motivo); o motivo é o recorte `REASON`.
  */
-export const segmentKeySql = (alias: string) => `coalesce(${canonicalSubjectSql(alias)}, nullif(btrim(${alias}.reason), ''))`
+export const segmentKeySql = (alias: string) => subjectKeySql(alias)
 const direction = (value: string): Direction => (value === "LOWER" || value === "TARGET" ? value : "HIGHER")
 const monthLabel = (period: string) => {
   const [year, month] = period.split("-")
@@ -175,7 +177,7 @@ export function createPostgresIndicatorData(db: Database) {
     },
 
     /**
-     * Chamadas da PRÓPRIA pessoa num recorte de investigação (qualquer combinação de assunto, dia, dia da semana, faixa horária,
+     * Chamadas da PRÓPRIA pessoa num recorte de investigação (qualquer combinação de assunto, motivo, dia, dia da semana, faixa horária,
      * canal, sinal — datas e horas no fuso da organização), só com transcrição, na janela do período. Uma consulta, parâmetros
      * ligados (nenhum valor vira SQL). Mesma ordem de interesse de `segmentInteractions`.
      */
@@ -186,6 +188,7 @@ export function createPostgresIndicatorData(db: Database) {
         params.push(filter.value)
         const value = `$${params.length}`
         if (filter.dimension === "SUBJECT") clauses.push(`${segmentKeySql("i")} = ${value}`)
+        else if (filter.dimension === "REASON") clauses.push(`${reasonKeySql("i")} = ${value}`)
         else if (filter.dimension === "DAY") clauses.push(`to_char((i.started_at at time zone $5)::date, 'YYYY-MM-DD') = ${value}`)
         else if (filter.dimension === "DAY_OF_WEEK") clauses.push(`extract(isodow from i.started_at at time zone $5)::int::text = ${value}`)
         else if (filter.dimension === "HOUR") clauses.push(`extract(hour from i.started_at at time zone $5)::int = (${value})::int`)
@@ -221,15 +224,16 @@ export function createPostgresIndicatorData(db: Database) {
 
     /**
      * EVIDÊNCIA de chamadas de um recorte (para a chave da investigação): cada chamada com início, fim, assunto e a assinatura da
-     * transcrição vigente — chamada nova, transcrição corrigida ou assunto reclassificado mudam a assinatura. Uma consulta.
+     * transcrição vigente — chamada nova, transcrição corrigida ou assunto reclassificado mudam a assinatura (submotivo nulo fica fora
+     * do `concat_ws`, então a assinatura de quem não tem submotivo é a mesma de antes). Uma consulta.
      */
     async interactionEvidence(organizationId: string, personIds: readonly string[], window: { start: Date; end: Date }, detail: "FULL" | "AGGREGATE"): Promise<string> {
       if (personIds.length === 0) return "none"
       const row = (await db.query<{ n: string; signature: string | null }>(
         detail === "FULL"
-          ? `select count(*) n, md5(string_agg(concat_ws('|', i.id, i.started_at, i.ended_at, i.reason, (select md5(t.content) from transcripts t where t.interaction_id = i.id order by t.version desc limit 1)), ',' order by i.id)) signature
+          ? `select count(*) n, md5(string_agg(concat_ws('|', i.id, i.started_at, i.ended_at, i.reason, i.sub_reason, (select md5(t.content) from transcripts t where t.interaction_id = i.id order by t.version desc limit 1)), ',' order by i.id)) signature
              from interactions i where i.organization_id = $1 and i.operator_id = any($2::uuid[]) and i.started_at >= $3 and i.started_at < $4`
-          : `select count(*) n, md5(string_agg(concat_ws('|', i.id, i.ended_at, i.reason), ',' order by i.id)) signature
+          : `select count(*) n, md5(string_agg(concat_ws('|', i.id, i.ended_at, i.reason, i.sub_reason), ',' order by i.id)) signature
              from interactions i where i.organization_id = $1 and i.operator_id = any($2::uuid[]) and i.started_at >= $3 and i.started_at < $4`,
         [organizationId, [...personIds], window.start, window.end],
       )).rows[0]

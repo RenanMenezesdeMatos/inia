@@ -18,6 +18,8 @@ import HowItConnectsPage from "./introducao/como-as-pecas-se-conectam/page"
 import StructurePage from "./estrutura/page"
 import TeamPage from "./estrutura/equipe/page"
 import MyStructurePage from "./estrutura/minha-estrutura/page"
+import LeadershipPage from "./estrutura/lideranca/page"
+import ReportsWikiPage from "./estrutura/reports/page"
 import IndicatorsPage from "./indicadores/page"
 import AnalyticsPage from "./indicadores/analytics/page"
 import MedicaoOperacionalPage from "./indicadores/medicao-operacional/page"
@@ -84,6 +86,8 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/estrutura": StructurePage,
   "/wiki/estrutura/equipe": TeamPage,
   "/wiki/estrutura/minha-estrutura": MyStructurePage,
+  "/wiki/estrutura/lideranca": LeadershipPage,
+  "/wiki/estrutura/reports": ReportsWikiPage,
   "/wiki/indicadores": IndicatorsPage,
   "/wiki/indicadores/analytics": AnalyticsPage,
   "/wiki/indicadores/medicao-operacional": MedicaoOperacionalPage,
@@ -121,12 +125,17 @@ const PAGES: Record<string, ComponentType> = {
 }
 
 const rendered = new Map<string, HTMLElement>()
+const orphanTableParts = new Map<string, number>()
+
 function renderPage(href: string): HTMLElement {
   const cached = rendered.get(href)
   if (cached) return cached
   const Page = PAGES[href]
   if (!Page) throw new Error(`Página não registrada no teste: ${href}`)
   const { container } = render(<Page />)
+  // Parte de tabela fora de <table> (ex.: TableHeader direto no WikiTable) = erro de hidratação no navegador. Conferido no DOM
+  // montado: ao reprocessar o HTML (abaixo), o parser descarta essas tags e o defeito sumiria do snapshot.
+  orphanTableParts.set(href, Array.from(container.querySelectorAll("thead, tbody, tfoot, tr, th, td")).filter((element) => !element.closest("table")).length)
   // Guarda o HTML montado (RTL limpa o DOM entre testes) — o que interessa aqui é estático.
   const snapshot = document.createElement("div")
   snapshot.innerHTML = container.innerHTML
@@ -145,6 +154,14 @@ describe("Wiki INIA — todas as páginas do sitemap renderizam", () => {
       expect(root.querySelector("h1")?.textContent?.trim().length ?? 0).toBeGreaterThan(0)
     })
   }
+
+  it("toda tabela é uma <table> de verdade: nenhum thead/tbody/tr/td fora dela (o navegador acusava erro de hidratação)", () => {
+    const pagesWithOrphans = WIKI_PAGES.map((page) => {
+      renderPage(page.href)
+      return [page.href, orphanTableParts.get(page.href) ?? 0] as const
+    }).filter(([, orphans]) => orphans > 0)
+    expect(pagesWithOrphans).toEqual([])
+  })
 
   it("a Home deixa de parecer 'Wiki do Workflow Engine' e apresenta a INIA como produto", () => {
     const root = renderPage("/wiki")

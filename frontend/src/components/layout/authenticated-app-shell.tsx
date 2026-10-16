@@ -16,7 +16,7 @@ type AuthenticatedAppShellProps = {
   children: React.ReactNode
 }
 
-type ShellState = { profile: AppShellProfile; profileHref: string; canAccessAdministration: boolean; canReviewFeedback: boolean; canViewDiagnostics: boolean }
+type ShellState = { profile: AppShellProfile; profileHref: string; canAccessAdministration: boolean; canReviewFeedback: boolean; canViewDiagnostics: boolean; canUseReports: boolean }
 
 export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) {
   const router = useRouter()
@@ -43,6 +43,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
         canAccessAdministration: user.access.capabilities.canAccessAdministration || user.access.capabilities.canViewAssistantConversations || (user.features.usabilityPanel && user.access.capabilities.canViewUsability),
         canReviewFeedback: user.features.interactionFeedbackQa && user.access.capabilities.canReviewFeedback,
         canViewDiagnostics: user.access.capabilities.canViewDiagnostics,
+        canUseReports: user.access.capabilities.canUseReports,
       }
     : null
 
@@ -74,6 +75,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
         canAccessAdministration={shell.canAccessAdministration}
         canReviewFeedback={shell.canReviewFeedback}
         canViewDiagnostics={shell.canViewDiagnostics}
+        canUseReports={shell.canUseReports}
         onEditProfile={() => editor.open("name")}
       />
 

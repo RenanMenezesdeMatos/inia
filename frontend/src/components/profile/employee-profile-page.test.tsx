@@ -12,7 +12,8 @@ import type { SupervisorOperatorDetail } from "@/services/supervisor"
 import { EmployeeProfilePage } from "./employee-profile-page"
 import { profileTabsFor } from "./profile-tabs"
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/supervisor/operators/op-diego", useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }))
+const navigation = vi.hoisted(() => ({ search: new URLSearchParams() }))
+vi.mock("next/navigation", () => ({ usePathname: () => "/supervisor/operators/op-diego", useSearchParams: () => navigation.search, useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }) }))
 // Só o cabeçalho da ficha interessa aqui: as abas consultam a API e têm testes próprios.
 vi.mock("@/components/analytics/indicators-view", () => ({ IndicatorsView: () => null }))
 vi.mock("@/components/follow-up/structure-follow-up-feed", () => ({ StructureFollowUpFeed: () => null }))
@@ -20,7 +21,10 @@ vi.mock("@/components/structure/person-structure-view", () => ({ PersonStructure
 vi.mock("@/components/interventions/person-interventions", () => ({ PersonInterventions: () => null }))
 
 beforeAll(installJsdomStubs)
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  navigation.search = new URLSearchParams()
+})
 
 const DIEGO: SupervisorOperatorDetail = {
   profile: { id: "op-diego", name: "Diego Costa", matricula: "EX-0003", role: "OPERATOR", avatarUrl: null, jobTitle: "Operador de Atendimento", bio: null, strengths: [], developmentFocus: [], hiredAt: null, teamId: "team-1", teamName: "Grupo Atendimento", presentation: null },
@@ -58,5 +62,24 @@ describe("Ficha do colaborador — saída da ficha", () => {
     renderFicha(null)
 
     expect(screen.getByRole("link", { name: "Voltar para a equipe" })).toHaveAttribute("href", "/supervisor?tab=people")
+  })
+})
+
+describe("Ficha do colaborador — Visão geral", () => {
+  it("o subtítulo não repete o Grupo quando o cargo do cadastro já o traz (mesma linha do cabeçalho)", () => {
+    navigation.search = new URLSearchParams("tab=people")
+    const detail = { ...DIEGO, profile: { ...DIEGO.profile, jobTitle: "Operadora de Atendimento — B2C · Atendimento Geral", teamName: "B2C · Atendimento Geral" } }
+    renderWithQuery(<EmployeeProfilePage detail={detail} context={SUPERVISOR_CONTEXT} />)
+
+    expect(screen.getByText("Perfil do colaborador")).toBeInTheDocument()
+    expect(screen.queryByText(/Atendimento Geral · B2C · Atendimento Geral/)).not.toBeInTheDocument()
+    expect(screen.getAllByText("Operadora de Atendimento — B2C · Atendimento Geral").length).toBeGreaterThan(0)
+  })
+
+  it("cargo sem o Grupo continua mostrando os dois", () => {
+    navigation.search = new URLSearchParams("tab=people")
+    renderWithQuery(<EmployeeProfilePage detail={DIEGO} context={SUPERVISOR_CONTEXT} />)
+
+    expect(screen.getAllByText("Operador de Atendimento · Grupo Atendimento").length).toBeGreaterThan(0)
   })
 })

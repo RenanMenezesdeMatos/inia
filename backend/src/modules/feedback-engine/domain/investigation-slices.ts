@@ -1,7 +1,7 @@
 import type { Direction, ProxyKind } from "./indicator-investigation.js"
 
 /**
- * RECORTES DA INVESTIGAÇÃO (`INVESTIGATION_SLICES_V1`, domínio puro).
+ * RECORTES DA INVESTIGAÇÃO (`INVESTIGATION_SLICES_V2`, domínio puro).
  *
  * Um recorte é ONDE olhar: um conjunto de filtros (assunto, dia, dia da semana, faixa horária, canal, sinal — e combinações) sobre
  * as chamadas da PRÓPRIA pessoa no período. Recortes nascem da localização calculada pelo código (assuntos que mudaram, dias
@@ -14,9 +14,12 @@ import type { Direction, ProxyKind } from "./indicator-investigation.js"
  * período atual), o denominador e as fontes vão com ele até o diagnóstico e a mensagem.
  *
  * Os limiares abaixo decidem só se um resultado VALE como recorte a olhar (materialidade), nunca uma causa.
+ *
+ * V2 (16/10/2026, `SUBJECT_RESOLUTION_V2`): ASSUNTO é o nível preferencial (submotivo; sem submotivo, o motivo) e MOTIVO (`REASON`)
+ * é um recorte a mais — o genérico da fonte, que junta os submotivos dele.
  */
-export const INVESTIGATION_SLICES_VERSION = "INVESTIGATION_SLICES_V1" as const
-export const SLICE_DIMENSIONS = ["SUBJECT", "DAY", "DAY_OF_WEEK", "HOUR", "CHANNEL", "FLAG"] as const
+export const INVESTIGATION_SLICES_VERSION = "INVESTIGATION_SLICES_V2" as const
+export const SLICE_DIMENSIONS = ["SUBJECT", "REASON", "DAY", "DAY_OF_WEEK", "HOUR", "CHANNEL", "FLAG"] as const
 export type SliceDimension = (typeof SLICE_DIMENSIONS)[number]
 export type SliceFilter = { dimension: SliceDimension; value: string; label: string }
 /** DETERIORATED/HIDDEN_DETERIORATION/IMPROVED = assunto que mudou entre os períodos; ATYPICAL_DAY = dia fora do padrão da própria
@@ -56,6 +59,8 @@ function filterLabel(filter: SliceFilter): string {
   switch (filter.dimension) {
     case "SUBJECT":
       return `assunto ${filter.label}`
+    case "REASON":
+      return `motivo ${filter.label}`
     case "DAY":
       return `dia ${shortDate(filter.value)}`
     case "DAY_OF_WEEK":
@@ -69,7 +74,8 @@ function filterLabel(filter: SliceFilter): string {
   }
 }
 export const sliceLabelOf = (filters: readonly SliceFilter[]) => filters.map(filterLabel).join(" · ")
-export const sliceScopeOf = (filters: readonly SliceFilter[]) => (filters.length === 1 && filters[0]!.dimension === "SUBJECT" ? `No assunto ${filters[0]!.label}` : `Nas chamadas do recorte ${sliceLabelOf(filters)}`)
+export const sliceScopeOf = (filters: readonly SliceFilter[]) =>
+  filters.length === 1 && filters[0]!.dimension === "SUBJECT" ? `No assunto ${filters[0]!.label}` : filters.length === 1 && filters[0]!.dimension === "REASON" ? `No motivo ${filters[0]!.label}` : `Nas chamadas do recorte ${sliceLabelOf(filters)}`
 
 /** Recortes da execução: R-n estável por chave; o mesmo recorte achado de novo só registra a corroboração. */
 export class SliceRegistry {
@@ -113,8 +119,8 @@ const adverseVersus = (value: number, total: number, direction: Direction) => (d
  * O que um resultado de ferramenta ACRESCENTA como recorte (só a janela atual; só o lado adverso — onde o resultado ficou pior):
  *   - `detect_anomalies`: dias anômalos/atípicos no sentido pior → recorte por DIA;
  *   - `segment_indicator` por dia/dia da semana (medição): parte com o indicador materialmente pior que o período;
- *   - `segment_indicator` por assunto/canal/hora/sinal (chamadas): só com a métrica de DURAÇÃO (indicador em segundos), parte com
- *     volume mínimo e duração materialmente maior que o conjunto; filtros pedidos na consulta (assunto, sinal) viram combinação.
+ *   - `segment_indicator` por assunto/motivo/canal/hora/sinal (chamadas): só com a métrica de DURAÇÃO (indicador em segundos), parte
+ *     com volume mínimo e duração materialmente maior que o conjunto; filtros pedidos na consulta (assunto, motivo, sinal) viram combinação.
  * Qualquer outra ferramenta não cria recorte (pode mudar hipóteses — ex.: comparação com o grupo —, ver diagnosticSignalsOf).
  */
 export function slicesFromToolResult(data: unknown, requestedArgs: Record<string, unknown>, context: DiscoveryContext): SliceCandidate[] {
@@ -147,6 +153,7 @@ export function slicesFromToolResult(data: unknown, requestedArgs: Record<string
   const buckets = (result.buckets ?? []) as Record<string, unknown>[]
   const extra: SliceFilter[] = []
   if (typeof requestedArgs.subject === "string" && requestedArgs.subject.trim() && dimension !== "SUBJECT") extra.push({ dimension: "SUBJECT", value: requestedArgs.subject.trim(), label: context.subjectLabel(requestedArgs.subject.trim()) })
+  if (typeof requestedArgs.reason === "string" && requestedArgs.reason.trim() && dimension !== "REASON") extra.push({ dimension: "REASON", value: requestedArgs.reason.trim(), label: context.subjectLabel(requestedArgs.reason.trim()) })
   if (typeof requestedArgs.flag === "string" && requestedArgs.flag.trim() && dimension !== "FLAG") extra.push({ dimension: "FLAG", value: requestedArgs.flag.trim(), label: requestedArgs.flag.trim() })
   if (dimension === "DAY" || dimension === "DAY_OF_WEEK") {
     const total = numberOf(result.total?.value)
@@ -162,7 +169,7 @@ export function slicesFromToolResult(data: unknown, requestedArgs: Record<string
         return { filters: [...extra, filter], reason: dimension === "DAY" ? "ATYPICAL_DAY" : "CONCENTRATION", adverse: true, origin, observation: `${sliceLabelOf([filter])}: ${context.formatIndicator(value)} contra ${context.formatIndicator(total)} no período (medição diária).` }
       })
   }
-  if (dimension === "SUBJECT" || dimension === "CHANNEL" || dimension === "HOUR" || dimension === "FLAG") {
+  if (dimension === "SUBJECT" || dimension === "REASON" || dimension === "CHANNEL" || dimension === "HOUR" || dimension === "FLAG") {
     // Só a métrica de duração tem sentido de "pior" aqui (indicador em segundos, menor é melhor); volume não aponta problema.
     const totalDuration = numberOf(result.total?.averageDurationSeconds)
     if (context.proxyKind !== "DURATION_SECONDS" || context.direction !== "LOWER" || totalDuration === null || buckets.length < 2) return []
@@ -172,8 +179,9 @@ export function slicesFromToolResult(data: unknown, requestedArgs: Record<string
       .sort((a, b) => b.duration * b.n - a.duration * a.n)
       .slice(0, MAX_SLICES_PER_RESULT)
       .map(({ bucket, duration, n }): SliceCandidate => {
-        const value = dimension === "SUBJECT" ? String(bucket.canonicalSubject ?? bucket.dimensionValue ?? "") : dimension === "HOUR" ? String(bucket.dimensionValue ?? "").replace(/h$/, "") : String(bucket.dimensionValue ?? "")
-        const filter: SliceFilter = { dimension: dimension as SliceDimension, value, label: dimension === "SUBJECT" ? context.subjectLabel(value) : value }
+        const bySubject = dimension === "SUBJECT" || dimension === "REASON"
+        const value = bySubject ? String(bucket.canonicalSubject ?? bucket.dimensionValue ?? "") : dimension === "HOUR" ? String(bucket.dimensionValue ?? "").replace(/h$/, "") : String(bucket.dimensionValue ?? "")
+        const filter: SliceFilter = { dimension: dimension as SliceDimension, value, label: bySubject ? context.subjectLabel(value) : value }
         return { filters: [...extra, filter], reason: "CONCENTRATION", adverse: true, origin, observation: `${sliceLabelOf([...extra, filter])}: duração média registrada de ${Math.round(duration)} s em ${n} chamadas, contra ${Math.round(totalDuration)} s no conjunto do período.` }
       })
   }

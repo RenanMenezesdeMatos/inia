@@ -65,6 +65,8 @@ export const WIKI_SECTIONS: WikiSection[] = [
       { href: "/wiki/estrutura", title: "Pessoas e Estrutura", description: "Cadeia hierárquica com e sem Coordenador, Grupo × Subgrupo × hierarquia, escopo e drill-down." },
       { href: "/wiki/estrutura/equipe", title: "Equipe / Estrutura (aba de gestão)", shortTitle: "Equipe / Estrutura", description: "Resumo, membros, dentro/abaixo da referência, evolução, sem dados, acompanhamentos, revisões e ficha do colaborador." },
       { href: "/wiki/estrutura/minha-estrutura", title: "Estrutura organizacional (aba do perfil)", shortTitle: "Organograma", description: "Onde o colaborador está: cadeia de liderança real, Grupo/Subgrupo, estrutura imediata, integrantes, origem e visibilidade por permissão." },
+      { href: "/wiki/estrutura/lideranca", title: "A INIA para quem lidera", shortTitle: "INIA para lideranças", description: "Onde atuar hoje, perguntas à INIA sobre a equipe e a estrutura, regras dos números, escopo de acesso e o caminho do consolidado ao detalhe." },
+      { href: "/wiki/estrutura/reports", title: "Reports recorrentes", shortTitle: "Reports", description: "Consultas da INIA que viram entregas periódicas no Acompanhamento: chat ou tela, período × frequência, visualizações, permissões, atualização das bases e análise." },
     ],
   },
   {

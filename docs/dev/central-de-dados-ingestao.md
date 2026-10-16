@@ -44,8 +44,29 @@ Identidade externa de Grupo/Subgrupo: `teams.external_code` / `subteams.external
 `inia_external_code(name)`; subgrupo = `GRUPO/SUBGRUPO`). Colaborador = `people.matricula`.
 
 Demo: `seeds/demo/002_data_hub.sql` cria duas fontes sem credencial real ("Importação manual (demo)" ativa com feeds de
-Colaboradores e Medições; "API Operacional (demo)" pausada com host `.invalid`); feeds de medição usam `source_namespace = 'DEMO_SEED'`.
+Colaboradores, Medições, Interações e Fechamento oficial mensal — este já no `@2`, com numerador/denominador; "API Operacional
+(demo)" pausada com host `.invalid`); feeds de medição e fechamento usam `source_namespace = 'DEMO_SEED'`.
 O reset da massa demo apaga as duas fontes (cascata).
+
+## Fechamento oficial com numerador e denominador (`OFFICIAL_INDICATOR_PERFORMANCE@2`, 2026-10-16, migration 147)
+
+O fechamento mensal por colaborador × indicador (`employee_indicator_performance`) aceita, a partir do `@2`, os
+componentes do valor oficial — `numerator` e `denominator`, opcionais — para a INIA somar uma estrutura em valor
+(TMA da coordenação = Σ segundos ÷ Σ atendimentos) e dizer quanto cada unidade pesa nele. Nada do oficial é
+recalculado: atingimento, PRV, quartil e peso continuam os da fonte.
+
+| Regra | Onde |
+| --- | --- |
+| Os dois juntos; denominador > 0 (numerador pode ser negativo) | `validateRecord` do contrato `@2` + check `employee_indicator_performance_components_check` |
+| Só estratégias que definem o valor por componentes: Taxa (`num ÷ den × 100`) e Média ponderada (`num ÷ den`); o fator é da ESTRATÉGIA, nunca da unidade | `componentValueScale` em `indicators/domain/indicator-definition.ts` |
+| Coerência com o valor informado, tolerância = maior entre 0,1, 1% e meia unidade da casa decimal informada | `checkComponentCoherence` (mesmo arquivo) |
+| Incoerência ou componentes em Média simples/Soma/Último valor → registro inteiro na quarentena (`DATA_CONTRACT_VIOLATION`, campo `value` ou `numerator`), nunca corrigido | `officialIndicatorPerformanceWriter.prepare` |
+| Sem componentes é válido (inclusive Taxa/Média ponderada); ausente mantém os já recebidos para o MESMO valor, valor novo sem componentes apaga os antigos | `apply` (upsert) |
+| `@1` continua aceito (feed antigo) e não conhece os componentes | `PREVIOUS_DATA_CONTRACT_VERSIONS` |
+
+Leitura: `IndicatorPerformanceRow.numerator/denominator` no analytics (`null` = a fonte não informou — nunca
+desempenho ruim). Para agregar uma estrutura: valor = Σ numerador ÷ Σ denominador × `componentValueScale(estratégia)`,
+só com as linhas que têm componentes; contribuição de uma unidade = participação dela no numerador e no denominador.
 
 ## O que já existe e será reutilizado
 
@@ -195,6 +216,21 @@ ADMIN, no perfil do colaborador. Sem linhagem (manual/demo/pré-Central) diz iss
 wizard em "Adicionar feed" reutilizando conexão/autenticação/segredos (botão "+ Adicionar feed" na
 aba Feeds da fonte). API Pull: cada feed tem endpoint/extract/paginação/checkpoint próprios; SFTP:
 padrão de arquivo próprio.
+
+## Interações: motivo e submotivo (INTERACTIONS@2, 2026-10-16, migration 145)
+
+| Campo | Coluna | Obrigatório | Semântica |
+| --- | --- | --- | --- |
+| `reason` ("Motivo") | `interactions.reason` | sim | categoria genérica do contato, como a fonte cadastra (ex.: Fatura, Cancelamento, Suporte técnico) |
+| `subReason` ("Submotivo") | `interactions.sub_reason` | não | recorte específico dentro do motivo (ex.: Segunda via, Dúvidas sobre faturamento), até 200 caracteres |
+
+- Os dois chegam como a fonte cadastrou. A INIA nunca deriva o motivo do submotivo (nem o contrário) e nunca classifica por IA.
+- Submotivo vazio vira nulo e **mantém** o submotivo já recebido para a interação (`coalesce`, mesma regra dos opcionais de Colaboradores). Uma carga não apaga submotivo; ausência nunca vira "sem submotivo".
+- Submotivo com mais de 200 caracteres vai para a quarentena (`DATA_TYPE_INVALID`, campo `subReason`). A interação não é aplicada sem o submotivo.
+- `INTERACTIONS@1` continua no registro (`PREVIOUS_DATA_CONTRACT_VERSIONS`). Feed criado nele segue sem submotivo até o mapeamento ser salvo de novo, e também não apaga o submotivo que outro feed `@2` gravou.
+- A ingestão legada `POST /ingestion/interactions` aceita `subReason` opcional, com a mesma regra.
+- Índice `idx_interactions_reason_sub_reason_started (organization_id, reason, sub_reason, started_at desc)` para "motivo → submotivo no período". O índice por `(organization_id, reason, started_at desc)` continua.
+- O assunto canônico (`interaction_subject_aliases`) continua casando com o **motivo** bruto. Segmentos por assunto do motor de feedback e do diagnóstico de indicador não leem o submotivo (decisão à parte).
 
 ## Calendário operacional: medição × elegibilidade, exceções, capital operacional e feriados (2026-09-16, migrations 065–067)
 

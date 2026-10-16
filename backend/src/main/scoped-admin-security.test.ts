@@ -36,11 +36,13 @@ async function agentFor(kind: "GROUP_ADMIN" | "GENERAL_ADMIN" | "OPERATOR") {
   return agent
 }
 
-const ORGANIZATION_WRITES: [method: "post" | "patch" | "put", path: string, body: object][] = [
+const ORGANIZATION_WRITES: [method: "post" | "patch" | "put" | "delete", path: string, body: object][] = [
   ["post", "/api/v1/admin/business-domains", { code: "LOGISTICA", name: "Logística" }],
   ["patch", "/api/v1/admin/operational-calendar/settings", { holidayPolicy: "IGNORE" }],
   ["post", "/api/v1/admin/channel-flags", { channel: "VOICE", code: "X", label: "X" }],
   ["post", "/api/v1/admin/prohibited-topics", { title: "x", description: "x" }],
+  ["delete", `/api/v1/admin/prohibited-topics/${TEAM_A}`, {}],
+  ["delete", `/api/v1/admin/glossary/${TEAM_A}`, {}],
   ["post", "/api/v1/admin/indicator-rules/definitions", { code: "TESTE" }],
   ["put", "/api/v1/admin/indicator-rules/glossary", { indicatorDefinitionId: TEAM_A }],
   ["post", "/api/v1/admin/indicator-rules", { indicatorDefinitionId: TEAM_A, scopeType: "ALL_TEAMS", calculationPeriod: "MONTHLY", calculationMethod: "Soma do mês" }],

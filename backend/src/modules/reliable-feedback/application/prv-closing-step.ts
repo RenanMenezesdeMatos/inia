@@ -9,7 +9,7 @@ import { behaviorTitleOf } from "../../indicator-diagnosis/application/load-prv-
 import { checkpointReadinessOf } from "../../indicator-diagnosis/domain/observation-readiness.js"
 import { summarizeOperationalPatterns, type InteractionMeta, type OperationalObservation } from "../../indicator-diagnosis/domain/operational-patterns.js"
 import { mixShiftOf } from "../../indicator-diagnosis/domain/population-mix.js"
-import { buildIndicatorInvestigation, buildPrvClosingDiagnosis, PRV_DIAGNOSIS_LOGIC_VERSION, teamPatternsOf, type IndicatorInvestigation, type PrvClosingDiagnosis, type SampleAccounting, type TeamObservationRow } from "../../indicator-diagnosis/domain/prv-investigation.js"
+import { buildIndicatorInvestigation, buildPrvClosingDiagnosis, PRV_ASSESSMENT_LOGIC_VERSION, teamPatternsOf, type IndicatorInvestigation, type PrvClosingDiagnosis, type SampleAccounting, type TeamObservationRow } from "../../indicator-diagnosis/domain/prv-investigation.js"
 import { observationsFrom, practiceKeyOf, type ProcessObservation } from "../../indicator-diagnosis/domain/process-patterns.js"
 import type { InvestigationStep } from "../../indicator-diagnosis/domain/investigation-steps.js"
 import { presentedExcerptsOf } from "../domain/feedback-investigation-result.js"
@@ -225,7 +225,7 @@ export async function runPrvClosingStep(deps: PrvStepDeps, input: { organization
     const verifiedHere = assessedHere.map((request) => ({ interactionId: request.interactionId, assessment: assessed.get(request.interactionId)!.assessment }))
     const created = observationsFrom(input.collaboratorId, verifiedHere).map((observation) => {
       const source = fresh.find((entry) => entry.interactionId === observation.interactionId && entry.practiceKey === observation.practiceKey)
-      return { ...observation, displayContext: source ? { quotes: source.evidence, rule: source.rule ? { documentTitle: source.rule.documentTitle, heading: source.rule.heading, quote: source.rule.quote } : null, guidance: source.guidance, assessmentLogic: PRV_DIAGNOSIS_LOGIC_VERSION } : null }
+      return { ...observation, displayContext: source ? { quotes: source.evidence, rule: source.rule ? { documentTitle: source.rule.documentTitle, heading: source.rule.heading, quote: source.rule.quote } : null, guidance: source.guidance, assessmentLogic: PRV_ASSESSMENT_LOGIC_VERSION } : null }
     })
     for (const observation of created) if (!newObservations.some((entry) => entry.interactionId === observation.interactionId && entry.practiceKey === observation.practiceKey)) newObservations.push(observation)
     const reusableCount = investigationPlan.reuse.filter((entry) => entry.status === "REUSABLE").length

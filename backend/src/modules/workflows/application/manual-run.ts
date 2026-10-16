@@ -173,7 +173,10 @@ async function assertCollaboratorAllowed(db: Database, organizationId: string, t
 export type ManualRunInteraction = {
   id: string
   externalId: string
+  /** Motivo (`interactions.reason`). */
   subject: string
+  /** Submotivo; null = a fonte não informou. */
+  subReason: string | null
   channel: string
   startedAt: string
   endedAt: string
@@ -195,7 +198,7 @@ export async function listManualRunInteractions(
   const search = options.search?.trim() ? `%${options.search.trim()}%` : null
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100)
   const result = await db.query<ManualRunInteraction>(
-    `select i.id, i.external_id "externalId", i.reason subject, i.channel, i.started_at "startedAt", i.ended_at "endedAt",
+    `select i.id, i.external_id "externalId", i.reason subject, i.sub_reason "subReason", i.channel, i.started_at "startedAt", i.ended_at "endedAt",
             extract(epoch from (i.ended_at - i.started_at))::int "durationSeconds",
             coalesce((
               select json_agg(json_build_object('name', cf.flag_name, 'value', coalesce(f.value_boolean::text, f.value_numeric::text)) order by cf.flag_name)
@@ -205,7 +208,7 @@ export async function listManualRunInteractions(
        from interactions i
       where i.organization_id = $1 and i.operator_id = $2
         and exists (select 1 from transcripts tr where tr.interaction_id = i.id)
-        and ($3::text is null or i.reason ilike $3 or i.external_id ilike $3)
+        and ($3::text is null or i.reason ilike $3 or i.sub_reason ilike $3 or i.external_id ilike $3)
       order by i.started_at desc, i.id
       limit $4`,
     [organizationId, collaboratorId, search, limit],
@@ -470,7 +473,7 @@ export type ManualRunView = {
   requestedBy: { id: string; name: string }
   context: ManualTriggerContext
   collaborator: { id: string; name: string; matricula: string | null }
-  interaction: { id: string; subject: string; startedAt: string } | null
+  interaction: { id: string; subject: string; subReason: string | null; startedAt: string } | null
   measurement: { id: string; periodStart: string; periodEnd: string; value: number; indicatorName: string | null } | null
   execution: {
     enrollmentId: string
@@ -519,6 +522,7 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
     collaborator_matricula: string | null
     interaction_id: string | null
     interaction_subject: string | null
+    interaction_sub_reason: string | null
     interaction_started_at: string | null
     measurement_id: string | null
     measurement_period_start: string | null
@@ -535,7 +539,7 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
             (select count(*) from workflow_versions v2 where v2.workflow_id = r.workflow_id and v2.created_at <= v.created_at)::int version_number,
             r.requested_at, r.requested_by, rb.name requested_by_name, r.context,
             r.collaborator_id, c.name collaborator_name, c.matricula collaborator_matricula,
-            r.interaction_id, i.reason interaction_subject, i.started_at interaction_started_at,
+            r.interaction_id, i.reason interaction_subject, i.sub_reason interaction_sub_reason, i.started_at interaction_started_at,
             r.indicator_measurement_id measurement_id, m.period_start measurement_period_start, m.period_end measurement_period_end, m.value measurement_value, d.name indicator_name,
             e.id enrollment_id, e.status, e.current_node_id, e.updated_at, v.graph
        from workflow_manual_runs r
@@ -594,7 +598,7 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
     requestedBy: { id: row.requested_by, name: row.requested_by_name },
     context: row.context,
     collaborator: { id: row.collaborator_id, name: row.collaborator_name, matricula: row.collaborator_matricula },
-    interaction: row.interaction_id && row.interaction_started_at ? { id: row.interaction_id, subject: row.interaction_subject ?? "", startedAt: row.interaction_started_at } : null,
+    interaction: row.interaction_id && row.interaction_started_at ? { id: row.interaction_id, subject: row.interaction_subject ?? "", subReason: row.interaction_sub_reason, startedAt: row.interaction_started_at } : null,
     measurement:
       row.measurement_id && row.measurement_period_start && row.measurement_period_end
         ? { id: row.measurement_id, periodStart: row.measurement_period_start, periodEnd: row.measurement_period_end, value: Number(row.measurement_value), indicatorName: row.indicator_name }

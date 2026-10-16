@@ -67,6 +67,15 @@ componentes que exige (`AGGREGATION_STRATEGY_METADATA[kind].requiredComponents`)
 | `SUM`              | value                           |
 | `LATEST`           | value                           |
 
+### Fechamento oficial com componentes (2026-10-16, migration 147)
+
+O fechamento mensal (`employee_indicator_performance`) aceita os mesmos componentes genéricos, opcionais:
+`numerator`/`denominator` (contrato `OFFICIAL_INDICATOR_PERFORMANCE@2`). Valem as mesmas estratégias — o
+fator que leva `numerator ÷ denominator` ao valor é da ESTRATÉGIA (`componentValueScale`: Taxa × 100, Média
+ponderada × 1, demais sem componentes), nunca da unidade —, a coerência com o valor informado é checada com
+tolerância de arredondamento e incoerência vai para a quarentena. Os componentes nunca recalculam o oficial;
+servem para somar estruturas em valor (Σ numerador ÷ Σ denominador × fator).
+
 ## Central de Dados — evolução futura (NÃO implementada nesta decisão)
 
 ```

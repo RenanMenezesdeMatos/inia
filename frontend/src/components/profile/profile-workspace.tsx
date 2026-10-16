@@ -25,6 +25,8 @@ import type { MyProfile } from "@/schemas/profile/my-profile.schema"
 import type { AnalyticsContext } from "@/schemas/analytics/analytics.schema"
 import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from "@/schemas/auth/auth.schema"
 
+import { WhereToActCard } from "@/components/leadership/where-to-act-card"
+
 import { SupervisorBroadcastDialog, type BroadcastDraft } from "./broadcast/supervisor-broadcast-dialog"
 import { ProfileTabsList, profileTabsFor } from "./profile-tabs"
 
@@ -98,7 +100,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   <NoStructureState />
                 ) : (
                   <FollowupWorkspaceShell
-                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" notices={notices} employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} />}
+                    feed={<StructureFollowUpFeed subject={null} description="Feedbacks, resultados de workflow e escalonamentos da sua estrutura" notices={notices} employeeHref={(personId) => employeeProfileHref(personId, "followup")} unacknowledgedOnly={state.ackPending} onUnacknowledgedOnlyChange={(value) => update({ ackPending: value })} highlightItemId={state.item} lead={state.ackPending ? null : <WhereToActCard />} />}
                     renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={EMPTY_INDICATORS} operator={profile} context="team" onCollapse={onCollapse} hidden={hidden} />}
                   />
                 )}
@@ -112,7 +114,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
               </TabsContent>
               {context.capabilities.tabs.includes("PEOPLE") ? (
                 <TabsContent value="people" className="mt-4 pb-8">
-                  {context.defaultSubject ? <TeamView context={context} state={{ subject: state.subject, period: state.period }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} /> : <NoStructureState />}
+                  {context.defaultSubject ? <TeamView context={context} state={{ subject: state.subject, period: state.period, situation: state.situation, attention: state.attention }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} /> : <NoStructureState />}
                 </TabsContent>
               ) : null}
               {context.capabilities.tabs.includes("CALENDAR") ? (

@@ -7,6 +7,7 @@ import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { createIndicatorDefinition, deleteIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
+import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { createDataHubContext, type DataHubContext } from "../application/data-hub-context.js"
 import { createFeed, fetchSample, previewMapping, setFeedStatus, updateFeed } from "../application/feed-service.js"
 import { buildOverview, buildQualityReport, lineageOf } from "../application/overview-service.js"
@@ -87,6 +88,8 @@ async function cleanup() {
   await db.query(`delete from teams where organization_id = $1 and external_code like 'TC_%'`, [ORG])
   const indicator = await db.query<{ id: string }>(`select id from indicator_definitions where organization_id = $1 and code = 'TEST_CENTRAL_RATE'`, [ORG])
   if (indicator.rows[0]) await deleteIndicatorDefinition(db, ORG, indicator.rows[0].id)
+  const snapshot = await db.query<{ id: string }>(`select id from indicator_definitions where organization_id = $1 and code = 'TEST_CENTRAL_SNAPSHOT'`, [ORG])
+  if (snapshot.rows[0]) await deleteIndicatorDefinition(db, ORG, snapshot.rows[0].id)
 }
 
 describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco de teste", () => {
@@ -397,6 +400,45 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
   })
 
   // ---------------------------------------------------------------------------------------
+  it("INTERACTIONS@2 por CSV: motivo + submotivo gravados; sem submotivo mantém o recebido; submotivo longo vai para a quarentena; feed @1 segue sem submotivo", async () => {
+    const columns = ["externalInteractionId", "externalEmployeeId", "reason", "subReason", "startedAt", "endedAt"]
+    const feed = await activeFeed(groupsSource, { feedKey: "interacoes-submotivo", name: "Interações com submotivo", contractKey: "INTERACTIONS", connectorConfig: fileFeedConfig(), mapping: identity(columns) })
+    expect(feed.contractVersion).toBe(2)
+    const first = await uploadAndRun(feed, csv([
+      columns,
+      ["TC-SUB-1", "TC-OP-01", "Fatura", "Segunda via", "2026-09-15T14:00:00-03:00", "2026-09-15T14:06:00-03:00"],
+      ["TC-SUB-2", "TC-OP-01", "Fatura", "", "2026-09-15T15:00:00-03:00", "2026-09-15T15:04:00-03:00"],
+      ["TC-SUB-3", "TC-OP-01", "Fatura", "x".repeat(201), "2026-09-15T16:00:00-03:00", "2026-09-15T16:04:00-03:00"],
+    ]), "tc-interacoes-submotivo.csv")
+    expect(first.status).toBe("PARTIAL")
+    expect(first.recordsInserted).toBe(2)
+    expect(await rejectionsOf(first.id)).toEqual([{ code: "DATA_TYPE_INVALID", field: "subReason", key: "TC-SUB-3" }])
+    const stored = async () => (await db.query<{ external_id: string; reason: string; sub_reason: string | null }>(`select external_id, reason, sub_reason from interactions where organization_id = $1 and external_id like 'TC-SUB-%' order by external_id`, [ORG])).rows
+    expect(await stored()).toEqual([{ external_id: "TC-SUB-1", reason: "Fatura", sub_reason: "Segunda via" }, { external_id: "TC-SUB-2", reason: "Fatura", sub_reason: null }])
+
+    // Mesma carga sem o submotivo: nada muda (vazio mantém); submotivo novo atualiza.
+    const second = await uploadAndRun(feed, csv([
+      columns,
+      ["TC-SUB-1", "TC-OP-01", "Fatura", "", "2026-09-15T14:00:00-03:00", "2026-09-15T14:06:00-03:00"],
+      ["TC-SUB-2", "TC-OP-01", "Fatura", "Dúvidas sobre faturamento", "2026-09-15T15:00:00-03:00", "2026-09-15T15:04:00-03:00"],
+    ]), "tc-interacoes-submotivo-2.csv")
+    expect(second.status).toBe("COMPLETED")
+    expect(second.recordsUnchanged).toBe(1)
+    expect(second.recordsUpdated).toBe(1)
+    expect(await stored()).toEqual([{ external_id: "TC-SUB-1", reason: "Fatura", sub_reason: "Segunda via" }, { external_id: "TC-SUB-2", reason: "Fatura", sub_reason: "Dúvidas sobre faturamento" }])
+
+    // Feed criado na versão 1 continua nela: não conhece submotivo e não apaga o que a versão 2 gravou.
+    const v1Columns = ["externalInteractionId", "externalEmployeeId", "reason", "startedAt", "endedAt"]
+    const legacy = await activeFeed(groupsSource, { feedKey: "interacoes-v1", name: "Interações (v1)", contractKey: "INTERACTIONS", contractVersion: 1, connectorConfig: fileFeedConfig(), mapping: identity(v1Columns) })
+    expect(legacy.contractVersion).toBe(1)
+    const legacyRun = await uploadAndRun(legacy, csv([v1Columns, ["TC-SUB-1", "TC-OP-01", "Fatura", "2026-09-15T14:00:00-03:00", "2026-09-15T14:06:00-03:00"], ["TC-SUB-4", "TC-OP-01", "Cancelamento", "2026-09-15T17:00:00-03:00", "2026-09-15T17:05:00-03:00"]]), "tc-interacoes-v1.csv")
+    expect(legacyRun.status).toBe("COMPLETED")
+    expect(legacyRun.recordsUnchanged).toBe(1)
+    expect(legacyRun.recordsInserted).toBe(1)
+    expect((await stored()).map((row) => [row.external_id, row.sub_reason])).toEqual([["TC-SUB-1", "Segunda via"], ["TC-SUB-2", "Dúvidas sobre faturamento"], ["TC-SUB-4", null]])
+  })
+
+  // ---------------------------------------------------------------------------------------
   it("SFTP (fake): arquivo do pattern é processado uma vez; segunda poll não baixa nem duplica; senha errada é DATA_SOURCE_AUTH_FAILED", async () => {
     sftp.put("/in/employees_2026-09-15.csv", "matricula;nome;perfil\nTC-OP-30;Novo pelo SFTP;OPERATOR\n")
     sftp.put("/in/outro_arquivo.txt", "ignorar")
@@ -497,6 +539,52 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     const shiftsRun = await uploadAndRun(shifts, csv([["externalEmployeeId", "startTime", "workMinutes", "effectiveFrom"], ["TC-OP-01", "08:00", "360", "2026-01-01"], ["TC-OP-01", "08:00", "9999", "2026-02-01"]]), "tc-jornadas.csv")
     expect(shiftsRun.status).toBe("PARTIAL")
     expect((await rejectionsOf(shiftsRun.id))[0]?.code).toBe("DATA_CONTRACT_VIOLATION")
+  })
+
+  // ---------------------------------------------------------------------------------------
+  it("OFFICIAL_INDICATOR_PERFORMANCE@2: numerador e denominador validados pela estratégia, gravados como vieram e lidos pelo analytics; feed @1 convive", async () => {
+    await createIndicatorDefinition(db, ORG, { code: "TEST_CENTRAL_SNAPSHOT", name: "Estoque Central (teste)", unit: "CASES", desiredDirection: "LOWER", dailySupported: false, operationalAggregation: "LATEST", officialClosureSupported: true })
+    const columns = ["externalEmployeeId", "indicatorCode", "referencePeriod", "value", "numerator", "denominator", "targetValue", "achievementPercent", "weightPercent", "quartile"]
+    const feed = await activeFeed(groupsSource, { feedKey: "fechamento-v2", name: "Fechamento com componentes", contractKey: "OFFICIAL_INDICATOR_PERFORMANCE", connectorConfig: fileFeedConfig(), sourceNamespace: "tc-oficial-comp", mapping: identity(columns) })
+    expect(feed.contractVersion).toBe(2)
+    const run = await uploadAndRun(feed, csv([
+      columns,
+      ["TC-OP-03", "TEST_CENTRAL_RATE", "2026-08", "82,5", "165", "200", "80", "103,1", "25", "Q1"],
+      ["TC-OP-04", "TEST_CENTRAL_RATE", "2026-08", "90", "9", "20", "80", "112,5", "25", "Q1"], // 9 ÷ 20 = 45% ≠ 90%
+      ["TC-OP-05", "TEST_CENTRAL_RATE", "2026-08", "70", "14", "", "80", "87,5", "25", "Q3"], // numerador sem denominador
+      ["TC-OP-06", "TEST_CENTRAL_SNAPSHOT", "2026-08", "12", "12", "1", "10", "83,3", "", "Q2"], // Último valor não usa componentes
+      ["TC-OP-07", "TEST_CENTRAL_SNAPSHOT", "2026-08", "12", "", "", "10", "83,3", "", "Q2"],
+    ]), "tc-fechamento-componentes.csv")
+    expect(run.status).toBe("PARTIAL")
+    expect(run.recordsInserted).toBe(2)
+    expect(run.recordsRejected).toBe(3)
+    expect((await rejectionsOf(run.id)).map((row) => [row.key, row.code, row.field])).toEqual([["TC-OP-04", "DATA_CONTRACT_VIOLATION", "value"], ["TC-OP-05", "DATA_CONTRACT_VIOLATION", "denominator"], ["TC-OP-06", "DATA_CONTRACT_VIOLATION", "numerator"]])
+    const message = (await db.query<{ message: string }>(`select message from data_ingestion_rejections where run_id = $1 and source_record_key = 'TC-OP-04'`, [run.id])).rows[0]!.message
+    expect(message).toContain("não confere com numerador ÷ denominador (9 ÷ 20 × 100 = 45;")
+
+    const people = new Map((await db.query<{ id: string; matricula: string }>(`select id, matricula from people where organization_id = $1 and matricula = any($2::text[])`, [ORG, ["TC-OP-03", "TC-OP-07"]])).rows.map((row) => [row.matricula, row.id]))
+    const read = async () => {
+      const rows = await new PgAnalyticsReadRepository(db).loadIndicatorPerformance(ORG, [...people.values()], ["2026-08"])
+      return rows.filter((row) => row.indicatorCode.startsWith("TEST_CENTRAL_")).map((row) => ({ person: row.personId === people.get("TC-OP-03") ? "TC-OP-03" : "TC-OP-07", value: row.value, numerator: row.numerator, denominator: row.denominator, achievementPercent: row.achievementPercent, quartile: row.quartile })).sort((a, b) => a.person.localeCompare(b.person))
+    }
+    // O oficial é o da fonte (atingimento/quartil intocados); os componentes, como vieram.
+    expect(await read()).toEqual([
+      { person: "TC-OP-03", value: 82.5, numerator: 165, denominator: 200, achievementPercent: 103.1, quartile: "Q1" },
+      { person: "TC-OP-07", value: 12, numerator: null, denominator: null, achievementPercent: 83.3, quartile: "Q2" },
+    ])
+
+    // Feed criado na versão 1 continua nela: não conhece os componentes e não apaga os do MESMO valor oficial;
+    // valor oficial novo sem componentes apaga os antigos (nunca ficam incoerentes com o valor gravado).
+    const v1Columns = ["externalEmployeeId", "indicatorCode", "referencePeriod", "value", "targetValue", "achievementPercent", "weightPercent", "quartile"]
+    const legacy = await activeFeed(groupsSource, { feedKey: "fechamento-v1", name: "Fechamento (v1)", contractKey: "OFFICIAL_INDICATOR_PERFORMANCE", contractVersion: 1, connectorConfig: fileFeedConfig(), sourceNamespace: "tc-oficial-comp", mapping: identity(v1Columns) })
+    expect(legacy.contractVersion).toBe(1)
+    const same = await uploadAndRun(legacy, csv([v1Columns, ["TC-OP-03", "TEST_CENTRAL_RATE", "2026-08", "82,5", "80", "103,1", "25", "Q1"]]), "tc-fechamento-v1.csv")
+    expect(same.status).toBe("COMPLETED")
+    expect(same.recordsUnchanged).toBe(1)
+    expect((await read())[0]).toMatchObject({ numerator: 165, denominator: 200 })
+    const changed = await uploadAndRun(legacy, csv([v1Columns, ["TC-OP-03", "TEST_CENTRAL_RATE", "2026-08", "80", "80", "100", "25", "Q2"]]), "tc-fechamento-v1-ajuste.csv")
+    expect(changed.recordsUpdated).toBe(1)
+    expect((await read())[0]).toEqual({ person: "TC-OP-03", value: 80, numerator: null, denominator: null, achievementPercent: 100, quartile: "Q2" })
   })
 
   it("visão geral, qualidade e router admin: contagens, top erros, mapa de dados e nenhum segredo serializado", async () => {

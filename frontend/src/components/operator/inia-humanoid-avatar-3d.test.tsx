@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AvatarDriver } from "@/lib/avatar/animation/types"
@@ -85,13 +85,32 @@ describe("IniaHumanoidAvatar3D — Canvas estável", () => {
     expect(stage).not.toHaveClass("h-64")
   })
 
-  it("esconde o crédito do modelo base por padrão; `attribution` permite exibi-lo", () => {
+  it("o crédito CC BY 4.0 do modelo base fica escondido num \"i\" que abre pelo toque/teclado; `attribution={false}` o remove", () => {
     const { rerender } = render(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} />)
+    const trigger = screen.getByRole("button", { name: "Créditos do avatar 3D" })
     expect(screen.queryByText(/Black vizual/)).not.toBeInTheDocument()
-    rerender(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} attribution />)
-    expect(screen.getByText(/Pixar style girl \(rigging\).*Black vizual \(CC BY 4\.0\), modificada/)).toBeInTheDocument()
+
+    fireEvent.click(trigger)
+    const credit = screen.getByText(/Black\s+vizual/)
+    expect(credit).toHaveTextContent("Avatar 3D baseado em “Pixar style girl (rigging)”, de Black vizual, sob a licença CC BY 4.0. Modificado para a INIA.")
+    expect(screen.getByRole("link", { name: "“Pixar style girl (rigging)”" })).toHaveAttribute("href", "https://sketchfab.com/3d-models/pixar-style-girl-rigging-c92355c9f57d467a9dfca2d05e52d376")
+    expect(screen.getByRole("link", { name: "CC BY 4.0" })).toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/")
+
     rerender(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} attribution={false} />)
-    expect(screen.queryByText(/Black vizual/)).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Créditos do avatar 3D" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Black\s+vizual/)).not.toBeInTheDocument()
+  })
+
+  it("com o mouse, o crédito abre ao passar por cima e um clique não o fecha", () => {
+    render(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} attributionPlacement="top" />)
+    const trigger = screen.getByRole("button", { name: "Créditos do avatar 3D" })
+    expect(trigger).toHaveClass("top-2")
+
+    // O jsdom não tem PointerEvent (o `pointerType` se perderia) e o React deriva o onPointerEnter do `pointerover`.
+    fireEvent(trigger, Object.assign(new MouseEvent("pointerover", { bubbles: true }), { pointerType: "mouse" }))
+    expect(screen.getByText(/Black\s+vizual/)).toBeInTheDocument()
+    fireEvent.click(trigger)
+    expect(screen.getByText(/Black\s+vizual/)).toBeInTheDocument()
   })
 
   it("entrega o <canvas> criado para o gravador do laboratório (onCanvasReady)", () => {

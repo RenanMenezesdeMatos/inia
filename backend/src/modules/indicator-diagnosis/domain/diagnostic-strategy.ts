@@ -18,7 +18,8 @@ import { INVESTIGATION_MODES, INVESTIGATION_STEPS, INVESTIGATION_STEP_CATALOG, P
 export const DIAGNOSTIC_STRATEGY_SCHEMA_VERSION = 1 as const
 
 /** Dimensões de segmentação implementadas no plano (V1.6.1: só o assunto/motivo da interação). */
-export const SEGMENT_DIMENSIONS = ["SUBJECT"] as const
+/** `SUBJECT` = assunto (submotivo; sem submotivo, o motivo) — o preferencial; `REASON` = motivo genérico (`SUBJECT_RESOLUTION_V2`). */
+export const SEGMENT_DIMENSIONS = ["SUBJECT", "REASON"] as const
 export type SegmentDimension = (typeof SEGMENT_DIMENSIONS)[number]
 
 /**
@@ -143,7 +144,8 @@ export type StrategyCapabilityCatalog = {
 }
 
 export const DIMENSION_LABELS: Record<SegmentDimension, { label: string; description: string }> = {
-  SUBJECT: { label: "Motivo / assunto do atendimento", description: "Agrupa os atendimentos do período pelo motivo (assunto canônico ou, sem ele, o assunto registrado na origem)." },
+  SUBJECT: { label: "Assunto do atendimento (submotivo)", description: "Agrupa os atendimentos do período pelo submotivo (assunto canônico ou, sem ele, o submotivo registrado na origem); atendimento sem submotivo entra pelo motivo." },
+  REASON: { label: "Motivo do atendimento", description: "Agrupa pelo motivo genérico registrado na origem, que junta os submotivos dele. Com os dois marcados, o submotivo vem primeiro e o motivo só entra quando nenhum submotivo tem atendimentos suficientes." },
 }
 export const NO_DIAGNOSIS_LABELS: Record<NoDiagnosisBehavior, { label: string; description: string }> = {
   FACTUAL_ONLY: { label: "Gerar somente feedback factual", description: "O colaborador recebe o resultado oficial e a informação de que não houve evidência para uma orientação específica." },

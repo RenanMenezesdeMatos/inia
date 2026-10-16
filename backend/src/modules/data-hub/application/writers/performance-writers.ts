@@ -1,4 +1,4 @@
-import { AGGREGATION_STRATEGY_METADATA } from "../../../indicators/domain/indicator-definition.js"
+import { AGGREGATION_STRATEGY_METADATA, checkComponentCoherence, componentValueScale, valueFromComponents } from "../../../indicators/domain/indicator-definition.js"
 import { enrollIndicatorWorkflows } from "../../../workflows/application/indicator-enrollment.js"
 import { startOfLocalDate } from "../../../workflows/application/time-window.js"
 import { resolveEmployees, resolveIndicators, resolveSubteams, type IndicatorRef } from "../reference-resolver.js"
@@ -89,8 +89,8 @@ export const indicatorMeasurementsWriter: DomainWriter<PreparedMeasurement> = {
       const value = num(record.record, "value")!
       const numerator = num(record.record, "numerator")
       const denominator = num(record.record, "denominator")
-      if (denominator !== null && numerator !== null && denominator > 0) {
-        const expected = indicator.aggregation === "RATE" ? (numerator / denominator) * 100 : indicator.aggregation === "WEIGHTED_AVERAGE" ? numerator / denominator : null
+      if (denominator !== null && numerator !== null) {
+        const expected = valueFromComponents(indicator.aggregation, numerator, denominator)
         if (expected !== null && Math.abs(expected - value) > Math.max(0.1, Math.abs(expected) * 0.01)) {
           rejections.push(reject(record, "DATA_CONTRACT_VIOLATION", "value", `Valor ${value} não confere com numerador ÷ denominador (${expected.toFixed(2)}).`))
           continue
@@ -152,7 +152,29 @@ export const indicatorMeasurementsWriter: DomainWriter<PreparedMeasurement> = {
 // ---------------------------------------------------------------------------------------------
 // OFFICIAL_INDICATOR_PERFORMANCE → employee_indicator_performance
 // ---------------------------------------------------------------------------------------------
-type PreparedOfficial = ValidRecord & { personId: string; indicatorId: string; subteamId: string | null; referencePeriod: string; value: number; targetValue: number | null; achievementPercent: number | null; weightPercent: number | null; quartile: string | null }
+type PreparedOfficial = ValidRecord & { personId: string; indicatorId: string; subteamId: string | null; referencePeriod: string; value: number; targetValue: number | null; achievementPercent: number | null; weightPercent: number | null; quartile: string | null; numerator: number | null; denominator: number | null }
+
+const formatNumber = (value: number) => value.toLocaleString("pt-BR", { maximumFractionDigits: 4 })
+
+/**
+ * Numerador e denominador do fechamento (contrato @2) só existem quando a ESTRATÉGIA do indicador define
+ * o valor por componentes, e precisam conferir com o valor oficial (tolerância de arredondamento). O
+ * fechamento oficial nunca é corrigido nem recalculado: incoerência = registro inteiro na quarentena.
+ */
+function officialComponentsError(indicator: IndicatorRef, value: number, numerator: number, denominator: number): { field: string; message: string } | null {
+  const strategy = AGGREGATION_STRATEGY_METADATA[indicator.aggregation]
+  const coherence = checkComponentCoherence(indicator.aggregation, value, numerator, denominator)
+  if (coherence === null) {
+    return { field: "numerator", message: `A estratégia "${strategy.label}" do indicador "${indicator.code}" não define o valor por numerador e denominador. Envie o fechamento sem os componentes ou revise a estratégia no catálogo — nada foi gravado.` }
+  }
+  if (coherence.coherent) return null
+  const scale = componentValueScale(indicator.aggregation)
+  const formula = `${formatNumber(numerator)} ÷ ${formatNumber(denominator)}${scale !== null && scale !== 1 ? ` × ${scale}` : ""}`
+  return {
+    field: "value",
+    message: `Valor oficial ${formatNumber(value)} não confere com numerador ÷ denominador (${formula} = ${formatNumber(Number(coherence.expected.toFixed(4)))}; tolerância ±${formatNumber(Number(coherence.tolerance.toFixed(4)))}). O fechamento não foi gravado: a INIA nunca corrige o valor oficial nem os componentes.`,
+  }
+}
 
 export const officialIndicatorPerformanceWriter: DomainWriter<PreparedOfficial> = {
   contractKey: "OFFICIAL_INDICATOR_PERFORMANCE",
@@ -189,26 +211,42 @@ export const officialIndicatorPerformanceWriter: DomainWriter<PreparedOfficial> 
         rejections.push(reject(record, "DATA_SUBGROUP_NOT_FOUND", "subgroupExternalCode", `Subgrupo "${subgroupCode}" não existe na INIA.`))
         continue
       }
-      ready.push({ ...record, personId: person.id, indicatorId: indicator.id, subteamId: subteam?.id ?? person.subteamId, referencePeriod: str(record.record, "referencePeriod")!, value: num(record.record, "value")!, targetValue: num(record.record, "targetValue"), achievementPercent: num(record.record, "achievementPercent"), weightPercent: num(record.record, "weightPercent"), quartile: str(record.record, "quartile") })
+      const value = num(record.record, "value")!
+      // Contrato @1 não conhece os componentes (o mapeamento nunca os traz); no @2 os dois vêm juntos (validação pura do contrato).
+      const numerator = num(record.record, "numerator")
+      const denominator = num(record.record, "denominator")
+      if (numerator !== null && denominator !== null) {
+        const componentsError = officialComponentsError(indicator, value, numerator, denominator)
+        if (componentsError) {
+          rejections.push(reject(record, "DATA_CONTRACT_VIOLATION", componentsError.field, componentsError.message))
+          continue
+        }
+      }
+      ready.push({ ...record, personId: person.id, indicatorId: indicator.id, subteamId: subteam?.id ?? person.subteamId, referencePeriod: str(record.record, "referencePeriod")!, value, targetValue: num(record.record, "targetValue"), achievementPercent: num(record.record, "achievementPercent"), weightPercent: num(record.record, "weightPercent"), quartile: str(record.record, "quartile"), numerator, denominator })
     }
     return { ready, rejections }
   },
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
+    // Componentes ausentes (contrato @1, ou @2 sem eles) não apagam os já recebidos para o MESMO valor
+    // oficial; valor novo sem componentes apaga os antigos — nunca ficam incoerentes com o valor gravado.
     const result = await client.query<{ id: string; key: string; inserted: boolean }>(
-      `insert into employee_indicator_performance (organization_id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, source)
-       select $1, person_id, indicator_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, $2
-       from unnest($3::uuid[], $4::uuid[], $5::uuid[], $6::text[], $7::numeric[], $8::numeric[], $9::numeric[], $10::numeric[], $11::text[])
-         as t(person_id, indicator_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile)
+      `insert into employee_indicator_performance (organization_id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator, source)
+       select $1, person_id, indicator_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator, $2
+       from unnest($3::uuid[], $4::uuid[], $5::uuid[], $6::text[], $7::numeric[], $8::numeric[], $9::numeric[], $10::numeric[], $11::text[], $12::numeric[], $13::numeric[])
+         as t(person_id, indicator_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator)
        on conflict (organization_id, person_id, indicator_definition_id, reference_period) do update set
          subteam_id = excluded.subteam_id, value = excluded.value, target_value = excluded.target_value, achievement_percent = excluded.achievement_percent,
-         weight_percent = excluded.weight_percent, quartile = excluded.quartile, source = excluded.source
+         weight_percent = excluded.weight_percent, quartile = excluded.quartile, source = excluded.source,
+         numerator = case when excluded.numerator is null and excluded.value = employee_indicator_performance.value then employee_indicator_performance.numerator else excluded.numerator end,
+         denominator = case when excluded.denominator is null and excluded.value = employee_indicator_performance.value then employee_indicator_performance.denominator else excluded.denominator end
        where employee_indicator_performance.value is distinct from excluded.value or employee_indicator_performance.target_value is distinct from excluded.target_value
           or employee_indicator_performance.achievement_percent is distinct from excluded.achievement_percent or employee_indicator_performance.weight_percent is distinct from excluded.weight_percent
           or employee_indicator_performance.quartile is distinct from excluded.quartile or employee_indicator_performance.subteam_id is distinct from excluded.subteam_id
           or employee_indicator_performance.source is distinct from excluded.source
+          or (excluded.numerator is not null and (employee_indicator_performance.numerator is distinct from excluded.numerator or employee_indicator_performance.denominator is distinct from excluded.denominator))
        returning id, person_id || '|' || indicator_definition_id || '|' || reference_period key, (xmax = 0) inserted`,
-      [context.organizationId, context.sourceNamespace, batch.map((r) => r.personId), batch.map((r) => r.indicatorId), batch.map((r) => r.subteamId), batch.map((r) => r.referencePeriod), batch.map((r) => r.value), batch.map((r) => r.targetValue), batch.map((r) => r.achievementPercent), batch.map((r) => r.weightPercent), batch.map((r) => r.quartile)],
+      [context.organizationId, context.sourceNamespace, batch.map((r) => r.personId), batch.map((r) => r.indicatorId), batch.map((r) => r.subteamId), batch.map((r) => r.referencePeriod), batch.map((r) => r.value), batch.map((r) => r.targetValue), batch.map((r) => r.achievementPercent), batch.map((r) => r.weightPercent), batch.map((r) => r.quartile), batch.map((r) => r.numerator), batch.map((r) => r.denominator)],
     )
     const outcome = withLineage("employee_indicator_performance", batch, (row) => `${row.personId}|${row.indicatorId}|${row.referencePeriod}`, result.rows.map((row) => ({ key: row.key, id: row.id, inserted: row.inserted })))
     outcome.businessMaxEventTime = batch.reduce<string | null>((max, row) => {

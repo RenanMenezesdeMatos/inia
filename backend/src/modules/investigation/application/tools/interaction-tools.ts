@@ -7,7 +7,7 @@ import { withLlmScope } from "../../../../shared/application/llm-telemetry.js"
 import { ANALYSIS_DIMENSION_DEFINITIONS, interactionMetricFor, INTERACTION_METRIC_LABELS, type AnalysisDimension } from "../../domain/analysis-dimensions.js"
 import { deltaOf, noData, notSupported, percentOf, sufficient, type ToolQuality, type ToolResult } from "../../domain/tool-output.js"
 import { describeWindow, loadPeerPopulation, MINIMUM_COMPARISON_POPULATION, resolvePeriod, type IndicatorInfo, type InvestigationPeriod, type KnowledgeExcerptRecord, type ToolContext } from "../tool-context.js"
-import { canonicalSubjectSql, subjectFilterSql, type SubjectResolution } from "../../../interactions/domain/interaction-subject.js"
+import { canonicalReasonSql, canonicalSubjectSql, levelCanonicalSql, levelKeySql, rawSubjectSql, subjectFilterSql, type SubjectLevel, type SubjectResolution } from "../../../interactions/domain/interaction-subject.js"
 import { resolveCanonicalSubject } from "../../../interactions/application/interaction-subject-catalog.js"
 import { PEER_PRIVACY_PROJECTION_VERSION, projectPeerTranscript, type PeerIdentity, type PeerTranscriptPrivacyProjection } from "../../domain/peer-privacy-projection.js"
 import { periodDaysOf, selectSample, type SamplingMetadata, type SamplingStrategy } from "../../domain/sampling-strategy.js"
@@ -28,11 +28,15 @@ export const TRANSCRIPT_ANALYSIS_MAX = 8
 export const TRANSCRIPT_MAX_CHARS = 6_000
 const WEEKDAY_LABELS = ["", "segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"]
 
-type InteractionRow = { id: string; started_at: string; ended_at: string; reason: string; canonical_subject: string | null; channel: string; duration: string; flags: { name: string; boolean: boolean | null; numeric: string | null }[] | null; transcript_chars: number | null }
+type InteractionRow = { id: string; started_at: string; ended_at: string; reason: string; sub_reason: string | null; canonical_subject: string | null; canonical_reason: string | null; channel: string; duration: string; flags: { name: string; boolean: boolean | null; numeric: string | null }[] | null; transcript_chars: number | null }
 
-/** Assunto: `subject` = bruto da fonte (verdade da origem); `canonicalSubject` = código do catálogo via alias explícito, ou nulo (interaction-subject.ts). */
+/**
+ * Assunto (`SUBJECT_RESOLUTION_V2`, interaction-subject.ts): `subject` = assunto bruto preferencial da fonte (o SUBMOTIVO quando
+ * informado; senão o motivo); `canonicalSubject` = código do catálogo desse nível via alias explícito, ou nulo. Só quando há
+ * submotivo: `reason` = o MOTIVO bruto e `canonicalReason` = o canônico dele. Sem submotivo a saída é a mesma de antes.
+ */
 const INTERACTION_SELECT = `
-  select i.id, i.started_at, i.ended_at, i.reason, ${canonicalSubjectSql("i")} canonical_subject, i.channel, extract(epoch from i.ended_at - i.started_at) duration,
+  select i.id, i.started_at, i.ended_at, i.reason, i.sub_reason, ${canonicalSubjectSql("i")} canonical_subject, ${canonicalReasonSql("i")} canonical_reason, i.channel, extract(epoch from i.ended_at - i.started_at) duration,
          (select json_agg(json_build_object('name', cf.flag_name, 'boolean', f.value_boolean, 'numeric', f.value_numeric) order by cf.flag_name)
             from interaction_flags f join channel_flags cf on cf.id = f.channel_flag_id where f.interaction_id = i.id) flags,
          (select length(t.content) from transcripts t where t.interaction_id = i.id order by t.version desc limit 1) transcript_chars
@@ -47,8 +51,9 @@ function interactionView(row: InteractionRow, timeZone: string) {
     localTime: started.toLocaleTimeString("pt-BR", { timeZone, hour: "2-digit", minute: "2-digit" }),
     weekday: WEEKDAY_LABELS[isoWeekdayOf(started, timeZone)],
     durationSeconds: Math.round(Number(row.duration)),
-    subject: row.reason,
+    subject: row.sub_reason?.trim() ? row.sub_reason : row.reason,
     canonicalSubject: row.canonical_subject,
+    ...(row.sub_reason?.trim() ? { reason: row.reason, canonicalReason: row.canonical_reason } : {}),
     channel: row.channel,
     // Só sinais PRESENTES (booleana verdadeira ou valor numérico): flags falsas/ausentes não são informação e só inflam o contexto.
     flags: (row.flags ?? []).filter((flag) => flag.boolean === true || flag.numeric !== null).map((flag) => ({ flag: flag.name, value: flag.boolean ?? Number(flag.numeric) })),
@@ -68,15 +73,26 @@ function flagFilter(flag: string | undefined, paramIndex: number): { clause: str
 }
 
 /**
- * Filtro por assunto: resolve o pedido para o canônico (código do catálogo ou alias do bruto) e filtra
- * todas as interações com aquele canônico; sem alias, igualdade exata do bruto. Nunca fuzzy, nunca LLM.
+ * Filtro por assunto (nível preferencial: submotivo, ou o motivo sem submotivo) ou por MOTIVO (`level` REASON): resolve o pedido
+ * para o canônico (código do catálogo ou alias do bruto) e filtra todas as interações com aquele canônico no nível; sem alias,
+ * igualdade exata do bruto do nível. Nunca fuzzy, nunca LLM.
  */
-async function subjectFilter(context: ToolContext, subject: string | undefined, paramIndex: number): Promise<{ clause: string; params: unknown[]; label: string | null; resolution: SubjectResolution | null }> {
+async function subjectFilter(context: ToolContext, subject: string | undefined, paramIndex: number, level: SubjectLevel = "SUBJECT"): Promise<{ clause: string; params: unknown[]; label: string | null; resolution: SubjectResolution | null }> {
   if (!subject) return { clause: "", params: [], label: null, resolution: null }
   const resolution = await resolveCanonicalSubject(context.db, context.organizationId, subject)
-  const filter = subjectFilterSql(resolution, paramIndex)
-  const label = resolution.canonical ? `assunto canônico ${resolution.canonical.code} (${resolution.canonical.name}; pedido "${subject}")` : `assunto bruto exato "${subject}" (sem canônico no catálogo)`
+  const filter = subjectFilterSql(resolution, paramIndex, "i", level)
+  const noun = level === "REASON" ? "motivo" : "assunto"
+  const label = resolution.canonical ? `${noun} canônico ${resolution.canonical.code} (${resolution.canonical.name}; pedido "${subject}")` : `${noun} bruto exato "${subject}" (sem canônico no catálogo)`
   return { clause: filter.clause, params: [filter.param], label, resolution }
+}
+
+/** Filtros de assunto e de motivo, nessa ordem, a partir do próximo parâmetro livre (`params` é acrescentado aqui). */
+async function subjectAndReasonFilters(context: ToolContext, filters: { subject?: string; reason?: string }, params: unknown[]): Promise<{ clause: string; labels: string[] }> {
+  const subject = await subjectFilter(context, filters.subject, params.length + 1)
+  params.push(...subject.params)
+  const reason = await subjectFilter(context, filters.reason, params.length + 1, "REASON")
+  params.push(...reason.params)
+  return { clause: subject.clause + reason.clause, labels: [subject.label, reason.label].filter((label): label is string => label !== null) }
 }
 
 export async function countInteractions(context: ToolContext, period: InvestigationPeriod): Promise<number> {
@@ -102,21 +118,19 @@ export async function countInteractionsByBucket(context: ToolContext, period: In
 /** Teto de candidatos lidos do banco para amostragem (a seleção final respeita `limit` ≤ INTERACTION_LIST_MAX). */
 const SAMPLING_CANDIDATES_MAX = 400
 
-export async function findInteractions(context: ToolContext, args: { period?: { from: string; to: string }; subject?: string; flag?: string; orderBy?: "RECENT" | "LONGEST" | "SHORTEST"; limit?: number; sampling?: SamplingStrategy }): Promise<ToolResult> {
+export async function findInteractions(context: ToolContext, args: { period?: { from: string; to: string }; subject?: string; reason?: string; flag?: string; orderBy?: "RECENT" | "LONGEST" | "SHORTEST"; limit?: number; sampling?: SamplingStrategy }): Promise<ToolResult> {
   const period = resolvePeriod(context, args.period)
   const limit = Math.min(args.limit ?? INTERACTION_LIST_DEFAULT, INTERACTION_LIST_MAX)
   const params: unknown[] = [context.organizationId, context.subject.operatorId, period.start.toISOString(), period.end.toISOString()]
   let where = ` where i.organization_id = $1 and i.operator_id = $2 and i.started_at >= $3 and i.started_at < $4`
-  const filters: string[] = []
-  const subject = await subjectFilter(context, args.subject, params.length + 1)
-  where += subject.clause
-  params.push(...subject.params)
-  if (subject.label) filters.push(subject.label)
+  const subjects = await subjectAndReasonFilters(context, args, params)
+  where += subjects.clause
+  const filters: string[] = [...subjects.labels]
   const flag = flagFilter(args.flag, params.length + 1)
   where += flag.clause
   params.push(...flag.params)
   if (args.flag) filters.push(`flag ${args.flag}`)
-  const total = await countFiltered(context, period, args.subject, args.flag)
+  const total = await countFiltered(context, period, args, args.flag)
   const periodDays = periodDaysOf(period)
   // AMOSTRAGEM DEPENDE DA PERGUNTA (V1.3.2): ordenação explícita por duração continua como pedida; com ordem
   // RECENT (ou nenhuma), a estratégia vem do modelo (se pediu) ou do runtime (objetivo × tamanho da janela).
@@ -140,7 +154,7 @@ export async function findInteractions(context: ToolContext, args: { period?: { 
       periodDays,
       startedAtOf: (row) => new Date(row.started_at),
       keyOf: (row) => row.id,
-      subjectOf: (row) => row.canonical_subject ?? row.reason,
+      subjectOf: (row) => row.canonical_subject ?? (row.sub_reason?.trim() ? row.sub_reason : row.reason),
       hasFlagOf: (row) => (row.flags ?? []).some((item) => item.boolean === true),
       dateLabelOf: (date) => date.toLocaleDateString("sv-SE", { timeZone: context.timeZone }),
     })
@@ -163,12 +177,10 @@ export async function findInteractions(context: ToolContext, args: { period?: { 
   }
 }
 
-async function countFiltered(context: ToolContext, period: InvestigationPeriod, subject: string | undefined, flag: string | undefined): Promise<number> {
+async function countFiltered(context: ToolContext, period: InvestigationPeriod, subjects: { subject?: string; reason?: string }, flag: string | undefined): Promise<number> {
   const params: unknown[] = [context.organizationId, context.subject.operatorId, period.start.toISOString(), period.end.toISOString()]
   let where = ` where i.organization_id = $1 and i.operator_id = $2 and i.started_at >= $3 and i.started_at < $4`
-  const subjectClause = await subjectFilter(context, subject, params.length + 1)
-  where += subjectClause.clause
-  params.push(...subjectClause.params)
+  where += (await subjectAndReasonFilters(context, subjects, params)).clause
   const filter = flagFilter(flag, params.length + 1)
   params.push(...filter.params)
   const row = await context.db.query<{ count: string }>(`select count(*) from interactions i${where}${filter.clause}`, params)
@@ -219,18 +231,16 @@ export async function getInteractionFlags(context: ToolContext, args: { interact
   }
 }
 
-/** Segmentação de interações (proxy declarada) por assunto/canal/hora/dia da semana/flag. */
-export async function segmentInteractions(context: ToolContext, indicator: IndicatorInfo, dimension: AnalysisDimension, period: InvestigationPeriod, filters: { subject?: string; flag?: string }): Promise<ToolResult> {
+/** Segmentação de interações (proxy declarada) por assunto/motivo/canal/hora/dia da semana/flag. */
+export async function segmentInteractions(context: ToolContext, indicator: IndicatorInfo, dimension: AnalysisDimension, period: InvestigationPeriod, filters: { subject?: string; reason?: string; flag?: string }): Promise<ToolResult> {
   const definition = ANALYSIS_DIMENSION_DEFINITIONS[dimension]
   const metric = interactionMetricFor(indicator)
   if (!metric) return { data: { indicator: indicator.code, dimension, status: "NOT_SUPPORTED" }, quality: notSupported(`não há medição por interação de ${indicator.code} (unidade ${indicator.unit}); recorte por ${definition.label.toLowerCase()} não é suportado`), provenance: { period: describeWindow(period), population: "colaborador", filters: [], dataSource: "INTERACTIONS" } }
   const params: unknown[] = [context.organizationId, context.subject.operatorId, period.start.toISOString(), period.end.toISOString()]
   let where = ` where i.organization_id = $1 and i.operator_id = $2 and i.started_at >= $3 and i.started_at < $4`
-  const applied: string[] = []
-  const subjectClause = await subjectFilter(context, filters.subject, params.length + 1)
-  where += subjectClause.clause
-  params.push(...subjectClause.params)
-  if (subjectClause.label) applied.push(subjectClause.label)
+  const subjects = await subjectAndReasonFilters(context, filters, params)
+  where += subjects.clause
+  const applied: string[] = [...subjects.labels]
   const flag = flagFilter(filters.flag, params.length + 1)
   where += flag.clause
   params.push(...flag.params)
@@ -239,9 +249,12 @@ export async function segmentInteractions(context: ToolContext, indicator: Indic
   const timeBased = dimension === "HOUR" || dimension === "DAY_OF_WEEK" || dimension === "DAY" || dimension === "WEEK"
   if (timeBased) params.push(context.timeZone)
   const tz = `$${params.length}`
-  // Assunto: agrega pelo CANÔNICO quando há alias (bruto acessível em rawSubjects); sem alias, o próprio bruto.
+  // Assunto (submotivo; sem ele, o motivo) e motivo: agrega pelo CANÔNICO do nível quando há alias (bruto acessível em
+  // rawSubjects); sem alias, o próprio bruto. No assunto, `reasons` traz os motivos dos atendimentos com submotivo (contexto).
+  const bySubject = dimension === "SUBJECT" || dimension === "REASON"
+  const level: SubjectLevel = dimension === "REASON" ? "REASON" : "SUBJECT"
   const bucketExpression =
-    dimension === "SUBJECT" ? `coalesce(${canonicalSubjectSql("i")}, i.reason)`
+    bySubject ? levelKeySql(level, "i")
     : dimension === "CHANNEL" ? "i.channel"
     : dimension === "HOUR" ? `lpad(extract(hour from i.started_at at time zone ${tz})::int::text, 2, '0') || 'h'`
     : dimension === "DAY_OF_WEEK" ? `extract(isodow from i.started_at at time zone ${tz})::int::text`
@@ -249,13 +262,14 @@ export async function segmentInteractions(context: ToolContext, indicator: Indic
     : dimension === "WEEK" ? `to_char(date_trunc('week', i.started_at at time zone ${tz})::date, 'YYYY-MM-DD')`
     : null
   const rows = bucketExpression
-    ? await context.db.query<{ bucket: string; count: string; avg_duration: string; total_duration: string; raw_subjects: string[] | null; canonical: boolean | null }>(
+    ? await context.db.query<{ bucket: string; count: string; avg_duration: string; total_duration: string; raw_subjects: string[] | null; reasons: string[] | null; canonical: boolean | null }>(
         `select ${bucketExpression} bucket, count(*) count, avg(extract(epoch from i.ended_at - i.started_at)) avg_duration, sum(extract(epoch from i.ended_at - i.started_at)) total_duration
-                ${dimension === "SUBJECT" ? `, array_agg(distinct i.reason order by i.reason) raw_subjects, bool_or(${canonicalSubjectSql("i")} is not null) canonical` : ""}
+                ${bySubject ? `, array_agg(distinct ${level === "REASON" ? "i.reason" : rawSubjectSql("i")} order by ${level === "REASON" ? "i.reason" : rawSubjectSql("i")}) raw_subjects, bool_or(${levelCanonicalSql(level, "i")} is not null) canonical` : ""}
+                ${dimension === "SUBJECT" ? ", array_agg(distinct i.reason order by i.reason) filter (where nullif(btrim(i.sub_reason), '') is not null) reasons" : ""}
          from interactions i${where} group by 1 order by 2 desc, 1`,
         params,
       )
-    : await context.db.query<{ bucket: string; count: string; avg_duration: string; total_duration: string; raw_subjects: string[] | null; canonical: boolean | null }>(
+    : await context.db.query<{ bucket: string; count: string; avg_duration: string; total_duration: string; raw_subjects: string[] | null; reasons: string[] | null; canonical: boolean | null }>(
         `select cf.flag_name bucket, count(*) count, avg(extract(epoch from i.ended_at - i.started_at)) avg_duration, sum(extract(epoch from i.ended_at - i.started_at)) total_duration
          from interactions i join interaction_flags f on f.interaction_id = i.id join channel_flags cf on cf.id = f.channel_flag_id${where} and (f.value_boolean is true or f.value_numeric is not null)
          group by 1 order by 2 desc, 1`,
@@ -265,7 +279,8 @@ export async function segmentInteractions(context: ToolContext, indicator: Indic
   const totalDuration = rows.rows.reduce((sum, row) => sum + Number(row.total_duration), 0)
   const buckets = rows.rows.map((row) => ({
     dimensionValue: dimension === "DAY_OF_WEEK" ? WEEKDAY_LABELS[Number(row.bucket)] : row.bucket,
-    ...(dimension === "SUBJECT" ? { canonicalSubject: row.canonical ? row.bucket : null, rawSubjects: row.raw_subjects ?? [] } : {}),
+    ...(bySubject ? { canonicalSubject: row.canonical ? row.bucket : null, rawSubjects: row.raw_subjects ?? [] } : {}),
+    ...(row.reasons && row.reasons.length > 0 ? { reasons: row.reasons } : {}),
     value: metric === "INTERACTION_DURATION_SECONDS" ? Math.round(Number(row.avg_duration)) : Number(row.count),
     sampleCount: Number(row.count),
     averageDurationSeconds: Math.round(Number(row.avg_duration)),
@@ -433,9 +448,10 @@ export const TEMPORAL_ANALYSIS_INSTRUCTIONS = `TEMPO: cada interação traz o bl
 — status é EXATAMENTE um dos três valores acima; "STABLE"/"NO_CHANGE"/"CHANGED" são RELAÇÕES e vão SÓ em findings (status com relação = comparação insuficiente). "Nenhuma diferença sustentada" não é "estável": estabilidade só como finding STABLE, que a aplicação valida em todos os blocos.
 — subjectFindingIndex = índice (0-based) do achado em "patterns" a que a relação se refere; contrastFindingIndex só em DIFFERENT_PATTERN (o achado que aparece no bloco posterior no lugar do sujeito); earlierBucket é anterior a laterBucket; evidenceRefs = interações ANALISADAS desses blocos. "NO_DIFFERENCE_SUPPORTED" (comparou e não há diferença sustentada) é resposta válida e não precisa de findings; "INSUFFICIENT_EVIDENCE" quando faltam blocos com transcrição. AUSÊNCIA NA AMOSTRA ≠ AUSÊNCIA NO BLOCO: um achado sem trecho nas transcrições analisadas de um bloco é "não observado na amostra", nunca "deixou de ocorrer" — a aplicação calcula por bloco analisadas × universo e só ela decide se a ausência está estabelecida. A aplicação recalcula as contagens e rebaixa relações que os números não sustentam — nunca invente tendência.`
 
+/** `reason` = assunto bruto preferencial (`SUBJECT_RESOLUTION_V2`: submotivo, senão o motivo) — o que a análise recebe como assunto. */
 export async function loadTranscripts(context: ToolContext, interactionIds: string[], operatorIds: string[] | null): Promise<{ id: string; content: string; reason: string; operatorId: string; startedAt: string }[]> {
   const rows = await context.db.query<{ id: string; content: string; reason: string; operator_id: string; started_at: string }>(
-    `select i.id, i.reason, i.operator_id, i.started_at, t.content
+    `select i.id, ${rawSubjectSql("i")} reason, i.operator_id, i.started_at, t.content
      from interactions i join lateral (select content from transcripts t where t.interaction_id = i.id order by t.version desc limit 1) t on true
      where i.organization_id = $1 and i.id = any($2::uuid[]) ${operatorIds ? "and i.operator_id = any($3::uuid[])" : ""}`,
     operatorIds ? [context.organizationId, interactionIds, operatorIds] : [context.organizationId, interactionIds],

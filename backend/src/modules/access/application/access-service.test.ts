@@ -109,7 +109,7 @@ describe("V1.5.7 — cenários de aceitação", () => {
     expect(await assignRole(s.deps, s.actor("ana"), { accountId: accountOf("pedro").id, roleCode: "QA_DE_FEEDBACK", scope: { type: "GROUP", teamId: T_COB } })).toEqual({ id: expect.any(String) })
     // Não pode conceder o que dá mais autoridade do que ela está autorizada a delegar.
     await expect(assignRole(s.deps, s.actor("ana"), { accountId: accountOf("joao").id, roleCode: "ADMINISTRADOR", scope: { type: "SUBGROUP", subteamId: S_CONTAS } })).rejects.toMatchObject({ code: "ACCESS_ROLE_NOT_DELEGABLE" })
-    expect((await listRoles(s.deps, s.actor("ana"))).filter((role) => role.assignableByYou).map((role) => role.code)).toEqual(["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO"])
+    expect((await listRoles(s.deps, s.actor("ana"))).filter((role) => role.assignableByYou).map((role) => role.code)).toEqual(["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"])
   })
   it("E — Administrador geral cria a conta de um colaborador e o torna Administrador escopado, sem mexer no cargo", async () => {
     const s = setup()

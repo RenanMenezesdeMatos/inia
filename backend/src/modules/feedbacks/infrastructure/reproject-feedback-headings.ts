@@ -46,7 +46,7 @@ export async function reprojectFeedbackHeadings(db: Database, input: { organizat
   )).rows[0]?.n ?? 0)
   const interactionIds = [...new Set(feedbacks.rows.map((row) => row.context_snapshot.interactionId).filter((id): id is string => typeof id === "string"))]
   const interactions = new Map((await db.query<{ id: string; operator_id: string; reason: string | null; started_at: Date }>(
-    `select id, operator_id, reason, started_at from interactions where organization_id = $1 and id = any($2::uuid[])`,
+    `select id, operator_id, coalesce(nullif(btrim(sub_reason), ''), reason) reason, started_at from interactions where organization_id = $1 and id = any($2::uuid[])`,
     [input.organizationId, interactionIds],
   )).rows.map((row) => [row.id, row]))
   const codeNames = new Map((await db.query<{ code: string; name: string }>(`select code, name from interaction_subject_definitions where organization_id = $1`, [input.organizationId])).rows.map((row) => [row.code, row.name]))

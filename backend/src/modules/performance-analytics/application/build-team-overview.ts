@@ -95,7 +95,7 @@ export async function buildTeamOverview(repository: AnalyticsReadRepository, sco
  * só os operadores ligados diretamente à âncora (sem gestor intermediário) — esses são listados
  * como membros, nunca escondidos nem duplicados numa "unidade" fantasma.
  */
-function collectUnits(scope: ViewerScope, resolved: ResolvedSubject, subject: StructureAnchor): { units: GroupBucket[]; topGroupBy: GroupingDimension | null; directMembers: PersonNode[] } {
+export function collectUnits(scope: ViewerScope, resolved: ResolvedSubject, subject: StructureAnchor): { units: GroupBucket[]; topGroupBy: GroupingDimension | null; directMembers: PersonNode[] } {
   const options = buildIndicatorViewCapabilities(scope.role, subject.kind).groupingOptions.filter(isHierarchyRole)
   const units: GroupBucket[] = []
   let topGroupBy: GroupingDimension | null = null
@@ -193,7 +193,8 @@ export async function buildTeamMembersPage(repository: AnalyticsReadRepository, 
     .filter((member) => !query.subteamId || member.subteamId === query.subteamId)
     .map((member) => toMemberSummary(member, context.base.performances.get(member.id)!, context))
     .filter((row) => !query.situation || row.situation === query.situation)
-    .filter((row) => !query.attentionIndicatorCode || row.attentionIndicators.some((indicator) => indicator.code === query.attentionIndicatorCode))
+    // Todos os indicadores abaixo da referência — não só os 3 piores mostrados na linha (quem tem o indicador pedido como 4º pior também entra).
+    .filter((row) => !query.attentionIndicatorCode || context.base.performances.get(row.personId)!.belowTargetRows.some((belowRow) => belowRow.indicatorCode === query.attentionIndicatorCode))
     .filter((row) => !query.pendingOnly || row.followUps.unacknowledged > 0 || row.pendingReviews > 0)
 
   rows.sort((a, b) => compareMembers(a, b, query.sort, query.order))

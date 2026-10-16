@@ -159,7 +159,8 @@ Badge 256 · Hair 5.200 · HairCurls 57.372).
   obra **modificada** (roupa, proporções, pele, olhos e cabelo novos gerados por este pipeline).
 - A licença exige **atribuição**: mantenha o crédito ao autor, o link da licença e a indicação de
   que houve modificação onde o modelo for distribuído/exibido (o GLB leva isso em
-  `asset.copyright` e nos extras do `INIA_Rig`).
+  `asset.copyright` e nos extras do `INIA_Rig`; no app, no "i" do canto do palco do avatar). Prova da
+  licença (página do Sketchfab em PDF): `assets/avatar/inia/mentora/licenca/`.
 - O GLB original fica intacto em `frontend/public/models/inia-avatar-poc.glb`.
 - As texturas em `assets/avatar/inia/mentora/textures/` são geradas por código (sem imagens de
   terceiros), exceto o normal map da calça, que vem do asset base (empacotado no `.blend`).

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
+import { rawSubjectOf } from "../../interactions/domain/interaction-subject.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
 import { mergeReviewedLines, missingCoverageOf, parseCallAnalysisResponse, sectionsInPlayOf, verifyCallAnalysis, type ConfirmationInput, type ModelCallAnalysis, type ReviewInput, type VerifiedCallAnalysis } from "../domain/call-analysis.js"
 import { CALL_ANALYSIS_FORMAT_RETRY, renderCallAnalysisUserTurn } from "../domain/call-analysis-prompt.js"
@@ -273,7 +274,8 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
   const agent = request.agentId ? await deps.loadAgent(request.organizationId, request.agentId) : null
   const projection = projectTranscript(interaction.transcript?.content ?? "", { maxChars: TRANSCRIPT_MAX_CHARS })
   const transcriptStatus = interaction.transcript ? transcriptStatusOf(projection) : "UNAVAILABLE"
-  const subject = interaction.subjectCanonical?.name ?? interaction.reason
+  // `SUBJECT_RESOLUTION_V2`: o assunto é o canônico do nível preferencial, senão o submotivo (sem submotivo, o motivo).
+  const subject = interaction.subjectCanonical?.name ?? rawSubjectOf(interaction)
   const candidates = agent ? await deps.loadDocuments(request.organizationId, agent.id, interaction.startedAt) : []
   const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "" })
   // Argumentários: vigentes na DATA DA CHAMADA no escopo do colaborador (a mesma versão vale para análise, revisão e composição).
@@ -333,7 +335,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       personId: interaction.operatorId,
       occurredAt: interaction.startedAt,
       timeZone: interaction.timeZone,
-      subjectRaw: interaction.reason,
+      subjectRaw: rawSubjectOf(interaction),
       subjectCanonical: interaction.subjectCanonical?.code ?? null,
       channel: interaction.channel,
       teamId: interaction.teamId,

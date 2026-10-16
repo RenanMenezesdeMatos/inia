@@ -29,6 +29,7 @@ const TOC: WikiTocEntry[] = [
   { id: "quartil", label: "Quartil operacional × quartil oficial" },
   { id: "tela", label: "Na área de Indicadores" },
   { id: "peso", label: "Peso oficial (weight_percent)" },
+  { id: "componentes-oficiais", label: "Numerador e denominador do fechamento" },
   { id: "qa", label: "Evidência no QA Lab" },
   { id: "diario", label: "Indicadores com medição diária" },
 ]
@@ -489,6 +490,57 @@ export default function MedicaoOperacionalPage() {
           O peso oficial de cada indicador existe para <strong className="font-medium text-foreground">explicar e auditar a composição do PRV</strong> recebido da empresa. A INIA não precisa dele para recalcular o
           PRV — e não existe peso operacional: medições diárias não criam um &quot;PRV do dia&quot;.
         </p>
+      </WikiSection>
+
+      <WikiSection id="componentes-oficiais" title="Numerador e denominador do fechamento" eyebrow="Para somar estruturas em valor — nunca para recalcular o oficial">
+        <p>
+          O fechamento mensal por colaborador × indicador pode trazer, além de valor, meta, atingimento, peso e quartil, os dois{" "}
+          <strong className="font-medium text-foreground">componentes do valor oficial</strong> (contrato <code>OFFICIAL_INDICATOR_PERFORMANCE@2</code> da Central de Dados). Só existem quando a
+          estratégia do indicador define o valor por componentes, e o fator vem da <strong className="font-medium text-foreground">estratégia</strong>, nunca da unidade:
+        </p>
+        <WikiTable caption="Componentes por estratégia — a mesma regra das medições diárias.">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Estratégia</TableHead>
+                <TableHead>Numerador</TableHead>
+                <TableHead>Denominador</TableHead>
+                <TableHead>Valor</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Taxa</TableCell>
+                <TableCell>Ocorrências do mês</TableCell>
+                <TableCell>Base / elegíveis do mês</TableCell>
+                <TableCell>numerador ÷ denominador × 100</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Média ponderada</TableCell>
+                <TableCell>Total do mês (ex.: segundos falados, soma das notas)</TableCell>
+                <TableCell>Volume do mês (ex.: atendimentos, avaliações)</TableCell>
+                <TableCell>numerador ÷ denominador (uma média de notas em % já está em %)</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Média simples, Soma, Último valor</TableCell>
+                <TableCell colSpan={2}>Sem componentes — a carga que os enviar vai para a quarentena</TableCell>
+                <TableCell>o valor informado</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </WikiTable>
+        <ExampleCard title="Resultado de uma estrutura em valor">
+          <p>
+            TMA da coordenação = Σ segundos ÷ Σ atendimentos dos fechamentos dos colaboradores — nunca a média dos TMAs. Ex.: 393 s em 1.202 atendimentos e 468 s em 657 atendimentos dão
+            (472.386 + 307.476) ÷ (1.202 + 657) ≈ 419,5 s. A contribuição de cada unidade é a participação dela no numerador e no denominador.
+          </p>
+        </ExampleCard>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>Os dois vêm juntos, o denominador é maior que zero e eles precisam conferir com o valor informado, com tolerância de arredondamento (o maior entre 0,1, 1% e meia unidade da casa decimal informada). Incoerência vai inteira para a quarentena: a INIA nunca corrige nem o valor oficial nem os componentes.</li>
+          <li>Atingimento, quartil, peso e PRV continuam sendo os da fonte — os componentes não recalculam nada.</li>
+          <li>Fechamento sem componentes continua válido (feed na versão 1, ou indicador que a fonte não detalha). Componente ausente nunca é desempenho ruim: a pessoa só fica fora da soma em valor.</li>
+          <li>Uma carga sem componentes não apaga os já recebidos enquanto o valor oficial for o mesmo; valor oficial novo sem componentes apaga os antigos, para nunca ficarem incoerentes.</li>
+        </ul>
       </WikiSection>
 
       <WikiSection id="qa" title="Evidência no QA Lab" eyebrow="Como o número foi formado">

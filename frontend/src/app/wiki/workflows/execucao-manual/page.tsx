@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ExampleCard, FieldRow, SeeAlso, StepList, UseCases, WarningCallout, WikiArticle, WikiFlow, WikiLink, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
 import type { WikiTocEntry } from "@/components/wiki/wiki-toc"
 import { MANUAL_TRIGGER_CONTEXT_DESCRIPTIONS, MANUAL_TRIGGER_CONTEXT_LABELS } from "@/schemas/admin/workflow.schema"
@@ -67,46 +68,48 @@ export default function ManualExecutionPage() {
         <FieldRow label={MANUAL_TRIGGER_CONTEXT_LABELS.INTERACTION} value={MANUAL_TRIGGER_CONTEXT_DESCRIPTIONS.INTERACTION} />
         <FieldRow label={MANUAL_TRIGGER_CONTEXT_LABELS.INDICATOR_MEASUREMENT} value={MANUAL_TRIGGER_CONTEXT_DESCRIPTIONS.INDICATOR_MEASUREMENT} />
         <WikiTable caption="Regras de publicação pela origem dos dados (as mesmas dos outros gatilhos)">
-          <thead>
-            <tr>
-              <th className="text-left">Formato / nó</th>
-              <th className="text-left">Colaborador</th>
-              <th className="text-left">Interação</th>
-              <th className="text-left">Medição</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Avaliação de processo / Conformidade de processo</td>
-              <td>Não (não há transcrição)</td>
-              <td>Sim</td>
-              <td>Não</td>
-            </tr>
-            <tr>
-              <td>Gerar feedback de monitoria</td>
-              <td>Não</td>
-              <td>Sim</td>
-              <td>Não</td>
-            </tr>
-            <tr>
-              <td>Gerar feedback / Diagnóstico de indicador (medição)</td>
-              <td>Não</td>
-              <td>Não</td>
-              <td>Sim (estratégia publicada do indicador)</td>
-            </tr>
-            <tr>
-              <td>Chamar agente com fonte de dados (período, fechamentos oficiais)</td>
-              <td>Sim (fonte obrigatória)</td>
-              <td>—</td>
-              <td>—</td>
-            </tr>
-            <tr>
-              <td>Condition sobre o &quot;valor do gatilho&quot;</td>
-              <td>Não</td>
-              <td>Não (sem valor de flag)</td>
-              <td>Sim (valor da medição)</td>
-            </tr>
-          </tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Formato / nó</TableHead>
+                <TableHead>Colaborador</TableHead>
+                <TableHead>Interação</TableHead>
+                <TableHead>Medição</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Avaliação de processo / Conformidade de processo</TableCell>
+                <TableCell>Não (não há transcrição)</TableCell>
+                <TableCell>Sim</TableCell>
+                <TableCell>Não</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Gerar feedback de monitoria</TableCell>
+                <TableCell>Não</TableCell>
+                <TableCell>Sim</TableCell>
+                <TableCell>Não</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Gerar feedback / Diagnóstico de indicador (medição)</TableCell>
+                <TableCell>Não</TableCell>
+                <TableCell>Não</TableCell>
+                <TableCell>Sim (estratégia publicada do indicador)</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Chamar agente com fonte de dados (período, fechamentos oficiais)</TableCell>
+                <TableCell>Sim (fonte obrigatória)</TableCell>
+                <TableCell>—</TableCell>
+                <TableCell>—</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Condition sobre o &quot;valor do gatilho&quot;</TableCell>
+                <TableCell>Não</TableCell>
+                <TableCell>Não (sem valor de flag)</TableCell>
+                <TableCell>Sim (valor da medição)</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </WikiTable>
         <WarningCallout title="Nada é fabricado">
           O disparo nunca cria interação, flag, medição ou evidência. A interação precisa existir, ser do colaborador escolhido e ter transcrição; a
@@ -157,38 +160,40 @@ export default function ManualExecutionPage() {
 
       <WikiSection id="acompanhar" title="Acompanhar resultado e falhas" eyebrow="Solicitado não é entregue">
         <WikiTable caption="Estados mostrados no diálogo">
-          <thead>
-            <tr>
-              <th className="text-left">Estado</th>
-              <th className="text-left">O que significa</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.QUEUED}</td>
-              <td>A execução nasceu no gatilho; nada foi analisado nem entregue ainda.</td>
-            </tr>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.PROCESSING}</td>
-              <td>O motor está percorrendo os nós (inclui chamadas de IA).</td>
-            </tr>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.WAITING}</td>
-              <td>Parada em Revisão humana, no QA de feedback (feedback retido) ou num nó Espera — nada é entregue até a decisão.</td>
-            </tr>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.RETRYING}</td>
-              <td>Falha transitória (ex.: provedor de IA); o motor tenta de novo no horário indicado.</td>
-            </tr>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.COMPLETED}</td>
-              <td>O fluxo terminou. As entregas aparecem listadas pelo que foi de fato gravado.</td>
-            </tr>
-            <tr>
-              <td>{MANUAL_RUN_STAGE_LABELS.FAILED}</td>
-              <td>Encerrada com erro (contrato da resposta da IA, invariante, tentativas esgotadas) — o motivo aparece no diálogo e em Execuções.</td>
-            </tr>
-          </tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Estado</TableHead>
+                <TableHead>O que significa</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.QUEUED}</TableCell>
+                <TableCell>A execução nasceu no gatilho; nada foi analisado nem entregue ainda.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.PROCESSING}</TableCell>
+                <TableCell>O motor está percorrendo os nós (inclui chamadas de IA).</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.WAITING}</TableCell>
+                <TableCell>Parada em Revisão humana, no QA de feedback (feedback retido) ou num nó Espera — nada é entregue até a decisão.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.RETRYING}</TableCell>
+                <TableCell>Falha transitória (ex.: provedor de IA); o motor tenta de novo no horário indicado.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.COMPLETED}</TableCell>
+                <TableCell>O fluxo terminou. As entregas aparecem listadas pelo que foi de fato gravado.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>{MANUAL_RUN_STAGE_LABELS.FAILED}</TableCell>
+                <TableCell>Encerrada com erro (contrato da resposta da IA, invariante, tentativas esgotadas) — o motivo aparece no diálogo e em Execuções.</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </WikiTable>
         <p>
           A aba <strong className="font-medium text-foreground">Execuções</strong> marca a origem &quot;Manual · colaborador · por quem&quot; e mostra os eventos de cada nó; a aba{" "}
@@ -198,35 +203,37 @@ export default function ManualExecutionPage() {
 
       <WikiSection id="real-x-qa-lab" title="Execução real × QA Lab" eyebrow="Duas ferramentas diferentes">
         <WikiTable>
-          <thead>
-            <tr>
-              <th className="text-left" />
-              <th className="text-left">Executar agora (Manual)</th>
-              <th className="text-left">QA Lab</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Versão</td>
-              <td>Só a publicada e ativa</td>
-              <td>Rascunho ou publicada</td>
-            </tr>
-            <tr>
-              <td>Efeitos</td>
-              <td>Reais: grava execução, feedback, QA, entregas e avisos</td>
-              <td>Nenhum: nada é gravado, entregue ou notificado</td>
-            </tr>
-            <tr>
-              <td>IA</td>
-              <td>Sempre real (conta no consumo)</td>
-              <td>Parar antes da IA ou real, com orçamento</td>
-            </tr>
-            <tr>
-              <td>Gatilhos</td>
-              <td>Só Workflows com gatilho Manual</td>
-              <td>Qualquer gatilho (inclusive Manual, com o mesmo seletor de colaborador/interação/medição)</td>
-            </tr>
-          </tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead />
+                <TableHead>Executar agora (Manual)</TableHead>
+                <TableHead>QA Lab</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Versão</TableCell>
+                <TableCell>Só a publicada e ativa</TableCell>
+                <TableCell>Rascunho ou publicada</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Efeitos</TableCell>
+                <TableCell>Reais: grava execução, feedback, QA, entregas e avisos</TableCell>
+                <TableCell>Nenhum: nada é gravado, entregue ou notificado</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>IA</TableCell>
+                <TableCell>Sempre real (conta no consumo)</TableCell>
+                <TableCell>Parar antes da IA ou real, com orçamento</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Gatilhos</TableCell>
+                <TableCell>Só Workflows com gatilho Manual</TableCell>
+                <TableCell>Qualquer gatilho (inclusive Manual, com o mesmo seletor de colaborador/interação/medição)</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
         </WikiTable>
         <p>
           Ver <WikiLink href="/wiki/qa-lab#zero-side-effects">QA Lab — zero efeitos</WikiLink>.

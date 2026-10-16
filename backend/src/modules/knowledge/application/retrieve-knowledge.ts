@@ -1,6 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { chunkKnowledgeDocument, type KnowledgeChunk } from "../domain/knowledge-chunking.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { selectPrimaryProcessDocument, type PrimaryProcessSelection } from "../domain/primary-process.js"
 import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRolesOf, type ClosingSectionRole, type SectionProcessRole } from "../domain/section-roles.js"
 import { applyCheckpointGovernance, buildProcessCheckpointCatalog, publicCatalogOf, renderExcerptWithCheckpoints, type CheckpointGovernanceSnapshot, type ProcessCheckpointCatalog } from "../../reliable-feedback/domain/checkpoint-catalog.js"
@@ -384,13 +384,14 @@ function toExcerpt(chunk: RankedChunk): RetrievedKnowledgeExcerpt {
 }
 
 /**
- * V1.7.1m — ASSUNTO da interação para identificar o processo primário: o nome canônico do assunto (quando o motivo bruto resolve
- * para um) ou o motivo registrado. Dado estruturado do atendimento — nunca texto do modelo. Interação de outra organização = null.
+ * V1.7.1m — ASSUNTO da interação para identificar o processo primário: o nome canônico do assunto (quando o bruto resolve
+ * para um) ou o assunto registrado — o submotivo, quando a fonte o informou, senão o motivo (`SUBJECT_RESOLUTION_V2`). Dado
+ * estruturado do atendimento — nunca texto do modelo. Interação de outra organização = null.
  */
 export async function loadInteractionSubject(db: Database, organizationId: string, interactionId: string | null | undefined): Promise<string | null> {
   if (!interactionId) return null
   const row = await db.query<{ subject: string | null }>(
-    `select coalesce(d.name, i.reason) subject
+    `select coalesce(d.name, ${rawSubjectSql("i")}) subject
      from interactions i
      left join interaction_subject_definitions d on d.organization_id = i.organization_id and d.code = ${canonicalSubjectSql("i")} and d.active
      where i.id = $1 and i.organization_id = $2`,

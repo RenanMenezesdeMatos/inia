@@ -298,6 +298,7 @@ export async function buildSimulatedEnrollment(
           id: evidence.interactionId,
           externalId: evidence.externalId,
           reason: evidence.reason,
+          ...(evidence.subReason ? { subReason: evidence.subReason } : {}),
           channel: evidence.channel,
           startedAt: evidence.startedAt,
           endedAt: evidence.endedAt,

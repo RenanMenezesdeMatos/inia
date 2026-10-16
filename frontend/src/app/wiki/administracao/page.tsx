@@ -26,7 +26,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Atendimento com IA › Agentes", area: "Base de conhecimento", configures: "Documentos autorizados (Título, Tipo, conteúdo colado ou arquivo, Alcance por grupo/assunto, Status); Publicar/Arquivar; versões.", href: "/wiki/bases-conhecimento" },
   { menu: "Atendimento com IA › Agentes", area: "Domínios de negócio", configures: "Catálogo administrável de áreas de conhecimento: Nome, Código, Descrição, Status; contadores de Agents/Orchestrators; dependências; bloqueio de exclusão em uso.", href: "/wiki/agents/dominios-negocio" },
   { menu: "Atendimento com IA", area: "Orquestrador da INIA", configures: "Orchestrators: Nome, Agente orquestrador, Grupo, Onde pode ser acionado, Resultado estruturado, Especialistas.", href: "/wiki/orchestrators" },
-  { menu: "Atendimento com IA", area: "Argumentários", configures: "O que se espera do operador numa situação da chamada, por Área responsável e escopo (Grupo/Subgrupo): Condição ou gatilho, Quando não se aplica, Orientação ao operador (Deve/Pode), Pontos obrigatórios na fala (todos ou alternativas, com condição por item), Condutas ou promessas a evitar, Argumentário sugerido (exemplo, nunca texto obrigatório), Referência para a monitoria e Procedimento de origem. Rascunho → Publicar com início de vigência (nunca retroativo) → Encerrar/Reativar; versões publicadas não mudam. Substitui as antigas Regras de chamada.", href: "/wiki/agents#tipos" },
+  { menu: "Atendimento com IA", area: "Argumentários", configures: "O que se espera do operador numa situação da chamada, por Área responsável e escopo (Grupo/Subgrupo): Condição ou gatilho, Quando não se aplica, Orientação ao operador (Deve/Pode), Pontos obrigatórios na fala (todos ou alternativas, com condição por item), Condutas ou promessas a evitar, Argumentário sugerido (exemplo, nunca texto obrigatório), Referência para a monitoria e Procedimento de origem. Rascunho → Publicar com início de vigência (nunca retroativo) → Desativar/Reativar (interruptor na lista); versões publicadas não mudam. Excluir de vez só enquanto nenhuma análise de chamada usou o argumentário — depois disso, desative. Substitui as antigas Regras de chamada.", href: "/wiki/agents#tipos" },
   { menu: "Atendimento com IA › Governança", area: "Assuntos proibidos · Glossário geral", configures: "Guardrails globais da IA (Assunto, Comportamento esperado) e termos gerais (Termo, Definição e aplicação no feedback).", href: "/wiki/seguranca#ia" },
   { menu: "Atendimento com IA", area: "IA / Modelos", configures: "Conexões com providers de IA (API key criptografada, modelo local), modelos e preços versionados, roteamento por função da INIA (fixo, fallback, automático), uso, custos, orçamentos e saúde.", href: "/wiki/administracao/ia-modelos" },
   { menu: "Automação", area: "Workflows", configures: "Criação, editor (canvas, Configurações do workflow, Salvar rascunho, Publicar), Execuções.", href: "/wiki/workflows/criacao" },
@@ -82,6 +82,11 @@ export default function AdministrationPage() {
           <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink> no próprio Agent — os dois se somam.{" "}
           <strong className="font-medium text-foreground">Glossário geral</strong> define termos e como aplicá-los no feedback, independentemente de
           grupo ou assunto. O motor de feedback (“Gerar feedback”) usa regras próprias e não lê assuntos proibidos nem limites de atuação.
+        </p>
+        <p>
+          Cada item tem um interruptor: <strong className="font-medium text-foreground">desativado</strong>, fica guardado mas a IA deixa de recebê-lo
+          (religar não exige redigitar). <strong className="font-medium text-foreground">Excluir</strong> apaga de vez, depois de uma confirmação; o
+          texto apagado fica no registro de auditoria. Só quem administra a organização inteira altera esses itens.
         </p>
       </WikiSection>
 

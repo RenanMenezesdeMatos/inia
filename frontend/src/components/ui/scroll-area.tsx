@@ -4,8 +4,13 @@ import * as React from "react"
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 
+/**
+ * O Radix envolve o conteúdo num `display: table` (inline), que cresce até a largura do filho mais largo: uma tabela em markdown
+ * numa resposta alargava a lista inteira além do painel e cortava a borda direita de TODAS as mensagens (sem barra horizontal, o
+ * excesso fica escondido). Como bloco, o conteúdo tem a largura do viewport e quem é largo rola dentro de si (`overflow-x-auto`).
+ */
 function ScrollArea({ className, children, ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
-  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" className="size-full rounded-[inherit] outline-none">{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
+  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" className="size-full rounded-[inherit] outline-none [&>div]:block!">{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
 }
 
 function ScrollBar({ className, orientation = "vertical", ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {

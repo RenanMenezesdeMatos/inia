@@ -92,7 +92,10 @@ export type CallContext = {
 export type ComposedTranscript = {
   turns: Turn[]
   content: string
+  /** Frase específica do assunto (submotivo na massa) — "X e y" em chamadas multidomínio, "(rechamada)" em rechamadas. */
   reason: string
+  /** Motivo genérico do cenário principal (`ScenarioSpec.motive`). */
+  motive: string
   plan: CallPlan
   /** Flags semânticas que a transcrição SUSTENTA (nome da flag → valor). */
   flags: Record<string, boolean | number>

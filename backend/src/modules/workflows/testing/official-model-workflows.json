@@ -117,7 +117,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {
@@ -320,7 +320,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {
@@ -1478,7 +1478,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "INDICATOR"
           }
         },
         {
@@ -1630,7 +1630,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "orq",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {
@@ -2070,7 +2070,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "INDICATOR"
           }
         },
         {
@@ -3673,7 +3673,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {
@@ -3865,7 +3865,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {
@@ -4057,7 +4057,7 @@
           "config": {
             "actionType": "GENERATE_FEEDBACK",
             "sourceNodeId": "agent",
-            "feedbackDomain": "AUTO"
+            "feedbackDomain": "MONITORING"
           }
         },
         {

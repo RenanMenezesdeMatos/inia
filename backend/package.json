@@ -31,6 +31,8 @@
     "setup": "tsx src/infrastructure/installation/setup.ts",
     "update": "tsx src/infrastructure/installation/update.ts",
     "admin:create": "tsx src/infrastructure/installation/create-admin.ts",
+    "config:exportar": "tsx scripts/config-transfer/exportar.ts",
+    "config:importar": "tsx scripts/config-transfer/importar.ts",
     "dev:api": "tsx watch src/main/server.ts --role=api",
     "dev:worker": "tsx watch src/main/server.ts --role=worker",
     "start:api": "node dist/main/server.js --role=api",

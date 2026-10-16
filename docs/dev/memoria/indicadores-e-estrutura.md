@@ -8,6 +8,8 @@
 
 ### Indicadores e Equipe/Estrutura — analytics compartilhado (implementado)
 
+Componentes do fechamento oficial (16/10/2026, migration 147): `IndicatorPerformanceRow` traz `numerator`/`denominator` (null = a fonte não informou) para somar uma estrutura em VALOR — Σ numerador ÷ Σ denominador × `componentValueScale` da ESTRATÉGIA (Taxa × 100, Média ponderada × 1; nunca pela unidade) — e para a participação de cada unidade. Nenhum cálculo do analytics os usa ainda (atingimento consolidado, PRV e quartis seguem os mesmos). Contrato, validação e massa demo: [central-de-dados-e-instalacao.md](central-de-dados-e-instalacao.md).
+
 As três experiências do perfil são distintas e servidas por UM shell (`ProfileWorkspace`) para todos os papéis: **Acompanhamento** (Surface: o que a INIA/gestão entrega), **Indicadores** (área analítica: performance individual ou consolidada) e **Equipe/Estrutura** (gestão: pessoas, hierarquia, onde atuar). O que muda por papel vem das capabilities calculadas no backend (`performance-analytics/domain/view-capabilities.ts`) — nunca de `if role` espalhado no frontend.
 
 Backend `modules/performance-analytics`: sujeito de análise = `EMPLOYEE` ou uma das 7 âncoras de estrutura já usadas pelo Workflow Engine (`structureAnchorSchema`); escopo resolvido a cada request contra a subárvore real de `reports_to_id` (`viewer-scope.ts`) — `subjectKind/subjectId` do browser nunca são confiados. Leitura em lote (uma CTE para a subárvore + uma query por tabela oficial para N pessoas × competências), builders pequenos por view-model, router em `/api/v1/analytics`.

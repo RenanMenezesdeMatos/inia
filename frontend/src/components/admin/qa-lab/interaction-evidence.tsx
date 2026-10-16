@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { formatInteractionReason } from "@/lib/format/interaction-reason"
 import { cn } from "@/lib/utils"
 import { useQaCompatibleInteractionsQuery, useQaInteractionDetailQuery } from "@/queries/admin/use-qa-lab-queries"
 import type { QaInteraction, QaInteractionEvidence, QaPersonOption } from "@/schemas/admin/qa-lab.schema"
@@ -324,7 +325,7 @@ export function InteractionConversationDialog({
         {detail ? (
           <div className="border-t border-border px-5 py-3">
             <p className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              <FileText className="h-3.5 w-3.5" aria-hidden /> Flags · motivo: {detail.reason}
+              <FileText className="h-3.5 w-3.5" aria-hidden /> Flags · motivo: {formatInteractionReason(detail.reason, detail.subReason)}
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {detail.flags.length === 0 ? <span className="text-xs text-muted-foreground">Nenhuma flag recebida para esta interação.</span> : null}
@@ -639,7 +640,7 @@ export function InteractionEvidencePicker({
                           {formatDateTime(row.startedAt)} <span className="font-normal text-muted-foreground">· {formatCallDuration(row.durationSeconds)}</span>
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {row.channel} · {row.flagName ? `${row.flagName}: ${flagValueText(row.value)} · ` : ""}{row.reason} · <span className="font-mono">{row.externalId}</span>
+                          {row.channel} · {row.flagName ? `${row.flagName}: ${flagValueText(row.value)} · ` : ""}{formatInteractionReason(row.reason, row.subReason)} · <span className="font-mono">{row.externalId}</span>
                         </p>
                         <p className={cn("text-xs", row.hasTranscript ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground")}>{row.hasTranscript ? "Transcrição disponível" : "Sem transcrição"}</p>
                       </div>

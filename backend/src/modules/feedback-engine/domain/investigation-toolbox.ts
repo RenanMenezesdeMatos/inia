@@ -22,8 +22,11 @@ import type { ToolQualityStatus } from "../../investigation/domain/tool-output.j
  * O SUJEITO (colaborador), o indicador e as janelas são do sistema: a IA nunca escolhe "de quem" nem "qual indicador".
  */
 /** V3: `inspect_result` (detalhe de um resultado já obtido, sem consulta nova) e perguntas do planejador. V4: `inspect_result` em PÁGINAS
- * (texto por caracteres, lista pelo que coube — `TOOL_RESULT_VIEW_V2`); nenhuma versão anterior a esta rodou com modelo. */
-export const ENGINE_INVESTIGATION_TOOLS_VERSION = "ENGINE_INVESTIGATION_TOOLS_V4" as const
+ * (texto por caracteres, lista pelo que coube — `TOOL_RESULT_VIEW_V2`); nenhuma versão anterior a esta rodou com modelo.
+ * V5 (16/10/2026, `SUBJECT_RESOLUTION_V2`): nas ferramentas reaproveitadas, `subject` é o submotivo (sem submotivo, o motivo), com
+ * `reason`/`canonicalReason` quando há submotivo; buckets de assunto trazem `reasons`; dimensão `REASON` (motivo) quando a estratégia
+ * a liga. Os argumentos das ferramentas do motor não mudaram; as descrições do catálogo citam o motivo. */
+export const ENGINE_INVESTIGATION_TOOLS_VERSION = "ENGINE_INVESTIGATION_TOOLS_V5" as const
 
 /** Ferramentas do catálogo reaproveitadas (determinísticas, somente leitura). */
 export const REUSED_CATALOG_TOOLS = [

@@ -56,3 +56,6 @@ tools/loadtest/out/
 # Gerados no servidor Windows pelo deploy/windows/servicos/instalar-servicos.ps1 (WinSW e registros dos serviços).
 /deploy/windows/servicos/bin/
 /logs/
+
+# Pacotes de configuração (npm run config:exportar): prompts, procedimentos e imagens da organização — nunca vão para o git.
+pacote-configuracao-*/

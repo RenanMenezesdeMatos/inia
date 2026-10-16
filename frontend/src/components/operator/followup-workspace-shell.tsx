@@ -58,6 +58,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
   // Convite em aberto: o painel recolhido mostra um indicador discreto (o chat, oculto, não pode mostrá-lo).
   const invitePending = Boolean(useFeedbackInviteQuery(feedbackInvites).data)
   const chatHandlerRef = useRef<((request: FeedbackOpenRequest) => void) | null>(null)
+  const questionHandlerRef = useRef<((question: string) => void) | null>(null)
   const requestSeqRef = useRef(0)
   const mobileChatRef = useRef<HTMLDivElement>(null)
   const mobileFeedRef = useRef<HTMLDivElement>(null)
@@ -114,6 +115,14 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
       else if (chatRef.current?.isCollapsed()) chatRef.current.expand()
     },
     chatHidden: layout === "desktop" && collapsed,
+    askInia(question) {
+      if (layout === "mobile") mobileChatRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" })
+      else if (chatRef.current?.isCollapsed()) chatRef.current.expand()
+      questionHandlerRef.current?.(question)
+    },
+    registerQuestionHandler(handler) {
+      questionHandlerRef.current = handler
+    },
   }), [voice, layout, activeSourceKey, pendingRequest, readTarget, reducedMotion, collapsed, chatRef])
 
   return <FeedbackWorkspaceContext.Provider value={workspace}>

@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { History, MessageCircle, PanelRightClose, Play, RotateCcw, SquarePen, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -54,6 +54,7 @@ import { ChatMessageList } from "./operator-inia-chat/chat-message-list"
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
+import { useLeadershipHomeQuery } from "@/queries/leadership/use-leadership-home"
 import { publicAsset } from "@/lib/assets/public-asset"
 import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 
@@ -73,6 +74,12 @@ const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? publicAs
 export function OperatorIniaChat({ indicators, operator, onCollapse, context = "operator", hidden = false }: { indicators: OperatorIndicatorsData; operator: OperatorProfile; onCollapse?: () => void; context?: "operator" | "team"; hidden?: boolean }) {
   // Espaço de trabalho do Acompanhamento: o motor de voz é UM só (acima do chat) — o clique no feed libera o áudio no gesto.
   const workspace = useFeedbackWorkspace()
+  // Navegação pedida pelo backend (aceite da oferta de report) — por ref: os callbacks da voz nascem uma vez por sessão.
+  const router = useRouter()
+  const routerRef = useRef(router)
+  useEffect(() => {
+    routerRef.current = router
+  }, [router])
   const feedbackEnabled = context === "operator" && workspace !== null
   const [question, setQuestion] = useState("")
   const [callActive, setCallActive] = useState(true)
@@ -112,7 +119,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // do painel usa só o PRIMEIRO nome — a mesma regra da saudação dos feedbacks (decisão de produto de 05/10/2026).
   const addressName = operator.addressName ?? registeredFirstNameOf(operator.name)
   const greetingName = registeredFirstNameOf(addressName)
-  const greeting = context === "team" ? `Olá, ${greetingName}. Analisei os sinais da sua equipe. Quer priorizar os alertas ou aprofundar algum colaborador?` : `Olá, ${greetingName}. Vi seus feedbacks de hoje. Quer conversar sobre algum deles?`
+  const greeting = context === "team" ? `Olá, ${greetingName}. Posso mostrar onde atuar hoje, consultar os indicadores e as pessoas da sua estrutura ou explicar um processo.` : `Olá, ${greetingName}. Vi seus feedbacks de hoje. Quer conversar sobre algum deles?`
+  // Liderança: perguntas para começar derivadas das prioridades do dia (a mesma leitura do cartão "Onde atuar hoje").
+  const leadershipHome = useLeadershipHomeQuery(context === "team")
+  const starterSuggestions = context === "team" && leadershipHome.data?.enabled ? leadershipHome.data.suggestions : []
   // Conversa persistida (backend). `null` = conversa nova ainda não iniciada: a primeira mensagem a cria.
   const [conversationId, setConversationId] = useState<string | null>(null)
   const conversationIdRef = useRef<string | null>(null)
@@ -1142,13 +1152,14 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         // "fala" uma tabela markdown — então esse é o único jeito de o
         // operador ver a resposta completa do especialista (tabelas,
         // listas) quando fala por voz, em vez de só ouvir o resumo.
-        onSpecialistResult: (text, supportMaterials, conversation) => {
+        onSpecialistResult: (text, supportMaterials, conversation, analytics = [], extras = {}) => {
           flushUserTranscript()
           specialistAnsweredThisTurnRef.current = true
           // Algo falado antes da tool ("vou verificar…") some: a resposta é o balão do especialista.
           setLiveAssistantText(null)
           const id = nextMessageId()
-          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}) }])
+          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}), ...(analytics.length > 0 ? { analytics } : {}), ...(extras.reportOffer ? { reportOffer: extras.reportOffer } : {}) }])
+          if (extras.navigate) routerRef.current.push(extras.navigate.href)
           if (stageOpen()) landSpecialistOnStage(id)
           applyVoiceConversationResult(conversation, viewGenerationRef.current, [])
         },
@@ -1358,7 +1369,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       else usageAction.fail("REPLY_NOT_PERSISTED")
       if (!current()) return
       const replyId = nextMessageId()
-      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
+      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
+      // "Sim" à oferta de report: abre a configuração já preenchida (o backend decidiu o destino).
+      if (reply.navigate) routerRef.current.push(reply.navigate.href)
       const shownIn = reading as ReturnType<typeof createReadingClock> | null
       if (stageKey !== null && shownIn) {
         // A resposta fica no balão até terminar de aparecer; depois pousa nela.
@@ -1483,6 +1496,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     if (suggestion) void send(suggestion)
   }
 
+  /** Pergunta de um cartão da liderança (ex.: "Perguntar à INIA" numa prioridade): enviada só pelo clique da pessoa. */
+  const askQuestion = (question: string) => void send(question)
+
   const rate = (id: number, rating: "up" | "down") => {
     setMessages((current) => current.map((message) => message.id === id ? { ...message, rating: message.rating === rating ? undefined : rating } : message))
   }
@@ -1564,6 +1580,17 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     registerChat((request) => feedbackRequestHandlerRef.current(request))
     return () => registerChat(null)
   }, [registerChat, context])
+  // Perguntas vindas do Acompanhamento ("Perguntar à INIA" no cartão "Onde atuar hoje"): a função mais recente, sem recriar o registro.
+  const askQuestionRef = useRef<(question: string) => void>(() => {})
+  useLayoutEffect(() => {
+    askQuestionRef.current = askQuestion
+  })
+  const registerQuestionHandler = workspace?.registerQuestionHandler
+  useEffect(() => {
+    if (!registerQuestionHandler || context !== "team") return
+    registerQuestionHandler((question) => askQuestionRef.current(question))
+    return () => registerQuestionHandler(null)
+  }, [registerQuestionHandler, context])
   // Pedido feito antes de o chat montar: o áudio já foi liberado no clique; aqui o chat (recém-montado) abre o feedback.
   const pendingRequestId = workspace?.pendingRequest?.id ?? null
   useEffect(() => {
@@ -1675,6 +1702,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     liveTextReply={liveTextReply}
     askSuggestion={askSuggestion}
     switchToGeneralConversation={switchToGeneralConversation}
+    starterSuggestions={starterSuggestions}
+    askQuestion={askQuestion}
   />
 
   // Campo de mensagem: no painel ou, com a sessão aberta, no card central (um lugar por vez).

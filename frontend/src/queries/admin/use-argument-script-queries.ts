@@ -93,7 +93,7 @@ export function useArchiveArgumentScriptMutation() {
   return useAdminMutation({
     mutationFn: archiveArgumentScript,
     invalidateKey: adminQueryKeys.argumentScripts(),
-    successMessage: "Argumentário encerrado.",
+    successMessage: "Argumentário desativado.",
     onSuccess: storeDetail,
   })
 }

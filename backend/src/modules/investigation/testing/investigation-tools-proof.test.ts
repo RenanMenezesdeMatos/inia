@@ -222,11 +222,11 @@ describe.skipIf(!ENABLED)("Tools de investigação (banco real)", () => {
     expect(data.performanceDirection).toBe("DECLINED")
   })
 
-  it("dimensões: TMA aceita dia/dia da semana/semana pela medição e assunto/hora/flag pela duração das interações; Qualidade por assunto = NOT_SUPPORTED", async () => {
+  it("dimensões: TMA aceita dia/dia da semana/semana pela medição e assunto/motivo/hora/flag pela duração das interações; Qualidade por assunto = NOT_SUPPORTED", async () => {
     const ctx = await context()
     const dimensions = await run(ctx, "get_available_dimensions", { indicatorCode: "PROVA_TMA" })
     const list = (dimensions.data as { dimensions: { dimension: string; available: boolean }[] }).dimensions
-    expect(list.filter((item) => item.available).map((item) => item.dimension)).toEqual(["DAY", "DAY_OF_WEEK", "WEEK", "SUBJECT", "CHANNEL", "HOUR", "FLAG"])
+    expect(list.filter((item) => item.available).map((item) => item.dimension)).toEqual(["DAY", "DAY_OF_WEEK", "WEEK", "SUBJECT", "REASON", "CHANNEL", "HOUR", "FLAG"])
     const unsupported = await run(ctx, "segment_indicator", { indicatorCode: "PROVA_QUALIDADE", dimension: "SUBJECT" })
     expect(unsupported.quality.status).toBe("NOT_SUPPORTED")
   })

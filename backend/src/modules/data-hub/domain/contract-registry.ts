@@ -1,6 +1,6 @@
 import type { DataContract } from "./data-contract.js"
 import { DataRunError } from "./error-codes.js"
-import { INTERACTION_FLAGS_CONTRACT, INTERACTIONS_CONTRACT, TRANSCRIPTS_CONTRACT } from "./contracts/interaction-contracts.js"
+import { INTERACTION_FLAGS_CONTRACT, INTERACTIONS_CONTRACT, INTERACTIONS_CONTRACT_V1, TRANSCRIPTS_CONTRACT } from "./contracts/interaction-contracts.js"
 import {
   EMPLOYEE_ABSENCES_CONTRACT,
   EMPLOYEE_ABSENCES_CONTRACT_V1,
@@ -13,7 +13,7 @@ import {
   WORK_SCHEDULE_DAYS_CONTRACT,
   WORK_SCHEDULE_EXCEPTIONS_CONTRACT,
 } from "./contracts/master-data-contracts.js"
-import { INDICATOR_MEASUREMENTS_CONTRACT, OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT, PRV_PERFORMANCE_CONTRACT } from "./contracts/performance-contracts.js"
+import { INDICATOR_MEASUREMENTS_CONTRACT, OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT, OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT_V1, PRV_PERFORMANCE_CONTRACT } from "./contracts/performance-contracts.js"
 
 /**
  * Registro central dos contratos suportados. Ordem = ordem de dependência (quem não depende de
@@ -42,7 +42,7 @@ export const DATA_CONTRACTS: readonly DataContract[] = [
  * migra feed em silêncio. Feed novo nasce na versão atual (`DATA_CONTRACTS`); um feed antigo passa
  * para ela quando o administrador salva o mapeamento de novo (a tela mapeia sempre a versão atual).
  */
-export const PREVIOUS_DATA_CONTRACT_VERSIONS: readonly DataContract[] = [EMPLOYEE_ABSENCES_CONTRACT_V1]
+export const PREVIOUS_DATA_CONTRACT_VERSIONS: readonly DataContract[] = [EMPLOYEE_ABSENCES_CONTRACT_V1, INTERACTIONS_CONTRACT_V1, OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT_V1]
 
 const byKey = new Map(DATA_CONTRACTS.map((contract) => [contract.key, contract]))
 const byKeyAndVersion = new Map([...DATA_CONTRACTS, ...PREVIOUS_DATA_CONTRACT_VERSIONS].map((contract) => [`${contract.key}@${contract.version}`, contract]))

@@ -270,7 +270,7 @@ export function composeTranscript(ctx: CallContext, plan: CallPlan): ComposedTra
   const finalPlan: CallPlan = { ...plan, holdSeconds: tracker.seconds }
   const flags = deriveFlags(finalPlan, scenario, secondary)
   const durationSeconds = turns.length * random.int(5, 8) + tracker.seconds
-  return { turns, content: renderContent(turns, finalPlan.plainFormat), reason: buildReason(random, scenario, secondary, finalPlan), plan: finalPlan, flags, durationSeconds }
+  return { turns, content: renderContent(turns, finalPlan.plainFormat), reason: buildReason(random, scenario, secondary, finalPlan), motive: scenario.motive, plan: finalPlan, flags, durationSeconds }
 }
 
 function buildReason(random: Random, scenario: ScenarioSpec, secondary: ScenarioSpec | null, plan: CallPlan): string {

@@ -30,6 +30,8 @@ export type InteractionEvidence = {
   teamName: string | null
   channel: string
   reason: string
+  /** Submotivo como a fonte cadastrou; null = não informado. */
+  subReason: string | null
   startedAt: string
   endedAt: string
   durationSeconds: number
@@ -88,8 +90,8 @@ function requireInteractionTrigger(row: QaWorkflowRow): { kind: "channel_flag"; 
 
 /** Manual com interação: qualquer interação REAL do colaborador com transcrição (a mesma lista do "Executar agora"). */
 async function findManualInteractions(db: Database, organizationId: string, input: FindCompatibleInteractionsInput) {
-  const result = await db.query<{ id: string; external_id: string; reason: string; channel: string; started_at: string; ended_at: string; operator_id: string; operator_name: string; team_name: string | null }>(
-    `select i.id, i.external_id, i.reason, i.channel, i.started_at, i.ended_at, i.operator_id, p.name operator_name, t.name team_name
+  const result = await db.query<{ id: string; external_id: string; reason: string; sub_reason: string | null; channel: string; started_at: string; ended_at: string; operator_id: string; operator_name: string; team_name: string | null }>(
+    `select i.id, i.external_id, i.reason, i.sub_reason, i.channel, i.started_at, i.ended_at, i.operator_id, p.name operator_name, t.name team_name
        from interactions i join people p on p.id = i.operator_id left join teams t on t.id = p.team_id
       where i.organization_id = $1 and i.operator_id = $2
         and exists (select 1 from transcripts tr where tr.interaction_id = i.id)
@@ -103,6 +105,7 @@ async function findManualInteractions(db: Database, organizationId: string, inpu
     id: row.id,
     externalId: row.external_id,
     reason: row.reason,
+    subReason: row.sub_reason,
     channel: row.channel,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -188,13 +191,14 @@ type InteractionRow = {
   team_name: string | null
   channel: string
   reason: string
+  sub_reason: string | null
   started_at: string
   ended_at: string
 }
 
 async function loadInteraction(db: Database, organizationId: string, interactionId: string): Promise<InteractionRow | null> {
   const result = await db.query<InteractionRow>(
-    `select i.id, i.external_id, i.operator_id, p.name operator_name, p.team_id, t.name team_name, i.channel, i.reason, i.started_at, i.ended_at
+    `select i.id, i.external_id, i.operator_id, p.name operator_name, p.team_id, t.name team_name, i.channel, i.reason, i.sub_reason, i.started_at, i.ended_at
      from interactions i join people p on p.id = i.operator_id left join teams t on t.id = p.team_id
      where i.id = $1 and i.organization_id = $2`,
     [interactionId, organizationId],
@@ -214,6 +218,7 @@ export type InteractionDetail = {
   teamName: string | null
   channel: string
   reason: string
+  subReason: string | null
   startedAt: string
   endedAt: string
   durationSeconds: number
@@ -241,6 +246,7 @@ export async function getInteractionDetail(db: Database, organizationId: string,
     teamName: row.team_name,
     channel: row.channel,
     reason: row.reason,
+    subReason: row.sub_reason,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     durationSeconds: durationSeconds(row.started_at, row.ended_at),
@@ -333,6 +339,7 @@ export async function resolveInteractionEvidence(
       teamName: call.team_name,
       channel: call.channel,
       reason: call.reason,
+      subReason: call.sub_reason,
       startedAt: call.started_at,
       endedAt: call.ended_at,
       durationSeconds: durationSeconds(call.started_at, call.ended_at),

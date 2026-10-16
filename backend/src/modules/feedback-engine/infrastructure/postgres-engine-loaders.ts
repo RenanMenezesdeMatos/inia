@@ -18,6 +18,8 @@ export type InteractionForAnalysis = {
   startedAt: Date
   endedAt: Date | null
   reason: string | null
+  /** Submotivo (145): presente só quando a fonte informou — o assunto preferencial da `SUBJECT_RESOLUTION_V2`. */
+  subReason?: string | null
   channel: string | null
   subjectCanonical: { code: string; name: string } | null
   flags: { name: string; value: string }[]
@@ -29,8 +31,8 @@ export type InteractionForAnalysis = {
 }
 
 export async function loadInteractionForAnalysis(db: Queryable, organizationId: string, interactionId: string): Promise<InteractionForAnalysis | null> {
-  const row = (await db.query<{ id: string; operator_id: string; operator_name: string; started_at: Date; ended_at: Date | null; reason: string | null; channel: string | null; subject_code: string | null; team_id: string | null; subteam_id: string | null; reports_to_id: string | null }>(
-    `select i.id, i.operator_id, p.name operator_name, i.started_at, i.ended_at, i.reason, i.channel, ${canonicalSubjectSql("i")} subject_code, p.team_id, p.subteam_id, p.reports_to_id
+  const row = (await db.query<{ id: string; operator_id: string; operator_name: string; started_at: Date; ended_at: Date | null; reason: string | null; sub_reason: string | null; channel: string | null; subject_code: string | null; team_id: string | null; subteam_id: string | null; reports_to_id: string | null }>(
+    `select i.id, i.operator_id, p.name operator_name, i.started_at, i.ended_at, i.reason, i.sub_reason, i.channel, ${canonicalSubjectSql("i")} subject_code, p.team_id, p.subteam_id, p.reports_to_id
      from interactions i join people p on p.id = i.operator_id and p.organization_id = i.organization_id
      where i.id = $1 and i.organization_id = $2`,
     [interactionId, organizationId],
@@ -51,6 +53,7 @@ export async function loadInteractionForAnalysis(db: Queryable, organizationId: 
     startedAt: new Date(row.started_at),
     endedAt: row.ended_at ? new Date(row.ended_at) : null,
     reason: row.reason,
+    ...(row.sub_reason?.trim() ? { subReason: row.sub_reason } : {}),
     channel: row.channel,
     subjectCanonical: row.subject_code && subject ? { code: row.subject_code, name: subject.name } : null,
     flags: flags.map((flag) => ({ name: flag.flag_name, value: flag.value_boolean !== null ? (flag.value_boolean ? "sim" : "não") : flag.value_numeric ?? "" })),

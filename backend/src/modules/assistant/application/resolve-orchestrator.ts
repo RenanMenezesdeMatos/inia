@@ -163,8 +163,20 @@ export async function resolveOrchestratorForSubject(
     subjectId,
     organizationId,
   ])
-  const teamId = person.rows[0]?.team_id ?? null
+  return resolveOrchestratorForTeam(db, organizationId, person.rows[0]?.team_id ?? null, invocationContext, query)
+}
 
+/**
+ * O Orquestrador de um GRUPO: o do próprio Grupo (escopo TEAM) ou, sem ele, o de "Todos os grupos" — a mesma regra de quem
+ * conversa (acima) e da consulta de processo de quem lidera vários Grupos (`listInteractiveOrchestratorScopes` + `orchestratorForTeam`).
+ */
+export async function resolveOrchestratorForTeam(
+  db: Database,
+  organizationId: string,
+  teamId: string | null,
+  invocationContext: OrchestratorInvocationContext,
+  query?: string,
+): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
     `select o.organization_id, o.id, o.name, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
@@ -178,6 +190,25 @@ export async function resolveOrchestratorForSubject(
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null
   return buildResolvedOrchestrator(db, orchestrator, query, invocationContext)
+}
+
+/** Orquestradores do chat/voz ativos da organização com o escopo de cada um — na ORDEM de preferência de `resolveOrchestratorForTeam`. */
+export type InteractiveOrchestratorScope = { id: string; name: string; scopeType: "ALL_TEAMS" | "TEAM"; teamId: string | null }
+
+export async function listInteractiveOrchestratorScopes(db: Database, organizationId: string): Promise<InteractiveOrchestratorScope[]> {
+  const result = await db.query<{ id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM"; team_id: string | null }>(
+    `select o.id, o.name, o.scope_type, o.team_id
+       from assistant_orchestrators o
+      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', 'INTERACTIVE') and o.scope_type in ('ALL_TEAMS', 'TEAM')
+      order by (o.scope_type = 'TEAM') desc, o.created_at desc`,
+    [organizationId],
+  )
+  return result.rows.map((row) => ({ id: row.id, name: row.name, scopeType: row.scope_type, teamId: row.team_id }))
+}
+
+/** Puro: o Orquestrador que `resolveOrchestratorForTeam` escolheria para o Grupo (lista já na ordem de preferência). */
+export function orchestratorForTeam(scopes: readonly InteractiveOrchestratorScope[], teamId: string | null): InteractiveOrchestratorScope | null {
+  return scopes.find((scope) => scope.scopeType === "TEAM" && teamId !== null && scope.teamId === teamId) ?? scopes.find((scope) => scope.scopeType === "ALL_TEAMS") ?? null
 }
 
 /**

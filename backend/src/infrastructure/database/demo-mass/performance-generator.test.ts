@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest"
+import { checkComponentCoherence, componentValueScale } from "../../../modules/indicators/domain/indicator-definition.js"
 import { buildDemoMass, stubIndicatorDefinitions } from "./build-demo-mass.js"
+import { closureComponents } from "./closure-components.js"
 import { closedReferencePeriods } from "./demo-constants.js"
 import { effectiveWeight, valueBounds } from "./indicator-catalog.js"
 import { achievementFromValue, quartileByRank, valueFromAchievement, type IndicatorPerformanceRow } from "./performance-generator.js"
@@ -140,6 +142,43 @@ describe("performance demo — coerência com meta e direção", () => {
     expect(voiceAugust.targetValue).toBe(400)
   })
 
+})
+
+describe("fechamento oficial demo — numerador e denominador (contrato @2)", () => {
+  const definitionOf = (row: IndicatorPerformanceRow) => [...definitions.values()].find((candidate) => candidate.id === row.indicatorDefinitionId)!
+
+  it("Taxa e Média ponderada trazem os dois componentes, coerentes com o valor oficial pela regra do contrato; as demais estratégias ficam nulas", () => {
+    let withComponents = 0
+    for (const row of performance.indicatorRows) {
+      const definition = definitionOf(row)
+      if (componentValueScale(definition.kind) === null) {
+        expect([row.numerator, row.denominator], `${row.indicatorCode} (${definition.kind})`).toEqual([null, null])
+        continue
+      }
+      withComponents += 1
+      expect(row.denominator, row.id).toBeGreaterThan(0)
+      expect(checkComponentCoherence(definition.kind, row.value, row.numerator!, row.denominator!)?.coherent, `${row.indicatorCode} ${row.value} = ${row.numerator} ÷ ${row.denominator}`).toBe(true)
+    }
+    expect(withComponents).toBeGreaterThan(performance.indicatorRows.length * 0.8)
+  })
+
+  it("tempo médio: denominador = atendimentos e numerador = segundos (inteiros, valor × volume); taxa: ocorrências inteiras sobre a base", () => {
+    const time = performance.indicatorRows.find((row) => definitionOf(row).kind === "WEIGHTED_AVERAGE" && definitionOf(row).unit === "SECONDS")!
+    expect(Number.isInteger(time.numerator)).toBe(true)
+    expect(time.numerator).toBe(time.value * time.denominator!)
+    const rates = performance.indicatorRows.filter((row) => definitionOf(row).kind === "RATE")
+    expect(rates.length).toBeGreaterThan(0)
+    expect(rates.filter((row) => Number.isInteger(row.numerator) && Number.isInteger(row.denominator)).length / rates.length).toBeGreaterThan(0.95)
+  })
+
+  it("componentes vêm da CHAVE da linha: o preenchimento do banco já populado chega ao mesmo número e os valores oficiais não mudam", () => {
+    for (const row of performance.indicatorRows.slice(0, 2000)) {
+      const filled = closureComponents({ rowKey: row.id, code: row.indicatorCode, kind: definitionOf(row).kind, value: row.value })
+      expect(filled ?? { numerator: null, denominator: null }).toEqual({ numerator: row.numerator, denominator: row.denominator })
+    }
+    const again = buildDemoMass(definitions, 20260915, "2026-09-15").performance.indicatorRows
+    expect(again.map((row) => [row.id, row.value, row.achievementPercent, row.quartile, row.numerator, row.denominator])).toEqual(performance.indicatorRows.map((row) => [row.id, row.value, row.achievementPercent, row.quartile, row.numerator, row.denominator]))
+  })
 })
 
 describe("fechamento oficial = só mês civil COMPLETO (nunca o mês corrente)", () => {

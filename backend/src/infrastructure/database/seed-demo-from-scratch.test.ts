@@ -57,12 +57,15 @@ describe("seed de demonstração — do zero num banco recém-migrado", () => {
       // relógio — 36 em setembro/2026 (jul/ago), 54 a partir de outubro/2026. Contagem exata, então
       // duplicata ou join mais largo também quebram. Nunca as 288 linhas do arquivo, nunca o mês corrente.
       const closedSeedPeriods = ["2026-07", "2026-08", "2026-09"].filter((period) => period < localToday().slice(0, 7)).length
-      expect(result.first.sqlFiles.map((file) => file.name)).toEqual(["001_operator_performance.sql", "002_data_hub.sql"])
+      expect(result.first.sqlFiles.map((file) => file.name)).toEqual(["001_operator_performance.sql", "002_data_hub.sql", "003_intervention_examples.sql"])
       expect(result.first.sqlFiles[0]!.rowsAffected).toBeGreaterThan(0)
       expect(result.first.sqlFiles[0]!.rowsAffected).toBe(2 * (8 + 1) * closedSeedPeriods)
       expect(result.counts.people).toBeGreaterThanOrEqual(2109)
       expect(result.counts.measurements).toBeGreaterThan(100_000)
       expect(result.counts.officialRowsCurrentMonth).toBe(0)
+      // Fechamentos de Taxa/Média ponderada nascem com numerador e denominador (massa) ou os ganham no seed (SQL 001).
+      expect(result.counts.officialWithComponents).toBeGreaterThan(10_000)
+      expect(result.counts.officialComponentsMissing).toBe(0)
       expect(result.counts.closedPeriods).toHaveLength(6)
       // Segunda rodada: nada novo (idempotente) — o relatório da massa continua consistente.
       expect(result.second.sqlFiles[0]!.rowsAffected).toBe(0)

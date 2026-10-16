@@ -1,20 +1,20 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { eligibleObservationSql, isComparablePracticeKey } from "../domain/observation-readiness.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { levelKeySql, type SubjectLevel } from "../../interactions/domain/interaction-subject.js"
 import type { PeerObservationRow } from "../domain/peer-practice-evidence.js"
 
 /**
  * V1.6.1 — DADOS BRUTOS PARA A EVIDÊNCIA DE PARES (só leitura, ZERO modelo). Duas consultas fixas por diagnóstico:
  *   1) população elegível: colaboradores ATIVOS do MESMO Grupo do colaborador, com medição (pessoa) do MESMO indicador no
  *      MESMO período (mesmo início e fim) — o próprio colaborador fica de fora; uma medição por pessoa (a mais recente);
- *   2) observações VERIFICADAS dessas pessoas para as práticas pedidas, dentro da janela da medição, com o motivo do
- *      atendimento (mesma expressão canônica/bruta do plano).
+ *   2) observações VERIFICADAS dessas pessoas para as práticas pedidas, dentro da janela da medição, com o assunto do
+ *      atendimento no MESMO nível do plano (`level`: assunto/submotivo, o padrão, ou motivo — mesma expressão do plano).
  * Quem é "grupo de referência" e se há privacidade suficiente é decidido pelo domínio puro (peer-practice-evidence.ts);
  * nada daqui é exibido por pessoa.
  */
 export type PeerPracticeData = { peers: { personId: string; value: number }[]; observations: PeerObservationRow[] }
 
-export async function loadPeerPracticeData(db: Database, input: { organizationId: string; measurementId: string; collaboratorId: string; practiceKeys: readonly string[] }): Promise<PeerPracticeData> {
+export async function loadPeerPracticeData(db: Database, input: { organizationId: string; measurementId: string; collaboratorId: string; practiceKeys: readonly string[]; level?: SubjectLevel }): Promise<PeerPracticeData> {
   const peers = (await db.query<{ person_id: string; value: string }>(
     `with measurement as (
        select indicator_definition_id, period_start, period_end from indicator_measurements where id = $1 and organization_id = $2 and subject_type = 'PERSON'
@@ -32,7 +32,7 @@ export async function loadPeerPracticeData(db: Database, input: { organizationId
   const keys = [...new Set(input.practiceKeys.filter(isComparablePracticeKey))]
   if (peers.length === 0 || keys.length === 0) return { peers, observations: [] }
   const observations = (await db.query<{ person_id: string; interaction_id: string; practice_key: string; status: "FOLLOWED" | "NOT_FOLLOWED"; segment_key: string | null }>(
-    `select o.person_id, o.interaction_id, o.practice_key, o.status, coalesce(${canonicalSubjectSql("i")}, nullif(btrim(i.reason), '')) segment_key
+    `select o.person_id, o.interaction_id, o.practice_key, o.status, ${levelKeySql(input.level ?? "SUBJECT", "i")} segment_key
      from process_checkpoint_observations o
      join interactions i on i.id = o.interaction_id and i.organization_id = o.organization_id
      join indicator_measurements x on x.id = $1 and x.organization_id = $2

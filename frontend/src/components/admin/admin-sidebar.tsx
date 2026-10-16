@@ -169,11 +169,10 @@ const BRANCH_MOTION = "duration-300 ease-in-out motion-reduce:transition-none mo
 
 /**
  * Linha do item com subpáginas (aberto ou fechado — a transição vale nos dois sentidos). Largura/altura/padding mantêm os
- * 150 ms do recolher do menu; tamanho do texto, cor, fundo e o "negrito" usam o tempo do accordion. O seletor [&>svg] também
- * pega a seta de dentro do botão (Governança) — por isso "rotate" entra na lista dos ícones.
+ * 150 ms do recolher do menu; tamanho do texto, cor, fundo e o "negrito" usam o tempo do accordion.
  */
 const BRANCH_ROW_MOTION =
-  "[transition-property:width,height,padding,font-size,color,background-color,text-shadow] [transition-duration:150ms,150ms,150ms,300ms,300ms,300ms,300ms] ease-in-out motion-reduce:transition-none [&>svg]:transition-[width,height,rotate] [&>svg]:duration-300 [&>svg]:ease-in-out motion-reduce:[&>svg]:transition-none"
+  "[transition-property:width,height,padding,font-size,color,background-color,text-shadow] [transition-duration:150ms,150ms,150ms,300ms,300ms,300ms,300ms] ease-in-out motion-reduce:transition-none [&>svg]:transition-[width,height] [&>svg]:duration-300 [&>svg]:ease-in-out motion-reduce:[&>svg]:transition-none"
 
 /**
  * Item com subpáginas ABERTO: levemente maior e roxo (texto, ícone e seta) — as subpáginas logo abaixo leem como "filhas"
@@ -318,18 +317,17 @@ function NavBranch({ entry, pathname, searchParams }: { entry: VisibleEntry; pat
   }
 
   return (
-    <Collapsible asChild open={open} onOpenChange={setOpen} className={cn("group/collapsible", OPEN_GROUP_CLASS)}>
+    <Collapsible asChild open={open} onOpenChange={setOpen} className={OPEN_GROUP_CLASS}>
       <SidebarMenuItem>
+        {/* A linha toda abre/fecha; a seta é a MESMA dos itens que são página (mesmo lugar, tamanho e giro), nunca uma seta dentro do botão. */}
         <CollapsibleTrigger asChild>
           <SidebarMenuButton isActive={rowState === "active"} tooltip={entry.label} className={rowClass}>
             <entry.icon />
             <span>{entry.label}</span>
-            <ChevronRight className={cn("-mr-0.5 ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90", BRANCH_MOTION)} />
           </SidebarMenuButton>
         </CollapsibleTrigger>
-        {/* Recolhido, a seta de dentro do botão não cabe: aparece ao lado do ícone, e também abre/fecha (como nos itens que são página). */}
         <CollapsibleTrigger asChild>
-          <SidebarMenuAction aria-label={`${open ? "Recolher" : "Expandir"} ${entry.label}`} className={cn("hidden text-muted-foreground transition-[transform,rotate,color] data-[state=open]:rotate-90", BRANCH_MOTION, ICON_MODE_CARET)}>
+          <SidebarMenuAction aria-label={`${open ? "Recolher" : "Expandir"} ${entry.label}`} className={cn("text-muted-foreground transition-[transform,rotate,color] data-[state=open]:rotate-90", BRANCH_MOTION, ICON_MODE_CARET)}>
             <ChevronRight />
           </SidebarMenuAction>
         </CollapsibleTrigger>

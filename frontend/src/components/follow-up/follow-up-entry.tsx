@@ -9,6 +9,7 @@ import { FeedbackNarrativeView } from "@/components/feedbacks/feedback-narrative
 import { PrvSupervisorDiagnosis } from "@/components/feedbacks/prv-supervisor-diagnosis"
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
 import { IniaFeedItem } from "@/components/operator/inia-feed"
+import { ReportDeliveryView } from "@/components/reports/report-delivery-view"
 import { RichContent } from "@/components/rich-content/rich-content"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { formatDateTime, formatFeedTimestamp } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import type { FollowUpItem } from "@/schemas/analytics/analytics.schema"
+import { reportDeliveryContentSchema } from "@/schemas/reports/reports.schema"
 
 /**
  * Um item do Acompanhamento da ESTRUTURA (liderança) com a MESMA apresentação do Acompanhamento do colaborador: linha
@@ -44,6 +46,8 @@ const ALERT_FAMILY: Record<FollowUpItem["category"], FeedbackEntryFamily> = {
   WORKFLOW_HUMAN_REVIEW: "HUMAN_REVIEW",
   WORKFLOW_ESCALATION: "ESCALATION",
   INTERVENTION: "INTERVENTION",
+  REPORT: "REPORT",
+  REPORT_NOT_FORWARDED: "REPORT_NOT_FORWARDED",
   OTHER: "OTHER",
 }
 
@@ -67,6 +71,8 @@ export function FollowUpEntry({ item, showRecipient, employeeHref, highlighted =
   }, [highlighted])
 
   const view = item.feedback?.view ?? null
+  const parsedReport = item.kind === "REPORT" ? reportDeliveryContentSchema.safeParse(item.report) : null
+  const report = parsedReport?.success ? parsedReport.data : null
   const title = view?.heading?.title ?? item.title
   const subtitle = view?.heading?.subtitle ?? item.subtitle ?? null
   const urgent = item.severity === "HIGH" || item.severity === "CRITICAL"
@@ -90,7 +96,10 @@ export function FollowUpEntry({ item, showRecipient, employeeHref, highlighted =
           }
         >
           <div className="space-y-4 text-sm leading-6">
-            {view ? (
+            {report ? (
+              // Report recorrente: a entrega (gráfico, valores exatos, análise e bases) ou o aviso de "não encaminhado".
+              <ReportDeliveryView model={{ ...report, createdAt: item.createdAt }} />
+            ) : view ? (
               // Feedback por Flag V2: a narrativa JÁ é o resumo — aparece direto, como no Acompanhamento do colaborador.
               <>
                 <FeedbackNarrativeView view={view} />

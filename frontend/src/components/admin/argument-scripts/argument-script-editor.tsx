@@ -4,15 +4,6 @@ import { useState } from "react"
 import { z } from "zod"
 import { ArrowLeft, Pencil } from "lucide-react"
 
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -26,14 +17,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import {
-  useArchiveArgumentScriptMutation,
   useArgumentScriptQuery,
   useArgumentScriptScopeOptionsQuery,
   useCreateArgumentScriptMutation,
-  useDeleteArgumentScriptMutation,
-  useDiscardArgumentScriptDraftMutation,
   usePublishArgumentScriptMutation,
-  useReactivateArgumentScriptMutation,
   useUpdateArgumentScriptMutation,
 } from "@/queries/admin/use-argument-script-queries"
 import { useBusinessDomainsQuery } from "@/queries/admin/use-business-domain-queries"
@@ -50,6 +37,7 @@ import {
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { ArgumentScriptScopeInput } from "@/services/admin/argument-script-service"
 
+import { ArgumentScriptLifecycleDialog, type ArgumentScriptLifecycleAction } from "./argument-script-lifecycle"
 import { ArgumentScriptContentFields, ArgumentScriptContentView, contentToForm, EMPTY_CONTENT_FORM, formSource, formToContent, type ContentFormState } from "./argument-script-form"
 import { defaultScopeType, formatDateTime, scopeLabel, teamsForScope, validityLabel, versionSituation } from "./argument-script-format"
 
@@ -102,7 +90,7 @@ function ScopeField({ value, onChange, teams, scopeOptions, lockedLabel }: { val
       <div className="space-y-1">
         <p className="text-sm font-medium">Escopo</p>
         <p className="text-sm">{lockedLabel}</p>
-        <p className="text-xs text-muted-foreground">O escopo não muda depois da primeira publicação. Para outro escopo, encerre este argumentário e crie outro.</p>
+        <p className="text-xs text-muted-foreground">O escopo não muda depois da primeira publicação. Para outro escopo, desative este argumentário e crie outro.</p>
       </div>
     )
   }
@@ -258,7 +246,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
   const [header, setHeader] = useState(initial.header)
   const [content, setContent] = useState(initial.content)
   const [editRequested, setEditRequested] = useState(false)
-  const [dialog, setDialog] = useState<"publish" | "discard" | "archive" | "reactivate" | "delete" | null>(null)
+  const [dialog, setDialog] = useState<"publish" | ArgumentScriptLifecycleAction | null>(null)
 
   const hasDraft = detail.draft !== null
   const editing = detail.canEdit && (hasDraft || editRequested)
@@ -269,7 +257,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
   const publishBlockedReason = !hasDraft
     ? null
     : detail.status === "ARCHIVED"
-      ? "Argumentário encerrado: reative-o antes de publicar."
+      ? "Argumentário inativo: reative-o antes de publicar."
       : dirty
         ? "Salve o rascunho antes de publicar."
         : issues.length > 0
@@ -317,7 +305,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
           <div className="flex flex-wrap gap-2">
             {detail.status === "ACTIVE" && detail.everPublished ? (
               <Button variant="outline" size="sm" onClick={() => setDialog("archive")}>
-                Encerrar
+                Desativar
               </Button>
             ) : null}
             {detail.status === "ARCHIVED" ? (
@@ -325,11 +313,10 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
                 Reativar
               </Button>
             ) : null}
-            {!detail.everPublished ? (
-              <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDialog("delete")}>
-                Excluir
-              </Button>
-            ) : null}
+            {/* Publicado também: quem decide é o backend (só sem uso em análise de chamada; com uso, 409 e o diálogo explica). */}
+            <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDialog("delete")}>
+              Excluir
+            </Button>
           </div>
         ) : null}
       </div>
@@ -414,7 +401,9 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
       <VersionHistory history={detail.history} now={initial.now} />
 
       <PublishDialog detail={detail} open={dialog === "publish"} onOpenChange={(open) => setDialog(open ? "publish" : null)} />
-      <LifecycleDialogs detail={detail} dialog={dialog === "publish" ? null : dialog} onClose={() => setDialog(null)} onDeleted={onDeleted} />
+      {dialog && dialog !== "publish" ? (
+        <ArgumentScriptLifecycleDialog target={{ id: detail.id, name: detail.name, hasDraft: detail.draft !== null }} action={dialog} onClose={() => setDialog(null)} onDeleted={onDeleted} />
+      ) : null}
     </div>
   )
 }
@@ -558,88 +547,5 @@ function PublishForm({ detail, onDone }: { detail: ArgumentScriptDetail; onDone:
         </Button>
       </DialogFooter>
     </>
-  )
-}
-
-// ---------------------------------------------------------------------------------------------
-// Descartar rascunho · Encerrar · Reativar · Excluir
-// ---------------------------------------------------------------------------------------------
-
-function LifecycleDialogs({ detail, dialog, onClose, onDeleted }: { detail: ArgumentScriptDetail; dialog: "discard" | "archive" | "reactivate" | "delete" | null; onClose: () => void; onDeleted: () => void }) {
-  const discardMutation = useDiscardArgumentScriptDraftMutation()
-  const archiveMutation = useArchiveArgumentScriptMutation()
-  const reactivateMutation = useReactivateArgumentScriptMutation()
-  const deleteMutation = useDeleteArgumentScriptMutation()
-
-  const config = {
-    discard: {
-      title: "Descartar o rascunho?",
-      description: "As alterações ainda não publicadas serão perdidas. A versão vigente não muda.",
-      confirm: "Descartar rascunho",
-      destructive: true,
-      mutation: discardMutation,
-      run: () => discardMutation.mutateAsync(detail.id),
-    },
-    archive: {
-      title: "Encerrar este argumentário?",
-      description: "Ele deixa de valer a partir de agora. Chamadas anteriores continuam avaliadas pela versão da época e o histórico é preservado.",
-      confirm: "Encerrar",
-      destructive: true,
-      mutation: archiveMutation,
-      run: () => archiveMutation.mutateAsync(detail.id),
-    },
-    reactivate: {
-      title: "Reativar este argumentário?",
-      description: `Ele volta a valer a partir de agora, como uma nova versão com o conteúdo da última publicada.${detail.draft ? " O rascunho em edição será descartado." : ""}`,
-      confirm: "Reativar",
-      destructive: false,
-      mutation: reactivateMutation,
-      run: () => reactivateMutation.mutateAsync(detail.id),
-    },
-    delete: {
-      title: "Excluir este argumentário?",
-      description: "Ele nunca foi publicado. A exclusão é definitiva.",
-      confirm: "Excluir",
-      destructive: true,
-      mutation: deleteMutation,
-      run: async () => {
-        await deleteMutation.mutateAsync(detail.id)
-        onDeleted()
-      },
-    },
-  } as const
-
-  const current = dialog ? config[dialog] : null
-
-  return (
-    <AlertDialog open={current !== null} onOpenChange={(open) => (open ? null : onClose())}>
-      <AlertDialogContent>
-        {current ? (
-          <>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{current.title}</AlertDialogTitle>
-              <AlertDialogDescription>{current.description}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <Button
-                variant={current.destructive ? "destructive" : "default"}
-                disabled={current.mutation.isPending}
-                onClick={async () => {
-                  try {
-                    await current.run()
-                    onClose()
-                  } catch {
-                    // erro exibido no toast (o backend é a autoridade: 409/403)
-                  }
-                }}
-              >
-                {current.confirm}
-              </Button>
-            </AlertDialogFooter>
-          </>
-        ) : null}
-      </AlertDialogContent>
-    </AlertDialog>
   )
 }

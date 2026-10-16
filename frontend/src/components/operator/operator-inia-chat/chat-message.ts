@@ -1,6 +1,8 @@
 import type { ConversationMessage } from "@/lib/realtime/gemini-text-client"
 import { messageTime, newClientKey } from "@/lib/realtime/conversation-format"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
+import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
+import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 
 /** `supportMaterials` = materiais de apoio recomendados pelo Orquestrador nesta resposta (chat ou
  * voz), já resolvidos pelo backend — a mesma seção do Feedback, ao lado do balão; a URL nasce do id
@@ -15,6 +17,10 @@ export type ChatMessage = {
   channel?: "chat" | "voice"
   rating?: "up" | "down"
   supportMaterials?: FeedbackSupportMaterial[]
+  /** Cartões de dados da liderança desta resposta (escopo, período, base e links) — números do backend. */
+  analytics?: LeadershipCard[]
+  /** "Criar report desta consulta": oferta feita nesta resposta (aceite pelo botão ou por "sim" na resposta seguinte). */
+  reportOffer?: ReportOffer
   /** `failed` = exibida, mas NÃO entrou no histórico (falha ao salvar) — nunca aparenta sucesso. */
   saveState?: "failed"
   /** Resposta de erro local ("não consegui responder"): não é resposta da INIA nem vai para o contexto. */
@@ -32,6 +38,8 @@ export const nowTime = () => new Date().toLocaleTimeString("pt-BR", { hour: "2-d
 export const newTurnId = () => `voice-${newClientKey()}`
 
 export function toChatMessage(message: ConversationMessage): ChatMessage {
+  const analytics = parseLeadershipCards(message.analytics)
+  const offer = message.reportOffer ? reportOfferSchema.safeParse(message.reportOffer) : null
   return {
     id: nextMessageId(),
     sender: message.role === "assistant" ? "assistant" : "user",
@@ -40,6 +48,8 @@ export function toChatMessage(message: ConversationMessage): ChatMessage {
     occurredAt: message.occurredAt,
     channel: message.channel,
     ...(message.supportMaterials.length > 0 ? { supportMaterials: message.supportMaterials } : {}),
+    ...(analytics.length > 0 ? { analytics } : {}),
+    ...(offer?.success ? { reportOffer: offer.data } : {}),
     ...(message.origin === "WORKFLOW" || message.origin === "FEEDBACK" ? { origin: message.origin } : {}),
   }
 }

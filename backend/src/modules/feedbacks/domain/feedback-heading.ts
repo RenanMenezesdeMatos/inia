@@ -1,18 +1,19 @@
 /**
- * TÍTULO DO FEEDBACK DE ATENDIMENTO (`FEEDBACK_HEADING_V1`, domínio puro — nenhuma chamada de IA).
+ * TÍTULO DO FEEDBACK DE ATENDIMENTO (`FEEDBACK_HEADING_V2`, domínio puro — nenhuma chamada de IA).
  *
  * O título principal é o ASSUNTO do atendimento sustentado pelos dados daquela interação; a data é metadado à parte
  * ("Atendimento de 29/09/2026"). Ordem das fontes:
  *   1. CANONICAL — o nome do assunto canônico resolvido para a interação quando o feedback é gerado (o artefato guarda o nome; a
  *      leitura posterior não reclassifica);
- *   2. RECORDED — o assunto BRUTO gravado com a interação (`interactions.reason`, nunca reescrito), quando é texto legível;
+ *   2. RECORDED — o assunto BRUTO gravado com a interação (nunca reescrito), quando é texto legível: o SUBMOTIVO
+ *      (`interactions.sub_reason`) quando a fonte o informou, senão o motivo (`interactions.reason`) — V2, 16/10/2026;
  *   3. RECORDED_CODE — o bruto é um código e existe um assunto com EXATAMENTE esse código: o nome desse assunto (mesma identidade,
  *      só o rótulo legível — nunca um alias criado depois);
  *   4. sem assunto confiável → título neutro, a data continua separada.
  * Nunca entram como assunto: nome da base de conhecimento, do agente, do Workflow ou de um erro encontrado; nenhuma especificidade é
  * acrescentada ("Contestação de cobrança" só vira "Contestação de juros e multa" se o dado disser isso).
  */
-export const FEEDBACK_HEADING_VERSION = "FEEDBACK_HEADING_V1" as const
+export const FEEDBACK_HEADING_VERSION = "FEEDBACK_HEADING_V2" as const
 export const NEUTRAL_INTERACTION_TITLE = "Feedback de atendimento"
 export const SUBJECT_TITLE_MAX = 80
 

@@ -36,13 +36,19 @@ import { formatPercent, officialValueMovementOf, previousSnapshotOf, quartileMov
  * colaborador; TEAM_ONLY fica na visão do supervisor.
  */
 export const INDICATOR_INVESTIGATION_VERSION = "INDICATOR_INVESTIGATION_V1" as const
-/** V1.0.2 — a integridade de papéis da evidência muda a avaliação das chamadas: versão nova = chave nova (o diagnóstico anterior continua gravado, nada é apagado). */
-export const PRV_DIAGNOSIS_LOGIC_VERSION = "PRV_DIAGNOSIS_V1_0_2" as const
+/** V1.0.2 — a integridade de papéis da evidência muda a avaliação das chamadas: versão nova = chave nova (o diagnóstico anterior continua gravado, nada é apagado).
+ * V1.0.3 (16/10/2026, `SUBJECT_RESOLUTION_V2`) — o motivo investigado passa a ser o ASSUNTO preferencial (submotivo; sem submotivo, o
+ * motivo, como antes). Quem não tem submotivo segmenta exatamente como na V1.0.2. */
+export const PRV_DIAGNOSIS_LOGIC_VERSION = "PRV_DIAGNOSIS_V1_0_3" as const
+/** Lógica de AVALIAÇÃO das chamadas (marca das pendências reaproveitáveis): a V1.0.3 só mudou a escolha do motivo, não como cada
+ * chamada é avaliada — então pendência gravada pela V1.0.2 continua reaproveitável (nenhuma chamada é paga de novo por isso). */
+export const PRV_ASSESSMENT_LOGIC_VERSION = "PRV_DIAGNOSIS_V1_0_2" as const
 /**
  * INDICATOR DIAGNOSIS V2 — diagnóstico DIRETO de um indicador (sem fechamento do PRV): mesma investigação, mesma verdade
  * estruturada, outra origem. Versão lógica própria = chave própria (nunca colide com a do fechamento).
  */
-export const DIRECT_DIAGNOSIS_LOGIC_VERSION = "INDICATOR_DIAGNOSIS_V2_0" as const
+/** V2.1 (16/10/2026, `SUBJECT_RESOLUTION_V2`): segmento pelo submotivo (sem submotivo, o motivo) e, quando a estratégia liga, pelo motivo. */
+export const DIRECT_DIAGNOSIS_LOGIC_VERSION = "INDICATOR_DIAGNOSIS_V2_1" as const
 export type DiagnosisSourceKind = "PRV_CLOSING" | "DIRECT_INDICATOR"
 
 /** V2 — INSUFFICIENT_EVIDENCE: a estratégia pede uma evidência comportamental que os DADOS não oferecem (ex.: vínculo com o atendimento anterior) — nada é inferido no lugar dela. */

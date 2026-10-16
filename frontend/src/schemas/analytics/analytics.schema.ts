@@ -547,8 +547,8 @@ export type TeamMembersPage = z.infer<typeof teamMembersPageSchema>
 
 export const followUpItemSchema = z.object({
   id: z.string(),
-  kind: z.enum(["FEEDBACK", "ALERT"]),
-  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "INTERVENTION", "OTHER"]),
+  kind: z.enum(["FEEDBACK", "ALERT", "REPORT"]),
+  category: z.enum(["INDICATOR", "MONITORING", "WORKFLOW_OUTPUT", "WORKFLOW_HUMAN_REVIEW", "WORKFLOW_ESCALATION", "INTERVENTION", "REPORT", "REPORT_NOT_FORWARDED", "OTHER"]),
   title: z.string(),
   /** Metadado do título ("Atendimento de 29/09/2026") — `FEEDBACK_HEADING_V1`. */
   subtitle: z.string().nullish(),
@@ -575,6 +575,9 @@ export const followUpItemSchema = z.object({
       supervisorView: prvSupervisorViewSchema.nullable().optional(),
     })
     .nullable(),
+  /** Entrega ou aviso de report recorrente (kind = REPORT) — a versão do escopo de QUEM LÊ. Validado no item com o schema de
+   * reports (`reportDeliveryContentSchema`), que depende do schema da liderança — aqui sem tipo para não criar ciclo de importação. */
+  report: z.unknown().optional(),
 })
 export type FollowUpItem = z.infer<typeof followUpItemSchema>
 

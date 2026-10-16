@@ -1,6 +1,7 @@
 import type pg from "pg"
 import { hashPassword } from "../../../modules/auth/infrastructure/password-hasher.js"
 import { buildDemoMass, type DemoMass } from "./build-demo-mass.js"
+import { fillDemoClosureComponents } from "./closure-components.js"
 import { estimateDailyRows, localToday } from "./daily-measurement-generator.js"
 import { DEMO_RANDOM_SEED } from "./demo-constants.js"
 import { ensureChannelFlags, ensureDemoVolumeIndicator, loadIndicatorDefinitions, persistDailyMeasurements, persistInteractions, persistPerformance, persistStructure, persistUserAccounts, reportDemoMass, type PersistReport } from "./persist-demo-mass.js"
@@ -71,6 +72,9 @@ export async function seedDemoMass(client: pg.PoolClient, log: Log, demoPassword
 
   const official = await persistPerformance(client, mass)
   log(`metas persistidas; fechamentos oficiais (snapshot as-supplied, insert-only): ${official.indicatorRowsInserted} indicador criado(s) / ${official.indicatorRowsKept} já existente(s) mantido(s), ${official.prvRowsInserted} PRV criado(s) / ${official.prvRowsKept} mantido(s) — ${elapsed()}`)
+  // Fechamentos DEMO gravados antes da migration 147 (ou pelo seed SQL 001) ganham numerador/denominador; nada mais muda neles.
+  const components = await fillDemoClosureComponents(client)
+  log(`numerador/denominador nos fechamentos demo: ${components.filled} preenchido(s) (${components.withoutComponents} de estratégia sem componentes ficam nulos) — ${elapsed()}`)
 
   const estimate = estimateDailyRows(mass.structure, mass.definitions, mass.referenceDate)
   log(`medições diárias: referência ${mass.referenceDate}, ${estimate.operators} operadores × ${estimate.businessDays} dias úteis × ${estimate.averageDailyIndicators.toFixed(2)} indicadores diários ≈ ${estimate.estimatedRows.toLocaleString("pt-BR")} linhas estimadas (dias sem amostra ficam fora)`)

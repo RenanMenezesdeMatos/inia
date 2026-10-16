@@ -1,3 +1,4 @@
+import { closureComponents } from "./closure-components.js"
 import { type DemoReferencePeriod } from "./demo-constants.js"
 import { demoId } from "./demo-ids.js"
 import { CANONICAL_OPERATORS } from "./demo-identities.js"
@@ -39,6 +40,9 @@ export type IndicatorPerformanceRow = {
   achievementPercent: number
   weightPercent: number
   quartile: Quartile
+  /** Componentes do valor oficial (contrato @2): só para Taxa/Média ponderada — ver closure-components.ts. */
+  numerator: number | null
+  denominator: number | null
 }
 
 export type PrvPerformanceRow = {
@@ -240,9 +244,13 @@ export function generatePerformance(structure: DemoStructure, definitions: Map<s
         const value = roundTo(rawValue, valueDecimals(definition.unit))
         const achievement = achievementFromValue(value, target, definition.direction)
         const weight = effectiveWeight(indicator, period)
+        const id = demoId(`perf:${person.key}:${indicator.code}:${period}`)
+        // Numerador/denominador derivados do valor já decidido, pela chave da linha (nunca pelo gerador da pessoa).
+        const components = closureComponents({ rowKey: id, code: indicator.code, kind: definition.kind, value })
         indicatorRows.push({
-          id: demoId(`perf:${person.key}:${indicator.code}:${period}`), personId: person.id, indicatorDefinitionId: definition.id, indicatorCode: indicator.code,
+          id, personId: person.id, indicatorDefinitionId: definition.id, indicatorCode: indicator.code,
           subteamId, referencePeriod: period, value, targetValue: target, achievementPercent: achievement, weightPercent: weight, quartile: "Q4",
+          numerator: components?.numerator ?? null, denominator: components?.denominator ?? null,
         })
         weightedSum += weight * Math.min(achievement, PRV_COMPONENT_CAP)
         weightTotal += weight

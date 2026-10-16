@@ -19,7 +19,7 @@ export type DiagnosisPlanLoader = (organizationId: string, input: { measurementI
 /** V1.6.2 — a versão da estratégia desta execução (presa na matrícula; simulação = a efetiva). */
 export type DiagnosticStrategyResolver = (organizationId: string, input: { enrollmentId: string | null; indicatorId: string }) => Promise<ResolvedStrategy | null>
 /** População elegível (valor oficial por pessoa) + observações verificadas das práticas pedidas, no período da medição. */
-export type PeerPracticeLoader = (organizationId: string, input: { measurementId: string; collaboratorId: string; practiceKeys: readonly string[] }) => Promise<{ peers: { personId: string; value: number }[]; observations: PeerObservationRow[] }>
+export type PeerPracticeLoader = (organizationId: string, input: { measurementId: string; collaboratorId: string; practiceKeys: readonly string[]; level?: "SUBJECT" | "REASON" }) => Promise<{ peers: { personId: string; value: number }[]; observations: PeerObservationRow[] }>
 
 export type DiagnosisStepDeps = {
   loadMonitoringContext: MonitoringContextLoader
@@ -88,7 +88,7 @@ export async function runIndicatorDiagnosisStep(deps: DiagnosisStepDeps, input: 
   const supported = patterns.filter((pattern) => pattern.classification !== "INCONCLUSIVE")
   const peers = new Map<string, PeerPracticeResult>()
   const comparable = supported.filter((pattern) => pattern.knowledgeIdentity)
-  const data = parameters.peer.enabled && comparable.length > 0 && segment ? await deps.loadPeerPracticeData(input.organizationId, { measurementId: input.measurementId, collaboratorId: input.collaboratorId, practiceKeys: comparable.map((pattern) => pattern.practiceKey) }) : { peers: [], observations: [] }
+  const data = parameters.peer.enabled && comparable.length > 0 && segment ? await deps.loadPeerPracticeData(input.organizationId, { measurementId: input.measurementId, collaboratorId: input.collaboratorId, practiceKeys: comparable.map((pattern) => pattern.practiceKey), level: plan?.dimension ?? "SUBJECT" }) : { peers: [], observations: [] }
   const reference = referenceGroupOf(data.peers, { direction: input.canonical.indicator.direction, indicatorCode: input.canonical.indicator.code, period: { start: plan?.period.start ?? "", end: plan?.period.end ?? "" }, minimumPopulation: parameters.peer.minimumPopulation })
   const computedAt = deps.now().toISOString()
   for (const pattern of parameters.peer.enabled ? supported : []) {

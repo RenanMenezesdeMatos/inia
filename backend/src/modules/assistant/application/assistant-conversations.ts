@@ -196,8 +196,25 @@ export async function appendConversationMessage(db: Queryable, input: MessageInp
 
 /** `origin = "WORKFLOW"`: a mensagem da INIA entregue por um nó Output (Chat) — a tela a destaca; `"FEEDBACK"`: a apresentação
  * de uma aplicação de feedback (primeira mensagem da INIA na conversa da aplicação); demais = null. */
-export type ConversationMessage = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agentId: string | null; occurredAt: string; cursor: string; origin: "WORKFLOW" | "FEEDBACK" | null }
-type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agent_id: string | null; occurred_at: Date; seq: string; client_message_id: string | null }
+export type ConversationMessage = {
+  id: string
+  channel: "chat" | "voice"
+  role: "user" | "assistant"
+  content: string
+  agentId: string | null
+  occurredAt: string
+  cursor: string
+  origin: "WORKFLOW" | "FEEDBACK" | null
+  /** Cartões de dados gravados com a resposta (ferramentas executadas pelo backend, ex.: liderança) — quem exibe revalida o escopo. */
+  analytics: unknown[]
+}
+type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agent_id: string | null; occurred_at: Date; seq: string; client_message_id: string | null; tool_calls?: unknown }
+
+/** Cartões gravados em `tool_calls` (entradas com `analytics`), na ordem em que as ferramentas rodaram. */
+export function analyticsCardsOf(toolCalls: unknown): unknown[] {
+  if (!Array.isArray(toolCalls)) return []
+  return toolCalls.flatMap((call) => (call && typeof call === "object" && "analytics" in call && call.analytics && typeof call.analytics === "object" ? [call.analytics] : []))
+}
 /** Mesma chave gravada pela entrega de Chat (conversational-delivery/application/deliver-conversational-output.ts). */
 const WORKFLOW_MESSAGE_KEY_PREFIX = "workflow-output:"
 /** Mesma chave da apresentação gravada pela aplicação de feedback (feedback-application-service.ts). */
@@ -207,7 +224,7 @@ export const messageOriginOf = (role: "user" | "assistant", clientMessageId: str
 const toMessage = (row: MessageRow): ConversationMessage => {
   const occurredAt = new Date(row.occurred_at).toISOString()
   const origin = messageOriginOf(row.role, row.client_message_id)
-  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin }
+  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin, analytics: row.role === "assistant" ? analyticsCardsOf(row.tool_calls) : [] }
 }
 
 /**
@@ -231,7 +248,7 @@ export async function loadConversationMessages(
     where = "and (occurred_at, seq) < ($4::timestamptz, $5::bigint)"
   }
   const result = await db.query<MessageRow>(
-    `select id, channel, role, content, agent_id, occurred_at, seq::text seq, client_message_id from assistant_interactions
+    `select id, channel, role, content, agent_id, occurred_at, seq::text seq, client_message_id, tool_calls from assistant_interactions
      where organization_id = $1 and conversation_id = $2 ${where}
      order by occurred_at ${order}, seq ${order} limit $3`,
     params,

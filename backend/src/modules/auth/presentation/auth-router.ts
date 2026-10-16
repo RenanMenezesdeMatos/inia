@@ -98,7 +98,7 @@ export function createAuthRouter(db: Database, options: { features?: AuthFeature
     if (session.passwordChangeRequired) {
       const identity = await loadIdentityForSession(db, user)
       const noAccess = { organizationId: user.organizationId, accountId: user.sub, personId: user.personId, assignments: [] }
-      return response.json({ data: { ...user, ...identity, passwordChangeRequired: true, temporaryPasswordExpiresAt: session.temporaryPasswordExpiresAt?.toISOString() ?? null, access: { permissions: [], capabilities: { ...accessCapabilities(noAccess), canViewDiagnostics: false }, roles: [] }, features } })
+      return response.json({ data: { ...user, ...identity, passwordChangeRequired: true, temporaryPasswordExpiresAt: session.temporaryPasswordExpiresAt?.toISOString() ?? null, access: { permissions: [], capabilities: { ...accessCapabilities(noAccess), canViewDiagnostics: false, canUseReports: false }, roles: [] }, features } })
     }
     const [access, identity] = await Promise.all([
       describeAccess({ repository: createPostgresAccessRepository(db), now: () => new Date() }, { organizationId: user.organizationId, accountId: user.sub, personId: user.personId }),
@@ -108,7 +108,7 @@ export function createAuthRouter(db: Database, options: { features?: AuthFeature
     ])
     // Diagnóstico: regra operacional (lidera alguém) OU `indicators.view` — a mesma que a API aplica (diagnostics-access.ts).
     const canViewDiagnostics = await loadDiagnosticsAccess(db, { organizationId: user.organizationId, personId: user.personId, canViewIndicators: access.capabilities.canViewIndicators })
-    return response.json({ data: { ...user, ...identity, passwordChangeRequired: false, temporaryPasswordExpiresAt: null, access: { ...access, capabilities: { ...access.capabilities, canViewDiagnostics } }, features } })
+    return response.json({ data: { ...user, ...identity, passwordChangeRequired: false, temporaryPasswordExpiresAt: null, access: { ...access, capabilities: { ...access.capabilities, canViewDiagnostics, canUseReports: canViewDiagnostics || access.capabilities.canDistributeReports } }, features } })
   })
 
   return router

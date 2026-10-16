@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { buildTeamMembersPage, buildTeamOverview } from "./build-team-overview.js"
 import { fixtureOrg, IDS } from "../testing/fixture-org.js"
-import { InMemoryAnalyticsRepository, ORG, person } from "../testing/in-memory-analytics-repository.js"
+import { definition, indicatorRow, InMemoryAnalyticsRepository, ORG, person } from "../testing/in-memory-analytics-repository.js"
 import { loadViewerScope } from "./viewer-scope.js"
 
 function user(personId: string, role: AuthTokenPayload["role"]): AuthTokenPayload {
@@ -52,6 +52,20 @@ describe("Equipe do Supervisor", () => {
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, pendingOnly: true })).items.map((row) => row.name)).toEqual(["Ana Operadora", "Bia Operadora"])
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, subteamId: IDS.subteamA1 })).items.map((row) => row.name)).toEqual(["Ana Operadora"])
     expect((await buildTeamMembersPage(repository, scope, subject, "2026-09", { ...base, situation: "WITHIN_REFERENCE" })).total).toBe(0)
+  })
+
+  it("filtro por indicador em atenção considera TODOS os indicadores abaixo — não só os 3 piores mostrados na linha", async () => {
+    const org = fixtureOrg()
+    for (const [code, achievement] of [["Q1", 50], ["Q2", 60], ["Q3", 70], ["Q4", 80]] as const) {
+      org.definitions!.push(definition(code, `Indicador ${code}`, "PERCENT", "HIGHER"))
+      org.indicatorRows!.push(indicatorRow({ personId: IDS.op1, indicatorCode: code, referencePeriod: "2026-09", value: achievement, targetValue: 100, achievementPercent: achievement }))
+    }
+    const repository = new InMemoryAnalyticsRepository(org)
+    const scope = await loadViewerScope(repository, user(IDS.vanessa, "SUPERVISOR"))
+    const page = await buildTeamMembersPage(repository, scope, { kind: "SUPERVISOR_TEAM", supervisorId: IDS.vanessa }, "2026-09", { sort: "name", order: "asc", page: 1, pageSize: 10, attentionIndicatorCode: "Q4" })
+    const ana = page.items.find((row) => row.name === "Ana Operadora")!
+    expect(ana.attentionIndicators.map((indicator) => indicator.code)).not.toContain("Q4")
+    expect(page.items.map((row) => row.name)).toEqual(["Ana Operadora"])
   })
 
   it("SEM DADOS não vira zero: colaborador sem linhas tem média/PRV null e situação NO_DATA", async () => {

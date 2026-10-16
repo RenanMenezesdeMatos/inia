@@ -2,7 +2,7 @@ import { extractMarkerPayload, type MarkerParseStatus } from "../../../shared/ap
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { StructuredMonitoringFeedback } from "../../feedbacks/application/create-monitoring-feedback.js"
 import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
-import type { ChatTurn } from "../infrastructure/gemini-function-calling-client.js"
+import type { ChatTurn, FunctionCall, FunctionDeclaration } from "../infrastructure/gemini-function-calling-client.js"
 import { escalateRoute, generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
 import { collectSpecialistClaims, collectSpecialistTemporalAuthorization, extractEvidenceMarker, gateOrchestratorClaims, renderGatingCorrection as renderOrchestratorCorrection, renderSpecialistClaims, renderTextEvidenceInstructions } from "../../investigation/application/text-evidence-gating.js"
@@ -66,6 +66,8 @@ export type OrchestratedReply = {
   synthesis?: InvestigationSynthesis
   /** V1.7.1 — COMO a coordenação aconteceu (observabilidade honesta: nunca uma chamada de IA que não existiu). */
   orchestration?: OrchestrationTrace
+  /** Ferramentas do backend acionadas neste turno, com os argumentos e o cartão (null = pedido não resolvido, ex.: ambíguo). */
+  directResults?: { toolName: string; args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> }[]
 } & SupportMaterialsOutcome
 
 /**
@@ -85,6 +87,41 @@ export type OrchestrationTrace = {
  */
 export type OrchestrationConversationHooks = {
   annotateSpecialistResult?: (result: { agentId: string | null; toolName: string; query: string; periodDays?: number | undefined; knowledge?: KnowledgeTrace | undefined }) => Promise<string | null>
+  /** Ferramentas determinísticas do PRÓPRIO backend oferecidas junto dos especialistas neste turno (ex.: dados da liderança no
+   * escopo da sessão) — executadas aqui, sem agente, e devolvidas com o cartão estruturado para a tela. */
+  directTools?: DirectToolset
+}
+
+/** Ferramenta executada pelo backend: `text` vai para a síntese (fatos, base, limitações); `card` vai para a tela, nunca pelo modelo;
+ * `trace` (opcional) é o registro auditável do que a ferramenta fez (ex.: qual Orquestrador de Grupo respondeu), gravado com a chamada. */
+export type DirectToolset = {
+  declarations: FunctionDeclaration[]
+  handles: (name: string) => boolean
+  execute: (name: string, args: Record<string, unknown>) => Promise<{ text: string; card: unknown | null; trace?: Record<string, unknown> | undefined }>
+}
+
+/** Rodadas de ferramentas por turno quando há ferramentas do backend (a primeira + até 2 de aprofundamento). */
+export const MAX_DIRECT_ROUNDS = 3
+
+function agenticRoundHint(round: number): string {
+  const left = MAX_DIRECT_ROUNDS - round
+  return `Os resultados das ferramentas já acionadas estão acima. Se precisar aprofundar (ex.: diagnosticar os piores encontrados, abrir uma unidade, comparar meses), acione mais ferramentas — ${left === 1 ? "esta é a última rodada" : `restam ${left} rodadas`}. Se já tem o suficiente, escreva agora a resposta final completa, sem acionar ferramentas.`
+}
+
+/** Resultado de UMA ferramenta acionada no turno: especialista (agente) ou ferramenta direta do backend (`direct`). */
+type TurnResult = {
+  toolName: string
+  agentId: string | null
+  query: string
+  periodDays: number | undefined
+  text: string
+  contract: "FEEDBACK" | "TEXT"
+  structured?: StructuredMonitoringFeedback
+  knowledge?: KnowledgeTrace
+  supportMaterialCandidates?: SupportMaterialCandidate[]
+  toolTrace?: InvestigationOutcomeFields["toolTrace"]
+  investigation?: InvestigationOutcomeFields["investigation"]
+  direct?: { args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> | undefined }
 }
 
 /** Opções do caminho rápido (só o nó de Workflow as passa; chat/voz nunca). */
@@ -193,7 +230,9 @@ export async function runOrchestratedReply(
 
   // `withLlmScope` só etiqueta a telemetria (papel/agente de cada chamada, pro trace do QA
   // Lab) — não muda nada na chamada em si.
-  const orchestratorScope = { agentId: orchestrator.orchestratorAgentId, ...(orchestrator.knowledge ? { knowledge: orchestrator.knowledge } : {}) }
+  const orchestratorScope = { agentId: orchestrator.orchestratorAgentId || null, ...(orchestrator.knowledge ? { knowledge: orchestrator.knowledge } : {}) }
+  const directTools = conversation.directTools
+  const routingTools = directTools ? [...orchestrator.tools, ...directTools.declarations] : orchestrator.tools
   // V1.7.1 — ROTEAMENTO DETERMINÍSTICO: com os domínios declarados pelo Workflow resolvendo cada um para um único especialista,
   // a escolha não depende de IA — nenhuma chamada de roteamento. A pergunta ao especialista é a própria instrução do nó.
   const declared = fastPath.fixedDomainIds && fastPath.fixedDomainIds.length > 0 ? resolveDeterministicRouting(orchestrator, fastPath.fixedDomainIds) : null
@@ -204,8 +243,8 @@ export async function runOrchestratedReply(
   const first = declared
     ? { kind: "calls" as const, calls: declared.map((entry) => ({ name: entry.toolName, args: { query: lastUserText } as Record<string, unknown> })) }
     : await (async () => {
-        const routingRoute = routeFor({ purpose: "ORCHESTRATOR_ROUTING", phase: "PLANNING", toolSchemaCount: orchestrator.tools.length, estimatedInputTokens: estimateTokens(systemPrompt, JSON.stringify(contents)) })
-        return withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => generateForRoute({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt, contents, tools: orchestrator.tools, structuredOutput: false, route: routingRoute }))
+        const routingRoute = routeFor({ purpose: "ORCHESTRATOR_ROUTING", phase: "PLANNING", toolSchemaCount: routingTools.length, estimatedInputTokens: estimateTokens(systemPrompt, JSON.stringify(contents)) })
+        return withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => generateForRoute({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt, contents, tools: routingTools, structuredOutput: false, route: routingRoute }))
       })()
   if (first.kind === "text") {
     // Sem especialista acionado não há candidato algum (o Orquestrador não consulta KB por conta
@@ -216,32 +255,57 @@ export async function runOrchestratedReply(
     return { text, agentId: null, calls: [], results: [], structuredResult, supportMaterialCandidates: [], ...(structuredResultValidation ? { structuredResultValidation } : {}), orchestration: { routing: routingTrace, synthesis: { mode: "NONE", reason: "NO_SPECIALIST_CALLED" } } }
   }
 
-  const calls = first.calls
-  const results = await Promise.all(
-    calls.map(async (call) => {
-      const agentId = findSpecialistByToolName(orchestrator, call.name)
-      const query = typeof call.args.query === "string" ? call.args.query : JSON.stringify(call.args)
-      const periodDays = typeof call.args.periodDays === "number" ? call.args.periodDays : undefined
-      const engineAnalysis = agentId && specialistOptions.analyzeCall ? await specialistOptions.analyzeCall(agentId) : null
-      const specialist = engineAnalysis
-        // A referência da análise do motor viaja no lugar do resultado estruturado (lida por `callAnalysisRefOf` no "Gerar feedback").
-        ? ({ contract: "FEEDBACK", text: engineAnalysis.text, structured: engineAnalysis.structured as StructuredMonitoringFeedback } as const)
-        : agentId
-          ? await withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistOptions))
-          : ({ contract: "TEXT", text: "Especialista não encontrado para esse pedido." } as const)
-      return {
-        toolName: call.name,
-        agentId,
-        query,
-        periodDays,
-        text: specialist.text,
-        contract: specialist.contract,
-        ...(specialist.contract === "FEEDBACK" ? { structured: specialist.structured } : {}),
-        ...("knowledge" in specialist ? { knowledge: specialist.knowledge, supportMaterialCandidates: specialist.supportMaterialCandidates } : {}),
-        ...("toolTrace" in specialist && specialist.toolTrace ? { toolTrace: specialist.toolTrace, investigation: specialist.investigation } : {}),
+  const executeCall = async (call: FunctionCall): Promise<TurnResult> => {
+    if (directTools?.handles(call.name)) {
+      const outcome = await directTools.execute(call.name, call.args)
+      return { toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text: outcome.text, contract: "TEXT" as const, direct: { args: call.args, card: outcome.card, ...(outcome.trace ? { trace: outcome.trace } : {}) } }
+    }
+    const agentId = findSpecialistByToolName(orchestrator, call.name)
+    const query = typeof call.args.query === "string" ? call.args.query : JSON.stringify(call.args)
+    const periodDays = typeof call.args.periodDays === "number" ? call.args.periodDays : undefined
+    const engineAnalysis = agentId && specialistOptions.analyzeCall ? await specialistOptions.analyzeCall(agentId) : null
+    const specialist = engineAnalysis
+      // A referência da análise do motor viaja no lugar do resultado estruturado (lida por `callAnalysisRefOf` no "Gerar feedback").
+      ? ({ contract: "FEEDBACK", text: engineAnalysis.text, structured: engineAnalysis.structured as StructuredMonitoringFeedback } as const)
+      : agentId
+        ? await withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistOptions))
+        : ({ contract: "TEXT", text: "Especialista não encontrado para esse pedido." } as const)
+    return {
+      toolName: call.name,
+      agentId,
+      query,
+      periodDays,
+      text: specialist.text,
+      contract: specialist.contract,
+      ...(specialist.contract === "FEEDBACK" ? { structured: specialist.structured } : {}),
+      ...("knowledge" in specialist ? { knowledge: specialist.knowledge, supportMaterialCandidates: specialist.supportMaterialCandidates } : {}),
+      ...("toolTrace" in specialist && specialist.toolTrace ? { toolTrace: specialist.toolTrace, investigation: specialist.investigation } : {}),
+    }
+  }
+  const firstResults = await Promise.all(first.calls.map(executeCall))
+  // RODADAS EXTRAS (só quando há ferramentas do backend, ex.: liderança): a IA lê o resultado e pode consultar de novo — achar os
+  // piores e depois diagnosticá-los — até `MAX_DIRECT_ROUNDS` rodadas. Parando de chamar ferramentas, o texto dela é a resposta
+  // (já com todos os dados); no limite de rodadas, a síntese de sempre (sem ferramentas) fecha a resposta.
+  const rounds: { calls: FunctionCall[]; results: TurnResult[] }[] = [{ calls: first.calls, results: firstResults }]
+  let agenticTurns: ChatTurn[] | null = null
+  let agenticText: string | null = null
+  if (directTools && !declared) {
+    agenticTurns = [...contents, { role: "model", functionCalls: first.calls }, { role: "user", functionResponses: firstResults.map((result) => ({ name: result.toolName, response: { result: result.text } })) }]
+    for (let round = 1; round < MAX_DIRECT_ROUNDS; round += 1) {
+      const roundRoute = routeFor({ purpose: "ORCHESTRATOR_ROUTING", phase: "PLANNING", toolSchemaCount: routingTools.length, estimatedInputTokens: estimateTokens(systemPrompt, JSON.stringify(agenticTurns)) })
+      const turns: ChatTurn[] = agenticTurns
+      const next = await withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => generateForRoute({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt: `${systemPrompt}\n\n${agenticRoundHint(round)}`, contents: turns, tools: routingTools, structuredOutput: false, route: roundRoute }))
+      if (next.kind === "text") {
+        agenticText = next.text
+        break
       }
-    }),
-  )
+      const nextResults = await Promise.all(next.calls.map(executeCall))
+      rounds.push({ calls: next.calls, results: nextResults })
+      agenticTurns = [...agenticTurns, { role: "model", functionCalls: next.calls }, { role: "user", functionResponses: nextResults.map((result) => ({ name: result.toolName, response: { result: result.text } })) }]
+    }
+  }
+  const calls = rounds.flatMap((round) => round.calls)
+  const results = rounds.flatMap((round) => round.results)
 
   // Agregação: candidatos de TODOS os especialistas acionados (qualquer domínio), deduplicados
   // por material. A seleção final é do Orquestrador e só existe quando habilitada — desligado, os
@@ -285,7 +349,9 @@ export async function runOrchestratedReply(
   )
   // Roteamento determinístico: o modelo NUNCA emitiu essas function calls — a síntese recebe as respostas como texto (nada de
   // turno "model" fabricado).
-  const followUp: ChatTurn[] = declared
+  const followUp: ChatTurn[] = agenticTurns
+    ? agenticTurns
+    : declared
     ? [...contents, { role: "user", text: `Respostas dos especialistas acionados:\n\n${results.map((result, index) => `— ${result.toolName}: ${synthesisTexts[index]}`).join("\n\n")}` }]
     : [
         ...contents,
@@ -322,7 +388,10 @@ export async function runOrchestratedReply(
     }
     return final.kind === "text" ? final.text : "Não consegui sintetizar uma resposta a partir dos especialistas consultados."
   }
-  let rawFinalText = await synthesize(followUp)
+  // Rodadas com ferramentas do backend: se a IA já escreveu a resposta com todos os dados (e não há evidência de investigação a
+  // validar, recomendação de material nem resultado estruturado), ela é a resposta — sem uma síntese a mais.
+  const agenticFinal = agenticText !== null && !evidenceBlock && !recommendationEnabled && !orchestrator.outputInstructions && !orchestrator.structuredOutput
+  let rawFinalText = agenticFinal ? agenticText! : await synthesize(followUp)
   let evidenceGating: EvidenceGatingResult | undefined
   let orchestratorSynthesis: InvestigationSynthesis | undefined
   if (evidenceBlock) {
@@ -383,5 +452,10 @@ export async function runOrchestratedReply(
     ...(selection.rejected.length > 0 ? { supportMaterialsRejected: selection.rejected } : {}),
     ...(structuredResultValidation ? { structuredResultValidation } : {}),
     orchestration: { routing: routingTrace, synthesis: { mode: "MODEL", reason: synthesisReason } },
+    ...(directResultsOf(results).length > 0 ? { directResults: directResultsOf(results) } : {}),
   }
+}
+
+function directResultsOf(results: readonly { toolName: string; direct?: { args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> | undefined } }[]): NonNullable<OrchestratedReply["directResults"]> {
+  return results.flatMap((result) => (result.direct ? [{ toolName: result.toolName, args: result.direct.args, card: result.direct.card, ...(result.direct.trace ? { trace: result.direct.trace } : {}) }] : []))
 }

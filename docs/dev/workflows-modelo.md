@@ -138,3 +138,11 @@ classificados (teste do catálogo).
   Revisão humana; reconhecimento e orientação operacional (07, 10, 12) são as entregas diretas.
 - JOIN vazio (zero filhos) não gasta IA: o Orquestrador consolidado devolve um resultado
   determinístico (`skippedReason: "EMPTY_FAN_IN"`) e o Output entrega "nenhum caso neste período".
+- Feedback oficial (gatilho por Flag ou por Indicador) só chega ao operador por **"Gerar feedback"**
+  (`GENERATE_FEEDBACK`, regra `WORKFLOW_FEEDBACK_REQUIRES_RELIABILITY`): o nó vem logo depois da
+  análise (`sourceNodeId` = o "Chamar agente"/Orquestrador) com o tipo **explícito** — `MONITORING`
+  nos de Flag (01, 02, 08, 18a/b/c), `INDICATOR` nos de Indicador (07, 10) — e a Revisão humana, o
+  Output ao operador e o Escalonar ao Gerente leem `nodeOutputs.feedback`, nunca o resultado bruto do
+  especialista. A fixture ganhou o nó na V1.5.12 (24/09), mas os rascunhos do banco dev só foram
+  alinhados em 15/10/2026: depois de mudar a fixture, leve o banco junto (e vice-versa) e confira
+  com `POST /:id/validate`.

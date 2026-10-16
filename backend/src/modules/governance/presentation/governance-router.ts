@@ -13,6 +13,17 @@ const listGovernanceSchema = z.object({ search: searchParam, active: booleanPara
 const SELECT_TOPICS = `select id,name,required_behavior "requiredBehavior",active from prohibited_topics where organization_id=$1`
 const SELECT_GLOSSARY = `select id,term,definition,feedback_application "feedbackApplication",active from glossary_terms where organization_id=$1`
 
+/**
+ * Exclusão definitiva (nada referencia essas tabelas: o vínculo por Agent saiu na migration 125). O texto apagado fica em
+ * `audit_logs` na MESMA instrução — sem ele não sobraria rastro do que a IA deixou de respeitar. Para só suspender, `active=false`.
+ */
+const DELETE_WITH_AUDIT = (table: "prohibited_topics" | "glossary_terms", entityType: string, payload: string) =>
+  `with removed as (delete from ${table} where id=$1 and organization_id=$2 returning *)
+   insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload)
+   select organization_id, $3::uuid, 'DELETE', '${entityType}', id, ${payload} from removed returning entity_id`
+const DELETE_TOPIC = DELETE_WITH_AUDIT("prohibited_topics", "prohibited_topic", `jsonb_build_object('name', name, 'requiredBehavior', required_behavior, 'active', active)`)
+const DELETE_GLOSSARY_TERM = DELETE_WITH_AUDIT("glossary_terms", "glossary_term", `jsonb_build_object('term', term, 'definition', definition, 'active', active)`)
+
 export function createGovernanceRouter(db: Database) {
   const router = Router()
 
@@ -40,6 +51,11 @@ export function createGovernanceRouter(db: Database) {
     if (!result.rows[0]) return response.status(404).json({ error: { code: "TOPIC_NOT_FOUND", message: "Assunto não encontrado." } })
     response.json({ data: result.rows[0] })
   })
+  router.delete("/prohibited-topics/:id", async (request, response) => {
+    const result = await db.query(DELETE_TOPIC, [request.params.id, request.user!.organizationId, request.user!.personId ?? null])
+    if (!result.rows[0]) return response.status(404).json({ error: { code: "TOPIC_NOT_FOUND", message: "Assunto não encontrado." } })
+    response.status(204).send()
+  })
 
   router.get("/glossary", async (request, response) => {
     const organizationId = request.user!.organizationId
@@ -66,6 +82,11 @@ export function createGovernanceRouter(db: Database) {
     )
     if (!result.rows[0]) return response.status(404).json({ error: { code: "GLOSSARY_TERM_NOT_FOUND", message: "Termo não encontrado." } })
     response.json({ data: result.rows[0] })
+  })
+  router.delete("/glossary/:id", async (request, response) => {
+    const result = await db.query(DELETE_GLOSSARY_TERM, [request.params.id, request.user!.organizationId, request.user!.personId ?? null])
+    if (!result.rows[0]) return response.status(404).json({ error: { code: "GLOSSARY_TERM_NOT_FOUND", message: "Termo não encontrado." } })
+    response.status(204).send()
   })
   return router
 }

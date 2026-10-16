@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowDown, ArrowLeft, Bot, Lock, Mic } from "lucide-react"
 
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
+import { LeadershipCards } from "@/components/leadership/leadership-cards"
 import { RichContent } from "@/components/rich-content/rich-content"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -14,6 +15,7 @@ import { ApiError } from "@/lib/api/api-client"
 import { formatShortDateTime } from "@/lib/format/date"
 import { dateSeparatorLabel, dayKey, messageTime } from "@/lib/realtime/conversation-format"
 import type { ConversationMessage } from "@/lib/realtime/gemini-text-client"
+import { parseLeadershipCards } from "@/schemas/leadership/leadership.schema"
 import { fetchMonitoredMessages, type MonitoredConversation } from "@/services/admin/assistant-conversations-service"
 
 import { ConversationStatus, conversationKindOf, conversationTitleOf, messagesLabel, OwnerAvatar } from "./conversation-presentation"
@@ -174,6 +176,8 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
                       <MessageHeader className="px-1">{assistant ? "INIA" : owner.name}{originLabel ? <span className="ml-1.5 font-normal text-muted-foreground">· {originLabel}</span> : null}</MessageHeader>
                       <Bubble variant={assistant ? "muted" : "default"} className="max-w-full"><BubbleContent className="space-y-2 px-4 py-3">{assistant ? <RichContent text={message.content} /> : <span className="whitespace-pre-wrap">{message.content}</span>}</BubbleContent></Bubble>
                       {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
+                      {/* Cartões de dados que a pessoa viu (liderança): recolhidos e só de leitura — auditoria do que a resposta afirmou. */}
+                      {assistant ? <LeadershipCards collapsible readOnly cards={parseLeadershipCards(message.analytics)} /> : null}
                       <MessageFooter className="gap-1 px-1">
                         <time dateTime={message.occurredAt}>{messageTime(message.occurredAt)}</time>
                         {message.channel === "voice" ? <span className="inline-flex items-center gap-0.5" aria-label="Enviada por voz"><Mic className="size-3" aria-hidden />voz</span> : null}

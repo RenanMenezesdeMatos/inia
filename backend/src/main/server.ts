@@ -24,6 +24,11 @@ import { componentsOf, resolveProcessRole } from "./process-role.js"
 import { installSharedRuntimeState } from "./shared-runtime-state.js"
 import { DATA_HUB_WAKE_CHANNEL, listenForWake, notifyWake } from "../shared/infrastructure/process-wake/postgres-wake-channel.js"
 import { startWorkerHealthServer } from "./worker-health.js"
+import { analyzeDelivery, gatewayAnalysisWriter, retryPendingAnalyses } from "../modules/reports/application/report-analysis.js"
+import type { ExecutorDeps } from "../modules/reports/application/report-executor.js"
+import { createPostgresReportRuntime } from "../modules/reports/application/report-runtime.js"
+import { processReportRuns, scheduleDueReports } from "../modules/reports/application/report-scheduler.js"
+import { createPostgresReportStore } from "../modules/reports/application/report-store.js"
 import { createReadiness } from "./readiness.js"
 import { applyHttpTimeouts, createShutdown, installProcessHandlers, processFaults, type LifecycleLog } from "./process-lifecycle.js"
 import { createRuntimeMetrics } from "./runtime-metrics.js"
@@ -78,6 +83,8 @@ function startProcessing() {
   // Tarefas periódicas: cada rodada roda em UM processo (trava consultiva no banco) e nunca se sobrepõe à anterior.
   const exclusive = createExclusiveJobRunner(pool)
   const dataHubContext = createDataHubContext(pool)
+  const reportStore = createPostgresReportStore(pool)
+  const reportExecutorDeps: ExecutorDeps = { store: reportStore, runtime: createPostgresReportRuntime(pool), now: () => new Date(), analyze: (delivery, report) => analyzeDelivery(reportStore, gatewayAnalysisWriter, delivery, report) }
   const jobs = startPeriodicJobs(exclusive, [
     {
       // Situação funcional: projeção diária (fuso da organização) na subida e a cada minuto, seguida do checador de agenda.
@@ -92,6 +99,11 @@ function startProcessing() {
     },
     // Central de Dados: agenda feeds vencidos, processa a fila de cargas e purga o raw expirado.
     { name: "data-hub", intervalMs: 15_000, run: () => runDataHubTick(dataHubContext), errorLabel: "Falha no tick da Central de Dados:" },
+    // Reports recorrentes: agenda (cria a execução do horário vencido, uma por report × horário), fila (execução com posse e
+    // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega). Ver docs/dev/reports-recorrentes.md.
+    { name: "report-schedule", intervalMs: 60_000, run: () => scheduleDueReports(pool, new Date()).then(() => undefined), errorLabel: "Falha na agenda de reports:" },
+    { name: "report-runs", intervalMs: 15_000, run: () => processReportRuns(pool, reportExecutorDeps).then(() => undefined), errorLabel: "Falha na execução de reports:" },
+    { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: () => retryPendingAnalyses(pool, reportExecutorDeps.store, gatewayAnalysisWriter).then(() => undefined), errorLabel: "Falha na análise de reports:" },
     // Read model do analytics da liderança: refaz tudo depois da meia-noite local e recalcula quem tem marca pendente.
     { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: () => runAnalyticsRollup(pool), errorLabel: "Falha no read model do analytics:" },
     // Retenção: só as políticas LIGADAS em data_retention_policies (todas nascem desligadas — prazo é decisão de produto/LGPD).

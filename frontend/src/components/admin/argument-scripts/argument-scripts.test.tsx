@@ -227,4 +227,62 @@ describe("Argumentários", () => {
     expect(input.content.avoid).toEqual([{ key: "avd00001", text: "Prometer isenção de multa" }])
     expect(input.content.trigger).toBe(CONTENT.trigger)
   })
+
+  it("na lista, o interruptor desativa/reativa só depois de confirmar; rascunho nunca publicado e somente leitura não têm interruptor", async () => {
+    service.fetchArgumentScriptsPage.mockResolvedValue({
+      items: [
+        item({}),
+        item({ id: "s-archived", name: "Segunda via", status: "ARCHIVED", draftVersion: null }),
+        item({ id: "s-draft", name: "Nunca publicado", currentVersion: null, currentEffectiveFrom: null, draftVersion: 1 }),
+        item({ id: "s-readonly", name: "Do grupo acima", canEdit: false, draftVersion: null }),
+      ],
+      total: 4,
+      page: 1,
+      pageSize: 10,
+    })
+    service.archiveArgumentScript.mockResolvedValue(detail({ status: "ARCHIVED" }))
+    service.reactivateArgumentScript.mockResolvedValue(detail({ id: "s-archived" }))
+    renderWithQuery(<ArgumentScriptsPage />)
+
+    const nativeRow = await screen.findByTestId("argument-script-row-s-native")
+    expect(within(screen.getByTestId("argument-script-row-s-draft")).queryByRole("switch")).toBeNull()
+    expect(within(screen.getByTestId("argument-script-row-s-readonly")).queryByRole("switch")).toBeNull()
+    expect(within(screen.getByTestId("argument-script-row-s-readonly")).queryByRole("button", { name: /Excluir/ })).toBeNull()
+    expect(within(screen.getByTestId("argument-script-row-s-archived")).getByText("Inativo")).toBeInTheDocument()
+
+    fireEvent.click(within(nativeRow).getByRole("switch", { name: "Desativar Retenção por preço" }))
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog).toHaveTextContent("Desativar \"Retenção por preço\"?")
+    expect(service.archiveArgumentScript).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Desativar" }))
+    await waitFor(() => expect(service.archiveArgumentScript.mock.lastCall?.[0]).toBe("s-native"))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+
+    fireEvent.click(within(screen.getByTestId("argument-script-row-s-archived")).getByRole("switch", { name: "Reativar Segunda via" }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Reativar" }))
+    await waitFor(() => expect(service.reactivateArgumentScript.mock.lastCall?.[0]).toBe("s-archived"))
+  })
+
+  it("Excluir na lista: confirma e apaga; se uma análise já usou o argumentário, o motivo do backend aparece no diálogo", async () => {
+    service.fetchArgumentScriptsPage.mockResolvedValue({ items: [item({}), item({ id: "s-draft", name: "Nunca publicado", currentVersion: null, draftVersion: 1 })], total: 2, page: 1, pageSize: 10 })
+    const inUse = "Este argumentário já foi usado em análises de chamada: excluí-lo apagaria a origem de feedbacks e diagnósticos. Desative-o — ele deixa de valer e o histórico continua consultável."
+    service.deleteArgumentScript.mockImplementation(async (id: string) => {
+      if (id === "s-native") throw new Error(inUse)
+    })
+    renderWithQuery(<ArgumentScriptsPage />)
+
+    fireEvent.click(within(await screen.findByTestId("argument-script-row-s-native")).getByRole("button", { name: "Excluir Retenção por preço" }))
+    let dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Excluir" }))
+    expect(await within(dialog).findByText(inUse)).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+
+    fireEvent.click(within(screen.getByTestId("argument-script-row-s-draft")).getByRole("button", { name: "Excluir Nunca publicado" }))
+    dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).queryByText(inUse)).toBeNull()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Excluir" }))
+    await waitFor(() => expect(service.deleteArgumentScript.mock.lastCall?.[0]).toBe("s-draft"))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
 })

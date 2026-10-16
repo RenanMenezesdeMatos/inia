@@ -55,7 +55,7 @@ export function definition(code: string, name: string, unit: string, direction: 
 }
 
 export function indicatorRow(partial: Partial<IndicatorPerformanceRow> & Pick<IndicatorPerformanceRow, "personId" | "indicatorCode" | "referencePeriod" | "value">): IndicatorPerformanceRow {
-  return { targetValue: null, achievementPercent: null, weightPercent: null, quartile: null, source: "TEST", ...partial }
+  return { targetValue: null, achievementPercent: null, weightPercent: null, quartile: null, numerator: null, denominator: null, source: "TEST", ...partial }
 }
 
 export function prvRow(personId: string, referencePeriod: string, achievementPercent: number, quartile: PrvPerformanceRow["quartile"]): PrvPerformanceRow {
@@ -130,6 +130,17 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
     for (const row of this.org.indicatorRows ?? []) if (personIds.includes(row.personId) && row.referencePeriod <= lastClosedPeriod) periods.add(row.referencePeriod)
     for (const row of this.org.prvRows ?? []) if (personIds.includes(row.personId) && row.referencePeriod <= lastClosedPeriod) periods.add(row.referencePeriod)
     return [...periods].sort().reverse()
+  }
+
+  async loadPeriodCoverage(_organizationId: string, personIds: string[], lastClosedPeriod: string, limit: number) {
+    const people = new Map<string, Set<string>>()
+    for (const row of [...(this.org.indicatorRows ?? []), ...(this.org.prvRows ?? [])]) {
+      if (!personIds.includes(row.personId) || row.referencePeriod > lastClosedPeriod) continue
+      const set = people.get(row.referencePeriod) ?? new Set<string>()
+      set.add(row.personId)
+      people.set(row.referencePeriod, set)
+    }
+    return [...people].sort((a, b) => b[0].localeCompare(a[0])).slice(0, limit).map(([period, set]) => ({ period, people: set.size }))
   }
 
   async loadFollowUpCounts(personIds: string[]) {

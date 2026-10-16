@@ -4,9 +4,13 @@ import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import {
   createGlossaryTerm,
   createProhibitedTopic,
+  deleteGlossaryTerm,
+  deleteProhibitedTopic,
   fetchGlossaryTermsPage,
   fetchProhibitedTopics,
   fetchProhibitedTopicsPage,
+  setGlossaryTermActive,
+  setProhibitedTopicActive,
   updateGlossaryTerm,
   updateProhibitedTopic,
   type GovernanceListParams,
@@ -62,5 +66,37 @@ export function useUpdateGlossaryTermMutation() {
       updateGlossaryTerm(id, term, definition, feedbackApplication),
     invalidateKey: adminQueryKeys.glossary(),
     successMessage: "Termo do glossário atualizado.",
+  })
+}
+
+export function useSetProhibitedTopicActiveMutation() {
+  return useAdminMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => setProhibitedTopicActive(id, active),
+    invalidateKey: adminQueryKeys.prohibitedTopics(),
+    successMessage: "Status atualizado.",
+  })
+}
+
+export function useDeleteProhibitedTopicMutation() {
+  return useAdminMutation({
+    mutationFn: deleteProhibitedTopic,
+    invalidateKey: adminQueryKeys.prohibitedTopics(),
+    successMessage: "Assunto proibido excluído.",
+  })
+}
+
+export function useSetGlossaryTermActiveMutation() {
+  return useAdminMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => setGlossaryTermActive(id, active),
+    invalidateKey: adminQueryKeys.glossary(),
+    successMessage: "Status atualizado.",
+  })
+}
+
+export function useDeleteGlossaryTermMutation() {
+  return useAdminMutation({
+    mutationFn: deleteGlossaryTerm,
+    invalidateKey: adminQueryKeys.glossary(),
+    successMessage: "Termo do glossário excluído.",
   })
 }

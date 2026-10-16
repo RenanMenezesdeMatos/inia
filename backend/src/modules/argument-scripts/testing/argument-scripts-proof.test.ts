@@ -135,7 +135,7 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     const listed = (await area.get(`${base}?page=1&pageSize=50`)).body.data.items as { id: string; canEdit: boolean }[]
     expect(listed.find((item) => item.id === global.body.data.id)).toMatchObject({ canEdit: false })
     expect((await area.post(`${base}/${global.body.data.id}/archive`)).status).toBe(403)
-    expect((await area.delete(`${base}/${id}`)).status).toBe(409)
+    expect((await area.delete(`${base}/${global.body.data.id}`)).status).toBe(403)
 
     // Encerrar: deixa de valer agora; chamadas de antes continuam com a versão da época (história preservada, nada apagado).
     const archived = await area.post(`${base}/${id}/archive`)
@@ -151,6 +151,13 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect(await globalAt(new Date(Date.now() + 60_000))).toBe(false)
     expect(await globalAt(new Date(beforeArchive.getTime() - 1))).toBe(true)
     expect((await org.post(`${base}/${globalId}/reactivate`)).body.data).toMatchObject({ status: "ACTIVE", current: { version: 2 } })
+
+    // Excluir: publicado e nunca usado por uma análise sai de vez — versões pela cascata (o gatilho de imutabilidade só deixa
+    // por ela), conteúdo da última versão no audit_logs.
+    expect((await org.delete(`${base}/${globalId}`)).status).toBe(204)
+    expect((await client.query<{ n: number }>(`select count(*)::int n from argument_script_versions where script_id = $1`, [globalId])).rows[0]!.n).toBe(0)
+    const deletedAudit = (await client.query<{ payload: Record<string, unknown> }>(`select payload from audit_logs where entity_id = $1 and action = 'ARGUMENT_SCRIPT_DELETED'`, [globalId])).rows[0]!
+    expect(deletedAudit.payload).toMatchObject({ name: "Bloqueio após pagamento (prova)", lastVersion: { version: 2, status: "PUBLISHED" } })
 
     // Rota antiga só leitura; o caminho legado dos Agents lê argumentários (texto antigo preservado + resumo dos estruturados).
     expect((await org.post("/api/v1/admin/call-expectations").send({})).status).toBe(410)
@@ -201,5 +208,11 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect(byPart.get("linha")).toMatchObject({ status: "MET", applicability: "APPLIES", scope: expect.objectContaining({ collaboratorTeamId: teamA, collaboratorSubteamId: subA }) })
     const assessment = (await client.query<{ argument_scripts: { scriptId: string; applicability: string }[] }>("select argument_scripts from call_assessments where analysis_run_id = $1", [claim.runId])).rows[0]!
     expect(assessment.argument_scripts).toEqual([expect.objectContaining({ scriptId: id, applicability: "APPLIES" })])
+
+    // Usado por uma análise = origem de feedbacks e diagnósticos: nunca se apaga (409); o caminho é desativar.
+    const inUse = await area.delete(`${base}/${id}`)
+    expect(inUse.status).toBe(409)
+    expect(inUse.body.error.code).toBe("ARGUMENT_SCRIPT_IN_USE")
+    expect((await client.query(`select 1 from argument_scripts where id = $1`, [id])).rowCount).toBe(1)
   })
 })

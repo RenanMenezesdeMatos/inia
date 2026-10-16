@@ -35,3 +35,19 @@ export async function updateGlossaryTerm(id: string, term: string, definition: s
     await adminSend(`/api/v1/admin/glossary/${id}`, "PATCH", { term, definition, feedbackApplication }),
   )
 }
+
+export async function setProhibitedTopicActive(id: string, active: boolean): Promise<void> {
+  await adminSend(`/api/v1/admin/prohibited-topics/${id}`, "PATCH", { active })
+}
+
+export async function deleteProhibitedTopic(id: string): Promise<void> {
+  await adminSend(`/api/v1/admin/prohibited-topics/${id}`, "DELETE")
+}
+
+export async function setGlossaryTermActive(id: string, active: boolean): Promise<void> {
+  await adminSend(`/api/v1/admin/glossary/${id}`, "PATCH", { active })
+}
+
+export async function deleteGlossaryTerm(id: string): Promise<void> {
+  await adminSend(`/api/v1/admin/glossary/${id}`, "DELETE")
+}

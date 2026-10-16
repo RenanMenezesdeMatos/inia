@@ -59,6 +59,10 @@ export type FeedbackWorkspace = {
   revealChat(): void
   /** Painel da INIA oculto (desktop recolhido): o chat continua montado, sem sessão de voz ativa no painel. */
   chatHidden: boolean
+  /** Pergunta enviada à INIA a partir de outro ponto do Acompanhamento (ex.: "Perguntar à INIA" no cartão "Onde atuar hoje") —
+   * sempre por clique da pessoa; o painel aparece se estiver recolhido. Ausente fora do shell do Acompanhamento. */
+  askInia?(question: string): void
+  registerQuestionHandler?(handler: ((question: string) => void) | null): void
 }
 
 export const FeedbackWorkspaceContext = createContext<FeedbackWorkspace | null>(null)

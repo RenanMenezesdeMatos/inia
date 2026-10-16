@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest"
 import { buildDemoMass, stubIndicatorDefinitions } from "./build-demo-mass.js"
 import { DEMO_INTERACTIONS_FROM, DEMO_INTERACTIONS_UNTIL, DEMO_STRUCTURE } from "./demo-constants.js"
 import { CANONICAL_INTERACTION_OWNERS, IMPERFECT_FLAG_INTERACTIONS } from "./demo-identities.js"
-import { interactionWindow, pickInteractionDays, type InteractionRow } from "./interaction-generator.js"
+import { interactionSubjectOf, interactionWindow, pickInteractionDays, type InteractionRow } from "./interaction-generator.js"
 import { createRandom } from "./random.js"
-import type { DemoPerson } from "./structure-generator.js"
+import { DIAGNOSTIC_SUBGROUP, subteamKey, type DemoPerson } from "./structure-generator.js"
 import { CANONICAL_TRANSCRIPTS } from "./transcripts/canonical-transcripts.js"
+import { SCENARIO_BY_KEY } from "./transcripts/scenario-library.js"
 import { LENGTH_TURN_RANGE } from "./transcripts/transcript-types.js"
 
 const mass = buildDemoMass(stubIndicatorDefinitions())
@@ -126,5 +127,36 @@ describe("interações demo — flags coerentes com a transcrição", () => {
     }
     expect(failureRate("CRITICO")).toBeGreaterThan(failureRate("ALTA_PERFORMANCE") + 0.25)
     expect(sampleRows.some((row) => row.meta.plan?.inconclusive)).toBe(true)
+  })
+})
+
+describe("interações demo — motivo genérico × submotivo específico", () => {
+  const diagnosticSubteam = subteamKey(DIAGNOSTIC_SUBGROUP.teamKey, DIAGNOSTIC_SUBGROUP.name)
+  const generated = sample.flatMap((person) => mass.interactionsOf(person).filter((row) => !row.meta.canonical).map((row) => ({ person, row })))
+
+  it("chamada gerada: motivo = o genérico do cenário principal; submotivo = a frase específica (que começa por uma frase do cenário)", () => {
+    const outside = generated.filter(({ person }) => person.subteamKey !== diagnosticSubteam)
+    expect(outside.length).toBeGreaterThan(1000)
+    for (const { row } of outside) {
+      const scenario = SCENARIO_BY_KEY.get(row.meta.plan!.scenario)!
+      expect(row.reason).toBe(scenario.motive)
+      expect(row.subReason).not.toBeNull()
+      expect(scenario.reasons.some((phrase) => row.subReason!.startsWith(phrase)), `${row.subReason} ∉ ${scenario.key}`).toBe(true)
+    }
+    // Poucos motivos genéricos, muitos submotivos — o formato de uma fonte de contact center.
+    expect(new Set(outside.map(({ row }) => row.reason)).size).toBeLessThanOrEqual(10)
+    expect(new Set(outside.map(({ row }) => row.subReason)).size).toBeGreaterThan(40)
+  })
+
+  it("Subgrupo Diagnóstico IA (população homologada das Tools) e transcrições canônicas ficam como antes: frase específica no motivo, sem submotivo", () => {
+    const diagnosticPerson = operators.find((person) => person.subteamKey === diagnosticSubteam)!
+    expect(interactionSubjectOf(diagnosticPerson, { reason: "Segunda via de fatura", motive: "Fatura" })).toEqual({ reason: "Segunda via de fatura", subReason: null })
+    for (const row of mass.interactionsOf(diagnosticPerson).filter((item) => !item.meta.canonical)) {
+      expect(row.subReason).toBeNull()
+      expect(SCENARIO_BY_KEY.get(row.meta.plan!.scenario)!.reasons.some((phrase) => row.reason.startsWith(phrase))).toBe(true)
+    }
+    const canonicalRows = Object.entries(CANONICAL_INTERACTION_OWNERS).flatMap(([externalId, ordinal]) => mass.interactionsOf(operator(ordinal)).filter((row) => row.externalId === externalId))
+    expect(canonicalRows.length).toBe(Object.keys(CANONICAL_INTERACTION_OWNERS).length)
+    for (const row of canonicalRows) expect(row).toMatchObject({ reason: CANONICAL_TRANSCRIPTS[row.externalId]!.reason, subReason: null })
   })
 })

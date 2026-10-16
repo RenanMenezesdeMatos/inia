@@ -146,6 +146,59 @@ export function describeAggregationStrategy(kind: OperationalAggregationKind, un
 }
 
 // ---------------------------------------------------------------------------------------------
+// Valor × componentes — quando a estratégia DEFINE o valor por numerador e denominador.
+// ---------------------------------------------------------------------------------------------
+/**
+ * Fator que leva numerador ÷ denominador ao valor do indicador, pela ESTRATÉGIA (nunca pela unidade):
+ * Taxa = × 100 (ocorrências ÷ base, em %); Média ponderada = × 1 (total ÷ volume — uma média de notas em
+ * % já está em %). null = a estratégia não define o valor por componentes (Média simples, Soma, Último
+ * valor). É o mesmo fator de qualquer agregação por componentes, do período de uma pessoa ao valor de uma
+ * estrutura: Σ numeradores ÷ Σ denominadores × fator.
+ */
+export function componentValueScale(kind: OperationalAggregationKind): number | null {
+  switch (kind) {
+    case "RATE":
+      return 100
+    case "WEIGHTED_AVERAGE":
+      return 1
+    case "AVERAGE":
+    case "SUM":
+    case "LATEST":
+      return null
+  }
+}
+
+/** Valor que numerador e denominador definem pela estratégia; null quando ela não usa componentes ou o denominador não é positivo. */
+export function valueFromComponents(kind: OperationalAggregationKind, numerator: number, denominator: number): number | null {
+  const scale = componentValueScale(kind)
+  if (scale === null || !(denominator > 0)) return null
+  return (numerator / denominator) * scale
+}
+
+/** Casas decimais com que o valor foi informado (2 → 0; 2,4 → 1; notação científica → 12, piso da tolerância). */
+function informedDecimals(value: number): number {
+  const text = Math.abs(value).toString()
+  if (/e/i.test(text)) return 12
+  const dot = text.indexOf(".")
+  return dot === -1 ? 0 : Math.min(12, text.length - dot - 1)
+}
+
+export type ComponentCoherence = { expected: number; tolerance: number; coherent: boolean }
+
+/**
+ * Coerência entre o valor INFORMADO e o que os componentes definem, com tolerância de arredondamento: o
+ * maior entre 0,1, 1% do valor esperado e meia unidade da última casa decimal do valor informado (uma taxa
+ * informada como 2, sem casas, cobre 1,5–2,5%). Nunca corrige nada — quem chama decide (quarentena).
+ * null = a estratégia não define o valor por componentes ou o denominador não é positivo.
+ */
+export function checkComponentCoherence(kind: OperationalAggregationKind, value: number, numerator: number, denominator: number): ComponentCoherence | null {
+  const expected = valueFromComponents(kind, numerator, denominator)
+  if (expected === null) return null
+  const tolerance = Math.max(0.1, Math.abs(expected) * 0.01, 0.5 * 10 ** -informedDecimals(value))
+  return { expected, tolerance, coherent: Math.abs(expected - value) <= tolerance + 1e-9 }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Código
 // ---------------------------------------------------------------------------------------------
 export const INDICATOR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,39}$/

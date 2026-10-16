@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { formatCivilDate } from "@/lib/format/date"
+import { formatInteractionReason } from "@/lib/format/interaction-reason"
 import { interventionHref } from "@/lib/interventions/intervention-href"
 import { cn } from "@/lib/utils"
 import { INTERVENTION_STATUS_LABELS } from "@/schemas/interventions/intervention.schema"
@@ -381,7 +382,7 @@ export function ManualRunDialog({
             {collaborator && context === "INTERACTION" ? (
               <div className="space-y-1.5">
                 <Label htmlFor="manual-run-interaction">2. Interação de {collaborator.name}</Label>
-                <Input id="manual-run-interaction" placeholder="Filtrar por assunto ou protocolo" value={contextSearch} onChange={(event) => setContextSearch(event.target.value)} />
+                <Input id="manual-run-interaction" placeholder="Filtrar por motivo, submotivo ou protocolo" value={contextSearch} onChange={(event) => setContextSearch(event.target.value)} />
                 <div className="max-h-56 overflow-y-auto rounded-md border" role="listbox" aria-label="Interações do colaborador">
                   {interactionsQuery.isLoading ? <p className="p-2 text-sm text-muted-foreground">Buscando…</p> : null}
                   {interactionsQuery.data?.length === 0 ? <p className="p-2 text-sm text-muted-foreground">Este colaborador não tem interação com transcrição para analisar.</p> : null}
@@ -395,7 +396,7 @@ export function ManualRunDialog({
                       onClick={() => setInteractionId(item.id)}
                     >
                       <span className="text-sm">
-                        {formatDateTime(item.startedAt)} · {item.subject}
+                        {formatDateTime(item.startedAt)} · {formatInteractionReason(item.subject, item.subReason)}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {[item.channel, formatDuration(item.durationSeconds), item.externalId, ...item.flags.map((flag) => `${flag.name}: ${flag.value ?? "—"}`)].join(" · ")}
@@ -437,7 +438,7 @@ export function ManualRunDialog({
               <div className="rounded-md bg-muted/50 p-3 text-sm" data-testid="manual-run-summary">
                 <p>
                   <strong>{workflow.name}</strong> (versão publicada) será executado para <strong>{collaborator.name}</strong>
-                  {selectedInteraction ? ` com a interação de ${formatDateTime(selectedInteraction.startedAt)} (${selectedInteraction.subject})` : ""}
+                  {selectedInteraction ? ` com a interação de ${formatDateTime(selectedInteraction.startedAt)} (${formatInteractionReason(selectedInteraction.subject, selectedInteraction.subReason)})` : ""}
                   {selectedMeasurement ? ` com a medição ${formatDateTime(selectedMeasurement.periodStart)} → ${formatDateTime(selectedMeasurement.periodEnd)}` : ""}.
                 </p>
               </div>

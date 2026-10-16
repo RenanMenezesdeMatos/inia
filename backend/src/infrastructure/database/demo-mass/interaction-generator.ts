@@ -3,7 +3,7 @@ import { demoId } from "./demo-ids.js"
 import { CANONICAL_INTERACTION_OWNERS, IMPERFECT_FLAG_INTERACTIONS } from "./demo-identities.js"
 import { customerName } from "./names.js"
 import { clamp, type Random } from "./random.js"
-import { placementAt, type DemoPerson, type DemoStructure } from "./structure-generator.js"
+import { DIAGNOSTIC_SUBGROUP, placementAt, subteamKey, type DemoPerson, type DemoStructure } from "./structure-generator.js"
 import { applyOperatorName, CANONICAL_TRANSCRIPTS } from "./transcripts/canonical-transcripts.js"
 import { CITIES, COMPANIES, MONTHS, PLANS_B2B, PLANS_B2C } from "./transcripts/phrase-pools.js"
 import { buildCallPlan, composeTranscript } from "./transcripts/transcript-composer.js"
@@ -13,7 +13,10 @@ export type InteractionRow = {
   id: string
   operatorId: string
   externalId: string
+  /** Motivo (`interactions.reason`). */
   reason: string
+  /** Submotivo (`interactions.sub_reason`); null = sem submotivo (ver `interactionSubjectOf`). */
+  subReason: string | null
   channel: "VOICE"
   startedAt: string
   endedAt: string
@@ -111,6 +114,21 @@ export function interactionWindow(operator: DemoPerson, referenceDate: string = 
   return { from, until }
 }
 
+const DIAGNOSTIC_SUBTEAM_KEY = subteamKey(DIAGNOSTIC_SUBGROUP.teamKey, DIAGNOSTIC_SUBGROUP.name)
+
+/**
+ * MOTIVO × SUBMOTIVO de uma chamada gerada (2026-10-16): motivo = o genérico do cenário ("Fatura"); submotivo = a frase
+ * específica que a massa sempre gerou ("Segunda via de fatura", "X e y", "(rechamada)") — texto idêntico ao `reason` de antes,
+ * então `reason = sub_reason, sub_reason = null` desfaz.
+ * Fica como antes (frase específica no motivo, sem submotivo) quem está HOJE no Subgrupo "Diagnóstico IA": é a população
+ * homologada das Tools (fingerprint `diagnostic-dataset.ts`, aliases de assunto canônico por frase, gabaritos) — o mesmo
+ * formato de uma carga antiga, sem submotivo.
+ */
+export function interactionSubjectOf(operator: DemoPerson, composed: { reason: string; motive: string }): { reason: string; subReason: string | null } {
+  if (operator.subteamKey === DIAGNOSTIC_SUBTEAM_KEY) return { reason: composed.reason, subReason: null }
+  return { reason: composed.motive, subReason: composed.reason }
+}
+
 /** As 10 interações de UM operador — reproduzíveis a partir da chave do operador. */
 export function generateOperatorInteractions(structure: DemoStructure, operator: DemoPerson, random: Random): InteractionRow[] {
   const operatorRandom = random.fork(`interactions:${operator.key}`)
@@ -135,7 +153,7 @@ export function generateOperatorInteractions(structure: DemoStructure, operator:
       const canonical = CANONICAL_TRANSCRIPTS[canonicalId]!
       const content = applyOperatorName(canonical.content, operator.name.split(" ")[0]!)
       return {
-        id: demoId(`interaction:${canonicalId}`), operatorId: operator.id, externalId: canonicalId, reason: canonical.reason, channel: "VOICE",
+        id: demoId(`interaction:${canonicalId}`), operatorId: operator.id, externalId: canonicalId, reason: canonical.reason, subReason: null, channel: "VOICE",
         startedAt, endedAt: endOf(startedAt, canonical.durationSeconds), transcript: { content, confidence: 0.97 },
         flags: { ...canonical.flags }, meta: { length: canonical.length, turns: content.split("\n").length, plan: null, canonical: true },
       }
@@ -151,7 +169,7 @@ export function generateOperatorInteractions(structure: DemoStructure, operator:
     if (imperfect?.kind === "FALSE_NEGATIVE") delete flags.rechamada
     const externalId = imperfect ? imperfect.externalId : `DEMO-INT-${String(operator.ordinal).padStart(4, "0")}-${pad(sequence)}`
     return {
-      id: demoId(`interaction:${externalId}`), operatorId: operator.id, externalId, reason: composed.reason, channel: "VOICE",
+      id: demoId(`interaction:${externalId}`), operatorId: operator.id, externalId, ...interactionSubjectOf(operator, composed), channel: "VOICE",
       startedAt, endedAt: endOf(startedAt, composed.durationSeconds), transcript: { content: composed.content, confidence: Number(callRandom.float(0.86, 0.98).toFixed(2)) },
       flags, meta: { length: composed.plan.length, turns: composed.turns.length, plan: composed.plan, canonical: false },
     }

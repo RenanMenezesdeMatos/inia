@@ -62,6 +62,9 @@ export const accessCapabilitiesSchema = z.object({
   canViewAssistantConversations: capability,
   // Diagnóstico: quem LIDERA alguém (subárvore real) OU tem `indicators.view` — mesma regra da API (o recorte é do backend).
   canViewDiagnostics: capability,
+  // Reports recorrentes: quem lidera/tem acesso de consulta (para si) ou tem o papel Report (distribuir). O recorte é do backend.
+  canUseReports: capability,
+  canDistributeReports: capability,
   // Cenário da INIA (fundo atrás do avatar) — só o Administrador geral, na organização inteira.
   canManageIniaScenes: capability,
   // Monitoria de usabilidade — fora de canAccessAdministration (como as conversas): quem só tem a monitoria vê só ela.

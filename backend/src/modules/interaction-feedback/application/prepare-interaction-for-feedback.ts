@@ -5,7 +5,7 @@ import { analyzeInteractionSemantics } from "../../investigation/application/too
 import { defaultInvestigationToolState, loadSubject, type InvestigationRequest, type ToolContext } from "../../investigation/application/tool-context.js"
 import { HandleRegistry } from "../../investigation/domain/handle-registry.js"
 import { composeInteractionFeedback, documentIdResolverFromHandles, proceduralLineageFromEvaluations, type InteractionFeedbackV1 } from "../../investigation/domain/interaction-feedback.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf, startOfLocalDate } from "../../workflows/application/time-window.js"
 import { loadLatestTranscript } from "../../workflows/application/transcript.js"
@@ -43,7 +43,7 @@ export type PrepareInput = { organizationId: string; collaboratorId: string; int
 export async function prepareInteractionForFeedback(db: Database, input: PrepareInput): Promise<PreparedInteraction> {
   // Segurança: a interação precisa existir NESTA organização e pertencer ao colaborador — nunca um id arbitrário.
   const row = await db.query<{ id: string; operator_id: string; started_at: Date; reason: string; team_id: string | null; subject_code: string | null }>(
-    `select i.id, i.operator_id, i.started_at, i.reason, p.team_id, ${canonicalSubjectSql("i")} subject_code
+    `select i.id, i.operator_id, i.started_at, ${rawSubjectSql("i")} reason, p.team_id, ${canonicalSubjectSql("i")} subject_code
      from interactions i join people p on p.id = i.operator_id
      where i.id = $1 and i.organization_id = $2 and p.organization_id = $2`,
     [input.interactionId, input.organizationId],
@@ -102,8 +102,9 @@ export async function prepareInteractionForFeedback(db: Database, input: Prepare
 
 /** Rótulo EXIBÍVEL: data local + nome do assunto canônico quando existe — nunca o código bruto nem identificador. */
 /**
- * Rótulo "Atendimento de dd/mm/aaaa · <assunto>" (`FEEDBACK_HEADING_V1`): assunto canônico quando resolve; senão o assunto BRUTO
- * gravado com a interação, se legível (ou o nome do assunto com exatamente aquele código); sem assunto confiável, só a data.
+ * Rótulo "Atendimento de dd/mm/aaaa · <assunto>" (`FEEDBACK_HEADING_V2`): assunto canônico quando resolve; senão o assunto BRUTO
+ * gravado com a interação (o submotivo, quando a fonte o informou; senão o motivo), se legível (ou o nome do assunto com exatamente
+ * aquele código); sem assunto confiável, só a data.
  * Antes, sem alias canônico o assunto bruto era descartado e o título do feedback virava só a data.
  */
 export async function interactionLabelOf(db: Database, organizationId: string, localDate: string, subjectCode: string | null, rawSubject: string | null = null): Promise<string> {

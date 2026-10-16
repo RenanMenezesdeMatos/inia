@@ -11,7 +11,7 @@ import { signalDistributionOf, signalEvolutionOf, type SignalDistribution, type 
 import { interactionReuseOf, type InteractionReuse, type StoredObservation } from "../domain/observation-compatibility.js"
 import type { MixSegmentRow } from "../domain/population-mix.js"
 import { referencePeriodDates, type OfficialIndicatorSnapshot, type PrvClosing } from "../domain/prv-closing.js"
-import { directDiagnosisIdempotencyKey, prvDiagnosisIdempotencyKey, PRV_DIAGNOSIS_LOGIC_VERSION, type DiagnosisSourceKind } from "../domain/prv-investigation.js"
+import { directDiagnosisIdempotencyKey, prvDiagnosisIdempotencyKey, PRV_ASSESSMENT_LOGIC_VERSION, type DiagnosisSourceKind } from "../domain/prv-investigation.js"
 import { loadEffectiveStrategy, loadStrategyVersion, type ResolvedStrategy } from "./diagnostic-strategy-service.js"
 import { findPrvDiagnosis, latestClosingPeriod, latestIndicatorClosingPeriod, loadIndicatorClosing, loadPrvClosing, loadPublishedVersions, loadSegmentInteractions, loadSegmentRows, loadSignalFlag, loadSignalRows, loadStoredObservations, loadSubjectNames, type SegmentRow } from "./load-prv-closing-data.js"
 
@@ -237,7 +237,7 @@ async function planIndicatorInvestigation(db: Pick<Database, "query">, organizat
   plan.storedObservations = await loadStoredObservations(db, { organizationId, personId: input.personId, interactionIds: plan.eligibleInteractions.map((entry) => entry.id) })
   const versions = await loadPublishedVersions(db, organizationId, plan.storedObservations.map((observation) => observation.documentId))
   // V1.0.2 — pendência gravada por lógica anterior é reavaliada (nunca reaproveitada com a pendência antiga).
-  plan.reuse = plan.eligibleInteractions.map((entry) => interactionReuseOf(entry.id, plan.storedObservations, versions, PRV_DIAGNOSIS_LOGIC_VERSION))
+  plan.reuse = plan.eligibleInteractions.map((entry) => interactionReuseOf(entry.id, plan.storedObservations, versions, PRV_ASSESSMENT_LOGIC_VERSION))
   const reusable = plan.reuse.filter((entry) => entry.status === "REUSABLE").length
   // Só o que FALTA até o teto da estratégia é avaliado: reaproveitadas contam primeiro (custo zero), sem descartar nenhuma.
   const missing = Math.max(0, parameters.sample.maxInteractions - reusable)

@@ -5,7 +5,8 @@ import { withLineage } from "./master-data-writers.js"
 
 /**
  * Writers de interação — mesmo modelo e mesmos efeitos da ingestão em tempo real (`/ingestion`):
- * interação idempotente por `external_id`, transcrição por versão e flag aplicada matricula Workflows
+ * interação idempotente por `external_id` (motivo sempre; submotivo do contrato @2 só quando informado —
+ * vazio mantém o já recebido), transcrição por versão e flag aplicada matricula Workflows
  * por Flag (nova/alterada — inalterada não rematricula).
  * Assim QA Lab, Agents, retrieval de transcrição e gatilhos continuam funcionando sem saber por
  * onde o dado entrou.
@@ -15,6 +16,8 @@ type PreparedInteraction = ValidRecord & {
   operatorId: string
   channel: string
   reason: string
+  /** Submotivo (contrato @2); nulo = a fonte não informou nesta carga — mantém o que já existe. */
+  subReason: string | null
   startedAt: string
   endedAt: string
   transcript: { content: string; language: string; confidence: number | null } | null
@@ -41,6 +44,7 @@ export const interactionsWriter: DomainWriter<PreparedInteraction> = {
         operatorId: person.id,
         channel: (str(record.record, "channel") ?? "VOICE").toUpperCase(),
         reason: str(record.record, "reason")!,
+        subReason: str(record.record, "subReason"),
         startedAt: str(record.record, "startedAt")!,
         endedAt: str(record.record, "endedAt")!,
         transcript: content ? { content, language: str(record.record, "transcriptLanguage") ?? "pt-BR", confidence: num(record.record, "transcriptConfidence") } : null,
@@ -52,14 +56,16 @@ export const interactionsWriter: DomainWriter<PreparedInteraction> = {
     if (batch.length === 0) return emptyApply()
     const org = context.organizationId
     const result = await client.query<{ id: string; external_id: string; inserted: boolean }>(
-      `insert into interactions (organization_id, operator_id, reason, channel, started_at, ended_at, external_id)
-       select $1, operator_id, reason, channel, started_at::timestamptz, ended_at::timestamptz, external_id
-       from unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[]) as t(operator_id, reason, channel, started_at, ended_at, external_id)
-       on conflict (organization_id, external_id) do update set operator_id = excluded.operator_id, reason = excluded.reason, channel = excluded.channel, started_at = excluded.started_at, ended_at = excluded.ended_at
-       where interactions.operator_id is distinct from excluded.operator_id or interactions.reason is distinct from excluded.reason or interactions.channel is distinct from excluded.channel
+      `insert into interactions (organization_id, operator_id, reason, sub_reason, channel, started_at, ended_at, external_id)
+       select $1, operator_id, reason, sub_reason, channel, started_at::timestamptz, ended_at::timestamptz, external_id
+       from unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) as t(operator_id, reason, sub_reason, channel, started_at, ended_at, external_id)
+       on conflict (organization_id, external_id) do update set operator_id = excluded.operator_id, reason = excluded.reason, sub_reason = coalesce(excluded.sub_reason, interactions.sub_reason),
+         channel = excluded.channel, started_at = excluded.started_at, ended_at = excluded.ended_at
+       where interactions.operator_id is distinct from excluded.operator_id or interactions.reason is distinct from excluded.reason
+          or interactions.sub_reason is distinct from coalesce(excluded.sub_reason, interactions.sub_reason) or interactions.channel is distinct from excluded.channel
           or interactions.started_at is distinct from excluded.started_at or interactions.ended_at is distinct from excluded.ended_at
        returning id, external_id, (xmax = 0) inserted`,
-      [org, batch.map((r) => r.operatorId), batch.map((r) => r.reason), batch.map((r) => r.channel), batch.map((r) => r.startedAt), batch.map((r) => r.endedAt), batch.map((r) => r.externalId)],
+      [org, batch.map((r) => r.operatorId), batch.map((r) => r.reason), batch.map((r) => r.subReason), batch.map((r) => r.channel), batch.map((r) => r.startedAt), batch.map((r) => r.endedAt), batch.map((r) => r.externalId)],
     )
     const outcome = withLineage("interactions", batch, (row) => row.externalId, result.rows.map((row) => ({ key: row.external_id, id: row.id, inserted: row.inserted })))
     outcome.businessMaxEventTime = batch.reduce<string | null>((max, row) => (max === null || row.endedAt > max ? row.endedAt : max), null)

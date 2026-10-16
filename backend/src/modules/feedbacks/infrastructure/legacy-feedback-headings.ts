@@ -30,7 +30,7 @@ export async function loadLegacyFeedbackHeadings(db: Database, input: { organiza
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const interactionIds = [...new Set([...links.values()].filter((id): id is string => Boolean(id && uuid.test(id))))]
   const interactions = new Map((await db.query<{ id: string; operator_id: string; reason: string | null; started_at: Date }>(
-    `select id, operator_id, reason, started_at from interactions where organization_id = $1 and id = any($2::uuid[])`,
+    `select id, operator_id, coalesce(nullif(btrim(sub_reason), ''), reason) reason, started_at from interactions where organization_id = $1 and id = any($2::uuid[])`,
     [input.organizationId, interactionIds],
   )).rows.map((row) => [row.id, row]))
   const codeNames = new Map((await db.query<{ code: string; name: string }>(`select code, name from interaction_subject_definitions where organization_id = $1`, [input.organizationId])).rows.map((row) => [row.code, row.name]))

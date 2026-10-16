@@ -271,15 +271,16 @@ export async function persistPerformance(client: Client, mass: DemoMass): Promis
   for (const batch of chunks(indicatorRows, BATCH)) {
     await transaction(client, async () => {
       const inserted = await client.query(
-        `insert into employee_indicator_performance (id, organization_id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, source)
-         select id, $1, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, $2
-         from unnest($3::uuid[], $4::uuid[], $5::uuid[], $6::uuid[], $7::text[], $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::text[])
-           as t(id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile)
+        `insert into employee_indicator_performance (id, organization_id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator, source)
+         select id, $1, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator, $2
+         from unnest($3::uuid[], $4::uuid[], $5::uuid[], $6::uuid[], $7::text[], $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[], $12::text[], $13::numeric[], $14::numeric[])
+           as t(id, person_id, indicator_definition_id, subteam_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, numerator, denominator)
          on conflict (organization_id, person_id, indicator_definition_id, reference_period) do nothing`,
         [
           DEMO_ORGANIZATION_ID, DEMO_SOURCE,
           batch.map((r) => r.id), batch.map((r) => r.personId), batch.map((r) => r.indicatorDefinitionId), batch.map((r) => r.subteamId), batch.map((r) => r.referencePeriod),
           batch.map((r) => r.value), batch.map((r) => r.targetValue), batch.map((r) => r.achievementPercent), batch.map((r) => r.weightPercent), batch.map((r) => r.quartile),
+          batch.map((r) => r.numerator), batch.map((r) => r.denominator),
         ],
       )
       report.indicatorRowsInserted += inserted.rowCount ?? 0
@@ -355,11 +356,11 @@ export async function persistInteractions(client: Client, mass: DemoMass, flagId
     const rows = batch.flatMap((operator) => mass.interactionsOf(operator))
     await transaction(client, async () => {
       await client.query(
-        `insert into interactions (id, organization_id, operator_id, reason, channel, started_at, ended_at, external_id)
-         select id, $1, operator_id, reason, channel, started_at::timestamptz, ended_at::timestamptz, external_id
-         from unnest($2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[]) as t(id, operator_id, reason, channel, started_at, ended_at, external_id)
-         on conflict (id) do update set operator_id = excluded.operator_id, reason = excluded.reason, channel = excluded.channel, started_at = excluded.started_at, ended_at = excluded.ended_at, external_id = excluded.external_id`,
-        [DEMO_ORGANIZATION_ID, rows.map((r) => r.id), rows.map((r) => r.operatorId), rows.map((r) => r.reason), rows.map((r) => r.channel), rows.map((r) => r.startedAt), rows.map((r) => r.endedAt), rows.map((r) => r.externalId)],
+        `insert into interactions (id, organization_id, operator_id, reason, sub_reason, channel, started_at, ended_at, external_id)
+         select id, $1, operator_id, reason, sub_reason, channel, started_at::timestamptz, ended_at::timestamptz, external_id
+         from unnest($2::uuid[], $3::uuid[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[]) as t(id, operator_id, reason, sub_reason, channel, started_at, ended_at, external_id)
+         on conflict (id) do update set operator_id = excluded.operator_id, reason = excluded.reason, sub_reason = excluded.sub_reason, channel = excluded.channel, started_at = excluded.started_at, ended_at = excluded.ended_at, external_id = excluded.external_id`,
+        [DEMO_ORGANIZATION_ID, rows.map((r) => r.id), rows.map((r) => r.operatorId), rows.map((r) => r.reason), rows.map((r) => r.subReason), rows.map((r) => r.channel), rows.map((r) => r.startedAt), rows.map((r) => r.endedAt), rows.map((r) => r.externalId)],
       )
       for (const part of chunks(rows, 250)) {
         await client.query(

@@ -48,7 +48,10 @@ export const manualRunCollaboratorsSchema = z.object({ items: z.array(manualRunC
 export const manualRunInteractionSchema = z.object({
   id: z.string(),
   externalId: z.string(),
+  /** Motivo da interação. */
   subject: z.string(),
+  /** Submotivo; null = a fonte não informou. */
+  subReason: z.string().nullable().optional(),
   channel: z.string(),
   startedAt: z.coerce.string(),
   endedAt: z.coerce.string(),
@@ -83,7 +86,7 @@ export const manualRunSchema = z.object({
   requestedBy: z.object({ id: z.string(), name: z.string() }),
   context: manualTriggerContextSchema,
   collaborator: z.object({ id: z.string(), name: z.string(), matricula: z.string().nullable() }),
-  interaction: z.object({ id: z.string(), subject: z.string(), startedAt: z.coerce.string() }).nullable(),
+  interaction: z.object({ id: z.string(), subject: z.string(), subReason: z.string().nullable().optional(), startedAt: z.coerce.string() }).nullable(),
   measurement: z.object({ id: z.string(), periodStart: z.coerce.string(), periodEnd: z.coerce.string(), value: z.number(), indicatorName: z.string().nullable() }).nullable(),
   execution: z.object({
     enrollmentId: z.string(),

@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
+import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { interactionLabelOf, otherOperatorNamesOf, subjectOperatorNameOf } from "../../interaction-feedback/application/prepare-interaction-for-feedback.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
@@ -17,7 +17,7 @@ import { loadIndicatorCanonicalContext } from "../../indicators/application/load
 export function createPostgresMonitoringContextLoader(db: Database): MonitoringContextLoader {
   return async (organizationId, interactionId, collaboratorId) => {
     const row = await db.query<{ id: string; operator_id: string; started_at: Date; team_id: string | null; subject_code: string | null; reason: string | null }>(
-      `select i.id, i.operator_id, i.started_at, p.team_id, i.reason, ${canonicalSubjectSql("i")} subject_code
+      `select i.id, i.operator_id, i.started_at, p.team_id, ${rawSubjectSql("i")} reason, ${canonicalSubjectSql("i")} subject_code
        from interactions i join people p on p.id = i.operator_id
        where i.id = $1 and i.organization_id = $2 and p.organization_id = $2`,
       [interactionId, organizationId],

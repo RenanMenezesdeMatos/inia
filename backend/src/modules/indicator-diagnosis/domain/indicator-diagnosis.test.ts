@@ -3,7 +3,7 @@ import type { RawCheckpoint } from "../../agents/domain/process-assessment-contr
 import { canonicalComparison, INDICATOR_CANONICAL_CONTEXT_CONTRACT, type IndicatorCanonicalContext } from "../../indicators/domain/indicator-canonical-context.js"
 import { verifyProcessAssessments, type PublishedKnowledgeDocument } from "../../reliable-feedback/domain/process-assessment.js"
 import { buildDiagnosisOutcome } from "./diagnosis-outcome.js"
-import { buildSegments, DIAGNOSIS_MIN_SEGMENT_INTERACTIONS, INDICATOR_DIAGNOSIS_PLAN_VERSION, segmentFactText, selectDiagnosisSegment, type IndicatorDiagnosisPlan } from "./indicator-diagnosis.js"
+import { buildSegments, diagnosisLevelsOf, DIAGNOSIS_MIN_SEGMENT_INTERACTIONS, INDICATOR_DIAGNOSIS_PLAN_VERSION, segmentFactText, selectDiagnosisSegment, type IndicatorDiagnosisPlan } from "./indicator-diagnosis.js"
 import { buildPeerPracticeEvidence, peerFactText, PEER_MINIMUM_POPULATION, referenceGroupOf, type PeerObservationRow } from "./peer-practice-evidence.js"
 import { aggregateProcessPatterns, classifyPattern, observationsFrom, practiceKeyOf, type AssessedInteraction } from "./process-patterns.js"
 
@@ -60,6 +60,20 @@ describe("V1.6.1 — onde investigar: decomposição por motivo (sistema, nunca 
   })
   it("frase do motivo: números do sistema e a duração identificada como aproximação (nunca o TMA oficial)", () => {
     expect(segmentFactText(plan())).toBe("Motivo investigado: Contestação — 8 de 30 atendimentos do período; duração média registrada de 980 s nesse motivo e de 689 s em todos os atendimentos (duração registrada das chamadas, não o cálculo oficial do indicador).")
+  })
+})
+
+describe("SUBJECT_RESOLUTION_V2 — níveis do plano: assunto (submotivo) primeiro, motivo depois", () => {
+  it("só os níveis que a estratégia ligou, sempre na ordem assunto → motivo", () => {
+    expect(diagnosisLevelsOf(["SUBJECT"])).toEqual(["SUBJECT"])
+    expect(diagnosisLevelsOf(["REASON"])).toEqual(["REASON"])
+    expect(diagnosisLevelsOf(["REASON", "SUBJECT"])).toEqual(["SUBJECT", "REASON"])
+    expect(diagnosisLevelsOf([])).toEqual([])
+  })
+
+  it("segmento do assunto carrega os motivos como contexto, sem mudar participação nem elegibilidade", () => {
+    const [segment] = buildSegments([{ key: "segunda_via", label: "Segunda via", canonical: true, reasons: ["Fatura"], interactions: 4, withTranscript: 4, averageDurationSeconds: 400 }])
+    expect(segment).toMatchObject({ key: "segunda_via", reasons: ["Fatura"], sharePercent: 100, eligible: true })
   })
 })
 

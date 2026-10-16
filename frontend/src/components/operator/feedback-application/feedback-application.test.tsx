@@ -87,7 +87,7 @@ const playback = vi.hoisted(() => {
   return { instance, state, drain }
 })
 vi.mock("@/lib/avatar/audio/speech-playback", () => ({ createSpeechPlayback: () => playback.instance }))
-vi.mock("next/navigation", () => ({ useSearchParams: () => doubles.searchParams }))
+vi.mock("next/navigation", () => ({ useSearchParams: () => doubles.searchParams, useRouter: () => ({ push: () => undefined, replace: () => undefined, refresh: () => undefined, prefetch: () => undefined, back: () => undefined }) }))
 type VoiceHandlers = {
   onStateChange: (state: string) => void
   onOutputTranscript: (text: string) => void

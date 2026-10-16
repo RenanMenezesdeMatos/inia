@@ -64,3 +64,17 @@ describe("useAnalyticsUrlState — pessoa focal da Estrutura na URL", () => {
     expect(result.current.state.structurePersonId).toBeNull()
   })
 })
+
+describe("useAnalyticsUrlState — Equipe chegando filtrada por um link da INIA", () => {
+  it("lê situação e indicador em atenção; situação desconhecida é ignorada; limpar remove os parâmetros", () => {
+    window.history.replaceState(null, "", "/supervisor?tab=people&situation=NO_DATA&attention=TMA")
+    const { result, rerender } = renderHook(() => useAnalyticsUrlState())
+    expect(result.current.state).toMatchObject({ tab: "people", situation: "NO_DATA", attention: "TMA" })
+    act(() => result.current.update({ situation: null, attention: null }))
+    rerender()
+    expect(window.location.search).toBe("?tab=people")
+    window.history.replaceState(null, "", "/supervisor?tab=people&situation=QUALQUER")
+    rerender()
+    expect(result.current.state.situation).toBeNull()
+  })
+})

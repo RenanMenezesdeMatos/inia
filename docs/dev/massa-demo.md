@@ -416,6 +416,15 @@ Gustavo, Pamella, Denisy, Samuel) **entram na árvore demo sem serem recriadas**
   corrente **nunca** tem fechamento oficial — só medição diária (camada 1). Atingimento: HIGHER = valor/meta; LOWER = meta/valor (mesma
   semântica do seed SQL 001). PRV = média ponderada dos componentes com teto de 120% por componente.
   Quartil (indicador e PRV) = ranking dentro do Grupo × competência (Q1 = melhor 25%).
+- Numerador e denominador do fechamento (contrato `OFFICIAL_INDICATOR_PERFORMANCE@2`, migration 147):
+  só para Taxa e Média ponderada, derivados DO VALOR oficial já decidido (`closure-components.ts`) —
+  tempo médio: denominador = atendimentos do mês, numerador = segundos (valor × atendimentos); taxa:
+  ocorrências inteiras ÷ base do mês; notas: soma das notas ÷ respostas. Volume mensal plausível por
+  indicador, semente = id da linha (o gerador da pessoa não é consumido; valor, atingimento e quartil
+  idênticos aos de antes). Média simples (PRODUTIVIDADE) e Último valor (BACKLOG) ficam nulos. O seed
+  preenche também os fechamentos já gravados e os do SQL 001 (`fillDemoClosureComponents`, só
+  `DEMO_SEED`); banco já populado: `npx tsx scripts/demo-mass/backfill-official-closure-components.ts --apply`
+  (rodado em 16/10/2026 no `inia` — 68.089 linhas — e no `inia_test` — 79.399 —, 0 incoerentes).
 - Personas por equipe de 25 (deck embaralhado): 4 alta, 7 média, 2 crítica, 3 evolução, 2 queda,
   1 eficiente/baixa qualidade, 1 qualidade boa/TMA ruim, 2 PRV parcial, 1 dados incompletos, 2 volátil.
 - `indicator_measurements` (subject PERSON, janela mensal fechada, `source = DEMO_SEED`) espelha
@@ -458,6 +467,15 @@ reset apaga os períodos junto com as pessoas.
   `detrator` (BOOLEAN, VOICE). Cada flag só aparece quando o tema aparece literalmente na conversa.
 - Além das geradas: o lote externo de 90 chamadas de diagnóstico (seção acima) e as transcrições
   legadas das migrations/scripts antigos (`<NOME>-nn`), ambos preservados em recarga.
+- **Motivo × submotivo** (2026-10-16, migration 145): `reason` = motivo genérico do cenário principal
+  (`ScenarioSpec.motive`: Fatura, Cobrança, Suporte técnico, Cancelamento, Plano, Informação, Reclamação,
+  Cadastro); `sub_reason` = a frase específica, a mesma de antes ("Segunda via de fatura",
+  "X e y" em chamadas com segundo assunto, "(rechamada)"). Ficam como antes (frase no motivo, sem
+  submotivo) os operadores que estão hoje no Subgrupo "Diagnóstico IA", as transcrições canônicas e o lote
+  de 90 chamadas. Assim o fingerprint do dataset homologado e os aliases de assunto canônico não mudam.
+  Para ajustar um banco que já tinha a massa, use
+  `npx tsx scripts/demo-mass/backfill-interaction-sub-reasons.ts [--apply]` (dry-run por padrão,
+  idempotente; desfazer = `reason = sub_reason, sub_reason = null`).
 
 ### Transcrições canônicas (QA)
 

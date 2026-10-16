@@ -148,7 +148,10 @@ export const CRITERIA_EXTRACTION_VERSION = "KNOWLEDGE_CRITERIA_V3" as const
  * como piora e o foco ficava vazio. */
 /** V16 (06/10/2026, `CURRENT_RULES_AFTER_ANALYSIS_V1`): as regras em vigor são lidas DEPOIS das análises da execução — as práticas que
  * elas organizam deixam de parecer "regra que mudou na base" (o padrão de recapitulação da Reincidência da Larissa era descartado). */
-export const INDICATOR_INVESTIGATION_LOGIC_VERSION = "INDICATOR_INVESTIGATION_V16" as const
+/** V17 (16/10/2026, `SUBJECT_RESOLUTION_V2` + `INVESTIGATION_SLICES_V2`): o ASSUNTO das localizações, recortes, memória e grupo de
+ * referência passa a ser o submotivo (sem submotivo, o motivo — quem não tem submotivo localiza exatamente como na V16); o MOTIVO vira
+ * a dimensão `REASON` quando a estratégia a liga. */
+export const INDICATOR_INVESTIGATION_LOGIC_VERSION = "INDICATOR_INVESTIGATION_V17" as const
 /** Composição da mensagem (brief, redação, verificação, utilidade). V2 = contrato de confiança: justificativa, orientação e
  * "por que importa" do modelo são LEITURA (conferida contra os fatos antes de qualquer uso); o sistema só completa com regra
  * literal, status verificado ou leitura aprovada; reescrita do verificador não é aceita sem nova verificação. Prompts V4/V3 = a

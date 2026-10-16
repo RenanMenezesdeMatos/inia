@@ -187,11 +187,15 @@ export function WikiFlow({ steps, compact = false }: { steps: FlowStep[]; compac
   )
 }
 
-/** Tabela com scroll horizontal próprio — nunca estoura a página (regra 118 da Wiki). */
+/**
+ * Tabela com scroll horizontal próprio — nunca estoura a página (regra 118 da Wiki). As células da Wiki são texto corrido: quebram
+ * linha (o `TableCell` do kit é `whitespace-nowrap`, que deixava regras de uma frase com milhares de pixels de largura) e têm uma
+ * largura mínima por coluna só em tela estreita — no celular, tabela de muitas colunas rola em vez de virar uma palavra por linha.
+ */
 export function WikiTable({ children, caption }: { children: ReactNode; caption?: string }) {
   return (
     <figure className="space-y-2">
-      <div className="overflow-x-auto rounded-lg border border-border">{children}</div>
+      <div className="overflow-x-auto rounded-lg border border-border max-md:[&_td]:min-w-32 [&_td]:align-top [&_td]:whitespace-normal [&_th]:whitespace-normal">{children}</div>
       {caption ? <figcaption className="text-xs text-muted-foreground">{caption}</figcaption> : null}
     </figure>
   )

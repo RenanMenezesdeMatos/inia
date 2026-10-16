@@ -366,16 +366,17 @@ describe.skipIf(!ENABLED)("chamadas de diagnóstico — prova no banco demo", ()
 
   it("regressão Ícaro (DEMO-INT-2026-10 — a 10ª chamada da vaga 2026, Icaro Elias no dev): interação alvo intacta (transcrição bruta, sem redação), comparáveis e projeção de pares coexistem", async () => {
     // A vaga 2026 é de Icaro Elias no banco de desenvolvimento; num banco recém-migrado é a pessoa gerada da mesma vaga — a interação existe nos dois.
-    const target = await client.query<{ id: string; operator_id: string; reason: string; content: string }>(`select i.id, i.operator_id, i.reason, t.content from interactions i join transcripts t on t.interaction_id = i.id where i.external_id = 'DEMO-INT-2026-10'`)
+    // `SUBJECT_RESOLUTION_V2`: o assunto das Tools é o submotivo quando a fonte o informou (a massa gerada tem), senão o motivo.
+    const target = await client.query<{ id: string; operator_id: string; subject: string; content: string }>(`select i.id, i.operator_id, coalesce(nullif(btrim(i.sub_reason), ''), i.reason) subject, t.content from interactions i join transcripts t on t.interaction_id = i.id where i.external_id = 'DEMO-INT-2026-10'`)
     expect(target.rows).toHaveLength(1)
     const icaro = target.rows[0]!.operator_id
     const ctx = await toolContext(icaro, { start: "2026-04-01T03:00:00Z", end: "2026-09-18T03:00:00Z", label: "abril a setembro" })
     const own = await runTool(ctx, "get_interaction_context", { interactionId: target.rows[0]!.id })
-    expect((own.data as { subject: string; hasTranscript: boolean }).subject).toBe(target.rows[0]!.reason)
+    expect((own.data as { subject: string; hasTranscript: boolean }).subject).toBe(target.rows[0]!.subject)
     // A transcrição do ALVO não passa pela projeção: analyze_interactions continua verificando contra o bruto.
     const ownTranscripts = await loadTranscripts(ctx, [target.rows[0]!.id], [icaro])
     expect(ownTranscripts[0]!.content).toBe(target.rows[0]!.content)
-    const comparable = await runTool(ctx, "find_comparable_interactions", { subject: target.rows[0]!.reason, reference: "SUBGROUP" })
+    const comparable = await runTool(ctx, "find_comparable_interactions", { subject: target.rows[0]!.subject, reference: "SUBGROUP" })
     expect(["SUFFICIENT", "INSUFFICIENT_SAMPLE", "NO_DATA"]).toContain(comparable.quality.status)
     expect(JSON.stringify(comparable.data)).not.toContain(ctx.subject.operatorName!)
   })

@@ -37,9 +37,11 @@ export type StructureFollowUpFeedProps = {
   onUnacknowledgedOnlyChange?: (value: boolean) => void
   /** Item a destacar/rolar até (deep link `item=<id>` vindo do sino). */
   highlightItemId?: string | null
+  /** Bloco no topo do feed (Acompanhamento do líder: "Onde atuar hoje"). */
+  lead?: React.ReactNode
 }
 
-export function StructureFollowUpFeed({ subject, description, notices = [], employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null }: StructureFollowUpFeedProps) {
+export function StructureFollowUpFeed({ subject, description, notices = [], employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
   const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly)
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
@@ -70,6 +72,7 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
         </div>
       ) : null}
 
+      {lead}
       {notices.length > 0 ? <DayLabel>Hoje</DayLabel> : null}
       {notices.map((notice, index) => (
         <Fragment key={notice.id}>

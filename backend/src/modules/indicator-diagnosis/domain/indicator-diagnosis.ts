@@ -12,7 +12,8 @@ import type { SamplingMetadata } from "../../investigation/domain/sampling-strat
  * nunca escolhe onde investigar, nunca rotula um motivo de "simples/complexo", nunca calcula número.
  *
  * Decomposição V1: só a dimensão ASSUNTO (motivo canônico da interação, com o bruto como fallback), porque é a única que liga
- * uma chamada a um processo da base. A métrica por segmento é a das interações — DURAÇÃO registrada para indicador em
+ * uma chamada a um processo da base. `SUBJECT_RESOLUTION_V2` (16/10/2026): ASSUNTO = submotivo (sem submotivo, o motivo) e a
+ * estratégia pode ligar também o MOTIVO (`REASON`) — sozinho, ou como segunda tentativa quando nenhum submotivo é elegível. A métrica por segmento é a das interações — DURAÇÃO registrada para indicador em
  * SEGUNDOS e VOLUME para indicador em contagem (mesma regra por UNIDADE das Tools de investigação, nunca por código) —
  * e é sempre uma APROXIMAÇÃO, nunca o cálculo oficial do indicador. Unidade sem métrica de interação (ex.: percentual) =
  * indicador NÃO decomponível nesta versão: o feedback fica factual.
@@ -29,13 +30,15 @@ export const DIAGNOSIS_MIN_ANALYZED = 3
 
 /** V2 — INTERACTION_SIGNAL_RATE: indicador de taxa cujo evento é marcado em cada interação por um sinal JÁ calculado pela fonte (flag declarada na estratégia). */
 export type DiagnosisMetric = "INTERACTION_DURATION_SECONDS" | "INTERACTION_COUNT" | "INTERACTION_SIGNAL_RATE"
-export type DiagnosisDimension = "SUBJECT"
+export type DiagnosisDimension = "SUBJECT" | "REASON"
 
 export type DiagnosisSegment = {
-  /** Chave técnica do segmento = assunto canônico (ou o bruto exato quando não há canônico). */
+  /** Chave técnica do segmento = assunto canônico (ou o bruto exato quando não há canônico), no nível do plano. */
   key: string
   label: string
   canonical: boolean
+  /** No nível ASSUNTO: os motivos dos atendimentos do segmento que têm submotivo (contexto; ausente sem submotivo). */
+  reasons?: string[]
   interactions: number
   withTranscript: number
   /** Duração média registrada (s) — só a métrica de interação, nunca o indicador. */
@@ -87,8 +90,16 @@ export function diagnosisMetricOf(unit: string, populationSignal: { flagName: st
 
 const round1 = (value: number) => Math.round(value * 10) / 10
 
+/**
+ * Níveis em que o plano tenta segmentar, na ordem: ASSUNTO (submotivo, o preferencial) e depois MOTIVO — só os que a estratégia
+ * ligou. Vazio = segmentação sem dimensão.
+ */
+export function diagnosisLevelsOf(dimensions: readonly string[]): DiagnosisDimension[] {
+  return (["SUBJECT", "REASON"] as const).filter((level) => dimensions.includes(level))
+}
+
 /** Segmentos com participação e elegibilidade — ordem: mais atendimentos primeiro, empate pelo rótulo. */
-export function buildSegments(rows: readonly { key: string; label: string; canonical: boolean; interactions: number; withTranscript: number; averageDurationSeconds: number | null }[], minimumSegmentInteractions: number = DIAGNOSIS_MIN_SEGMENT_INTERACTIONS): DiagnosisSegment[] {
+export function buildSegments(rows: readonly { key: string; label: string; canonical: boolean; reasons?: string[]; interactions: number; withTranscript: number; averageDurationSeconds: number | null }[], minimumSegmentInteractions: number = DIAGNOSIS_MIN_SEGMENT_INTERACTIONS): DiagnosisSegment[] {
   const total = rows.reduce((sum, row) => sum + row.interactions, 0)
   return rows
     .map((row) => ({ ...row, sharePercent: total > 0 ? round1((row.interactions / total) * 100) : 0, eligible: row.withTranscript >= Math.max(minimumSegmentInteractions, DIAGNOSIS_MIN_SEGMENT_INTERACTIONS) }))

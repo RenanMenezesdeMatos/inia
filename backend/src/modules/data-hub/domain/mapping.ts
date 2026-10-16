@@ -391,6 +391,7 @@ const SYNONYMS: Record<string, string[]> = {
   externalInteractionId: ["idinteracao", "interacao", "protocolo", "callid", "idchamada", "chamada", "interactionid", "ucid"],
   channel: ["canal", "channel"],
   reason: ["motivo", "assunto", "razao", "reason", "tipochamada"],
+  subReason: ["submotivo", "subassunto", "motivodetalhado", "detalhemotivo", "subreason"],
   startedAt: ["inicio", "datainicio", "horainicio", "startedat", "inicioatendimento"],
   endedAt: ["fim", "datafim", "horafim", "endedat", "fimatendimento", "termino"],
   transcriptContent: ["transcricao", "transcript", "texto", "conteudo"],
