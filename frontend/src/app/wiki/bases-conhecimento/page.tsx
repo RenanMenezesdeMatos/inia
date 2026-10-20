@@ -191,6 +191,34 @@ export default function KnowledgeBasesPage() {
         <FieldRow label="Despublicar depois" value="O feedback histórico continua íntegro; a recomendação passa a aparecer como “não está mais disponível”, sem título e sem link." />
       </WikiSection>
 
+      <WikiSection id="esclarecimento" title="Esclarecimento de perguntas ambíguas" eyebrow="Perguntar antes de responder — sempre pelas bases">
+        <p>
+          Quando alguém faz uma pergunta genérica à INIA, por texto ou por voz (“Como faço a troca para o cliente?”), ela consulta as bases que a
+          pessoa pode ler — as de todos os especialistas do Orquestrador dela — antes de responder. A IA vê a lista dessas bases com o começo do
+          sumário de cada uma, abre as que fazem sentido e lê as seções que precisar; nenhuma busca por palavra escolhe por ela. Se as bases
+          descrevem cenários que <strong className="font-medium text-foreground">mudam a resposta</strong> (produtos, públicos, situações,
+          exceções), ela pergunta qual se aplica, com opções clicáveis; a cada escolha, olha de novo — entre bases e dentro da mesma base (seções,
+          tabelas, condições). Quando o cenário está definido, responde só com o que as seções lidas sustentam. A conversa fica natural, sem
+          marcadores de citação: no fim da resposta,{" "}
+          <strong className="font-medium text-foreground">Fontes consultadas</strong> fica recolhido, com link para a página de cada base.
+        </p>
+        <FieldRow label="Nada fixo no código" value="Perguntas, opções e a ordem das etapas vêm do conteúdo das bases. Nenhum produto, público ou procedimento é cadastrado no sistema, e nenhuma lista de palavras decide o que é pertinente: uma base nova com outro cenário aparece como opção sem desenvolvimento." />
+        <FieldRow label="Cada opção tem fonte" value="Toda opção cita a base ou a seção que a sustenta (registrado para auditoria, não exibido no formulário). Opção sem fonte é descartada pelo sistema, nunca exibida; documentos que descrevem o mesmo cenário viram uma opção só." />
+        <FieldRow label="O formulário" value="Escolha única ou múltipla (quando o caso pode reunir mais de uma), “Nenhuma das opções corresponde ao meu caso”, complemento em texto livre, busca quando há muitas opções e grupos quando as próprias bases agrupam os cenários. Também dá para responder digitando — a INIA interpreta a mensagem." />
+        <FieldRow label="Corrigir uma escolha" value="O cenário considerado aparece de forma discreta junto da resposta: um chip por informação, só com o valor (passar o mouse mostra o que é e de onde veio). Clicar abre o detalhe com “Alterar” nas escolhas: corrigir refaz as etapas seguintes a partir dela." />
+        <FieldRow label="Quando não pergunta" value="Se a pergunta já traz o que distingue os cenários, ou se as diferenças encontradas não mudam o que deve ser feito, a INIA responde direto. Perguntas sobre os próprios resultados, indicadores ou feedbacks — e conversa social — seguem o caminho de sempre." />
+        <FieldRow label="Quando as bases não cobrem" value="A INIA diz que não encontrou nas bases consultadas e pede uma informação objetiva (ou que a pergunta seja reformulada) — nunca responde sem fonte. Se o esclarecimento não chega a um cenário documentado em até 4 etapas, ela explica o que falta." />
+        <FieldRow label="Pela voz" value="O mesmo esclarecimento vale na conversa por voz: a INIA fala a pergunta e lê as opções de forma curta (só os nomes; com muitas, as primeiras e o aviso de que as demais estão na tela). Dá para responder falando — ela interpreta a resposta como no texto — ou escolher no formulário, que aparece na tela junto da fala: a escolha interrompe a fala em curso e a INIA continua falando a próxima pergunta ou a resposta. A escolha vale exatamente como foi clicada; se a voz não seguir com ela, a próxima etapa aparece por escrito. Vale para quem atende e para quem lidera." />
+        <FieldRow label="Quem lidera" value="Na dúvida de processo de quem lidera, o esclarecimento usa as bases do Orquestrador do Grupo consultado (não as do Grupo do próprio cadastro), sempre só as que a pessoa pode ler. A pergunta com as opções (ou a resposta) aparece como saiu das bases, junto dos cartões de dados da mesma resposta; a escolha no formulário continua no mesmo Orquestrador enquanto ele estiver ao alcance da estrutura de quem lidera." />
+        <FieldRow label="Acesso" value="Só entram bases autorizadas aos especialistas E que a pessoa pode ler (mesma regra da página do material). Ao reabrir a conversa, fonte que deixou de estar acessível aparece sem título." />
+        <FieldRow label="Auditoria" value="Cada resposta guarda a trilha completa: pergunta original, cenário, opções apresentadas com a base e a seção que sustenta cada uma, fontes numeradas como as citações do texto gravado, divergências entre bases e a cobertura da consulta. Quem pode ler as conversas vê essa trilha em Administração › Monitoramento › Conversas com a INIA — base que quem lê não alcança aparece sem título." />
+        <WarningCallout kind="tip" title="Cobertura honesta">
+          A INIA diz “Encontrei estes cenários nas bases consultadas” — nunca “todas as possibilidades”. Ela decide o que abrir pelo título e pelo
+          começo do sumário de cada base: uma base com título pouco descritivo depende de ela abrir. Com muitas bases (mais de 120 legíveis), a lista
+          é cortada e a tela avisa. A escolha esclarece a pergunta; não autoriza nenhuma ação em sistema.
+        </WarningCallout>
+      </WikiSection>
+
       <WikiSection id="process-audit" title="Conformidade de processo" eyebrow="Contrato de auditoria etapa a etapa">
         <p>
           No node &quot;Chamar agente&quot; de um Workflow por Flag de canal, o campo <strong>Formato da análise</strong> aceita{" "}

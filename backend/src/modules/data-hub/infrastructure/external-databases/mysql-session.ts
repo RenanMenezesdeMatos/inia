@@ -9,12 +9,14 @@ import type { ExternalDatabaseSession } from "../../application/ports.js"
  * O tempo-limite de consulta muda entre os dois: `max_execution_time` (MySQL, ms) × `max_statement_time`
  * (MariaDB, s) — escolhido pelo servidor REAL encontrado, não pelo rótulo escolhido na tela.
  */
-type SslMode = "OFF" | "NO_VERIFY" | "VERIFY"
+export type SslMode = "OFF" | "NO_VERIFY" | "VERIFY"
 
-function sslOption(connection: ResolvedDatabaseConnection, mode: SslMode): mysql.ConnectionOptions["ssl"] | undefined {
+export function sslOption(connection: Pick<ResolvedDatabaseConnection, "caCertificate">, mode: SslMode): mysql.ConnectionOptions["ssl"] | undefined {
   if (mode === "OFF") return undefined
   if (mode === "NO_VERIFY") return { rejectUnauthorized: false }
-  return { rejectUnauthorized: true, ...(connection.caCertificate ? { ca: connection.caCertificate } : {}) }
+  // `verifyIdentity`: sem ele o mysql2 valida só a CADEIA — qualquer certificado de uma CA aceita passava por qualquer servidor
+  // (achado DATA-4 da auditoria de 17/10/2026).
+  return { rejectUnauthorized: true, verifyIdentity: true, ...(connection.caCertificate ? { ca: connection.caCertificate } : {}) }
 }
 
 async function connect(connection: ResolvedDatabaseConnection, mode: SslMode): Promise<mysql.Connection> {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { runOrchestratedReply } from "./run-orchestrated-reply.js"
+import { MAX_TOOL_CALLS_PER_ROUND, MAX_TOOL_CALLS_PER_TURN, runOrchestratedReply, TOOL_CALL_LIMIT_TEXT } from "./run-orchestrated-reply.js"
 import type { ResolvedOrchestrator } from "./resolve-orchestrator.js"
 
 const generateWithTools = vi.fn()
@@ -65,6 +65,19 @@ describe("runOrchestratedReply — ferramentas diretas do backend (liderança)",
     expect(reply.text).toBe("Os piores são Ana e Bia; o motivo Fatura pesa mais.")
     expect(reply.directResults?.map((result) => result.card)).toEqual([{ id: "c1" }, { id: "c2" }])
     expect(reply.calls).toHaveLength(2)
+  })
+
+  it("teto de chamadas: 30 pedidas numa rodada executam só o teto por rodada; o turno inteiro para no teto total", async () => {
+    const declaration = { name: "leadership_indicator_query", description: "Consulta", parameters: { type: "object" as const, properties: {} } }
+    const execute = vi.fn().mockResolvedValue({ text: "dados", card: null })
+    const burst = { kind: "functionCalls", calls: Array.from({ length: 30 }, (_, index) => ({ name: "leadership_indicator_query", args: { n: index } })) }
+    generateWithTools.mockReset().mockResolvedValueOnce(burst).mockResolvedValueOnce(burst).mockResolvedValueOnce(burst).mockResolvedValueOnce({ kind: "text", text: "Síntese final." })
+    const reply = await runOrchestratedReply(fakeDb, orchestrator(), [{ role: "user", text: "consulte tudo em paralelo" }], "", "leader-1", {}, {}, { directTools: { declarations: [declaration], handles: () => true, execute } })
+    expect(execute).toHaveBeenCalledTimes(MAX_TOOL_CALLS_PER_TURN)
+    // A 1ª rodada executou só o teto por rodada; as recusadas voltaram ao modelo com o aviso.
+    expect(execute.mock.calls.slice(0, MAX_TOOL_CALLS_PER_ROUND).map((call) => call[1])).toEqual(Array.from({ length: MAX_TOOL_CALLS_PER_ROUND }, (_, index) => ({ n: index })))
+    expect(JSON.stringify(generateWithTools.mock.calls[1]![0])).toContain(TOOL_CALL_LIMIT_TEXT)
+    expect(reply.text).toBe("Síntese final.")
   })
 
   it("rodadas: no limite, a síntese sem ferramentas fecha a resposta", async () => {

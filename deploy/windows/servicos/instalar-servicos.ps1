@@ -49,6 +49,9 @@
   .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe -ProcessoUnico
   (API e processamento num processo só, como antes)
 .EXAMPLE
+  .\instalar-servicos.ps1 -WinSW C:\Downloads\WinSW-x64.exe -ContaServico "NT AUTHORITY\LocalService"
+  (serviços sem os poderes do LocalSystem; a conta recebe leitura da pasta da INIA e escrita em logs e frontend\.next)
+.EXAMPLE
   .\instalar-servicos.ps1 -Remover
 #>
 [CmdletBinding()]
@@ -65,6 +68,9 @@ param(
   [ValidateRange(0, 200)][int]$PoolApi = 0,
   [ValidateRange(0, 200)][int]$PoolProcessamento = 0,
   [switch]$ProcessoUnico,
+  # Conta sem senha que roda os serviços: "NT AUTHORITY\LocalService" ou uma gMSA do domínio ("DOMINIO\svc-inia$").
+  # Vazio = LocalSystem (padrão do WinSW, como antes) - controla a máquina inteira; prefira uma conta própria.
+  [string]$ContaServico = "",
   [switch]$Remover
 )
 
@@ -144,6 +150,34 @@ if ($CertificadoRaiz) {
 }
 Ok "INIA compilada em $raiz"
 
+# Conta do serviço (auditoria de segurança 17/10/2026, INFRA-2): sem ela o WinSW usa LocalSystem.
+$contaDominio = ""
+$contaUsuario = ""
+if ($ContaServico) {
+  if ($ContaServico -notmatch "^([^\\]+)\\([^\\]+)$") { Falha "-ContaServico no formato DOMINIO\conta (ex.: NT AUTHORITY\LocalService ou EMPRESA\svc-inia$)." }
+  $contaDominio = $Matches[1]
+  $contaUsuario = $Matches[2]
+  # Só contas sem senha: a senha nunca vai para o XML do serviço em texto puro.
+  if ($contaDominio -ne "NT AUTHORITY" -and -not $contaUsuario.EndsWith('$')) { Falha "-ContaServico aceita só conta sem senha: NT AUTHORITY\LocalService ou uma gMSA (nome terminado em `$)." }
+  Ok "serviços rodam como $ContaServico"
+} else {
+  Write-Host "  AVISO  serviços rodando como LocalSystem (controla a máquina inteira). Prefira -ContaServico `"NT AUTHORITY\LocalService`" ou uma gMSA." -ForegroundColor Yellow
+}
+
+# Os .env guardam a chave da sessão, a chave de cifra dos segredos e a senha do banco: só Administradores, SYSTEM, quem
+# instala e a conta do serviço leem (SIDs fixos - funcionam no Windows em português).
+function Restringir-Arquivo([string]$arquivo) {
+  if (-not (Test-Path $arquivo)) { return }
+  $quem = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+  $concessoes = @("*S-1-5-32-544:(F)", "*S-1-5-18:(F)", "$($quem):(F)")
+  if ($ContaServico) { $concessoes += "$($ContaServico):(R)" }
+  & icacls.exe $arquivo /inheritance:r /grant:r @concessoes | Out-Null
+  if ($LASTEXITCODE -ne 0) { Falha "Não consegui restringir o acesso a $arquivo (icacls)." }
+  Ok "acesso a $arquivo restrito"
+}
+Restringir-Arquivo (Join-Path $raiz "backend\.env")
+Restringir-Arquivo (Join-Path $raiz "frontend\.env.local")
+
 # Porta/endereço da interface: os mesmos que o npm run env:init gravou no frontend\.env.local.
 $portaInterface = "3000"
 $hostInterface = ""
@@ -178,12 +212,26 @@ Passo "2/4 Gerando os arquivos dos serviços em $pastaServicos"
 foreach ($id in $servicos) { Remover-Servico $id }
 New-Item -ItemType Directory -Force -Path $pastaServicos | Out-Null
 New-Item -ItemType Directory -Force -Path $pastaLogs | Out-Null
+if ($ContaServico) {
+  # Conta própria: lê a pasta da INIA, grava os registros e o cache da interface (frontend\.next).
+  foreach ($par in @(@($raiz, "(OI)(CI)(RX)"), @($pastaLogs, "(OI)(CI)(M)"), @((Join-Path $raiz "frontend\.next"), "(OI)(CI)(M)"))) {
+    & icacls.exe $par[0] /grant "$($ContaServico):$($par[1])" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Falha "Não consegui dar à conta $ContaServico acesso a $($par[0]) (icacls)." }
+  }
+  Ok "permissões da conta $ContaServico nas pastas da INIA"
+}
+$contaXml = ""
+if ($ContaServico) {
+  $contaXml = "  <serviceaccount>`r`n    <domain>$(Xml $contaDominio)</domain>`r`n    <user>$(Xml $contaUsuario)</user>`r`n    <allowservicelogon>true</allowservicelogon>`r`n  </serviceaccount>`r`n"
+}
 
-$ambienteApi = ""
+# Serviço do servidor = sempre modo produção (segredos obrigatórios, dados de demonstração recusados), mesmo que alguém
+# troque o NODE_ENV do backend\.env: o dotenv não sobrescreve variável que o serviço já definiu.
+$ambienteApi = "  <env name=""NODE_ENV"" value=""production""/>`r`n"
 if ($ProxyInternet) {
   # A IA da INIA chama o Google pela internet (API e processamento); com proxy corporativo o Node 24 só o usa com
   # NODE_USE_ENV_PROXY=1.
-  $ambienteApi = @"
+  $ambienteApi += @"
   <env name="NODE_USE_ENV_PROXY" value="1"/>
   <env name="HTTPS_PROXY" value="$(Xml $ProxyInternet)"/>
   <env name="HTTP_PROXY" value="$(Xml $ProxyInternet)"/>
@@ -238,7 +286,7 @@ function Gravar-Servico([string]$id, [string]$nome, [string]$descricao, [string]
     <sizeThreshold>10240</sizeThreshold>
     <keepFiles>8</keepFiles>
   </log>
-$ambiente</service>
+$contaXml$ambiente</service>
 "@
   Copy-Item -Force $WinSW (Join-Path $pastaServicos "$id.exe")
   [IO.File]::WriteAllText((Join-Path $pastaServicos "$id.xml"), $xml, (New-Object Text.UTF8Encoding($false)))

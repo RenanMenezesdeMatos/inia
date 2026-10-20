@@ -8,7 +8,7 @@ import { normalizeScheduleType, type ScheduleType } from "../../../people/domain
 import { recordAudit } from "../records.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
 import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResult, type ApplyWarning, type DomainWriter, type LineageEntry, type Rejection, type ValidRecord, type WriteContext } from "./domain-writer.js"
-import { linkByAccountEmail, linkedWarnings, possibleDuplicateWarnings } from "./person-identity.js"
+import { credentialNeedsNewCustody, disableAccountsFromSource, linkByAccountEmail, linkedWarnings, possibleDuplicateWarnings } from "./person-identity.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -195,6 +195,8 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // Passo 0: identidade — matrícula nova com o e-mail da conta de uma pessoa cadastrada à mão (sem matrícula) é gravada nela,
     // e o upsert abaixo passa a ATUALIZAR essa pessoa em vez de criar outra (ver person-identity.ts).
     const linked = await linkByAccountEmail(context, client, batch)
+    // Quem estava ATIVO antes desta carga (para saber quem ela desativa — passo 1b).
+    const activeBefore = new Set((await client.query<{ id: string }>(`select id from people where organization_id = $1 and matricula = any($2::text[]) and active`, [org, batch.map((row) => row.matricula)])).rows.map((row) => row.id))
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
@@ -223,6 +225,14 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
        returning id, matricula, (xmax = 0) inserted`,
       [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode)],
     )
+    // Passo 1b: credencial. Desligada pela base = conta desabilitada (reativar não devolve a senha nem os tokens antigos — achado
+    // AUTH-7); pessoa ligada pelo e-mail que a base pôs em outro Grupo/nível de liderança = conta desabilitada até quem tem
+    // custódia do lugar novo liberar (AUTH-13).
+    const incoming = new Map(batch.map((row) => [row.matricula, row]))
+    const deactivatedNow = upsert.rows.filter((row) => !row.inserted && activeBefore.has(row.id) && incoming.get(row.matricula)?.active === false).map((row) => row.id)
+    await disableAccountsFromSource(context, client, deactivatedNow, "PERSON_DEACTIVATED_BY_SOURCE")
+    const needsCustody = linked.filter((entry) => !deactivatedNow.includes(entry.personId) && credentialNeedsNewCustody(entry.prior, { teamId: entry.row.teamId, role: entry.row.role })).map((entry) => entry.personId)
+    const linkAccessDisabled = new Set((await disableAccountsFromSource(context, client, needsCustody, "LINKED_BY_SOURCE_NEW_PLACEMENT")).filter((entry) => entry.disabled).map((entry) => entry.personId))
     // Passo 2: gestor direto (matrícula → id), só quando informado e diferente do atual.
     const withManager = batch.filter((row) => row.reportsTo)
     const managerUpdates = withManager.length
@@ -258,7 +268,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // é evidência "a partir de uma data": uma ausência explícita e limitada já registrada vence
     // (CONFLICT), e o conflito vai para a quarentena como AVISO rastreável — nunca em silêncio.
     const statusLineage: LineageEntry[] = []
-    const warnings: ApplyWarning[] = [...linkedWarnings(linked), ...duplicateWarnings]
+    const warnings: ApplyWarning[] = [...linkedWarnings(linked, linkAccessDisabled), ...duplicateWarnings]
     const withStatus = batch.filter((row) => row.employmentStatus)
     if (withStatus.length > 0) {
       const ids = await client.query<{ id: string; matricula: string }>(`select id, matricula from people where organization_id = $1 and matricula = any($2::text[])`, [org, withStatus.map((row) => row.matricula)])

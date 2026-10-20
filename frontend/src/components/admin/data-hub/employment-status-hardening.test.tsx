@@ -76,6 +76,7 @@ const SOURCE: SourceDetail = {
   feeds: [],
   secrets: [{ purpose: "token", createdAt: NOW, rotatedAt: null }],
   tokens: [],
+  transportWarning: null,
 }
 
 function overview(employmentStatus: EmploymentStatusFreshness): Overview {

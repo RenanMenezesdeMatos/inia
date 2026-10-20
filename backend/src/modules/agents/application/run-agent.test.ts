@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { composeStructuredInstructions, parseStructuredFeedback, parseStructuredIndicatorFeedback, STRUCTURED_OUTPUT_INSTRUCTIONS } from "./run-agent.js"
+import { composeStructuredInstructions, isVerbatimEvidence, parseStructuredFeedback, parseStructuredIndicatorFeedback, STRUCTURED_OUTPUT_INSTRUCTIONS } from "./run-agent.js"
 
 const TRANSCRIPT = "Operador: preciso confirmar o CPF do titular. Cliente: 123. Operador: vou registrar o protocolo da contestação."
 
@@ -205,5 +205,17 @@ describe("V1.7.4 — retry técnico homologado também na monitoria por Flag", (
   })
   it("FEEDBACK (sem avaliação de processo) não exige processAssessment", () => {
     expect(() => parseStructuredFeedback(JSON.stringify(BASE), TRANSCRIPT, "FEEDBACK")).not.toThrow()
+  })
+})
+
+describe("citação literal mínima (auditoria 17/10/2026, AI-07)", () => {
+  const transcript = "Operador: Bom dia, em que posso ajudar? Cliente: Quero mudar o endereço de cobrança, por favor."
+  it("trecho de 1 caractere, palavra solta, só aspas ou vazio não é evidência", () => {
+    for (const evidence of ["'", "\"\"", "o", "sim", "Cliente", "   "]) expect(isVerbatimEvidence(transcript, evidence), evidence).toBe(false)
+  })
+  it("trecho real com duas palavras ou mais continua valendo (com ou sem aspas)", () => {
+    expect(isVerbatimEvidence(transcript, "Cliente: Quero mudar o endereço")).toBe(true)
+    expect(isVerbatimEvidence(transcript, "\"em que posso ajudar?\"")).toBe(true)
+    expect(isVerbatimEvidence(transcript, "Quero mudar o endereço de entrega")).toBe(false)
   })
 })

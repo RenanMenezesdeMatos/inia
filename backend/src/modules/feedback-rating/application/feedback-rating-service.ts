@@ -3,13 +3,15 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { FeedbackSourceKind, FeedbackSourceRef } from "../../feedback-application/domain/feedback-application.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
-import { sameRating, type FeedbackDislikeReason, type FeedbackRatingInput, type FeedbackRatingValue, type FeedbackRatingView } from "../domain/feedback-rating.js"
+import { sameRating, type ContestationDecision, type FeedbackDislikeReason, type FeedbackRatingInput, type FeedbackRatingValue, type FeedbackRatingView } from "../domain/feedback-rating.js"
+import { notifyContestationReviewers, resolveContestationAlerts } from "./contestation-review-service.js"
 
 /** Sempre a pessoa da sessão: só o destinatário avalia o próprio feedback (de outra pessoa/organização = 404). */
 export type RatingScope = { organizationId: string; personId: string }
 
 type Queryable = Pick<Database, "query">
 type RatingRow = {
+  id: string
   source_kind: FeedbackSourceKind
   feedback_id: string | null
   interaction_delivery_id: string | null
@@ -17,9 +19,12 @@ type RatingRow = {
   reason: FeedbackDislikeReason | null
   comment: string | null
   created_at: Date
+  review_decision?: ContestationDecision | null
+  review_response?: string | null
+  review_created_at?: Date | null
 }
 
-const COLUMNS = "source_kind, feedback_id, interaction_delivery_id, value, reason, comment, created_at"
+const COLUMNS = "id, source_kind, feedback_id, interaction_delivery_id, value, reason, comment, created_at"
 const sourceColumn = (kind: FeedbackSourceKind) => (kind === "PUBLISHED_FEEDBACK" ? "feedback_id" : "interaction_delivery_id")
 const notFound = () => new DomainError("Feedback não encontrado.", "FEEDBACK_RATING_SOURCE_NOT_FOUND", 404)
 
@@ -31,6 +36,7 @@ function toView(row: RatingRow): FeedbackRatingView | null {
     reason: row.reason,
     comment: row.comment,
     ratedAt: new Date(row.created_at).toISOString(),
+    review: row.review_decision && row.review_response && row.review_created_at ? { decision: row.review_decision, response: row.review_response, respondedAt: new Date(row.review_created_at).toISOString() } : null,
   }
 }
 
@@ -74,10 +80,15 @@ async function inTransaction<T>(db: Database, work: (client: Queryable) => Promi
   }
 }
 
-/** Avaliações VIGENTES da pessoa (retiradas não aparecem). Lista pequena: uma por feedback avaliado. */
+/** Avaliações VIGENTES da pessoa (retiradas não aparecem), com a resposta da revisão quando houver. Uma por feedback avaliado. */
 export async function listMyRatings(db: Queryable, scope: RatingScope): Promise<FeedbackRatingView[]> {
   const result = await db.query<RatingRow>(
-    `select ${COLUMNS} from feedback_ratings where organization_id = $1 and person_id = $2 and superseded_at is null and value <> 'NONE' order by created_at desc`,
+    `select r.id, r.source_kind, r.feedback_id, r.interaction_delivery_id, r.value, r.reason, r.comment, r.created_at,
+            rv.decision review_decision, rv.response review_response, rv.created_at review_created_at
+       from feedback_ratings r
+       left join feedback_rating_reviews rv on rv.rating_id = r.id
+      where r.organization_id = $1 and r.person_id = $2 and r.superseded_at is null and r.value <> 'NONE'
+      order by r.created_at desc`,
     [scope.organizationId, scope.personId],
   )
   return result.rows.map(toView).filter((view): view is FeedbackRatingView => view !== null)
@@ -107,6 +118,8 @@ export async function rateFeedback(db: Database, scope: RatingScope, input: Feed
         input.source.id,
         now,
       ])
+      // Contestação retirada ou trocada pelo colaborador: o aviso aos revisores deixa de pedir resposta.
+      if (current.value === "DOWN") await resolveContestationAlerts(client, scope.organizationId, current.id, now)
     }
     const inserted = await client.query<RatingRow>(
       `insert into feedback_ratings (organization_id, person_id, source_kind, ${column}, value, reason, comment, created_at)
@@ -122,6 +135,9 @@ export async function rateFeedback(db: Database, scope: RatingScope, input: Feed
         now,
       ],
     )
-    return toView(inserted.rows[0]!)
+    const saved = inserted.rows[0]!
+    // "Não foi útil" = contestação: quem revisa no escopo do colaborador é avisado no sino.
+    if (input.value === "DOWN") await notifyContestationReviewers(client, { organizationId: scope.organizationId, ratingId: saved.id, collaboratorId: scope.personId, reason: input.reason, comment: input.comment, now })
+    return toView(saved)
   })
 }

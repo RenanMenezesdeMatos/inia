@@ -26,6 +26,11 @@ export const PERMISSIONS = {
   "calendar.manage": "Ver e ajustar o Calendário da equipe (exceções e classificações) de colaboradores do escopo",
   "feedback_quality_review.view": "Ver a fila e o detalhe do QA de feedback",
   "feedback_quality_review.decide": "Avaliar feedbacks no QA (aprovar, editar, rejeitar)",
+  // Contestação = o colaborador marcou um feedback da INIA como "não foi útil" (impreciso, processo errado…) com a descrição.
+  // Responder nunca altera o feedback: registra a conclusão e o texto que o colaborador lê (LGPD art. 20, revisão humana).
+  // Pedido do titular (LGPD art. 18): exportar TUDO o que a INIA guarda ligado a uma pessoa — só na organização inteira.
+  "privacy.subject_data.export": "Exportar todos os dados ligados a uma pessoa, para responder a um pedido do titular (LGPD)",
+  "feedback_contestations.review": "Ver e responder as contestações dos colaboradores sobre feedbacks gerados pela INIA, no escopo",
   "assistant_conversations.view": "Ler as conversas dos colaboradores com a INIA (somente leitura) no escopo",
   // Experiência visual da INIA (cenário atrás do avatar, sazonal ou não) — só do Administrador geral, na organização inteira.
   "inia_experience.manage": "Administrar o cenário da INIA (fundo atrás do avatar, inclusive os sazonais)",

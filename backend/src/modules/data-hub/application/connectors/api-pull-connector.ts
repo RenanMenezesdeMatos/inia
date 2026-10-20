@@ -8,6 +8,9 @@ import type { HttpResponse } from "../ports.js"
 import type { DataFeedRow, DataSourceRow } from "../records.js"
 import type { FetchedBatch } from "./file-connector.js"
 
+/** Soma das respostas de uma carga da API Pull (as páginas ficam todas na memória até o mapeamento) — o mesmo teto do arquivo SFTP. */
+export const MAX_API_PULL_RUN_BYTES = 200 * 1024 * 1024
+
 /**
  * Conector API Pull: a INIA consulta a API do cliente. Autenticação (Bearer, API Key, Basic,
  * OAuth2 client credentials), headers, query params, timeout, paginação (página/offset/cursor),
@@ -95,7 +98,8 @@ export async function testApiConnection(ctx: DataHubContext, source: DataSourceR
 }
 
 /** Busca todos os registros (paginando) ou uma amostra (`limit`). Checkpoint só é DEVOLVIDO — quem avança é o Run, após aplicar. */
-export async function fetchApiRecords(ctx: DataHubContext, source: DataSourceRow, feed: DataFeedRow, options: { checkpoint: Record<string, unknown> | null; limit?: number }): Promise<FetchedBatch> {
+export async function fetchApiRecords(ctx: DataHubContext, source: DataSourceRow, feed: DataFeedRow, options: { checkpoint: Record<string, unknown> | null; limit?: number; maxRunBytes?: number }): Promise<FetchedBatch> {
+  const maxRunBytes = options.maxRunBytes ?? MAX_API_PULL_RUN_BYTES
   const api = apiConfigOf(source)
   const connector = feed.connectorConfig
   if (connector.connector !== "API_PULL") throw new DataRunError("DATA_INTERNAL_ERROR", "O feed não é API Pull.")
@@ -130,6 +134,8 @@ export async function fetchApiRecords(ctx: DataHubContext, source: DataSourceRow
     const response = await ctx.http.send({ url, method: config.method, headers, timeoutMs: api.timeoutMs })
     assertOk(response)
     bytes += Buffer.byteLength(response.body)
+    // Teto da CARGA inteira, não só da página (achado DATA-10): uma paginação que nunca esvazia acumulava gigabytes na memória.
+    if (bytes > maxRunBytes) throw new DataRunError("DATA_SOURCE_VOLUME_LIMIT", `A carga passou de ${Math.round(maxRunBytes / 1024 / 1024)} MB somando as páginas (${pages + 1} página(s)). Divida a carga (filtro de período no endpoint ou marca d'água) ou confira se a paginação termina.`)
     const payload = parseJson(response.body)
     const pageRecords = extractRecords(payload, config.extractPath)
     pages += 1

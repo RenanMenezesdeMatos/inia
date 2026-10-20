@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
+import { readSessionCookie } from "@/lib/auth/session-cookie"
 import { passwordChangePendingIn } from "@/lib/auth/session-hint"
 import { buildContentSecurityPolicy, createCspNonce, CSP_NONCE_HEADER, originOf } from "@/lib/security/content-security-policy"
 
-const SESSION_COOKIE_NAME = "inia_session"
 const CREATE_PASSWORD_ROUTE = "/auth/create-password"
 // Áreas que exigem sessão. As demais páginas (login, wiki, raiz) passam pelo proxy só para receber a CSP.
 const AUTHENTICATED_PREFIXES = ["/admin", "/operator", "/supervisor", "/diagnostics", "/perfil", "/qa-lab", "/materiais"]
@@ -18,7 +18,7 @@ function requiresSession(pathname: string): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   if (requiresSession(pathname)) {
-    const token = request.cookies.get(SESSION_COOKIE_NAME)?.value
+    const token = readSessionCookie(request.cookies)?.value
     if (!token) return NextResponse.redirect(new URL("/auth/login", request.url))
     // Primeiro acesso: enquanto a pessoa não criar a própria senha, nenhuma página da plataforma abre.
     if (passwordChangePendingIn(token)) return NextResponse.redirect(new URL(CREATE_PASSWORD_ROUTE, request.url))

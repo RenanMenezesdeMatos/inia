@@ -1,3 +1,4 @@
+import { z } from "zod"
 import { orchestratorForTeam, type InteractiveOrchestratorScope } from "../../assistant/application/resolve-orchestrator.js"
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
 import type { ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
@@ -26,8 +27,34 @@ export type ProcessScope = { groups: StructureGroup[]; groupsOfStructure: (name:
 
 export type ProcessConsultation = { orchestrator: InteractiveOrchestratorScope; groupNames: string[]; question: string }
 
-/** Resposta do Orquestrador do Grupo (`null` = indisponível agora, ex.: desativado entre a montagem e a chamada). */
-export type ProcessConsultationAnswer = { text: string; trace: Record<string, unknown> } | null
+/**
+ * Resposta do Orquestrador do Grupo (`null` = indisponível agora, ex.: desativado entre a montagem e a chamada). `clarification` = quem
+ * respondeu foi o ESCLARECIMENTO pelas bases do Grupo (pergunta com opções, resposta com fontes ou o que falta): o texto vai para a
+ * tela exatamente como está, depois da resposta da liderança — o modelo da liderança não o reescreve.
+ */
+export type ProcessConsultationAnswer = { text: string; trace: Record<string, unknown>; clarification?: boolean } | null
+
+/** Nota ao modelo da liderança quando a consulta foi respondida pelo esclarecimento (o texto dele é anexado à resposta pelo sistema). */
+export const PROCESS_CLARIFICATION_NOTE =
+  "as bases desse Grupo responderam pelo esclarecimento. O texto abaixo aparece para quem pergunta EXATAMENTE como está, logo depois da sua resposta, com o formulário de escolha ou as fontes numeradas: não o repita, não o resuma, não liste as opções e não responda o procedimento por conta própria. Escreva só o que a resposta precisa além dele (o que as outras ferramentas trouxeram); sem mais nada, uma frase curta de introdução basta"
+
+/**
+ * Onde um esclarecimento pelas bases foi feito pela consulta de processo — gravado junto do estado (`tool_calls`, entrada
+ * `knowledge_clarification`): o Orquestrador do Grupo cujas bases foram consultadas. A escolha no formulário continua nele, e só
+ * enquanto ele estiver ao alcance de quem lidera (`reachableProcessOrchestrators`).
+ */
+export const processClarificationScopeSchema = z.object({
+  kind: z.literal("LEADERSHIP_PROCESS"),
+  orchestratorId: z.string().min(1).max(64),
+  orchestratorName: z.string().max(200),
+  groupNames: z.array(z.string().max(200)).max(50),
+})
+export type ProcessClarificationScope = z.infer<typeof processClarificationScopeSchema>
+
+export function parseProcessClarificationScope(value: unknown): ProcessClarificationScope | null {
+  const parsed = processClarificationScopeSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
 
 export type ProcessToolset = {
   declarations: FunctionDeclaration[]
@@ -53,6 +80,9 @@ export function processScopeOf(scope: ViewerScope, own: ResolvedStructure | null
     },
   }
 }
+
+/** Consultas de processo por resposta (cada uma é um Orquestrador inteiro). */
+export const MAX_PROCESS_CONSULTATIONS_PER_TURN = 2
 
 /**
  * A ferramenta, ou `null` quando nenhum Grupo da estrutura tem Orquestrador do chat (nem há um de "Todos os grupos"): sem quem
@@ -88,9 +118,14 @@ export function buildProcessConsultationToolset(input: { scope: ProcessScope; or
     },
   }
 
+  // Cada consulta roda um Orquestrador inteiro (roteamento + especialistas + síntese): no máximo
+  // MAX_PROCESS_CONSULTATIONS_PER_TURN por resposta (o toolset nasce a cada turno — achado AI-01 da auditoria de 17/10/2026).
+  let consultations = 0
   const execute = async (_name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> => {
     const question = typeof args.pergunta === "string" ? args.pergunta.trim() : ""
     if (!question) return issue("INVALID", "Informe a dúvida de processo em `pergunta`.", [])
+    if (consultations >= MAX_PROCESS_CONSULTATIONS_PER_TURN) return issue("INVALID", `Limite de ${MAX_PROCESS_CONSULTATIONS_PER_TURN} consultas de processo por pergunta atingido; responda com o que já foi consultado e ofereça consultar o restante numa próxima pergunta.`, [])
+    consultations += 1
     // Grupos da dúvida: o citado, os de uma estrutura citada, ou todos os da estrutura.
     let chosen = groups
     if (typeof args.grupo === "string" && args.grupo.trim()) {
@@ -126,14 +161,23 @@ export function buildProcessConsultationToolset(input: { scope: ProcessScope; or
     }
     if (!answer) return issue("NOT_FOUND", `O Orquestrador "${orchestrator.name}" não está disponível agora.`, [])
     const where = groupNames.length > 0 ? `Grupo ${groupNames.join(", ")}` : "todos os Grupos"
+    const note = answer.clarification ? PROCESS_CLARIFICATION_NOTE : "conhecimento das bases desse Grupo. Use como fonte do procedimento; não é dado da equipe"
     return {
-      text: [`[Consulta de processo — Orquestrador "${orchestrator.name}" (${where}): conhecimento das bases desse Grupo. Use como fonte do procedimento; não é dado da equipe]`, answer.text].join("\n"),
+      text: [`[Consulta de processo — Orquestrador "${orchestrator.name}" (${where}): ${note}]`, answer.text].join("\n"),
       card: null,
       trace: { groups: groupNames, orchestratorId: orchestrator.id, orchestratorName: orchestrator.name, ...answer.trace },
     }
   }
 
   return { declarations: [declaration], handles: (name) => name === PROCESS_TOOL, execute }
+}
+
+/**
+ * Orquestradores que a consulta de processo de quem lidera alcança — a mesma regra da ferramenta: o de cada Grupo da estrutura (ou,
+ * sem Orquestrador próprio, o de "Todos os grupos"); estrutura sem Grupos = o de "Todos os grupos".
+ */
+export function reachableProcessOrchestrators(scope: ProcessScope, orchestrators: InteractiveOrchestratorScope[]): InteractiveOrchestratorScope[] {
+  return distinctOrchestrators(scope.groups.length > 0 ? scope.groups.map((group) => orchestratorForTeam(orchestrators, group.teamId)) : [orchestratorForTeam(orchestrators, null)])
 }
 
 /** Duas listas de ferramentas diretas como uma só (a primeira que conhece o nome executa). */

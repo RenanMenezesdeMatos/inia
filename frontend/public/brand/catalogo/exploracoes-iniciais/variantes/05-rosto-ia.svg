@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
+<title>INIA — rosto abstrato e inteligência artificial</title>
+<rect width="64" height="64" rx="16" fill="#660099"/>
+<path d="M13 42C6 40 6 31 10 27C7 21 12 14 18 14C20 7 28 7 32 11C37 7 45 9 47 15C54 15 58 23 54 28C59 33 57 41 51 43L44 48H20Z" fill="#EB3C7D"/>
+<path d="M21 29C21 23 26 18 32 18C38 18 43 23 43 29V35C43 43 38 48 32 48C26 48 21 43 21 35Z" fill="#FFFFFF"/>
+<path d="M21 29V26C21 20 26 17 32 17C38 17 43 21 43 27V29C38 28 34 24 33 21C31 26 27 28 21 29Z" fill="#EB3C7D"/>
+<path d="M25 55C26 51 29 49 32 49C35 49 38 51 39 55" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+<path d="M43 37H50V26" fill="none" stroke="#660099" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="50" cy="24" r="3" fill="#FFFFFF"/>
+<circle cx="43" cy="37" r="3" fill="#660099"/>
+</svg>

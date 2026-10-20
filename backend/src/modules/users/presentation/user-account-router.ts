@@ -4,10 +4,9 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { env } from "../../../config/env.js"
-import { temporaryPasswordExpiry } from "../../auth/domain/temporary-password.js"
+import { generateTemporaryPassword, temporaryPasswordExpiry } from "../../auth/domain/temporary-password.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { coversOrganization, getManageableScopes } from "../../auth/application/manageable-scopes.js"
-import { PASSWORD_POLICY_MESSAGES, passwordPolicyViolations } from "../../auth/domain/password-policy.js"
 import { wouldRemoveLastTenantAdmin } from "../../access/application/access-service.js"
 import { assertAccountRelinkAllowed, assertCredentialChangeAllowed, type AccountAccessDeps } from "../../access/application/account-access-service.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
@@ -63,8 +62,11 @@ const createUserSchema = z.object({
   /** Matrícula exatamente como a base do cliente vai mandar: quando a carga chegar, ela ATUALIZA esta pessoa (nunca cria outra). */
   matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
   email: z.string().trim().email(),
-  // Provisória (troca obrigatória no primeiro login) — mas dentro da MESMA política de senha da plataforma (≤ 72 bytes).
-  password: z.string().min(1).max(256),
+  /**
+   * Ignorada: a senha provisória é GERADA pelo servidor e mostrada uma vez (achado AUTH-6 da auditoria de 17/10/2026 — escolhida
+   * por quem cadastra, ela era previsível e repetida). Aceita só para clientes antigos não quebrarem.
+   */
+  password: z.string().max(256).optional(),
 })
 
 // Campo que um feed da Central controla para a pessoa é recusado (422 PERSON_FIELD_MANAGED_BY_SOURCE) — ver
@@ -316,10 +318,7 @@ export function createUserAccountRouter(db: Database) {
         )
       }
     }
-    const violations = passwordPolicyViolations(input.password, { login: input.email })
-    if (violations.length > 0) {
-      throw new DomainError("A senha provisória não atende à política de segurança.", "PASSWORD_POLICY_VIOLATION", 422, { violations: violations.map((code) => ({ code, message: PASSWORD_POLICY_MESSAGES[code] })) })
-    }
+    const temporaryPassword = generateTemporaryPassword()
     const client = await db.connect()
     try {
       await client.query("begin")
@@ -328,14 +327,15 @@ export function createUserAccountRouter(db: Database) {
         [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null],
       )
       const personId = person.rows[0]!.id
-      const passwordHash = await hashPassword(input.password)
-      // Senha definida por quem cadastra é PROVISÓRIA: no primeiro login a pessoa é obrigada a criar a própria (mesmo fluxo da
-      // liberação de acesso), e ela vence como a senha temporária gerada pelo sistema.
+      const passwordHash = await hashPassword(temporaryPassword)
+      // Senha PROVISÓRIA gerada aqui (mesma da liberação de acesso): no primeiro login a pessoa é obrigada a criar a própria, e ela
+      // vence como qualquer senha temporária.
       const issuedAt = new Date()
+      const expiresAt = temporaryPasswordExpiry(issuedAt, env.TEMPORARY_PASSWORD_TTL_HOURS)
       const account = await client.query<{ id: string }>(
         `insert into user_accounts(organization_id, person_id, email, password_hash, password_change_required, temporary_password_issued_at, temporary_password_expires_at)
          values ($1,$2,$3,$4,true,$5,$6) returning id`,
-        [organizationId, personId, input.email.trim().toLowerCase(), passwordHash, issuedAt, temporaryPasswordExpiry(issuedAt, env.TEMPORARY_PASSWORD_TTL_HOURS)],
+        [organizationId, personId, input.email.trim().toLowerCase(), passwordHash, issuedAt, expiresAt],
       )
       // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
       await client.query(
@@ -343,7 +343,9 @@ export function createUserAccountRouter(db: Database) {
         [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
       )
       await client.query("commit")
-      response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email: input.email } })
+      // A senha aparece só nesta resposta (a API nunca a guarda nem a mostra de novo; respostas da API não ficam em cache).
+      const email = input.email.trim().toLowerCase()
+      response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email, issued: { personId, accountId: account.rows[0]!.id, name: input.name, email, temporaryPassword, expiresAt: expiresAt.toISOString() } } })
     } catch (error) {
       await client.query("rollback")
       if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
@@ -409,6 +411,9 @@ export function createUserAccountRouter(db: Database) {
            name = coalesce($1, name),
            role = coalesce($2, role),
            team_id = case when $3::boolean then $4 else team_id end,
+           -- Mudou de Grupo: o Subgrupo do Grupo antigo sai junto — senão a pessoa seguia no escopo de quem administra o Grupo
+           -- antigo pelo Subgrupo (achado AUTH-4 da auditoria de 17/10/2026).
+           subteam_id = case when $3::boolean and $4::uuid is distinct from team_id then null else subteam_id end,
            active = coalesce($5, active),
            operational_capital_code = case when $8::boolean then $9 else operational_capital_code end
          where id = $6 and organization_id = $7

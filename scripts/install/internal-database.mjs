@@ -97,6 +97,9 @@ export async function checkInternalDatabase(pg, connectionString, { timeoutMs = 
     info.push(`PostgreSQL ${server.version} · banco "${server.database}" · usuário "${server.user}"${server.superuser ? " (superusuário)" : ""}`)
     if (server.num < MINIMUM_POSTGRES_VERSION) problems.push(`a INIA precisa do PostgreSQL 15 ou mais novo (este é o ${server.version}).`)
     if (server.encoding !== "UTF8") problems.push(`o banco está em ${server.encoding}; a INIA precisa de UTF8. Peça para recriá-lo vazio: create database ${server.database} owner ${server.user} encoding 'UTF8' template template0;`)
+    // Superusuário do PostgreSQL controla o servidor do banco inteiro (outros bancos, arquivos, programas): uma falha na
+    // aplicação viraria controle do servidor. A INIA precisa só de ser dona do próprio banco (docs/security/configuracao-segura.md).
+    if (server.superuser) warnings.push(`o usuário "${server.user}" é SUPERUSUÁRIO do PostgreSQL. Em produção use um usuário sem superusuário, dono só do banco da INIA (create role inia_app login password '…'; create database ${server.database} owner inia_app;) — as extensões podem ser criadas antes por um administrador do banco.`)
     if (server.ssl) info.push("conexão criptografada (TLS)")
     else warnings.push("conexão SEM criptografia — aceitável só em rede interna confiável; para ligar, use --ssl encrypted.")
     if (!server.schema_create) problems.push(`o usuário "${server.user}" não pode criar tabelas no schema public. O jeito mais simples: o usuário ser o DONO do banco (create database ... owner ${server.user}).`)

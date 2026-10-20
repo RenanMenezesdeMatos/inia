@@ -36,6 +36,20 @@ import { HIERARCHY_ROLES } from "../../performance-analytics/domain/hierarchy-le
 export const MINIMUM_SENSITIVE_AGGREGATE_POPULATION = 5
 
 export const SENSITIVE_LEAVE_STATUSES = ["INSS", "MATERNIDADE", "PATERNIDADE"] as const satisfies readonly EmploymentStatus[]
+
+/**
+ * Os tipos sensíveis aparecem separados só quando a contagem não identifica ninguém (achado AI-04 da auditoria de 17/10/2026):
+ * recorte com ao menos `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` pessoas E, entre os afastados sensíveis, ou nenhum, ou ao
+ * menos dois tipos com 2+ pessoas cada. Com um tipo só (ou um caso isolado), a lista nominal "Afastamento (motivo protegido)"
+ * do mesmo recorte entregaria o motivo de cada pessoa.
+ */
+export function sensitiveBreakdownAllowed(population: number, statuses: readonly (string | null)[]): boolean {
+  if (population < MINIMUM_SENSITIVE_AGGREGATE_POPULATION) return false
+  const byType = new Map<string, number>()
+  for (const status of statuses) if (status !== null && (SENSITIVE_LEAVE_STATUSES as readonly string[]).includes(status)) byType.set(status, (byType.get(status) ?? 0) + 1)
+  if (byType.size === 0) return true
+  return byType.size >= 2 && [...byType.values()].every((count) => count >= 2)
+}
 export const DETAILED_STATUS_BUCKETS = ["EM_PRODUCAO", "FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE"] as const satisfies readonly EmploymentStatus[]
 
 export type StructureStatusBucket = (typeof DETAILED_STATUS_BUCKETS)[number] | "SENSITIVE_LEAVE" | "OTHER" | "UNCONFIRMED"
@@ -121,7 +135,7 @@ export function isUnconfirmedStatus(member: Pick<StructureMemberRow, "confirmed"
 export function computeManagementMetrics(input: ManagementMetricsInput): ManagementMetrics {
   const { root, members, statusFreshness, today } = input
   const population = members.length
-  const suppressed = population < MINIMUM_SENSITIVE_AGGREGATE_POPULATION
+  const suppressed = !sensitiveBreakdownAllowed(population, members.filter((member) => !isUnconfirmedStatus(member, statusFreshness, today)).map((member) => member.status))
 
   // Distribuição de situação — cada pessoa cai em exatamente UM bucket.
   const counts = new Map<StructureStatusBucket, number>()

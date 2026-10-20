@@ -4,7 +4,7 @@ import { resolveCalendarWindow, resolvePreviousCalendarWindow, type CalendarUnit
 import { runAgent } from "../../agents/application/run-agent.js"
 import { findPrecedingCondition, type ActionConfig, type FlowGraph } from "../domain/graph-schema.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
-import { loadLatestTranscript } from "./transcript.js"
+import { loadLatestTranscriptForModel } from "./transcript.js"
 import { prepareIndicatorDiagnosis } from "../../indicator-diagnosis/application/prepare-diagnosis.js"
 import { executeEscalation } from "./escalate-executor.js"
 import { resolveContextValue } from "./execution-context.js"
@@ -221,7 +221,7 @@ async function callAgentForSampledInteraction(
   const interaction = interactionRow.rows[0]
   if (!interaction) throw new Error("Interação amostrada não encontrada.")
 
-  const transcript = await loadLatestTranscript(context.db, interactionId)
+  const transcript = await loadLatestTranscriptForModel(context.db, interactionId)
 
   return runAgent(context.db, {
     organizationId: context.organizationId,

@@ -31,7 +31,7 @@ export function useRateFeedbackMutation() {
       await queryClient.cancelQueries({ queryKey: feedbackRatingsKey })
       const previous = queryClient.getQueryData<FeedbackRating[]>(feedbackRatingsKey)
       if (input.value !== "DOWN") {
-        const optimistic: FeedbackRating | null = input.value === "UP" ? { source: input.source, value: "UP", reason: null, comment: null, ratedAt: new Date().toISOString() } : null
+        const optimistic: FeedbackRating | null = input.value === "UP" ? { source: input.source, value: "UP", reason: null, comment: null, ratedAt: new Date().toISOString(), review: null } : null
         queryClient.setQueryData<FeedbackRating[]>(feedbackRatingsKey, (list) => replaceRating(list, input, optimistic))
       }
       return { previous }

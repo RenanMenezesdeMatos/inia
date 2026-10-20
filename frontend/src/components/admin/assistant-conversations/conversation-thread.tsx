@@ -5,6 +5,8 @@ import { ArrowDown, ArrowLeft, Bot, Lock, Mic } from "lucide-react"
 
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
 import { LeadershipCards } from "@/components/leadership/leadership-cards"
+import { ClarificationAudit } from "@/components/knowledge-clarification/clarification-audit"
+import { parseClarification } from "@/schemas/knowledge-clarification/clarification.schema"
 import { RichContent } from "@/components/rich-content/rich-content"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -167,6 +169,7 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
               const assistant = message.role === "assistant"
               const separator = index === 0 || dayKey(messages[index - 1]!.occurredAt) !== dayKey(message.occurredAt)
               const originLabel = message.origin ? MESSAGE_ORIGIN_LABELS[message.origin] : undefined
+              const clarification = assistant ? parseClarification(message.clarification) : null
               return (
                 <div key={message.id} className="space-y-5">
                   {separator ? <div className="flex justify-center" role="separator" aria-label={dateSeparatorLabel(message.occurredAt)}><span className="rounded-full bg-background px-3 py-0.5 text-[11px] font-medium text-muted-foreground shadow-xs">{dateSeparatorLabel(message.occurredAt)}</span></div> : null}
@@ -178,6 +181,8 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
                       {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
                       {/* Cartões de dados que a pessoa viu (liderança): recolhidos e só de leitura — auditoria do que a resposta afirmou. */}
                       {assistant ? <LeadershipCards collapsible readOnly cards={parseLeadershipCards(message.analytics)} /> : null}
+                      {/* Esclarecimento pelas bases: trilha completa (opções com a fonte de cada uma, fontes numeradas como no texto). */}
+                      {clarification ? <ClarificationAudit view={clarification} /> : null}
                       <MessageFooter className="gap-1 px-1">
                         <time dateTime={message.occurredAt}>{messageTime(message.occurredAt)}</time>
                         {message.channel === "voice" ? <span className="inline-flex items-center gap-0.5" aria-label="Enviada por voz"><Mic className="size-3" aria-hidden />voz</span> : null}

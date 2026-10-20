@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { PlaybackTurnEvent, SpeechPlayback, SpeechPlaybackListener } from "@/lib/avatar/audio/types"
 import type { ScheduledAudioChunk, SpeechLipsyncEngine, TranscriptFragment } from "@/lib/avatar/lipsync/types"
-import { GeminiRealtimeTransport, type RealtimeTransportEvents, type WebSocketLike } from "./gemini-realtime-transport"
+import { GeminiRealtimeTransport, TOOL_FAILURE_RESULT, TOOL_FAILURE_SPEECH, type RealtimeTransportEvents, type WebSocketLike } from "./gemini-realtime-transport"
 import type { MicCaptureHandlers } from "./mic-capture"
 import { FakeLiveSocket as FakeSocket } from "./testing/fake-live-socket"
 
@@ -283,13 +283,16 @@ describe("GeminiRealtimeTransport — resposta", () => {
       await transport.startTurn()
       transport.endTurn()
       await replyArrives(socket, "Vou consultar.")
+      const choice = { clarificationId: "11111111-1111-4111-8111-111111111111", stepId: "step_1_aaaaaaaa", optionIds: [], freeText: "PJ x PJ", noneMatched: true, revise: false }
+      vi.mocked(events.getToolCallContext!).mockReturnValueOnce({ conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-abc", utterance: "qual o TMA?", clarification: choice })
       socket.receive({ toolCall: { functionCalls: [{ id: "c1", name: "consultar", args: { query: "TMA" } }] } })
       await tick()
       playback.drain()
       expect(states.at(-1)).toBe("thinking")
 
-      // A tool-call leva a conversa persistida e o turno (a sessão de voz não é a conversa).
-      expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)).toMatchObject({ toolName: "consultar", query: "TMA", conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-abc", callId: "c1" })
+      // A tool-call leva a conversa persistida e o turno (a sessão de voz não é a conversa), as palavras da PESSOA (o esclarecimento
+      // parte delas, nunca da `query` do modelo) e a escolha feita no formulário neste turno.
+      expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)).toMatchObject({ toolName: "consultar", query: "TMA", conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-abc", callId: "c1", utterance: "qual o TMA?", clarification: choice })
       answer({ ok: true, json: async () => ({ data: { text: "TMA 320 s", modelText: "TMA 320 s", conversationId: "33333333-3333-4333-8333-333333333333", created: false, closed: false, activeConversationId: null } }) })
       await tick()
       await tick()
@@ -302,6 +305,48 @@ describe("GeminiRealtimeTransport — resposta", () => {
       expect(states.at(-1)).toBe("speaking")
       playback.drain()
       expect(states.at(-1)).toBe("idle")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("resposta de um esclarecimento pelas bases: o estado validado vai para a tela junto do texto; o modelo recebe a instrução de fala", async () => {
+    const clarification = {
+      version: "KNOWLEDGE_CLARIFICATION_V1", id: "11111111-1111-4111-8111-111111111111", originalQuestion: "Pergunta de teste?", status: "OPEN",
+      steps: [{ id: "step_1_aaaaaaaa", dimension: "Dimensão", question: "Qual cenário?", selectionMode: "SINGLE", options: ["A", "B"].map((label, index) => ({ id: `opt_${String(index).padStart(10, "0")}`, label, description: null, group: null, evidence: [{ documentId: "kb-1", documentTitle: "Base de teste", versionId: "kb-1-v1", heading: "1. Seção", chunkIndex: 0, available: true }] })), answer: null }],
+      questionFacts: [], coverage: { consideredDocuments: 1, matchedDocuments: 1, presentedDocuments: 1, omittedDocuments: 0, complete: true }, sources: [], conflicts: [], notice: null, updatedAt: "2026-10-20T12:00:00.000Z", scenario: [],
+    }
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { text: "Qual cenário?\n\nOpções encontradas nas bases consultadas: A · B.", modelText: "Qual cenário? [Instrução para a resposta falada: …]", clarification, conversationId: "33333333-3333-4333-8333-333333333333", created: false, closed: false, activeConversationId: null } }) }))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { transport, socket } = await connectedTransport()
+      await transport.startTurn()
+      transport.endTurn()
+      socket.receive({ toolCall: { functionCalls: [{ id: "c1", name: "self_ask", args: { query: "Pergunta de teste?" } }] } })
+      await tick()
+      await tick()
+      await tick()
+      expect(socket.sent.at(-1)).toEqual({ toolResponse: { functionResponses: [{ id: "c1", name: "self_ask", response: { result: "Qual cenário? [Instrução para a resposta falada: …]" } }] } })
+      expect(events.onSpecialistResult).toHaveBeenCalledWith("Qual cenário?\n\nOpções encontradas nas bases consultadas: A · B.", [], expect.objectContaining({ conversationId: "33333333-3333-4333-8333-333333333333" }), undefined, { clarification: expect.objectContaining({ id: clarification.id, status: "OPEN" }) })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("consulta que falha (backend fora ou erro): o modelo recebe a frase EXATA a falar — nunca uma orientação improvisada", async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce({ ok: false, json: async () => ({ error: { code: "INTERNAL" } }) })
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { transport, socket } = await connectedTransport()
+      await transport.startTurn()
+      transport.endTurn()
+      socket.receive({ toolCall: { functionCalls: [{ id: "c1", name: "self_ask", args: { query: "Pergunta de teste?" } }, { id: "c2", name: "self_ask", args: { query: "Outra pergunta?" } }] } })
+      await tick()
+      await tick()
+      await tick()
+      expect(socket.sent.at(-1)).toEqual({ toolResponse: { functionResponses: [{ id: "c1", name: "self_ask", response: { result: TOOL_FAILURE_RESULT } }, { id: "c2", name: "self_ask", response: { result: TOOL_FAILURE_RESULT } }] } })
+      expect(TOOL_FAILURE_RESULT).toContain(`Fale exatamente esta frase, e nada mais: "${TOOL_FAILURE_SPEECH}"`)
+      expect(events.onSpecialistResult).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
     }

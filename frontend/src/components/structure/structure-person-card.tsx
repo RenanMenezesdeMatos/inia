@@ -301,7 +301,7 @@ function StructureSection({ person, metrics }: { person: StructurePerson; metric
       </dl>
       {metrics.privacy.sensitiveBreakdownSuppressed ? (
         <p className="flex items-start gap-1 text-[11px] text-muted-foreground" data-testid="privacy-note">
-          <ShieldAlert className="mt-0.5 size-3 shrink-0" aria-hidden /> Detalhamento de afastamentos indisponível para estruturas pequenas (menos de {metrics.privacy.minimumPopulation} pessoas).
+          <ShieldAlert className="mt-0.5 size-3 shrink-0" aria-hidden /> Detalhamento de afastamentos indisponível para estruturas pequenas (menos de {metrics.privacy.minimumPopulation} pessoas) ou com poucos casos — a contagem por motivo identificaria alguém.
         </p>
       ) : null}
       {metrics.confidence.unconfirmed > 0 ? (

@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import {
   agentSimulationInputSchema,
@@ -60,6 +61,8 @@ export function createQaLabRouter(db: Database) {
     const id = z.string().uuid().parse(request.params.id)
     const detail = await getInteractionDetail(db, request.user!.organizationId, id)
     if (!detail) return response.status(404).json({ error: { code: "QA_INTERACTION_NOT_FOUND", message: "Interação não encontrada." } })
+    // LGPD: quem abriu a transcrição da chamada de outra pessoa (migration 151).
+    if (detail.operatorId) await recordPersonalDataAccess(db, { organizationId: request.user!.organizationId, viewerPersonId: request.user!.personId, subjectPersonId: detail.operatorId, dataKind: "CALL_TRANSCRIPT", resourceId: id })
     response.json({ data: detail })
   })
 

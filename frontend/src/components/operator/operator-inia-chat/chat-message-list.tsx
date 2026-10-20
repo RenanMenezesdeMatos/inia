@@ -15,6 +15,8 @@ import { SupportMaterialsSection } from "@/components/feedbacks/support-material
 import { LeadershipCards } from "@/components/leadership/leadership-cards"
 import type { OperatorProfile } from "@/schemas/operator"
 import { RichContent } from "@/components/rich-content/rich-content"
+import { KnowledgeClarificationBlock } from "@/components/knowledge-clarification/knowledge-clarification-block"
+import { clarificationBubbleText, type ClarificationAnswer } from "@/schemas/knowledge-clarification/clarification.schema"
 import type { FeedbackApplicationDetail } from "@/schemas/feedback-applications/feedback-application.schema"
 import type { ChatMessage } from "./chat-message"
 import type { FeedbackReturn } from "./feedback-session-model"
@@ -50,11 +52,18 @@ type ChatMessageListProps = {
   starterSuggestions?: string[]
   /** Pergunta vinda de um cartão (ex.: "Perguntar à INIA" numa prioridade) — nada é enviado sozinho, só no clique. */
   askQuestion?: (question: string) => void
+  /** Escolha (ou correção) de uma etapa do esclarecimento pelas bases — sempre pelo caminho de texto. */
+  answerClarification?: (answer: ClarificationAnswer, displayText: string) => void
 }
 
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion }: ChatMessageListProps) {
+export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
+  // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
+  // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
+  const clarificationBusy = textReplyPending || conversationState === "thinking"
+  // Só o esclarecimento MAIS RECENTE da conversa aceita escolha ou correção (o servidor confere o mesmo pelo estado gravado).
+  const latestClarificationId = [...messages].reverse().find((message) => message.clarification)?.id ?? null
   const suggestions = sessionApplication?.script?.suggestions ?? []
   const firstFollowUpIndex = messages.findIndex((message) => message.segment === "followup")
   return <div ref={messagesContentRef} className={sessionOpen ? "space-y-6 pt-5" : "space-y-6 px-5 py-6"} data-testid={sessionOpen ? "feedback-session-messages" : undefined}>
@@ -100,7 +109,8 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
         <MessageAvatar>{assistant ? <Avatar className="size-8"><AvatarImage src={operator.assistantImage} alt="INIA"/><AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4"/></AvatarFallback></Avatar> : <PersonAvatar name={operator.displayName ?? operator.name} avatarUrl={operator.avatarUrl} className="size-8" fallbackClassName="bg-secondary"/>}</MessageAvatar>
         <MessageContent className="max-w-[88%]">
           <MessageHeader className="flex items-center gap-1.5 px-1">{assistant ? "INIA" : operator.displayName ?? operator.name}{fromWorkflow ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Recado</span> : null}{presentation ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Apresentação do feedback</span> : null}</MessageHeader>
-          <Bubble variant={assistant ? "muted" : "default"} className={fromWorkflow ? "max-w-full border border-primary/40 bg-primary/10" : "max-w-full"} data-origin={fromWorkflow ? "workflow" : presentation ? "feedback-presentation" : undefined}><BubbleContent className="space-y-2 px-4 py-3">{fromWorkflow && workflowConversation ? <p className="text-sm font-semibold text-primary dark:text-chart-4">{workflowConversation.title}</p> : null}{presentation ? <PresentationText text={message.text} compact={sessionOpen}/> : assistant ? <RichContent text={message.text}/> : message.text}</BubbleContent>{message.rating ? <BubbleReactions side="bottom" align="end">{message.rating === "up" ? "👍" : "👎"}</BubbleReactions> : null}</Bubble>
+          <Bubble variant={assistant ? "muted" : "default"} className={fromWorkflow ? "max-w-full border border-primary/40 bg-primary/10" : "max-w-full"} data-origin={fromWorkflow ? "workflow" : presentation ? "feedback-presentation" : undefined}><BubbleContent className="space-y-2 px-4 py-3">{fromWorkflow && workflowConversation ? <p className="text-sm font-semibold text-primary dark:text-chart-4">{workflowConversation.title}</p> : null}{presentation ? <PresentationText text={message.text} compact={sessionOpen}/> : assistant ? <RichContent text={message.clarification ? clarificationBubbleText(message.text, message.clarification) : message.text}/> : message.text}</BubbleContent>{message.rating ? <BubbleReactions side="bottom" align="end">{message.rating === "up" ? "👍" : "👎"}</BubbleReactions> : null}</Bubble>
+          {assistant && message.clarification ? <KnowledgeClarificationBlock view={message.clarification} interactive={message.id === latestClarificationId && !readOnlyConversation && !sessionOpen && Boolean(answerClarification)} busy={clarificationBusy} {...(answerClarification ? { onAnswer: answerClarification } : {})} /> : null}
           {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
           {assistant ? <LeadershipCards collapsible cards={message.analytics} {...(askQuestion && !readOnlyConversation && !busy ? { onAsk: askQuestion } : {})} /> : null}
           {assistant && message.reportOffer ? <ReportOfferAction offer={message.reportOffer} /> : null}

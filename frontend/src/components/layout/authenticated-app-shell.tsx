@@ -1,15 +1,17 @@
 "use client"
 
-import { useEffect } from "react"
+import { useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
+import { SessionIdleGuard } from "@/components/auth/session-idle-guard"
 import type { AppShellProfile } from "@/components/layout/app-shell-profile"
 import { AppTopBar } from "@/components/layout/top-bar/app-top-bar"
 import { useProfileEditor } from "@/components/profile/edit-profile/profile-editor-context"
 import { ROLE_LABELS, sessionDisplayName } from "@/schemas/auth/auth.schema"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
-import { CREATE_PASSWORD_ROUTE, logout, myProfileHrefFor } from "@/services/auth/auth-service"
+import { CREATE_PASSWORD_ROUTE, logout, logoutEverywhere, myProfileHrefFor } from "@/services/auth/auth-service"
 import { shutdownUsageForLogout, UsageAnalyticsProvider } from "@/lib/usage/usage-provider"
 
 type AuthenticatedAppShellProps = {
@@ -39,8 +41,8 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
     ? {
         profile: { name: sessionDisplayName(user), registeredName: user.name, role: user.jobTitle ?? ROLE_LABELS[user.role], avatarSrc: user.avatarUrl ?? undefined },
         profileHref: myProfileHrefFor(user),
-        // "Administração" também para quem só lê as conversas com a INIA (a entrada /admin leva direto a essa área).
-        canAccessAdministration: user.access.capabilities.canAccessAdministration || user.access.capabilities.canViewAssistantConversations || (user.features.usabilityPanel && user.access.capabilities.canViewUsability),
+        // "Administração" também para quem só lê as conversas com a INIA ou revisa contestações (a entrada /admin leva direto à área).
+        canAccessAdministration: user.access.capabilities.canAccessAdministration || user.access.capabilities.canViewAssistantConversations || user.access.capabilities.canReviewFeedbackContestations || (user.features.usabilityPanel && user.access.capabilities.canViewUsability),
         canReviewFeedback: user.features.interactionFeedbackQa && user.access.capabilities.canReviewFeedback,
         canViewDiagnostics: user.access.capabilities.canViewDiagnostics,
         canUseReports: user.access.capabilities.canUseReports,
@@ -55,6 +57,25 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
     router.push("/auth/login")
   }
 
+  async function handleSignOutEverywhere() {
+    try {
+      await logoutEverywhere()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível encerrar as outras sessões.")
+      return
+    }
+    queryClient.clear()
+    void shutdownUsageForLogout()
+    router.push("/auth/login?motivo=todos-os-aparelhos")
+  }
+
+  // Parada além do limite: a sessão já caiu (ou cai agora) no servidor; a tela limpa o que era da conta e leva ao login.
+  const handleIdleExpired = useCallback(() => {
+    queryClient.clear()
+    void shutdownUsageForLogout().finally(() => void logout())
+    router.replace("/auth/login?motivo=inatividade")
+  }, [queryClient, router])
+
   if (passwordChangePending) return null
 
   if (!shell) {
@@ -67,11 +88,13 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
 
   return (
     <UsageAnalyticsProvider>
+    <SessionIdleGuard timeoutMinutes={user?.sessionIdleTimeoutMinutes ?? 0} onExpired={handleIdleExpired} />
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
       <AppTopBar
         profile={shell.profile}
         profileHref={shell.profileHref}
         onSignOut={handleSignOut}
+        onSignOutEverywhere={() => void handleSignOutEverywhere()}
         canAccessAdministration={shell.canAccessAdministration}
         canReviewFeedback={shell.canReviewFeedback}
         canViewDiagnostics={shell.canViewDiagnostics}

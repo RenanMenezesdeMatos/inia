@@ -45,7 +45,7 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
             {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="gap-1"><tab.icon className="size-4" aria-hidden />{tab.label}</TabsTrigger>)}
           </TabsList>
           {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView key={accessFocus?.key ?? 0} canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} focus={accessFocus} /></TabsContent> : null}
-          {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} onOpenAccess={openAccess} /></TabsContent> : null}
+          {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} canExportSubjectData={capabilities.canExportSubjectData} onOpenAccess={openAccess} /></TabsContent> : null}
           {capabilities.canViewRoles ? <TabsContent value="roles"><AccessRolesView /></TabsContent> : null}
         </Tabs>
       </CardContent>

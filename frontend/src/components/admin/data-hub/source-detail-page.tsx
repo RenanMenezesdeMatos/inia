@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Copy, KeyRound, Pause, Play, Plug, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Copy, FileDown, KeyRound, Pause, Play, Plug, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
@@ -11,12 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useCreatePushTokenMutation, useDataSourceQuery, useDeleteSourceMutation, useRevokePushTokenMutation, useRotatePushTokenMutation, useRotateSecretsMutation, useSetSourceStatusMutation, useSyncFeedMutation, useTestConnectionMutation, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
-import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type SourceDetail } from "@/schemas/admin/data-hub.schema"
+import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type PushToken, type SourceDetail } from "@/schemas/admin/data-hub.schema"
+import { downloadPushOpenApi } from "@/services/admin/data-hub-service"
 
 import { ConnectionForm, connectionDraftValid, draftFromSource, toSourcePayload } from "./connection-form"
 import { DatabaseConfigurationTab } from "./database/database-configuration"
@@ -75,20 +77,67 @@ function ConfigurationTab({ source }: { source: SourceDetail }) {
   )
 }
 
+/** Validade do token novo (R-28): vencido, o token é recusado sozinho; "Sem validade" fica para integrações que não conseguem rotacionar. */
+const TOKEN_VALIDITY_OPTIONS = [
+  { value: "90", label: "90 dias" },
+  { value: "180", label: "180 dias" },
+  { value: "365", label: "1 ano" },
+  { value: "730", label: "2 anos" },
+  { value: "none", label: "Sem validade" },
+] as const
+
+/** "10.0.0.5, 10.1.0.0/24" → lista; vazio = qualquer origem. A validação de cada endereço é do backend. */
+function parseNetworks(text: string): string[] | null {
+  const networks = text.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean)
+  return networks.length > 0 ? networks : null
+}
+
+function tokenStatus(token: PushToken, now = Date.now()): string {
+  if (token.revokedAt) return `Revogado em ${formatDateTime(token.revokedAt)}`
+  if (token.expiresAt && Date.parse(token.expiresAt) <= now) return `Vencido em ${formatDateTime(token.expiresAt)}`
+  return "Ativo"
+}
+
 function PushTokensCard({ source }: { source: SourceDetail }) {
   const create = useCreatePushTokenMutation()
   const revoke = useRevokePushTokenMutation()
   const rotateToken = useRotatePushTokenMutation()
   const [label, setLabel] = useState("")
+  const [validity, setValidity] = useState<string>("365")
+  const [networks, setNetworks] = useState("")
   const [revealed, setRevealed] = useState<{ id: string; token: string } | null>(null)
+  const [downloadingSpec, setDownloadingSpec] = useState(false)
   const endpointBase = `${API_URL}/api/v1/data-ingestion/${source.publicId}`
+
+  async function downloadSpec() {
+    setDownloadingSpec(true)
+    try {
+      const { blob, filename } = await downloadPushOpenApi(source.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement("a")
+      anchor.href = url
+      anchor.download = filename ?? `inia-api-push-${source.publicId}.openapi.json`
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1_000)
+    } catch {
+      toast.error("Não foi possível gerar o OpenAPI. Tente de novo.")
+    } finally {
+      setDownloadingSpec(false)
+    }
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Tokens de push</CardTitle>
-        <CardDescription>
-          Endpoint: <code className="font-mono text-xs">POST {endpointBase}/&lt;chave-do-feed&gt;</code>. O segredo aparece só ao criar ou rotacionar.
-        </CardDescription>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+        <div className="space-y-1.5">
+          <CardTitle>Tokens de push</CardTitle>
+          <CardDescription>
+            Endpoint: <code className="font-mono text-xs">POST {endpointBase}/&lt;chave-do-feed&gt;</code>. O segredo aparece só ao criar ou rotacionar.
+          </CardDescription>
+        </div>
+        <Button variant="outline" size="sm" disabled={downloadingSpec} onClick={() => void downloadSpec()} title="Especificação dos envios desta fonte, para o time que integra (Postman, Swagger)">
+          <FileDown aria-hidden /> {downloadingSpec ? "Gerando…" : "Baixar OpenAPI"}
+        </Button>
       </CardHeader>
       <CardContent className="space-y-3">
         {revealed ? (
@@ -102,12 +151,37 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
             </div>
           </div>
         ) : null}
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1fr)_auto]">
           <Input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Rótulo (ex.: Integração RH)" aria-label="Rótulo do token" />
-          <Button disabled={label.trim().length < 2 || create.isPending} onClick={() => create.mutate({ sourceId: source.id, label: label.trim() }, { onSuccess: (token) => { setRevealed({ id: token.id, token: token.token ?? "" }); setLabel("") } })}>
+          <Select value={validity} onValueChange={setValidity}>
+            <SelectTrigger aria-label="Validade do token">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TOKEN_VALIDITY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input value={networks} onChange={(event) => setNetworks(event.target.value)} placeholder="IPs autorizados (opcional, ex.: 10.0.0.0/24)" aria-label="IPs ou redes autorizadas" />
+          <Button
+            disabled={label.trim().length < 2 || create.isPending}
+            onClick={() =>
+              create.mutate(
+                { sourceId: source.id, label: label.trim(), expiresInDays: validity === "none" ? null : Number(validity), allowedNetworks: parseNetworks(networks) },
+                { onSuccess: (token) => { setRevealed({ id: token.id, token: token.token ?? "" }); setLabel(""); setNetworks("") } },
+              )
+            }
+          >
             <Plus /> Novo token
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          Com IPs autorizados, o token só funciona quando o envio vem desses endereços (um IP ou uma rede, separados por vírgula). Vazio = qualquer origem.
+          Rotacionar mantém a validade e os IPs do token.
+        </p>
         {source.tokens.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum token ainda.</p>
         ) : (
@@ -119,6 +193,7 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
                   <TableHead>Prefixo</TableHead>
                   <TableHead>Criado</TableHead>
                   <TableHead>Último uso</TableHead>
+                  <TableHead>Validade</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead />
                 </TableRow>
@@ -126,11 +201,15 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
               <TableBody>
                 {source.tokens.map((token) => (
                   <TableRow key={token.id} className={token.revokedAt ? "opacity-60" : undefined}>
-                    <TableCell>{token.label}</TableCell>
+                    <TableCell>
+                      <div>{token.label}</div>
+                      {token.allowedNetworks ? <div className="text-xs text-muted-foreground">Só de {token.allowedNetworks.join(", ")}</div> : null}
+                    </TableCell>
                     <TableCell className="font-mono text-xs">{token.tokenPrefix}</TableCell>
                     <TableCell className="text-xs">{formatDateTime(token.createdAt)}</TableCell>
                     <TableCell className="text-xs">{token.lastUsedAt ? formatRelative(token.lastUsedAt) : "nunca"}</TableCell>
-                    <TableCell className="text-xs">{token.revokedAt ? `Revogado em ${formatDateTime(token.revokedAt)}` : "Ativo"}</TableCell>
+                    <TableCell className="text-xs">{token.expiresAt ? `Até ${formatDateTime(token.expiresAt)}` : "Sem validade"}</TableCell>
+                    <TableCell className="text-xs">{tokenStatus(token)}</TableCell>
                     <TableCell>
                       {!token.revokedAt ? (
                         <div className="flex justify-end gap-1">
@@ -258,6 +337,11 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
           </TabsList>
         </div>
         <TabsContent value="overview" className="mt-4 space-y-4">
+          {source.transportWarning ? (
+            <p role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" data-testid="source-transport-warning">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden /> {source.transportWarning}
+            </p>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Última carga" value={formatRelative(source.lastRunAt)} hint={formatDateTime(source.lastRunAt)} />
             <Stat label="Último sucesso" value={formatRelative(source.lastSuccessAt)} hint={formatDateTime(source.lastSuccessAt)} />

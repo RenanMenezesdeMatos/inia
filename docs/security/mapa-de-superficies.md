@@ -1,4 +1,4 @@
-# Mapa de superfícies e matriz de cobertura (08/10/2026)
+# Mapa de superfícies e matriz de cobertura (08/10/2026, segunda rodada em 17/10/2026 — seção 6)
 
 ## 1. Arquitetura e fronteiras de confiança
 
@@ -95,3 +95,50 @@ Legenda: ✅ revisado sem achado aberto · 🔧 achado corrigido nesta auditoria
 | Instalação e implantação | `env-init`, IIS, serviços, `.env.example` | — | 🔧 SEC-12 · ⚠️ R-11 | — |
 | Dependências | backend e frontend | — | 🔧 SEC-32 · ⚠️ R-14 | `npm audit` |
 | Segredos no repositório | arquivos versionados e histórico | — | ✅ | varredura por padrões |
+
+## 6. Segunda rodada (17/10/2026) — inventário atualizado e cobertura
+
+### O que entrou desde a primeira rodada
+
+- **Módulos novos ou muito alterados**: `interventions` (políticas de acompanhamento, 54 rotas em `/api/v1/interventions` e
+  `/api/v1/admin/intervention-policies`, todas atrás de `requireAuth` com a permissão decidida dentro), `reports` (reports
+  recorrentes: rotas, agenda e fila no worker), `leadership-analytics` (`/api/v1/leadership` e ferramentas do chat de liderança),
+  `data-lifecycle` (retenção — políticas desligadas), pacote de configuração (`backend/scripts/config-transfer`, cliente da API de
+  outra instalação), multi-instância (limites, pausa da IA e avisos no PostgreSQL; `/ready`, `/internal/metrics`, `/health` do
+  worker), Central de Dados com SQL Server real, submotivo e fechamento oficial com numerador/denominador.
+- **Processos em segundo plano novos**: `report-schedule`, `report-runs`, `report-analysis-retry`, `analytics-rollup`,
+  `data-retention`, `rate-limit-purge` e — nesta rodada — `login-attempts-purge` (`server.ts`).
+- **Entradas novas**: cookie `inia_device` (login), pacote de configuração (`pacote.json`, `arquivos/`, `imagens/`), feeds
+  `EMPLOYEES@2`/`INTERACTIONS@2`/`OFFICIAL_INDICATOR_PERFORMANCE@2`, ferramentas do chat de liderança (argumentos do modelo).
+- **Rotas HTTP**: ≈ 440 declarações em 57 arquivos de router (`grep -E "\.(get|post|put|patch|delete)\(\"/"`).
+
+### Matriz de cobertura
+
+Legenda como na seção 5. A tabela rota a rota de cada frente está nos anexos (`anexos/rodada-2026-10-17/A1…A4`).
+
+| Módulo / superfície | Revisado | Resultado nesta rodada | Testes de regressão |
+|---|---|---|---|
+| auth (login, logout, primeiro acesso, `/me`, cookie, JWT, worker de bcrypt) | Todas as rotas e o caminho completo da trava | 🔧 AUTH-1, 2, 3, 12, 14, 15 · ⚠️ R-19, R-20, R-22, R-26, R-33 | `auth-flows`, `known-device`, `password-hasher`, `login-throttle-proof`, `http-security` |
+| access (papéis, delegação, custódia, habilitar/desabilitar) | Todas as rotas | ⚠️ AUTH-5 (R-05 ampliado), R-06 | provas existentes |
+| users (`/admin/users`) | Todas as rotas | 🔧 AUTH-4, AUTH-6 | `user-account-router.identity`, `account-access-lifecycle-proof` |
+| profile-preferences, inia-scenes (imagens) | Upload, validação, entrega | 🔧 AUTH-11, AUTH-17 (teto do perfil) | `image-metadata`, provas existentes |
+| Plataforma (`app.ts`, CORS, CSRF, limites, erros, `/ready`, `/internal/metrics`, `trust proxy`) | Completa | 🔧 INFRA-1, AUTH-17 (`/0`) · ⚠️ R-26, R-33 | `http-security` |
+| config (`env.ts`) e segredos | Completa | 🔧 AUTH-8 · ⚠️ R-25 | `http-security` |
+| Pacote de configuração (`config:exportar/importar`) | Completo | 🔧 AUTH-9, AUTH-10 | `config-transfer.test.ts` |
+| supervision-cases, feedbacks, reporting, performance-analytics, org-structure, people (calendários), pending-actions, notifications, diagnostics, feedback-application, ratings, read-confirmations, conversational-delivery, interaction-feedback, usage-analytics, workflow-results, ranking de IA | Todas as rotas (IDOR, listas, contagens, caches, tarefas) | ✅ sem IDOR · ⚠️ R-17 (decisão registrada) | existentes |
+| interventions (líder e admin) | Todas as rotas e o serviço | 🔧 SCOPE-02 · ⚠️ R-27 | `condition-resolvers`, `interventions-proof` |
+| reports | Rotas, worker e entregas | ✅ escopo recalculado a cada execução · 🔧 SCOPE-04 | `http-security` |
+| leadership-analytics (rotas e ferramentas do chat) | Completo | ✅ escopo da sessão · 🔧 AI-01 (consulta de processo), AI-04, DATA-13 (Markdown) | `run-orchestrated-reply`, `management-metrics`, `leadership-tools-v3`, `query-table-markdown` |
+| assistant (orquestradores, monitoramento de conversas) | Completo | 🔧 SCOPE-01/AI-03, AI-01 | `conversation-monitoring`, `assistant-conversations-proof` |
+| realtime (chat SSE, voz, `/tool-call`, conversas) | Completo | ✅ dono da conversa; R-04 resolvido · 🔧 AI-09 · ⚠️ R-13, R-30 | `realtime-router`, `http-security` |
+| agents, knowledge (recuperação, upload, prévia, leitor) | Completo | 🔧 AI-05, AI-07, DATA-1, DATA-13 (nome do arquivo) · ⚠️ R-24 | `agent-knowledge-scope-proof`, `zip-guard`, `pdf-guard`, `run-agent` |
+| feedbacks (Orquestrador) e políticas (evidência) | Caminho Output → feedback → política | 🔧 AI-02 | `create-orchestrator-feedback.evidence`, `create-feedback-records` |
+| indicator-diagnosis ("Testar diagnóstico") | Rotas | 🔧 AI-06 | `diagnostic-strategy-proof` |
+| workflows, qa-lab, investigation, feedback-engine, reliable-feedback | Motor, nós, publicação, revisão humana, tools | ✅ sem `eval`/`vm`; tools só leitura presas ao sujeito; destinatário da configuração | existentes |
+| ai-management e gateway de modelos | Adapters, destinos, segredos, limites | ✅ política de destinos, chave em cabeçalho, erro redigido · ⚠️ R-31 | existentes |
+| data-hub (41 rotas, API Push, HTTP, SFTP, bancos, segredos, tokens, writers) | Completo, 1.373 interpolações de SQL varridas | 🔧 DATA-1…6, 9, 10, 11, AUTH-7, AUTH-13 · ⚠️ R-03, R-08, R-09, R-28, R-29, R-18 | `secret-binding`, `glob`, `api-pull-volume`, `outbound-destination-policy`, `person-identity-proof`, `data-hub-proof` |
+| SQL dinâmico (todo o backend) | Varredura + revisão manual dos casos de risco | ✅ nenhum valor de requisição/integração interpolado; identificadores dos bancos externos citados por dialeto | existentes |
+| Interface (Next.js: proxy/CSP, renderização de conteúdo, links) | `rich-content`, `dangerouslySetInnerHTML`, rotas `route.ts`, laboratório do avatar | 🔧 AI-08 · ⚠️ R-07, R-23 | `rich-content`, `follow-up-entry` |
+| Instalação (env-init, doctor, Docker, IIS, serviços Windows) | Scripts e `web.config` | 🔧 INFRA-2 (parcial), INFRA-3 · ⚠️ R-32 | sem Windows/PowerShell aqui |
+| Dependências | `npm audit` (com e sem dev) e caminho de cada alerta | ⚠️ R-14 atualizado | — |
+| Segredos versionados | `git grep` por padrões de chave e histórico de `.env` | ✅ só valores falsos em testes; pacote de configuração da homologação (ignorado pelo git) sem segredos | — |

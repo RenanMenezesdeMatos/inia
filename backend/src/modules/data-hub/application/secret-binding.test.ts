@@ -3,7 +3,9 @@ import { DataRunError } from "../domain/error-codes.js"
 import type { SourceConfig } from "../domain/source-config.js"
 import { FetchHttpClient } from "../infrastructure/fetch-http-client.js"
 import { buildUrl } from "./connectors/api-pull-connector.js"
-import { secretTargetOf } from "./source-service.js"
+import { resolveDatabaseConnection } from "../domain/database/database-engine.js"
+import { sslOption as mysqlSslOption } from "../infrastructure/external-databases/mysql-session.js"
+import { secretTargetOf, withNewSourceDefaults } from "./source-service.js"
 
 /**
  * Achado I-F2 da auditoria de segurança: credencial guardada da Central de Dados não pode ser levada para outro destino
@@ -23,6 +25,17 @@ describe("credencial vinculada ao destino", () => {
     for (const changed of [database({ host: "atacante.example" }), database({ port: 6543 }), database({ username: "sa" }), database({ tls: { mode: "DISABLED" } }), database({ engine: "MYSQL" })]) {
       expect(secretTargetOf(changed)).not.toBe(base)
     }
+  })
+
+  it("banco: trocar ou tirar a CA que valida o servidor também é outro destino; SFTP: apagar ou trocar a chave do servidor também (DATA-6)", () => {
+    const withCa = secretTargetOf(database({ tls: { mode: "VERIFY_FULL", caCertificate: "-----BEGIN CERTIFICATE-----\nCA-DA-EMPRESA" } }))
+    expect(secretTargetOf(database({ tls: { mode: "VERIFY_FULL", caCertificate: "-----BEGIN CERTIFICATE-----\nCA-DA-EMPRESA" } }))).toBe(withCa)
+    expect(secretTargetOf(database({ tls: { mode: "VERIFY_FULL", caCertificate: "-----BEGIN CERTIFICATE-----\nCA-DO-ATACANTE" } }))).not.toBe(withCa)
+    expect(secretTargetOf(database())).not.toBe(withCa)
+    const sftp = (hostKeyFingerprint?: string): SourceConfig => ({ kind: "SFTP", sftp: { host: "sftp.empresa.local", port: 22, username: "inia", remoteDirectory: "/", authKind: "PASSWORD", timeoutMs: 30_000, ...(hostKeyFingerprint ? { hostKeyFingerprint } : {}) } })
+    expect(secretTargetOf(sftp("SHA256:abc"))).toBe(secretTargetOf(sftp("SHA256:abc")))
+    expect(secretTargetOf(sftp())).not.toBe(secretTargetOf(sftp("SHA256:abc")))
+    expect(secretTargetOf(sftp("SHA256:outra"))).not.toBe(secretTargetOf(sftp("SHA256:abc")))
   })
 
   it("API: origem da baseUrl, tipo de autenticação, URL do token OAuth e nome do cabeçalho fazem parte do destino", () => {
@@ -59,5 +72,23 @@ describe("credencial vinculada ao destino", () => {
       expect(error).toBeInstanceOf(DataRunError)
       expect((error as DataRunError).code).toBe("DATA_SOURCE_DESTINATION_DENIED")
     }
+  })
+})
+
+describe("TLS dos bancos externos (auditoria de segurança 17/10/2026, DATA-4/DATA-5)", () => {
+  const sqlServer = { engine: "SQLSERVER" as const, host: "sql.cliente.local", database: "rh", username: "leitura", connectTimeoutMs: 15_000, queryTimeoutMs: 120_000 }
+  it("banco NOVO sem criptografia escolhida nasce validando o certificado; o modo escolhido é mantido; outras fontes não mudam", () => {
+    expect(withNewSourceDefaults({ name: "RH", config: { kind: "DATABASE", database: sqlServer } })).toMatchObject({ config: { database: { tls: { mode: "VERIFY_FULL" } } } })
+    expect(withNewSourceDefaults({ name: "RH", config: { kind: "DATABASE", database: { ...sqlServer, tls: { mode: "REQUIRED" } } } })).toMatchObject({ config: { database: { tls: { mode: "REQUIRED" } } } })
+    const upload = { name: "Planilhas", config: { kind: "FILE_UPLOAD" as const } }
+    expect(withNewSourceDefaults(upload as never)).toBe(upload)
+  })
+  it("fonte GRAVADA sem o campo continua no padrão de antes (nada muda sem alguém escolher)", () => {
+    expect(resolveDatabaseConnection(sqlServer, "x").tlsMode).toBe("REQUIRED")
+  })
+  it("MySQL/MariaDB validando o certificado também confere o NOME do servidor", () => {
+    expect(mysqlSslOption({ caCertificate: null }, "VERIFY")).toEqual({ rejectUnauthorized: true, verifyIdentity: true })
+    expect(mysqlSslOption({ caCertificate: "-----BEGIN CERTIFICATE-----" }, "VERIFY")).toMatchObject({ verifyIdentity: true, ca: "-----BEGIN CERTIFICATE-----" })
+    expect(mysqlSslOption({ caCertificate: null }, "NO_VERIFY")).toEqual({ rejectUnauthorized: false })
   })
 })

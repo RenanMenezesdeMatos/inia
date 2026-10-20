@@ -59,6 +59,14 @@ if (backendEnv) {
   else ok("DATA_HUB_SECRET_KEY definido")
   if (!backendEnv.GEMINI_API_KEY) warn("GEMINI_API_KEY vazio — os recursos de IA ficam indisponíveis até configurar")
   else ok("GEMINI_API_KEY definido")
+  // Em produção a API não sobe sem o endereço público da interface, nem com curinga (R-33).
+  if (!backendEnv.CORS_ORIGIN) (backendEnv.NODE_ENV === "production" ? bad : warn)("CORS_ORIGIN vazio — em produção a API não sobe sem o endereço público da interface (npm run env:init grava)")
+  else if (backendEnv.CORS_ORIGIN.includes("*")) bad("CORS_ORIGIN com curinga (*) — informe o endereço exato da interface")
+  else ok(`CORS_ORIGIN ${backendEnv.CORS_ORIGIN}`)
+
+  console.log("\nCópia de segurança do banco")
+  const backupTask = process.platform === "win32" ? "deploy\\windows\\backup\\agendar-backup.ps1 -Pasta D:\\backup\\inia" : "um agendamento diário de npm run db:backup -- --dir <pasta>"
+  warn(`confira se o backup diário está agendado (${backupTask}) e faça um teste de restauração: npm run db:restore-check -- --dir <pasta>`)
 
   console.log("\nBanco INTERNO da INIA")
   const url = backendEnv.DATABASE_URL

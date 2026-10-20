@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 /** Espelho de backend/src/modules/notifications/domain/view-models.ts. */
-export const notificationKindSchema = z.enum(["HUMAN_REVIEW", "WORKFLOW_OUTPUT", "INIA_MESSAGE", "ESCALATION", "WORKDAY_RECONCILIATION", "CALENDAR_NOTICE", "INTERVENTION", "OTHER"])
+export const notificationKindSchema = z.enum(["HUMAN_REVIEW", "WORKFLOW_OUTPUT", "INIA_MESSAGE", "ESCALATION", "WORKDAY_RECONCILIATION", "CALENDAR_NOTICE", "INTERVENTION", "FEEDBACK_CONTESTATION", "OTHER"])
 export type NotificationKind = z.infer<typeof notificationKindSchema>
 
 export const notificationTargetSchema = z.discriminatedUnion("type", [
@@ -15,6 +15,8 @@ export const notificationTargetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("INIA_AVATAR_DELIVERY"), deliveryId: z.string() }),
   // Intervenção: abre a intervenção DENTRO do caso de supervisão (o caso concentra análise, evidências e histórico).
   z.object({ type: z.literal("INTERVENTION"), caseId: z.string(), interventionId: z.string() }),
+  // Contestação de feedback recebida (quem revisa): abre a contestação na Administração.
+  z.object({ type: z.literal("ADMIN_FEEDBACK_CONTESTATION"), contestationId: z.string() }),
   z.object({ type: z.literal("NONE") }),
 ])
 export type NotificationTarget = z.infer<typeof notificationTargetSchema>
@@ -49,5 +51,6 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   WORKDAY_RECONCILIATION: "Produção não identificada",
   CALENDAR_NOTICE: "Calendário operacional",
   INTERVENTION: "Intervenção",
+  FEEDBACK_CONTESTATION: "Contestação de feedback",
   OTHER: "Aviso",
 }

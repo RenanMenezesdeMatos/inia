@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { stripImageMetadata } from "../../../shared/infrastructure/image-metadata.js"
 import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -77,11 +78,13 @@ function checkedImage(data: Buffer, usage: ProfileImageUsage) {
 
 async function storeImage(client: Queryable, owner: ProfileOwner, usage: ProfileImageUsage, data: Buffer): Promise<string> {
   const image = checkedImage(data, usage)
-  const sha256 = createHash("sha256").update(data).digest("hex")
+  // A imagem é vista por toda a organização: sem EXIF/GPS, XMP e afins (stripImageMetadata — achado AUTH-11).
+  const clean = stripImageMetadata(data, image.mimeType)
+  const sha256 = createHash("sha256").update(clean).digest("hex")
   const result = await client.query<{ id: string }>(
     `insert into person_profile_images (organization_id, person_id, usage, mime_type, byte_size, width, height, sha256, data)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
-    [owner.organizationId, owner.personId, usage, image.mimeType, data.length, image.width, image.height, sha256, data],
+    [owner.organizationId, owner.personId, usage, image.mimeType, clean.length, image.width, image.height, sha256, clean],
   )
   return result.rows[0]!.id
 }

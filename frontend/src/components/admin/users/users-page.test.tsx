@@ -139,15 +139,16 @@ async function fillNewUser(fields: { matricula?: string } = {}) {
   fireEvent.click(await screen.findByRole("button", { name: /Novo usuário/ }))
   fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Nova Pessoa" } })
   fireEvent.change(screen.getByLabelText("E-mail"), { target: { value: "nova@empresa.com" } })
-  fireEvent.change(screen.getByLabelText("Senha provisória"), { target: { value: "Provisoria-2026" } })
   if (fields.matricula) fireEvent.change(screen.getByLabelText("Matrícula (opcional)"), { target: { value: fields.matricula } })
 }
+
+const ISSUED = { personId: "p-nova", accountId: "a-nova", name: "Nova Pessoa", email: "nova@empresa.com", temporaryPassword: "Kq7m-Pz4x-Wn9r", expiresAt: "2026-10-20T12:00:00.000Z" }
 
 describe("Novo usuário — sem pessoa duplicada entre o cadastro e a base", () => {
   it("com Colaboradores vigente, sem matrícula só \"Fora da hierarquia\"; com matrícula, a hierarquia volta e a matrícula vai junto", async () => {
     setup()
     users.fetchCreationPolicy.mockResolvedValue({ hierarchyRequiresMatricula: true, sources: [BASE] })
-    users.createUserAccount.mockResolvedValue(undefined)
+    users.createUserAccount.mockResolvedValue(ISSUED)
     await fillNewUser()
     expect(await screen.findByTestId("hierarchy-requires-source")).toHaveTextContent("RH Corporativo · Colaboradores")
     expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toHaveTextContent("Fora da hierarquia")
@@ -155,13 +156,24 @@ describe("Novo usuário — sem pessoa duplicada entre o cadastro e a base", () 
     expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toHaveTextContent("Operador")
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
     await waitFor(() => expect(users.createUserAccount).toHaveBeenCalledTimes(1))
-    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", password: "Provisoria-2026", role: "OPERATOR", teamId: undefined, matricula: "OP-99999" })
+    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", role: "OPERATOR", teamId: undefined, matricula: "OP-99999" })
+  })
+
+  it("a senha provisória não é digitada: a INIA gera e mostra uma vez depois de criar (auditoria 17/10/2026, AUTH-6)", async () => {
+    setup()
+    users.fetchCreationPolicy.mockResolvedValue({ hierarchyRequiresMatricula: false, sources: [] })
+    users.createUserAccount.mockResolvedValue(ISSUED)
+    await fillNewUser()
+    expect(screen.queryByLabelText("Senha provisória")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
+    expect(await screen.findByDisplayValue("Kq7m-Pz4x-Wn9r")).toBeInTheDocument()
+    expect(users.createUserAccount.mock.calls[0]![0]).not.toHaveProperty("password")
   })
 
   it("sem matrícula e com Colaboradores vigente, o cadastro sai como \"Fora da hierarquia\"", async () => {
     setup()
     users.fetchCreationPolicy.mockResolvedValue({ hierarchyRequiresMatricula: true, sources: [BASE] })
-    users.createUserAccount.mockResolvedValue(undefined)
+    users.createUserAccount.mockResolvedValue(ISSUED)
     await fillNewUser()
     await screen.findByTestId("hierarchy-requires-source")
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }))

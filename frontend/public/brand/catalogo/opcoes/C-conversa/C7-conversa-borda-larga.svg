@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64"><title>INIA — C7 — Conversa — Borda larga</title><rect x="2.5" y="2.5" width="59" height="59" rx="18" fill="#660099" stroke="#EB3C7D" stroke-width="5"/>
+  
+  <path d="M23 14h18a11 11 0 0 1 11 11v8a11 11 0 0 1-11 11H29l-10 7v-7.7A11 11 0 0 1 12 33v-8a11 11 0 0 1 11-11Z" fill="#FFFFFF"/>
+  <circle cx="32" cy="24" r="4.5" fill="#EB3C7D"/>
+  <rect x="28" y="31" width="8" height="9" rx="3" fill="#660099"/>
+</svg>

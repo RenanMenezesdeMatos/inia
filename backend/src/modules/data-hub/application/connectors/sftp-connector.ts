@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { DataRunError } from "../../domain/error-codes.js"
-import { globToRegExp, sftpFeedConfigSchema, type SftpConfig, type SourceConfig } from "../../domain/source-config.js"
+import { matchesGlob, sftpFeedConfigSchema, type SftpConfig, type SourceConfig } from "../../domain/source-config.js"
 import type { DataHubContext } from "../data-hub-context.js"
 import type { SftpConnection, SftpFileEntry } from "../ports.js"
 import type { DataFeedRow, DataSourceRow } from "../records.js"
@@ -64,10 +64,9 @@ export async function listSftpFiles(ctx: DataHubContext, source: DataSourceRow, 
   if (feed.connectorConfig.connector !== "SFTP") throw new DataRunError("DATA_INTERNAL_ERROR", "O feed não é SFTP.")
   const feedConfig = sftpFeedConfigSchema.parse(feed.connectorConfig.sftp)
   const directory = feedConfig.remoteDirectory ?? config.remoteDirectory
-  const pattern = globToRegExp(feedConfig.filePattern)
   const connection = await resolveSftpConnection(ctx, source)
   const entries = await ctx.sftp.list(connection, directory)
-  return entries.map((entry) => ({ ...entry, matches: pattern.test(entry.name) })).sort((a, b) => (a.modifiedAt ?? "").localeCompare(b.modifiedAt ?? "") || a.name.localeCompare(b.name))
+  return entries.map((entry) => ({ ...entry, matches: matchesGlob(feedConfig.filePattern, entry.name) })).sort((a, b) => (a.modifiedAt ?? "").localeCompare(b.modifiedAt ?? "") || a.name.localeCompare(b.name))
 }
 
 export type SftpFetchedFile = { entry: SftpFileEntry; content: Uint8Array; checksum: string }

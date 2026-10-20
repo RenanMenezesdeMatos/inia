@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { transcriptForModel } from "../../workflows/application/transcript.js"
 import { canonicalSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -57,7 +58,9 @@ export async function loadInteractionForAnalysis(db: Queryable, organizationId: 
     channel: row.channel,
     subjectCanonical: row.subject_code && subject ? { code: row.subject_code, name: subject.name } : null,
     flags: flags.map((flag) => ({ name: flag.flag_name, value: flag.value_boolean !== null ? (flag.value_boolean ? "sim" : "não") : flag.value_numeric ?? "" })),
-    transcript: transcript && transcript.content.trim().length > 0 ? { content: transcript.content, checksum: createHash("sha256").update(transcript.content).digest("hex").slice(0, 16) } : null,
+    // Texto mascarado (R-31): é o que o modelo analisa e contra o que as citações são conferidas. O checksum é DESTE texto, então
+    // uma análise guardada com o texto original (citações com CPF etc.) nunca é reaproveitada.
+    transcript: transcript && transcript.content.trim().length > 0 ? { content: transcriptForModel(transcript.content), checksum: createHash("sha256").update(transcriptForModel(transcript.content)).digest("hex").slice(0, 16) } : null,
     teamId: row.team_id,
     subteamId: row.subteam_id,
     supervisorId: row.reports_to_id,

@@ -26,7 +26,7 @@ describe("API Push — limite por token dividido entre as APIs", () => {
   })
 
   it("loja fora do ar: o envio passa (o limite nunca derruba a ingestão) e o aviso vai para o log", async () => {
-    const failing = { consume: () => Promise.reject(new Error("banco fora")), check: () => Promise.reject(new Error("banco fora")), record: () => Promise.reject(new Error("banco fora")) }
+    const failing = { consume: () => Promise.reject(new Error("banco fora")), check: () => Promise.reject(new Error("banco fora")), record: () => Promise.reject(new Error("banco fora")), release: () => Promise.reject(new Error("banco fora")) }
     const ctx = createDataHubContext(db, { pushRateLimits: failing, logger })
     expect((await consumePushQuota(ctx, "token-1")).allowed).toBe(true)
     expect(logger.warn).toHaveBeenCalledWith(expect.anything(), "data-hub push rate limit store unavailable")

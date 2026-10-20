@@ -31,9 +31,23 @@ export interface CredentialStore {
   sessionState(organizationId: string, accountId: string, sessionId?: string | null): Promise<(SessionAccountState & { role?: PlatformRole }) | null>
   /** Logout: revoga só ESTA sessão (jti) até o token vencer; limpa revogações vencidas. */
   revokeSession(input: { organizationId: string; accountId: string; sessionId: string; expiresAt: Date; at: Date }): Promise<void>
-  /** Falhas de credencial do identificador desde `since` e depois do último login bem-sucedido dele. */
-  recentFailures(identifierHash: string, since: Date): Promise<Date[]>
-  recordAttempt(input: { identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date }): Promise<void>
+  /** Atividade desta sessão (jti) agora — o encerramento por inatividade mede a partir daqui. Cria a linha se não existir. */
+  recordSessionActivity(input: { accountId: string; sessionId: string; expiresAt: Date; at: Date }): Promise<void>
+  /**
+   * "Sair de todos os aparelhos": a própria pessoa encerra TODAS as suas sessões (versão de sessão + 1), com auditoria.
+   * false = conta não encontrada na organização.
+   */
+  endAllSessions(input: { organizationId: string; accountId: string; actorPersonId: string; at: Date }): Promise<boolean>
+  /**
+   * Reserva a tentativa ANTES de conferir a senha: gravada já como falha de credencial, ela conta para a trava de toda tentativa
+   * simultânea que conferir depois (achado AUTH-1: verificar → bcrypt → gravar deixava N tentativas paralelas passarem pela
+   * trava de 5). Devolve o id para `resolveAttempt` gravar o resultado; null = a loja não devolveu id (cai no insert).
+   */
+  reserveAttempt(input: { identifierHash: string; at: Date }): Promise<string | null>
+  /** Falhas de credencial do identificador desde `since` e depois do último login bem-sucedido dele, fora a própria reserva. */
+  recentFailures(identifierHash: string, since: Date, excludeAttemptId?: string | null): Promise<Date[]>
+  /** Resultado da tentativa reservada (ou uma tentativa nova, sem reserva). */
+  resolveAttempt(input: { attemptId: string | null; identifierHash: string; accountId: string | null; outcome: LoginAttemptOutcome; at: Date }): Promise<void>
   markLoggedIn(input: { accountId: string; identifierHash: string; at: Date }): Promise<void>
   passwordState(organizationId: string, accountId: string): Promise<PasswordState | null>
   /**

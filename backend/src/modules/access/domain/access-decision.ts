@@ -89,6 +89,10 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canManageCalendar: any("calendar.manage"),
     // Conversas com a INIA (somente leitura). Propositalmente FORA de `canAccessAdministration`: abre só esta área.
     canViewAssistantConversations: any("assistant_conversations.view"),
+    // Contestações de feedback (revisão humana) — também FORA de `canAccessAdministration`: quem só revisa vê só esta área.
+    canReviewFeedbackContestations: any("feedback_contestations.review"),
+    // Exportação dos dados de uma pessoa (pedido do titular): só com escopo de organização, como a rota.
+    canExportSubjectData: org("privacy.subject_data.export"),
     // Reports recorrentes para outras pessoas (o público concreto é decidido pelo backend, no escopo da atribuição).
     canDistributeReports: any("reports.distribute"),
     // Cenário da INIA: recurso do tenant inteiro (como o QA Lab) — escopo de organização.

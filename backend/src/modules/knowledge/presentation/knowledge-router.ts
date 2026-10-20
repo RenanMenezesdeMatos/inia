@@ -5,7 +5,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { contentMatchesSourceType, extractTextFromFile, resolveSourceType } from "../infrastructure/text-extractor.js"
+import { extractTextFromFile, fileContentAccepted, resolveSourceType } from "../infrastructure/text-extractor.js"
 import { renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { knowledgeFileContentType, sendKnowledgeFile } from "./knowledge-file-response.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
@@ -301,7 +301,7 @@ export function createKnowledgeRouter(db: Database) {
     if (!canWriteDocument(await scopesOf(request), toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
 
     const sourceType = file ? resolveSourceType(file.mimetype, file.originalname) : "TEXT"
-    if (file && !contentMatchesSourceType(file.buffer, sourceType)) {
+    if (file && !(await fileContentAccepted(file.buffer, sourceType))) {
       throw new DomainError("O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).", "KNOWLEDGE_FILE_TYPE_MISMATCH", 422)
     }
     const extractedContent = file ? await extractTextFromFile(file.buffer, sourceType) : input.content!

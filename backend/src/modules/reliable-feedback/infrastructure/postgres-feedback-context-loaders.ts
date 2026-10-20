@@ -3,7 +3,7 @@ import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/in
 import { interactionLabelOf, otherOperatorNamesOf, subjectOperatorNameOf } from "../../interaction-feedback/application/prepare-interaction-for-feedback.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
-import { loadLatestTranscript } from "../../workflows/application/transcript.js"
+import { loadLatestTranscriptForModel } from "../../workflows/application/transcript.js"
 import type { IndicatorContextLoader, MonitoringContextLoader, PublishedKnowledgeLoader, RecipientLoader } from "../application/generate-reliable-feedback.js"
 import { firstNameOf } from "../domain/feedback-presentation.js"
 import { loadPersonPresentation } from "../../profile-preferences/application/person-presentation-loader.js"
@@ -24,7 +24,7 @@ export function createPostgresMonitoringContextLoader(db: Database): MonitoringC
     )
     const interaction = row.rows[0]
     if (!interaction || interaction.operator_id !== collaboratorId) return null
-    const transcript = await loadLatestTranscript(db, interaction.id)
+    const transcript = await loadLatestTranscriptForModel(db, interaction.id)
     if (!transcript) return null
     const timeZone = await resolveOrganizationTimezone(db, organizationId)
     const label = await interactionLabelOf(db, organizationId, localDateOf(new Date(interaction.started_at), timeZone), interaction.subject_code, interaction.reason)

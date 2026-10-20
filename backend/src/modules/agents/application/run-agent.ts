@@ -219,6 +219,9 @@ Responda SOMENTE com um JSON válido (sem markdown, sem texto fora do JSON), nes
 }
 Todos os campos são obrigatórios.`
 
+/** Tamanho mínimo (depois de normalizar) de uma citação inteira para valer como evidência — com pelo menos duas palavras. */
+export const MIN_VERBATIM_EVIDENCE_LENGTH = 12
+
 /**
  * Citação literal: o trecho inteiro existe na transcrição — ou, quando o modelo marca omissão com
  * reticências ("… / ..." ou "[...]"), CADA segmento (≥ 15 caracteres) existe literalmente. Emendar
@@ -228,7 +231,11 @@ Todos os campos são obrigatórios.`
  */
 export function isVerbatimEvidence(transcript: string, evidence: string): boolean {
   const haystack = normalizeForComparison(transcript)
-  if (haystack.includes(normalizeForComparison(evidence))) return true
+  const whole = normalizeForComparison(evidence)
+  // Um trecho mínimo é condição para ser evidência (achado AI-07 da auditoria de 17/10/2026): "o", "sim" ou uma aspa solta
+  // (que vira "" e está em qualquer texto) não apontam fala nenhuma.
+  if (whole.length < MIN_VERBATIM_EVIDENCE_LENGTH || whole.split(" ").length < 2) return false
+  if (haystack.includes(whole)) return true
   const segments = evidence.split(/\s*(?:\[\s*(?:\.\.\.|…)\s*\]|\.\.\.|…)\s*/).map((segment) => normalizeForComparison(segment)).filter((segment) => segment.length > 0)
   if (segments.length < 2) return false
   return segments.every((segment) => segment.length >= 15 && haystack.includes(segment))

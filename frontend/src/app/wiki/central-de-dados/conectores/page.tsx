@@ -113,9 +113,24 @@ export default function DataHubConnectorsPage() {
         <ul className="list-inside list-disc space-y-1">
           <li>Resposta <strong>202</strong> com o id da carga: o processamento é assíncrono, nunca dentro do request. Corpo até 10 MB.</li>
           <li>Mesmo lote com a mesma Idempotency-Key devolve a <em>mesma</em> carga (<code className="font-mono text-xs">deduplicated: true</code>) — nada duplica.</li>
+          <li>
+            A mesma Idempotency-Key com um corpo <em>diferente</em> é recusada com <strong>422</strong> (<code className="font-mono text-xs">DATA_PUSH_IDEMPOTENCY_CONFLICT</code>): lote novo
+            precisa de chave nova — antes ele se perderia em silêncio.
+          </li>
           <li>Token por fonte (ou restrito a um feed): só o hash é guardado; o valor aparece uma vez; revogar e rotacionar na aba Visão geral da fonte. Erros de credencial são genéricos de propósito (não revelam se a fonte existe).</li>
+          <li>
+            Cada token tem <strong>validade</strong> (90 dias a 2 anos; padrão 1 ano) e, se quiser, uma lista de <strong>IPs autorizados</strong> (um IP ou uma rede, como{" "}
+            <code className="font-mono text-xs">10.0.0.0/24</code>). Vencido ou chamado de outro endereço, o token recebe a mesma recusa de um token inexistente.
+            Rotacionar mantém a validade e os IPs. Tokens antigos, criados antes disso, seguem sem validade até serem rotacionados.
+          </li>
+          <li>O token é conferido <em>antes</em> de o corpo ser lido: quem não tem token válido nunca faz a INIA ler 10 MB.</li>
           <li>Fonte pausada ou feed inativo respondem 409 com a orientação.</li>
-          <li>Rate limit por token (60 requisições/min por processo).</li>
+          <li>Limite por token: 60 requisições por minuto, somadas entre todas as APIs da instalação.</li>
+          <li>
+            <strong>Baixar OpenAPI</strong> (na fonte, ao lado dos tokens) gera na hora a especificação OpenAPI 3.1 dos envios desta fonte: um caminho por
+            feed, os nomes de campo do sistema do cliente (pelo mapeamento), os tipos do contrato e as respostas de erro. Serve para o time que integra
+            importar no Postman ou no Swagger; não leva token nem segredo.
+          </li>
         </ul>
       </WikiSection>
 

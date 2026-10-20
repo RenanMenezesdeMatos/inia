@@ -146,7 +146,9 @@ describe("Acompanhamento da estrutura — o item tem a apresentação do Acompan
     expect(card().querySelector("table")).not.toBeNull()
     expect(card().querySelectorAll("tbody tr")).toHaveLength(2)
     expect(card().querySelector("blockquote")).toHaveTextContent("hipótese")
-    expect(screen.getByRole("link", { name: /intranet\.exemplo\.com/ })).toHaveAttribute("target", "_blank")
+    // Link externo escrito no resultado não é clicável (só com o domínio na lista da instalação — ver rich-content.tsx, AI-08).
+    expect(screen.queryByRole("link", { name: /intranet\.exemplo\.com/ })).toBeNull()
+    expect(card()).toHaveTextContent("intranet.exemplo.com")
     expect(card().textContent).not.toContain("**")
     expect(card().textContent).not.toContain("## ")
     expect(card().querySelector("table")?.parentElement?.className).toContain("overflow-x-auto")

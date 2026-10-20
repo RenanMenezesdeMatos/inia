@@ -19,9 +19,9 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     code: "ADMINISTRADOR_GERAL",
     name: "Administrador geral",
     description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
-    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
+    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
     allowedScopes: ["ORGANIZATION"],
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
     system: true,
   },
   {
@@ -30,7 +30,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Administra usuários, agentes, workflows e configurações e vê Indicadores, dados de gestão da Estrutura, o Calendário da equipe e quem mais usa a IA dentro do escopo atribuído. Não usa o QA Lab nem altera IA.",
     permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", ...INTERVENTION_POLICY_PERMISSIONS],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
+    delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
     system: true,
   },
   {
@@ -39,7 +39,7 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     description: "Administra contas, papéis e concessões dentro do escopo — sem agentes, workflows, configurações ou QA.",
     permissions: ACCESS_ADMIN_PERMISSIONS,
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
-    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
+    delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
     system: true,
   },
   {
@@ -47,6 +47,17 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     name: "QA de feedback",
     description: "Avalia a qualidade dos feedbacks escritos pela INIA (QA Lab › Feedbacks) no escopo atribuído.",
     permissions: ["feedback_quality_review.view", "feedback_quality_review.decide"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Revisão humana das contestações (LGPD art. 20): concessão explícita, como as demais — nenhum gestor recebe por cargo.
+    // Para gestores, "Minha estrutura" recorta as contestações de quem está abaixo deles.
+    code: "REVISOR_DE_CONTESTACOES",
+    name: "Revisor de contestações de feedback",
+    description: "Lê e responde as contestações dos colaboradores do escopo sobre feedbacks gerados pela INIA (avaliação “não foi útil”, com motivo e descrição). A resposta fica registrada e o colaborador a vê junto do feedback; o feedback em si não é alterado.",
+    permissions: ["feedback_contestations.review"],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP", "MY_STRUCTURE"],
     delegates: [],
     system: true,

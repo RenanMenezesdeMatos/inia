@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { transcriptForModel } from "../../../workflows/application/transcript.js"
 import { z } from "zod"
 import { env } from "../../../../config/env.js"
 import { escalateRoute, generateForRoute, routeFor, routeRecordOf } from "../../../../shared/application/model-routing/llm-gateway.js"
@@ -456,7 +457,9 @@ export async function loadTranscripts(context: ToolContext, interactionIds: stri
      where i.organization_id = $1 and i.id = any($2::uuid[]) ${operatorIds ? "and i.operator_id = any($3::uuid[])" : ""}`,
     operatorIds ? [context.organizationId, interactionIds, operatorIds] : [context.organizationId, interactionIds],
   )
-  return rows.rows.map((row) => ({ id: row.id, content: row.content, reason: row.reason, operatorId: row.operator_id, startedAt: row.started_at }))
+  // Sujeito e pares: o modelo só recebe o texto com a PII evidente mascarada (R-31, transcript.ts); a projeção dos pares
+  // redige também a identidade deles por cima disso. A citação é conferida contra o que o modelo recebeu.
+  return rows.rows.map((row) => ({ id: row.id, content: transcriptForModel(row.content), reason: row.reason, operatorId: row.operator_id, startedAt: row.started_at }))
 }
 
 export type PeerPrivacyAudit = { version: string; redactedTranscripts: number; redactions: Record<string, number>; reidentificationRejected: number; projections: { handle: string; sourceHash: string; redactions: number }[] }

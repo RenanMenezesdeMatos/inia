@@ -11,6 +11,8 @@
     "env:init": "node scripts/install/env-init.mjs",
     "install:all": "npm ci --prefix backend && npm ci --prefix frontend",
     "db:connect": "node scripts/install/db-connect.mjs",
+    "db:backup": "node scripts/install/db-backup.mjs",
+    "db:restore-check": "node scripts/install/db-restore-check.mjs",
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose stop postgres",
     "examples:up": "node scripts/install/example-databases.mjs && docker compose --profile external-examples up -d --build --wait",
@@ -19,11 +21,13 @@
     "setup": "npm --prefix backend run setup --",
     "update": "npm --prefix backend run update",
     "admin:create": "npm --prefix backend run admin:create --",
+    "secrets:rotate": "npm --prefix backend run secrets:rotate --",
     "config:exportar": "npm --prefix backend run config:exportar --",
     "config:importar": "npm --prefix backend run config:importar --",
     "dev": "node scripts/install/run.mjs dev",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "start": "node scripts/install/run.mjs start",
-    "github:publish": "node scripts/github/publicar.mjs"
+    "github:publish": "node scripts/github/publicar.mjs",
+    "security:check": "node scripts/security/verificar.mjs"
   }
 }

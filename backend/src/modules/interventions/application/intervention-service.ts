@@ -733,7 +733,8 @@ export async function openManualIntervention(db: Database, viewer: Viewer, raw: 
       if (!person.team_id) throw new DomainError(`${person.name} não está em nenhum Grupo: o caso de supervisão precisa de um.`, "INTERVENTION_CASE_TEAM_REQUIRED", 422)
       caseId = (await tx.query<{ id: string }>(
         `insert into supervision_cases (organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target, assignee_id) values ($1,$2,$3,$4,$5,'ACTION_PENDING','P2',$6,'—','—',$7) returning id`,
-        [viewer.organizationId, input.personId, person.team_id, `Acompanhamento: ${type.definition.name}`, input.reason, input.indicatorCode ?? "GENERAL", responsibleId],
+        // Título e resumo neutros: o caso é lido por quem vê Indicadores/Agents; o tipo e a justificativa ficam na intervenção (SCOPE-02).
+        [viewer.organizationId, input.personId, person.team_id, `Acompanhamento: ${input.indicatorCode ?? "geral"}`, "Caso aberto para uma intervenção manual. As ações e os motivos ficam nas intervenções do colaborador.", input.indicatorCode ?? "GENERAL", responsibleId],
       )).rows[0]!.id
     }
     const interventionId = randomUUID()

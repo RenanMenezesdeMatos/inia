@@ -3,6 +3,7 @@ import { messageTime, newClientKey } from "@/lib/realtime/conversation-format"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
 import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
+import { parseClarification, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
 
 /** `supportMaterials` = materiais de apoio recomendados pelo Orquestrador nesta resposta (chat ou
  * voz), já resolvidos pelo backend — a mesma seção do Feedback, ao lado do balão; a URL nasce do id
@@ -21,6 +22,8 @@ export type ChatMessage = {
   analytics?: LeadershipCard[]
   /** "Criar report desta consulta": oferta feita nesta resposta (aceite pelo botão ou por "sim" na resposta seguinte). */
   reportOffer?: ReportOffer
+  /** Esclarecimento pelas bases: pergunta com opções (formulário), resposta com o cenário e as fontes, ou o que falta. */
+  clarification?: ClarificationView
   /** `failed` = exibida, mas NÃO entrou no histórico (falha ao salvar) — nunca aparenta sucesso. */
   saveState?: "failed"
   /** Resposta de erro local ("não consegui responder"): não é resposta da INIA nem vai para o contexto. */
@@ -40,6 +43,7 @@ export const newTurnId = () => `voice-${newClientKey()}`
 export function toChatMessage(message: ConversationMessage): ChatMessage {
   const analytics = parseLeadershipCards(message.analytics)
   const offer = message.reportOffer ? reportOfferSchema.safeParse(message.reportOffer) : null
+  const clarification = message.role === "assistant" ? parseClarification(message.clarification) : null
   return {
     id: nextMessageId(),
     sender: message.role === "assistant" ? "assistant" : "user",
@@ -50,6 +54,7 @@ export function toChatMessage(message: ConversationMessage): ChatMessage {
     ...(message.supportMaterials.length > 0 ? { supportMaterials: message.supportMaterials } : {}),
     ...(analytics.length > 0 ? { analytics } : {}),
     ...(offer?.success ? { reportOffer: offer.data } : {}),
+    ...(clarification ? { clarification } : {}),
     ...(message.origin === "WORKFLOW" || message.origin === "FEEDBACK" ? { origin: message.origin } : {}),
   }
 }

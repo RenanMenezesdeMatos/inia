@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs"
 import { createRequire } from "node:module"
 import { availableParallelism } from "node:os"
 import { Worker } from "node:worker_threads"
+import { DomainError } from "../../../shared/domain/domain-error.js"
 
 const SALT_ROUNDS = 10
 
@@ -28,6 +29,18 @@ parentPort.on("message", ({ op, a, b }) => {
 `
 
 const POOL_SIZE = Math.max(1, Math.min(4, availableParallelism() - 1))
+/**
+ * Verificações esperando thread, no máximo (achado AUTH-2 da auditoria de 17/10/2026): ~1 s de espera por thread. Acima disso a
+ * tarefa nova é recusada NA HORA (503): uma rajada de logins não empurra o login legítimo e a ciência com senha para o fim de
+ * uma fila de minutos, nem segura conexões penduradas.
+ */
+export const PASSWORD_QUEUE_LIMIT = POOL_SIZE * 16
+
+export class PasswordCheckBusyError extends DomainError {
+  constructor() {
+    super("Muitos acessos ao mesmo tempo. Tente de novo em alguns segundos.", "AUTH_BUSY", 503)
+  }
+}
 const workers: PoolWorker[] = []
 const queue: Task[] = []
 let poolUnavailable = false
@@ -103,6 +116,10 @@ function dispatch(): void {
 
 function run<T extends string | boolean>(op: Task["op"], a: string, b: string | number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    if (!poolUnavailable && queue.length >= PASSWORD_QUEUE_LIMIT) {
+      reject(new PasswordCheckBusyError())
+      return
+    }
     queue.push({ op, a, b, resolve: resolve as Task["resolve"], reject })
     dispatch()
   })

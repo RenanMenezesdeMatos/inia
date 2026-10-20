@@ -12,12 +12,24 @@ export type FeedbackDislikeReason = z.infer<typeof feedbackDislikeReasonSchema>
 
 export const FEEDBACK_RATING_COMMENT_LIMITS = { min: 3, max: 1000 } as const
 
+/** Conclusão da revisão humana de uma contestação (migration 150). */
+export const CONTESTATION_DECISIONS = ["ACCEPTED", "PARTIALLY_ACCEPTED", "REJECTED"] as const
+export const contestationDecisionSchema = z.enum(CONTESTATION_DECISIONS)
+export type ContestationDecision = z.infer<typeof contestationDecisionSchema>
+export const CONTESTATION_DECISION_LABELS: Record<ContestationDecision, string> = {
+  ACCEPTED: "Contestação procedente",
+  PARTIALLY_ACCEPTED: "Procedente em parte",
+  REJECTED: "Feedback mantido",
+}
+
 export const feedbackRatingSchema = z.object({
   source: feedbackSourceSchema,
   value: z.enum(["UP", "DOWN"]),
   reason: feedbackDislikeReasonSchema.nullable(),
   comment: z.string().nullable(),
   ratedAt: z.string(),
+  // "Não foi útil" já respondida por quem revisa as contestações (o colaborador vê a resposta junto do feedback).
+  review: z.object({ decision: contestationDecisionSchema, response: z.string(), respondedAt: z.string() }).nullable().default(null),
 })
 export type FeedbackRating = z.infer<typeof feedbackRatingSchema>
 

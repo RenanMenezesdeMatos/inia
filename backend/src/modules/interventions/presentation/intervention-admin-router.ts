@@ -17,6 +17,7 @@ import { applyEvaluation } from "../application/apply-evaluation.js"
 import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, type PolicyHeader, type PolicyVersion } from "../application/catalog.js"
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
+import { canSeeInterventionsOf } from "../application/intervention-access.js"
 
 /**
  * Administração das políticas de acompanhamento — `/api/v1/admin/intervention-policies`. Permissões SEPARADAS: editar,
@@ -259,7 +260,9 @@ export function createInterventionAdminRouter(db: Database) {
       if (!version || (version as { policyId?: string }).policyId !== policy.id) throw new DomainError("Versão não encontrada.", "INTERVENTION_POLICY_VERSION_NOT_FOUND", 404)
     }
     // Simulação: inativa também é simulável (é assim que se testa antes de reativar).
-    const evaluation = await evaluatePolicy(readOnly, { organizationId: organizationOf(request), policy: { ...policy, active: true }, personId: body.personId, asOf, recommendOnly: body.mode === "RECOMMEND_ONLY", ...(version !== undefined ? { version } : {}) })
+    // Simular com uma pessoa não abre as intervenções dela: sem esse acesso, o histórico de intervenções não é lido (SCOPE-02).
+    const interventionHistory = (await canSeeInterventionsOf(db, accessOf(request), body.personId)) ? "VISIBLE" : "HIDDEN"
+    const evaluation = await evaluatePolicy(readOnly, { organizationId: organizationOf(request), policy: { ...policy, active: true }, personId: body.personId, asOf, recommendOnly: body.mode === "RECOMMEND_ONLY", interventionHistory, ...(version !== undefined ? { version } : {}) })
     if (!evaluation) throw new DomainError("Colaborador não encontrado.", "PERSON_NOT_FOUND", 404)
     const report = evaluation.decisions.length > 0 && evaluation.version
       ? buildIntelligenceReport({
@@ -310,7 +313,8 @@ export function createInterventionAdminRouter(db: Database) {
     const row = /^[0-9a-f-]{36}$/i.test(id) ? (await db.query<Record<string, unknown> & { person_id: string; policy_id: string }>(`select * from intervention_policy_evaluations where id = $1 and organization_id = $2`, [id, organizationOf(request)])).rows[0] : undefined
     if (!row) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
     const policy = await loadPolicyHeader(db, organizationOf(request), row.policy_id)
-    if (!policy || !seesPolicy(accessOf(request), policy) || !(await canSimulateWith(db, request, row.person_id))) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
+    // A avaliação gravada decidiu intervenções reais (fatos, decisões e justificativa citam as anteriores): só quem as vê (SCOPE-02).
+    if (!policy || !seesPolicy(accessOf(request), policy) || !(await canSimulateWith(db, request, row.person_id)) || !(await canSeeInterventionsOf(db, accessOf(request), row.person_id))) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
     response.json({ data: row })
   })
   /**
@@ -324,7 +328,8 @@ export function createInterventionAdminRouter(db: Database) {
     const original = /^[0-9a-f-]{36}$/i.test(id) ? (await db.query<{ id: string; policy_id: string; policy_version_id: string | null; person_id: string; as_of: Date; facts: { recommendOnly?: boolean } }>(`select id, policy_id, policy_version_id, person_id, as_of, facts from intervention_policy_evaluations where id = $1 and organization_id = $2`, [id, organizationOf(request)])).rows[0] : undefined
     if (!original) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
     const policy = await loadPolicyHeader(db, organizationOf(request), original.policy_id)
-    if (!policy || !seesPolicy(accessOf(request), policy) || !(await canSimulateWith(db, request, original.person_id))) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
+    // Reavaliar grava o resultado nas intervenções relacionadas: só quem as vê (SCOPE-02).
+    if (!policy || !seesPolicy(accessOf(request), policy) || !(await canSimulateWith(db, request, original.person_id)) || !(await canSeeInterventionsOf(db, accessOf(request), original.person_id))) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
     const version = original.policy_version_id ? await loadPolicyVersion(db, organizationOf(request), original.policy_version_id) : null
     const evaluation = await evaluatePolicy(db, { organizationId: organizationOf(request), policy: { ...policy, active: true }, personId: original.person_id, asOf: original.as_of, recommendOnly: Boolean(original.facts?.recommendOnly), version })
     if (!evaluation) throw new DomainError("Colaborador não encontrado.", "PERSON_NOT_FOUND", 404)

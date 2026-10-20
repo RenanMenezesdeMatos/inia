@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64"><title>INIA — D6 — Conexão — Borda fina</title><rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="#FFFFFF" stroke="#EB3C7D" stroke-width="3"/>
+  
+  <path d="m18 44 14-25 14 25Z" fill="none" stroke="#660099" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="18" cy="44" r="6" fill="#660099"/>
+  <circle cx="46" cy="44" r="6" fill="#660099"/>
+  <circle cx="32" cy="19" r="7" fill="#EB3C7D"/>
+</svg>

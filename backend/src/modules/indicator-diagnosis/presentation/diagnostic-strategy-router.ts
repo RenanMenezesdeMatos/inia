@@ -39,6 +39,19 @@ export function createDiagnosticStrategyRouter(db: Database) {
     return canManageScope(scopes, person.subteam_id ? { scopeType: "SUBTEAM", teamId: person.team_id, subteamId: person.subteam_id } : { scopeType: "TEAM", teamId: person.team_id, subteamId: null })
   }
 
+  /**
+   * Agent que quem testa pode usar: global (base de "Todos os grupos") ou de um Grupo/Subgrupo que ele administra — e, para o
+   * colaborador escolhido, só um Agent que valeria para ele (global, do Grupo ou do Subgrupo dele). Antes qualquer Agent da
+   * organização rodava com as bases de outro Grupo e o resultado voltava a quem testou (achado AI-06 da auditoria de 17/10/2026).
+   */
+  type AgentScopeRow = { id: string; name: string; scope_type: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; team_id: string | null; subteam_id: string | null }
+  const agentUsableBy = (scopes: ManageableScopes, agent: AgentScopeRow) => agent.scope_type === "ALL_TEAMS" || canManageScope(scopes, { scopeType: agent.scope_type, teamId: agent.team_id, subteamId: agent.subteam_id })
+  const agentFitsPerson = async (organizationId: string, agent: AgentScopeRow, personId: string) => {
+    if (agent.scope_type === "ALL_TEAMS") return true
+    const person = (await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0]
+    return agent.scope_type === "TEAM" ? Boolean(person && agent.team_id === person.team_id) : Boolean(person && agent.subteam_id === person.subteam_id)
+  }
+
   router.get("/indicators/:indicatorId", async (request, response) => {
     const { organizationId } = session(request)
     response.json({ data: await loadStrategyOverview(db, organizationId, request.params.indicatorId) })
@@ -120,14 +133,19 @@ export function createDiagnosticStrategyRouter(db: Database) {
       byPerson.set(row.person_id, list)
     }
     const collaborators = inScope.map((row) => ({ id: row.person_id, name: row.name, measurements: byPerson.get(row.person_id) ?? [] }))
-    const agents = (await db.query<{ id: string; name: string }>(`select id, name from agents where organization_id = $1 and active order by name`, [organizationId])).rows
+    const agents = (await db.query<AgentScopeRow>(`select id, name, scope_type, team_id, subteam_id from agents where organization_id = $1 and active order by name`, [organizationId])).rows
+      .filter((agent) => agentUsableBy(scopes, agent))
+      .map((agent) => ({ id: agent.id, name: agent.name }))
     response.json({ data: { collaborators, agents } })
   })
 
   router.post("/indicators/:indicatorId/simulate", async (request, response) => {
     const { organizationId } = session(request)
     const body = simulateBodySchema.parse(request.body)
-    if (!(await personInScope(organizationId, await scopesOf(request), body.collaboratorId))) throw new DomainError("Colaborador não encontrado.", "NOT_FOUND", 404)
+    const scopes = await scopesOf(request)
+    if (!(await personInScope(organizationId, scopes, body.collaboratorId))) throw new DomainError("Colaborador não encontrado.", "NOT_FOUND", 404)
+    const agent = (await db.query<AgentScopeRow>(`select id, name, scope_type, team_id, subteam_id from agents where id = $1 and organization_id = $2`, [body.agentId, organizationId])).rows[0]
+    if (!agent || !agentUsableBy(scopes, agent) || !(await agentFitsPerson(organizationId, agent, body.collaboratorId))) throw new DomainError("Agent não encontrado para este colaborador.", "AGENT_NOT_FOUND", 404)
     response.json({ data: await simulateDiagnosticStrategy(db, organizationId, { indicatorId: request.params.indicatorId, ...body }) })
   })
 

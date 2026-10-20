@@ -99,14 +99,14 @@ describe.skipIf(!ENABLED)("Liberação de acesso e primeiro login — prova Post
     expect(me).toMatchObject({ passwordChangeRequired: true, access: { permissions: [], roles: [], capabilities: { canAccessAdministration: false } } })
     expect(me).not.toHaveProperty("sv")
     // Política e regras da troca, validadas no servidor.
-    expect((await pending.post("/api/v1/auth/password").send({ newPassword: "Primavera2026", confirmPassword: "Primavera2027" })).body.error.code).toBe("PASSWORD_CONFIRMATION_MISMATCH")
+    expect((await pending.post("/api/v1/auth/password").send({ newPassword: "Cajueiro2026", confirmPassword: "Cajueiro2027" })).body.error.code).toBe("PASSWORD_CONFIRMATION_MISMATCH")
     expect((await pending.post("/api/v1/auth/password").send({ newPassword: "fraca", confirmPassword: "fraca" })).body.error).toMatchObject({ code: "PASSWORD_POLICY_VIOLATION", details: { violations: expect.arrayContaining([expect.objectContaining({ code: "TOO_SHORT" }), expect.objectContaining({ code: "MISSING_DIGIT" })]) } })
     expect((await pending.post("/api/v1/auth/password").send({ newPassword: temporary, confirmPassword: temporary })).body.error.code).toBe("PASSWORD_SAME_AS_TEMPORARY")
     // Outra sessão aberta com a mesma temporária (outro aparelho) — cai quando a troca termina.
     const otherDevice = (await agentFor("larissa.proof@proof-lib.inia.local", temporary)).cookie
 
     // 6) Troca bem-sucedida: temporária invalidada, conta ATIVA, acesso liberado conforme as permissões, outras sessões revogadas.
-    const changed = await pending.post("/api/v1/auth/password").send({ newPassword: "Primavera2026", confirmPassword: "Primavera2026" })
+    const changed = await pending.post("/api/v1/auth/password").send({ newPassword: "Cajueiro2026", confirmPassword: "Cajueiro2026" })
     expect(changed.status).toBe(200)
     expect((await pending.get("/api/v1/auth/me")).body.data).toMatchObject({ passwordChangeRequired: false })
     expect((await pending.get("/api/v1/notifications")).status).toBe(200)
@@ -114,17 +114,17 @@ describe.skipIf(!ENABLED)("Liberação de acesso e primeiro login — prova Post
     const revoked = await request(app).get("/api/v1/auth/me").set("Cookie", otherDevice)
     expect([revoked.status, revoked.body.error.code]).toEqual([401, "SESSION_REVOKED"])
     expect((await login("larissa.proof@proof-lib.inia.local", temporary)).status).toBe(401)
-    expect((await login("larissa.proof@proof-lib.inia.local", "Primavera2026")).body.data).toMatchObject({ passwordChangeRequired: false })
+    expect((await login("larissa.proof@proof-lib.inia.local", "Cajueiro2026")).body.data).toMatchObject({ passwordChangeRequired: false })
     expect((await client.query("select password_change_required, temporary_password_issued_at, temporary_password_expires_at, password_changed_at is not null changed from user_accounts where id = $1", [larissaAccount])).rows[0]).toEqual({ password_change_required: false, temporary_password_issued_at: null, temporary_password_expires_at: null, changed: true })
     expect((await pending.post("/api/v1/auth/password").send({ newPassword: "Outra2026x", confirmPassword: "Outra2026x" })).body.error.code).toBe("PASSWORD_CHANGE_NOT_REQUIRED")
     expect((await admin.get(`/api/v1/admin/access/users?search=Proof%20Lib%20Larissa`)).body.data.items[0]).toMatchObject({ accessStatus: "ACTIVE" })
 
     // 7) Nova senha temporária: a senha atual deixa de valer, sessões revogadas, troca obrigatória de novo.
-    const activeSession = (await agentFor("larissa.proof@proof-lib.inia.local", "Primavera2026")).cookie
+    const activeSession = (await agentFor("larissa.proof@proof-lib.inia.local", "Cajueiro2026")).cookie
     const reissued = await admin.post(`/api/v1/admin/access/accounts/${larissaAccount}/temporary-password`)
     expect([reissued.status, reissued.headers["cache-control"]]).toEqual([201, "no-store"])
     expect((await request(app).get("/api/v1/notifications").set("Cookie", activeSession)).body.error.code).toBe("SESSION_REVOKED")
-    expect((await login("larissa.proof@proof-lib.inia.local", "Primavera2026")).status).toBe(401)
+    expect((await login("larissa.proof@proof-lib.inia.local", "Cajueiro2026")).status).toBe(401)
     expect((await login("larissa.proof@proof-lib.inia.local", reissued.body.data.temporaryPassword)).body.data).toMatchObject({ passwordChangeRequired: true })
     // Gerar outra invalida a anterior.
     const third = (await admin.post(`/api/v1/admin/access/accounts/${larissaAccount}/temporary-password`)).body.data.temporaryPassword
@@ -135,7 +135,7 @@ describe.skipIf(!ENABLED)("Liberação de acesso e primeiro login — prova Post
     await client.query("update user_accounts set temporary_password_issued_at = now() - interval '4 days', temporary_password_expires_at = now() - interval '1 day' where id = $1", [larissaAccount])
     expect((await login("larissa.proof@proof-lib.inia.local", third)).body.error.code).toBe("TEMPORARY_PASSWORD_EXPIRED")
     expect((await request(app).get("/api/v1/auth/me").set("Cookie", pendingSession)).body.error.code).toBe("TEMPORARY_PASSWORD_EXPIRED")
-    expect((await request(app).post("/api/v1/auth/password").set("Cookie", pendingSession).send({ newPassword: "Primavera2026", confirmPassword: "Primavera2026" })).body.error.code).toBe("TEMPORARY_PASSWORD_EXPIRED")
+    expect((await request(app).post("/api/v1/auth/password").set("Cookie", pendingSession).send({ newPassword: "Cajueiro2026", confirmPassword: "Cajueiro2026" })).body.error.code).toBe("TEMPORARY_PASSWORD_EXPIRED")
     expect((await admin.get(`/api/v1/admin/access/users?search=Proof%20Lib%20Larissa`)).body.data.items[0]).toMatchObject({ accessStatus: "PENDING_PASSWORD_CHANGE", temporaryPasswordExpired: true })
 
     // 9) Desabilitar: sessões caem, login recusado mesmo com a senha certa; reabilitar sempre gera outra temporária.
@@ -184,11 +184,20 @@ describe.skipIf(!ENABLED)("Liberação de acesso e primeiro login — prova Post
     expect((await admin.patch(`/api/v1/admin/users/${veterana.id}`).send({ active: true })).status).toBe(200)
     expect((await login(veterana.email, "Antiga@2024")).body.error.code).toBe("ACCESS_DISABLED")
 
+    // 12b) Mudar de Grupo leva junto o Subgrupo antigo (achado AUTH-4): quem administra só o Grupo A deixa de alcançá-la.
+    const subteamA = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof Liberação A1') returning id", [org.id, teamA])).rows[0]!.id
+    await client.query("update people set subteam_id = $2 where id = $1", [pessoaB.id, subteamA])
+    await client.query("update people set team_id = $2 where id = $1", [pessoaB.id, teamA])
+    expect((await admin.patch(`/api/v1/admin/users/${pessoaB.id}`).send({ teamId: teamB })).status).toBe(200)
+    expect((await client.query<{ team_id: string; subteam_id: string | null }>("select team_id, subteam_id from people where id = $1", [pessoaB.id])).rows[0]).toEqual({ team_id: teamB, subteam_id: null })
+    const adminDoA = (await agentFor(adminA.email, "Antiga@2024")).agent
+    expect((await adminDoA.get(`/api/v1/admin/users/${pessoaB.id}`)).status).toBe(404)
+
     // 13) Auditoria: cada ação administrativa registrada, sem senha nem hash.
     const audit = await client.query<{ action: string; payload: Record<string, unknown> }>("select action, payload from audit_logs where entity_id = any($1::uuid[]) and action like 'ACCESS_%' order by created_at", [[larissaAccount, veterana.accountId]])
     const actions = audit.rows.map((row) => row.action)
     expect(actions).toEqual(expect.arrayContaining(["ACCESS_ENABLED", "ACCESS_PASSWORD_DEFINED", "ACCESS_TEMPORARY_PASSWORD_ISSUED", "ACCESS_DISABLED"]))
     const serialized = JSON.stringify(audit.rows)
-    for (const secret of [temporary, third, fresh, "Primavera2026", "$2a$", "$2b$"]) expect(serialized).not.toContain(secret)
+    for (const secret of [temporary, third, fresh, "Cajueiro2026", "$2a$", "$2b$"]) expect(serialized).not.toContain(secret)
   })
 })

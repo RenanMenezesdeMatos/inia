@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, FlaskConical, Flag, Gauge, ImageIcon, Layers, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, ImageIcon, Layers, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
@@ -116,6 +116,8 @@ const GROUPS: NavGroup[] = [
     // Leitura das conversas reais com a INIA (somente leitura) e Monitoria de usabilidade (uso do produto), no escopo da conta.
     entries: [
       { href: "/admin/conversations", label: "Conversas com a INIA", icon: MessagesSquare, capability: "canViewAssistantConversations" },
+      // Contestações dos colaboradores sobre feedbacks da INIA ("não foi útil") — revisão humana com resposta.
+      { href: "/admin/feedback-contestations", label: "Contestações de feedback", icon: MessageSquareWarning, capability: "canReviewFeedbackContestations" },
       { href: "/admin/usability", label: "Monitoria de usabilidade", icon: Activity, capability: "canViewUsability" },
     ],
   },

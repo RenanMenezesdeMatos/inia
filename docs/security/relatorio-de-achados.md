@@ -342,3 +342,275 @@ auditoria (casos, publicação de feedback, ingestão legada); o restante está 
   lista de permissões; React 19 bloqueia `javascript:` em `href`.
 - **Notificações, Pendências, Acompanhamento do colaborador, aplicação de feedback, avaliações, conversas monitoradas, cenas,
   argumentários, resultados de Workflow**: autorização por dono/escopo correta.
+
+---
+
+# Segunda rodada — 17/10/2026
+
+Branch `admin-list-standardization` a partir do HEAD `27726180`, sem commit. Escopo: o sistema inteiro de novo, com atenção ao
+que entrou depois da primeira rodada (≈ 400 arquivos do backend e 320 do frontend: intervenções e políticas de acompanhamento,
+reports recorrentes, INIA para lideranças, pacote de configuração, Central de Dados com SQL Server real, multi-instância). A
+revisão foi dividida em quatro frentes (autenticação/plataforma, autorização por objeto, Central de Dados/arquivos/SQL,
+IA/voz/workflows) mais infraestrutura e dependências; os relatórios de trabalho de cada frente, com a tabela de cobertura rota a
+rota, estão em [anexos/rodada-2026-10-17/](anexos/rodada-2026-10-17/). Nenhum achado Crítico ou Alto; os Médios foram todos
+tratados (corrigidos, ou com decisão de produto registrada em `pendencias-e-riscos.md`).
+
+Mesma classificação da primeira rodada. Os IDs são os das frentes (AUTH, SCOPE, DATA, AI, INFRA). SCOPE-01 e AI-03 são o mesmo
+achado, encontrado por duas frentes.
+
+## Resumo
+
+| ID | Achado | Gravidade | Tipo | Situação |
+|---|---|---|---|---|
+| AUTH-1 | Trava de login por e-mail contornável com tentativas simultâneas (20 paralelas = 20 senhas conferidas) | Média | Confirmada | Corrigido |
+| AUTH-2 | Rajada paralela passava inteira pelo teto de recusas por IP; fila do bcrypt sem teto (login e ciência travados por minutos) | Média | Confirmada | Corrigido |
+| AUTH-3 | Qualquer pessoa trava o login de qualquer conta, inclusive do Administrador geral (5 senhas erradas a cada 15 min) | Média | Confirmada | Corrigido |
+| AUTH-13 | Administrador de Grupo pré-cadastra o e-mail de quem vai chegar pela base e fica com a conta (Grupo/nível reais vêm da carga) | Média | Confirmada | Corrigido |
+| AUTH-5 | Delegação concede papéis com permissões que quem concede não tem; com a senha temporária, vira conta-fantoche (R-05 ampliado) | Média | Confirmada (desenho) | Pendente — decisão de produto |
+| SCOPE-01 / AI-03 | Monitoramento de conversas mostrava respostas e cartões da liderança com pessoas fora do escopo de quem lê | Média | Confirmada | Corrigido |
+| SCOPE-02 | Simulação de política, avaliações gravadas e o caso de supervisão revelavam intervenções (inclusive avaliação de continuidade) a quem não pode vê-las | Média | Confirmada | Corrigido |
+| DATA-1 | Guarda de ZIP confiava no tamanho declarado (XLSX de 389 KB → 400 MB; imagem-bomba no DOCX a cada prévia); PDF sem guarda | Média | Confirmada | Corrigido (PDF: mitigado — ver R-24) |
+| DATA-4 | MySQL/MariaDB "validando o certificado" não conferia o nome do servidor | Média | Confirmada | Corrigido |
+| DATA-5 | Fonte de banco nova nascia com TLS sem validar certificado (SQL Server incluso) | Média | Confirmada | Corrigido (fontes novas) |
+| AI-01 | Chamadas de ferramenta por rodada sem teto (uma pergunta → dezenas de especialistas/Orquestradores em paralelo) | Média | Confirmada | Corrigido |
+| AI-02 | Feedback publicado a partir de nó Orquestrador gravava o texto da IA como "evidência encontrada" | Média | Confirmada | Corrigido |
+| INFRA-1 | Limites por caminho (ações caras, sessões de voz, áudio) contornáveis com maiúsculas ou barra final | Média | Confirmada | Corrigido |
+| INFRA-2 | Serviços do Windows como LocalSystem; `.env` com segredos sem ACL restrita | Média | Confirmada | Corrigido parcialmente (opção nova; padrão mantido) |
+| AUTH-4 | Mudar o Grupo pelo cadastro mantinha o Subgrupo antigo (a pessoa seguia no escopo do Grupo antigo) | Baixa | Confirmada | Corrigido |
+| AUTH-6 | Cadastro de pessoa aceitava senha provisória escolhida por quem cadastra | Baixa | Confirmada | Corrigido |
+| AUTH-7 | Pessoa desligada pela base mantinha a conta; reativada, voltava com a senha e os tokens antigos | Baixa | Confirmada | Corrigido |
+| AUTH-8 | API em produção aceitava o `JWT_SECRET` de exemplo e qualquer `DATA_HUB_SECRET_KEY` | Baixa | Preventiva | Corrigido (chave de cifra: aviso) |
+| AUTH-9 | `config:importar` lia (e enviava ao destino) qualquer arquivo da máquina por caminho com `..` no pacote | Baixa | Confirmada | Corrigido |
+| AUTH-10 | Cookie de sessão de Administrador geral gravado dentro da pasta do pacote, que circula entre máquinas | Baixa | Confirmada | Corrigido |
+| AUTH-11 | Capa do perfil (e fundo do cenário) servida a toda a organização com EXIF/GPS do celular | Baixa | Confirmada | Corrigido |
+| AUTH-12 | Política de senha sem bloqueio de senhas comuns (Senha123, Vivo2026, Primavera2026) | Baixa | Confirmada | Corrigido |
+| AUTH-14 | Limite da criação de senha do primeiro acesso por IP (NAT/Citrix: 20 por 15 min para a operação inteira) | Baixa | Confirmada | Corrigido |
+| AUTH-15 | `auth_login_attempts` crescia sem limpeza | Baixa | Confirmada | Corrigido |
+| AUTH-16 | CSRF dependia só da presença de `Origin`/`Sec-Fetch-Site` | Baixa | Preventiva | Não alterado — ver R-26 |
+| AUTH-17 | Endurecimento: `TRUST_PROXY` com rede `/0`, upload do perfil sem teto por conta, cookie sem `__Host-`, CORS padrão em produção | Informativa | Preventiva | Parcial (`/0` e teto do perfil corrigidos) |
+| SCOPE-03 | Responsável/aprovador gravado na intervenção mantém o acesso depois de perder a relação com o colaborador | Baixa | Confirmada | Pendente — R-27 |
+| SCOPE-04 | "Tentar de novo" da análise de IA de report sem teto por conta | Baixa | Preventiva | Corrigido |
+| DATA-2 | Negação do banco interno comparava só o texto do host (pelo IP ou outro nome, passava) | Baixa | Confirmada | Corrigido |
+| DATA-3 | Azure WireServer e metadados da Alibaba fora da lista fixa de destinos negados | Baixa | Preventiva | Corrigido |
+| DATA-6 | Ligação credencial × destino não incluía a CA do banco nem a chave do servidor SFTP | Baixa | Confirmada | Corrigido |
+| DATA-7 | DNS rebinding na política de destinos (R-03) | Baixa | Hipótese | Pendente — R-03 |
+| DATA-8 | Carga de Colaboradores liga pelo e-mail contas criadas à mão (inclusive administrativas) e pode inativá-las | Baixa | Confirmada (desenho) | Parcial — R-28 |
+| DATA-9 | Teto das ações caras não cobria amostra, listagem SFTP e criação de conjunto (que conectam ao destino) | Baixa | Confirmada | Corrigido |
+| DATA-10 | API Pull sem teto da carga inteira (só 50 MB por página × até 10 mil páginas) | Baixa | Confirmada | Corrigido |
+| DATA-11 | Padrão de arquivo do SFTP virava regex com retrocesso exponencial (event loop parado 64 s) | Baixa | Confirmada | Corrigido |
+| DATA-12/13 | API Push lê o corpo antes do token; Idempotency-Key sem conferir o corpo; API Pull aceita `http://` com credencial; Markdown com nome vindo do feed; `\` no nome do arquivo | Informativa | Confirmada | Parcial (Markdown e nome de arquivo corrigidos) — R-29 |
+| AI-04 | Lista nominal + contagem por unidade revelavam o motivo protegido do afastamento (INSS/maternidade) | Baixa | Confirmada | Corrigido |
+| AI-05 | Restringir o alcance de uma base não tirava a base dos Agents que já a usavam | Baixa | Confirmada | Corrigido |
+| AI-06 | "Testar diagnóstico" aceitava Agent de outro Grupo (bases dele voltavam a quem testou) | Baixa | Confirmada | Corrigido |
+| AI-07 | Verificação "literal" da evidência aceitava 1 caractere ou só aspas | Baixa | Confirmada | Corrigido |
+| AI-08 | Link externo escrito pela IA (induzido por transcrição/base) virava link clicável "da INIA" | Baixa | Preventiva | Corrigido |
+| AI-09 | Voz: sessões Live vivas sem teto por conta; `/tool-call` continuava gastando IA depois que a pessoa saía | Baixa | Confirmada | Corrigido (medição do Live: R-30) |
+| AI-10 | Transcrição do próprio sujeito vai ao provedor sem redação de PII | Informativa | Confirmada | Pendente — decisão de DPA (R-31) |
+| INFRA-3 | Banco interno usado com superusuário do PostgreSQL sem aviso | Baixa | Preventiva | Corrigido (aviso) |
+| DEP-1 | Dependências: produção do frontend sem alerta; backend com 6 moderadas transitivas sem caminho de exploração; críticas só em ferramentas de desenvolvimento | Informativa | — | Sem mudança — R-14 atualizado |
+
+## Detalhe — autenticação, sessão e plataforma
+
+### AUTH-1 — Trava de login com tentativas simultâneas
+- **Evidência**: `authenticate.ts` lia as falhas, conferia a senha (bcrypt, ~60 ms) e só então gravava a falha. Prova de conceito
+  da frente A1: 20 logins errados em paralelo para o mesmo e-mail → 20 senhas conferidas. Prova no PostgreSQL (antes da correção):
+  30 paralelas → 30 conferências.
+- **Correção**: a tentativa é RESERVADA (gravada como falha) antes de qualquer conferência e o resultado substitui a reserva
+  (`CredentialStore.reserveAttempt/resolveAttempt`, `postgres-credential-store.ts`). Para N tentativas simultâneas, a última a
+  contar vê as reservas de todas: no máximo `LOGIN_MAX_FAILURES` chegam ao bcrypt, sem trava nem transação. Senha não conferida
+  (fila cheia, falha da thread) não fica contando como falha.
+- **Teste**: `auth-flows.test.ts` (20 simultâneas → ≤ 5 conferências); `auth/testing/login-throttle-proof.test.ts` (PostgreSQL
+  real, pool de 12 conexões: 30 simultâneas → ≤ 5; falha com o código antigo).
+
+### AUTH-2 — Teto por IP e fila do bcrypt
+- **Evidência**: regras "só falhas" do `rate-limit.ts` conferiam no início e gravavam no fim: 40 logins paralelos de e-mails
+  distintos com teto 3 → 40 atendidos. A fila do `password-hasher.ts` não tinha teto: uma rajada empurrava login e ciência para o
+  fim de uma fila de minutos.
+- **Correção**: regras `countOnlyFailures` RESERVAM a vaga (`consume`) e a DEVOLVEM quando a resposta é sucesso (`release`, novo
+  na loja em memória e na do PostgreSQL, na mesma janela). Fila de verificações limitada a `PASSWORD_QUEUE_LIMIT` (16 por thread):
+  acima disso a tarefa é recusada na hora com 503 `AUTH_BUSY`.
+- **Teste**: `http-security.test.ts` (12 paralelas com teto 3 → 3 × 401 e 9 × 429); `postgres-rate-limit-store-proof.test.ts`
+  (reserva/devolução entre dois processos); `password-hasher.test.ts` (fila cheia → 503 imediato; as aceitas terminam certas).
+
+### AUTH-3 — Bloqueio de conta por terceiros
+- **Evidência**: 5 falhas em 15 min travavam o e-mail para qualquer origem — inclusive a senha certa do dono.
+- **Correção**: DISPOSITIVO CONHECIDO (`auth/infrastructure/known-device.ts`). Login certo grava o cookie `inia_device`
+  (`<conta>.<aleatório>.<HMAC>`, httpOnly, `Path=/api/v1/auth`, 180 dias; não é sessão). Com o e-mail travado, um cookie válido
+  DESTA conta passa pela trava do e-mail e usa uma trava própria do dispositivo (5 falhas). Sem o cookie, continua travado.
+- **Teste**: `auth-flows.test.ts` (trava provocada por outro + dono com o cookie entra; cookie de outra conta não fura; 5 erradas
+  travam o dispositivo); `known-device.test.ts` (forjado/trocado/truncado = inválido); `http-security.test.ts` (cookie emitido no
+  login, `Path` e `HttpOnly`, não reemitido para a mesma conta).
+
+### AUTH-4 — Subgrupo antigo ao trocar de Grupo
+- **Correção**: `PATCH /admin/users/:id` zera `subteam_id` quando o Grupo muda (`user-account-router.ts`).
+- **Teste**: `account-access-lifecycle-proof.test.ts` (PostgreSQL: pessoa A/A1 → B; Subgrupo nulo; administrador do Grupo A
+  recebe 404).
+
+### AUTH-6 — Senha provisória escolhida por quem cadastra
+- **Correção**: `POST /admin/users` gera a senha (`generateTemporaryPassword`, ≈ 69 bits) e a devolve UMA vez (`issued`); o
+  campo `password` do corpo é ignorado. A tela de cadastro perdeu o campo e mostra o `TemporaryPasswordDialog` (o mesmo de
+  "Habilitar acesso").
+- **Teste**: `user-account-router.identity.test.ts` (senha do corpo ignorada, formato, nunca gravada em claro, diferente a cada
+  cadastro); `users-page.test.tsx` (sem campo; senha mostrada depois de criar).
+
+### AUTH-7 — Desligamento pela base
+- **Correção**: a carga de Colaboradores que desativa uma pessoa ATIVA desabilita a conta dela (mesma instrução do "Desabilitar
+  acesso": conta inativa, sessões derrubadas, temporária apagada; auditoria `ACCESS_DISABLED` motivo
+  `PERSON_DEACTIVATED_BY_SOURCE`). Exceção: conta de Administrador geral só tem as sessões derrubadas
+  (`ACCESS_SESSIONS_REVOKED`) — a organização não fica sem quem libere acessos. `disableAccountsFromSource` em
+  `data-hub/application/writers/person-identity.ts`.
+- **Teste**: `person-identity-proof.test.ts` (desligada → conta desabilitada e versão de sessão +1; reativada pela base → conta
+  continua desabilitada; Administrador geral só perde as sessões).
+
+### AUTH-8 — Segredos de produção
+- **Correção**: `productionSecretProblems` (`config/env.ts`): em produção a API não sobe com `JWT_SECRET` publicado (código,
+  `.env.example`), começando por "troque/change/exemplo", com menos de 32 caracteres ou menos de 10 caracteres distintos.
+  `DATA_HUB_SECRET_KEY` fraca só AVISA no log (`weak_production_secret`): trocá-la deixaria ilegíveis as credenciais cifradas —
+  procedimento em `configuracao-segura.md`. Os serviços do Windows passam a definir `NODE_ENV=production` no próprio serviço.
+- **Teste**: `http-security.test.ts` (valores de exemplo/curtos/repetitivos recusados; o que o `env:init` gera passa; chave fraca
+  só avisa).
+
+### AUTH-9 / AUTH-10 — Pacote de configuração
+- **Correção**: `lerArquivoDoPacote` (`scripts/config-transfer/formato.ts`) só lê dentro de `arquivos/` e `imagens/` do pacote e
+  confere o SHA-256 gravado na exportação; a conferência roda para todos os arquivos ANTES de conectar (simulação inclusive). A
+  sessão do destino fica no perfil de quem importa (`~/.inia/sessoes/config-importar-<hash da pasta>.json`, 0600), nunca no
+  pacote; um `.sessao-destino.json` antigo é encerrado no servidor e apagado.
+- **Teste**: `config-transfer.test.ts` (`../`, absoluto, raiz do pacote, SHA-256 trocado → recusado sem ler nada fora; sessão
+  fora da pasta).
+
+### AUTH-11 — Metadados das imagens
+- **Correção**: `shared/infrastructure/image-metadata.ts` remove, sem decodificar a imagem, EXIF/XMP/IPTC/comentários (JPEG),
+  blocos de texto/eXIf/tIME (PNG) e EXIF/XMP (WebP); a orientação da foto volta num EXIF mínimo. Aplicado à foto/capa do perfil e
+  às imagens do cenário da INIA, antes de gravar.
+- **Teste**: `image-metadata.test.ts` (GPS, aparelho, XMP e IPTC somem; pixels e dimensões iguais; orientação preservada) e
+  conferência manual com o `sharp`: JPEG e WebP reais com pixels idênticos.
+
+### AUTH-12 — Senhas comuns
+- **Correção**: `COMMON_PASSWORD` em `auth/domain/password-policy.ts` — "palavra comum (senha, mudar, vivo, inia, meses, estações,
+  times…) + números/símbolos", com leitura de `@`→a e `$`→s, e letras quase todas iguais. Espelhada no checklist da tela.
+- **Teste**: `auth-domain.test.ts`; `first-access.test.tsx`.
+
+### AUTH-13 — Conta pré-cadastrada assumindo pessoa da base
+- **Evidência**: `linkByAccountEmail` ligava a matrícula nova à pessoa cadastrada à mão com o mesmo e-mail e o upsert gravava ali
+  o Grupo e o nível reais — a senha continuava a de quem cadastrou.
+- **Correção**: o vínculo automático continua (é desenho: "uma pessoa, um cadastro"), mas quando a pessoa tinha Grupo e a base a
+  põe em OUTRO Grupo ou num nível de liderança que o cadastro não tinha, a conta é desabilitada (sessões derrubadas, auditoria
+  `LINKED_BY_SOURCE_NEW_PLACEMENT`, aviso `DATA_PERSON_LINK_ACCESS_DISABLED` na quarentena) até quem administra o lugar novo
+  liberar de novo. Pré-cadastro no mesmo Grupo e nível segue funcionando.
+- **Teste**: `person-identity-proof.test.ts` (Grupo A → Supervisora do Grupo B: ligada e desabilitada; mesmo Grupo: segue ativa).
+
+### AUTH-14 / AUTH-15 / AUTH-17
+- **Correção**: primeiro acesso com teto por SESSÃO (10 / 15 min) e, por IP, só as recusas (300 / 15 min) — `app.ts`
+  (`sessionCookieKey`). Limpeza horária de `auth_login_attempts` com mais de 30 dias (`purgeOldLoginAttempts`, tarefa
+  `login-attempts-purge`). `TRUST_PROXY` com rede `/0` recusado na subida. Envio de foto/capa limitado a 20 por minuto por conta.
+- **Teste**: `http-security.test.ts`; `login-throttle-proof.test.ts` (retenção).
+
+### INFRA-1 — Limites por caminho
+- **Evidência**: o Express roteia sem diferenciar maiúsculas e aceita barra final; os limitadores comparavam `request.path` cru:
+  `POST /admin/agents/x/TEST` ou `/x/test/` chegavam ao teste do Agent sem o teto (reproduzido).
+- **Correção**: `routePath()` em `app.ts` (minúsculas, sem barra final) usado por todos os limitadores montados por caminho.
+- **Teste**: `http-security.test.ts` (variações → 429; falham com o código antigo).
+
+### INFRA-2 / INFRA-3 — Instalação
+- **Correção**: `instalar-servicos.ps1 -ContaServico "NT AUTHORITY\LocalService"` (ou gMSA) grava `<serviceaccount>` no WinSW e
+  dá à conta leitura da pasta e escrita em `logs` e `frontend\.next`; sem a opção, aviso de LocalSystem. Sempre: `backend\.env` e
+  `frontend\.env.local` com ACL só para Administradores, SYSTEM, quem instala e a conta do serviço. `doctor`/`db:connect` avisam
+  quando o usuário do banco interno é superusuário.
+- **Teste**: sem PowerShell nesta máquina — **não validado em Windows** (ver R-11 e R-32).
+
+## Detalhe — autorização por objeto, Central de Dados e IA
+
+### SCOPE-01 / AI-03 — Monitoramento de conversas
+- **Evidência**: o alcance do leitor era decidido pelo Grupo do DONO da conversa; as mensagens voltavam com texto e cartões da
+  liderança sem nenhuma conferência contra o escopo de quem lê (o dono, ao reabrir, já tinha os cartões revalidados).
+- **Correção**: `loadMonitoredMessages` recebe o filtro do LEITOR (`conversation-monitoring-router.ts`: cartões do próprio dono +
+  estruturas que o escopo de `indicators.view` de quem lê alcança). Resposta com algum cartão fora disso sai sem texto e sem
+  cartões (`OUT_OF_READER_SCOPE_NOTICE`); sem filtro, falha fechada. A prévia da lista também não mostra resposta com cartão.
+- **Teste**: `conversation-monitoring.test.ts`; `assistant-conversations-proof.test.ts` (SQL da prévia no PostgreSQL real).
+
+### SCOPE-02 — Intervenções reveladas por simulação, avaliação e caso
+- **Correção**: simulação sem acesso às intervenções da pessoa (`canSeeInterventionsOf`) roda com o histórico OCULTO — as
+  condições `PRIOR_INTERVENTIONS`/`TIME_SINCE_INTERVENTION` ficam inconclusivas sem ler nada (`INTERVENTIONS_NOT_VISIBLE`) e as
+  decisões não consultam intervenções existentes. Detalhe e reavaliação de avaliação gravada exigem ver as intervenções da
+  pessoa. Casos abertos por intervenção (manual ou política) ganham título e resumo neutros — tipo e justificativa ficam na
+  intervenção.
+- **Teste**: `condition-resolvers.test.ts`; `interventions-proof.test.ts` (percurso completo no PostgreSQL continua passando).
+
+### SCOPE-04 — Reports
+- **Correção**: prévia, "Executar agora" e nova tentativa da análise entram no teto das ações caras por conta (`app.ts`).
+- **Teste**: `http-security.test.ts`.
+
+### DATA-1 — Arquivos comprimidos
+- **Correção**: `zip-guard.ts` descompacta cada entrada de verdade (`inflateRawSync` com teto = o tamanho declarado); entrada que
+  passa do declarado, tem tamanho real diferente, é cifrada ou usa método desconhecido recusa o pacote — antes de exceljs/mammoth
+  (upload, SFTP, importação e cada prévia DOCX). PDF: `pdf-guard.ts` mede cada fluxo FlateDecode fora da thread principal antes
+  do pdf-parse (32 MB por fluxo de conteúdo, 64 MB por imagem, 512 MB no total, taxa > 200:1 recusada fora das imagens).
+- **Teste**: `zip-guard.test.ts` e `pdf-guard.test.ts` (bombas montadas no teste); as bombas da frente A3 recusadas; XLSX de 20 mil
+  linhas, manuais .docx/.pdf do repositório (até 198 MB descompactados) aceitos.
+
+### DATA-4 / DATA-5 / DATA-6 — TLS e credencial dos bancos e do SFTP
+- **Correção**: MySQL/MariaDB com validação passa `verifyIdentity: true` (`mysql-session.ts`). Fonte de banco NOVA sem modo
+  escolhido nasce em `VERIFY_FULL` (`withNewSourceDefaults`, `source-service.ts`) e a tela nasce nesse modo para qualquer banco;
+  fontes gravadas sem o campo continuam no padrão antigo. `secretTargetOf` inclui o hash da CA do banco e a chave do servidor
+  SFTP: trocar/apagar exige a senha de novo.
+- **Teste**: `secret-binding.test.ts`; `database-wizard.test.tsx`. Sem banco externo com certificado nesta máquina: conexão real
+  não executada (R-08).
+
+### DATA-2 / DATA-3 — Política de destinos
+- **Correção**: o banco interno é negado também pelo IP e por qualquer nome que resolva para ele, e — quando ele é a própria máquina
+  — pelos IPs das placas de rede na mesma porta (`withDeniedAddresses`). Azure WireServer (168.63.129.16) e metadados da Alibaba
+  (100.100.100.200) entram na lista fixa.
+- **Teste**: `outbound-destination-policy.test.ts`.
+
+### DATA-9 / DATA-10 / DATA-11 / DATA-13
+- **Correção**: amostras, listagem SFTP e criação de conjunto no teto das ações caras; API Pull com teto de 200 MB por carga
+  (`MAX_API_PULL_RUN_BYTES`); padrão SFTP casado sem regex (`matchesGlob`, linear); células das tabelas Markdown da liderança
+  escapam `[ ] \` * _ < >`; `\` sai do `filename` do download.
+- **Teste**: `glob.test.ts` (padrão de 8 `*` contra 255 letras < 50 ms); `api-pull-volume.test.ts`; `query-table-markdown.test.ts`.
+
+### AI-01 — Teto de chamadas de ferramenta
+- **Correção**: `MAX_TOOL_CALLS_PER_ROUND = 6` e `MAX_TOOL_CALLS_PER_TURN = 12` em `run-orchestrated-reply.ts` (as excedentes voltam
+  ao modelo como "não executada"); roteamento declarado pelo Workflow não conta. Consulta de processo da liderança: no máximo 2
+  Orquestradores por resposta (`process-consultation.ts`).
+- **Teste**: `run-orchestrated-reply.test.ts` (30 pedidas por rodada → 12 executadas no turno).
+
+### AI-02 / AI-07 — Evidência
+- **Correção**: o feedback publicado a partir de Orquestrador usa como evidência só as citações literais já conferidas pelos
+  especialistas de contrato FEEDBACK; sem nenhuma, diz que não há trecho verificado e grava `evidenceVerified: false`, que as
+  políticas de acompanhamento não contam como evidência verificável (`condition-resolvers.ts`). A síntese segue como
+  recomendação. `isVerbatimEvidence` exige ao menos 12 caracteres e duas palavras.
+- **Teste**: `create-orchestrator-feedback.test.ts`; `create-feedback-records.test.ts` (snapshot atualizado);
+  `run-agent.test.ts`.
+
+### AI-04 / AI-05 / AI-06 — Dados sensíveis, bases e Agents
+- **Correção**: `sensitiveBreakdownAllowed` (`management-metrics.ts`) — tipos sensíveis separados só com 5+ pessoas e, entre os
+  afastados sensíveis, nenhum ou dois tipos com 2+ cada; vale para o organograma e para a ferramenta de força de trabalho. A
+  recuperação de conhecimento aplica a cada busca a mesma regra de alcance do cadastro do Agent. "Testar diagnóstico" só aceita
+  Agent global ou de Grupo/Subgrupo que quem testa administra, e que valeria para o colaborador escolhido.
+- **Teste**: `management-metrics.test.ts`; `leadership-tools-v3.test.ts`; `agent-knowledge-scope-proof.test.ts` (PostgreSQL;
+  falha com o código antigo); `diagnostic-strategy-proof.test.ts`.
+
+### AI-08 / AI-09 — Links e voz
+- **Correção**: `RichContent` só torna clicável caminho da própria INIA e domínios de `NEXT_PUBLIC_INIA_TRUSTED_LINK_HOSTS`;
+  link externo aparece como texto com o domínio à vista. Voz: teto de 60 sessões novas por conta a cada 30 minutos (a sessão Live
+  vale 30 min) além do teto por minuto; `/tool-call` cancela as chamadas de IA quando a conexão cai.
+- **Teste**: `rich-content.test.tsx`; `follow-up-entry.test.tsx`; `http-security.test.ts`.
+
+## Verificações executadas (segunda rodada)
+
+| Verificação | Comando | Resultado |
+|---|---|---|
+| Typecheck do backend | `cd backend && npx tsc -p tsconfig.json --noEmit` | sem erro |
+| Typecheck dos scripts | `cd backend && npm run typecheck:scripts` | sem erro |
+| Lint do backend | `cd backend && npx eslint .` | sem erro nem aviso |
+| Suíte do backend | `cd backend && npx vitest run` | 419 arquivos, **4.760 testes passando**, 0 falhas (413 pulados = provas de banco e casos condicionais). Linha de base antes das correções: 4.713 passando e 1 falha intermitente de socket em `notifications-router.test.ts`, que passa isolada |
+| Typecheck do frontend | `cd frontend && npx tsc --noEmit` | sem erro |
+| Lint do frontend | `cd frontend && npx eslint` | 0 erros, 1 aviso preexistente (`operator-inia-chat.tsx`, `react-hooks/set-state-in-effect`, arquivo não alterado) |
+| Suíte do frontend | `cd frontend && npx vitest run` | 159 arquivos, **1.894 passando**, 0 falhas. Numa execução anterior com a máquina sob carga, o teste de desempenho de `lib/avatar/lipsync/pt-br/g2p.test.ts` ("fonemização < 5 ms") marcou 6,97 ms — arquivo não alterado; passa isolado e na execução final |
+| Build | `npm run build` (backend `tsc` e `next build`) | concluídos sem erro |
+| Provas de banco (PostgreSQL de teste) | `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run <módulos> --no-file-parallelism` (auth, access, data-hub, interventions, knowledge, profile-preferences, inia-scenes, org-structure, leadership-analytics, reports, feedback-application, assistant, users, indicator-diagnosis, shared, main) | 989 passando. Duas falhas por **outra sessão usando o mesmo `inia_test` ao mesmo tempo** (worktree `auditoria-eficiencia` rodando `analytics-read-model-proof` e `data-hub-proof`, com a mesma organização fixa): `knowledge-material-access-proof` (statement timeout ao inserir pessoa) — repetida sozinha: **9/9 passando**; `data-hub-proof` — repetida sozinha depois da outra sessão: **17/17**, com `person-identity-proof` 8/8 |
+| Provas escritas nesta rodada | `login-throttle-proof`, `postgres-rate-limit-store-proof` (reserva/devolução), `person-identity-proof` (3 casos novos), `account-access-lifecycle-proof` (Subgrupo), `agent-knowledge-scope-proof`, `diagnostic-strategy-proof` (Agent de outro Grupo) | passando; `login-throttle-proof` e `agent-knowledge-scope-proof` conferidas **falhando com o código antigo** |
+| Bombas da frente A3 | XLSX/DOCX/PDF montados pela frente A3 contra as guardas novas | todas recusadas; manuais `.docx`/`.pdf` e um XLSX de 20 mil linhas aceitos |
+| Imagens reais | JPEG/WebP com EXIF de celular gerados com `sharp` | pixels idênticos depois da limpeza, orientação preservada, modelo do aparelho removido |
+| `npm audit` | backend e frontend, com e sem dependências de desenvolvimento | ver DEP-1 / R-14 |
+| Segredos versionados | `git grep` por padrões de chave (Google, OpenAI, Anthropic, GitHub, Slack, AWS, chave privada) e histórico de `.env` | só valores falsos em testes; nenhum `.env` no histórico |

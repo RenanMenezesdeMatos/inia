@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 
 import { supervisionCaseSchema, type SupervisionCase } from "@/schemas/supervision-cases/supervision-case.schema"
-import { SESSION_COOKIE_NAME } from "@/services/auth/auth-service"
+import { readSessionCookie, sessionCookieHeader } from "@/lib/auth/session-cookie"
 
 const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
 
@@ -12,9 +12,10 @@ const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL
 export async function fetchSupervisionCase(id: string): Promise<SupervisionCase | null> {
   try {
     const cookieStore = await cookies()
-    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
+    const session = readSessionCookie(cookieStore)
+    const token = session?.value
     const response = await fetch(`${API_URL}/api/v1/supervision-cases/${id}`, {
-      headers: token ? { cookie: `${SESSION_COOKIE_NAME}=${token}` } : undefined,
+      headers: token ? { cookie: sessionCookieHeader(session) } : undefined,
       cache: "no-store",
     })
     if (!response.ok) return null

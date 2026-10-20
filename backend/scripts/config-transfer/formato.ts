@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto"
+import { isAbsolute, relative, resolve, sep } from "node:path"
+
 /**
  * Pacote de configuração — o que `config:exportar` grava e `config:importar` lê (IT-INIA-010).
  *
@@ -15,6 +18,30 @@
  */
 
 export const FORMATO_PACOTE = 1
+
+/** Subpastas do pacote de onde a importação lê arquivos — nada fora delas (achado AUTH-9 da auditoria de 17/10/2026). */
+const PASTAS_DE_ARQUIVOS = ["arquivos", "imagens"] as const
+
+/**
+ * Conteúdo de um arquivo citado pelo `pacote.json`, só se o caminho ficar DENTRO de `arquivos/` ou `imagens/` do pacote e o
+ * SHA-256 bater com o gravado na exportação: um pacote adulterado não faz a importação ler (e enviar ao destino) um arquivo
+ * qualquer da máquina de quem importa.
+ */
+export function lerArquivoDoPacote(pasta: string, caminho: string, sha256Esperado: string, ler: (absoluto: string) => Buffer): Buffer {
+  const raiz = resolve(pasta)
+  const absoluto = resolve(raiz, caminho)
+  const relativo = relative(raiz, absoluto)
+  const [primeiro] = relativo.split(sep)
+  if (isAbsolute(caminho) || relativo.startsWith("..") || isAbsolute(relativo) || !PASTAS_DE_ARQUIVOS.includes(primeiro as (typeof PASTAS_DE_ARQUIVOS)[number]) || relativo.split(sep).length < 2) {
+    throw new Error(`O pacote cita um arquivo fora das pastas arquivos/ e imagens/ ("${caminho}") — pacote alterado ou corrompido; nada foi enviado.`)
+  }
+  const conteudo = ler(absoluto)
+  const obtido = createHash("sha256").update(conteudo).digest("hex")
+  if (!sha256Esperado || obtido !== sha256Esperado.toLowerCase()) {
+    throw new Error(`O arquivo "${caminho}" não é o que foi exportado (SHA-256 diferente) — pacote alterado ou corrompido; nada foi enviado.`)
+  }
+  return conteudo
+}
 
 /** Ordem de criação no destino: cada tipo só depende de tipos anteriores (a estratégia de diagnóstico de um indicador cita uma
  * flag pelo nome; o agente usa bases e domínio; o workflow, agentes, orquestradores, flags e indicadores). */

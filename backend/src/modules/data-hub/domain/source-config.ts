@@ -55,6 +55,18 @@ export const sourceConfigSchema = z.discriminatedUnion("kind", [
 ])
 export type SourceConfig = z.infer<typeof sourceConfigSchema>
 
+/**
+ * API Pull por `http://` com credencial: a senha/token viaja sem criptografia (R-29). Não é bloqueado — há APIs internas sem
+ * TLS e recusar quebraria integrações existentes —, mas a tela avisa enquanto a fonte estiver assim.
+ */
+export function insecureCredentialTransportWarning(config: SourceConfig): string | null {
+  if (config.kind !== "API_PULL" || config.api.auth.kind === "NONE") return null
+  const auth = config.api.auth
+  const urls = [config.api.baseUrl, auth.kind === "OAUTH2_CLIENT_CREDENTIALS" ? auth.tokenUrl : null]
+  if (!urls.some((url) => url?.toLowerCase().startsWith("http://"))) return null
+  return "Esta fonte envia credencial por http:// (sem criptografia): quem estiver na mesma rede pode ler a senha ou o token. Use https:// sempre que a API do cliente oferecer."
+}
+
 /** Segredos aceitos na criação/rotação — nunca persistidos em claro, nunca devolvidos. */
 export const sourceSecretsSchema = z.object({
   token: z.string().min(1).max(4000).optional(),
@@ -158,8 +170,34 @@ export const sourceInputSchema = z.object({
 })
 export type SourceInput = z.infer<typeof sourceInputSchema>
 
-/** Glob simples (`*`, `?`) → regex ancorada, sem interpretar nada além disso. */
-export function globToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")
-  return new RegExp(`^${escaped}$`, "i")
+/**
+ * Glob simples (`*`, `?`), sem diferenciar maiúsculas, casado SEM expressão regular: o nome vem do servidor SFTP e `*a*a*a…`
+ * virava retrocesso exponencial — 64 s com o event loop parado num nome de 60 letras (achado DATA-11 da auditoria de
+ * 17/10/2026). Dois ponteiros com retomada na última `*`: no pior caso padrão × nome passos, nunca exponencial.
+ */
+export function matchesGlob(pattern: string, name: string): boolean {
+  const p = pattern.toLowerCase()
+  const n = name.toLowerCase()
+  let pi = 0
+  let ni = 0
+  let star = -1
+  let resume = 0
+  while (ni < n.length) {
+    if (pi < p.length && (p[pi] === "?" || p[pi] === n[ni])) {
+      pi += 1
+      ni += 1
+    } else if (pi < p.length && p[pi] === "*") {
+      star = pi
+      resume = ni
+      pi += 1
+    } else if (star >= 0) {
+      pi = star + 1
+      resume += 1
+      ni = resume
+    } else {
+      return false
+    }
+  }
+  while (pi < p.length && p[pi] === "*") pi += 1
+  return pi === p.length
 }

@@ -3,15 +3,23 @@ import { createApprovedFeedback } from "./create-approved-feedback.js"
 import type { FeedbackInvestigationFields } from "./feedback-investigation-trace.js"
 import type { SupportMaterialRecommendation, SupportMaterialRejection } from "../domain/support-material.js"
 
-export type OrchestratorFeedbackSource = { text: string; structuredResult?: Record<string, unknown> | null }
+export type OrchestratorFeedbackSource = {
+  text: string
+  structuredResult?: Record<string, unknown> | null
+  /** Resultados dos especialistas: os de contrato FEEDBACK trazem `evidenceFound` já conferido como citação literal. */
+  results?: { contract?: "FEEDBACK" | "TEXT"; structured?: { evidenceFound?: unknown } | undefined }[]
+}
+
+/** Marca, no `context_snapshot`, de um feedback cuja "evidência" não é citação conferida — nunca conta como evidência verificável. */
+export const UNVERIFIED_EVIDENCE_SNAPSHOT_KEY = "evidenceVerified"
 
 /**
- * Irmã mais simples de create-monitoring-feedback.ts/create-indicator-feedback.ts, para quando
- * a origem do conteúdo é um node Orchestrator, não um Agent analisando uma transcrição
- * específica. Diferença importante: NÃO há checagem verbatim de evidência aqui (a que
- * `run-agent.ts` faz para o caminho `channel_flag`) — o Orchestrator combina a síntese de
- * vários especialistas, não um único trecho-fonte citável. Isso é uma característica conhecida
- * desse caminho, não um bug: ver a seção sobre isso no relatório de validação do motor.
+ * Irmã mais simples de create-monitoring-feedback.ts/create-indicator-feedback.ts, para quando a origem do conteúdo é um node
+ * Orchestrator, não um Agent analisando uma transcrição específica. Texto gerado por IA nunca é evidência (achado AI-02 da
+ * auditoria de 17/10/2026 — antes a síntese inteira virava "evidência encontrada"): a evidência é a citação LITERAL que um
+ * especialista de contrato FEEDBACK já conferiu contra a fonte; sem nenhuma, o feedback sai dizendo que não há trecho verificado
+ * (apontando a interação de origem), marcado `evidenceVerified: false` — e não conta como evidência nas políticas de acompanhamento.
+ * A síntese do Orquestrador continua sendo a recomendação.
  */
 export async function createOrchestratorFeedback(
   db: Database,
@@ -31,6 +39,8 @@ export async function createOrchestratorFeedback(
   } & FeedbackInvestigationFields,
 ): Promise<{ caseId: string; feedbackId: string }> {
   const feedbackText = extractFeedbackText(input.reply)
+  const quotes = verifiedQuotes(input.reply)
+  const evidenceFound = quotes.length > 0 ? quotes.map((quote) => `"${quote}"`).join("\n") : `Sem trecho literal verificado: a análise é uma síntese de ${input.orchestratorName} gerada por IA. Confira a interação de origem antes de tratar como evidência.`
   const title = `Análise de ${input.orchestratorName}`.slice(0, 80)
   const summary = feedbackText.slice(0, 240)
 
@@ -47,7 +57,7 @@ export async function createOrchestratorFeedback(
     evidence: {
       type: "FEEDBACK",
       title: `Síntese — ${input.orchestratorName}`,
-      description: feedbackText,
+      description: evidenceFound,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       occurredAt: input.occurredAt,
@@ -55,17 +65,23 @@ export async function createOrchestratorFeedback(
     feedback: {
       kind: "MONITORING",
       impactedIndicator: input.orchestratorName,
-      evidenceFound: feedbackText,
+      evidenceFound,
       observedBehavior: "Ver recomendação.",
       relatedProcedure: `Síntese de ${input.orchestratorName}`,
       recommendation: feedbackText,
-      contextSnapshot: { orchestratorName: input.orchestratorName, structuredResult: input.reply.structuredResult ?? null },
+      contextSnapshot: { orchestratorName: input.orchestratorName, structuredResult: input.reply.structuredResult ?? null, [UNVERIFIED_EVIDENCE_SNAPSHOT_KEY]: quotes.length > 0 },
     },
     supportMaterials: input.supportMaterials,
     supportMaterialsRejected: input.supportMaterialsRejected,
     toolTrace: input.toolTrace,
     investigation: input.investigation,
   })
+}
+
+/** Citações literais já conferidas pelos especialistas de contrato FEEDBACK (sem repetição, na ordem em que vieram). */
+function verifiedQuotes(reply: OrchestratorFeedbackSource): string[] {
+  const quotes = (reply.results ?? []).flatMap((result) => (result.contract === "FEEDBACK" && typeof result.structured?.evidenceFound === "string" && result.structured.evidenceFound.trim() ? [result.structured.evidenceFound.trim()] : []))
+  return [...new Set(quotes)]
 }
 
 function extractFeedbackText(reply: OrchestratorFeedbackSource): string {

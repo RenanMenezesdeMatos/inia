@@ -1,3 +1,5 @@
+import { signalUserActivity } from "@/lib/auth/idle-session"
+
 const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
 
 /** Erro de API com o código de domínio do backend (ex.: STRUCTURE_ACCESS_DENIED) — permite que a
@@ -42,6 +44,8 @@ export async function apiPost<T = undefined>(path: string, body?: unknown): Prom
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!response.ok) throw await parseError(response)
+  // Ação que altera algo = a pessoa está usando a INIA (o servidor também conta; aqui é para o aviso de inatividade da tela).
+  signalUserActivity()
   if (response.status === 204) return undefined as T
   const payload = (await response.json()) as { data: T }
   return payload.data
@@ -57,6 +61,8 @@ export async function apiSend<T = undefined>(path: string, method: "PUT" | "PATC
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!response.ok) throw await parseError(response)
+  // Ação que altera algo = a pessoa está usando a INIA (o servidor também conta; aqui é para o aviso de inatividade da tela).
+  signalUserActivity()
   if (response.status === 204) return undefined as T
   const payload = (await response.json()) as { data: T }
   return payload.data

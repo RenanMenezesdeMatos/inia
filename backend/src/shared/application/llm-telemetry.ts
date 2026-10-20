@@ -16,7 +16,7 @@ import type { PromptComponentUsage } from "./prompting/prompt-components.js"
  * generateContent), aplicar a política "Parar antes da IA" e o orçamento "Máximo de chamadas".
  * As duas últimas viram `AiCallBlockedError` ANTES da request sair — nenhum token é consumido.
  */
-export type LlmCallRole = "agent" | "orchestrator_routing" | "orchestrator_synthesis" | "specialist" | "agent_synthesis" | "intervention_writer" | "report_analyst"
+export type LlmCallRole = "agent" | "orchestrator_routing" | "orchestrator_synthesis" | "specialist" | "agent_synthesis" | "intervention_writer" | "report_analyst" | "knowledge_clarification"
 
 /**
  * FASE da request dentro de uma execução com investigação (investigation-runtime.ts):
@@ -51,7 +51,7 @@ export type LlmRouteRecord = { provider: string; tier: "BASIC" | "STANDARD" | "D
 
 /** CLASSIFICAÇÃO da request (V1.3 — §44): toda request via gateway diz de onde vem e para quê — nunca ids pessoais. */
 export type LlmRequestSource = "AGENT" | "SPECIALIST" | "ORCHESTRATOR" | "INVESTIGATION_TOOL" | "WORKFLOW_POST_JOIN" | "WORKFLOW_ORCHESTRATOR" | "CHAT" | "VOICE" | "FEEDBACK_WRITER" | "INTERVENTION" | "REPORT"
-export type LlmSemanticType = "INVESTIGATION" | "FEEDBACK" | "PROCESS_AUDIT" | "INDICATOR_SUMMARY" | "TEXT" | "SEMANTIC_ANALYSIS" | "MANAGERIAL_SUMMARY" | "STRUCTURED_RESULT" | "ROUTING" | "INTERVENTION_REPORT" | "RECURRING_REPORT"
+export type LlmSemanticType = "INVESTIGATION" | "FEEDBACK" | "PROCESS_AUDIT" | "INDICATOR_SUMMARY" | "TEXT" | "SEMANTIC_ANALYSIS" | "MANAGERIAL_SUMMARY" | "STRUCTURED_RESULT" | "ROUTING" | "INTERVENTION_REPORT" | "RECURRING_REPORT" | "KNOWLEDGE_CLARIFICATION"
 export type LlmRequestClassification = { phase: LlmPhase; purpose: string; source: LlmRequestSource; semanticType: LlmSemanticType; tags?: string[] }
 
 /** Cache de prompt observado na request (V1.3 — §27): modo, versão da chave (hash, nunca conteúdo) e tokens servidos do cache. */

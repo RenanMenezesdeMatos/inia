@@ -4,6 +4,7 @@ import type { ReactNode } from "react"
 
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { ASSISTANT_CONVERSATIONS_PATH } from "@/components/admin/assistant-conversations/assistant-conversations-route"
+import { FEEDBACK_CONTESTATIONS_PATH } from "@/components/admin/feedback-contestations/feedback-contestations-route"
 import { USABILITY_PATH } from "@/components/admin/usability/usability-route"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
@@ -14,14 +15,14 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const user = await getCurrentUserFromCookies()
   if (!user) redirect("/auth/login")
   // V1.5.7: a Administração abre por PERMISSÃO (papéis da conta), nunca por cargo/nível hierárquico.
-  const { canAccessAdministration, canViewAssistantConversations } = user.access.capabilities
+  const { canAccessAdministration, canViewAssistantConversations, canReviewFeedbackContestations } = user.access.capabilities
   // Monitoria de usabilidade: permissão própria E painel ligado no ambiente (módulo desligado ≠ sem permissão: some do menu).
   const canViewUsability = user.access.capabilities.canViewUsability && user.features.usabilityPanel
-  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability) redirect(landingRouteFor(user))
-  // Quem só lê as conversas e/ou a monitoria entra SÓ nessas áreas — nenhum outro módulo abre por aqui (o backend também nega).
+  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability && !canReviewFeedbackContestations) redirect(landingRouteFor(user))
+  // Quem só lê as conversas, a monitoria e/ou revisa contestações entra SÓ nessas áreas — nenhum outro módulo abre por aqui (o backend também nega).
   if (!canAccessAdministration) {
     const pathname = (await headers()).get("x-inia-pathname") ?? ""
-    const allowed = [canViewAssistantConversations ? ASSISTANT_CONVERSATIONS_PATH : null, canViewUsability ? USABILITY_PATH : null].filter((path): path is string => path !== null)
+    const allowed = [canViewAssistantConversations ? ASSISTANT_CONVERSATIONS_PATH : null, canViewUsability ? USABILITY_PATH : null, canReviewFeedbackContestations ? FEEDBACK_CONTESTATIONS_PATH : null].filter((path): path is string => path !== null)
     if (!allowed.some((path) => pathname.startsWith(path))) redirect(allowed[0]!)
   }
 

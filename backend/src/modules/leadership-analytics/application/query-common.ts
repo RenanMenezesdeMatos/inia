@@ -145,7 +145,9 @@ export function buildCard(input: Pick<IndicatorQueryInput, "structure" | "source
 /** A tabela em markdown — o mesmo conteúdo do cartão, para a INIA copiar sem recalcular. */
 export function queryTableMarkdown(card: QueryTableCard): string {
   if (card.rows.length === 0) return "_Nenhuma linha para os filtros pedidos._"
-  const escape = (value: string) => value.replace(/\|/g, "/")
+  // Célula pode trazer dado da integração (nome da pessoa vindo do feed): nada dele vira link, ênfase ou HTML no Markdown
+  // (achado DATA-13 da auditoria de 17/10/2026); a barra vertical não pode quebrar a tabela.
+  const escape = (value: string) => value.replace(/\\/g, "\\\\").replace(/([[\]`*_<>])/g, "\\$1").replace(/\|/g, "/")
   const header = `| ${card.columns.map((column) => column.label).join(" | ")} |`
   const separator = `| ${card.columns.map((column) => (column.numeric ? "---:" : "---")).join(" | ")} |`
   const body = card.rows.map((row) => `| ${card.columns.map((column) => escape(row.cells[column.key] ?? "—")).join(" | ")} |`)

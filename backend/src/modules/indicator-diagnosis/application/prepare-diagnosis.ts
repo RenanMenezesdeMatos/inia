@@ -1,6 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { renderDiagnosisSampleForAgent } from "../../agents/domain/indicator-diagnosis-contract.js"
-import { loadLatestTranscript } from "../../workflows/application/transcript.js"
+import { loadLatestTranscriptForModel } from "../../workflows/application/transcript.js"
 import { runtimeParametersOf } from "../domain/diagnostic-strategy.js"
 import { segmentFactText } from "../domain/indicator-diagnosis.js"
 import { resolveExecutionStrategy, type ResolvedStrategy } from "./diagnostic-strategy-service.js"
@@ -16,7 +16,7 @@ export async function prepareIndicatorDiagnosis(db: Database, organizationId: st
   const parameters = runtimeParametersOf(strategy)
   const plan = await loadIndicatorDiagnosisPlan(db, { organizationId, measurementId: input.measurementId, collaboratorId: input.collaboratorId, parameters, agentId: input.agentId })
   const entries = plan?.status === "READY_FOR_ASSESSMENT" ? plan.sample : []
-  const transcripts = await Promise.all(entries.map(async (entry) => ({ handle: entry.handle, localDate: entry.localDate, transcript: (await loadLatestTranscript(db, entry.interactionId))?.content ?? "" })))
+  const transcripts = await Promise.all(entries.map(async (entry) => ({ handle: entry.handle, localDate: entry.localDate, transcript: (await loadLatestTranscriptForModel(db, entry.interactionId))?.content ?? "" })))
   return {
     plan,
     parameters,

@@ -1,3 +1,4 @@
+import type { QueryConfig } from "pg"
 import type { Database } from "../infrastructure/database/pool.js"
 
 /**
@@ -33,7 +34,11 @@ export function createReadiness(db: Pick<Database, "query">, options: { cacheMs?
     inFlight ??= new Promise<boolean>((resolve) => {
       const timer = setTimeout(() => resolve(false), timeoutMs)
       timer.unref?.()
-      db.query("select 1").then(
+      // O mesmo prazo vale para o comando: com o banco travado, a conferência solta a conexão em vez de prendê-la até a rede
+      // desistir (uma conferência presa por segundo esgotaria o pool). `query_timeout` por comando existe no driver, mas não
+      // nos tipos dele.
+      const probe: QueryConfig & { query_timeout: number } = { text: "select 1", query_timeout: timeoutMs }
+      db.query(probe).then(
         () => {
           clearTimeout(timer)
           resolve(true)

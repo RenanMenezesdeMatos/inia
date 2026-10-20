@@ -20,7 +20,7 @@ export function createUsageEventsRouter(db: Database, options: { now?: () => Dat
     let transport: "FETCH" | "BEACON" = "FETCH"
     if (typeof body === "string") {
       const origin = request.headers.origin
-      if (origin && origin !== env.CORS_ORIGIN) throw new DomainError("Origem não permitida.", "USAGE_ORIGIN_NOT_ALLOWED", 403)
+      if (origin && !env.allowedOrigins.includes(origin)) throw new DomainError("Origem não permitida.", "USAGE_ORIGIN_NOT_ALLOWED", 403)
       transport = "BEACON"
       try {
         body = JSON.parse(body)

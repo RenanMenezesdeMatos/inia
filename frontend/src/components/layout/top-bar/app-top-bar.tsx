@@ -10,6 +10,8 @@ type AppTopBarProps = {
   /** "Meu perfil" da pessoa autenticada — destino da marca, do seletor de área e dos deep links do sino. */
   profileHref: string
   onSignOut?: () => void
+  /** "Sair de todos os aparelhos": encerra todas as sessões da pessoa, inclusive esta. */
+  onSignOutEverywhere?: () => void
   /** Mostra "Administração" só com a capability (derivada dos papéis); o backend continua autorizando. */
   canAccessAdministration?: boolean
   /** Atalho "QA Lab" (QA de feedback): módulo LIGADO (`features`) e permissão do papel — os dois vêm do /auth/me. */
@@ -25,11 +27,11 @@ type AppTopBarProps = {
  * seletor de área; à direita, o sino. Compacto (56 px, sem filete) para não empurrar o conteúdo; a faixa de abas do
  * perfil fica fixa logo abaixo dele (`profile-tabs.tsx`).
  */
-export function AppTopBar({ profile, profileHref, onSignOut, canAccessAdministration = false, canReviewFeedback = false, canViewDiagnostics = false, canUseReports = false, onEditProfile }: AppTopBarProps) {
+export function AppTopBar({ profile, profileHref, onSignOut, onSignOutEverywhere, canAccessAdministration = false, canReviewFeedback = false, canViewDiagnostics = false, canUseReports = false, onEditProfile }: AppTopBarProps) {
   return (
     <header className="sticky top-0 z-30 w-full bg-topbar text-topbar-foreground shadow-sm">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 md:px-6">
-        <AppUserMenu profile={profile} profileHref={profileHref} onSignOut={onSignOut} onEditProfile={onEditProfile} />
+        <AppUserMenu profile={profile} profileHref={profileHref} onSignOut={onSignOut} onSignOutEverywhere={onSignOutEverywhere} onEditProfile={onEditProfile} />
         <span className="hidden h-6 w-px bg-topbar-foreground/25 sm:block" aria-hidden />
         <nav aria-label="Áreas da INIA" className="min-w-0">
           <AreaSwitcher profileHref={profileHref} canAccessAdministration={canAccessAdministration} canReviewFeedback={canReviewFeedback} canViewDiagnostics={canViewDiagnostics} canUseReports={canUseReports} />

@@ -1,27 +1,31 @@
-import { decryptSecret, encryptSecret, resolveSecretKey } from "../../data-hub/infrastructure/aes-secret-store.js"
+import { CURRENT_SECRET_KEY_VERSION, decryptStoredSecret, encryptBoundSecret, resolveSecretKeys, type SecretKeys } from "../../data-hub/infrastructure/aes-secret-store.js"
 
 /**
  * SEGREDOS DAS CONEXÕES DE IA (§8, §9). Reaproveita a MESMA criptografia da Central de Dados
  * (AES-256-GCM, chave `DATA_HUB_SECRET_KEY` fora do banco) — nenhuma segunda implementação
  * criptográfica. O valor só existe decifrado dentro do runtime, no instante da chamada/teste.
  * A API devolve apenas `configured` + máscara ("••••abcd"); não existe rota de leitura do valor.
+ * Versão 2: o texto cifrado fica preso à organização, à conexão e à finalidade (ver aes-secret-store.ts).
  */
-export type EncryptedSecret = { ciphertext: Buffer; iv: Buffer; authTag: Buffer }
+export type AiSecretBinding = { organizationId: string; connectionId: string; purpose: string }
+export type EncryptedSecret = { ciphertext: Buffer; iv: Buffer; authTag: Buffer; keyVersion: number; binding: AiSecretBinding }
 
-export const SECRET_KEY_VERSION = 1
+export const SECRET_KEY_VERSION = CURRENT_SECRET_KEY_VERSION
 
-let cachedKey: Buffer | null = null
-function key(): Buffer {
-  if (!cachedKey) cachedKey = resolveSecretKey()
-  return cachedKey
+let cachedKeys: SecretKeys | null = null
+function keys(): SecretKeys {
+  if (!cachedKeys) cachedKeys = resolveSecretKeys()
+  return cachedKeys
 }
 
-export function encryptAiSecret(plain: string): EncryptedSecret {
-  return encryptSecret(plain, key())
+const bindingOf = (binding: AiSecretBinding) => ({ store: "ai_connection_secrets" as const, organizationId: binding.organizationId, ownerId: binding.connectionId, purpose: binding.purpose })
+
+export function encryptAiSecret(plain: string, binding: AiSecretBinding): EncryptedSecret {
+  return { ...encryptBoundSecret(plain, bindingOf(binding), keys().current), binding }
 }
 
 export function decryptAiSecret(secret: EncryptedSecret): string {
-  return decryptSecret(secret, key())
+  return decryptStoredSecret(secret, bindingOf(secret.binding), keys())
 }
 
 /** "••••abcd" — os 4 últimos caracteres só quando a chave é longa o bastante para não se revelar. */

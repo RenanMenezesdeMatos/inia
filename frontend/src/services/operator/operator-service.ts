@@ -10,7 +10,7 @@ import {
 import { operatorOverviewSchema, type OperatorIndicatorRow, type OperatorOverview } from "@/schemas/operator/operator-overview.schema"
 import { ROLE_LABELS, type PlatformRole } from "@/schemas/auth/auth.schema"
 
-import { SESSION_COOKIE_NAME } from "@/services/auth/auth-service"
+import { readSessionCookie, sessionCookieHeader } from "@/lib/auth/session-cookie"
 import { redirectIfSessionEnded } from "@/services/auth/server-session"
 import { mapOperatorFeedbackHistory } from "@/services/operator/operator-feed"
 import { publicAsset } from "@/lib/assets/public-asset"
@@ -47,9 +47,10 @@ function mapIndicators(rows: OperatorIndicatorRow[]): OperatorIndicator[] {
 
 async function fetchOperatorOverview(): Promise<OperatorOverview> {
   const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
+  const session = readSessionCookie(cookieStore)
+  const token = session?.value
   const response = await fetch(`${API_URL}/api/v1/operator/overview`, {
-    headers: token ? { cookie: `${SESSION_COOKIE_NAME}=${token}` } : undefined,
+    headers: token ? { cookie: sessionCookieHeader(session) } : undefined,
     cache: "no-store",
   })
   await redirectIfSessionEnded(response)

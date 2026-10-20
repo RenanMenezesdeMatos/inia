@@ -60,6 +60,21 @@ describe.skipIf(!ENABLED)("limites de requisição no PostgreSQL real", () => {
     expect((await store.check(bucket, 60_000, 2)).allowed).toBe(false)
   })
 
+  it("reserva e devolução (regras só de falhas): rajada simultânea para no teto; sucesso devolve a vaga, nunca abaixo de zero", async () => {
+    const storeA = createPostgresRateLimitStore(processA)
+    const storeB = createPostgresRateLimitStore(processB)
+    const bucket = `proof-${run}-reserve`
+    const decisions = await Promise.all(Array.from({ length: 16 }, (_, index) => (index % 2 === 0 ? storeA : storeB).consume(bucket, 60_000, 5)))
+    const accepted = decisions.filter((decision) => decision.allowed)
+    expect(accepted).toHaveLength(5)
+    expect(accepted.every((decision) => typeof decision.windowIndex === "number")).toBe(true)
+    // Três das cinco foram sucesso: devolvem a vaga (em processos diferentes); sobram duas falhas no contador.
+    for (const [index, decision] of accepted.slice(0, 3).entries()) await (index % 2 === 0 ? storeA : storeB).release(bucket, 60_000, decision.windowIndex!)
+    expect((await processA.query(`select sum(hits)::int hits from rate_limit_hits where bucket = $1`, [bucket])).rows[0]).toEqual({ hits: 2 })
+    for (let index = 0; index < 5; index += 1) await storeA.release(bucket, 60_000, accepted[0]!.windowIndex!)
+    expect((await processA.query(`select sum(hits)::int hits from rate_limit_hits where bucket = $1`, [bucket])).rows[0]).toEqual({ hits: 0 })
+  })
+
   it("janela anterior pesa e some: contador de uma janela vencida não barra nada e sai na limpeza", async () => {
     const store = createPostgresRateLimitStore(processA)
     const bucket = `proof-${run}-expired`

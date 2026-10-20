@@ -8,7 +8,7 @@ import { composeInteractionFeedback, documentIdResolverFromHandles, proceduralLi
 import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf, startOfLocalDate } from "../../workflows/application/time-window.js"
-import { loadLatestTranscript } from "../../workflows/application/transcript.js"
+import { loadLatestTranscriptForModel } from "../../workflows/application/transcript.js"
 import type { RunContext } from "./ports.js"
 
 /**
@@ -52,7 +52,7 @@ export async function prepareInteractionForFeedback(db: Database, input: Prepare
   if (!interaction) throw new PrepareInteractionError("INTERACTION_NOT_FOUND", "Interação não encontrada nesta organização.")
   if (interaction.operator_id !== input.collaboratorId) throw new PrepareInteractionError("INTERACTION_NOT_OWNED_BY_COLLABORATOR", "A interação não pertence ao colaborador desta execução.")
 
-  const transcript = await loadLatestTranscript(db, interaction.id)
+  const transcript = await loadLatestTranscriptForModel(db, interaction.id)
   if (!transcript || transcript.content.trim().length === 0) return { kind: "NOT_ANALYZABLE", reason: "NO_TRANSCRIPT", requests: [] }
 
   const timeZone = await resolveOrganizationTimezone(db, input.organizationId)

@@ -4,8 +4,11 @@ import { rolesWithPermission } from "../../access/domain/roles.js"
 import { loadAvatarPresenter, personAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
 import { decodeCursor } from "../domain/assistant-conversation.js"
-import { CONVERSATION_LAST_MESSAGE_JOIN, CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
+import { CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
 import { loadAssistantSupportMaterials } from "./assistant-support-materials.js"
+import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
+import { parseClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
+import { referencedDocumentIds, toClarificationView } from "../../knowledge-clarification/domain/clarification-view.js"
 
 /**
  * MONITORAMENTO das conversas com a INIA (somente leitura). Quem lê = a pessoa da sessão; o que ela alcança = UNIÃO das
@@ -42,6 +45,13 @@ const FROM = `from assistant_conversations c
   left join teams t on t.id = owner.team_id
   left join subteams st on st.id = owner.subteam_id
   ${ORGANIZATION_TIMEZONE}`
+
+/** Prévia (última mensagem) de quem monitora: resposta com cartão de dados nunca aparece na lista — só aberta, com o filtro do leitor. */
+export const MONITORING_DATA_PREVIEW = "Resposta com dados de pessoas — abra a conversa para ver o que está no seu escopo."
+const MONITORING_LAST_MESSAGE_JOIN = `left join lateral (
+    select m.role, case when m.role = 'assistant' and jsonb_typeof(m.tool_calls) = 'array' and jsonb_path_exists(m.tool_calls, '$[*].analytics') then '${MONITORING_DATA_PREVIEW}' else m.content end content, m.channel
+    from assistant_interactions m where m.conversation_id = c.id order by m.occurred_at desc, m.seq desc limit 1
+  ) last_message on true`
 
 const baseParams = (viewer: MonitoringViewer) => [viewer.organizationId, viewer.personId, rolesWithPermission("assistant_conversations.view")]
 
@@ -112,7 +122,7 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
   const optionParams = baseParams(viewer)
   const [rows, total, owners] = await Promise.all([
     db.query<Row>(
-      `${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${CONVERSATION_LAST_MESSAGE_JOIN}
+      `${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${MONITORING_LAST_MESSAGE_JOIN}
        where ${VISIBLE}${extra}
        order by c.last_activity_at desc, c.id desc limit $${params.length - 1} offset $${params.length}`,
       params,
@@ -152,16 +162,51 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
 /** Conversa no alcance do leitor — ou 404 (fora do alcance e inexistente são indistinguíveis). */
 export async function requireMonitoredConversation(db: Queryable, viewer: MonitoringViewer, conversationId: string): Promise<MonitoredConversation> {
   const params = [...baseParams(viewer), conversationId]
-  const result = await db.query<Row>(`${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${CONVERSATION_LAST_MESSAGE_JOIN} where ${VISIBLE} and c.id = $4::uuid`, params)
+  const result = await db.query<Row>(`${SCOPE_CTE} select ${CONVERSATION_SUMMARY_SELECT}, ${OWNER_SELECT} ${FROM} ${MONITORING_LAST_MESSAGE_JOIN} where ${VISIBLE} and c.id = $4::uuid`, params)
   const row = result.rows[0]
   if (!row) throw new DomainError("Conversa não encontrada.", "ASSISTANT_CONVERSATION_NOT_FOUND", 404)
   return (await presentOwners(db, viewer.organizationId, [row]))[0]!
 }
 
-/** Mensagens da conversa (já autorizada aqui), com materiais de apoio resolvidos pelo acesso do LEITOR. */
-export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringViewer, conversationId: string, page: { limit: number; before?: string | undefined; after?: string | undefined }) {
+/** Texto no lugar de uma resposta com dados de pessoas que o LEITOR não alcança. */
+export const OUT_OF_READER_SCOPE_NOTICE = "Resposta com dados de pessoas fora do seu escopo de leitura (a estrutura de quem perguntou é maior que a sua). O conteúdo não é exibido aqui."
+
+/**
+ * Cartões que o LEITOR pode ver: os que falam do próprio dono da conversa ou de estruturas que o escopo de dados do leitor
+ * alcança. Quem chama resolve o escopo (o mesmo `visibleCards` do dono, com o escopo de quem lê).
+ */
+export type ReaderCardFilter = (input: { ownerPersonId: string; cards: unknown[] }) => Promise<unknown[]>
+
+/**
+ * Mensagens da conversa (já autorizada aqui), com materiais de apoio resolvidos pelo acesso do LEITOR. Ler a conversa de alguém
+ * não amplia o acesso a DADOS (achado SCOPE-01/AI-03 da auditoria de 17/10/2026): a conversa de um líder traz tabelas da
+ * estrutura dele (nomes, resultados, situação funcional), que pode ser maior que a do leitor. Resposta com algum cartão que o
+ * leitor não alcança sai sem o texto e sem os cartões — o texto repete os mesmos dados.
+ */
+export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringViewer, conversationId: string, page: { limit: number; before?: string | undefined; after?: string | undefined }, readerCards?: ReaderCardFilter) {
   const conversation = await requireMonitoredConversation(db, viewer, conversationId)
   const result = await loadConversationMessages(db, { organizationId: viewer.organizationId, conversationId, limit: page.limit, before: decodeCursor(page.before), after: decodeCursor(page.after) })
   const materials = await loadAssistantSupportMaterials(db, { organizationId: viewer.organizationId, viewer: { personId: viewer.personId }, interactionIds: result.messages.filter((m) => m.role === "assistant").map((m) => m.id) })
-  return { conversation, messages: result.messages.map((message) => ({ ...message, supportMaterials: materials.get(message.id) ?? [] })), hasMore: result.hasMore }
+  const withCards = result.messages.filter((message) => message.analytics.length > 0)
+  // Sem filtro informado, nenhuma resposta com cartão de dados aparece (falha fechada).
+  const visible = new Set(withCards.length > 0 && readerCards ? await readerCards({ ownerPersonId: conversation.owner.personId, cards: withCards.flatMap((message) => message.analytics) }) : [])
+  // ESCLARECIMENTO PELAS BASES — a trilha de auditoria (opções com a fonte de cada uma, fontes da resposta), com as bases resolvidas
+  // pelo acesso do LEITOR: base que quem lê não pode abrir aparece sem título (a referência gravada não concede acesso).
+  const clarifications = result.messages.flatMap((message) => {
+    const state = message.role === "assistant" ? parseClarificationState(message.clarification) : null
+    return state ? [{ id: message.id, state }] : []
+  })
+  const documentIds = [...new Set(clarifications.flatMap((item) => referencedDocumentIds(item.state)))]
+  const readable = documentIds.length > 0 ? new Set((await resolveAccessibleKnowledgeMaterials(db, { organizationId: viewer.organizationId, viewer: { personId: viewer.personId }, materialIds: documentIds })).keys()) : new Set<string>()
+  const clarificationViews = new Map(clarifications.map((item) => [item.id, toClarificationView(item.state, readable)]))
+  return {
+    conversation,
+    // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela.
+    messages: result.messages.map(({ clarificationScope, ...message }) => {
+      void clarificationScope
+      const hidden = message.analytics.some((card) => !visible.has(card))
+      return { ...message, ...(hidden ? { content: OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null) }
+    }),
+    hasMore: result.hasMore,
+  }
 }

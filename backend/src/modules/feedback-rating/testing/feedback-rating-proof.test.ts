@@ -54,6 +54,8 @@ describe.skipIf(!ENABLED)("Avaliação do feedback — prova Postgres", () => {
 
   afterAll(async () => {
     if (!pool) return
+    // "Não foi útil" avisa quem revisa contestações na organização (migration 150): os avisos destas avaliações saem junto.
+    await pool.query("delete from alerts where alert_type like 'FEEDBACK_CONTESTATION_%' and split_part(dedupe_key, ':', 2) in (select id::text from feedback_ratings where person_id = any($1))", [created.people])
     await pool.query("delete from feedback_ratings where person_id = any($1)", [created.people])
     await pool.query("delete from feedback_follow_up_hides where feedback_id = any($1)", [created.feedbacks])
     await pool.query("delete from feedbacks where id = any($1)", [created.feedbacks])

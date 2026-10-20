@@ -1,7 +1,9 @@
 "use client"
 
+import { parseClarification, type ClarificationAnswer, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
 import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
+import { signalUserActivity } from "@/lib/auth/idle-session"
 import { createSpeechPlayback } from "@/lib/avatar/audio/speech-playback"
 import type { PlaybackTurnEvent, SpeechPlayback } from "@/lib/avatar/audio/types"
 import type { AvatarConversationState } from "@/lib/avatar/animation/types"
@@ -43,7 +45,14 @@ const CONNECT_ERROR_MESSAGE = "Falha ao conectar à voz em tempo real."
 const CLOSED_BEFORE_READY_MESSAGE = "A conexão de voz foi encerrada antes de ficar pronta. Tente de novo."
 const DROPPED_MESSAGE = "A conexão de voz caiu. Toque no microfone para continuar."
 const ABORTED_MESSAGE = "Conexão de voz cancelada."
-const SPECIALIST_UNAVAILABLE = "Não consegui consultar o especialista agora."
+/** Frase falada quando a consulta pelo backend (`/tool-call`) falha — fixa, nunca improvisada. */
+export const TOOL_FAILURE_SPEECH = "Não consegui fazer essa consulta agora. Tente perguntar de novo em instantes."
+/**
+ * Resultado devolvido ao modelo de voz quando a consulta falha (rede, backend reiniciando, erro): a frase EXATA a falar e nada mais.
+ * Com uma frase solta ("não consegui consultar o especialista"), o modelo improvisava orientação que ninguém configurou ("verifique
+ * na base ou com a sua equipe").
+ */
+export const TOOL_FAILURE_RESULT = `[Falha na consulta: nenhum conteúdo foi obtido. Fale exatamente esta frase, e nada mais: "${TOOL_FAILURE_SPEECH}" Não dê orientação, procedimento, número nem sugestão de onde procurar.]`
 
 /** Estado da conversa visto pelo avatar e pelo chat (o mesmo tipo, sem tradução). */
 export type RealtimeCallState = AvatarConversationState
@@ -75,11 +84,13 @@ export type RealtimeTransportEvents = {
   onResponseInterrupted?: (heardText: string | null) => void
   /** Nível do microfone (RMS, ~0–1), ~19×/s com o microfone aberto. Frequente o bastante para exigir escrita direta no DOM, nunca estado do React. */
   onAudioLevel?: (level: number) => void
-  /** Resposta escrita completa de um especialista acionado na voz — a fala da INIA é só um resumo verbal disso (áudio não "fala" uma tabela markdown). `conversation` = a conversa persistida em que o backend a gravou. */
-  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null, analytics?: LeadershipCard[], extras?: { reportOffer?: ReportOffer; navigate?: { href: string } }) => void
+  /** Resposta escrita completa de um especialista acionado na voz — a fala da INIA é só um resumo verbal disso (áudio não "fala" uma tabela markdown). `conversation` = a conversa persistida em que o backend a gravou. `extras.clarification` = a resposta veio do esclarecimento pelas bases (o formulário/fontes vão para a tela; a fala lê a pergunta e as opções). */
+  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null, analytics?: LeadershipCard[], extras?: { reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView }) => void
   /** Conversa persistida e turno em curso no instante da tool-call (a sessão de voz não é a conversa: o chat decide). Com
-   * `feedbackApplicationId`, a consulta é de dentro de uma sessão de feedback: o backend decide a conversa e emoldura o especialista. */
-  getToolCallContext?: () => { conversationId: string | null; turnId: string; feedbackApplicationId?: string | null }
+   * `feedbackApplicationId`, a consulta é de dentro de uma sessão de feedback: o backend decide a conversa e emoldura o especialista.
+   * `utterance` = as palavras da pessoa neste turno (digitadas ou a transcrição da fala), das quais o esclarecimento pelas bases parte
+   * — nunca da `query` reescrita pelo modelo; `clarification` = a escolha feita no formulário do esclarecimento neste turno. */
+  getToolCallContext?: () => { conversationId: string | null; turnId: string; feedbackApplicationId?: string | null; utterance?: string; clarification?: ClarificationAnswer }
   onError?: (message: string) => void
 }
 
@@ -121,6 +132,8 @@ export type VoiceConversationResult = { conversationId: string; created: boolean
 /** `userChannel`: a pergunta foi falada (padrão) ou DIGITADA e respondida por voz — o histórico mostra a origem. */
 export async function recordVoiceTurn(input: { conversationId: string | null; turnId: string; userText?: string; userChannel?: "chat" | "voice"; userSpokenAt?: string; assistantText?: string; feedbackApplicationId?: string | null }): Promise<VoiceConversationResult | null> {
   if (!input.userText && !input.assistantText) return null
+  // A pessoa está conversando por voz sem tocar na tela: conta como uso para o encerramento por inatividade.
+  if (input.userText) signalUserActivity()
   try {
     const response = await fetch(`${API_URL}/api/v1/realtime/voice-turn`, {
       method: "POST",
@@ -866,7 +879,7 @@ export class GeminiRealtimeTransport {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ toolName: call.name, query, periodDays, ...(this.events.getToolCallContext?.() ?? { conversationId: null, turnId: `voice-${session}-${generationSeq}` }), callId: String(call.id ?? call.name).replace(/[^A-Za-z0-9:_-]/g, "_").slice(0, 120) }),
           })
-          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[]; analytics?: unknown; reportOffer?: unknown; navigate?: { href?: unknown } | null } & Partial<VoiceConversationResult> }
+          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[]; analytics?: unknown; reportOffer?: unknown; navigate?: { href?: unknown } | null; clarification?: unknown } & Partial<VoiceConversationResult> }
           if (response.ok && payload.data?.text) {
             // O card de material vai pra tela (mesma semântica do chat); o modelo recebe
             // `modelText` — o texto + a instrução determinística de mencionar que há apoio na
@@ -877,14 +890,16 @@ export class GeminiRealtimeTransport {
             // Report recorrente: a oferta (botão) ou a navegação para a configuração quando o "sim" veio pela voz.
             const offer = reportOfferSchema.safeParse(payload.data.reportOffer)
             const href = payload.data.navigate?.href
-            const extras = { ...(offer.success ? { reportOffer: offer.data } : {}), ...(typeof href === "string" && href.startsWith("/reports/") ? { navigate: { href } } : {}) }
+            // Esclarecimento pelas bases: o estado validado pelo servidor (o formulário fica na tela).
+            const clarification = parseClarification(payload.data.clarification)
+            const extras = { ...(offer.success ? { reportOffer: offer.data } : {}), ...(typeof href === "string" && href.startsWith("/reports/") ? { navigate: { href } } : {}), ...(clarification ? { clarification } : {}) }
             const hasExtras = Object.keys(extras).length > 0
             if (stillCurrent()) this.events.onSpecialistResult?.(payload.data.text, payload.data.supportMaterials ?? [], conversation, ...(analytics.length > 0 || hasExtras ? [analytics.length > 0 ? analytics : undefined] : []), ...(hasExtras ? [extras] : []))
             return { id: call.id, name: call.name, response: { result: payload.data.modelText ?? payload.data.text } }
           }
-          return { id: call.id, name: call.name, response: { result: SPECIALIST_UNAVAILABLE } }
+          return { id: call.id, name: call.name, response: { result: TOOL_FAILURE_RESULT } }
         } catch {
-          return { id: call.id, name: call.name, response: { result: SPECIALIST_UNAVAILABLE } }
+          return { id: call.id, name: call.name, response: { result: TOOL_FAILURE_RESULT } }
         }
       }),
     ).then((functionResponses) => {

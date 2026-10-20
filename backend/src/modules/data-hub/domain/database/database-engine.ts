@@ -39,7 +39,13 @@ export const DATABASE_TLS_LABELS: Record<DatabaseTlsMode, string> = {
   VERIFY_FULL: "Obrigatória e validando o certificado",
 }
 
+/**
+ * Modo de uma fonte GRAVADA sem `tls` (fontes antigas): o padrão de antes, para nada mudar sem alguém escolher. Fonte NOVA sem
+ * `tls` nasce em `NEW_SOURCE_TLS_MODE` (achado DATA-5 da auditoria de 17/10/2026: o padrão aceitava qualquer certificado — quem
+ * intercepta a rede entre a INIA e o banco do cliente recebia a senha).
+ */
 export const DEFAULT_TLS_MODE: Record<DatabaseEngine, DatabaseTlsMode> = { SQLSERVER: "REQUIRED", POSTGRESQL: "PREFERRED", MARIADB: "PREFERRED", MYSQL: "PREFERRED" }
+export const NEW_SOURCE_TLS_MODE: DatabaseTlsMode = "VERIFY_FULL"
 
 export function supportedTlsModes(engine: DatabaseEngine): DatabaseTlsMode[] {
   return engine === "SQLSERVER" ? ["DISABLED", "REQUIRED", "VERIFY_FULL"] : [...DATABASE_TLS_MODES]

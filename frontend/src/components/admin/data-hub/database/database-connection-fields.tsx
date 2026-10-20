@@ -13,6 +13,7 @@ import {
   DATABASE_TLS_LABELS,
   DEFAULT_DATABASE_PORTS,
   DEFAULT_TLS_MODE,
+  NEW_SOURCE_TLS_MODE,
   supportedTlsModes,
   type ConnectionTest,
   type DatabaseConfig,
@@ -41,7 +42,7 @@ export type DatabaseDraft = {
 }
 
 export function emptyDatabaseDraft(engine: DatabaseEngine): DatabaseDraft {
-  return { name: "", engine, host: "", port: "", database: "", username: "", password: "", instanceName: "", tlsMode: DEFAULT_TLS_MODE[engine], caCertificate: "", connectTimeoutSeconds: "15", queryTimeoutSeconds: "120" }
+  return { name: "", engine, host: "", port: "", database: "", username: "", password: "", instanceName: "", tlsMode: NEW_SOURCE_TLS_MODE, caCertificate: "", connectTimeoutSeconds: "15", queryTimeoutSeconds: "120" }
 }
 
 export function databaseDraftFromSource(source: { name: string; config: Record<string, unknown> }): DatabaseDraft {
@@ -63,9 +64,9 @@ export function databaseDraftFromSource(source: { name: string; config: Record<s
   }
 }
 
-/** Mudar de banco reaplica os padrões dele (porta, criptografia) sem apagar o que já foi digitado. */
+/** Mudar de banco mantém o modo de criptografia escolhido (todo banco aceita a validação do certificado) e não apaga o que já foi digitado. */
 export function switchEngine(draft: DatabaseDraft, engine: DatabaseEngine): DatabaseDraft {
-  return { ...draft, engine, tlsMode: DEFAULT_TLS_MODE[engine], instanceName: engine === "SQLSERVER" ? draft.instanceName : "" }
+  return { ...draft, engine, tlsMode: supportedTlsModes(engine).includes(draft.tlsMode) ? draft.tlsMode : NEW_SOURCE_TLS_MODE, instanceName: engine === "SQLSERVER" ? draft.instanceName : "" }
 }
 
 export function toDatabaseConfig(draft: DatabaseDraft): DatabaseConfig {

@@ -1,9 +1,10 @@
 import { createHash, randomBytes } from "node:crypto"
+import { isIP } from "node:net"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { DataRunError } from "../domain/error-codes.js"
-import { sourceConfigSchema, sourceInputSchema, sourceSecretsSchema, type SecretPurpose, type SourceConfig, type SourceInput, type SourceSecrets } from "../domain/source-config.js"
+import { insecureCredentialTransportWarning, sourceConfigSchema, sourceInputSchema, sourceSecretsSchema, type SecretPurpose, type SourceConfig, type SourceInput, type SourceSecrets } from "../domain/source-config.js"
 import { z } from "zod"
-import { databaseConfigSchema, resolveDatabaseConnection, describeDatabaseConnection } from "../domain/database/database-engine.js"
+import { databaseConfigSchema, NEW_SOURCE_TLS_MODE, resolveDatabaseConnection, describeDatabaseConnection } from "../domain/database/database-engine.js"
 import { testApiConnection } from "./connectors/api-pull-connector.js"
 import { databaseConfigOf, describeTestDetail, resolveSourceConnection, testDatabaseConnection, type DatabaseConnectionReport } from "./connectors/database-connector.js"
 import { testSftpConnection } from "./connectors/sftp-connector.js"
@@ -59,9 +60,12 @@ export function secretTargetOf(config: SourceConfig): string | null {
   }
   if (config.kind === "DATABASE") {
     const database = config.database
-    return JSON.stringify({ engine: database.engine, host: database.host.trim().toLowerCase(), port: database.port ?? null, instance: database.instanceName?.toLowerCase() ?? null, username: database.username, tls: database.tls?.mode ?? null })
+    // A CA também: trocar a autoridade que valida o servidor é trocar quem pode se passar por ele (achado DATA-6).
+    const ca = database.tls?.caCertificate ? createHash("sha256").update(database.tls.caCertificate.trim()).digest("hex") : null
+    return JSON.stringify({ engine: database.engine, host: database.host.trim().toLowerCase(), port: database.port ?? null, instance: database.instanceName?.toLowerCase() ?? null, username: database.username, tls: database.tls?.mode ?? null, ca })
   }
-  if (config.kind === "SFTP") return JSON.stringify({ host: config.sftp.host.trim().toLowerCase(), port: config.sftp.port, username: config.sftp.username, auth: config.sftp.authKind })
+  // A chave do servidor SFTP também: apagá-la ou trocá-la faria a próxima conexão aceitar qualquer servidor com a senha guardada.
+  if (config.kind === "SFTP") return JSON.stringify({ host: config.sftp.host.trim().toLowerCase(), port: config.sftp.port, username: config.sftp.username, auth: config.sftp.authKind, hostKey: config.sftp.hostKeyFingerprint?.trim() ?? null })
   return null
 }
 
@@ -88,14 +92,20 @@ async function storeSecrets(ctx: DataHubContext, source: { id: string; organizat
   return stored
 }
 
-export type SourceView = DataSourceRow & { secrets: { purpose: SecretPurpose; createdAt: string; rotatedAt: string | null }[] }
+export type SourceView = DataSourceRow & { secrets: { purpose: SecretPurpose; createdAt: string; rotatedAt: string | null }[]; transportWarning: string | null }
 
 export async function describeSource(ctx: DataHubContext, source: DataSourceRow): Promise<SourceView> {
-  return { ...source, secrets: await ctx.secrets.describe(source.id) }
+  return { ...source, secrets: await ctx.secrets.describe(source.id), transportWarning: insecureCredentialTransportWarning(source.config) }
+}
+
+/** Banco novo sem criptografia escolhida nasce validando o certificado (achado DATA-5); a tela sempre manda o modo escolhido. */
+export function withNewSourceDefaults(input: SourceInput): SourceInput {
+  if (input.config.kind !== "DATABASE" || input.config.database.tls) return input
+  return { ...input, config: { ...input.config, database: { ...input.config.database, tls: { mode: NEW_SOURCE_TLS_MODE } } } }
 }
 
 export async function createSource(ctx: DataHubContext, organizationId: string, actorId: string | null, rawInput: unknown): Promise<SourceView> {
-  const input: SourceInput = sourceInputSchema.parse(rawInput)
+  const input = withNewSourceDefaults(sourceInputSchema.parse(rawInput))
   const result = await ctx.db.query<{ id: string }>(
     `insert into data_sources (organization_id, public_id, name, description, kind, status, config, created_by, updated_by)
      values ($1, $2, $3, $4, $5, 'DRAFT', $6, $7, $7) returning id`,
@@ -249,13 +259,80 @@ export async function testDatabaseDraft(ctx: DataHubContext, organizationId: str
 // ---------------------------------------------------------------------------------------------
 // Tokens de push
 // ---------------------------------------------------------------------------------------------
-export type PushTokenView = { id: string; label: string; tokenPrefix: string; feedId: string | null; createdAt: string; lastUsedAt: string | null; revokedAt: string | null }
+export type PushTokenView = {
+  id: string
+  label: string
+  tokenPrefix: string
+  feedId: string | null
+  createdAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+  /** Depois desta data o token é recusado como se não existisse (R-28). `null` = sem validade (tokens antigos). */
+  expiresAt: string | null
+  /** IPs/redes (CIDR) de onde o token é aceito. `null` = qualquer origem. */
+  allowedNetworks: string[] | null
+}
+
+export const PUSH_TOKEN_MAX_VALIDITY_DAYS = 730
+export const PUSH_TOKEN_MAX_NETWORKS = 20
 
 export function hashPushToken(token: string): string {
   return createHash("sha256").update(token).digest("hex")
 }
 
-export async function createPushToken(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, input: { label: string; feedId?: string | null }): Promise<{ token: string; view: PushTokenView }> {
+/** IP (v4/v6) ou rede CIDR válida; devolve a forma normalizada ou `null`. */
+export function normalizeAllowedNetwork(value: string): string | null {
+  const [address, prefix, extra] = value.trim().split("/")
+  if (extra !== undefined || !address) return null
+  const family = isIP(address)
+  if (!family) return null
+  if (prefix === undefined) return address
+  if (!/^\d{1,3}$/.test(prefix)) return null
+  const bits = Number(prefix)
+  return bits <= (family === 6 ? 128 : 32) ? `${address}/${bits}` : null
+}
+
+export const pushTokenInputSchema = z.object({
+  label: z.string().trim().min(2).max(80),
+  feedId: z.string().uuid().nullable().optional(),
+  expiresInDays: z.number().int().min(1).max(PUSH_TOKEN_MAX_VALIDITY_DAYS).nullable().optional(),
+  allowedNetworks: z
+    .array(z.string().max(64))
+    .max(PUSH_TOKEN_MAX_NETWORKS)
+    .nullable()
+    .optional()
+    .transform((networks, issue) => {
+      if (!networks || networks.length === 0) return null
+      const normalized = networks.map(normalizeAllowedNetwork)
+      const invalid = networks.filter((_, index) => !normalized[index])
+      if (invalid.length > 0) {
+        issue.addIssue({ code: "custom", message: `Endereço ou rede inválida: ${invalid.join(", ")}. Use um IP (10.0.0.5) ou uma rede (10.0.0.0/24).` })
+        return z.NEVER
+      }
+      return [...new Set(normalized as string[])]
+    }),
+})
+export type PushTokenInput = z.input<typeof pushTokenInputSchema>
+
+type PushTokenRow = { id: string; label: string; token_prefix: string; feed_id: string | null; created_at: Date; last_used_at: Date | null; revoked_at: Date | null; expires_at: Date | null; allowed_networks: string[] | null }
+const PUSH_TOKEN_COLUMNS = "id, label, token_prefix, feed_id, created_at, last_used_at, revoked_at, expires_at, allowed_networks"
+
+function pushTokenView(row: PushTokenRow): PushTokenView {
+  return {
+    id: row.id,
+    label: row.label,
+    tokenPrefix: `${row.token_prefix}…`,
+    feedId: row.feed_id,
+    createdAt: row.created_at.toISOString(),
+    lastUsedAt: row.last_used_at?.toISOString() ?? null,
+    revokedAt: row.revoked_at?.toISOString() ?? null,
+    expiresAt: row.expires_at?.toISOString() ?? null,
+    allowedNetworks: row.allowed_networks,
+  }
+}
+
+export async function createPushToken(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: PushTokenInput): Promise<{ token: string; view: PushTokenView }> {
+  const input = pushTokenInputSchema.parse(rawInput)
   const source = await requireSource(ctx.db, organizationId, sourceId)
   if (source.kind !== "API_PUSH") throw new DomainError("Tokens de push só existem para fontes API Push.", "DATA_SOURCE_NOT_PUSH", 422)
   // Token restrito a um feed: o feed precisa ser DESTA fonte (senão o token nasceria inutilizável ou ligado a outra fonte).
@@ -265,20 +342,26 @@ export async function createPushToken(ctx: DataHubContext, organizationId: strin
   }
   const token = `inia_push_${randomBytes(24).toString("base64url")}`
   const prefix = token.slice(0, 14)
-  const result = await ctx.db.query<{ id: string; created_at: Date }>(
-    `insert into data_push_tokens (organization_id, source_id, feed_id, label, token_prefix, token_hash, created_by) values ($1, $2, $3, $4, $5, $6, $7) returning id, created_at`,
-    [organizationId, sourceId, input.feedId ?? null, input.label, prefix, hashPushToken(token), actorId],
+  const result = await ctx.db.query<PushTokenRow>(
+    `insert into data_push_tokens (organization_id, source_id, feed_id, label, token_prefix, token_hash, created_by, expires_at, allowed_networks)
+     values ($1, $2, $3, $4, $5, $6, $7, case when $8::int is null then null else now() + make_interval(days => $8::int) end, $9) returning ${PUSH_TOKEN_COLUMNS}`,
+    [organizationId, sourceId, input.feedId ?? null, input.label, prefix, hashPushToken(token), actorId, input.expiresInDays ?? null, input.allowedNetworks],
   )
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_PUSH_TOKEN_CREATED", entityType: "data_push_token", entityId: result.rows[0]!.id, payload: { sourceId, tokenPrefix: prefix } })
-  return { token, view: { id: result.rows[0]!.id, label: input.label, tokenPrefix: prefix, feedId: input.feedId ?? null, createdAt: result.rows[0]!.created_at.toISOString(), lastUsedAt: null, revokedAt: null } }
+  const row = result.rows[0]!
+  await recordAudit(ctx.db, {
+    organizationId,
+    actorId,
+    action: "DATA_HUB_PUSH_TOKEN_CREATED",
+    entityType: "data_push_token",
+    entityId: row.id,
+    payload: { sourceId, tokenPrefix: prefix, expiresAt: row.expires_at?.toISOString() ?? null, allowedNetworks: row.allowed_networks },
+  })
+  return { token, view: { ...pushTokenView(row), tokenPrefix: prefix } }
 }
 
 export async function listPushTokens(ctx: DataHubContext, organizationId: string, sourceId: string): Promise<PushTokenView[]> {
-  const result = await ctx.db.query<{ id: string; label: string; token_prefix: string; feed_id: string | null; created_at: Date; last_used_at: Date | null; revoked_at: Date | null }>(
-    `select id, label, token_prefix, feed_id, created_at, last_used_at, revoked_at from data_push_tokens where organization_id = $1 and source_id = $2 order by created_at desc`,
-    [organizationId, sourceId],
-  )
-  return result.rows.map((row) => ({ id: row.id, label: row.label, tokenPrefix: `${row.token_prefix}…`, feedId: row.feed_id, createdAt: row.created_at.toISOString(), lastUsedAt: row.last_used_at?.toISOString() ?? null, revokedAt: row.revoked_at?.toISOString() ?? null }))
+  const result = await ctx.db.query<PushTokenRow>(`select ${PUSH_TOKEN_COLUMNS} from data_push_tokens where organization_id = $1 and source_id = $2 order by created_at desc`, [organizationId, sourceId])
+  return result.rows.map(pushTokenView)
 }
 
 export async function revokePushToken(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, tokenId: string): Promise<void> {
@@ -287,10 +370,19 @@ export async function revokePushToken(ctx: DataHubContext, organizationId: strin
   await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_PUSH_TOKEN_REVOKED", entityType: "data_push_token", entityId: tokenId, payload: { sourceId } })
 }
 
-/** Rotacionar = revogar o atual e emitir outro com o mesmo rótulo (o segredo novo aparece uma única vez). */
+/**
+ * Rotacionar = revogar o atual e emitir outro com o mesmo rótulo, o mesmo feed, as mesmas redes e o mesmo PRAZO de validade
+ * (contado a partir de agora). O segredo novo aparece uma única vez.
+ */
 export async function rotatePushToken(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, tokenId: string): Promise<{ token: string; view: PushTokenView }> {
-  const current = await ctx.db.query<{ label: string; feed_id: string | null }>(`select label, feed_id from data_push_tokens where organization_id = $1 and source_id = $2 and id = $3 and revoked_at is null`, [organizationId, sourceId, tokenId])
-  if (!current.rows[0]) throw new DomainError("Token não encontrado ou já revogado.", "DATA_PUSH_TOKEN_NOT_FOUND", 404)
+  const current = await ctx.db.query<{ label: string; feed_id: string | null; validity_days: number | null; allowed_networks: string[] | null }>(
+    `select label, feed_id, allowed_networks,
+            case when expires_at is null then null else least(${PUSH_TOKEN_MAX_VALIDITY_DAYS}, greatest(1, ceil(extract(epoch from expires_at - created_at) / 86400)))::int end validity_days
+       from data_push_tokens where organization_id = $1 and source_id = $2 and id = $3 and revoked_at is null`,
+    [organizationId, sourceId, tokenId],
+  )
+  const row = current.rows[0]
+  if (!row) throw new DomainError("Token não encontrado ou já revogado.", "DATA_PUSH_TOKEN_NOT_FOUND", 404)
   await revokePushToken(ctx, organizationId, actorId, sourceId, tokenId)
-  return createPushToken(ctx, organizationId, actorId, sourceId, { label: current.rows[0].label, feedId: current.rows[0].feed_id })
+  return createPushToken(ctx, organizationId, actorId, sourceId, { label: row.label, feedId: row.feed_id, expiresInDays: row.validity_days, allowedNetworks: row.allowed_networks })
 }

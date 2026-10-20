@@ -3,7 +3,7 @@ import { orchestratorForTeam, type InteractiveOrchestratorScope } from "../../as
 import { loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { InMemoryAnalyticsRepository } from "../../performance-analytics/testing/in-memory-analytics-repository.js"
 import { L, leaderUser, leadershipOrg } from "../testing/leadership-fixture.js"
-import { buildProcessConsultationToolset, PROCESS_TOOL, processScopeOf, structureGroupsOf, type ProcessConsultation, type ProcessScope } from "./process-consultation.js"
+import { buildProcessConsultationToolset, parseProcessClarificationScope, PROCESS_CLARIFICATION_NOTE, PROCESS_TOOL, processScopeOf, reachableProcessOrchestrators, structureGroupsOf, type ProcessConsultation, type ProcessScope } from "./process-consultation.js"
 import { resolveStructureReference } from "./references.js"
 
 /**
@@ -91,11 +91,36 @@ describe("consulta de processo por Grupo", () => {
     expect(result.trace).toMatchObject({ orchestratorId: "orch-fat", failed: true })
   })
 
+  it("consulta respondida pelo esclarecimento pelas bases: o texto vai como está, com a nota de que aparece na tela (o modelo não o reescreve)", async () => {
+    const toolset = buildProcessConsultationToolset({ scope: { groups: [FATURAMENTO], groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }) }, orchestrators: [ORCH_FAT], consult: async () => ({ text: "Qual cenário?\n\nOpções encontradas nas bases consultadas: A · B.", clarification: true, trace: { knowledgeClarification: "OPEN" } }) })
+    const result = await toolset!.execute(PROCESS_TOOL, { pergunta: "Como funciona a contestação?" })
+    expect(result.text).toBe(`[Consulta de processo — Orquestrador "INIA Faturamento" (Grupo B2C · Faturamento): ${PROCESS_CLARIFICATION_NOTE}]\nQual cenário?\n\nOpções encontradas nas bases consultadas: A · B.`)
+    expect(result.text).not.toContain("Use como fonte do procedimento")
+    expect(result.trace).toEqual({ groups: ["B2C · Faturamento"], orchestratorId: "orch-fat", orchestratorName: "INIA Faturamento", knowledgeClarification: "OPEN" })
+  })
+
   it("nenhum Orquestrador do chat para os Grupos (nem 'Todos os grupos'): a ferramenta não é oferecida; pergunta vazia é recusada", async () => {
     expect(toolsetFor([ATENDIMENTO], [ORCH_FAT]).toolset).toBeNull()
     expect(toolsetFor([], []).toolset).toBeNull()
     const { toolset } = toolsetFor([], [ORCH_ALL])
     expect((await toolset!.execute(PROCESS_TOOL, { pergunta: "  " })).issue?.kind).toBe("INVALID")
+  })
+})
+
+describe("Orquestradores ao alcance de quem lidera (continuar um esclarecimento da consulta de processo)", () => {
+  it("o de cada Grupo da estrutura (ou o de 'Todos os grupos' no lugar); sem Grupos, o de 'Todos os grupos'; nenhum = vazio", () => {
+    const scope = (groups: ProcessScope["groups"]): ProcessScope => ({ groups, groupsOfStructure: () => ({ kind: "NOT_FOUND", message: "x" }) })
+    expect(reachableProcessOrchestrators(scope([ATENDIMENTO, FATURAMENTO]), [ORCH_FAT, ORCH_ALL]).map((item) => item.id).sort()).toEqual(["orch-all", "orch-fat"])
+    expect(reachableProcessOrchestrators(scope([FATURAMENTO]), [ORCH_FAT, ORCH_ALL]).map((item) => item.id)).toEqual(["orch-fat"])
+    expect(reachableProcessOrchestrators(scope([]), [ORCH_FAT, ORCH_ALL]).map((item) => item.id)).toEqual(["orch-all"])
+    expect(reachableProcessOrchestrators(scope([ATENDIMENTO]), [ORCH_FAT])).toEqual([])
+  })
+
+  it("onde o esclarecimento foi feito: lido defensivamente do que foi gravado", () => {
+    const scope = { kind: "LEADERSHIP_PROCESS", orchestratorId: "orch-fat", orchestratorName: "INIA Faturamento", groupNames: ["B2C · Faturamento"] }
+    expect(parseProcessClarificationScope(scope)).toEqual(scope)
+    expect(parseProcessClarificationScope({ ...scope, kind: "OUTRO" })).toBeNull()
+    expect(parseProcessClarificationScope(null)).toBeNull()
   })
 })
 

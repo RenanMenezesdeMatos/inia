@@ -58,3 +58,28 @@ describe("guarda de ZIP (XLSX/DOCX) — achados I-F11/A-F13", () => {
     expect(inspectZip(corrupted).ok).toBe(false)
   })
 })
+
+describe("guarda de ZIP — tamanho REAL de cada entrada (auditoria 17/10/2026, DATA-1)", () => {
+  it("recusa entrada que declara 1 KB e descompacta 40 MB (o diretório central mente), sem descompactar além do declarado", () => {
+    const lying = buildZip([{ name: "[Content_Types].xml", content: Buffer.from("<Types/>") }, { name: "xl/sharedStrings.xml", content: Buffer.alloc(40 * 1024 * 1024, 0x30), declaredSize: 1000 }])
+    const before = process.memoryUsage().rss
+    expect(inspectZip(lying)).toEqual({ ok: false, reason: "conteúdo descompactado maior que o declarado" })
+    expect(process.memoryUsage().rss - before).toBeLessThan(30 * 1024 * 1024)
+  })
+
+  it("recusa imagem-bomba num DOCX (o parser de texto não a lê, mas a prévia leria)", () => {
+    const docx = buildZip([{ name: "word/document.xml", content: Buffer.from("<w:document>olá</w:document>") }, { name: "word/media/image1.png", content: Buffer.alloc(30 * 1024 * 1024, 0), declaredSize: 2048 }])
+    expect(inspectZip(docx).ok).toBe(false)
+  })
+
+  it("recusa tamanho real MENOR que o declarado e entrada corrompida; pacote real continua aceito", () => {
+    expect(inspectZip(buildZip([{ name: "a.xml", content: Buffer.from("conteúdo real"), declaredSize: 50 }]))).toEqual({ ok: false, reason: "tamanho real diferente do declarado" })
+    const zip = buildZip([{ name: "a.xml", content: Buffer.from("conteúdo de verdade ".repeat(200)) }])
+    const corrupted = Buffer.from(zip)
+    const position = 30 + "a.xml".length + 2
+    corrupted.writeUInt8(corrupted.readUInt8(position) ^ 0xff, position)
+    expect(inspectZip(corrupted).ok).toBe(false)
+    const sheet = Buffer.from(`<sheetData>${Array.from({ length: 20_000 }, (_, row) => `<row r="${row + 1}"><c t="s"><v>${row}</v></c></row>`).join("")}</sheetData>`)
+    expect(inspectZip(buildZip([{ name: "[Content_Types].xml", content: Buffer.from("<Types/>") }, { name: "xl/worksheets/sheet1.xml", content: sheet }]))).toMatchObject({ ok: true, entries: 2 })
+  })
+})

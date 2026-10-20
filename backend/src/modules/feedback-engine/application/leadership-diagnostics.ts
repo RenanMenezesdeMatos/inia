@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
+import { transcriptForModel } from "../../workflows/application/transcript.js"
 import { effectiveCriterionStatusSql, practiceOfRowSql, reviewSettledSql } from "../infrastructure/postgres-feedback-memory-store.js"
 
 /**
@@ -460,7 +461,9 @@ export async function assessmentDetail(db: Queryable, organizationId: string, pe
     criteria: criteria.map((criterion) => ({ id: criterion.id, criterionKey: criterion.criterion_key, text: criterion.criterion_text, section: criterion.section_heading, documentId: criterion.document_id, documentTitle: criterion.document_title, documentVersion: criterion.document_version, status: criterion.status, evidenceKind: criterion.evidence_kind, evidence: criterion.evidence, opportunityTurn: criterion.opportunity_turn, rationale: criterion.rationale, guidance: criterion.guidance, whyItMatters: criterion.why_it_matters, materiality: criterion.materiality, ruleConflict: criterion.rule_conflict, onPath: criterion.on_path, verification: criterion.verification, identityBasis: criterion.identity_basis, sourceKind: criterion.source_kind, applicability: criterion.applicability, observability: criterion.observability, executionClaim: criterion.execution_claim, obligation: criterion.obligation, ruleText: criterion.expected,
       // Mesma conduta julgada por outras regras NESTA chamada (ligação da revisão conferida pela estrutura); null = não determinável.
       occurrence: criterion.occurrence_basis ? { basis: criterion.occurrence_basis, sameConductAs: criteria.filter((other) => other.id !== criterion.id && other.occurrence_key === criterion.occurrence_key).map((other) => ({ criterionKey: other.criterion_key, text: other.criterion_text, documentTitle: other.document_title })) } : null })),
-    transcript: transcript ? projectTranscript(transcript.content).turns.map((turn) => ({ turn: turn.handle, speaker: turn.speaker, text: turn.text, timestamp: turn.audit.timestamp })) : [],
+    // Mesmo texto que o modelo analisou (R-31): as evidências mostradas ao lado batem com os turnos, e quem lidera não precisa
+    // do CPF/telefone/protocolo do cliente para entender a chamada. O original continua no banco.
+    transcript: transcript ? projectTranscript(transcriptForModel(transcript.content)).turns.map((turn) => ({ turn: turn.handle, speaker: turn.speaker, text: turn.text, timestamp: turn.audit.timestamp })) : [],
   }
 }
 

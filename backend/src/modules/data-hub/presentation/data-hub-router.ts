@@ -19,6 +19,7 @@ import { createPushToken, createSource, deleteSource, describeSource, listPushTo
 import { describeDatabaseObject, listDatabaseObjects } from "../application/connectors/database-connector.js"
 import { DataRunError } from "../domain/error-codes.js"
 import { suggestMapping } from "../domain/mapping.js"
+import { buildPushOpenApi, type PushOpenApiFeed } from "../domain/push-openapi.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
 
 /**
@@ -131,7 +132,7 @@ export function createDataHubRouter(db: Database, contextOverrides: Partial<Omit
     const summary = summaries.find((source) => source.id === request.params.id)
     if (!summary) throw new DomainError("Fonte não encontrada.", "DATA_SOURCE_NOT_FOUND", 404)
     const view = await describeSource(ctx, summary)
-    response.json({ data: { ...summary, secrets: view.secrets, tokens: summary.kind === "API_PUSH" ? await listPushTokens(ctx, org(request), summary.id) : [] } })
+    response.json({ data: { ...summary, secrets: view.secrets, transportWarning: view.transportWarning, tokens: summary.kind === "API_PUSH" ? await listPushTokens(ctx, org(request), summary.id) : [] } })
   })
 
   router.patch("/sources/:id", async (request, response) => {
@@ -156,14 +157,28 @@ export function createDataHubRouter(db: Database, contextOverrides: Partial<Omit
     response.json({ data: await rotateSourceSecrets(ctx, org(request), actor(request), String(request.params.id), request.body) })
   })
 
+  // OpenAPI da API Push desta fonte (B21): gerado dos feeds e contratos configurados agora — o integrador importa no Postman/Swagger.
+  router.get("/sources/:id/openapi.json", async (request, response) => {
+    const source = await requireSource(db, org(request), String(request.params.id))
+    if (source.kind !== "API_PUSH") throw new DomainError("Só fontes API Push têm OpenAPI de envio.", "DATA_SOURCE_NOT_PUSH", 422)
+    const feeds: PushOpenApiFeed[] = []
+    for (const feed of await listFeedsOfSource(db, org(request), source.id)) {
+      const contract = findDataContract(feed.contractKey, feed.contractVersion)
+      if (!contract || feed.connectorConfig.connector !== "API_PUSH") continue
+      feeds.push({ feedKey: feed.feedKey, name: feed.name, status: feed.status, extractPath: feed.connectorConfig.push.extractPath, mapping: feed.mapping, contract })
+    }
+    const document = buildPushOpenApi({ serverUrl: `${request.protocol}://${request.get("host")}`, source: { publicId: source.publicId, name: source.name }, feeds })
+    response.set("Content-Disposition", `attachment; filename="inia-api-push-${source.publicId}.openapi.json"`)
+    response.json(document)
+  })
+
   router.get("/sources/:id/tokens", async (request, response) => {
     await requireSource(db, org(request), String(request.params.id))
     response.json({ data: await listPushTokens(ctx, org(request), String(request.params.id)) })
   })
 
   router.post("/sources/:id/tokens", async (request, response) => {
-    const input = z.object({ label: z.string().trim().min(2).max(80), feedId: z.string().uuid().nullable().optional() }).parse(request.body)
-    const created = await createPushToken(ctx, org(request), actor(request), String(request.params.id), { label: input.label, feedId: input.feedId ?? null })
+    const created = await createPushToken(ctx, org(request), actor(request), String(request.params.id), request.body ?? {})
     // O segredo aparece SÓ nesta resposta.
     response.status(201).json({ data: { ...created.view, token: created.token } })
   })

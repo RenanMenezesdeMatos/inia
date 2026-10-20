@@ -69,7 +69,7 @@ export async function loadRecordedEvaluation(db: Queryable | Database, organizat
   return { evaluationId: row.id, reportId: report?.id ?? null, caseId: report?.case_id ?? null, outcome: row.outcome, decisions: row.decisions.map((decision) => ({ typeKey: decision.typeKey, typeName: decision.typeName, status: decision.status, ruleKey: decision.ruleKey, interventionId: decision.interventionId ?? null, updated: Boolean(decision.updated), note: decision.note ?? null })), reused: true }
 }
 
-async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: { summary: string; indicatorValue: string; indicatorTarget: string }): Promise<string> {
+async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: { indicatorValue: string; indicatorTarget: string }): Promise<string> {
   const { evaluation } = input
   const organizationId = evaluation.organizationId
   const personId = evaluation.person.id
@@ -92,10 +92,13 @@ async function resolveCase(tx: Queryable, input: ApplyEvaluationInput, report: {
   const teamId = evaluation.person.teamId ?? (await tx.query<{ team_id: string | null }>(`select team_id from people where id = $1`, [personId])).rows[0]?.team_id
   if (!teamId) throw new DomainError(`${evaluation.person.name} não está em nenhum Grupo: o caso de supervisão precisa de um.`, "INTERVENTION_CASE_TEAM_REQUIRED", 422)
   const title = `Acompanhamento: ${evaluation.indicatorName ?? evaluation.policy.name}`
+  // O caso é lido por quem vê Indicadores/Agents, não só por quem vê intervenções: o resumo não cita tipos de intervenção nem
+  // decisões — elas ficam na intervenção, com o acesso dela (achado SCOPE-02 da auditoria de 17/10/2026).
+  const summary = `${evaluation.person.name}${evaluation.indicatorName ? ` — ${evaluation.indicatorName}` : ""}: caso aberto pela política "${evaluation.policy.name}". As ações e os motivos ficam nas intervenções do colaborador.`
   const created = (await tx.query<{ id: string }>(
     `insert into supervision_cases (organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target)
      values ($1, $2, $3, $4, $5, 'ACTION_PENDING', 'P2', $6, $7, $8) returning id`,
-    [organizationId, personId, teamId, title, report.summary.slice(0, 2000), evaluation.indicatorCode ?? `POLICY:${evaluation.policy.key}`, report.indicatorValue, report.indicatorTarget],
+    [organizationId, personId, teamId, title, summary, evaluation.indicatorCode ?? `POLICY:${evaluation.policy.key}`, report.indicatorValue, report.indicatorTarget],
   )).rows[0]!
   await tx.query(`insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'CASE_OPENED_BY_POLICY', $3)`, [organizationId, created.id, JSON.stringify({ policyId: evaluation.policy.id, policyVersion: evaluation.version?.version ?? null })])
   return created.id
@@ -225,13 +228,12 @@ export async function applyEvaluation(db: Database, input: ApplyEvaluationInput)
       const needsReport = evaluation.decisions.length > 0
       const reportId = needsReport ? randomUUID() : null
       const facts = firstIndicatorFacts(evaluation)
-      const preliminary = needsReport ? `${evaluation.person.name}: ${evaluation.justification.split("\n")[0]}` : ""
       let caseId: string | null = null
       if (needsReport) {
         caseId = input.origin === "REEVALUATION" && input.supersedesEvaluationId
           ? ((await tx.query<{ case_id: string }>(`select case_id from intervention_reports where evaluation_id = $1`, [input.supersedesEvaluationId])).rows[0]?.case_id ?? null)
           : null
-        caseId ??= await resolveCase(tx, input, { summary: preliminary, indicatorValue: facts.value, indicatorTarget: facts.target })
+        caseId ??= await resolveCase(tx, input, { indicatorValue: facts.value, indicatorTarget: facts.target })
       }
 
       const applied: AppliedDecision[] = []

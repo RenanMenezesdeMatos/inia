@@ -1,7 +1,7 @@
 import { cookies } from "next/headers"
 
 import type { PersonPresentation } from "@/schemas/profile/my-profile.schema"
-import { SESSION_COOKIE_NAME } from "@/services/auth/auth-service"
+import { readSessionCookie, sessionCookieHeader } from "@/lib/auth/session-cookie"
 
 export type SupervisorOperatorDetail = {
   /** `name` = nome CADASTRAL; `presentation` = como o colaborador VISITADO escolheu aparecer (nome, foto, capa). */
@@ -22,9 +22,10 @@ export type SupervisorOperatorResult = { status: "ok"; data: SupervisorOperatorD
  */
 export async function fetchSupervisorOperatorFromCookies(id: string): Promise<SupervisorOperatorResult> {
   const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
+  const session = readSessionCookie(cookieStore)
+  const token = session?.value
   try {
-    const response = await fetch(`${API_URL}/api/v1/supervisor/operators/${encodeURIComponent(id)}`, { headers: token ? { cookie: `${SESSION_COOKIE_NAME}=${token}` } : undefined, cache: "no-store" })
+    const response = await fetch(`${API_URL}/api/v1/supervisor/operators/${encodeURIComponent(id)}`, { headers: token ? { cookie: sessionCookieHeader(session) } : undefined, cache: "no-store" })
     if (response.status === 403) return { status: "forbidden" }
     if (response.status === 404) return { status: "not_found" }
     if (!response.ok) return { status: "error" }

@@ -59,3 +59,6 @@ tools/loadtest/out/
 
 # Pacotes de configuração (npm run config:exportar): prompts, procedimentos e imagens da organização — nunca vão para o git.
 pacote-configuracao-*/
+
+# cópias de segurança do banco (npm run db:backup) — têm dados pessoais, nunca vão para o repositório
+/backups/

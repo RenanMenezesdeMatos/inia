@@ -62,11 +62,20 @@ export const envSchema = z.object({
   INIA_AI_BATCH_MAX_RETRIES: z.coerce.number().int().min(0).max(20).default(5),
   INIA_AI_BATCH_BACKOFF_BASE_MS: z.coerce.number().int().min(100).max(60_000).default(2_000),
   INIA_AI_BATCH_BACKOFF_MAX_MS: z.coerce.number().int().min(1_000).max(600_000).default(60_000),
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  /**
+   * Endereço(s) público(s) da interface, separados por vírgula: origens do CORS e da conferência de origem das escritas com
+   * cookie (CSRF). Fora de produção, ausente = http://localhost:3000; em produção é obrigatório (ver productionOriginProblems).
+   */
+  CORS_ORIGIN: z.string().trim().min(1).optional(),
   LOG_LEVEL: z.string().default("info"),
   GEMINI_API_KEY: z.string().optional(),
   JWT_SECRET: z.string().default("inia-dev-secret-change-me"),
   JWT_EXPIRES_IN: z.string().default("12h"),
+  /**
+   * Sessão parada (sem interação na tela nem ação que altere algo) além disso é encerrada pelo servidor — além do prazo
+   * absoluto do JWT_EXPIRES_IN. 0 desliga. Leituras automáticas da tela (sino, avisos) não contam como atividade.
+   */
+  SESSION_IDLE_TIMEOUT_MINUTES: z.coerce.number().int().min(0).max(1440).default(30),
   /** Validade da senha temporária gerada ao habilitar o acesso (ou ao gerar uma nova) — depois disso ela não entra mais. */
   TEMPORARY_PASSWORD_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(72),
   /**
@@ -75,6 +84,11 @@ export const envSchema = z.object({
    * para o ambiente subir sem configuração extra (nunca use esse fallback com dados reais).
    */
   DATA_HUB_SECRET_KEY: z.string().optional(),
+  /**
+   * Só durante a TROCA da chave de cifra: a chave antiga, para a INIA ainda ler as credenciais gravadas com ela enquanto
+   * `npm run secrets:rotate` as recifra com a nova (DATA_HUB_SECRET_KEY). Depois da rotação, tire do .env.
+   */
+  DATA_HUB_SECRET_KEY_PREVIOUS: z.string().optional(),
   /** Retenção dos objetos brutos (arquivos/payloads) em dias — metadados do Run ficam para sempre. */
   DATA_HUB_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** Token Budget da investigação (V1.1): limiares de AVISO por execução (nunca teto cego). 0 desliga o limiar. */
@@ -96,6 +110,12 @@ export const envSchema = z.object({
   INIA_PROMPT_CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(1_800),
   /** Sidecar needKind (V1.4.8f): anota a INTENÇÃO de cada CustomerNeed (ACTION/INFORMATION/MIXED/UNKNOWN) numa chamada própria depois da Fase A. OFF (padrão) = nenhuma chamada extra, comportamento idêntico ao anterior. Feasibility: G-NK1 (784fe37). */
   INIA_NEED_KIND_SIDECAR: z.enum(["OFF", "ON"]).default("OFF"),
+  /**
+   * Máscara de dados pessoais na transcrição que vai para a IA (LGPD, R-31): CPF, telefone, e-mail e protocolo viram [CPF],
+   * [TELEFONE], [EMAIL], [PROTOCOLO] em TODO texto de chamada enviado a um modelo — e as citações do modelo são conferidas contra
+   * o mesmo texto mascarado. O original continua no banco. ON (padrão); OFF só para comparar resultados.
+   */
+  INIA_MODEL_PII_MASKING: z.enum(["ON", "OFF"]).default("ON"),
   // V1.5.0 — pipeline controlado do InteractionFeedback (Writer → validação → Revisão humana → persistência). OFF = nada roda.
   INIA_INTERACTION_FEEDBACK_PIPELINE: z.enum(["OFF", "ON"]).default("OFF"),
   // V1.5.9 — política de entrega do feedback de interação. PILOT_V1 (padrão) = 100% HOLD_FOR_QA; AUTONOMOUS_V1 = QA só por
@@ -123,7 +143,14 @@ export const envSchema = z.object({
    * Express: `loopback` (padrão — IIS/proxy na própria máquina), lista de IPs/sub-redes (`10.0.0.5, 10.1.0.0/16`) ou `false`
    * (nenhum: vale o IP da conexão). Nunca `true`: qualquer cliente forjaria o próprio IP.
    */
-  TRUST_PROXY: z.string().trim().min(1).default("loopback").refine((value) => value.toLowerCase() !== "true", "TRUST_PROXY=true confiaria em qualquer cliente; informe os proxies (ex.: loopback)."),
+  TRUST_PROXY: z
+    .string()
+    .trim()
+    .min(1)
+    .default("loopback")
+    .refine((value) => value.toLowerCase() !== "true", "TRUST_PROXY=true confiaria em qualquer cliente; informe os proxies (ex.: loopback).")
+    // Rede /0 = todo endereço é "proxy confiável": o mesmo que `true` (achado AUTH-17 da auditoria de 17/10/2026).
+    .refine((value) => !value.split(",").some((entry) => /\/0$/.test(entry.trim())), "TRUST_PROXY com uma rede /0 confiaria em qualquer cliente; informe os proxies (ex.: loopback ou o IP do IIS)."),
   /**
    * Tentativas de login por IP + e-mail digitado a cada 5 minutos (além da trava por e-mail: 5 falhas em 15 min). Cada pessoa
    * tem o seu contador mesmo quando centenas saem pelo mesmo IP (Citrix, VDI, NAT) na virada de turno. 0 desliga este limite.
@@ -146,17 +173,32 @@ export const envSchema = z.object({
 
 const parsed = envSchema.parse(process.env)
 
-if (parsed.NODE_ENV === "production" && parsed.JWT_SECRET === "inia-dev-secret-change-me") {
-  throw new Error("JWT_SECRET é obrigatória em produção (npm run env:init gera um valor aleatório).")
-}
+/** Valores publicados no repositório (código e `.env.example`): conhecidos por qualquer um — nunca valem em produção. */
+const PUBLISHED_SECRETS = new Set(["inia-dev-secret-change-me", "troque-por-um-valor-aleatorio-longo", "inia-dev-data-hub-secret-key-change-me"])
+const distinctCharacters = (value: string) => new Set(value).size
 
-// HMAC-SHA256: um segredo curto vira alvo de força bruta offline a partir de qualquer cookie de sessão.
-if (parsed.NODE_ENV === "production" && parsed.JWT_SECRET.length < 32) {
-  throw new Error("JWT_SECRET precisa ter pelo menos 32 caracteres em produção (npm run env:init gera um valor aleatório).")
-}
-
-if (parsed.NODE_ENV === "production" && !parsed.DATA_HUB_SECRET_KEY) {
-  throw new Error("DATA_HUB_SECRET_KEY é obrigatória em produção (chave de cifra dos segredos da Central de Dados).")
+/**
+ * Segredos de produção (achado AUTH-8 da auditoria de 17/10/2026). JWT_SECRET fraco/publicado = qualquer um assina a sessão
+ * de um Administrador geral: a API não sobe (trocar só encerra as sessões). DATA_HUB_SECRET_KEY fraca só AVISA: trocá-la
+ * deixaria ilegíveis as credenciais já cifradas — a troca exige a recifragem descrita em docs/security/configuracao-segura.md.
+ */
+export function productionSecretProblems(values: Pick<z.infer<typeof envSchema>, "NODE_ENV" | "JWT_SECRET" | "DATA_HUB_SECRET_KEY">): { fatal: string[]; warnings: string[] } {
+  const fatal: string[] = []
+  const warnings: string[] = []
+  if (values.NODE_ENV !== "production") return { fatal, warnings }
+  const jwt = values.JWT_SECRET.trim()
+  if (PUBLISHED_SECRETS.has(jwt) || /^(troque|change|exemplo|example)/i.test(jwt)) fatal.push("JWT_SECRET é o valor de exemplo; em produção use um valor aleatório (npm run env:init gera um).")
+  // HMAC-SHA256: um segredo curto ou repetitivo vira alvo de força bruta offline a partir de qualquer cookie de sessão.
+  else if (jwt.length < 32 || distinctCharacters(jwt) < 10) fatal.push("JWT_SECRET precisa ter pelo menos 32 caracteres e não ser repetitivo em produção (npm run env:init gera um valor aleatório).")
+  const key = values.DATA_HUB_SECRET_KEY?.trim()
+  if (!key) fatal.push("DATA_HUB_SECRET_KEY é obrigatória em produção (chave de cifra dos segredos da Central de Dados).")
+  else {
+    const rawKey = /^[0-9a-f]{64}$/i.test(key) || Buffer.from(key, "base64").length === 32
+    if (PUBLISHED_SECRETS.has(key) || (!rawKey && (key.length < 32 || distinctCharacters(key) < 10))) {
+      warnings.push("DATA_HUB_SECRET_KEY fraca (valor publicado, curto ou repetitivo): as credenciais da Central de Dados e da IA ficam com chave adivinhável. Troque seguindo docs/security/configuracao-segura.md (recifrar antes de trocar).")
+    }
+  }
+  return { fatal, warnings }
 }
 
 /** Origens do navegador autorizadas (CORS e conferência de origem das escritas com cookie): CORS_ORIGIN aceita lista separada por vírgula. */
@@ -164,11 +206,38 @@ export function parseAllowedOrigins(value: string): string[] {
   return value.split(",").map((origin) => origin.trim().replace(/\/+$/, "")).filter((origin) => origin.length > 0)
 }
 
+const DEVELOPMENT_ORIGIN = "http://localhost:3000"
+
+/**
+ * Origens em produção (R-33): sem CORS_ORIGIN a API assumiria o endereço de desenvolvimento e a instalação pareceria quebrada
+ * sem dizer por quê; `*` (ou um endereço que não é http/https) liberaria qualquer site. Nos dois casos a API não sobe.
+ */
+export function productionOriginProblems(values: Pick<z.infer<typeof envSchema>, "NODE_ENV" | "CORS_ORIGIN">): string[] {
+  if (values.NODE_ENV !== "production") return []
+  if (!values.CORS_ORIGIN) return ["CORS_ORIGIN é obrigatória em produção: informe o endereço público da interface (ex.: https://inia.empresa.com.br)."]
+  const invalid = parseAllowedOrigins(values.CORS_ORIGIN).filter((origin) => {
+    if (origin.includes("*")) return true
+    try {
+      const url = new URL(origin)
+      return (url.protocol !== "https:" && url.protocol !== "http:") || url.origin !== origin
+    } catch {
+      return true
+    }
+  })
+  return invalid.length > 0 ? [`CORS_ORIGIN aceita só endereços completos (https://servidor[:porta]), sem curinga nem caminho: ${invalid.join(", ")}.`] : []
+}
+
+const secretProblems = productionSecretProblems(parsed)
+const startupProblems = [...secretProblems.fatal, ...productionOriginProblems(parsed)]
+if (startupProblems.length > 0) throw new Error(startupProblems.join(" "))
+for (const warning of secretProblems.warnings) console.warn(JSON.stringify({ event: "weak_production_secret", message: warning }))
+
 export const env = {
   ...parsed,
   activeDatabaseUrl:
     parsed.NODE_ENV === "test" ? parsed.TEST_DATABASE_URL : parsed.DATABASE_URL,
-  allowedOrigins: parseAllowedOrigins(parsed.CORS_ORIGIN),
+  allowedOrigins: parseAllowedOrigins(parsed.CORS_ORIGIN ?? DEVELOPMENT_ORIGIN),
+  sessionIdleTimeoutMs: parsed.SESSION_IDLE_TIMEOUT_MINUTES * 60_000,
   sessionCookieSecure: parsed.SESSION_COOKIE_SECURE === "auto" ? parsed.NODE_ENV === "production" : parsed.SESSION_COOKIE_SECURE === "true",
   shutdownDrainMs: parsed.INIA_SHUTDOWN_DRAIN_MS ?? (parsed.NODE_ENV === "production" ? 5_000 : 0),
 }

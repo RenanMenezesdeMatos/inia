@@ -187,6 +187,10 @@ describe.skipIf(!ENABLED)("V1.6.2 — estratégia de diagnóstico do indicador: 
     expect((await scoped.post(`${base}/${tma}/publish`)).status).toBe(403)
     const simulate = (collaboratorId: string) => ({ source: "PUBLISHED", collaboratorId, measurementId: measurement, agentId: agent, aiPolicy: "STOP_BEFORE_AI" })
     expect((await scoped.post(`${base}/${tma}/simulate`).send(simulate(operatorB.id))).status).toBe(404)
+    // Agent de OUTRO Grupo (bases dele) não roda para quem administra o Grupo A, nem aparece na lista (achado AI-06).
+    const agentOfB = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id) values ($1, 'Proof 162 Agent B', 'CALL_FEEDBACK', 'o', 'd', 'c', 'TEAM', $2) returning id", [org, teamB])).rows[0]!.id
+    expect((await scoped.post(`${base}/${tma}/simulate`).send({ ...simulate(operatorA.id), agentId: agentOfB })).status).toBe(404)
+    expect((await scoped.get(`${base}/${tma}/simulation-options`)).body.data.agents.map((entry: { id: string }) => entry.id)).not.toContain(agentOfB)
     // Regressão (QA 2026-09-25): as PESSOAS vêm antes das medições. Uma pessoa com centenas de medições diárias e nome
     // anterior no alfabeto não pode esconder as outras; cada período diz quantos atendimentos o plano encontraria.
     const volume = (await client.query<{ id: string }>("insert into people (organization_id, name, role, team_id) values ($1, 'AAA Proof 162 Volume', 'OPERATOR', $2) returning id", [org, teamA])).rows[0]!.id

@@ -104,10 +104,11 @@ export type KnowledgeRetrievalResult = {
   trace: KnowledgeTrace
 }
 
-/** `organizationId`: a organização do Agent (do registro) — a base só entra quando é da mesma organização dele. */
-type PublishedDocumentRow = { id: string; title: string; content: string; version: number; organizationId: string }
+/** `organizationId`: a organização do Agent (do registro) — a base só entra quando é da mesma organização dele. `versionId`: a
+ * versão publicada de onde veio o texto (`knowledge_versions.id`) — identidade estável de uma fonte citada. */
+type PublishedDocumentRow = { id: string; title: string; content: string; version: number; versionId: string; documentType: string; organizationId: string }
 /** O que identifica o conteúdo sem trazê-lo: a versão publicada (`knowledge_versions.id`) nunca tem o texto alterado. */
-type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content"> & { versionId: string }
+type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content">
 
 /**
  * BASES DO AGENT EM CACHE, por processo. Antes, cada busca (chat, voz, ferramentas de investigação, prompt do especialista e
@@ -116,7 +117,7 @@ type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content"> & { version
  * leve, sem o texto) e reaproveita o que já foi montado para exatamente essas versões; o texto só vem quando algo mudou.
  * Sempre fresco com N processos: a conferência é por chamada, nunca por tempo.
  */
-type AgentKnowledgeSnapshot = {
+export type AgentKnowledgeSnapshot = {
   key: string
   documents: PublishedDocumentRow[]
   chunks: KnowledgeChunk[]
@@ -130,7 +131,7 @@ const snapshotsByAgent = new Map<string, AgentKnowledgeSnapshot>()
 
 async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Promise<PublishedDocumentHeader[]> {
   const result = await db.query<PublishedDocumentHeader>(
-    `select kd.id, kd.title, kv.id "versionId", kv.version, a.organization_id "organizationId"
+    `select kd.id, kd.title, kd.document_type "documentType", kv.id "versionId", kv.version, a.organization_id "organizationId"
      from agent_knowledge_documents akd
      join knowledge_documents kd on kd.id = akd.knowledge_document_id
      join agents a on a.id = akd.agent_id
@@ -138,13 +139,21 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
        select id, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1
      ) kv on true
      where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null
+       -- Mesma regra do cadastro do Agent (assertKnowledgeDocumentsCompatible), conferida a CADA busca: base que passou a valer
+       -- só para outro Grupo sai da recuperação na hora, sem esperar alguém salvar o Agent (achado AI-05 da auditoria de 17/10/2026).
+       and (a.scope_type = 'ALL_TEAMS' or exists (
+         select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
+          where os.knowledge_document_id = kd.id
+            and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = coalesce(a.team_id, (select ast.team_id from subteams ast where ast.id = a.subteam_id)))))
      order by kd.title`,
     [agentId],
   )
   return result.rows
 }
 
-async function loadAgentKnowledgeSnapshot(db: Database, agentId: string): Promise<AgentKnowledgeSnapshot> {
+/** Bases publicadas e autorizadas de UM Agent, montadas (trechos + papéis) e em cache pela versão — também usada pelo catálogo do
+ * esclarecimento (`knowledge-catalog.ts`), que une as bases de vários especialistas. */
+export async function loadAgentKnowledgeSnapshot(db: Database, agentId: string): Promise<AgentKnowledgeSnapshot> {
   const headers = await loadAuthorizedDocumentHeaders(db, agentId)
   const key = headers.map((header) => `${header.organizationId}|${header.id}|${header.versionId}|${header.title}`).join("\n")
   const cached = snapshotsByAgent.get(agentId)
@@ -156,8 +165,8 @@ async function loadAgentKnowledgeSnapshot(db: Database, agentId: string): Promis
   const contents = headers.length === 0
     ? new Map<string, string>()
     : new Map((await db.query<{ id: string; content: string }>(`select id, content from knowledge_versions where id = any($1::uuid[])`, [headers.map((header) => header.versionId)])).rows.map((row) => [row.id, row.content]))
-  const documents = headers.flatMap(({ versionId, ...header }) => {
-    const content = contents.get(versionId)
+  const documents = headers.flatMap((header) => {
+    const content = contents.get(header.versionId)
     return content === undefined ? [] : [{ ...header, content }]
   })
   const snapshot: AgentKnowledgeSnapshot = {

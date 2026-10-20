@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { stripImageMetadata } from "../../../shared/infrastructure/image-metadata.js"
 import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -244,7 +245,9 @@ function checkedImage(data: Buffer, context?: { index: number; label: string }):
     const message = SCENE_IMAGE_ERROR_MESSAGES[validation.code]
     throw new DomainError(context ? `Imagem "${context.label}": ${message}` : message, validation.code, 422, context ? { imageIndex: context.index } : undefined)
   }
-  return { ...validation.image, sha256: createHash("sha256").update(data).digest("hex"), byteSize: data.length, data }
+  // Fundo visto por toda a organização: sem EXIF/GPS, XMP e afins (achado AUTH-11 da auditoria de 17/10/2026).
+  const clean = stripImageMetadata(data, validation.image.mimeType)
+  return { ...validation.image, sha256: createHash("sha256").update(clean).digest("hex"), byteSize: clean.length, data: clean }
 }
 
 function checkedName(value: string) {

@@ -74,10 +74,11 @@ describe("força de trabalho — quantos, %, quem; afastamento sensível protegi
   const statuses = new Map<string, string | null>([[operatorsOf(1)[0]!, "FERIAS"], [operatorsOf(1)[1]!, "INSS"], [operatorsOf(3)[0]!, "MATERNIDADE"]])
   const loadStatuses = async (ids: string[]) => new Map(ids.map((id) => [id, statuses.get(id) ?? null]))
 
-  it("por supervisor: quantidade e % por situação; recorte com 5+ pessoas mostra o tipo de afastamento", async () => {
+  it("por supervisor: quantidade e % por situação; um afastamento sensível isolado fica só no total (o tipo apontaria a pessoa — AI-04)", async () => {
     const card = await run(await depsFor(L.gabriel, "MANAGER", orgWithPrv(), { loadStatuses }), "leadership_workforce", { agrupar_por: "SUPERVISOR" })
     const sara = card.rows.find((row) => row.cells.group === "Sara Silva")!
-    expect(sara.cells).toMatchObject({ total: "5", EM_PRODUCAO: "3 (60%)", FERIAS: "1 (20%)", AFASTAMENTO: "1 (20%)", INSS: "1 (20%)" })
+    expect(sara.cells).toMatchObject({ total: "5", EM_PRODUCAO: "3 (60%)", FERIAS: "1 (20%)", AFASTAMENTO: "1 (20%)" })
+    expect(sara.cells.INSS ?? "0").toBe("0")
   })
 
   it("lista nominal nunca expõe o motivo de afastamento sensível", async () => {
@@ -88,8 +89,10 @@ describe("força de trabalho — quantos, %, quem; afastamento sensível protegi
   it("recorte com menos de 5 pessoas: afastamentos só somados", async () => {
     const card = await run(await depsFor(L.gabriel, "MANAGER", orgWithPrv(), { loadStatuses }), "leadership_workforce", { estrutura: "Sônia", agrupar_por: "ESTRUTURA" })
     expect(card.columns.map((column) => column.label)).toContain("Afastamentos (total)")
-    // Sônia tem 5 operadores: o tipo aparece; numa equipe de 4 ele não apareceria (regra testada na função pura das métricas gerenciais).
-    expect(card.rows[0]!.cells.MATERNIDADE).toBe("1 (20%)")
+    // Sônia tem 5 operadores e UMA licença-maternidade: com a lista nominal da mesma ferramenta, o tipo apontaria a pessoa — fica
+    // só no total (regra `sensitiveBreakdownAllowed`, testada na função pura das métricas gerenciais).
+    expect(card.rows[0]!.cells.AFASTAMENTO).toBe("1 (20%)")
+    expect(card.rows[0]!.cells.MATERNIDADE ?? "0").toBe("0")
   })
 })
 

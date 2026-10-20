@@ -60,6 +60,10 @@ export const accessCapabilitiesSchema = z.object({
   canManageCalendar: capability,
   // Conversas com a INIA (somente leitura) — fora de canAccessAdministration: abre só esta área da Administração.
   canViewAssistantConversations: capability,
+  // Contestações de feedback (revisão humana): abre só essa área da Administração para quem só tem o papel de revisor.
+  canReviewFeedbackContestations: capability,
+  // Pedido do titular (LGPD): exportar todos os dados ligados a uma pessoa (só com escopo de organização).
+  canExportSubjectData: capability,
   // Diagnóstico: quem LIDERA alguém (subárvore real) OU tem `indicators.view` — mesma regra da API (o recorte é do backend).
   canViewDiagnostics: capability,
   // Reports recorrentes: quem lidera/tem acesso de consulta (para si) ou tem o papel Report (distribuir). O recorte é do backend.
@@ -130,6 +134,8 @@ export const currentUserSchema = z.object({
   // (o backend devolve permissões vazias e bloqueia as APIs) — a UI só leva à tela de criar a senha.
   passwordChangeRequired: z.boolean().default(false),
   temporaryPasswordExpiresAt: z.string().nullable().default(null),
+  // Sessão parada além disso é encerrada pelo servidor; a tela avisa antes. 0 = sem encerramento por inatividade.
+  sessionIdleTimeoutMinutes: z.number().int().min(0).default(0),
   // Módulos LIGADOS neste ambiente (não é permissão). Módulo desligado ≠ sem permissão: a UI esconde o módulo, nunca diz
   // "sem permissão" por causa de uma flag (V1.5.8a).
   features: featuresSchema.default(() => featuresSchema.parse({})),

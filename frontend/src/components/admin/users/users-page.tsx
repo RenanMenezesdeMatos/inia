@@ -43,14 +43,17 @@ import {
   useUserDetailQuery,
 } from "@/queries/admin/use-user-account-queries"
 import type { UpdateUserDetailsInput, UserListParams } from "@/services/admin/user-account-service"
+import type { IssuedTemporaryPassword } from "@/schemas/access/access.schema"
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
 import { EMPLOYMENT_STATUS_LABELS, ROLE_LABELS, employmentStatusLabel, type EmploymentStatus, type SourceManager, type UserAccount } from "@/schemas/admin/user-account.schema"
 import { LineageButton } from "@/components/admin/data-hub/lineage-sheet"
 import { useCapitalsQuery } from "@/queries/admin/use-operational-calendar-queries"
 
 import type { AccessFocus } from "@/components/admin/access/access-users-view"
+import { TemporaryPasswordDialog } from "@/components/admin/access/temporary-password-dialog"
 
 import { PersonAccessSection } from "./person-access-section"
+import { SubjectDataExportButton } from "./subject-data-export-button"
 import { PersonBelongsTo } from "./person-belongs-to"
 import { PersonSourceIdentity } from "./person-source-link"
 import { SourceManagedNotice, sourceManagedText } from "./source-managed-notice"
@@ -404,12 +407,15 @@ export function UsersPage({
   canViewAccess,
   canAssignRoles,
   canManageAccess = false,
+  canExportSubjectData = false,
   onOpenAccess,
 }: {
   canViewAccess: boolean
   canAssignRoles: boolean
   /** Custódia de credencial (access.users.manage): habilita "Vincular à pessoa da base". */
   canManageAccess?: boolean
+  /** Pedido do titular (LGPD): "Exportar dados" na ficha da pessoa. */
+  canExportSubjectData?: boolean
   /** Leva para a aba Acessos já na pessoa (ex.: matrícula que já existe → "Habilitar acesso"). */
   onOpenAccess?: (focus: AccessFocus) => void
 }) {
@@ -426,7 +432,7 @@ export function UsersPage({
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+  const [issued, setIssued] = useState<IssuedTemporaryPassword | null>(null)
   const [role, setRole] = useState<PlatformRole>("OPERATOR")
   const [teamId, setTeamId] = useState<string>("")
   const [matricula, setMatricula] = useState("")
@@ -445,7 +451,6 @@ export function UsersPage({
     setEditingUser(null)
     setName("")
     setEmail("")
-    setPassword("")
     setRole("OPERATOR")
     setTeamId("")
     setMatricula("")
@@ -469,7 +474,6 @@ export function UsersPage({
     setEditingUser(user)
     setName(user.name)
     setEmail(user.email ?? "")
-    setPassword("")
     setRole(user.role)
     setTeamId(user.teamId ?? "")
     updateDetailsMutation.reset()
@@ -492,7 +496,7 @@ export function UsersPage({
       }
     } else {
       try {
-        await createMutation.mutateAsync({ name, email, password, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined })
+        setIssued(await createMutation.mutateAsync({ name, email, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined }))
       } catch {
         return
       }
@@ -505,7 +509,7 @@ export function UsersPage({
   const matriculaInUse = editingUser === null && createMutation.error instanceof AdminApiError && createMutation.error.code === "PERSON_MATRICULA_IN_USE" ? createMutation.error : null
   const existingPersonId = (matriculaInUse?.details as { personId?: string } | undefined)?.personId ?? null
   const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId
-  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@")) && (Boolean(editingUser) || password.length >= 6)
+  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
 
   return (
     <Card>
@@ -592,10 +596,7 @@ export function UsersPage({
             </div>
             {editingUser ? null : (
               <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="user-password">Senha provisória</Label>
-                  <Input id="user-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-                </div>
+                <p className="text-xs text-muted-foreground">A senha provisória é gerada pela INIA ao criar e aparece uma única vez para você entregar à pessoa — no primeiro acesso ela cria a própria.</p>
                 <div className="space-y-1.5">
                   <Label htmlFor="user-matricula">Matrícula (opcional)</Label>
                   <Input id="user-matricula" value={matricula} onChange={(event) => setMatricula(event.target.value)} maxLength={64} aria-describedby="user-matricula-help" />
@@ -694,10 +695,12 @@ export function UsersPage({
                 <p className="rounded-md border p-3 text-xs text-muted-foreground">Nível hierárquico e cargo são dados organizacionais e não dão acesso ao INIA. Papéis de acesso (Administrador, QA de feedback…) ficam em <strong>Administra / acessos</strong> e na aba <strong>Acessos</strong>.</p>
                 <ShiftSection userId={editingUser.id} />
                 <EmploymentStatusSection userId={editingUser.id} capitalManagedBy={managedBy?.operationalCapitalCode ?? null} />
+                {canExportSubjectData ? <SubjectDataExportButton personId={editingUser.id} personName={editingUser.name} /> : null}
               </>
             ) : null}
           </TabsContent>
         </Tabs>
+        <TemporaryPasswordDialog issued={issued} onClose={() => setIssued(null)} />
       </CardContent>
     </Card>
   )

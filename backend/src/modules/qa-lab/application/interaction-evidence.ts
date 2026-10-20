@@ -1,7 +1,7 @@
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { loadLatestTranscript, transcriptChecksum } from "../../workflows/application/transcript.js"
+import { loadLatestTranscript, transcriptChecksum, transcriptForModel } from "../../workflows/application/transcript.js"
 import { isOperatorEligibleForWorkflow, resolveEligibleOperatorIds as resolveEligibleOperatorIdsShared, type WorkflowPopulation } from "../../workflows/application/workflow-eligibility.js"
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
 import { triggerConfigSchema } from "../../workflows/domain/trigger-config-schema.js"
@@ -318,7 +318,8 @@ export async function resolveInteractionEvidence(
   const current = await loadLatestTranscript(db, call.id)
   const currentChecksum = current ? transcriptChecksum(current.content) : null
   const useFrozen = Boolean(frozen && frozen.evidence.transcript.available && frozen.evidence.transcript.checksum !== currentChecksum)
-  const transcriptText = useFrozen ? frozen!.inputContext : (current?.content ?? "")
+  // O modelo da simulação recebe o MESMO texto mascarado da produção (R-31); a detecção de mudança usa o original.
+  const transcriptText = transcriptForModel(useFrozen ? frozen!.inputContext : (current?.content ?? ""))
   const transcriptMeta: InteractionEvidence["transcript"] = useFrozen
     ? frozen!.evidence.transcript
     : {

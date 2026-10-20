@@ -195,7 +195,7 @@ describe("criadores de feedback — linhas gravadas", () => {
     `)
   })
 
-  it("orquestrador: evidência FEEDBACK com a síntese e caso identificado pelo Orquestrador", async () => {
+  it("orquestrador: síntese como recomendação, evidência sem trecho verificado (nunca o texto da IA) e caso identificado pelo Orquestrador", async () => {
     const { db, rows } = recordingDb()
     await createOrchestratorFeedback(db, {
       organizationId: "org-1",
@@ -228,8 +228,8 @@ describe("criadores de feedback — linhas gravadas", () => {
           "table": "evidences",
           "values": {
             "case_id": "case-1",
-            "checksum": "9be96758eb820865626423575e142e6719e5904771ef0c338fc3ee3e290db4e4",
-            "description": "síntese estruturada",
+            "checksum": "f246bd7925b291be082ffbd7f943d9a682e8fc9cdce8821b5fc593b835cce8f8",
+            "description": "Sem trecho literal verificado: a análise é uma síntese de Orquestrador X gerada por IA. Confira a interação de origem antes de tratar como evidência.",
             "evidence_type": "FEEDBACK",
             "occurred_at": "2026-09-14T12:00:00.000Z",
             "organization_id": "org-1",
@@ -242,8 +242,8 @@ describe("criadores de feedback — linhas gravadas", () => {
           "table": "feedbacks",
           "values": {
             "case_id": "case-1",
-            "context_snapshot": "{"orchestratorName":"Orquestrador X","structuredResult":{"feedback":{"text":"síntese estruturada"}}}",
-            "evidence_found": "síntese estruturada",
+            "context_snapshot": "{"orchestratorName":"Orquestrador X","structuredResult":{"feedback":{"text":"síntese estruturada"}},"evidenceVerified":false}",
+            "evidence_found": "Sem trecho literal verificado: a análise é uma síntese de Orquestrador X gerada por IA. Confira a interação de origem antes de tratar como evidência.",
             "feedback_kind": "MONITORING",
             "impacted_indicator": "Orquestrador X",
             "observed_behavior": "Ver recomendação.",

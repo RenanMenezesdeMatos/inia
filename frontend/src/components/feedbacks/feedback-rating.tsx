@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ThumbsDown, ThumbsUp } from "lucide-react"
+import { MessageSquareReply, ThumbsDown, ThumbsUp } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { startUsageAction } from "@/lib/usage/usage-provider"
 import { useMyFeedbackRatingsQuery, useRateFeedbackMutation } from "@/queries/feedback-ratings/use-feedback-ratings"
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
-import { DISLIKE_REASON_COPY, FEEDBACK_DISLIKE_REASONS, FEEDBACK_RATING_COMMENT_LIMITS, type FeedbackDislikeReason, type FeedbackRating as FeedbackRatingValue } from "@/schemas/feedback-ratings/feedback-rating.schema"
+import { formatShortDateTime } from "@/lib/format/date"
+import { CONTESTATION_DECISION_LABELS, DISLIKE_REASON_COPY, FEEDBACK_DISLIKE_REASONS, FEEDBACK_RATING_COMMENT_LIMITS, type FeedbackDislikeReason, type FeedbackRating as FeedbackRatingValue } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 /**
  * "Este conteúdo foi útil?" de um item do Acompanhamento — persistido (migration 113), só do próprio destinatário.
@@ -42,7 +43,7 @@ export function FeedbackRating({ source }: { source: FeedbackSourceRef }) {
 
   return (
     <div className="flex items-center gap-1" data-slot="feedback-rating" {...usageEntity}>
-      <span className="mr-1 text-[11px] font-normal" aria-live="polite">{current ? "Obrigado pelo retorno!" : "Este conteúdo foi útil?"}</span>
+      <span className="mr-1 text-[11px] font-normal" aria-live="polite">{current?.review ? "Sua contestação foi respondida" : current ? "Obrigado pelo retorno!" : "Este conteúdo foi útil?"}</span>
       <Button
         type="button"
         variant="ghost"
@@ -107,7 +108,27 @@ export function FeedbackRating({ source }: { source: FeedbackSourceRef }) {
           />
         </PopoverContent>
       </Popover>
+      {current?.value === "DOWN" && current.review ? <ContestationReview review={current.review} /> : null}
     </div>
+  )
+}
+
+/** Resposta de quem revisou a contestação — discreta, ao lado dos botões (Popover, nunca Sheet). */
+function ContestationReview({ review }: { review: NonNullable<FeedbackRatingValue["review"]> }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="ghost" size="xs" className="text-[11px] text-primary" data-usage-element="feedback.rating.review">
+          <MessageSquareReply className="size-3.5" aria-hidden />
+          Ver resposta
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 space-y-2 text-sm" aria-label="Resposta à sua contestação">
+        <p className="text-xs font-semibold text-foreground">{CONTESTATION_DECISION_LABELS[review.decision]}</p>
+        <p className="whitespace-pre-line text-muted-foreground">{review.response}</p>
+        <p className="text-[11px] text-muted-foreground">Respondida em {formatShortDateTime(review.respondedAt)}. O feedback continua no seu Acompanhamento.</p>
+      </PopoverContent>
+    </Popover>
   )
 }
 

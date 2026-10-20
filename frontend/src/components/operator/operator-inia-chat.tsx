@@ -51,6 +51,7 @@ import { useFeedbackInvite } from "./operator-inia-chat/use-feedback-invite"
 import { useRecado } from "./operator-inia-chat/use-recado"
 import { describeFeedbackSession } from "./operator-inia-chat/feedback-session-speech"
 import { ChatMessageList } from "./operator-inia-chat/chat-message-list"
+import type { ClarificationAnswer } from "@/schemas/knowledge-clarification/clarification.schema"
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
@@ -230,6 +231,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // A bolha do usuário é consolidada 400 ms depois de o microfone fechar, bem antes da resposta
   // terminar: guarda a pergunta para o `recordVoiceTurn` do turno (senão o banco só recebia a resposta).
   const lastUserTurnTextRef = useRef("")
+  /** Escolha feita no formulário do esclarecimento com a voz aberta: vai, estruturada, na próxima consulta da voz DESTE turno (o
+   * backend a aplica exatamente como no chat de texto). Turno encerrado sem consulta = segue pelo caminho de texto (nunca se perde). */
+  const voiceClarificationRef = useRef<{ answer: ClarificationAnswer; turnId: string; text: string; bubbleId: number } | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   // Turno de voz: chave idempotente das mensagens do turno, instante em que a fala do usuário terminou e as bolhas
   // locais do turno (marcadas se o salvamento falhar).
@@ -1007,7 +1011,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     if (unlanded !== null) revealOnStage(unlanded)
     const turnId = turnIdRef.current
     const userSpokenAt = userSpokenAtRef.current ?? undefined
-    const localIds = [...turnMessageIdsRef.current]
+    // Escolha do formulário clicada com a voz aberta que nenhuma consulta da voz levou neste turno (o modelo não acionou a
+    // ferramenta): segue pelo caminho de TEXTO, estruturada — a pergunta seguinte ou a resposta aparece escrita. A mensagem da
+    // pessoa é gravada por lá, com a escolha (não aqui, para não duplicar).
+    const pendingChoice = voiceClarificationRef.current?.turnId === turnId ? voiceClarificationRef.current : null
+    voiceClarificationRef.current = null
+    const localIds = turnMessageIdsRef.current.filter((id) => id !== pendingChoice?.bubbleId)
     turnIdRef.current = newTurnId()
     turnMessageIdsRef.current = []
     userSpokenAtRef.current = null
@@ -1021,12 +1030,15 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       // No palco a resposta está no balão: a mensagem só aparece quando a fala pousa nela.
       if (stageOpen()) attachStageMessage(id)
     }
-    if (!userText && !replyText) return
-    const generation = viewGenerationRef.current
-    // Turno sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar) — nunca a conversa geral.
     const userChannel = typedVoiceTurnRef.current ? "chat" : "voice"
     typedVoiceTurnRef.current = false
-    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: userText || undefined, userChannel, userSpokenAt, assistantText: replyText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => applyVoiceConversationResult(result, generation, localIds))
+    // Depois de fechar este turno (o que a INIA falou é gravado antes da resposta escrita), pela versão ATUAL do envio.
+    if (pendingChoice) setTimeout(() => void sendForTextReplyRef.current?.(pendingChoice.text, { existingBubbleId: pendingChoice.bubbleId, clarification: pendingChoice.answer }), 0)
+    const recordedUserText = pendingChoice ? "" : userText
+    if (!recordedUserText && !replyText) return
+    const generation = viewGenerationRef.current
+    // Turno sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar) — nunca a conversa geral.
+    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: recordedUserText || undefined, userChannel, userSpokenAt, assistantText: replyText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => applyVoiceConversationResult(result, generation, localIds))
   }
 
   /** Mensagem nova numa sessão de feedback concluída = dúvida da conversa complementar (separador próprio). */
@@ -1158,14 +1170,20 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
           // Algo falado antes da tool ("vou verificar…") some: a resposta é o balão do especialista.
           setLiveAssistantText(null)
           const id = nextMessageId()
-          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}), ...(analytics.length > 0 ? { analytics } : {}), ...(extras.reportOffer ? { reportOffer: extras.reportOffer } : {}) }])
+          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}), ...(analytics.length > 0 ? { analytics } : {}), ...(extras.reportOffer ? { reportOffer: extras.reportOffer } : {}), ...(extras.clarification ? { clarification: extras.clarification } : {}) }])
           if (extras.navigate) routerRef.current.push(extras.navigate.href)
           if (stageOpen()) landSpecialistOnStage(id)
           applyVoiceConversationResult(conversation, viewGenerationRef.current, [])
         },
         // A sessão de voz não é a conversa: cada tool-call diz em qual conversa (e turno) a resposta deve ser gravada — numa sessão de
         // feedback, também de qual aplicação (o backend decide a conversa e emoldura a consulta com o registro do feedback).
-        getToolCallContext: () => ({ conversationId: conversationIdRef.current, turnId: turnIdRef.current, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }),
+        getToolCallContext: () => {
+          const pending = voiceClarificationRef.current
+          voiceClarificationRef.current = null
+          // As palavras da pessoa neste turno (digitadas ou faladas, inclusive o trecho ainda não fechado em balão).
+          const utterance = `${lastUserTurnTextRef.current} ${pendingUserTranscriptRef.current}`.trim().slice(0, 4000)
+          return { conversationId: conversationIdRef.current, turnId: turnIdRef.current, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null, ...(utterance ? { utterance } : {}), ...(pending && pending.turnId === turnIdRef.current ? { clarification: pending.answer } : {}) }
+        },
         onError: (message) => setVoiceError(message),
       }, {
         playback: voice.playback,
@@ -1252,7 +1270,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
    * balão) e é gravada com a pergunta marcada como digitada. Síncrono até liberar o áudio (dentro do clique/Enter). Se a voz não
    * conectar, a mesma pergunta segue por escrito — a bolha dela já está na conversa, nada se perde.
    */
-  const sendTypedByVoice = (text: string, fromComposer: boolean): boolean => {
+  const sendTypedByVoice = (text: string, fromComposer: boolean, clarification?: ClarificationAnswer): boolean => {
     let transport: GeminiRealtimeTransport
     try {
       transport = ensureTransport()
@@ -1279,6 +1297,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     specialistAnsweredThisTurnRef.current = false
     userSpokenAtRef.current = new Date().toISOString()
     turnMessageIdsRef.current.push(id)
+    // Escolha do formulário: vai na consulta que a voz fizer neste turno (ou, sem consulta, pelo texto no fim do turno).
+    voiceClarificationRef.current = clarification ? { answer: clarification, turnId: turnIdRef.current, text, bubbleId: id } : null
     const generation = viewGenerationRef.current
     void transport.connect({ conversationId: historyConversationId }).then(
       () => {
@@ -1289,14 +1309,31 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         lastUserTurnTextRef.current = ""
         typedVoiceTurnRef.current = false
         turnMessageIdsRef.current = turnMessageIdsRef.current.filter((item) => item !== id)
-        void sendForTextReply(text, { existingBubbleId: id })
+        const choice = voiceClarificationRef.current?.bubbleId === id ? voiceClarificationRef.current : null
+        if (choice) voiceClarificationRef.current = null
+        void sendForTextReply(text, { existingBubbleId: id, ...(choice ? { clarification: choice.answer } : {}) })
       },
     )
     return true
   }
 
+  /**
+   * Escolha (ou correção) de uma etapa do esclarecimento pelas bases. Na VOZ (chamada ativa, voz ligada) a escolha clicada vira a
+   * resposta da pessoa na sessão — como se tivesse falado — e a INIA continua a conversa falando; a escolha ESTRUTURADA vai junto da
+   * consulta que a voz faz em seguida (`getToolCallContext`) e o backend a aplica exatamente (nunca pela reescrita do modelo de voz);
+   * se a voz não fizer a consulta, a escolha segue pelo texto no fim do turno. Sem voz, ou numa correção ("Alterar", que precisa refazer as etapas seguintes), vai pelo caminho de TEXTO com a escolha
+   * estruturada; a forma legível vira a mensagem de quem pergunta.
+   */
+  const answerClarification = (answer: ClarificationAnswer, displayText: string) => {
+    if (readOnlyConversation || loadState !== "ready" || textReplyPending) return
+    setStageGreeting(false)
+    presentationRef.current?.stop()
+    if (!answer.revise && callActive && !voiceMuted && sendTypedByVoice(displayText, false, answer)) return
+    void sendForTextReply(displayText, { clarification: answer })
+  }
+
   /** Resposta POR ESCRITO (INIA no mudo, avatar encerrado ou voz indisponível) — o caminho de texto de sempre. */
-  const sendForTextReply = async (text: string, options: { fromComposer?: boolean; existingBubbleId?: number } = {}) => {
+  const sendForTextReply = async (text: string, options: { fromComposer?: boolean; existingBubbleId?: number; clarification?: ClarificationAnswer } = {}) => {
     const feedbackApplicationId = feedbackSessionRef.current?.application.id ?? null
     const inFeedback = feedbackApplicationId !== null
     const generation = viewGenerationRef.current
@@ -1341,7 +1378,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       // O backend monta o contexto do modelo a partir da conversa gravada — nenhum histórico sai daqui.
       const reply = await fetchTextReply(
         // Sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar, criada nesta primeira dúvida).
-        { conversationId: requestedConversationId, text, clientMessageId: newClientKey(), contextHint: contextHint.trim().slice(0, 1_000) || undefined, feedbackApplicationId },
+        { conversationId: requestedConversationId, text, clientMessageId: newClientKey(), contextHint: contextHint.trim().slice(0, 1_000) || undefined, feedbackApplicationId, ...(options.clarification ? { clarification: options.clarification } : {}) },
         (chunk) => {
           recordFirstText("OK")
           if (!current()) return
@@ -1369,7 +1406,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       else usageAction.fail("REPLY_NOT_PERSISTED")
       if (!current()) return
       const replyId = nextMessageId()
-      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
+      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
       // "Sim" à oferta de report: abre a configuração já preenchida (o backend decidiu o destino).
       if (reply.navigate) routerRef.current.push(reply.navigate.href)
       const shownIn = reading as ReturnType<typeof createReadingClock> | null
@@ -1410,6 +1447,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       }
     }
   }
+
+  // Os callbacks da voz nascem uma vez por sessão: o fim do turno envia pela versão atual (estado de agora), nunca a da criação.
+  const sendForTextReplyRef = useRef<typeof sendForTextReply | null>(null)
+  useEffect(() => {
+    sendForTextReplyRef.current = sendForTextReply
+  })
 
   const endCall = () => {
     // Recado ou apresentação tocando: "Encerrar avatar" é uma interrupção (registrada como tal), antes da despedida.
@@ -1704,6 +1747,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     switchToGeneralConversation={switchToGeneralConversation}
     starterSuggestions={starterSuggestions}
     askQuestion={askQuestion}
+    answerClarification={answerClarification}
   />
 
   // Campo de mensagem: no painel ou, com a sessão aberta, no card central (um lugar por vez).

@@ -373,6 +373,26 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     expect(second.status).toBe(202)
     expect(second.body.data.runId).toBe(first.body.data.runId)
     expect(second.body.data.deduplicated).toBe(true)
+    // R-29: a mesma chave com OUTRO corpo é recusada (antes devolvia a carga antiga em silêncio e o lote novo se perdia);
+    // sem token válido, nem o corpo é lido (JSON quebrado recebe 401, não 400).
+    const ingest = (bearer: string) => request(app).post(`/api/v1/data-ingestion/${source.publicId}/interacoes`).set("authorization", `Bearer ${bearer}`)
+    const changed = await ingest(token).set("idempotency-key", "lote-001").send({ records: [{ ...payload.records[0]!, reason: "Outro motivo" }] })
+    expect(changed.status).toBe(422)
+    expect(changed.body.error.code).toBe("DATA_PUSH_IDEMPOTENCY_CONFLICT")
+    const garbage = await ingest("inia_push_inexistente").set("content-type", "application/json").send("{ isto não é json")
+    expect(garbage.status).toBe(401)
+    // R-28: token vencido ou chamado de fora das redes autorizadas recebe a mesma recusa de um token inexistente.
+    const expiring = await createPushToken(ctx, ORG, null, source.id, { label: "TC vencido", expiresInDays: 1 })
+    expect(Date.parse(expiring.view.expiresAt!)).toBeGreaterThan(Date.now())
+    await db.query(`update data_push_tokens set expires_at = now() - interval '1 minute' where id = $1`, [expiring.view.id])
+    expect((await ingest(expiring.token).set("idempotency-key", "lote-001").send(payload)).status).toBe(401)
+    const elsewhere = await createPushToken(ctx, ORG, null, source.id, { label: "TC outra rede", allowedNetworks: ["203.0.113.0/24"] })
+    expect(elsewhere.view.allowedNetworks).toEqual(["203.0.113.0/24"])
+    expect((await ingest(elsewhere.token).set("idempotency-key", "lote-001").send(payload)).status).toBe(401)
+    const local = await createPushToken(ctx, ORG, null, source.id, { label: "TC rede local", allowedNetworks: ["127.0.0.1", "::1"] })
+    const fromLocal = await ingest(local.token).set("idempotency-key", "lote-001").send(payload)
+    expect(fromLocal.status).toBe(202)
+    expect(fromLocal.body.data).toMatchObject({ runId: first.body.data.runId, deduplicated: true })
     await new Promise((resolve) => setTimeout(resolve, 50))
     await processQueuedRuns(ctx)
     const run = (await findRun(db, ORG, first.body.data.runId))!

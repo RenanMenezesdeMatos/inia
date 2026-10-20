@@ -140,7 +140,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
     title: "Bases de Conhecimento",
     icon: BookOpen,
     description: "Documentos autorizados que os Agents consultam por trechos — e o contrato de conformidade de processo.",
-    pages: [{ href: "/wiki/bases-conhecimento", title: "Bases de Conhecimento", description: "O que é uma base, como criar, Rascunho/Publicado, retrieval por trechos (lexical), orçamento, evidência e Conformidade de processo." }],
+    pages: [{ href: "/wiki/bases-conhecimento", title: "Bases de Conhecimento", description: "O que é uma base, como criar, Rascunho/Publicado, retrieval por trechos (lexical), orçamento, evidência, esclarecimento de perguntas ambíguas (chat, voz e liderança) e Conformidade de processo." }],
   },
   {
     id: "qa-lab",

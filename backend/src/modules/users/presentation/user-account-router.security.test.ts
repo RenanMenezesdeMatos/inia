@@ -99,11 +99,8 @@ describe("cadastro de pessoas — administrador de Grupo", () => {
     expect(response.body.error.code).toBe("ACCESS_TARGET_LEADS_OUTSIDE_SCOPE")
   })
 
-  it("não move pessoas para Grupo fora do escopo; senha provisória fraca é recusada", async () => {
+  it("não move pessoas para Grupo fora do escopo (a senha provisória é gerada pelo servidor — ver user-account-router.identity.test.ts)", async () => {
     expect((await request(app()).patch(`/${OPERATOR.person}`).send({ teamId: TEAM_B })).status).toBe(403)
-    const weak = await request(app()).post("/").send({ name: "Pessoa", role: "OPERATOR", teamId: TEAM_A, email: "pessoa@inia.local", password: "123456" })
-    expect(weak.status).toBe(422)
-    expect(weak.body.error.code).toBe("PASSWORD_POLICY_VIOLATION")
   })
 
   it("uso legítimo continua: editar nome e e-mail de um operador do próprio Grupo", async () => {

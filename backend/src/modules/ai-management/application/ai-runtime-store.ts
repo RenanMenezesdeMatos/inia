@@ -50,7 +50,7 @@ export function legacyPricingKey(providerKey: string, modelName: string): string
 type PolicyRow = { id: string; use_case: string; status: string; mode: string; strategy: string | null; max_estimated_cost_per_request: string | null; cost_currency: string | null; fallback_on: string[]; model_ids: string[] | null }
 type ModelRow = { id: string; display_name: string; provider_model_id: string; enabled: boolean; kind: string; capabilities: ModelCapabilities; context_window: number | null; max_output_tokens: number | null; quality_tier: string | null; model_timeout_ms: number | null; metadata: Record<string, unknown> | null; connection_id: string; connection_name: string; connection_enabled: boolean; provider_key: string; base_url: string | null; api_version: string | null; is_local: boolean; connection_timeout_ms: number; connection_max_concurrent_calls: number | null }
 type PricingRow = { id: string; model_id: string; currency: string; input_per_million: string; output_per_million: string; cached_input_per_million: string | null; reasoning_per_million: string | null; effective_from: Date; effective_to: Date | null; note: string | null }
-type SecretRow = { connection_id: string; purpose: string; ciphertext: Buffer; iv: Buffer; auth_tag: Buffer }
+type SecretRow = { connection_id: string; purpose: string; key_version: number; ciphertext: Buffer; iv: Buffer; auth_tag: Buffer }
 type BudgetRow = { id: string; scope: string; scope_key: string | null; currency: string; monthly_amount: string; warning_thresholds: number[]; hard_limit: boolean; enabled: boolean }
 
 export function pricingFromRow(row: PricingRow): AiPricingVersion {
@@ -91,13 +91,13 @@ export async function loadModelSnapshots(db: Queryable, organizationId: string, 
   const latency = new Map(latencyRows.rows.map((row) => [row.model_id, row.median === null ? null : Math.round(Number(row.median))]))
   const rateLimited = new Map(rateRows.rows.map((row) => [row.model_id, new Date(row.last)]))
   const connectionIds = [...new Set(modelRows.rows.map((row) => row.connection_id))]
-  const secrets = connectionIds.length > 0 ? await db.query<SecretRow>(`select connection_id, purpose, ciphertext, iv, auth_tag from ai_connection_secrets where organization_id = $1 and connection_id = any($2::uuid[]) and revoked_at is null`, [organizationId, connectionIds]) : { rows: [] as SecretRow[] }
+  const secrets = connectionIds.length > 0 ? await db.query<SecretRow>(`select connection_id, purpose, key_version, ciphertext, iv, auth_tag from ai_connection_secrets where organization_id = $1 and connection_id = any($2::uuid[]) and revoked_at is null`, [organizationId, connectionIds]) : { rows: [] as SecretRow[] }
   for (const row of modelRows.rows) {
     const provider = findAiProvider(row.provider_key)
     if (!connections.has(row.connection_id)) {
       const secretOf = (purpose: string) => {
         const secret = secrets.rows.find((item) => item.connection_id === row.connection_id && item.purpose === purpose)
-        return secret ? { ciphertext: secret.ciphertext, iv: secret.iv, authTag: secret.auth_tag } : null
+        return secret ? { ciphertext: secret.ciphertext, iv: secret.iv, authTag: secret.auth_tag, keyVersion: secret.key_version, binding: { organizationId, connectionId: row.connection_id, purpose } } : null
       }
       connections.set(row.connection_id, { id: row.connection_id, name: row.connection_name, providerKey: row.provider_key, baseUrl: row.base_url ?? provider?.defaultBaseUrl ?? null, apiVersion: row.api_version, isLocal: provider ? isLocalDeployment(provider, row.is_local) : row.is_local, timeoutMs: row.connection_timeout_ms, maxConcurrentCalls: row.connection_max_concurrent_calls, enabled: row.connection_enabled, apiKey: secretOf("API_KEY"), headers: secretOf("CUSTOM_HEADERS") })
     }

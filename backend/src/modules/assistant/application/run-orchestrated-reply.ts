@@ -103,6 +103,16 @@ export type DirectToolset = {
 /** Rodadas de ferramentas por turno quando há ferramentas do backend (a primeira + até 2 de aprofundamento). */
 export const MAX_DIRECT_ROUNDS = 3
 
+/**
+ * Chamadas de ferramenta que o MODELO pede, executadas por rodada e no turno inteiro (achado AI-01 da auditoria de 17/10/2026):
+ * cada uma é um especialista (prompt + investigação) ou uma consulta do backend, e o modelo pode devolver dezenas numa resposta —
+ * uma mensagem viraria centenas de chamadas pagas e ocuparia as vagas de IA de todo mundo. As excedentes voltam ao modelo como
+ * "não executada" e a resposta segue com o que já foi consultado. O roteamento declarado pelo Workflow (configuração) não conta.
+ */
+export const MAX_TOOL_CALLS_PER_ROUND = 6
+export const MAX_TOOL_CALLS_PER_TURN = 12
+export const TOOL_CALL_LIMIT_TEXT = `Consulta não executada: limite de ${MAX_TOOL_CALLS_PER_TURN} consultas por pergunta (${MAX_TOOL_CALLS_PER_ROUND} por rodada). Responda com o que já foi consultado e diga ao usuário que pode pedir o restante numa próxima pergunta.`
+
 function agenticRoundHint(round: number): string {
   const left = MAX_DIRECT_ROUNDS - round
   return `Os resultados das ferramentas já acionadas estão acima. Se precisar aprofundar (ex.: diagnosticar os piores encontrados, abrir uma unidade, comparar meses), acione mais ferramentas — ${left === 1 ? "esta é a última rodada" : `restam ${left} rodadas`}. Se já tem o suficiente, escreva agora a resposta final completa, sem acionar ferramentas.`
@@ -282,7 +292,14 @@ export async function runOrchestratedReply(
       ...("toolTrace" in specialist && specialist.toolTrace ? { toolTrace: specialist.toolTrace, investigation: specialist.investigation } : {}),
     }
   }
-  const firstResults = await Promise.all(first.calls.map(executeCall))
+  // Orçamento do turno: as chamadas além do teto não executam (resposta de recusa no lugar), na ordem em que o modelo pediu.
+  let budget = declared ? Number.POSITIVE_INFINITY : MAX_TOOL_CALLS_PER_TURN
+  const executeRound = (calls: FunctionCall[]): Promise<TurnResult[]> => {
+    const allowed = declared ? calls.length : Math.max(0, Math.min(MAX_TOOL_CALLS_PER_ROUND, budget))
+    budget -= Math.min(allowed, calls.length)
+    return Promise.all(calls.map((call, index) => (index < allowed ? executeCall(call) : Promise.resolve<TurnResult>({ toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text: TOOL_CALL_LIMIT_TEXT, contract: "TEXT" }))))
+  }
+  const firstResults = await executeRound(first.calls)
   // RODADAS EXTRAS (só quando há ferramentas do backend, ex.: liderança): a IA lê o resultado e pode consultar de novo — achar os
   // piores e depois diagnosticá-los — até `MAX_DIRECT_ROUNDS` rodadas. Parando de chamar ferramentas, o texto dela é a resposta
   // (já com todos os dados); no limite de rodadas, a síntese de sempre (sem ferramentas) fecha a resposta.
@@ -299,7 +316,7 @@ export async function runOrchestratedReply(
         agenticText = next.text
         break
       }
-      const nextResults = await Promise.all(next.calls.map(executeCall))
+      const nextResults = await executeRound(next.calls)
       rounds.push({ calls: next.calls, results: nextResults })
       agenticTurns = [...agenticTurns, { role: "model", functionCalls: next.calls }, { role: "user", functionResponses: nextResults.map((result) => ({ name: result.toolName, response: { result: result.text } })) }]
     }

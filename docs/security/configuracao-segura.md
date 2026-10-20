@@ -148,3 +148,145 @@ Nenhuma senha fica no código: a das contas de demonstração vem de `INIA_DEMO_
 Docker de `INIA_EXAMPLES_ADMIN_PASSWORD`/`INIA_EXAMPLES_READER_PASSWORD` (.env da raiz), todas geradas por `npm run env:init`; as
 contas que as migrations antigas criam nascem com senha aleatória. Mesmo assim, nunca usar uma instalação de demonstração com dados
 reais, e nunca carregar a massa demo em servidor (recusado em produção).
+
+## 10. Segunda rodada (17/10/2026) — o que muda para quem instala e administra
+
+Nenhuma migration nova: as correções usam as tabelas que já existem (`auth_login_attempts`, `rate_limit_hits`, `user_accounts`,
+`audit_logs`). Atualizar é só código + build + reinício.
+
+### Variáveis e padrões
+
+| Onde | O que | Efeito |
+|---|---|---|
+| `backend/.env` `JWT_SECRET` | Em produção a API **não sobe** com o valor do `.env.example`, valores começando por "troque/change/exemplo", com menos de 32 caracteres ou menos de 10 caracteres distintos | Instalações feitas com `npm run env:init` não são afetadas. Trocar o valor só encerra as sessões e zera o histórico da trava de login |
+| `backend/.env` `DATA_HUB_SECRET_KEY` | Chave publicada, curta ou repetitiva gera o aviso `weak_production_secret` no log (a API sobe) | Ver "Rotação da chave de cifra" abaixo — **não troque a chave sem recifrar** |
+| `backend/.env` `TRUST_PROXY` | Rede `/0` (`0.0.0.0/0`, `::/0`) é recusada como `true` | Use `loopback` (IIS na mesma máquina) ou o IP do proxy |
+| `frontend/.env.local` `NEXT_PUBLIC_INIA_TRUSTED_LINK_HOSTS` | Nova, vazia por padrão: domínios externos (`intranet.empresa.com`, `*.empresa.com`) que ficam clicáveis nos textos da INIA | Sem ela, link externo escrito pela IA/Workflow aparece como texto com o domínio à vista. Entra no build |
+| Limites (código, `app.ts`) | Primeiro acesso: 10 por sessão / 15 min e 300 recusas por IP / 15 min; voz: 60 sessões novas por conta / 30 min (além de 12/min); foto/capa: 20 por conta/min; prévia, "Executar agora" e nova análise de report, amostra/listagem SFTP e criação de conjunto da Central entram nas 30 ações caras por conta/min | Uso humano não é afetado |
+| Login | Cookie `inia_device` (httpOnly, `Path=/api/v1/auth`, 180 dias) depois de um login certo | Com o e-mail travado por tentativas de terceiros, o dono entra do navegador onde já entrou |
+| Senhas | Senha previsível ("Senha123", "Vivo2026", "Mudar@123", mês/estação + ano) é recusada no primeiro acesso | O checklist da tela mostra a regra |
+| Cadastro de pessoa | A senha provisória é **gerada** pela INIA e mostrada uma vez (não há mais campo para digitá-la) | Manual IT-INIA-002 desatualizado nesse ponto (R-11) |
+| Central de Dados — banco | Fonte NOVA nasce em "Obrigatória e validando o certificado"; MySQL/MariaDB nesse modo agora confere o **nome** do servidor | Banco interno com certificado autoassinado: informe a CA da empresa ou escolha "Obrigatória (sem validar certificado)" conscientemente. **Fonte MySQL antiga em `VERIFY_FULL` com certificado de outro nome passa a falhar** — confira antes de atualizar |
+| Central de Dados — credencial | Trocar a CA do banco ou apagar/trocar a chave do servidor SFTP pede a senha de novo | — |
+| Central de Dados — carga de Colaboradores | Pessoa desligada pela base perde a conta (Administrador geral: só as sessões); pessoa ligada pelo e-mail que a base põe em outro Grupo/nível de liderança tem a conta desabilitada (aviso `DATA_PERSON_LINK_ACCESS_DISABLED`) | A liberação volta a quem administra o lugar novo (Habilitar acesso) |
+| Arquivos | XLSX/DOCX com tamanho descompactado diferente do declarado e PDF com fluxo comprimido grande demais são recusados | Manuais e planilhas reais passam (conferido com os do repositório) |
+
+### Serviços do Windows (INFRA-2)
+
+`instalar-servicos.ps1` ganhou `-ContaServico "NT AUTHORITY\LocalService"` (ou uma gMSA `DOMINIO\svc-inia$`): os serviços deixam
+de rodar como LocalSystem, a conta recebe leitura da pasta da INIA e escrita em `logs` e `frontend\.next`. Sempre, com ou sem a
+opção: `backend\.env` e `frontend\.env.local` ficam legíveis só por Administradores, SYSTEM, quem instalou e a conta do serviço, e
+os serviços da API/processamento recebem `NODE_ENV=production` no próprio serviço. **Escrito sem Windows para testar (R-32)**:
+rode primeiro na homologação, confira `services.msc`, `/ready` de cada instância e `logs\*.err.log`.
+
+### Banco interno
+
+`npm run doctor` e `npm run db:connect` avisam quando o usuário do banco interno é superusuário do PostgreSQL. Em produção: um
+usuário só dono do banco da INIA (`create role inia_app login password '…'; create database inia owner inia_app;`), com as
+extensões criadas antes por um administrador do banco.
+
+### Atualização
+
+1. Backup (`pg_dump`).
+2. Atualizar o código; `npm run install:all` (nenhuma dependência nova).
+3. Antes de subir: conferir `JWT_SECRET` (regra acima) e as fontes MySQL/MariaDB em "validando o certificado".
+4. `npm run build` e reiniciar os serviços (no Windows, rodar de novo `instalar-servicos.ps1` — com `-ContaServico` se for adotar).
+5. Conferir: login, logout, primeiro acesso de uma conta nova (a senha é mostrada ao criar), teste de conexão de uma fonte de
+   banco, upload de um DOCX e de um PDF da base, uma conversa por voz.
+
+### Reversão
+
+Voltar o código e rodar `npm run build`. Nada no banco precisa ser desfeito: o cookie `inia_device` é ignorado pelo código antigo;
+contas desabilitadas pela carga (desligamento ou mudança de lugar) continuam desabilitadas — reabilite em Usuários e acessos se
+for o caso; a ACL dos `.env` no Windows pode ser devolvida com `icacls <arquivo> /reset`.
+
+### Rotação da chave de cifra (`DATA_HUB_SECRET_KEY`, R-12/R-25)
+
+Desde 20/10/2026 existe recifragem: ver §11 "Rotação da chave de cifra". Nenhuma rotação foi exigida por esta rodada: não houve
+segredo exposto no repositório.
+
+## 11. Terceira rodada (20/10/2026) — liberação de IA na Vivo
+
+Itens do backlog `docs/dev/liberacao-ia-vivo.md` que não dependiam de decisão da Vivo. Há **4 migrations novas** (149–152):
+rode `npm run db:migrate` antes de subir o código novo.
+
+| Migration | O que cria |
+|---|---|
+| `149_auth_session_activity` | Última atividade de cada sessão (encerramento por inatividade) |
+| `150_feedback_contestation_reviews` | Resposta da liderança à contestação ("não gostei") de um feedback |
+| `151_personal_data_access_log` | Registro de quem abriu transcrição, conversa com a INIA ou ficha de outra pessoa |
+| `152_push_token_hardening` | Validade e IPs autorizados do token da API Push; hash do corpo por Idempotency-Key |
+
+### Variáveis novas (`backend/.env`)
+
+| Variável | Padrão | Efeito |
+|---|---|---|
+| `CORS_ORIGIN` | — | Agora **obrigatória em produção**: a API não sobe sem ela, nem com `localhost` ou `http://` para um endereço público. Fora de produção, ausente = `http://localhost:3000` |
+| `SESSION_IDLE_TIMEOUT_MINUTES` | `30` | Sessão sem uso (nenhuma interação com a tela nem fala na voz) encerra sozinha; a tela avisa 2 minutos antes. `0` desliga |
+| `INIA_MODEL_PII_MASKING` | `ON` | CPF, telefone, e-mail e protocolo do cliente saem mascarados das transcrições enviadas à IA. `OFF` só com decisão do DPO |
+| `DATA_HUB_SECRET_KEY_PREVIOUS` | vazia | Só durante a troca da chave de cifra (abaixo) |
+
+### O que muda para quem usa
+
+- **Todo mundo precisa entrar de novo uma vez** depois da atualização, quando `SESSION_COOKIE_SECURE` está ligado (HTTPS): o
+  cookie passa a se chamar `__Host-inia_session`. Avise antes.
+- Menu do usuário → **Sair de todos os aparelhos** encerra as sessões da pessoa em todos os navegadores.
+- Novo papel **Revisor de contestações** (o Administrador geral também tem): responde às contestações em *Administração →
+  Contestações de feedback*; a pessoa que contestou recebe a resposta no sino e no feedback.
+- O Administrador geral ganha *Usuários e acessos → pessoa → Exportar dados (LGPD)* (pedido do titular).
+- API Push: tokens novos com validade (padrão 1 ano) e IPs autorizados; mesma Idempotency-Key com outro corpo recebe 422; botão
+  **Baixar OpenAPI** na fonte. Tokens antigos continuam sem validade até serem rotacionados — rotacione os de produção.
+
+### Rotação da chave de cifra
+
+Credenciais da Central de Dados e das conexões de IA passam a ser cifradas na **versão 2** (presas à organização, ao dono e à
+finalidade). As antigas (versão 1) continuam legíveis. Depois de atualizar, sem trocar a chave:
+
+```
+npm run secrets:rotate                 (simulação: mostra o que seria recifrado e se tudo é legível)
+npm run secrets:rotate -- --aplicar    (grava)
+```
+
+Para **trocar a chave** (chave fraca, suspeita de vazamento ou rotina):
+
+1. Backup: `npm run db:backup`.
+2. `backend/.env`: copie o valor atual de `DATA_HUB_SECRET_KEY` para `DATA_HUB_SECRET_KEY_PREVIOUS` e ponha uma chave nova em
+   `DATA_HUB_SECRET_KEY` (`openssl rand -hex 32`). Reinicie API e processamento: a INIA continua lendo as credenciais pela chave
+   anterior.
+3. `npm run secrets:rotate` (simulação) e, se tudo aparecer legível, `npm run secrets:rotate -- --aplicar`.
+4. Apague `DATA_HUB_SECRET_KEY_PREVIOUS` e reinicie.
+
+Credencial que nenhuma das duas chaves abre não é tocada e o comando termina com erro: redigite-a pela tela. Se a troca for por
+vazamento, troque também as credenciais na origem — quem tinha a chave antiga e uma cópia do banco consegue lê-las.
+
+### Backup e teste de restauração
+
+- `npm run db:backup` — cópia do banco interno (`pg_dump` no formato custom), conferida pelo `pg_restore` antes de valer, com
+  retenção (`--keep-days`, padrão 14; nunca apaga a mais nova). Pasta padrão `backups/` (fora do Git); use `--dir` para outra.
+- `npm run db:restore-check` — restaura a cópia mais nova num banco **temporário** do mesmo servidor, confere as tabelas e mede o
+  tempo (é o tempo real de volta do banco). Não toca no banco da INIA. Sem permissão de criar banco: `--target-db` com um banco
+  vazio cedido pela equipe do banco.
+- Windows: `deploy\windows\backup\agendar-backup.ps1 -Pasta D:\backup\inia -Horario 02:00 -DiasRetencao 14` agenda o
+  backup diário (**escrito sem Windows, validar na homologação** — R-35). Guarde uma cópia fora do servidor.
+- `npm run doctor` lembra quando não há backup recente.
+
+### Verificação de segurança antes de publicar
+
+`npm run security:check` procura segredos no código (inclusive em arquivos ainda não versionados) e roda `npm audit` das
+dependências de produção. Rode antes de cada entrega.
+
+### Atualização
+
+1. `npm run db:backup`.
+2. Atualizar o código; `npm run install:all`.
+3. `npm run db:migrate` (149–152).
+4. Conferir `CORS_ORIGIN` no `backend/.env` (obrigatória em produção).
+5. `npm run build` e reiniciar os serviços.
+6. `npm run secrets:rotate -- --aplicar` (passa as credenciais para a versão 2).
+7. Conferir: login, logout, "Sair de todos os aparelhos", uma carga pela API Push, uma conversa com a INIA.
+
+### Reversão
+
+Voltar o código e rodar `npm run build`. As tabelas novas podem ficar (o código antigo as ignora). Credenciais já recifradas na
+versão 2 **não são lidas pelo código antigo**: se for voltar depois do passo 6, restaure o backup do passo 1 ou redigite as
+credenciais pela tela. O cookie `__Host-inia_session` é ignorado pelo código antigo (todos entram de novo).

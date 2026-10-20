@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64"><title>INIA — D5 — Conexão — Circular</title><circle cx="32" cy="32" r="32" fill="#660099"/>
+  
+  <path d="m18 44 14-25 14 25Z" fill="none" stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="18" cy="44" r="6" fill="#FFFFFF"/>
+  <circle cx="46" cy="44" r="6" fill="#FFFFFF"/>
+  <circle cx="32" cy="19" r="7" fill="#EB3C7D"/>
+</svg>

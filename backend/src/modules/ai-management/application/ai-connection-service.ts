@@ -5,7 +5,7 @@ import { mergeCapabilities, type ModelCapabilities } from "../domain/ai-capabili
 import { AI_PROVIDERS, findAiProvider, isLocalDeployment, type AiProviderDefinition } from "../domain/ai-provider-catalog.js"
 import { endpointProblem } from "../infrastructure/adapters/http.js"
 import { auditAi, type Actor, type AiAdminContext } from "./ai-admin-context.js"
-import { customHeaderProblem, encryptAiSecret, maskSecret, SECRET_KEY_VERSION, type SecretView } from "./ai-secrets.js"
+import { customHeaderProblem, encryptAiSecret, maskSecret, type SecretView } from "./ai-secrets.js"
 import { resolveConnection } from "./ai-runtime-service.js"
 import type { ConnectionRuntime } from "./ai-runtime-store.js"
 import type { ConnectionTestResult } from "./provider-adapter-port.js"
@@ -158,12 +158,12 @@ function validateHeaders(provider: AiProviderDefinition, headers: Record<string,
 }
 
 async function storeSecret(context: AiAdminContext, actor: Actor, connectionId: string, purpose: "API_KEY" | "CUSTOM_HEADERS", plain: string, hint: string): Promise<void> {
-  const encrypted = encryptAiSecret(plain)
+  const encrypted = encryptAiSecret(plain, { organizationId: actor.organizationId, connectionId, purpose })
   const client = await context.db.connect()
   try {
     await client.query("begin")
     await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and purpose = $2 and revoked_at is null`, [connectionId, purpose, context.now()])
-    await client.query(`insert into ai_connection_secrets (organization_id, connection_id, purpose, key_version, ciphertext, iv, auth_tag, hint, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [actor.organizationId, connectionId, purpose, SECRET_KEY_VERSION, encrypted.ciphertext, encrypted.iv, encrypted.authTag, hint, actor.personId, context.now()])
+    await client.query(`insert into ai_connection_secrets (organization_id, connection_id, purpose, key_version, ciphertext, iv, auth_tag, hint, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [actor.organizationId, connectionId, purpose, encrypted.keyVersion, encrypted.ciphertext, encrypted.iv, encrypted.authTag, hint, actor.personId, context.now()])
     await client.query("commit")
   } catch (error) {
     await client.query("rollback")
@@ -319,10 +319,10 @@ export async function deleteConnection(context: AiAdminContext, actor: Actor, id
 /** Conexão pronta para o adapter (segredo decifrado em memória, só durante a operação). */
 async function runtimeConnection(context: AiAdminContext, organizationId: string, id: string): Promise<ConnectionRuntime> {
   const view = await getConnection(context, organizationId, id)
-  const secrets = await context.db.query<{ purpose: string; ciphertext: Buffer; iv: Buffer; auth_tag: Buffer }>(`select purpose, ciphertext, iv, auth_tag from ai_connection_secrets where organization_id = $1 and connection_id = $2 and revoked_at is null`, [organizationId, id])
+  const secrets = await context.db.query<{ purpose: string; key_version: number; ciphertext: Buffer; iv: Buffer; auth_tag: Buffer }>(`select purpose, key_version, ciphertext, iv, auth_tag from ai_connection_secrets where organization_id = $1 and connection_id = $2 and revoked_at is null`, [organizationId, id])
   const of = (purpose: string) => {
     const row = secrets.rows.find((item) => item.purpose === purpose)
-    return row ? { ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag } : null
+    return row ? { ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag, keyVersion: row.key_version, binding: { organizationId, connectionId: id, purpose } } : null
   }
   return { id: view.id, name: view.name, providerKey: view.providerKey, baseUrl: view.effectiveBaseUrl, apiVersion: view.apiVersion, isLocal: view.isLocal, timeoutMs: view.timeoutMs, maxConcurrentCalls: view.maxConcurrentCalls, enabled: view.enabled, apiKey: of("API_KEY"), headers: of("CUSTOM_HEADERS") }
 }

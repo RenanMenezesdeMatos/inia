@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Bell, CalendarDays, CalendarX2, CheckCheck, ClipboardCheck, Info, ListChecks, Send, Sparkles, type LucideIcon } from "lucide-react"
+import { AlertTriangle, Bell, CalendarDays, CalendarX2, CheckCheck, ClipboardCheck, Info, ListChecks, MessageSquareWarning, Send, Sparkles, type LucideIcon } from "lucide-react"
 
+import { FEEDBACK_CONTESTATIONS_PATH } from "@/components/admin/feedback-contestations/feedback-contestations-route"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { useMarkAllNotificationsReadMutation, useMarkNotificationReadMutation, useNotificationsQuery } from "@/queries/notifications/use-notifications"
 import { NOTIFICATION_KIND_LABELS, type NotificationItem, type NotificationTarget } from "@/schemas/notifications/notifications.schema"
 
-const KIND_ICONS: Record<NotificationItem["kind"], LucideIcon> = { HUMAN_REVIEW: ClipboardCheck, WORKFLOW_OUTPUT: Send, INIA_MESSAGE: Sparkles, ESCALATION: AlertTriangle, WORKDAY_RECONCILIATION: CalendarX2, CALENDAR_NOTICE: CalendarDays, INTERVENTION: ListChecks, OTHER: Info }
+const KIND_ICONS: Record<NotificationItem["kind"], LucideIcon> = { HUMAN_REVIEW: ClipboardCheck, WORKFLOW_OUTPUT: Send, INIA_MESSAGE: Sparkles, ESCALATION: AlertTriangle, WORKDAY_RECONCILIATION: CalendarX2, CALENDAR_NOTICE: CalendarDays, INTERVENTION: ListChecks, FEEDBACK_CONTESTATION: MessageSquareWarning, OTHER: Info }
 
 /** Destino de cada notificação — o backend diz O QUE abrir (revisão, pendência de produção, item do
  * Acompanhamento, Calendário da equipe, Calendário operacional); aqui só vira rota. `profileHref` é a
@@ -39,6 +40,8 @@ export function notificationHref(target: NotificationTarget, profileHref: string
       return `${profileHref}?tab=followup&iniaDelivery=${encodeURIComponent(target.deliveryId)}`
     case "INTERVENTION":
       return interventionHref(target.caseId, target.interventionId)
+    case "ADMIN_FEEDBACK_CONTESTATION":
+      return `${FEEDBACK_CONTESTATIONS_PATH}?contestation=${encodeURIComponent(target.contestationId)}`
     case "NONE":
       return null
   }

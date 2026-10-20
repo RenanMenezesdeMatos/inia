@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useTheme } from "next-themes"
-import { Accessibility, ChevronDown, LogOut, Palette, PencilLine, UserRound } from "lucide-react"
+import { Accessibility, ChevronDown, LogOut, MonitorSmartphone, Palette, PencilLine, UserRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -28,12 +28,14 @@ type AppUserMenuProps = {
   profile: AppShellProfile
   profileHref?: string
   onSignOut?: () => void
+  /** Encerra todas as sessões da pessoa (outro computador esquecido aberto). Ausente = ação não oferecida. */
+  onSignOutEverywhere?: () => void
   /** Abre o editor do PRÓPRIO perfil. Ausente = ação não oferecida. */
   onEditProfile?: () => void
 }
 
 /** Identificação de quem está logado + menu pessoal (sempre a pessoa autenticada, nunca o perfil visitado). */
-export function AppUserMenu({ profile, profileHref, onSignOut, onEditProfile }: AppUserMenuProps) {
+export function AppUserMenu({ profile, profileHref, onSignOut, onSignOutEverywhere, onEditProfile }: AppUserMenuProps) {
   const [accessibilityOpen, setAccessibilityOpen] = useState(false)
   const { theme, setTheme } = useTheme()
   const showsRegistered = profile.registeredName && profile.registeredName !== profile.name
@@ -81,6 +83,7 @@ export function AppUserMenu({ profile, profileHref, onSignOut, onEditProfile }: 
             <DropdownMenuItem onSelect={() => setAccessibilityOpen(true)}><Accessibility aria-hidden /> Acessibilidade</DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
+          {onSignOutEverywhere ? <DropdownMenuItem onSelect={() => onSignOutEverywhere()}><MonitorSmartphone aria-hidden /> Sair de todos os aparelhos</DropdownMenuItem> : null}
           <DropdownMenuItem variant="destructive" onSelect={() => onSignOut?.()}><LogOut aria-hidden /> Sair</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -14,7 +14,7 @@ vi.mock("@/services/feedback-ratings/feedback-ratings-service", () => service)
 
 const SOURCE = { kind: "PUBLISHED_FEEDBACK" as const, id: "fb-1" }
 const saved = (input: FeedbackRatingInput): Rating | null =>
-  input.value === "NONE" ? null : { source: input.source, value: input.value, reason: input.value === "DOWN" ? input.reason : null, comment: input.value === "DOWN" ? input.comment : null, ratedAt: "2026-10-06T12:00:00.000Z" }
+  input.value === "NONE" ? null : { source: input.source, value: input.value, reason: input.value === "DOWN" ? input.reason : null, comment: input.value === "DOWN" ? input.comment : null, ratedAt: "2026-10-06T12:00:00.000Z", review: null }
 
 beforeAll(installJsdomStubs)
 afterEach(() => {
@@ -98,7 +98,7 @@ describe("Questionário de 'não foi útil'", () => {
 
   it("com avaliação gravada: começa preenchido, Voltar preserva a escolha e dá para retirar", () => {
     const handlers = props()
-    renderWithQuery(<FeedbackDislikeForm {...handlers} initial={{ source: SOURCE, value: "DOWN", reason: "UNCLEAR", comment: "Não entendi o segundo ponto.", ratedAt: "2026-10-06T12:00:00.000Z" }} />)
+    renderWithQuery(<FeedbackDislikeForm {...handlers} initial={{ source: SOURCE, value: "DOWN", reason: "UNCLEAR", comment: "Não entendi o segundo ponto.", ratedAt: "2026-10-06T12:00:00.000Z", review: null }} />)
     expect(screen.getByRole("radio", { name: "O feedback não ficou claro" })).toBeChecked()
     fireEvent.click(screen.getByRole("button", { name: "Continuar" }))
     expect(screen.getByRole("textbox")).toHaveValue("Não entendi o segundo ponto.")

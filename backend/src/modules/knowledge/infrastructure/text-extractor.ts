@@ -1,4 +1,5 @@
 import mammoth from "mammoth"
+import { inspectPdf } from "../../../shared/infrastructure/pdf-guard.js"
 import { inspectZip } from "../../../shared/infrastructure/zip-guard.js"
 import { PDFParse } from "pdf-parse"
 
@@ -29,6 +30,16 @@ export function contentMatchesSourceType(buffer: Buffer, sourceType: KnowledgeSo
   // DOCX = ZIP; também recusa pacote cujo conteúdo descompactado explodiria a memória (zip bomb) antes do mammoth.
   if (sourceType === "DOCX") return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04 && inspectZip(buffer).ok
   return !buffer.includes(0)
+}
+
+/**
+ * Conteúdo do tipo certo E que o parser pode abrir sem explodir a memória: além da assinatura, o PDF tem os fluxos comprimidos
+ * medidos de verdade (pdf-guard.ts) — o DOCX já passa pela guarda de ZIP em `contentMatchesSourceType`.
+ */
+export async function fileContentAccepted(buffer: Buffer, sourceType: KnowledgeSourceType): Promise<boolean> {
+  if (!contentMatchesSourceType(buffer, sourceType)) return false
+  if (sourceType === "PDF") return (await inspectPdf(buffer)).ok
+  return true
 }
 
 export async function extractTextFromFile(buffer: Buffer, sourceType: KnowledgeSourceType): Promise<string> {

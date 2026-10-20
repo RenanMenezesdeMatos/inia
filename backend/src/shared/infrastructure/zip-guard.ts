@@ -1,8 +1,13 @@
+import { inflateRawSync } from "node:zlib"
+
 /**
  * GUARDA CONTRA ZIP MALICIOSO — XLSX e DOCX são pacotes ZIP que os parsers (exceljs, mammoth) descompactam INTEIROS na
- * memória do processo. Um arquivo de poucos MB pode declarar gigabytes descompactados ("zip bomb") e derrubar a API (um
- * processo só). Antes de qualquer parser, lê o DIRETÓRIO CENTRAL do ZIP (sem descompactar nada) e recusa: pacote sem
- * diretório legível, entradas demais, tamanho descompactado total acima do teto ou taxa de compressão absurda.
+ * memória do processo. Um arquivo de poucos MB pode virar gigabytes descompactados ("zip bomb") e derrubar a API (um
+ * processo só). Antes de qualquer parser, lê o DIRETÓRIO CENTRAL do ZIP e recusa: pacote sem diretório legível, entradas
+ * demais, tamanho descompactado total acima do teto ou taxa de compressão absurda. E não confia no tamanho DECLARADO: cada
+ * entrada é descompactada de verdade com o teto do próprio tamanho declarado — entrada que passa dele (ou tem tamanho real
+ * diferente) recusa o pacote (achado DATA-1 da auditoria de 17/10/2026: o JSZip dos parsers só compara no fim, depois de ter
+ * descompactado tudo). A memória dessa conferência é a de UMA entrada por vez, dentro do teto total.
  */
 export type ZipLimits = { maxEntries: number; maxTotalUncompressedBytes: number; maxEntryRatio: number }
 
@@ -12,7 +17,30 @@ export type ZipInspection = { ok: true; entries: number; totalUncompressedBytes:
 
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_SIGNATURE = 0x02014b50
+const LOCAL_SIGNATURE = 0x04034b50
 const ZIP64_MARKER = 0xffffffff
+const STORED = 0
+const DEFLATED = 8
+
+/** Descompacta a entrada com teto = o tamanho declarado; devolve o motivo da recusa ou null (conteúdo confere). */
+function verifyEntry(data: Buffer, centralCursor: number, compressed: number, uncompressed: number): string | null {
+  const flags = data.readUInt16LE(centralCursor + 8)
+  const method = data.readUInt16LE(centralCursor + 10)
+  const localOffset = data.readUInt32LE(centralCursor + 42)
+  if (flags & 0x1) return "entrada cifrada"
+  if (localOffset === ZIP64_MARKER || localOffset + 30 > data.length || data.readUInt32LE(localOffset) !== LOCAL_SIGNATURE) return "entrada corrompida"
+  const start = localOffset + 30 + data.readUInt16LE(localOffset + 26) + data.readUInt16LE(localOffset + 28)
+  if (start + compressed > data.length) return "entrada fora do arquivo"
+  const body = data.subarray(start, start + compressed)
+  if (method === STORED) return compressed === uncompressed ? null : "tamanho real diferente do declarado"
+  if (method !== DEFLATED) return "método de compressão não suportado"
+  try {
+    const inflated = inflateRawSync(body, { maxOutputLength: Math.max(uncompressed, 1) })
+    return inflated.length === uncompressed ? null : "tamanho real diferente do declarado"
+  } catch (error) {
+    return error instanceof RangeError ? "conteúdo descompactado maior que o declarado" : "entrada corrompida"
+  }
+}
 
 export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LIMITS): ZipInspection {
   const data = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength)
@@ -43,6 +71,8 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
     total += uncompressed
     if (total > limits.maxTotalUncompressedBytes) return { ok: false, reason: "conteúdo descompactado grande demais" }
     if (uncompressed > 1024 * 1024 && uncompressed / Math.max(compressed, 1) > limits.maxEntryRatio) return { ok: false, reason: "taxa de compressão suspeita" }
+    const mismatch = verifyEntry(data, cursor, compressed, uncompressed)
+    if (mismatch) return { ok: false, reason: mismatch }
     cursor += 46 + data.readUInt16LE(cursor + 28) + data.readUInt16LE(cursor + 30) + data.readUInt16LE(cursor + 32)
   }
   return { ok: true, entries, totalUncompressedBytes: total }

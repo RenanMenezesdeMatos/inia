@@ -11,6 +11,7 @@ import { type DataFeedRow, type DataRunRow } from "../application/records.js"
 import { enqueueRun } from "../application/run-service.js"
 import { executeRun } from "../application/run-pipeline.js"
 import { createSource } from "../application/source-service.js"
+import type { DataFeedRow as FeedRow } from "../application/records.js"
 import { CapturingLogger, FakeSftpClient, InMemorySecretStore, MockHttpClient } from "./fakes.js"
 
 /**
@@ -59,6 +60,7 @@ async function cleanup() {
   await db.query(`delete from data_sources where organization_id = $1`, [ORG])
   await db.query(`delete from data_raw_objects where organization_id = $1`, [ORG])
   await db.query(`delete from people where organization_id = $1`, [ORG])
+  await db.query(`delete from teams where organization_id = $1`, [ORG])
   await db.query(`delete from operations where organization_id = $1`, [ORG])
   await db.query(`delete from organizations where id = $1`, [ORG])
 }
@@ -153,5 +155,68 @@ describe.skipIf(!ENABLED)("Identidade — cadastro manual × carga de Colaborado
     expect(await attempt(ana, dora)).toBe("PERSON_LINK_SOURCE_HAS_MATRICULA")
     const eva = await db.query<{ person_id: string }>(`select person_id from user_accounts where id = $1`, [manual.eva.accountId])
     expect(eva.rows[0]!.person_id).toBe(manual.eva.personId)
+  })
+
+  describe("credencial da pessoa ligada ou desligada pela base (auditoria de segurança 17/10/2026, AUTH-13/AUTH-7)", () => {
+    const PLACEMENT_HEADER = ["externalEmployeeId", "name", "role", "email", "groupExternalCode", "active"]
+    let placementFeed: FeedRow
+    let teamA: string
+    let teamB: string
+    const placementRun = async (rows: string[][], filename: string) => {
+      const raw = await ctx.rawObjects.put({ organizationId: ORG, sourceId: placementFeed.sourceId, feedId: placementFeed.id, filename, contentType: "text/csv", content: csv([PLACEMENT_HEADER, ...rows]) })
+      const { run: queued } = await enqueueRun(ctx, { organizationId: ORG, feed: placementFeed, triggerKind: "FILE_UPLOAD", requestedBy: null, rawObjectId: raw.id })
+      return (await executeRun(ctx, queued.id))!
+    }
+    const accountOf = async (accountId: string | null) => (await db.query<{ active: boolean; session_version: number }>(`select active, session_version from user_accounts where id = $1`, [accountId])).rows[0]!
+    const inTeam = async (name: string, teamId: string, email: string) => {
+      const person = await manualPerson(name, "OPERATOR", email)
+      await db.query(`update people set team_id = $2 where id = $1`, [person.personId, teamId])
+      return person
+    }
+
+    beforeAll(async () => {
+      teamA = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name, external_code) values ($1, $2, 'PIL Grupo A', 'PIL-GA') returning id`, [ORG, OPERATION])).rows[0]!.id
+      teamB = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name, external_code) values ($1, $2, 'PIL Grupo B', 'PIL-GB') returning id`, [ORG, OPERATION])).rows[0]!.id
+      const source = await createSource(ctx, ORG, null, { name: "PIL RH 2", config: { kind: "FILE_UPLOAD" } })
+      placementFeed = await setFeedStatus(ctx, ORG, null, (await createFeed(ctx, ORG, null, source.id, { feedKey: "colaboradores-lugar", name: "Colaboradores com Grupo", contractKey: "EMPLOYEES", connectorConfig: fileFeedConfig, authoritative: false, sourceNamespace: "pil-rh-2", cadence: { kind: "MANUAL" }, mapping: identity(PLACEMENT_HEADER) })).id, "ACTIVATE")
+    }, 60_000)
+
+    it("pré-cadastrada no Grupo A e posta pela base como Supervisora do Grupo B: ligada, mas o acesso cai até quem tem custódia liberar", async () => {
+      const joana = await inTeam("Joana Silva", teamA, `joana@${DOMAIN}`)
+      const before = await accountOf(joana.accountId)
+      const result = await placementRun([["PIL-10", "Joana Silva", "SUPERVISOR", `joana@${DOMAIN}`, "PIL-GB", "true"]], "pil-lugar-1.csv")
+      expect(result.status).toBe("COMPLETED")
+      expect((await db.query<{ matricula: string; team_id: string; role: string }>(`select matricula, team_id, role from people where id = $1`, [joana.personId])).rows[0]).toEqual({ matricula: "PIL-10", team_id: teamB, role: "SUPERVISOR" })
+      expect(await accountOf(joana.accountId)).toEqual({ active: false, session_version: before.session_version + 1 })
+      const codes = (await db.query<{ error_code: string }>(`select error_code from data_ingestion_rejections where run_id = $1 order by error_code`, [result.id])).rows.map((row) => row.error_code)
+      expect(codes.sort()).toEqual(["DATA_PERSON_LINKED_BY_EMAIL", "DATA_PERSON_LINK_ACCESS_DISABLED"].sort())
+      const audit = await db.query<{ payload: { reason: string } }>(`select payload from audit_logs where organization_id = $1 and action = 'ACCESS_DISABLED' and entity_id = $2`, [ORG, joana.accountId])
+      expect(audit.rows.map((row) => row.payload.reason)).toEqual(["LINKED_BY_SOURCE_NEW_PLACEMENT"])
+    })
+
+    it("pré-cadastrada no MESMO Grupo e nível: ligada e o acesso continua (o fluxo de cadastrar antes da carga segue)", async () => {
+      const gil = await inTeam("Gil Torres", teamA, `gil@${DOMAIN}`)
+      const before = await accountOf(gil.accountId)
+      const result = await placementRun([["PIL-11", "Gil Torres", "OPERATOR", `gil@${DOMAIN}`, "PIL-GA", "true"]], "pil-lugar-2.csv")
+      expect(result.status).toBe("COMPLETED")
+      expect(await accountOf(gil.accountId)).toEqual(before)
+    })
+
+    it("desligada pela base: a conta é desabilitada (reativar não devolve a senha nem os tokens); Administrador geral só perde as sessões", async () => {
+      const hugo = await inTeam("Hugo Reis", teamA, `hugo@${DOMAIN}`)
+      const iris = await inTeam("Iris Melo", teamA, `iris@${DOMAIN}`)
+      await db.query(`insert into access_role_assignments (organization_id, user_account_id, role_code, scope_type, granted_at) values ($1, $2, 'ADMINISTRADOR_GERAL', 'ORGANIZATION', now())`, [ORG, iris.accountId])
+      await placementRun([["PIL-12", "Hugo Reis", "OPERATOR", `hugo@${DOMAIN}`, "PIL-GA", "true"], ["PIL-13", "Iris Melo", "OPERATOR", `iris@${DOMAIN}`, "PIL-GA", "true"]], "pil-lugar-3.csv")
+      const hugoBefore = await accountOf(hugo.accountId)
+      const irisBefore = await accountOf(iris.accountId)
+      expect(hugoBefore.active && irisBefore.active).toBe(true)
+      await placementRun([["PIL-12", "Hugo Reis", "OPERATOR", `hugo@${DOMAIN}`, "PIL-GA", "false"], ["PIL-13", "Iris Melo", "OPERATOR", `iris@${DOMAIN}`, "PIL-GA", "false"]], "pil-lugar-4.csv")
+      expect(await accountOf(hugo.accountId)).toEqual({ active: false, session_version: hugoBefore.session_version + 1 })
+      expect(await accountOf(iris.accountId)).toEqual({ active: true, session_version: irisBefore.session_version + 1 })
+      // Reativada pela base: a pessoa volta, a conta de quem não é Administrador geral continua desabilitada.
+      await placementRun([["PIL-12", "Hugo Reis", "OPERATOR", `hugo@${DOMAIN}`, "PIL-GA", "true"]], "pil-lugar-5.csv")
+      expect((await db.query<{ active: boolean }>(`select active from people where id = $1`, [hugo.personId])).rows[0]!.active).toBe(true)
+      expect((await accountOf(hugo.accountId)).active).toBe(false)
+    })
   })
 })

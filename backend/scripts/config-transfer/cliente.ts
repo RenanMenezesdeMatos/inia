@@ -1,13 +1,16 @@
 /**
  * Cliente da API da INIA de DESTINO para o `config:importar`: entra com a conta de um Administrador geral (a senha é digitada
- * no terminal e nunca aparece nem é gravada) e guarda só o cookie da sessão na pasta do pacote, para a simulação e a importação
- * não pedirem a senha de novo. `--sair` encerra a sessão no servidor e apaga o arquivo.
+ * no terminal e nunca aparece nem é gravada) e guarda só o cookie da sessão no PERFIL de quem importa (`~/.inia/sessoes`, fora do
+ * pacote), para a simulação e a importação não pedirem a senha de novo. `--sair` encerra a sessão no servidor e apaga o arquivo.
+ * Nunca na pasta do pacote: ela é copiada entre máquinas e levaria junto a sessão de um Administrador geral (achado AUTH-10).
  *
  * As escritas não mandam o cabeçalho Origin: o guard de CSRF da API (shared/presentation/origin-guard.ts) só barra origem de
  * NAVEGADOR não autorizada — um script com o cookie passa, como o `curl`.
  */
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { createHash } from "node:crypto"
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { join, resolve } from "node:path"
 
 const COOKIE_DA_SESSAO = "inia_session"
 
@@ -37,6 +40,7 @@ export class ClienteInia {
 
   /** Reaproveita a sessão gravada na pasta do pacote, se ainda vale para este destino e e-mail. */
   static async retomar(pasta: string, destino: string, email: string | undefined): Promise<ClienteInia | null> {
+    await encerrarSessaoLegada(pasta)
     const caminho = arquivoDaSessao(pasta)
     if (!existsSync(caminho)) return null
     const sessao = JSON.parse(readFileSync(caminho, "utf8")) as Sessao
@@ -61,14 +65,16 @@ export class ClienteInia {
       throw new ErroApi(403, "PASSWORD_CHANGE_REQUIRED", "Esta conta ainda está com a senha provisória: entre uma vez pelo navegador, crie a senha definitiva e rode de novo.")
     }
     const caminho = arquivoDaSessao(pasta)
-    writeFileSync(caminho, JSON.stringify({ destino, email, cookie, salvaEm: new Date().toISOString() } satisfies Sessao))
+    mkdirSync(join(caminho, ".."), { recursive: true, mode: 0o700 })
+    writeFileSync(caminho, JSON.stringify({ destino, email, cookie, salvaEm: new Date().toISOString() } satisfies Sessao), { mode: 0o600 })
     chmodSync(caminho, 0o600)
     return new ClienteInia(destino, cookie)
   }
 
   static async sair(pasta: string): Promise<boolean> {
+    const legada = await encerrarSessaoLegada(pasta)
     const caminho = arquivoDaSessao(pasta)
-    if (!existsSync(caminho)) return false
+    if (!existsSync(caminho)) return legada
     const sessao = JSON.parse(readFileSync(caminho, "utf8")) as Sessao
     await fetch(`${sessao.destino}/api/v1/auth/logout`, { method: "POST", headers: { cookie: sessao.cookie } }).catch(() => undefined)
     rmSync(caminho, { force: true })
@@ -106,8 +112,24 @@ export class ClienteInia {
   }
 }
 
-export function arquivoDaSessao(pasta: string): string {
-  return join(pasta, ".sessao-destino.json")
+/** Arquivo da sessão deste pacote no perfil de quem importa (um por pasta de pacote), nunca dentro do pacote. */
+export function arquivoDaSessao(pasta: string, base: string = homedir()): string {
+  const chave = createHash("sha256").update(resolve(pasta)).digest("hex").slice(0, 24)
+  return join(base, ".inia", "sessoes", `config-importar-${chave}.json`)
+}
+
+/** Versões anteriores gravavam a sessão em `<pacote>/.sessao-destino.json`: encerra no servidor e apaga, se ainda existir. */
+async function encerrarSessaoLegada(pasta: string): Promise<boolean> {
+  const legada = join(pasta, ".sessao-destino.json")
+  if (!existsSync(legada)) return false
+  try {
+    const sessao = JSON.parse(readFileSync(legada, "utf8")) as Sessao
+    await fetch(`${sessao.destino}/api/v1/auth/logout`, { method: "POST", headers: { cookie: sessao.cookie } }).catch(() => undefined)
+  } catch {
+    // Arquivo ilegível: só apagar.
+  }
+  rmSync(legada, { force: true })
+  return true
 }
 
 async function lerCorpo(resposta: Response): Promise<unknown> {

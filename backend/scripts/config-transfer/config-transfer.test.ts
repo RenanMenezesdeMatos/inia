@@ -1,5 +1,10 @@
+import { createHash } from "node:crypto"
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { chaveDoItem, gerarCsv, gerarDePara, gerarSelecao, lerCsv, lerDePara, lerSelecao, lerSimNao, propagarExclusoes, sugerirInclusao, type DadosItem, type Item, type TipoItem } from "./formato.js"
+import { arquivoDaSessao } from "./cliente.js"
+import { chaveDoItem, gerarCsv, lerArquivoDoPacote, gerarDePara, gerarSelecao, lerCsv, lerDePara, lerSelecao, lerSimNao, propagarExclusoes, sugerirInclusao, type DadosItem, type Item, type TipoItem } from "./formato.js"
 import { chaveNoDestino, descreverPlano, montarPlano, type Destino } from "./plano.js"
 
 function item<T extends TipoItem>(tipo: T, chave: string, dados: Partial<DadosItem[T]> = {}, extra: Partial<Pick<Item, "dependencias" | "opcionais">> = {}): Item {
@@ -169,5 +174,39 @@ describe("plano da importação", () => {
     const plano = montarPlano([tma], todosMarcados([tma]), destino, [])
     expect(situacaoDe(plano, "INDICADOR:TMA")).toMatchObject({ situacao: "EXISTE", complementos: ["ESTRATEGIA"] })
     expect(descreverPlano(plano, "t")).toContain("acrescenta a estratégia de diagnóstico, que ele ainda não tem")
+  })
+})
+
+describe("arquivos do pacote e sessão (auditoria de segurança 17/10/2026, AUTH-9/AUTH-10)", () => {
+  const pasta = mkdtempSync(join(tmpdir(), "inia-pacote-"))
+  mkdirSync(join(pasta, "arquivos"))
+  writeFileSync(join(pasta, "arquivos", "manual.pdf"), "conteudo-do-manual")
+  writeFileSync(join(pasta, "fora.txt"), "segredo")
+  const sha = (texto: string) => createHash("sha256").update(texto).digest("hex")
+  const ler = (absoluto: string) => readFileSync(absoluto)
+
+  it("lê o arquivo de arquivos/ ou imagens/ com o SHA-256 da exportação", () => {
+    expect(lerArquivoDoPacote(pasta, "arquivos/manual.pdf", sha("conteudo-do-manual"), ler).toString()).toBe("conteudo-do-manual")
+  })
+
+  it("recusa caminho que sai do pacote, absoluto, na raiz ou com conteúdo trocado — sem ler nada fora", () => {
+    const lidos: string[] = []
+    const espiao = (absoluto: string) => {
+      lidos.push(absoluto)
+      return readFileSync(absoluto)
+    }
+    for (const caminho of ["../fora.txt", "arquivos/../fora.txt", "fora.txt", join(pasta, "fora.txt"), "imagens/../../etc/passwd", "arquivos"]) {
+      expect(() => lerArquivoDoPacote(pasta, caminho, sha("segredo"), espiao), caminho).toThrow(/fora das pastas/)
+    }
+    expect(lidos).toEqual([])
+    expect(() => lerArquivoDoPacote(pasta, "arquivos/manual.pdf", sha("outro"), ler)).toThrow(/SHA-256 diferente/)
+  })
+
+  it("a sessão do destino fica no perfil de quem importa, nunca dentro da pasta do pacote", () => {
+    const arquivo = arquivoDaSessao(pasta, "/home/admin")
+    expect(arquivo.startsWith(join("/home/admin", ".inia", "sessoes"))).toBe(true)
+    expect(arquivo.startsWith(pasta)).toBe(false)
+    expect(arquivoDaSessao(join(pasta, "."), "/home/admin")).toBe(arquivo)
+    expect(arquivoDaSessao(join(pasta, "outro"), "/home/admin")).not.toBe(arquivo)
   })
 })

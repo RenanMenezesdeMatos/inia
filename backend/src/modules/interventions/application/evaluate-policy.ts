@@ -142,6 +142,8 @@ export type EvaluatePolicyInput = {
   /** Versão FIXADA (retries/retomadas/reavaliação); ausente = a em vigor em `versionAt` (padrão: `asOf`). */
   version?: PolicyVersion | null
   versionAt?: Date
+  /** HIDDEN = quem pede não vê as intervenções da pessoa (simulação): nada do histórico de intervenções é lido nem devolvido. */
+  interventionHistory?: "VISIBLE" | "HIDDEN"
 }
 
 export async function evaluatePolicy(db: Db, input: EvaluatePolicyInput): Promise<PolicyEvaluation | null> {
@@ -162,7 +164,8 @@ export async function evaluatePolicy(db: Db, input: EvaluatePolicyInput): Promis
   }
 
   const definition = version!.definition
-  const resolver = createConditionResolver(db, { organizationId: input.organizationId, personId: person.id, policyIndicatorCode: indicatorCode, subjectKey, asOf: input.asOf, timeZone })
+  const historyHidden = input.interventionHistory === "HIDDEN"
+  const resolver = createConditionResolver(db, { organizationId: input.organizationId, personId: person.id, policyIndicatorCode: indicatorCode, subjectKey, asOf: input.asOf, timeZone, interventionHistoryHidden: historyHidden })
   const rules: RuleTrace[] = []
   for (const rule of definition.rules) {
     const trace = await evaluateGroup(rule.when, resolver)
@@ -172,7 +175,7 @@ export async function evaluatePolicy(db: Db, input: EvaluatePolicyInput): Promis
   const allTypes = await loadPublishedTypes(db, input.organizationId)
   // Só tipos ATIVOS decidem; um tipo inativado depois da publicação vira conflito explícito (nunca é aberto em silêncio).
   const types = new Map([...allTypes].filter(([, type]) => type.active))
-  const history = await loadInterventionState(db, input.organizationId, person.id, input.asOf)
+  const history = historyHidden ? [] : await loadInterventionState(db, input.organizationId, person.id, input.asOf)
   const decisions = planDecisions({
     selection,
     subjectKey,

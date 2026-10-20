@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+import { BlockList, isIP } from "node:net"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { rateLimitBucket } from "../../../shared/application/rate-limit/rate-limit-store.js"
 import type { DataHubContext } from "./data-hub-context.js"
@@ -30,14 +32,38 @@ export async function consumePushQuota(ctx: DataHubContext, tokenId: string, lim
 
 export type PushAuth = { source: DataSourceRow; feed: DataFeedRow; tokenId: string }
 
-/** Autentica o token contra a fonte/feed da URL. Erros são genéricos de propósito (não revelam se a fonte existe). */
-export async function authenticatePush(ctx: DataHubContext, input: { sourcePublicId: string; feedKey: string; token: string | null }): Promise<PushAuth> {
+/** Endereço do cliente (IPv4 mapeado em IPv6 vira IPv4) dentro de alguma das redes autorizadas do token (IP ou CIDR). */
+export function clientInNetworks(clientIp: string | null, networks: readonly string[]): boolean {
+  const ip = clientIp?.replace(/^::ffff:/i, "") ?? ""
+  const family = isIP(ip)
+  if (!family) return false
+  const list = new BlockList()
+  for (const network of networks) {
+    const [address, prefix] = network.split("/")
+    const networkFamily = isIP(address ?? "")
+    if (!networkFamily) continue
+    const type = networkFamily === 6 ? "ipv6" : "ipv4"
+    if (prefix === undefined) list.addAddress(address!, type)
+    else list.addSubnet(address!, Number(prefix), type)
+  }
+  return list.check(ip, family === 6 ? "ipv6" : "ipv4")
+}
+
+/**
+ * Autentica o token contra a fonte/feed da URL. Erros são genéricos de propósito (não revelam se a fonte existe). Token com
+ * validade vencida ou chamado de fora das redes autorizadas dele (R-28) recebe a MESMA recusa de um token inexistente.
+ */
+export async function authenticatePush(ctx: DataHubContext, input: { sourcePublicId: string; feedKey: string; token: string | null; clientIp?: string | null }): Promise<PushAuth> {
   const unauthorized = () => new DomainError("Credencial inválida.", "DATA_PUSH_UNAUTHORIZED", 401)
   // Token real = `inia_push_` + 32 caracteres; qualquer coisa muito maior nem chega ao banco.
   if (!input.token || input.token.length > 200) throw unauthorized()
-  const tokenRow = await ctx.db.query<{ id: string; source_id: string; feed_id: string | null }>(`select id, source_id, feed_id from data_push_tokens where token_hash = $1 and revoked_at is null`, [hashPushToken(input.token)])
+  const tokenRow = await ctx.db.query<{ id: string; source_id: string; feed_id: string | null; expired: boolean; allowed_networks: string[] | null }>(
+    `select id, source_id, feed_id, (expires_at is not null and expires_at <= now()) expired, allowed_networks from data_push_tokens where token_hash = $1 and revoked_at is null`,
+    [hashPushToken(input.token)],
+  )
   const token = tokenRow.rows[0]
-  if (!token) throw unauthorized()
+  if (!token || token.expired) throw unauthorized()
+  if (token.allowed_networks && !clientInNetworks(input.clientIp ?? null, token.allowed_networks)) throw unauthorized()
   const source = (await ctx.db.query<DataSourceRow>(`${SELECT_SOURCE} where s.id = $1 and s.public_id = $2 and s.deleted_at is null`, [token.source_id, input.sourcePublicId])).rows[0]
   if (!source || source.kind !== "API_PUSH") throw unauthorized()
   const feed = (await ctx.db.query<DataFeedRow>(`${SELECT_FEED} where f.source_id = $1 and f.feed_key = $2 and f.deleted_at is null`, [source.id, input.feedKey])).rows[0]
@@ -49,21 +75,35 @@ export async function authenticatePush(ctx: DataHubContext, input: { sourcePubli
   return { source, feed, tokenId: token.id }
 }
 
-export async function receivePush(ctx: DataHubContext, auth: PushAuth, input: { body: unknown; idempotencyKey: string | null; rawBytes: number }): Promise<{ run: DataRunRow; deduplicated: boolean }> {
-  if (input.idempotencyKey) {
-    const existing = await ctx.db.query<{ id: string }>(`select id from data_ingestion_runs where feed_id = $1 and idempotency_key = $2`, [auth.feed.id, input.idempotencyKey])
-    if (existing.rows[0]) {
-      return { run: (await findRun(ctx.db, auth.source.organizationId, existing.rows[0].id))!, deduplicated: true }
-    }
+/**
+ * Mesma `Idempotency-Key` = o MESMO lote: devolve a carga já recebida. Mesma chave com outro corpo é erro do cliente (o lote novo
+ * se perderia em silêncio — R-29): 422. Cargas antigas, sem hash do corpo, seguem deduplicadas como antes.
+ */
+async function existingForKey(ctx: DataHubContext, auth: PushAuth, idempotencyKey: string, bodyHash: string): Promise<{ run: DataRunRow; deduplicated: true } | null> {
+  const existing = await ctx.db.query<{ id: string; idempotency_body_sha256: string | null }>(`select id, idempotency_body_sha256 from data_ingestion_runs where feed_id = $1 and idempotency_key = $2`, [auth.feed.id, idempotencyKey])
+  const row = existing.rows[0]
+  if (!row) return null
+  if (row.idempotency_body_sha256 && row.idempotency_body_sha256 !== bodyHash) {
+    throw new DomainError("Esta Idempotency-Key já foi usada com outro conteúdo. Use uma chave nova para um lote diferente.", "DATA_PUSH_IDEMPOTENCY_CONFLICT", 422, { runId: row.id })
   }
-  const raw = await ctx.rawObjects.put({ organizationId: auth.source.organizationId, sourceId: auth.source.id, feedId: auth.feed.id, filename: null, contentType: "application/json", content: new TextEncoder().encode(JSON.stringify(input.body)) })
+  return { run: (await findRun(ctx.db, auth.source.organizationId, row.id))!, deduplicated: true }
+}
+
+export async function receivePush(ctx: DataHubContext, auth: PushAuth, input: { body: unknown; idempotencyKey: string | null; rawBytes: number }): Promise<{ run: DataRunRow; deduplicated: boolean }> {
+  const content = new TextEncoder().encode(JSON.stringify(input.body))
+  const bodyHash = createHash("sha256").update(content).digest("hex")
+  if (input.idempotencyKey) {
+    const existing = await existingForKey(ctx, auth, input.idempotencyKey, bodyHash)
+    if (existing) return existing
+  }
+  const raw = await ctx.rawObjects.put({ organizationId: auth.source.organizationId, sourceId: auth.source.id, feedId: auth.feed.id, filename: null, contentType: "application/json", content })
   try {
-    return await enqueueRun(ctx, { organizationId: auth.source.organizationId, feed: auth.feed, triggerKind: "PUSH", requestedBy: null, rawObjectId: raw.id, idempotencyKey: input.idempotencyKey })
+    return await enqueueRun(ctx, { organizationId: auth.source.organizationId, feed: auth.feed, triggerKind: "PUSH", requestedBy: null, rawObjectId: raw.id, idempotencyKey: input.idempotencyKey, idempotencyBodySha256: input.idempotencyKey ? bodyHash : null })
   } catch (error) {
-    // Corrida entre dois envios com a mesma chave: o índice único decide; devolve o vencedor.
+    // Corrida entre dois envios com a mesma chave: o índice único decide; devolve o vencedor (ou recusa, se o corpo é outro).
     if ((error as { code?: string }).code === "23505" && input.idempotencyKey) {
-      const existing = await ctx.db.query<{ id: string }>(`select id from data_ingestion_runs where feed_id = $1 and idempotency_key = $2`, [auth.feed.id, input.idempotencyKey])
-      return { run: (await findRun(ctx.db, auth.source.organizationId, existing.rows[0]!.id))!, deduplicated: true }
+      const existing = await existingForKey(ctx, auth, input.idempotencyKey, bodyHash)
+      if (existing) return existing
     }
     throw error
   }

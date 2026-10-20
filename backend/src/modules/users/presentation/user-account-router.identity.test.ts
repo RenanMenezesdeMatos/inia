@@ -78,7 +78,7 @@ function app(options: Options = {}) {
   return { server, statements }
 }
 
-const newUser = (patch: Record<string, unknown> = {}) => ({ name: "Pessoa Nova", role: "OPERATOR", teamId: TEAM_A, email: "pessoa.nova@inia.local", password: "Provisoria-2026", ...patch })
+const newUser = (patch: Record<string, unknown> = {}) => ({ name: "Pessoa Nova", role: "OPERATOR", teamId: TEAM_A, email: "pessoa.nova@inia.local", ...patch })
 const inserted = (statements: { sql: string; params: unknown[] }[]) => statements.find((entry) => entry.sql.includes("insert into people"))
 
 describe("Novo usuário — uma porta só para a hierarquia", () => {
@@ -90,6 +90,21 @@ describe("Novo usuário — uma porta só para a hierarquia", () => {
     expect(response.body.error.message).toContain("Habilitar acesso")
     expect(response.body.error.details.sources).toEqual([{ sourceName: "RH Corporativo", feedName: "Colaboradores" }])
     expect(inserted(statements)).toBeUndefined()
+  })
+
+  it("a senha provisória é gerada pelo servidor e mostrada uma vez; a escolhida por quem cadastra é ignorada (auditoria 17/10/2026, AUTH-6)", async () => {
+    const { server, statements } = app()
+    const response = await request(server).post("/").send(newUser({ password: "123456" }))
+    expect(response.status).toBe(201)
+    const issued = response.body.data.issued
+    expect(issued).toMatchObject({ personId: "new-person", accountId: "new-account", email: "pessoa.nova@inia.local" })
+    expect(issued.temporaryPassword).toMatch(/^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/)
+    expect(issued.temporaryPassword).not.toBe("123456")
+    const account = statements.find((entry) => entry.sql.includes("insert into user_accounts"))!
+    expect(JSON.stringify(account.params)).not.toContain("123456")
+    expect(JSON.stringify(account.params)).not.toContain(issued.temporaryPassword)
+    const another = await request(app().server).post("/").send(newUser())
+    expect(another.body.data.issued.temporaryPassword).not.toBe(issued.temporaryPassword)
   })
 
   it("com Colaboradores vigente, \"Fora da hierarquia\" sem matrícula continua (TI, consultoria, QA)", async () => {

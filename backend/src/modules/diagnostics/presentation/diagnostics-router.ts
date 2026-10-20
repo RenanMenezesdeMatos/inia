@@ -1,5 +1,6 @@
 import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { activeDirectReportsOf, hasAccessGrant, loadViewerScope, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
@@ -152,6 +153,8 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
     const id = uuid(request.params.id)
     const detail = id ? await assessmentDetail(db, scope.organizationId, visiblePeople(scope), id) : null
     if (!detail) throw new DomainError("Avaliação não encontrada.", "DIAGNOSTIC_NOT_FOUND", 404)
+    // LGPD: quem abriu a transcrição da chamada de outra pessoa (migration 151).
+    await recordPersonalDataAccess(db, { organizationId: scope.organizationId, viewerPersonId: scope.viewer.id, subjectPersonId: detail.personId, dataKind: "CALL_TRANSCRIPT", resourceId: id })
     const accessible = await resolveAccessibleKnowledgeMaterials(db, { organizationId: scope.organizationId, viewer: { personId: scope.viewer.id }, materialIds: [...new Set(detail.criteria.map((criterion) => criterion.documentId))] })
     response.json({ data: { ...detail, criteria: detail.criteria.map((criterion) => ({ ...criterion, href: accessible.has(criterion.documentId) ? buildKnowledgeMaterialHref(criterion.documentId) : null })) } })
   })

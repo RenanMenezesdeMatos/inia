@@ -7,7 +7,7 @@ import { previousSnapshotOf, referencePeriodLabel } from "../../indicator-diagno
 import { INDICATOR_DIAGNOSIS_SOURCE_CONTRACT, INDICATOR_DIAGNOSIS_SOURCE_KIND, PRV_CLOSING_SOURCE_CONTRACT, PRV_CLOSING_SOURCE_KIND } from "../../reliable-feedback/application/prv-closing-step.js"
 import type { ActionConfig } from "../domain/graph-schema.js"
 import type { ActionExecutionContext } from "./action-executors.js"
-import { loadLatestTranscript } from "./transcript.js"
+import { loadLatestTranscriptForModel } from "./transcript.js"
 
 /**
  * INDICATOR DIAGNOSIS — "Chamar agente" nos formatos de diagnóstico de indicador com gatilho por Agenda:
@@ -62,7 +62,7 @@ async function assessPlan(config: Extract<ActionConfig, { actionType: "CALL_AGEN
   if (plan.status !== "READY" || plan.toAssess.length === 0) return { id: "", outputText: null, status: "COMPLETED", errorMessage: null, workflowResult: source }
 
   const first = plan.investigations.find((investigation) => investigation.toAssess.length > 0)!
-  const transcripts = await Promise.all(plan.toAssess.map(async (request) => ({ handle: request.handle, localDate: request.localDate, transcript: (await loadLatestTranscript(context.db, request.interactionId))?.content ?? "" })))
+  const transcripts = await Promise.all(plan.toAssess.map(async (request) => ({ handle: request.handle, localDate: request.localDate, transcript: (await loadLatestTranscriptForModel(context.db, request.interactionId))?.content ?? "" })))
   const period = referencePeriodLabel(plan.closing!.referencePeriod)
   const segmentText = first.selectedSegment ? `Motivo investigado pelo sistema: ${first.selectedSegment.label} (fechamento de ${period}). O sistema já escolheu as chamadas; avalie os processos de cada uma.` : null
   const inputContext = renderDiagnosisSampleForAgent({ segmentText, periodLabel: period, sample: transcripts.filter((entry) => entry.transcript.trim().length > 0) })

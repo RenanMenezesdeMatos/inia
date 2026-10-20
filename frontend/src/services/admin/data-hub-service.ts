@@ -126,7 +126,9 @@ export async function rotateSourceSecrets(id: string, secrets: Record<string, st
   return sourceSchema.passthrough().parse(await adminSend(`${BASE}/sources/${id}/secrets`, "POST", secrets))
 }
 
-export async function createPushToken(sourceId: string, input: { label: string; feedId?: string | null }): Promise<PushToken> {
+export type PushTokenInput = { label: string; feedId?: string | null; expiresInDays?: number | null; allowedNetworks?: string[] | null }
+
+export async function createPushToken(sourceId: string, input: PushTokenInput): Promise<PushToken> {
   return pushTokenSchema.parse(await adminSend(`${BASE}/sources/${sourceId}/tokens`, "POST", input))
 }
 
@@ -231,6 +233,11 @@ export async function fetchRun(id: string): Promise<RunDetail> {
 
 export async function fetchRejectionsPage(runId: string, params: ListParams & { errorCode: string[] }): Promise<PageResult<Rejection>> {
   return pageResultSchema(rejectionSchema).parse(await adminGet(`${BASE}/runs/${runId}/rejections${toQueryString(params)}`))
+}
+
+/** OpenAPI 3.1 da API Push da fonte — gerado na hora pelos feeds e contratos configurados (o integrador importa no Postman/Swagger). */
+export async function downloadPushOpenApi(sourceId: string): Promise<{ blob: Blob; filename: string | null }> {
+  return adminGetBlob(`${BASE}/sources/${sourceId}/openapi.json`)
 }
 
 export async function downloadRejectionsCsv(runId: string): Promise<{ blob: Blob; filename: string | null }> {

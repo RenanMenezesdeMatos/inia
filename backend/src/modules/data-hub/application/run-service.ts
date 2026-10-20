@@ -23,14 +23,22 @@ export type EnqueueInput = {
   requestedBy: string | null
   rawObjectId?: string | null
   idempotencyKey?: string | null
+  /** SHA-256 do corpo recebido com a `idempotencyKey` (API Push) — a mesma chave com outro corpo é recusada. */
+  idempotencyBodySha256?: string | null
   reprocessOfRunId?: string | null
 }
 
 export async function enqueueRun(ctx: DataHubContext, input: EnqueueInput): Promise<{ run: DataRunRow; deduplicated: boolean }> {
   const { feed } = input
   if (input.idempotencyKey) {
-    const existing = await ctx.db.query<{ id: string }>(`select id from data_ingestion_runs where feed_id = $1 and idempotency_key = $2`, [feed.id, input.idempotencyKey])
-    if (existing.rows[0]) return { run: (await findRun(ctx.db, input.organizationId, existing.rows[0].id))!, deduplicated: true }
+    const existing = await ctx.db.query<{ id: string; idempotency_body_sha256: string | null }>(`select id, idempotency_body_sha256 from data_ingestion_runs where feed_id = $1 and idempotency_key = $2`, [feed.id, input.idempotencyKey])
+    const row = existing.rows[0]
+    if (row) {
+      if (input.idempotencyBodySha256 && row.idempotency_body_sha256 && row.idempotency_body_sha256 !== input.idempotencyBodySha256) {
+        throw new DomainError("Esta Idempotency-Key já foi usada com outro conteúdo. Use uma chave nova para um lote diferente.", "DATA_PUSH_IDEMPOTENCY_CONFLICT", 422, { runId: row.id })
+      }
+      return { run: (await findRun(ctx.db, input.organizationId, row.id))!, deduplicated: true }
+    }
   }
   // Push pode enfileirar vários lotes (processados em sequência); os demais gatilhos nunca
   // empilham uma carga em cima de outra do mesmo feed.
@@ -42,9 +50,9 @@ export async function enqueueRun(ctx: DataHubContext, input: EnqueueInput): Prom
     if (inFlight.rows[0]) throw new DomainError("Já existe uma carga em andamento ou na fila para este feed.", "DATA_RUN_ALREADY_QUEUED", 409, { runId: inFlight.rows[0].id })
   }
   const result = await ctx.db.query<{ id: string }>(
-    `insert into data_ingestion_runs (organization_id, source_id, feed_id, contract_key, contract_version, trigger_kind, raw_object_id, idempotency_key, reprocess_of_run_id, requested_by, checkpoint_before, queued_at, created_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12) returning id`,
-    [input.organizationId, feed.sourceId, feed.id, feed.contractKey, feed.contractVersion, input.triggerKind, input.rawObjectId ?? null, input.idempotencyKey ?? null, input.reprocessOfRunId ?? null, input.requestedBy, feed.checkpoint ? JSON.stringify(feed.checkpoint) : null, ctx.clock.now()],
+    `insert into data_ingestion_runs (organization_id, source_id, feed_id, contract_key, contract_version, trigger_kind, raw_object_id, idempotency_key, reprocess_of_run_id, requested_by, checkpoint_before, queued_at, created_at, idempotency_body_sha256)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13) returning id`,
+    [input.organizationId, feed.sourceId, feed.id, feed.contractKey, feed.contractVersion, input.triggerKind, input.rawObjectId ?? null, input.idempotencyKey ?? null, input.reprocessOfRunId ?? null, input.requestedBy, feed.checkpoint ? JSON.stringify(feed.checkpoint) : null, ctx.clock.now(), input.idempotencyBodySha256 ?? null],
   )
   const run = (await findRun(ctx.db, input.organizationId, result.rows[0]!.id))!
   ctx.logger.info({ runId: run.id, feedId: feed.id, sourceId: feed.sourceId, contract: `${feed.contractKey}@${feed.contractVersion}`, trigger: input.triggerKind }, "data-hub run queued")

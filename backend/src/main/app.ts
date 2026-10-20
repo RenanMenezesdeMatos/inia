@@ -27,6 +27,8 @@ import { createRequireAuth } from "../modules/auth/presentation/require-auth.js"
 import { createIniaDeliveriesRouter } from "../modules/conversational-delivery/presentation/inia-deliveries-router.js"
 import { createFeedbackApplicationsRouter } from "../modules/feedback-application/presentation/feedback-applications-router.js"
 import { createFeedbackReadConfirmationsRouter } from "../modules/feedback-application/presentation/feedback-read-confirmations-router.js"
+import { createSubjectDataExportRouter } from "../modules/data-lifecycle/presentation/subject-data-export-router.js"
+import { createFeedbackContestationsRouter } from "../modules/feedback-rating/presentation/feedback-contestations-router.js"
 import { createFeedbackRatingsRouter } from "../modules/feedback-rating/presentation/feedback-ratings-router.js"
 import { synthesizeSpeechWithGemini } from "../modules/conversational-delivery/infrastructure/gemini-tts-client.js"
 import { INIA_LIVE_MODEL, iniaVoiceName } from "../config/inia-voice.js"
@@ -63,9 +65,10 @@ import { createNotificationsRouter } from "../modules/notifications/presentation
 import { createDataHubRouter } from "../modules/data-hub/presentation/data-hub-router.js"
 import { createDataIngestionRouter } from "../modules/data-hub/presentation/data-ingestion-router.js"
 import { DomainError } from "../shared/domain/domain-error.js"
+import { DataRunError } from "../modules/data-hub/domain/error-codes.js"
 import { createResponseCompression } from "../shared/presentation/compression.js"
 import { createOriginGuard } from "../shared/presentation/origin-guard.js"
-import { accountKey, clientIpAndEmailKey, clientIpKey, createRateLimiter, type RateLimitRule } from "../shared/presentation/rate-limit.js"
+import { accountKey, clientIpAndEmailKey, clientIpKey, createRateLimiter, sessionCookieKey, type RateLimitRule } from "../shared/presentation/rate-limit.js"
 import { createMemoryRateLimitStore, type RateLimitStore } from "../shared/application/rate-limit/rate-limit-store.js"
 import { createReadiness, type Readiness } from "./readiness.js"
 import { isInternalRequest, type RuntimeMetrics } from "./runtime-metrics.js"
@@ -110,8 +113,13 @@ export type RateLimitSettings = {
   loginPerIpAndEmail: number
   /** Logins RECUSADOS por IP a cada 5 min (anti "uma senha em muitas contas"); login certo não conta. */
   loginPerIp: number
-  /** Criação de senha do primeiro acesso por IP a cada 15 min. */
+  /** Criação de senha do primeiro acesso: tentativas RECUSADAS por IP a cada 15 min (contra enxurrada anônima). */
   firstPasswordPerIp: number
+  /**
+   * Criação de senha do primeiro acesso por SESSÃO a cada 15 min — no dia da liberação centenas de pessoas criam a senha pelo
+   * mesmo IP (Citrix/NAT): cada uma tem o seu contador (achado AUTH-14 da auditoria de 17/10/2026).
+   */
+  firstPasswordPerSession: number
   /** Confirmações de ciência com senha que FALHARAM, por conta, a cada 15 min. */
   readConfirmationFailuresPerAccount: number
   /** API Push: requisições recusadas (token/payload inválido) por IP a cada 15 min. */
@@ -122,23 +130,44 @@ export type RateLimitSettings = {
   aiInteractivePerAccount: number
   /** Novas sessões de voz (credencial efêmera do provedor) por conta, por minuto. */
   voiceSessionsPerAccount: number
+  /**
+   * Novas sessões de voz por conta a cada 30 minutos — a sessão Live vale até 30 min e fala direto com o provedor: este teto
+   * limita quantas a mesma conta mantém vivas ao mesmo tempo (achado AI-09 da auditoria de 17/10/2026).
+   */
+  voiceSessionsPerAccountHalfHour: number
   /** Ações administrativas que chamam IA ou abrem conexão externa (testar Agent/modelo/conexão, simular, QA Lab, executar agora), por conta, por minuto. */
   adminCostlyActionsPerAccount: number
+  /** Envio de foto/capa do perfil (até 2 imagens de 8 MB em memória cada) por conta, por minuto (AUTH-17). */
+  profileWritesPerAccount: number
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   loginPerIpAndEmail: env.LOGIN_RATE_LIMIT_PER_IP_EMAIL,
   loginPerIp: env.LOGIN_RATE_LIMIT_PER_IP,
-  firstPasswordPerIp: 20,
+  firstPasswordPerIp: 300,
+  firstPasswordPerSession: 10,
   readConfirmationFailuresPerAccount: 10,
   pushIngestionFailuresPerIp: 30,
   pushIngestionPerIp: 600,
   aiInteractivePerAccount: 90,
   voiceSessionsPerAccount: 12,
+  voiceSessionsPerAccountHalfHour: 60,
   adminCostlyActionsPerAccount: 30,
+  profileWritesPerAccount: 20,
 }
 
 const httpLog = createLogger("http")
+
+/**
+ * Caminho como o roteador do Express o casa: sem diferenciar maiúsculas e sem a barra final. Todo limite montado por caminho
+ * compara com ESTE valor, nunca com `request.path` cru — `/x/TEST` e `/x/test/` chegam à mesma rota de `/x/test` e,
+ * comparados crus, passavam sem o limite (achado INFRA-1 da auditoria de 17/10/2026).
+ */
+export function routePath(request: Pick<express.Request, "path">): string {
+  const lowered = request.path.toLowerCase()
+  const trimmed = lowered.replace(/\/+$/, "")
+  return trimmed.length > 0 ? trimmed : "/"
+}
 
 /** TRUST_PROXY (sintaxe do Express): `false`, número de saltos ou lista de endereços/sub-redes/apelidos (loopback…). */
 export function parseTrustProxy(value: string): boolean | number | string {
@@ -173,7 +202,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // JSON de 1 MB para a API; o API Push (lotes de registros do cliente) tem o próprio parser de 10 MB no router — o global
   // não roda ali, senão o limite dele nunca valeria (413 acima de 1 MB).
   const jsonBody = express.json({ limit: "1mb" })
-  app.use((request, response, next) => (request.path.startsWith("/api/v1/data-ingestion/") ? next() : jsonBody(request, response, next)))
+  app.use((request, response, next) => (routePath(request).startsWith("/api/v1/data-ingestion/") ? next() : jsonBody(request, response, next)))
   app.use(cookieParser())
   // CSRF: escrita com o cookie de sessão só de origem autorizada (ver origin-guard.ts).
   app.use(createOriginGuard({ allowedOrigins: env.allowedOrigins, sessionCookieName: SESSION_COOKIE_NAME }))
@@ -192,16 +221,19 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Login: por IP + e-mail (cada pessoa com o seu contador, mesmo atrás de um NAT) e um teto de RECUSAS por IP.
   app.post("/api/v1/auth/login", limit({ name: "login-ip-email", windowMs: 5 * 60_000, max: "loginPerIpAndEmail", key: clientIpAndEmailKey, message: "Muitas tentativas de acesso com este e-mail. Aguarde alguns minutos e tente novamente." }))
   app.post("/api/v1/auth/login", limit({ name: "login-ip-failures", windowMs: 5 * 60_000, max: "loginPerIp", key: clientIpKey, countOnlyFailures: true, message: "Muitas tentativas de acesso recusadas deste endereço. Aguarde alguns minutos e tente novamente." }))
-  app.post("/api/v1/auth/password", limit({ name: "first-password-ip", windowMs: 15 * 60_000, max: "firstPasswordPerIp", key: clientIpKey }))
+  app.post("/api/v1/auth/password", limit({ name: "first-password-ip", windowMs: 15 * 60_000, max: "firstPasswordPerIp", key: clientIpKey, countOnlyFailures: true }))
+  app.post("/api/v1/auth/password", limit({ name: "first-password-session", windowMs: 15 * 60_000, max: "firstPasswordPerSession", key: sessionCookieKey(SESSION_COOKIE_NAME) }))
   app.use("/api/v1/data-ingestion", limit({ name: "push-ip", windowMs: 60_000, max: "pushIngestionPerIp", key: clientIpKey }))
   app.use("/api/v1/data-ingestion", limit({ name: "push-failures-ip", windowMs: 15 * 60_000, max: "pushIngestionFailuresPerIp", key: clientIpKey, countOnlyFailures: true, message: "Muitas requisições recusadas deste endereço. Aguarde e confira o token e o formato do envio." }))
   // Por CONTA (montados depois do requireAuth de cada rota, abaixo): custo de IA e confirmação com senha.
   const aiPerAccount = limit({ name: "ai-account", windowMs: 60_000, max: "aiInteractivePerAccount", key: accountKey, message: "Muitas solicitações à INIA em pouco tempo. Aguarde um instante." })
-  const voiceSessionsPerAccount = limit({ name: "voice-session-account", windowMs: 60_000, max: "voiceSessionsPerAccount", key: accountKey, message: "Muitas conversas por voz iniciadas em pouco tempo. Aguarde um instante." })
+  const voiceSessionsPerMinute = limit({ name: "voice-session-account", windowMs: 60_000, max: "voiceSessionsPerAccount", key: accountKey, message: "Muitas conversas por voz iniciadas em pouco tempo. Aguarde um instante." })
+  const voiceSessionsPerHalfHour = limit({ name: "voice-session-account-30m", windowMs: 30 * 60_000, max: "voiceSessionsPerAccountHalfHour", key: accountKey, message: "Muitas conversas por voz abertas nesta meia hora. Encerre as que não está usando e aguarde alguns minutos." })
+  const voiceSessionsPerAccount: express.RequestHandler = (request, response, next) => voiceSessionsPerMinute(request, response, (error?: unknown) => (error ? next(error) : voiceSessionsPerHalfHour(request, response, next)))
   // Um balde por conta para TODAS as ações administrativas caras (achado A-F06): cada uma é custo de IA ou conexão a um
   // destino externo (sondagem de rede). Montado depois do guard de cada área (precisa da conta da sessão).
   const adminCostlyLimiter = limit({ name: "admin-costly-account", windowMs: 60_000, max: "adminCostlyActionsPerAccount", key: accountKey, message: "Muitos testes e simulações em pouco tempo. Aguarde um instante." })
-  const costly = (pattern: RegExp): express.RequestHandler => (request, response, next) => (request.method === "POST" && pattern.test(request.path) ? adminCostlyLimiter(request, response, next) : next())
+  const costly = (pattern: RegExp): express.RequestHandler => (request, response, next) => (request.method === "POST" && pattern.test(routePath(request)) ? adminCostlyLimiter(request, response, next) : next())
   const readConfirmationFailures = limit({ name: "read-confirmation-account", windowMs: 15 * 60_000, max: "readConfirmationFailuresPerAccount", key: accountKey, countOnlyFailures: true, message: "Muitas tentativas de confirmação. Aguarde alguns minutos e tente novamente." })
   // Monitoria de usabilidade: fatos de servidor observados na RESPOSTA 2xx das rotas existentes (login, voz, aplicação,
   // notificação) — montados antes delas e só com a coleta ligada; nunca alteram a resposta.
@@ -236,7 +268,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   }
   app.use("/api/v1/auth", createAuthRouter(database, { features: { interactionFeedbackQa: interactionFeedbackEnabled, usageCollection: usageCollectionEnabled, usabilityPanel: usabilityPanelEnabled } }))
   // Preferências pessoais do perfil (nome de tratamento, foto, capa) — sempre da pessoa da sessão; imagens da mesma organização.
-  app.use("/api/v1/me/profile", requireAuth, createMyProfileRouter(database))
+  const profileWrites = limit({ name: "profile-writes-account", windowMs: 60_000, max: "profileWritesPerAccount", key: accountKey, message: "Muitas alterações de perfil em pouco tempo. Aguarde um instante." })
+  app.use("/api/v1/me/profile", requireAuth, onlyMethods(["PUT", "POST", "PATCH", "DELETE"], profileWrites), createMyProfileRouter(database))
   app.use("/api/v1/profile-images", requireAuth, createProfileImageRouter(database))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
@@ -268,6 +301,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/assistant-orchestrators", can("agents.manage"), createAssistantRouter(database))
   // Conversas com a INIA (somente leitura) — permissão própria (montada ANTES do `/api/v1/admin` da governança, que exige configuration.manage); não abre nenhum outro módulo da Administração.
   app.use("/api/v1/admin/assistant-conversations", can("assistant_conversations.view"), createConversationMonitoringRouter(database))
+  // Contestações de feedback (revisão humana, LGPD art. 20): fila e resposta no escopo de quem revisa.
+  app.use("/api/v1/admin/feedback-contestations", can("feedback_contestations.review"), createFeedbackContestationsRouter(database))
+  // Pedido do titular (LGPD art. 18): exportação de tudo o que está ligado a uma pessoa — só com escopo de organização.
+  app.use("/api/v1/admin/people", can("privacy.subject_data.export", { organizationWide: true }), createSubjectDataExportRouter(database))
   // Monitoria de usabilidade — permissão própria (como as conversas: montada ANTES do `/api/v1/admin` da governança); cada rota
   // aplica a permissão granular e o escopo. Ingestão do navegador: qualquer conta autenticada, só com a coleta ligada.
   if (usabilityPanelEnabled) app.use("/api/v1/admin/usability", can("usability.view"), createUsabilityRouter(database))
@@ -282,7 +319,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // API Push (autenticado por token de push, nunca por sessão de usuário).
   // Os dados da Central valem para a organização inteira (pessoas, hierarquia, e-mail de login, medições) e os conectores
   // carregam credenciais dos sistemas do cliente: só quem tem `data_hub.manage` com escopo de ORGANIZAÇÃO (achado I-F1).
-  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources\/[^/]+\/(test-connection|preview)|feeds\/[^/]+\/preview)$/), createDataHubRouter(database, dataHubOverrides))
+  // Teto das ações caras: teste de conexão, amostras e listagem do SFTP (abrem conexão com o destino) e criação de conjunto (o de
+  // banco conecta para validar) — achado DATA-9.
+  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources\/[^/]+\/(test-connection|preview|sample|sftp-files|feeds)|feeds\/[^/]+\/(preview|sample))$/), createDataHubRouter(database, dataHubOverrides))
   // Políticas de acompanhamento e intervenções — permissões próprias (editar/simular/publicar/auditar; `workflows.manage` lê o
   // resumo publicado para o nó do Workflow e simula). Cada rota confere a permissão e o escopo. Montada ANTES da governança.
   app.use("/api/v1/admin/intervention-policies", requireAuth, costly(/\/simulate$/), createInterventionAdminRouter(database))
@@ -298,7 +337,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
     "/api/v1/realtime",
     requireAuth,
     onlyMethods(["POST"], aiPerAccount),
-    (request, response, next) => (request.method === "POST" && request.path === "/sessions" ? voiceSessionsPerAccount(request, response, next) : next()),
+    (request, response, next) => (request.method === "POST" && routePath(request) === "/sessions" ? voiceSessionsPerAccount(request, response, next) : next()),
     createRealtimeRouter(database, createVoiceSessionStarter(createEphemeralRealtimeSession), createChatStreamer(streamTextReply)),
   )
   // Workflow Outputs V1 — recados de voz (aceite → fala) e conversas de Workflow do PRÓPRIO destinatário.
@@ -308,7 +347,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const legacySpeechIdentity = { voice: iniaVoiceName(), models: acceptedRecadoModels(INIA_LIVE_MODEL, env.INIA_AVATAR_TTS_MODEL) }
   const iniaSpeech = { synthesize: createRoutedSpeechSynthesizer(legacyRecadoVoice), accepted: () => speechCacheIdentity(legacySpeechIdentity) }
   // Áudio do recado/apresentação = síntese de voz no provedor (custo): mesmo teto por conta da IA conversacional.
-  const audioPerAccount: express.RequestHandler = (request, response, next) => (request.method === "GET" && request.path.endsWith("/audio") ? aiPerAccount(request, response, next) : next())
+  const audioPerAccount: express.RequestHandler = (request, response, next) => (request.method === "GET" && routePath(request).endsWith("/audio") ? aiPerAccount(request, response, next) : next())
   app.use("/api/v1/inia-deliveries", requireAuth, audioPerAccount, createIniaDeliveriesRouter(database, { synthesizeSpeech: iniaSpeech }))
   // Aplicação de feedback conversacional — a INIA apresenta UM feedback publicado ao próprio destinatário e conversa sobre ele.
   app.use("/api/v1/feedback-applications", requireAuth, audioPerAccount, onlyMethods(["POST"], aiPerAccount), createFeedbackApplicationsRouter(database, { synthesizeSpeech: iniaSpeech }))
@@ -323,7 +362,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Leituras determinísticas da liderança (as mesmas das ferramentas do chat) — escopo da sessão, sem IA.
   app.use("/api/v1/leadership", requireAuth, createLeadershipRouter(database))
   // Reports recorrentes: permissões (líder × papel Report) e escopo de cada destinatário decididos no serviço, a cada pedido.
-  app.use("/api/v1/reports", requireAuth, createReportsRouter(database))
+  // Prévia (roda a consulta), "Executar agora" e nova tentativa da análise (IA) entram no teto das ações caras (achado SCOPE-04).
+  app.use("/api/v1/reports", requireAuth, costly(/^\/(preview|[^/]+\/run|deliveries\/[^/]+\/analysis\/retry)$/), createReportsRouter(database))
   // Aba Estrutura do perfil — posição na hierarquia real, mesma autoridade de escopo de analytics.
   app.use("/api/v1/people", requireAuth, createPersonOrganizationStructureRouter(database))
   // Pendências (ação requerida) e Sino (algo novo aconteceu) — sempre do viewer da sessão.
@@ -347,6 +387,12 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
     }
     if (error instanceof ZodError) {
       response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dados inválidos.", details: error.issues } })
+      return
+    }
+    // Erro de conector da Central de Dados numa rota síncrona (amostra, prévia): código estável em vez de 500 (R-29).
+    // Origem fora do ar/lenta = 502; o resto (credencial, formato, mapeamento) é corrigível por quem configura = 422.
+    if (error instanceof DataRunError) {
+      response.status(error.transient ? 502 : 422).json({ error: { code: error.code, message: error.message } })
       return
     }
     const clientError = describeClientError(error)

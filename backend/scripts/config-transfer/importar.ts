@@ -14,7 +14,7 @@ import { extname, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { ask, fail, say } from "../../src/infrastructure/installation/cli.js"
 import { ClienteInia, ErroApi, perguntarSenha } from "./cliente.js"
-import { FORMATO_PACOTE, ROTULO_TIPO, chaveDe, chaveDoItem, gerarDePara, lerDePara, lerSelecao, normalizar, type Item, type Pacote, type TipoItem } from "./formato.js"
+import { FORMATO_PACOTE, ROTULO_TIPO, chaveDe, lerArquivoDoPacote, chaveDoItem, gerarDePara, lerDePara, lerSelecao, normalizar, type Item, type Pacote, type TipoItem } from "./formato.js"
 import { chaveDeAlcance, chaveNoDestino, descreverPlano, montarPlano, type AlcanceResolvido, type Destino, type Grupo, type LinhaDoPlano, type Pessoa, type Plano } from "./plano.js"
 
 const { values } = parseArgs({
@@ -31,7 +31,7 @@ if (!values.pacote) fail('Informe a pasta do pacote: --pacote "<pasta criada pel
 const pasta = resolve(pastaInicial, values.pacote)
 
 if (values.sair) {
-  say((await ClienteInia.sair(pasta)) ? "Sessão encerrada no destino e apagada desta pasta." : "Não havia sessão gravada nesta pasta.")
+  say((await ClienteInia.sair(pasta)) ? "Sessão encerrada no destino e apagada deste computador." : "Não havia sessão gravada para este pacote.")
   process.exit(0)
 }
 if (!values.destino) fail("Informe o endereço da INIA de destino: --destino https://inia.empresa.com.br")
@@ -41,6 +41,17 @@ const pacote = JSON.parse(readFileSync(join(pasta, "pacote.json"), "utf8")) as P
 if (pacote.formato !== FORMATO_PACOTE) fail(`Pacote no formato ${pacote.formato}; esta versão da INIA lê o formato ${FORMATO_PACOTE}. Exporte de novo.`)
 const selecao = existsSync(join(pasta, "selecao.csv")) ? lerSelecao(readFileSync(join(pasta, "selecao.csv"), "utf8")) : new Map<string, boolean>()
 const deParaAtual = existsSync(join(pasta, "de-para.csv")) ? lerDePara(readFileSync(join(pasta, "de-para.csv"), "utf8")) : []
+// Antes de qualquer conexão (simulação inclusive): todo arquivo citado fica dentro do pacote e é o que foi exportado.
+for (const item of pacote.itens) {
+  const citados = item.tipo === "BASE" ? (item.dados.arquivo ? [item.dados.arquivo] : []) : item.tipo === "CENARIO" ? item.dados.imagens : []
+  for (const arquivo of citados) {
+    try {
+      lerArquivoDoPacote(pasta, arquivo.caminho, arquivo.sha256, (absoluto) => readFileSync(absoluto))
+    } catch (error) {
+      fail(`${item.nome}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
 
 // ─── Sessão ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -53,7 +64,7 @@ async function conectar(destino: string): Promise<ClienteInia> {
   const email = values.email ?? (await ask("E-mail do Administrador geral no destino"))
   const senha = await perguntarSenha(`Senha de ${email} em ${destino} (não aparece enquanto digita): `)
   const cliente = await ClienteInia.entrar(pasta, destino, email, senha)
-  say("✓ Login feito. A sessão fica guardada nesta pasta até você rodar com --sair (ou expirar).")
+  say("✓ Login feito. A sessão fica guardada no seu perfil (fora do pacote) até você rodar com --sair (ou expirar).")
   return cliente
 }
 
@@ -181,9 +192,9 @@ const MIME_POR_EXTENSAO: Record<string, string> = {
   ".webp": "image/webp",
 }
 
-function arquivoDoPacote(caminho: string): Blob {
-  const conteudo = readFileSync(join(pasta, caminho))
-  return new Blob([conteudo], {
+function arquivoDoPacote(caminho: string, sha256: string): Blob {
+  const conteudo = lerArquivoDoPacote(pasta, caminho, sha256, (absoluto) => readFileSync(absoluto))
+  return new Blob([new Uint8Array(conteudo)], {
     type: MIME_POR_EXTENSAO[extname(caminho).toLowerCase()] ?? "application/octet-stream",
   })
 }
@@ -430,7 +441,7 @@ async function criar(cliente: ClienteInia, linha: LinhaDoPlano, idDe: IdDe, regi
           })),
         ),
       )
-      dados.imagens.forEach((imagem, indice) => formulario.set(`file-${indice}`, arquivoDoPacote(imagem.caminho), imagem.caminho.split("/").pop()))
+      dados.imagens.forEach((imagem, indice) => formulario.set(`file-${indice}`, arquivoDoPacote(imagem.caminho, imagem.sha256), imagem.caminho.split("/").pop()))
       return (await cliente.postFormulario<{ id: string }>("/api/v1/admin/inia-scenes", formulario)).id
     }
   }
@@ -483,7 +494,7 @@ async function criarBase(cliente: ClienteInia, linha: LinhaDoPlano, item: Item<"
     formulario.set("documentType", dados.documentType)
     formulario.set("orgScopes", JSON.stringify(orgScopes))
     formulario.set("subjectScopes", JSON.stringify(subjectScopes))
-    formulario.set("file", arquivoDoPacote(dados.arquivo.caminho), dados.arquivo.nomeOriginal)
+    formulario.set("file", arquivoDoPacote(dados.arquivo.caminho, dados.arquivo.sha256), dados.arquivo.nomeOriginal)
     id = (await cliente.postFormulario<{ id: string }>("/api/v1/admin/knowledge", formulario)).id
     registro.desfazer = `/api/v1/admin/knowledge/${id}`
     const detalhe = await cliente.get<{ latestVersion?: { content?: string } }>(`/api/v1/admin/knowledge/${id}`)

@@ -26,6 +26,12 @@ export type PolicySubject = {
   /** Instante de referência da avaliação (o relógio da execução; numa reavaliação, o da avaliação original). */
   asOf: Date
   timeZone: string
+  /**
+   * Quem pede NÃO pode ver as intervenções desta pessoa (simulação por quem só enxerga o colaborador por outra concessão): as
+   * condições sobre intervenções anteriores ficam inconclusivas, sem ler nada (achado SCOPE-02 da auditoria de 17/10/2026 — um
+   * rascunho que só consulta intervenções revelava quem teve avaliação de continuidade).
+   */
+  interventionHistoryHidden?: boolean
 }
 
 type Db = Queryable | Database
@@ -250,6 +256,8 @@ async function resolveFeedback(db: Db, subject: PolicySubject, condition: Extrac
       where f.organization_id = $1 and f.operator_id = $2 and f.status in ('PUBLISHED', 'ACKNOWLEDGED')
         and f.published_at >= $3 and f.published_at <= $4 and ($5::text is null or f.feedback_kind::text = $5)
         and ($6::text is null or c.indicator_code = $6 or f.impacted_indicator = $6) and ${visibleInFollowUpSql("f")}
+        -- Feedback sem citação conferida (síntese de IA, achado AI-02) não é evidência verificável.
+        and coalesce(f.context_snapshot->>'evidenceVerified', 'true') <> 'false'
       order by f.published_at desc limit 50`,
     [subject.organizationId, subject.personId, since, subject.asOf, condition.feedbackKind, condition.indicatorCode],
   )
@@ -300,6 +308,8 @@ async function resolveInteractionFlag(db: Db, subject: PolicySubject, condition:
   }
 }
 
+const HIDDEN_INTERVENTION_HISTORY: ConditionOutcome = { status: "INCONCLUSIVE", summary: "Intervenções anteriores: não consultadas — o seu acesso não inclui as intervenções deste colaborador.", facts: {}, reasonCode: "INTERVENTIONS_NOT_VISIBLE", references: [] }
+
 export function createConditionResolver(db: Db, subject: PolicySubject): ConditionResolver {
   let labels: Promise<Map<string, { name: string; unit: string }>> | null = null
   return async (condition) => {
@@ -310,9 +320,9 @@ export function createConditionResolver(db: Db, subject: PolicySubject): Conditi
       case "EMPLOYMENT":
         return resolveEmployment(db, subject, condition)
       case "PRIOR_INTERVENTIONS":
-        return resolvePriorInterventions(db, subject, condition)
+        return subject.interventionHistoryHidden ? HIDDEN_INTERVENTION_HISTORY : resolvePriorInterventions(db, subject, condition)
       case "TIME_SINCE_INTERVENTION":
-        return resolveTimeSince(db, subject, condition)
+        return subject.interventionHistoryHidden ? HIDDEN_INTERVENTION_HISTORY : resolveTimeSince(db, subject, condition)
       case "SUPPORTED_DIAGNOSIS":
         return resolveDiagnosis(db, subject, condition)
       case "PUBLISHED_FEEDBACK":

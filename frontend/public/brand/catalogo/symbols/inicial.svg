@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64">
+  <title>INIA — Inicial</title>
+  <circle cx="32" cy="18.5" r="6.5" fill="__ACCENT__"/>
+  <path d="M26 35a6 6 0 0 1 12 0v11a6 6 0 0 1-12 0Z" fill="__INK__"/>
+</svg>

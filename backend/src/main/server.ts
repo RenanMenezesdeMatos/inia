@@ -19,6 +19,7 @@ import { createAiRuntime } from "../modules/ai-management/application/ai-runtime
 import { registerAiRuntime } from "../shared/application/model-routing/ai-runtime.js"
 import { aiCallLimiter } from "../shared/application/model-routing/ai-call-limiter.js"
 import { purgeExpiredRateLimitHits } from "../shared/infrastructure/rate-limit/postgres-rate-limit-store.js"
+import { purgeOldLoginAttempts } from "../modules/auth/infrastructure/postgres-credential-store.js"
 import { createApp } from "./app.js"
 import { componentsOf, resolveProcessRole } from "./process-role.js"
 import { installSharedRuntimeState } from "./shared-runtime-state.js"
@@ -122,6 +123,8 @@ function startProcessing() {
     },
     // Contadores dos limites de requisição que já não contam (janelas vencidas — migration 126).
     { name: "rate-limit-purge", intervalMs: 10 * 60_000, run: () => purgeExpiredRateLimitHits(pool), errorLabel: "Falha na limpeza dos limites de requisição:" },
+    // Tentativas de login com mais de 30 dias (a trava usa 15 minutos): e-mails que nunca entram não acumulam para sempre (AUTH-15).
+    { name: "login-attempts-purge", intervalMs: 3_600_000, run: () => purgeOldLoginAttempts(pool), errorLabel: "Falha na limpeza das tentativas de login:" },
   ])
   // Processamento sem HTTP (papel `worker`): a API avisa por NOTIFY que há carga nova na Central de Dados — processa na hora
   // (o tick de 15 s continua sendo a garantia). Com o papel `all` a própria API processa, sem aviso.

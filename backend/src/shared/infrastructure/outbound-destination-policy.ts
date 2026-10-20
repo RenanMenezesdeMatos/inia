@@ -1,5 +1,6 @@
 import { lookup } from "node:dns/promises"
 import { BlockList, isIP } from "node:net"
+import { networkInterfaces } from "node:os"
 
 /**
  * POLÍTICA DE DESTINOS DE SAÍDA — para onde o SERVIDOR da INIA aceita abrir conexão a pedido de uma configuração feita na
@@ -31,8 +32,12 @@ export type OutboundPolicy = {
   mode: "OPEN" | "ALLOWLIST"
   allowLoopback: boolean
   allow: readonly AllowEntry[]
-  /** Destinos sempre negados além das faixas fixas (ex.: o banco interno). */
-  deniedEndpoints: readonly { host: string; port: number }[]
+  /**
+   * Destinos sempre negados além das faixas fixas (ex.: o banco interno). `addresses` = os endereços que o host resolve (e, se
+   * ele for a própria máquina, os das placas de rede dela) — preenchido na conferência: o mesmo banco por outro nome ou pelo IP
+   * também é o banco interno (achado DATA-2 da auditoria de 17/10/2026).
+   */
+  deniedEndpoints: readonly { host: string; port: number; addresses?: readonly string[] }[]
 }
 
 export class OutboundDestinationDenied extends Error {
@@ -51,6 +56,9 @@ ALWAYS_DENIED.addAddress("::", "ipv6")
 ALWAYS_DENIED.addSubnet("fe80::", 10, "ipv6")
 ALWAYS_DENIED.addSubnet("ff00::", 8, "ipv6")
 ALWAYS_DENIED.addAddress("fd00:ec2::254", "ipv6")
+// Infraestrutura de nuvem fora do link-local (achado DATA-3): Azure WireServer (saúde, DNS e extensões da VM) e metadados da Alibaba.
+ALWAYS_DENIED.addAddress("168.63.129.16", "ipv4")
+ALWAYS_DENIED.addAddress("100.100.100.200", "ipv4")
 
 const LOOPBACK = new BlockList()
 LOOPBACK.addSubnet("127.0.0.0", 8, "ipv4")
@@ -148,7 +156,9 @@ export function destinationProblem(policy: OutboundPolicy, rawHost: string, port
     if (!policy.allowLoopback && (LOOPBACK.check(address, family) || host === "localhost" || host.endsWith(".localhost"))) return "a própria máquina do servidor (loopback) só com liberação explícita"
   }
   for (const denied of policy.deniedEndpoints) {
-    if (denied.port === port && (normalizeHost(denied.host) === host || addresses.includes(unmapIpv4(normalizeHost(denied.host))))) return "o banco interno da própria INIA"
+    if (denied.port !== port) continue
+    const deniedAddresses = new Set([unmapIpv4(normalizeHost(denied.host)), ...(denied.addresses ?? []).map((address) => unmapIpv4(normalizeHost(address)))])
+    if (normalizeHost(denied.host) === host || addresses.some((address) => deniedAddresses.has(address))) return "o banco interno da própria INIA"
   }
   if (policy.mode === "ALLOWLIST") return "fora da lista de destinos permitidos (INIA_OUTBOUND_ALLOWED_DESTINATIONS)"
   return null
@@ -163,6 +173,25 @@ export const systemResolver: HostResolver = async (host) => {
   return results.map((result) => result.address)
 }
 
+/** Endereços das placas de rede desta máquina (o banco interno em `localhost` também atende pelo IP de rede dela). */
+export function localInterfaceAddresses(): string[] {
+  return Object.values(networkInterfaces()).flatMap((entries) => (entries ?? []).map((entry) => entry.address.replace(/%.*$/, "")))
+}
+
+/** Endereços de cada destino negado: o que o nome resolve e, se for a própria máquina, as placas de rede dela. */
+async function withDeniedAddresses(policy: OutboundPolicy, resolve: HostResolver): Promise<OutboundPolicy> {
+  if (policy.deniedEndpoints.length === 0) return policy
+  const deniedEndpoints = await Promise.all(
+    policy.deniedEndpoints.map(async (denied) => {
+      const host = normalizeHost(denied.host)
+      const resolved = isIP(host) ? [host] : await resolve(denied.host).catch(() => [] as string[])
+      const self = host === "localhost" || resolved.some((address) => LOOPBACK.check(unmapIpv4(address), familyOf(unmapIpv4(address))))
+      return { ...denied, addresses: [...new Set([...(denied.addresses ?? []), ...resolved, ...(self ? localInterfaceAddresses() : [])])] }
+    }),
+  )
+  return { ...policy, deniedEndpoints }
+}
+
 /** Confere o destino ANTES de conectar; nome que não resolve = recusa (o driver falharia de qualquer forma). */
 export async function assertOutboundDestination(policy: OutboundPolicy, host: string, port: number, resolve: HostResolver = systemResolver): Promise<void> {
   let addresses: string[] = []
@@ -171,7 +200,7 @@ export async function assertOutboundDestination(policy: OutboundPolicy, host: st
   } catch {
     addresses = []
   }
-  const problem = destinationProblem(policy, host, port, addresses)
+  const problem = destinationProblem(await withDeniedAddresses(policy, resolve), host, port, addresses)
   if (problem) throw new OutboundDestinationDenied(normalizeHost(host), port, problem)
 }
 

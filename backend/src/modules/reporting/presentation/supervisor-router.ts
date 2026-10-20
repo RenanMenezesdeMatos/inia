@@ -1,5 +1,6 @@
 import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { fetchOperatorProfile } from "../application/fetch-operator-overview.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { accessDenied, canOpenEmployeeProfile, loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
@@ -27,6 +28,8 @@ export function createSupervisorRouter(db: Database) {
     }
     const profile = await fetchOperatorProfile(db, request.user!.organizationId, id)
     if (!profile) return response.status(404).json({ error: { code: "OPERATOR_NOT_FOUND", message: "Colaborador não encontrado." } })
+    // LGPD: quem abriu a ficha (monitorias, planos, escalonamento) de outra pessoa (migration 151).
+    await recordPersonalDataAccess(db, { organizationId: request.user!.organizationId, viewerPersonId: request.user!.personId, subjectPersonId: id, dataKind: "EMPLOYEE_PROFILE", resourceId: null })
     // Indicadores e feedbacks NÃO vêm por aqui: a ficha mostra os indicadores pela área de analytics e o Acompanhamento pelo feed
     // da estrutura (`/analytics/follow-ups`) — carregá-los aqui era leitura descartada a cada abertura.
     const [plans, monitorings, escalation] = await Promise.all([

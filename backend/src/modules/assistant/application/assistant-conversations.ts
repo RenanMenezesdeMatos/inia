@@ -11,6 +11,7 @@ import {
   type ConversationRecord,
   type MessageCursor,
 } from "../domain/assistant-conversation.js"
+import { CLARIFICATION_TOOL_NAME } from "../../knowledge-clarification/domain/clarification-state.js"
 
 /**
  * Persistência das CONVERSAS com a INIA (migration 094). Toda escrita resolve a conversa AQUI, no backend, sob um lock
@@ -207,6 +208,12 @@ export type ConversationMessage = {
   origin: "WORKFLOW" | "FEEDBACK" | null
   /** Cartões de dados gravados com a resposta (ferramentas executadas pelo backend, ex.: liderança) — quem exibe revalida o escopo. */
   analytics: unknown[]
+  /** Estado do esclarecimento pelas bases gravado com a resposta (`knowledge_clarification`), cru — quem exibe valida e revalida o
+   * acesso às bases citadas (`knowledge-clarification/domain/clarification-view.ts`). null nas demais mensagens. */
+  clarification: unknown | null
+  /** Onde esse esclarecimento foi feito, quando não é o chat de quem atende (ex.: a consulta de processo de quem lidera, com o
+   * Orquestrador do Grupo), cru — uso interno do servidor para continuar o fluxo; nunca enviado à tela. */
+  clarificationScope: unknown | null
 }
 type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agent_id: string | null; occurred_at: Date; seq: string; client_message_id: string | null; tool_calls?: unknown }
 
@@ -214,6 +221,19 @@ type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assis
 export function analyticsCardsOf(toolCalls: unknown): unknown[] {
   if (!Array.isArray(toolCalls)) return []
   return toolCalls.flatMap((call) => (call && typeof call === "object" && "analytics" in call && call.analytics && typeof call.analytics === "object" ? [call.analytics] : []))
+}
+function clarificationEntryOf(toolCalls: unknown): { state: unknown; scope?: unknown } | null {
+  if (!Array.isArray(toolCalls)) return null
+  const entry = toolCalls.find((call) => call && typeof call === "object" && "toolName" in call && call.toolName === CLARIFICATION_TOOL_NAME && "state" in call)
+  return entry ? (entry as { state: unknown; scope?: unknown }) : null
+}
+/** Estado do esclarecimento pelas bases gravado em `tool_calls` (entrada `knowledge_clarification`), sem validar. */
+export function clarificationPayloadOf(toolCalls: unknown): unknown | null {
+  return clarificationEntryOf(toolCalls)?.state ?? null
+}
+/** Onde o esclarecimento gravado em `tool_calls` foi feito (`scope` da entrada `knowledge_clarification`), sem validar. */
+export function clarificationScopeOf(toolCalls: unknown): unknown | null {
+  return clarificationEntryOf(toolCalls)?.scope ?? null
 }
 /** Mesma chave gravada pela entrega de Chat (conversational-delivery/application/deliver-conversational-output.ts). */
 const WORKFLOW_MESSAGE_KEY_PREFIX = "workflow-output:"
@@ -224,7 +244,7 @@ export const messageOriginOf = (role: "user" | "assistant", clientMessageId: str
 const toMessage = (row: MessageRow): ConversationMessage => {
   const occurredAt = new Date(row.occurred_at).toISOString()
   const origin = messageOriginOf(row.role, row.client_message_id)
-  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin, analytics: row.role === "assistant" ? analyticsCardsOf(row.tool_calls) : [] }
+  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin, analytics: row.role === "assistant" ? analyticsCardsOf(row.tool_calls) : [], clarification: row.role === "assistant" ? clarificationPayloadOf(row.tool_calls) : null, clarificationScope: row.role === "assistant" ? clarificationScopeOf(row.tool_calls) : null }
 }
 
 /**

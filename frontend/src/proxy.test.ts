@@ -56,6 +56,13 @@ describe("proxy — CSP com nonce em todas as páginas", () => {
     expect(pending.headers.get("location")).toBe("http://localhost:3000/auth/create-password")
   })
 
+  it("com HTTPS o cookie se chama `__Host-inia_session`: a guarda reconhece a sessão pelo nome novo", () => {
+    const response = proxy(request("/operator", { "__Host-inia_session": sessionToken({ sub: "x" }) }))
+    expect(response.headers.get("location")).toBeNull()
+    const pending = proxy(request("/operator", { "__Host-inia_session": sessionToken({ pc: true }) }))
+    expect(pending.headers.get("location")).toBe("http://localhost:3000/auth/create-password")
+  })
+
   it("área autenticada com sessão: CSP e o caminho para o layout da Administração", () => {
     const response = proxy(request("/admin/conversations", { inia_session: sessionToken({ sub: "x" }) }))
     expect(nonceIn(response.headers.get("content-security-policy"))).toBeTruthy()

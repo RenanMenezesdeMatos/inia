@@ -28,7 +28,7 @@ const CONSUME_SQL = `${WINDOW}, bumped as (
       where h.hits + (select weighted from prev) < $3::float8
     returning h.hits
   )
-  select (select count(*) from bumped) > 0 as allowed, ((prev.idx + 1) * $2::float8 - prev.now_ms)::float8 as "retryAfterMs" from prev`
+  select (select count(*) from bumped) > 0 as allowed, ((prev.idx + 1) * $2::float8 - prev.now_ms)::float8 as "retryAfterMs", prev.idx as "windowIndex" from prev`
 
 const CHECK_SQL = `${WINDOW}
   select coalesce((select h.hits from rate_limit_hits h where h.bucket = $1 and h.window_index = prev.idx), 0) + prev.weighted < $3::float8 as allowed,
@@ -43,15 +43,19 @@ const RECORD_SQL = `
 
 export function createPostgresRateLimitStore(db: Pick<Database, "query">): RateLimitStore {
   const decide = async (sql: string, bucket: string, windowMs: number, max: number): Promise<RateLimitDecision> => {
-    const result = await db.query<{ allowed: boolean; retryAfterMs: number }>(sql, [bucket, windowMs, max])
+    const result = await db.query<{ allowed: boolean; retryAfterMs: number; windowIndex?: string | number | null }>(sql, [bucket, windowMs, max])
     const row = result.rows[0]
-    return { allowed: row?.allowed === true, retryAfterMs: Math.max(0, Number(row?.retryAfterMs ?? windowMs)) }
+    const windowIndex = row?.windowIndex === undefined || row.windowIndex === null ? undefined : Number(row.windowIndex)
+    return { allowed: row?.allowed === true, retryAfterMs: Math.max(0, Number(row?.retryAfterMs ?? windowMs)), ...(windowIndex === undefined ? {} : { windowIndex }) }
   }
   return {
     consume: (bucket, windowMs, max) => decide(CONSUME_SQL, bucket, windowMs, max),
     check: (bucket, windowMs, max) => decide(CHECK_SQL, bucket, windowMs, max),
     async record(bucket, windowMs) {
       await db.query(RECORD_SQL, [bucket, windowMs])
+    },
+    async release(bucket, _windowMs, windowIndex) {
+      await db.query(`update rate_limit_hits set hits = hits - 1 where bucket = $1 and window_index = $2 and hits > 0`, [bucket, windowIndex])
     },
   }
 }

@@ -19,6 +19,7 @@ const REQUEST_TIMEOUT_MS = 150_000
 import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
 import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
+import { parseClarification, type ClarificationAnswer, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
 
 export type HistoryTurn = { role: "user" | "model"; text: string }
 
@@ -28,7 +29,8 @@ export type HistoryTurn = { role: "user" | "model"; text: string }
 /** Resposta de texto completa: o texto montado dos chunks, os materiais de apoio que o Orquestrador recomendou (evento SSE
  * próprio, já resolvidos pelo backend — a URL é montada na tela a partir do id, nunca vem do modelo), a conversa em que a
  * troca ficou gravada e se a RESPOSTA foi salva (`persisted = false` = apareceu mas não entrou no histórico). */
-export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean; analytics?: LeadershipCard[]; reportOffer?: ReportOffer; navigate?: { href: string } }
+/** `clarification` = a resposta veio do esclarecimento pelas bases (pergunta com opções, resposta com fontes ou o que falta). */
+export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean; analytics?: LeadershipCard[]; reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView }
 
 /** A conversa pedida já foi encerrada (outra aba começou outra, ou ficou inativa): o chat troca para a atual. */
 export class ConversationClosedError extends Error {
@@ -59,7 +61,8 @@ export async function fetchTextReply(
   /** `feedbackApplicationId`: a mensagem é sobre uma aplicação de feedback — o BACKEND decide a conversa (a da aplicação ou a
    * complementar, criada na primeira dúvida depois da conclusão). */
   // A persona da INIA é do servidor; daqui só sai o contexto da tela (dado, não instrução).
-  input: { conversationId: string | null; text: string; clientMessageId: string; contextHint?: string; feedbackApplicationId?: string | null },
+  // `clarification`: escolha (ou correção) de uma etapa do esclarecimento pelas bases — `text` é a forma legível dela.
+  input: { conversationId: string | null; text: string; clientMessageId: string; contextHint?: string; feedbackApplicationId?: string | null; clarification?: ClarificationAnswer },
   onChunk: (text: string) => void,
   onConversation?: (conversation: ConversationRef) => void,
 ): Promise<TextReply> {
@@ -88,6 +91,7 @@ export async function fetchTextReply(
   let analytics: LeadershipCard[] = []
   let reportOffer: ReportOffer | null = null
   let navigate: { href: string } | null = null
+  let clarification: ClarificationView | null = null
   let interactionId: string | null = null
   let conversationId: string | null = null
   let persisted = false
@@ -129,6 +133,11 @@ export async function fetchTextReply(
         // "Sim" à oferta de report: o backend decide o destino (a configuração já preenchida).
         const href = (JSON.parse(data) as { href?: unknown }).href
         if (typeof href === "string" && href.startsWith("/reports/")) navigate = { href }
+      } else if (name === "knowledge_clarification") {
+        // Esclarecimento pelas bases: estado validado pelo backend (formulário, cenário e fontes são componentes da tela).
+        const payload = JSON.parse(data) as { interactionId?: string; clarification?: unknown }
+        clarification = parseClarification(payload.clarification)
+        interactionId = payload.interactionId ?? interactionId
       } else if (name === "error") {
         streamError = (JSON.parse(data) as { message: string }).message
       }
@@ -137,7 +146,7 @@ export async function fetchTextReply(
 
   if (streamError) throw new Error(streamError)
   if (!full || !conversationId) throw new Error("Não foi possível obter uma resposta da INIA.")
-  return { text: full, supportMaterials, interactionId, conversationId, persisted, ...(analytics.length > 0 ? { analytics } : {}), ...(reportOffer ? { reportOffer } : {}), ...(navigate ? { navigate } : {}) }
+  return { text: full, supportMaterials, interactionId, conversationId, persisted, ...(analytics.length > 0 ? { analytics } : {}), ...(reportOffer ? { reportOffer } : {}), ...(navigate ? { navigate } : {}), ...(clarification ? { clarification } : {}) }
 }
 
 export type ConversationSummary = {
@@ -173,6 +182,8 @@ export type ConversationMessage = {
   analytics?: unknown[]
   /** Oferta de report recorrente feita nesta resposta (só para o dono). */
   reportOffer?: unknown
+  /** Estado do esclarecimento pelas bases desta resposta (fontes já revalidadas para quem lê). */
+  clarification?: unknown
   /** "WORKFLOW" = recado entregue por um fluxo da INIA (mensagem destacada); "FEEDBACK" = apresentação de uma aplicação de
    * feedback; null nas demais. */
   origin?: "WORKFLOW" | "FEEDBACK" | null

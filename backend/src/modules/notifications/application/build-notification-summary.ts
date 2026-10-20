@@ -31,6 +31,8 @@ function kindOf(alertType: string): NotificationKind {
     default:
       // Políticas de acompanhamento: atribuição, aprovação/decisão pedida, aprovada/devolvida/decidida, encaminhada, novo sinal.
       if (alertType.startsWith("INTERVENTION_")) return "INTERVENTION"
+      // Contestação recebida (quem revisa) e respondida (o colaborador) — migration 150.
+      if (alertType.startsWith("FEEDBACK_CONTESTATION_")) return "FEEDBACK_CONTESTATION"
       return "OTHER"
   }
 }
@@ -68,6 +70,14 @@ function targetOf(alert: AlertRow, kind: NotificationKind, workdayActionId: stri
   if (kind === "INTERVENTION") {
     const intervention = /^intervention:([0-9a-f-]{36}):/.exec(alert.dedupeKey)
     return intervention && alert.caseId ? { type: "INTERVENTION", caseId: alert.caseId, interventionId: intervention[1]! } : { type: "NONE" }
+  }
+  if (kind === "FEEDBACK_CONTESTATION") {
+    // `feedback_contestation:<avaliação>:<revisor>` → a contestação; `feedback_contestation_answer:<avaliação>:<feedback>` → o
+    // feedback no Acompanhamento do colaborador.
+    const received = /^feedback_contestation:([0-9a-f-]{36}):/.exec(alert.dedupeKey)
+    if (received) return { type: "ADMIN_FEEDBACK_CONTESTATION", contestationId: received[1]! }
+    const answered = /^feedback_contestation_answer:[0-9a-f-]{36}:([0-9a-f-]{36})$/.exec(alert.dedupeKey)
+    return answered ? { type: "FOLLOW_UP", itemId: answered[1]!, operatorId: null } : { type: "NONE" }
   }
   if (kind === "INIA_MESSAGE") {
     // A conversa/entrega é resolvida pela chave gravada na entrega (`workflow_chat:<outputId>` / `workflow_avatar:<outputId>`).

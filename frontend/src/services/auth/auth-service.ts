@@ -7,7 +7,6 @@ import {
 } from "@/schemas/auth/auth.schema"
 
 const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
-export const SESSION_COOKIE_NAME = "inia_session"
 /** Tela do primeiro acesso: enquanto a troca de senha estiver pendente, a sessão só leva para cá (ou sai). */
 export const CREATE_PASSWORD_ROUTE = "/auth/create-password"
 
@@ -95,6 +94,18 @@ export async function defineFirstPassword(input: { newPassword: string; confirmP
 
 export async function logout(): Promise<void> {
   await fetch(`${API_URL}/api/v1/auth/logout`, { method: "POST", credentials: "include" })
+}
+
+/** Encerra TODAS as sessões da pessoa, inclusive esta (outro computador esquecido aberto, suspeita de uso do acesso). */
+export async function logoutEverywhere(): Promise<void> {
+  const response = await fetch(`${API_URL}/api/v1/auth/logout-all`, { method: "POST", credentials: "include" })
+  if (!response.ok && response.status !== 401) throw new Error("Não foi possível encerrar as outras sessões. Tente novamente.")
+}
+
+/** Aviso de interação na tela: mantém viva a sessão de quem está usando a INIA (as leituras automáticas não contam). */
+export async function reportSessionActivity(): Promise<"ok" | "ended"> {
+  const response = await fetch(`${API_URL}/api/v1/auth/activity`, { method: "POST", credentials: "include", cache: "no-store" })
+  return response.status === 401 ? "ended" : "ok"
 }
 
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {

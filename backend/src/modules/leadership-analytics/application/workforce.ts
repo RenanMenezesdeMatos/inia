@@ -1,6 +1,6 @@
 import type { PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
 import type { ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
-import { MINIMUM_SENSITIVE_AGGREGATE_POPULATION, SENSITIVE_LEAVE_STATUSES } from "../../org-structure/domain/management-metrics.js"
+import { MINIMUM_SENSITIVE_AGGREGATE_POPULATION, sensitiveBreakdownAllowed, SENSITIVE_LEAVE_STATUSES } from "../../org-structure/domain/management-metrics.js"
 import { EMPLOYMENT_STATUS_LABELS, toCanonicalEmploymentStatus, type EmploymentStatus } from "../../people/domain/employment-status.js"
 import { ROLE_LABELS } from "../../performance-analytics/domain/hierarchy-levels.js"
 import type { PlatformRole } from "../../auth/infrastructure/jwt.js"
@@ -59,7 +59,7 @@ export async function buildWorkforce(
   if (input.freshness?.state === "STALE") limitations.push(`A fonte de situação funcional está atrasada (última carga em ${input.freshness.lastSuccessLocalDate ?? "data desconhecida"}): quem não tem período informado aparece como em produção presumida.`)
   const methods = [
     "Situação = período vigente na data (férias, INSS, maternidade…); sem período informado, em produção presumida. Situação funcional nunca tira a pessoa da estrutura.",
-    `% = pessoas na situação ÷ pessoas do recorte. Afastamentos sensíveis (INSS, maternidade, paternidade) só aparecem separados em recortes com ao menos ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas e nunca por nome.`,
+    `% = pessoas na situação ÷ pessoas do recorte. Afastamentos sensíveis (INSS, maternidade, paternidade) só aparecem separados em recortes com ao menos ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas e quando a contagem não aponta ninguém (dois tipos ou mais, com 2+ pessoas cada); nunca por nome.`,
     input.includeLeaders ? "População: todas as pessoas ativas abaixo da estrutura (operadores e líderes)." : "População: operadores ativos da estrutura.",
   ]
   const wanted = input.statuses && input.statuses.length > 0 ? new Set(input.statuses) : null
@@ -91,7 +91,7 @@ export async function buildWorkforce(
   for (const group of groups) {
     const members = group.key === "structure" ? population : groupMembers(group.members)
     const counts = new Map<EmploymentStatus | "AFASTAMENTO", number>()
-    const suppressed = members.length < MINIMUM_SENSITIVE_AGGREGATE_POPULATION
+    const suppressed = !sensitiveBreakdownAllowed(members.length, members.map(statusOf))
     const add = (key: EmploymentStatus | "AFASTAMENTO") => counts.set(key, (counts.get(key) ?? 0) + 1)
     for (const person of members) {
       const status = statusOf(person)

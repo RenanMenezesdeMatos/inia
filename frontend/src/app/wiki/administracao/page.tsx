@@ -14,6 +14,7 @@ const TOC: WikiTocEntry[] = [
   { id: "areas", label: "As áreas do Admin" },
   { id: "governanca", label: "Governança" },
   { id: "usuarios", label: "Usuários e acessos" },
+  { id: "contestacoes", label: "Contestações de feedback" },
   { id: "ordem", label: "Em que ordem configurar" },
 ]
 
@@ -32,6 +33,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Automação", area: "Workflows", configures: "Criação, editor (canvas, Configurações do workflow, Salvar rascunho, Publicar), Execuções.", href: "/wiki/workflows/criacao" },
   { menu: "Automação", area: "Políticas de acompanhamento", configures: "Tipos de intervenção (capacidades, responsável, prazo, evidências, aprovação, formulário, conclusão, incompatíveis), competências (diagnóstico → conteúdo aprovado → atividades) e políticas versionadas (regras com prioridade, condições, ações, dados insuficientes, simulação, publicação com vigência, auditoria e reavaliação).", href: "/wiki/administracao/politicas-de-acompanhamento" },
   { menu: "Automação", area: "QA Lab", configures: "Simulação de Workflows, Agents e Orchestrators; Histórico de QA; Feedbacks (QA de feedback). Só com o papel Administrador geral (Feedbacks: papel QA de feedback).", href: "/wiki/qa-lab" },
+  { menu: "Monitoramento", area: "Contestações de feedback", configures: "Fila das avaliações “não foi útil” dos colaboradores do escopo (motivo + descrição), o que a INIA disse no feedback e a resposta (Contestação procedente, Procedente em parte, Feedback mantido + texto). Papel Revisor de contestações de feedback (ou Administrador geral).", href: "#contestacoes" },
   { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
 ]
 
@@ -151,6 +153,28 @@ export default function AdministrationPage() {
           invalida a senha atual e <strong className="font-medium text-foreground">Desabilitar</strong> impede o login; as duas encerram as sessões
           abertas da pessoa. Ninguém altera o próprio acesso, e só altera o acesso de alguém quem poderia conceder todos os papéis dessa pessoa. Depois
           de 5 tentativas de login erradas em 15 minutos, o e-mail fica bloqueado por alguns minutos. Toda ação fica auditada, sem a senha.
+        </p>
+        <p>
+          A sessão termina em até 12 horas depois do login e também <strong className="font-medium text-foreground">depois de 30 minutos parada</strong>{" "}
+          (sem clique, tecla ou ação na tela — leituras automáticas como o sino não contam; o tempo é ajustável na instalação). Dois minutos antes, a
+          tela avisa e oferece <em>Continuar conectado</em>. No menu da pessoa, <strong className="font-medium text-foreground">Sair de todos os
+          aparelhos</strong> encerra todas as sessões dela, inclusive a atual — para um computador esquecido aberto ou suspeita de uso do acesso.
+        </p>
+      </WikiSection>
+
+      <WikiSection id="contestacoes" title="Contestações de feedback" eyebrow="Revisão humana do que a IA escreveu">
+        <p>
+          No Acompanhamento, o colaborador pode marcar um feedback da INIA como <em>não foi útil</em>, escolher o motivo (ex.: não condiz com o que
+          aconteceu, processo citado errado) e descrever o problema. Isso é uma <strong className="font-medium text-foreground">contestação</strong>:
+          quem tem o papel <strong className="font-medium text-foreground">Revisor de contestações de feedback</strong> no escopo do colaborador (ou o
+          Administrador geral) recebe um aviso no sino e responde em Administração › Contestações de feedback, vendo lado a lado o que o colaborador
+          escreveu e o que a INIA disse.
+        </p>
+        <p>
+          A resposta tem uma conclusão — <em>Contestação procedente</em>, <em>Procedente em parte</em> ou <em>Feedback mantido</em> — e um texto. O
+          colaborador recebe um aviso e lê a resposta no próprio feedback (<em>Ver resposta</em>). Responder não altera nem retira o feedback; cada
+          contestação é respondida uma vez e a resposta fica auditada com o nome de quem respondeu. Ninguém revisa a própria contestação. É a revisão
+          humana prevista na LGPD (art. 20) para avaliações feitas por máquina.
         </p>
       </WikiSection>
 

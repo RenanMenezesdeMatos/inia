@@ -35,6 +35,7 @@ import {
   updateFeed,
   updateSource,
   type FeedInput,
+  type PushTokenInput,
   type RunListParams,
   type SourceInput,
 } from "@/services/admin/data-hub-service"
@@ -136,7 +137,7 @@ export function useRotateSecretsMutation() {
 }
 
 export function useCreatePushTokenMutation() {
-  return useAdminMutation({ mutationFn: ({ sourceId, label, feedId }: { sourceId: string; label: string; feedId?: string | null }) => createPushToken(sourceId, { label, feedId: feedId ?? null }), invalidateKey: adminQueryKeys.dataHub() })
+  return useAdminMutation({ mutationFn: ({ sourceId, ...input }: { sourceId: string } & PushTokenInput) => createPushToken(sourceId, { ...input, feedId: input.feedId ?? null }), invalidateKey: adminQueryKeys.dataHub() })
 }
 
 export function useRevokePushTokenMutation() {

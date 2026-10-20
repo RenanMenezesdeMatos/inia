@@ -53,6 +53,40 @@ describe("fetchTextReply — cartões de dados da liderança", () => {
   })
 })
 
+describe("fetchTextReply — esclarecimento pelas bases", () => {
+  // Estado fictício (base de teste).
+  const view = {
+    version: "KNOWLEDGE_CLARIFICATION_V1",
+    id: "11111111-1111-4111-8111-111111111111",
+    originalQuestion: "Pergunta?",
+    status: "OPEN",
+    steps: [{ id: "step_1_aaaaaaaa", dimension: "Dimensão", question: "Qual cenário?", selectionMode: "SINGLE", options: ["A", "B"].map((label, index) => ({ id: `opt_00000000${index}${index}`, label, description: null, group: null, evidence: [{ documentId: `kb-${index}`, documentTitle: `Base ${index}`, versionId: "v1", heading: "1. Seção", chunkIndex: 0, available: true }] })), answer: null }],
+    questionFacts: [],
+    coverage: { consideredDocuments: 2, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true },
+    sources: [],
+    conflicts: [],
+    notice: null,
+    updatedAt: "2026-10-20T12:00:00.000Z",
+    scenario: [],
+  }
+
+  it("envia a escolha estruturada junto do texto legível e lê o estado validado do evento knowledge_clarification", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "Qual cenário?" })}\n\nevent: persisted\ndata: ${JSON.stringify({ interactionId: "int-c" })}\n\nevent: knowledge_clarification\ndata: ${JSON.stringify({ interactionId: "int-c", clarification: view })}\n\nevent: done\ndata: {}\n\n`))
+    const choice = { clarificationId: view.id, stepId: "step_1_aaaaaaaa", optionIds: ["opt_0000000000"], noneMatched: false, revise: false }
+    const reply = await fetchTextReply({ ...MESSAGE("A"), clarification: choice }, () => {})
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toMatchObject({ text: "A", clarification: choice })
+    expect(reply.clarification).toMatchObject({ id: view.id, status: "OPEN" })
+    expect(reply.interactionId).toBe("int-c")
+  })
+
+  it("estado fora do formato esperado é ignorado (a resposta aparece sem formulário)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "Qual cenário?" })}\n\nevent: knowledge_clarification\ndata: ${JSON.stringify({ interactionId: "int-c", clarification: { id: "x" } })}\n\nevent: done\ndata: {}\n\n`))
+    const reply = await fetchTextReply(MESSAGE("pergunta"), () => {})
+    expect(reply.clarification).toBeUndefined()
+    expect(reply.text).toBe("Qual cenário?")
+  })
+})
+
 describe("fetchTextReply — conversa", () => {
   it("envia só a mensagem nova + a conversa exibida (nenhum histórico sai do navegador) e avisa a conversa antes do texto", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: {"text":"ok"}\n\nevent: done\ndata: {}\n\n`))

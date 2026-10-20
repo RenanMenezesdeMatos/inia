@@ -48,6 +48,8 @@ export const DATABASE_TLS_LABELS: Record<DatabaseTlsMode, string> = {
   VERIFY_FULL: "Obrigatória e validando o certificado",
 }
 export const DEFAULT_TLS_MODE: Record<DatabaseEngine, DatabaseTlsMode> = { SQLSERVER: "REQUIRED", POSTGRESQL: "PREFERRED", MARIADB: "PREFERRED", MYSQL: "PREFERRED" }
+/** Banco NOVO nasce validando o certificado (auditoria de segurança 17/10/2026, DATA-5); `DEFAULT_TLS_MODE` fica para fontes antigas sem o campo. */
+export const NEW_SOURCE_TLS_MODE: DatabaseTlsMode = "VERIFY_FULL"
 export function supportedTlsModes(engine: DatabaseEngine): DatabaseTlsMode[] {
   return engine === "SQLSERVER" ? ["DISABLED", "REQUIRED", "VERIFY_FULL"] : [...DATABASE_TLS_MODES]
 }
@@ -289,12 +291,27 @@ export const sourceSummarySchema = sourceSchema.extend({
 })
 export type SourceSummary = z.infer<typeof sourceSummarySchema>
 
-export const pushTokenSchema = z.object({ id: z.string(), label: z.string(), tokenPrefix: z.string(), feedId: z.string().nullable(), createdAt: z.string(), lastUsedAt: z.string().nullable(), revokedAt: z.string().nullable(), token: z.string().optional() })
+export const pushTokenSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  tokenPrefix: z.string(),
+  feedId: z.string().nullable(),
+  createdAt: z.string(),
+  lastUsedAt: z.string().nullable(),
+  revokedAt: z.string().nullable(),
+  /** Depois desta data o token é recusado. `null` = sem validade. */
+  expiresAt: z.string().nullable().default(null),
+  /** IPs/redes de onde o token é aceito. `null` = qualquer origem. */
+  allowedNetworks: z.array(z.string()).nullable().default(null),
+  token: z.string().optional(),
+})
 export type PushToken = z.infer<typeof pushTokenSchema>
 
 export const sourceDetailSchema = sourceSummarySchema.extend({
   secrets: z.array(z.object({ purpose: z.string(), createdAt: z.string(), rotatedAt: z.string().nullable() })),
   tokens: z.array(pushTokenSchema),
+  /** API Pull com credencial por http:// — a tela avisa enquanto estiver assim. */
+  transportWarning: z.string().nullable().default(null),
 })
 export type SourceDetail = z.infer<typeof sourceDetailSchema>
 

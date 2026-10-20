@@ -11,6 +11,17 @@ export const databaseSession = databaseSessionSettings({
   config: env,
 })
 
+/**
+ * Teto do LADO DA APLICAÇÃO para um comando (prova `database-outage-proof`): com o banco travado — rede cortada, servidor
+ * congelado — o `statement_timeout` do próprio banco não dispara e o comando esperaria pela conexão TCP (minutos), prendendo
+ * conexões do pool até esgotá-lo. Fica acima do maior limite do banco (o da carga em lote, que pode valer até no processo da
+ * API) para nunca cortar um comando que o banco ainda deixaria terminar. Sem limite no banco (scripts, testes) = sem teto.
+ */
+export const clientQueryTimeoutMs =
+  databaseSession.statementTimeoutMs > 0 && databaseSession.batchStatementTimeoutMs > 0
+    ? Math.max(databaseSession.statementTimeoutMs, databaseSession.batchStatementTimeoutMs) + 5_000
+    : 0
+
 // Os limites vão como parâmetros de abertura da conexão (0 = não enviado = sem limite no banco).
 export const pool = new pg.Pool({
   connectionString: env.activeDatabaseUrl,
@@ -19,6 +30,10 @@ export const pool = new pg.Pool({
   statement_timeout: databaseSession.statementTimeoutMs,
   idle_in_transaction_session_timeout: databaseSession.idleInTransactionTimeoutMs,
   application_name: databaseSession.applicationName,
+  ...(clientQueryTimeoutMs > 0 ? { query_timeout: clientQueryTimeoutMs } : {}),
+  // Conexão ociosa com o outro lado sumido (failover, rede) é percebida pelo sistema operacional em segundos, não em horas.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10_000,
 })
 
 // Conexão OCIOSA que cai (PostgreSQL reiniciado ou parado, rede) chega como evento "error" do pool. Sem este

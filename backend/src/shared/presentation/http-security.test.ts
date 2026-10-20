@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken"
 import request from "supertest"
 import { beforeAll, describe, expect, it } from "vitest"
-import { env, envSchema, parseAllowedOrigins } from "../../config/env.js"
+import { env, envSchema, parseAllowedOrigins, productionOriginProblems, productionSecretProblems } from "../../config/env.js"
 import type { Database } from "../../infrastructure/database/pool.js"
 import { createApp, parseTrustProxy } from "../../main/app.js"
 import { legacyAccessQuery } from "../../modules/access/testing/legacy-admin-fixture.js"
@@ -118,6 +118,19 @@ describe("sessão — logout revoga a sessão no servidor e o JWT só aceita HS2
     expect((await request(app).get("/api/v1/auth/me").set("Cookie", otherDevice)).status).toBe(200)
   })
 
+  it("login certo marca o navegador como dispositivo conhecido da conta (cookie httpOnly só para as rotas de login)", async () => {
+    const app = createApp(fakeDatabase().database)
+    const login = await request(app).post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+    const cookies = login.headers["set-cookie"] as unknown as string[]
+    expect(cookies[0]).toMatch(/^inia_session=/)
+    const device = cookies.find((cookie) => cookie.startsWith("inia_device="))!
+    expect(device).toMatch(/Path=\/api\/v1\/auth/)
+    expect(device).toMatch(/HttpOnly/)
+    // Mesmo navegador entrando de novo na mesma conta: o cookie não é trocado.
+    const again = await request(app).post("/api/v1/auth/login").set("Cookie", device.split(";")[0]!).send({ email: ACCOUNT.email, password: "Inia@123" })
+    expect((again.headers["set-cookie"] as unknown as string[]).some((cookie) => cookie.startsWith("inia_device="))).toBe(false)
+  })
+
   it("/me não devolve metadados do token (iat, exp, jti, versão de sessão)", async () => {
     const app = createApp(fakeDatabase().database)
     const me = await request(app).get("/api/v1/auth/me").set("Cookie", await loggedInCookie(app))
@@ -170,6 +183,13 @@ describe("limites de requisições", () => {
     expect((await attempt("203.0.113.11")).status).toBe(401)
   })
 
+  it("login: rajada PARALELA de e-mails diferentes não passa inteira pelo teto de recusas do IP (vaga reservada antes)", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIp: 3 } })
+    const statuses = (await Promise.all(Array.from({ length: 12 }, () => request(app).post("/api/v1/auth/login").set("X-Forwarded-For", "203.0.113.40").send({ email: `pessoa-${Math.random()}@inia.com`, password: "errada-123" })))).map((response) => response.status)
+    expect(statuses.filter((status) => status === 401)).toHaveLength(3)
+    expect(statuses.filter((status) => status === 429)).toHaveLength(9)
+  })
+
   it("login: cada e-mail tem o seu contador no mesmo IP (Citrix/NAT); logins certos não esgotam o teto de recusas do IP", async () => {
     const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIpAndEmail: 2, loginPerIp: 2 } })
     const attempt = (email: string, password: string) => request(app).post("/api/v1/auth/login").set("X-Forwarded-For", "203.0.113.20").send({ email, password })
@@ -204,7 +224,7 @@ describe("limites de requisições", () => {
   })
 
   it("loja indisponível: a requisição passa (o limite nunca derruba o produto) e o aviso vai para o log", async () => {
-    const failing = { consume: () => Promise.reject(new Error("banco fora")), check: () => Promise.reject(new Error("banco fora")), record: () => Promise.reject(new Error("banco fora")) }
+    const failing = { consume: () => Promise.reject(new Error("banco fora")), check: () => Promise.reject(new Error("banco fora")), record: () => Promise.reject(new Error("banco fora")), release: () => Promise.reject(new Error("banco fora")) }
     const app = createApp(fakeDatabase().database, { rateLimits: { loginPerIpAndEmail: 1, loginPerIp: 1 }, rateLimitStore: failing })
     const login = () => request(app).post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
     expect((await login()).status).toBe(200)
@@ -227,6 +247,62 @@ describe("limites de requisições", () => {
     expect((await send()).status).not.toBe(429)
     expect((await send()).status).not.toBe(429)
     expect((await send()).status).toBe(429)
+  })
+
+  it("limites por caminho não se contornam com maiúsculas nem barra final (o Express casa a mesma rota)", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { adminCostlyActionsPerAccount: 1, voiceSessionsPerAccount: 1, aiInteractivePerAccount: 1000 } })
+    const cookie = await loggedInCookie(app)
+    const agentId = "22222222-2222-4222-8222-222222222222"
+    expect((await request(app).post(`/api/v1/admin/agents/${agentId}/test`).set("Cookie", cookie).send({})).status).not.toBe(429)
+    for (const variant of [`/api/v1/admin/agents/${agentId}/TEST`, `/api/v1/admin/agents/${agentId}/test/`, `/API/V1/ADMIN/AGENTS/${agentId}/Test`]) {
+      expect((await request(app).post(variant).set("Cookie", cookie).send({})).status).toBe(429)
+    }
+    expect((await request(app).post("/api/v1/realtime/sessions").set("Cookie", cookie).send({})).status).not.toBe(429)
+    expect((await request(app).post("/api/v1/realtime/SESSIONS/").set("Cookie", cookie).send({})).status).toBe(429)
+  })
+
+  it("voz: além do teto por minuto, um teto de sessões por meia hora limita as sessões Live vivas da mesma conta", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { voiceSessionsPerAccount: 100, voiceSessionsPerAccountHalfHour: 2, aiInteractivePerAccount: 1000 } })
+    const cookie = await loggedInCookie(app)
+    const open = () => request(app).post("/api/v1/realtime/sessions").set("Cookie", cookie).send({})
+    expect((await open()).status).not.toBe(429)
+    expect((await open()).status).not.toBe(429)
+    const blocked = await open()
+    expect(blocked.status).toBe(429)
+    expect(blocked.body.error.message).toContain("meia hora")
+  })
+
+  it("reports: nova tentativa da análise de IA e \"Executar agora\" entram no teto das ações caras por conta", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { adminCostlyActionsPerAccount: 2 } })
+    const cookie = await loggedInCookie(app)
+    const delivery = "44444444-4444-4444-8444-444444444444"
+    const retry = () => request(app).post(`/api/v1/reports/deliveries/${delivery}/analysis/retry`).set("Cookie", cookie).send({})
+    expect((await retry()).status).not.toBe(429)
+    expect((await request(app).post(`/api/v1/reports/${delivery}/run`).set("Cookie", cookie).send({})).status).not.toBe(429)
+    expect((await retry()).status).toBe(429)
+  })
+
+  it("áudio de recado/apresentação conta no teto de IA por conta mesmo com o caminho em maiúsculas", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { aiInteractivePerAccount: 1 } })
+    const cookie = await loggedInCookie(app)
+    const deliveryId = "33333333-3333-4333-8333-333333333333"
+    expect((await request(app).get(`/api/v1/inia-deliveries/avatar/${deliveryId}/audio`).set("Cookie", cookie)).status).not.toBe(429)
+    expect((await request(app).get(`/api/v1/inia-deliveries/Avatar/${deliveryId}/AUDIO/`).set("Cookie", cookie)).status).toBe(429)
+  })
+
+  it("primeiro acesso: o teto é por sessão (centenas de pessoas atrás do mesmo IP criam a senha); sem cookie não gasta o de ninguém", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { firstPasswordPerSession: 2, firstPasswordPerIp: 1000 } })
+    const first = await loggedInCookie(app)
+    const second = await loggedInCookie(app)
+    const create = (cookie?: string) => {
+      const call = request(app).post("/api/v1/auth/password").set("X-Forwarded-For", "203.0.113.50")
+      return (cookie ? call.set("Cookie", cookie) : call).send({ newPassword: "Nova-Senha-2026", confirmPassword: "Nova-Senha-2026" })
+    }
+    for (let index = 0; index < 5; index += 1) expect((await create()).status).not.toBe(429)
+    expect((await create(first)).status).not.toBe(429)
+    expect((await create(first)).status).not.toBe(429)
+    expect((await create(first)).status).toBe(429)
+    expect((await create(second)).status).not.toBe(429)
   })
 
   it("API Push: requisições recusadas por IP esgotam o limite de falhas", async () => {
@@ -275,7 +351,34 @@ describe("entrada inválida e cabeçalhos", () => {
     expect(parseTrustProxy("1")).toBe(1)
     expect(parseTrustProxy("loopback, 10.0.0.0/8")).toBe("loopback, 10.0.0.0/8")
     expect(envSchema.shape.TRUST_PROXY.safeParse("true").success).toBe(false)
+    for (const everyone of ["0.0.0.0/0", "loopback, ::/0", " 0.0.0.0/0 "]) expect(envSchema.shape.TRUST_PROXY.safeParse(everyone).success, everyone).toBe(false)
+    expect(envSchema.shape.TRUST_PROXY.safeParse("loopback, 10.20.0.0/16").success).toBe(true)
     expect(envSchema.shape.TRUST_PROXY.parse(undefined)).toBe("loopback")
     expect(envSchema.shape.SESSION_COOKIE_SECURE.parse(undefined)).toBe("auto")
+  })
+
+  it("segredos de produção: valor de exemplo/curto/repetitivo do JWT recusa a subida; chave de cifra fraca só avisa", () => {
+    const generated = { JWT_SECRET: "9f".repeat(4) + "0123456789abcdef".repeat(5), DATA_HUB_SECRET_KEY: "ab12cd34".repeat(8) }
+    expect(productionSecretProblems({ NODE_ENV: "production", ...generated })).toEqual({ fatal: [], warnings: [] })
+    expect(productionSecretProblems({ NODE_ENV: "development", JWT_SECRET: "inia-dev-secret-change-me", DATA_HUB_SECRET_KEY: undefined }).fatal).toEqual([])
+    for (const JWT_SECRET of ["troque-por-um-valor-aleatorio-longo", "inia-dev-secret-change-me", "curto-demais", "a".repeat(64), "abababababababababababababababab12"]) {
+      expect(productionSecretProblems({ NODE_ENV: "production", JWT_SECRET, DATA_HUB_SECRET_KEY: generated.DATA_HUB_SECRET_KEY }).fatal, JWT_SECRET).toHaveLength(1)
+    }
+    expect(productionSecretProblems({ NODE_ENV: "production", JWT_SECRET: generated.JWT_SECRET, DATA_HUB_SECRET_KEY: undefined }).fatal).toHaveLength(1)
+    const weakKey = productionSecretProblems({ NODE_ENV: "production", JWT_SECRET: generated.JWT_SECRET, DATA_HUB_SECRET_KEY: "inia" })
+    expect(weakKey.fatal).toEqual([])
+    expect(weakKey.warnings).toHaveLength(1)
+  })
+
+  it("origens em produção (R-33): sem CORS_ORIGIN, com curinga ou com caminho a API não sobe; fora de produção vale o padrão de desenvolvimento", () => {
+    expect(productionOriginProblems({ NODE_ENV: "development", CORS_ORIGIN: undefined })).toEqual([])
+    expect(productionOriginProblems({ NODE_ENV: "production", CORS_ORIGIN: undefined })).toHaveLength(1)
+    for (const valid of ["https://inia.empresa.com.br", "https://inia.empresa.com.br/", "http://10.0.0.5:8080", "https://a.empresa.com, https://b.empresa.com"]) {
+      expect(productionOriginProblems({ NODE_ENV: "production", CORS_ORIGIN: valid }), valid).toEqual([])
+    }
+    for (const invalid of ["*", "https://*.empresa.com", "https://inia.empresa.com/app", "inia.empresa.com", "ftp://inia.empresa.com", "https://ok.empresa.com, *"]) {
+      expect(productionOriginProblems({ NODE_ENV: "production", CORS_ORIGIN: invalid }), invalid).toHaveLength(1)
+    }
+    expect(envSchema.shape.SESSION_IDLE_TIMEOUT_MINUTES.parse(undefined)).toBe(30)
   })
 })

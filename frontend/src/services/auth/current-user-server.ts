@@ -2,7 +2,8 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { currentUserSchema, type CurrentUser } from "@/schemas/auth/auth.schema"
-import { CREATE_PASSWORD_ROUTE, SESSION_COOKIE_NAME } from "@/services/auth/auth-service"
+import { readSessionCookie, sessionCookieHeader } from "@/lib/auth/session-cookie"
+import { CREATE_PASSWORD_ROUTE } from "@/services/auth/auth-service"
 
 const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
 
@@ -12,11 +13,12 @@ const API_URL = process.env.INIA_API_URL ?? process.env.NEXT_PUBLIC_INIA_API_URL
  */
 export async function getCurrentUserFromCookies(options: { allowPasswordChangePending?: boolean } = {}): Promise<CurrentUser | null> {
   const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
+  const session = readSessionCookie(cookieStore)
+  const token = session?.value
   if (!token) return null
 
   const response = await fetch(`${API_URL}/api/v1/auth/me`, {
-    headers: { cookie: `${SESSION_COOKIE_NAME}=${token}` },
+    headers: { cookie: sessionCookieHeader(session) },
     cache: "no-store",
   })
   if (!response.ok) return null

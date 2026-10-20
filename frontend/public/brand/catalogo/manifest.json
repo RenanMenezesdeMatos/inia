@@ -1,0 +1,674 @@
+[
+  {
+    "id": "A1",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "A1-inicial-livre",
+    "path": "opcoes/A-inicial/A1-inicial-livre",
+    "files": {
+      "svg": "opcoes/A-inicial/A1-inicial-livre.svg",
+      "png": "opcoes/A-inicial/A1-inicial-livre.png",
+      "ico": "opcoes/A-inicial/A1-inicial-livre.ico"
+    }
+  },
+  {
+    "id": "A2",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "A2-inicial-reto",
+    "path": "opcoes/A-inicial/A2-inicial-reto",
+    "files": {
+      "svg": "opcoes/A-inicial/A2-inicial-reto.svg",
+      "png": "opcoes/A-inicial/A2-inicial-reto.png",
+      "ico": "opcoes/A-inicial/A2-inicial-reto.ico"
+    }
+  },
+  {
+    "id": "A3",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "A3-inicial-suave",
+    "path": "opcoes/A-inicial/A3-inicial-suave",
+    "files": {
+      "svg": "opcoes/A-inicial/A3-inicial-suave.svg",
+      "png": "opcoes/A-inicial/A3-inicial-suave.png",
+      "ico": "opcoes/A-inicial/A3-inicial-suave.ico"
+    }
+  },
+  {
+    "id": "A4",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "A4-inicial-organico",
+    "path": "opcoes/A-inicial/A4-inicial-organico",
+    "files": {
+      "svg": "opcoes/A-inicial/A4-inicial-organico.svg",
+      "png": "opcoes/A-inicial/A4-inicial-organico.png",
+      "ico": "opcoes/A-inicial/A4-inicial-organico.ico"
+    }
+  },
+  {
+    "id": "A5",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "A5-inicial-circular",
+    "path": "opcoes/A-inicial/A5-inicial-circular",
+    "files": {
+      "svg": "opcoes/A-inicial/A5-inicial-circular.svg",
+      "png": "opcoes/A-inicial/A5-inicial-circular.png",
+      "ico": "opcoes/A-inicial/A5-inicial-circular.ico"
+    }
+  },
+  {
+    "id": "A6",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "A6-inicial-borda-fina",
+    "path": "opcoes/A-inicial/A6-inicial-borda-fina",
+    "files": {
+      "svg": "opcoes/A-inicial/A6-inicial-borda-fina.svg",
+      "png": "opcoes/A-inicial/A6-inicial-borda-fina.png",
+      "ico": "opcoes/A-inicial/A6-inicial-borda-fina.ico"
+    }
+  },
+  {
+    "id": "A7",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "A7-inicial-borda-larga",
+    "path": "opcoes/A-inicial/A7-inicial-borda-larga",
+    "files": {
+      "svg": "opcoes/A-inicial/A7-inicial-borda-larga.svg",
+      "png": "opcoes/A-inicial/A7-inicial-borda-larga.png",
+      "ico": "opcoes/A-inicial/A7-inicial-borda-larga.ico"
+    }
+  },
+  {
+    "id": "A8",
+    "concept": "Inicial",
+    "conceptSlug": "inicial",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "A8-inicial-borda-dupla",
+    "path": "opcoes/A-inicial/A8-inicial-borda-dupla",
+    "files": {
+      "svg": "opcoes/A-inicial/A8-inicial-borda-dupla.svg",
+      "png": "opcoes/A-inicial/A8-inicial-borda-dupla.png",
+      "ico": "opcoes/A-inicial/A8-inicial-borda-dupla.ico"
+    }
+  },
+  {
+    "id": "B1",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "B1-monograma-livre",
+    "path": "opcoes/B-monograma/B1-monograma-livre",
+    "files": {
+      "svg": "opcoes/B-monograma/B1-monograma-livre.svg",
+      "png": "opcoes/B-monograma/B1-monograma-livre.png",
+      "ico": "opcoes/B-monograma/B1-monograma-livre.ico"
+    }
+  },
+  {
+    "id": "B2",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "B2-monograma-reto",
+    "path": "opcoes/B-monograma/B2-monograma-reto",
+    "files": {
+      "svg": "opcoes/B-monograma/B2-monograma-reto.svg",
+      "png": "opcoes/B-monograma/B2-monograma-reto.png",
+      "ico": "opcoes/B-monograma/B2-monograma-reto.ico"
+    }
+  },
+  {
+    "id": "B3",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "B3-monograma-suave",
+    "path": "opcoes/B-monograma/B3-monograma-suave",
+    "files": {
+      "svg": "opcoes/B-monograma/B3-monograma-suave.svg",
+      "png": "opcoes/B-monograma/B3-monograma-suave.png",
+      "ico": "opcoes/B-monograma/B3-monograma-suave.ico"
+    }
+  },
+  {
+    "id": "B4",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "B4-monograma-organico",
+    "path": "opcoes/B-monograma/B4-monograma-organico",
+    "files": {
+      "svg": "opcoes/B-monograma/B4-monograma-organico.svg",
+      "png": "opcoes/B-monograma/B4-monograma-organico.png",
+      "ico": "opcoes/B-monograma/B4-monograma-organico.ico"
+    }
+  },
+  {
+    "id": "B5",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "B5-monograma-circular",
+    "path": "opcoes/B-monograma/B5-monograma-circular",
+    "files": {
+      "svg": "opcoes/B-monograma/B5-monograma-circular.svg",
+      "png": "opcoes/B-monograma/B5-monograma-circular.png",
+      "ico": "opcoes/B-monograma/B5-monograma-circular.ico"
+    }
+  },
+  {
+    "id": "B6",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "B6-monograma-borda-fina",
+    "path": "opcoes/B-monograma/B6-monograma-borda-fina",
+    "files": {
+      "svg": "opcoes/B-monograma/B6-monograma-borda-fina.svg",
+      "png": "opcoes/B-monograma/B6-monograma-borda-fina.png",
+      "ico": "opcoes/B-monograma/B6-monograma-borda-fina.ico"
+    }
+  },
+  {
+    "id": "B7",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "B7-monograma-borda-larga",
+    "path": "opcoes/B-monograma/B7-monograma-borda-larga",
+    "files": {
+      "svg": "opcoes/B-monograma/B7-monograma-borda-larga.svg",
+      "png": "opcoes/B-monograma/B7-monograma-borda-larga.png",
+      "ico": "opcoes/B-monograma/B7-monograma-borda-larga.ico"
+    }
+  },
+  {
+    "id": "B8",
+    "concept": "Monograma IN",
+    "conceptSlug": "monograma",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "B8-monograma-borda-dupla",
+    "path": "opcoes/B-monograma/B8-monograma-borda-dupla",
+    "files": {
+      "svg": "opcoes/B-monograma/B8-monograma-borda-dupla.svg",
+      "png": "opcoes/B-monograma/B8-monograma-borda-dupla.png",
+      "ico": "opcoes/B-monograma/B8-monograma-borda-dupla.ico"
+    }
+  },
+  {
+    "id": "C1",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "C1-conversa-livre",
+    "path": "opcoes/C-conversa/C1-conversa-livre",
+    "files": {
+      "svg": "opcoes/C-conversa/C1-conversa-livre.svg",
+      "png": "opcoes/C-conversa/C1-conversa-livre.png",
+      "ico": "opcoes/C-conversa/C1-conversa-livre.ico"
+    }
+  },
+  {
+    "id": "C2",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "C2-conversa-reto",
+    "path": "opcoes/C-conversa/C2-conversa-reto",
+    "files": {
+      "svg": "opcoes/C-conversa/C2-conversa-reto.svg",
+      "png": "opcoes/C-conversa/C2-conversa-reto.png",
+      "ico": "opcoes/C-conversa/C2-conversa-reto.ico"
+    }
+  },
+  {
+    "id": "C3",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "C3-conversa-suave",
+    "path": "opcoes/C-conversa/C3-conversa-suave",
+    "files": {
+      "svg": "opcoes/C-conversa/C3-conversa-suave.svg",
+      "png": "opcoes/C-conversa/C3-conversa-suave.png",
+      "ico": "opcoes/C-conversa/C3-conversa-suave.ico"
+    }
+  },
+  {
+    "id": "C4",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "C4-conversa-organico",
+    "path": "opcoes/C-conversa/C4-conversa-organico",
+    "files": {
+      "svg": "opcoes/C-conversa/C4-conversa-organico.svg",
+      "png": "opcoes/C-conversa/C4-conversa-organico.png",
+      "ico": "opcoes/C-conversa/C4-conversa-organico.ico"
+    }
+  },
+  {
+    "id": "C5",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "C5-conversa-circular",
+    "path": "opcoes/C-conversa/C5-conversa-circular",
+    "files": {
+      "svg": "opcoes/C-conversa/C5-conversa-circular.svg",
+      "png": "opcoes/C-conversa/C5-conversa-circular.png",
+      "ico": "opcoes/C-conversa/C5-conversa-circular.ico"
+    }
+  },
+  {
+    "id": "C6",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "C6-conversa-borda-fina",
+    "path": "opcoes/C-conversa/C6-conversa-borda-fina",
+    "files": {
+      "svg": "opcoes/C-conversa/C6-conversa-borda-fina.svg",
+      "png": "opcoes/C-conversa/C6-conversa-borda-fina.png",
+      "ico": "opcoes/C-conversa/C6-conversa-borda-fina.ico"
+    }
+  },
+  {
+    "id": "C7",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "C7-conversa-borda-larga",
+    "path": "opcoes/C-conversa/C7-conversa-borda-larga",
+    "files": {
+      "svg": "opcoes/C-conversa/C7-conversa-borda-larga.svg",
+      "png": "opcoes/C-conversa/C7-conversa-borda-larga.png",
+      "ico": "opcoes/C-conversa/C7-conversa-borda-larga.ico"
+    }
+  },
+  {
+    "id": "C8",
+    "concept": "Conversa",
+    "conceptSlug": "conversa",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "C8-conversa-borda-dupla",
+    "path": "opcoes/C-conversa/C8-conversa-borda-dupla",
+    "files": {
+      "svg": "opcoes/C-conversa/C8-conversa-borda-dupla.svg",
+      "png": "opcoes/C-conversa/C8-conversa-borda-dupla.png",
+      "ico": "opcoes/C-conversa/C8-conversa-borda-dupla.ico"
+    }
+  },
+  {
+    "id": "D1",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "D1-conexao-livre",
+    "path": "opcoes/D-conexao/D1-conexao-livre",
+    "files": {
+      "svg": "opcoes/D-conexao/D1-conexao-livre.svg",
+      "png": "opcoes/D-conexao/D1-conexao-livre.png",
+      "ico": "opcoes/D-conexao/D1-conexao-livre.ico"
+    }
+  },
+  {
+    "id": "D2",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "D2-conexao-reto",
+    "path": "opcoes/D-conexao/D2-conexao-reto",
+    "files": {
+      "svg": "opcoes/D-conexao/D2-conexao-reto.svg",
+      "png": "opcoes/D-conexao/D2-conexao-reto.png",
+      "ico": "opcoes/D-conexao/D2-conexao-reto.ico"
+    }
+  },
+  {
+    "id": "D3",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "D3-conexao-suave",
+    "path": "opcoes/D-conexao/D3-conexao-suave",
+    "files": {
+      "svg": "opcoes/D-conexao/D3-conexao-suave.svg",
+      "png": "opcoes/D-conexao/D3-conexao-suave.png",
+      "ico": "opcoes/D-conexao/D3-conexao-suave.ico"
+    }
+  },
+  {
+    "id": "D4",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "D4-conexao-organico",
+    "path": "opcoes/D-conexao/D4-conexao-organico",
+    "files": {
+      "svg": "opcoes/D-conexao/D4-conexao-organico.svg",
+      "png": "opcoes/D-conexao/D4-conexao-organico.png",
+      "ico": "opcoes/D-conexao/D4-conexao-organico.ico"
+    }
+  },
+  {
+    "id": "D5",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "D5-conexao-circular",
+    "path": "opcoes/D-conexao/D5-conexao-circular",
+    "files": {
+      "svg": "opcoes/D-conexao/D5-conexao-circular.svg",
+      "png": "opcoes/D-conexao/D5-conexao-circular.png",
+      "ico": "opcoes/D-conexao/D5-conexao-circular.ico"
+    }
+  },
+  {
+    "id": "D6",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "D6-conexao-borda-fina",
+    "path": "opcoes/D-conexao/D6-conexao-borda-fina",
+    "files": {
+      "svg": "opcoes/D-conexao/D6-conexao-borda-fina.svg",
+      "png": "opcoes/D-conexao/D6-conexao-borda-fina.png",
+      "ico": "opcoes/D-conexao/D6-conexao-borda-fina.ico"
+    }
+  },
+  {
+    "id": "D7",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "D7-conexao-borda-larga",
+    "path": "opcoes/D-conexao/D7-conexao-borda-larga",
+    "files": {
+      "svg": "opcoes/D-conexao/D7-conexao-borda-larga.svg",
+      "png": "opcoes/D-conexao/D7-conexao-borda-larga.png",
+      "ico": "opcoes/D-conexao/D7-conexao-borda-larga.ico"
+    }
+  },
+  {
+    "id": "D8",
+    "concept": "Conexão",
+    "conceptSlug": "conexao",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "D8-conexao-borda-dupla",
+    "path": "opcoes/D-conexao/D8-conexao-borda-dupla",
+    "files": {
+      "svg": "opcoes/D-conexao/D8-conexao-borda-dupla.svg",
+      "png": "opcoes/D-conexao/D8-conexao-borda-dupla.png",
+      "ico": "opcoes/D-conexao/D8-conexao-borda-dupla.ico"
+    }
+  },
+  {
+    "id": "E1",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "E1-centelha-livre",
+    "path": "opcoes/E-centelha/E1-centelha-livre",
+    "files": {
+      "svg": "opcoes/E-centelha/E1-centelha-livre.svg",
+      "png": "opcoes/E-centelha/E1-centelha-livre.png",
+      "ico": "opcoes/E-centelha/E1-centelha-livre.ico"
+    }
+  },
+  {
+    "id": "E2",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "E2-centelha-reto",
+    "path": "opcoes/E-centelha/E2-centelha-reto",
+    "files": {
+      "svg": "opcoes/E-centelha/E2-centelha-reto.svg",
+      "png": "opcoes/E-centelha/E2-centelha-reto.png",
+      "ico": "opcoes/E-centelha/E2-centelha-reto.ico"
+    }
+  },
+  {
+    "id": "E3",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "E3-centelha-suave",
+    "path": "opcoes/E-centelha/E3-centelha-suave",
+    "files": {
+      "svg": "opcoes/E-centelha/E3-centelha-suave.svg",
+      "png": "opcoes/E-centelha/E3-centelha-suave.png",
+      "ico": "opcoes/E-centelha/E3-centelha-suave.ico"
+    }
+  },
+  {
+    "id": "E4",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "E4-centelha-organico",
+    "path": "opcoes/E-centelha/E4-centelha-organico",
+    "files": {
+      "svg": "opcoes/E-centelha/E4-centelha-organico.svg",
+      "png": "opcoes/E-centelha/E4-centelha-organico.png",
+      "ico": "opcoes/E-centelha/E4-centelha-organico.ico"
+    }
+  },
+  {
+    "id": "E5",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "E5-centelha-circular",
+    "path": "opcoes/E-centelha/E5-centelha-circular",
+    "files": {
+      "svg": "opcoes/E-centelha/E5-centelha-circular.svg",
+      "png": "opcoes/E-centelha/E5-centelha-circular.png",
+      "ico": "opcoes/E-centelha/E5-centelha-circular.ico"
+    }
+  },
+  {
+    "id": "E6",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "E6-centelha-borda-fina",
+    "path": "opcoes/E-centelha/E6-centelha-borda-fina",
+    "files": {
+      "svg": "opcoes/E-centelha/E6-centelha-borda-fina.svg",
+      "png": "opcoes/E-centelha/E6-centelha-borda-fina.png",
+      "ico": "opcoes/E-centelha/E6-centelha-borda-fina.ico"
+    }
+  },
+  {
+    "id": "E7",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "E7-centelha-borda-larga",
+    "path": "opcoes/E-centelha/E7-centelha-borda-larga",
+    "files": {
+      "svg": "opcoes/E-centelha/E7-centelha-borda-larga.svg",
+      "png": "opcoes/E-centelha/E7-centelha-borda-larga.png",
+      "ico": "opcoes/E-centelha/E7-centelha-borda-larga.ico"
+    }
+  },
+  {
+    "id": "E8",
+    "concept": "Centelha",
+    "conceptSlug": "centelha",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "E8-centelha-borda-dupla",
+    "path": "opcoes/E-centelha/E8-centelha-borda-dupla",
+    "files": {
+      "svg": "opcoes/E-centelha/E8-centelha-borda-dupla.svg",
+      "png": "opcoes/E-centelha/E8-centelha-borda-dupla.png",
+      "ico": "opcoes/E-centelha/E8-centelha-borda-dupla.ico"
+    }
+  },
+  {
+    "id": "F1",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Livre",
+    "description": "Símbolo solto, fundo transparente",
+    "stem": "F1-rosto-ia-livre",
+    "path": "opcoes/F-rosto-ia/F1-rosto-ia-livre",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F1-rosto-ia-livre.svg",
+      "png": "opcoes/F-rosto-ia/F1-rosto-ia-livre.png",
+      "ico": "opcoes/F-rosto-ia/F1-rosto-ia-livre.ico"
+    }
+  },
+  {
+    "id": "F2",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Reto",
+    "description": "Cantos discretos, sem contorno",
+    "stem": "F2-rosto-ia-reto",
+    "path": "opcoes/F-rosto-ia/F2-rosto-ia-reto",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F2-rosto-ia-reto.svg",
+      "png": "opcoes/F-rosto-ia/F2-rosto-ia-reto.png",
+      "ico": "opcoes/F-rosto-ia/F2-rosto-ia-reto.ico"
+    }
+  },
+  {
+    "id": "F3",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Suave",
+    "description": "Cantos médios, sem contorno",
+    "stem": "F3-rosto-ia-suave",
+    "path": "opcoes/F-rosto-ia/F3-rosto-ia-suave",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F3-rosto-ia-suave.svg",
+      "png": "opcoes/F-rosto-ia/F3-rosto-ia-suave.png",
+      "ico": "opcoes/F-rosto-ia/F3-rosto-ia-suave.ico"
+    }
+  },
+  {
+    "id": "F4",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Orgânico",
+    "description": "Cantos bem arredondados, sem contorno",
+    "stem": "F4-rosto-ia-organico",
+    "path": "opcoes/F-rosto-ia/F4-rosto-ia-organico",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F4-rosto-ia-organico.svg",
+      "png": "opcoes/F-rosto-ia/F4-rosto-ia-organico.png",
+      "ico": "opcoes/F-rosto-ia/F4-rosto-ia-organico.ico"
+    }
+  },
+  {
+    "id": "F5",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Circular",
+    "description": "Fundo circular, sem contorno",
+    "stem": "F5-rosto-ia-circular",
+    "path": "opcoes/F-rosto-ia/F5-rosto-ia-circular",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F5-rosto-ia-circular.svg",
+      "png": "opcoes/F-rosto-ia/F5-rosto-ia-circular.png",
+      "ico": "opcoes/F-rosto-ia/F5-rosto-ia-circular.ico"
+    }
+  },
+  {
+    "id": "F6",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Borda fina",
+    "description": "Contorno rosa fino, centro branco",
+    "stem": "F6-rosto-ia-borda-fina",
+    "path": "opcoes/F-rosto-ia/F6-rosto-ia-borda-fina",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F6-rosto-ia-borda-fina.svg",
+      "png": "opcoes/F-rosto-ia/F6-rosto-ia-borda-fina.png",
+      "ico": "opcoes/F-rosto-ia/F6-rosto-ia-borda-fina.ico"
+    }
+  },
+  {
+    "id": "F7",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Borda larga",
+    "description": "Contorno rosa espesso, centro roxo",
+    "stem": "F7-rosto-ia-borda-larga",
+    "path": "opcoes/F-rosto-ia/F7-rosto-ia-borda-larga",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F7-rosto-ia-borda-larga.svg",
+      "png": "opcoes/F-rosto-ia/F7-rosto-ia-borda-larga.png",
+      "ico": "opcoes/F-rosto-ia/F7-rosto-ia-borda-larga.ico"
+    }
+  },
+  {
+    "id": "F8",
+    "concept": "Rosto + IA",
+    "conceptSlug": "rosto-ia",
+    "style": "Borda dupla",
+    "description": "Contornos rosa e branco, centro roxo",
+    "stem": "F8-rosto-ia-borda-dupla",
+    "path": "opcoes/F-rosto-ia/F8-rosto-ia-borda-dupla",
+    "files": {
+      "svg": "opcoes/F-rosto-ia/F8-rosto-ia-borda-dupla.svg",
+      "png": "opcoes/F-rosto-ia/F8-rosto-ia-borda-dupla.png",
+      "ico": "opcoes/F-rosto-ia/F8-rosto-ia-borda-dupla.ico"
+    }
+  }
+]

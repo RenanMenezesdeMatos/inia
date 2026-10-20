@@ -451,13 +451,99 @@ describe("OperatorIniaChat — conversas", () => {
     act(() => transport.events.onStateChange?.("thinking"))
     act(() => transport.events.onSpecialistResult?.("TMA 320 s", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }))
     expect(screen.getByText("TMA 320 s")).toBeInTheDocument()
-    expect(transport.events.getToolCallContext?.()).toMatchObject({ conversationId: CONV })
+    // A consulta da voz leva as palavras da pessoa (a transcrição ainda não fechada em balão também conta).
+    expect(transport.events.getToolCallContext?.()).toMatchObject({ conversationId: CONV, utterance: "qual meu TMA?" })
     act(() => transport.events.onOutputTranscript?.("Seu TMA é 320 segundos"))
     await act(async () => { transport.events.onTurnComplete?.() })
     expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: CONV, userText: "qual meu TMA?", assistantText: undefined }))
     expect(vi.mocked(transportModule.recordVoiceTurn).mock.calls[0]![0].userSpokenAt).toEqual(expect.any(String))
     // Só um balão de resposta (o do especialista); a transcrição falada não duplica.
     expect(screen.queryByText("Seu TMA é 320 segundos")).toBeNull()
+  })
+
+  it("voz com esclarecimento pelas bases: o formulário aparece na resposta falada e a escolha clicada segue pela VOZ (a INIA continua falando), estruturada", async () => {
+    const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
+    const asked = {
+      version: "KNOWLEDGE_CLARIFICATION_V1", id: "11111111-1111-4111-8111-111111111111", originalQuestion: "Quais documentos para a troca?", status: "OPEN" as const,
+      steps: [{ id: "step_1_aaaaaaaa", dimension: "Tipo de cliente", question: "Para qual tipo de cliente é a troca?", selectionMode: "SINGLE" as const, options: [{ id: "opt_000000000a", label: "Empresa", description: null, group: null, evidence: [source] }, { id: "opt_000000000b", label: "Residencial", description: null, group: null, evidence: [source] }], answer: null }],
+      questionFacts: [], coverage: { consideredDocuments: 2, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true }, sources: [], conflicts: [], notice: null, updatedAt: new Date().toISOString(), scenario: [],
+    }
+    vi.mocked(textClient.fetchTextReply).mockImplementationOnce(async (_input, onChunk) => {
+      onChunk("Contrato social [1].")
+      return { text: "Contrato social [1].", supportMaterials: [], interactionId: "i2", conversationId: CONV, persisted: true }
+    })
+    // A INIA com a voz LIGADA (este bloco começa no mudo).
+    setVoiceMuted(false)
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("quais documentos para a troca?"))
+    act(() => transport.events.onStateChange?.("thinking"))
+    act(() => transport.events.onSpecialistResult?.("Para qual tipo de cliente é a troca?\n\nOpções encontradas nas bases consultadas: Empresa · Residencial.", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }, undefined, { clarification: asked }))
+    // O balão mostra a pergunta; as opções são o formulário (o mesmo do chat de texto).
+    expect(screen.getAllByText("Para qual tipo de cliente é a troca?").length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Opções encontradas nas bases consultadas/)).toBeNull()
+    const form = await screen.findByTestId("clarification-form")
+    fireEvent.click(within(form).getByRole("radio", { name: /Empresa/ }))
+    // Enquanto a INIA PENSA, o formulário espera; enquanto ela FALA, escolher interrompe a fala (como falar por cima) e a escolha vira a
+    // resposta da pessoa na sessão de voz.
+    expect(within(form).getByRole("button", { name: "Continuar" })).toBeDisabled()
+    act(() => transport.events.onStateChange?.("speaking"))
+    fireEvent.click(within(screen.getByTestId("clarification-form")).getByRole("radio", { name: /Empresa/ }))
+    const textCalls = vi.mocked(textClient.fetchTextReply).mock.calls.length
+    await act(async () => { fireEvent.click(within(screen.getByTestId("clarification-form")).getByRole("button", { name: "Continuar" })) })
+    expect(transport.calls).toContain("interruptResponse")
+    await waitFor(() => expect(transport.calls).toContain("sendText:Empresa"))
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.length).toBe(textCalls)
+    // A escolha ESTRUTURADA vai junto da consulta que a voz faz em seguida (uma vez só), com as palavras da pessoa — o backend a aplica
+    // exatamente, nunca pela reescrita do modelo de voz.
+    expect(transport.events.getToolCallContext?.()).toMatchObject({ utterance: "Empresa", clarification: { clarificationId: asked.id, stepId: "step_1_aaaaaaaa", optionIds: ["opt_000000000a"], noneMatched: false, revise: false } })
+    expect(transport.events.getToolCallContext?.()).not.toHaveProperty("clarification")
+    // Com a INIA no mudo, a mesma escolha vai pelo caminho de texto, estruturada.
+    act(() => transport.events.onStateChange?.("idle"))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    // A consulta da voz levou a escolha: o fim do turno não a manda de novo pelo texto.
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.length).toBe(textCalls)
+    act(() => transport.events.onSpecialistResult?.("Para qual tipo de cliente é a troca?", [], { conversationId: CONV, created: false, closed: false, activeConversationId: null }, undefined, { clarification: asked }))
+    act(() => setVoiceMuted(true))
+    const forms = await screen.findAllByTestId("clarification-form")
+    const latest = forms.at(-1)!
+    fireEvent.click(within(latest).getByRole("radio", { name: /Empresa/ }))
+    await act(async () => { fireEvent.click(within(latest).getByRole("button", { name: "Continuar" })) })
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.at(-1)![0]).toMatchObject({ conversationId: CONV, text: "Empresa", clarification: { clarificationId: asked.id, stepId: "step_1_aaaaaaaa", optionIds: ["opt_000000000a"] } })
+  })
+
+  it("voz: escolha clicada que nenhuma consulta da voz levou (o modelo não acionou a ferramenta) segue pelo TEXTO no fim do turno, estruturada e gravada uma vez", async () => {
+    const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
+    const asked = {
+      version: "KNOWLEDGE_CLARIFICATION_V1", id: "22222222-2222-4222-8222-222222222222", originalQuestion: "Quais documentos para a troca?", status: "OPEN" as const,
+      steps: [{ id: "step_1_bbbbbbbb", dimension: "Tipo de cliente", question: "Para qual tipo de cliente é a troca?", selectionMode: "SINGLE" as const, options: [{ id: "opt_000000000c", label: "Empresa", description: null, group: null, evidence: [source] }, { id: "opt_000000000d", label: "Residencial", description: null, group: null, evidence: [source] }], answer: null }],
+      questionFacts: [], coverage: { consideredDocuments: 2, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true }, sources: [], conflicts: [], notice: null, updatedAt: new Date().toISOString(), scenario: [],
+    }
+    vi.mocked(textClient.fetchTextReply).mockImplementationOnce(async (_input, onChunk) => {
+      onChunk("Qual é a situação da troca entre empresas?")
+      return { text: "Qual é a situação da troca entre empresas?", supportMaterials: [], interactionId: "i3", conversationId: CONV, persisted: true }
+    })
+    setVoiceMuted(false)
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("quais documentos para a troca?"))
+    act(() => transport.events.onStateChange?.("thinking"))
+    act(() => transport.events.onSpecialistResult?.("Para qual tipo de cliente é a troca?", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }, undefined, { clarification: asked }))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    act(() => transport.events.onStateChange?.("listening"))
+    vi.mocked(transportModule.recordVoiceTurn).mockClear()
+    const textCalls = vi.mocked(textClient.fetchTextReply).mock.calls.length
+    const form = await screen.findByTestId("clarification-form")
+    fireEvent.click(within(form).getByRole("radio", { name: /Empresa/ }))
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Continuar" })) })
+    await waitFor(() => expect(transport.calls).toContain("sendText:Empresa"))
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.length).toBe(textCalls)
+    // O modelo de voz só falou (nenhuma consulta) e o turno terminou: a escolha segue pelo texto, exatamente como foi clicada.
+    act(() => transport.events.onOutputTranscript?.("Certo, empresa."))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    await waitFor(() => expect(vi.mocked(textClient.fetchTextReply).mock.calls.length).toBe(textCalls + 1))
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.at(-1)![0]).toMatchObject({ conversationId: CONV, text: "Empresa", clarification: { clarificationId: asked.id, stepId: "step_1_bbbbbbbb", optionIds: ["opt_000000000c"], noneMatched: false, revise: false } })
+    // A mensagem da pessoa é gravada pelo caminho de texto (com a escolha); a voz grava só o que a INIA falou.
+    expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ userText: undefined, assistantText: "Certo, empresa." }))
+    expect(await screen.findByText("Qual é a situação da troca entre empresas?")).toBeInTheDocument()
   })
 
   it("voz: a sessão continua a conversa ATUAL — só o id dela vai ao backend, que recapitula o que está gravado e monta a instrução", async () => {
@@ -499,6 +585,45 @@ describe("OperatorIniaChat — conversas", () => {
     act(() => transport.events.onOutputTranscript?.("Oi! Como posso ajudar?"))
     await act(async () => { transport.events.onTurnComplete?.() })
     await waitFor(() => expect(screen.getAllByText(/Não salva no histórico/)).toHaveLength(2))
+  })
+
+  it("esclarecimento pelas bases: formulário na resposta, escolha enviada pelo texto com o payload estruturado e resposta com fontes", async () => {
+    // Estados fictícios (bases de teste): pergunta com duas opções → resposta com o cenário e a fonte.
+    const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
+    const openStep = { id: "step_1_aaaaaaaa", dimension: "Tipo de cliente", question: "Para qual tipo de cliente é a troca?", selectionMode: "SINGLE" as const, options: [{ id: "opt_000000000a", label: "Empresa", description: null, group: null, evidence: [source] }, { id: "opt_000000000b", label: "Residencial", description: null, group: null, evidence: [{ ...source, documentId: "kb-b", documentTitle: "Base B (fictícia)" }] }], answer: null }
+    const base = { version: "KNOWLEDGE_CLARIFICATION_V1", id: "11111111-1111-4111-8111-111111111111", originalQuestion: "Quais documentos para a troca?", questionFacts: [], coverage: { consideredDocuments: 3, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true }, conflicts: [], notice: null, updatedAt: new Date().toISOString() }
+    const asked = { ...base, status: "OPEN" as const, steps: [openStep], sources: [], scenario: [] }
+    const answered = { ...base, status: "ANSWERED" as const, steps: [{ ...openStep, answer: { optionIds: ["opt_000000000a"], freeText: null, noneMatched: false, via: "FORM" as const, answeredAt: new Date().toISOString() } }], sources: [source], scenario: [{ dimension: "Tipo de cliente", value: "Empresa", origin: "SELECTION" as const, stepId: "step_1_aaaaaaaa" }] }
+    vi.mocked(textClient.fetchTextReply)
+      .mockImplementationOnce(async (_input, onChunk, onConversation) => {
+        onConversation?.({ conversationId: CONV, created: true, rotatedFrom: null })
+        onChunk("Para qual tipo de cliente é a troca?\n\nOpções encontradas nas bases consultadas: Empresa · Residencial.")
+        return { text: "Para qual tipo de cliente é a troca?\n\nOpções encontradas nas bases consultadas: Empresa · Residencial.", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true, clarification: asked }
+      })
+      .mockImplementationOnce(async (_input, onChunk) => {
+        onChunk("Contrato social das duas empresas [1].")
+        return { text: "Contrato social das duas empresas [1].", supportMaterials: [], interactionId: "i2", conversationId: CONV, persisted: true, clarification: answered }
+      })
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.change(composer(), { target: { value: "Quais documentos para a troca?" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    // O balão mostra a pergunta; as opções são o formulário da aplicação (não o texto do modelo).
+    const form = await screen.findByTestId("clarification-form")
+    expect(screen.getByText("Encontrei estes cenários nas bases consultadas.")).toBeInTheDocument()
+    fireEvent.click(within(form).getByRole("radio", { name: /Empresa/ }))
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Continuar" })) })
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls[1]![0]).toMatchObject({ conversationId: CONV, text: "Empresa", clarification: { clarificationId: asked.id, stepId: "step_1_aaaaaaaa", optionIds: ["opt_000000000a"], noneMatched: false, revise: false } })
+    // A resposta traz o cenário (com "Alterar") e as fontes; o formulário antigo vira registro.
+    // Conversa natural: o balão sem os marcadores; as fontes recolhidas em "Fontes consultadas".
+    expect(await screen.findByText("Contrato social das duas empresas.")).toBeInTheDocument()
+    const sources = await screen.findByTestId("knowledge-sources")
+    expect(within(sources).queryByTestId("knowledge-sources-list")).toBeNull()
+    fireEvent.click(within(sources).getByRole("button", { name: /Fontes consultadas \(1\)/ }))
+    expect(within(sources).getByTestId("knowledge-sources-list")).toHaveTextContent("Base A (fictícia)2. Documentos")
+    expect(within(screen.getByTestId("clarification-scenario")).getByRole("button", { name: "Tipo de cliente: Empresa (você escolheu)" })).toHaveTextContent("Empresa")
+    expect(screen.queryByTestId("clarification-form")).toBeNull()
+    expect(screen.getByText("Opções apresentadas: Empresa · Residencial")).toBeInTheDocument()
   })
 })
 

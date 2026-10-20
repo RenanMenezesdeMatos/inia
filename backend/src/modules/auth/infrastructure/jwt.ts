@@ -36,7 +36,15 @@ const SESSION_TOKEN_ALGORITHM = "HS256" as const
 export type VerifiedAuthToken = AuthTokenPayload & { jti?: string; exp?: number }
 
 export function signAuthToken(payload: AuthTokenPayload) {
-  return jwt.sign(payload, env.JWT_SECRET, { algorithm: SESSION_TOKEN_ALGORITHM, expiresIn: env.JWT_EXPIRES_IN, jwtid: randomUUID() } as jwt.SignOptions)
+  return issueSessionToken(payload).token
+}
+
+/** Token novo + o id e o vencimento desta sessão (o registro de atividade e a revogação usam os dois). */
+export function issueSessionToken(payload: AuthTokenPayload): { token: string; jti: string; expiresAt: Date } {
+  const jti = randomUUID()
+  const token = jwt.sign(payload, env.JWT_SECRET, { algorithm: SESSION_TOKEN_ALGORITHM, expiresIn: env.JWT_EXPIRES_IN, jwtid: jti } as jwt.SignOptions)
+  const exp = (jwt.decode(token) as { exp?: number } | null)?.exp
+  return { token, jti, expiresAt: new Date(typeof exp === "number" ? exp * 1000 : Date.now() + parseDurationToMs(env.JWT_EXPIRES_IN)) }
 }
 
 export function verifyAuthToken(token: string): VerifiedAuthToken {

@@ -15,6 +15,7 @@ import {
   type UserAccount,
   type UserDetail,
 } from "@/schemas/admin/user-account.schema"
+import { issuedTemporaryPasswordSchema, type IssuedTemporaryPassword } from "@/schemas/access/access.schema"
 import type { PlatformRole } from "@/schemas/auth/auth.schema"
 
 export async function fetchUserAccounts(): Promise<UserAccount[]> {
@@ -54,11 +55,13 @@ export type CreateUserInput = {
   /** Matrícula como a base vai mandar: a carga atualiza esta pessoa em vez de criar outra. */
   matricula?: string
   email: string
-  password: string
 }
 
-export async function createUserAccount(input: CreateUserInput): Promise<void> {
-  await adminSend("/api/v1/admin/users", "POST", input)
+const createdUserSchema = z.object({ id: z.string(), issued: issuedTemporaryPasswordSchema })
+
+/** A senha provisória é gerada pelo servidor e volta UMA vez (ver TemporaryPasswordDialog) — nunca é escolhida aqui. */
+export async function createUserAccount(input: CreateUserInput): Promise<IssuedTemporaryPassword> {
+  return createdUserSchema.parse(await adminSend("/api/v1/admin/users", "POST", input)).issued
 }
 
 /** Só os campos enviados são alterados: o que vem da base do cliente fica de fora (o backend recusa com 422). `teamId: null` tira do Grupo. */

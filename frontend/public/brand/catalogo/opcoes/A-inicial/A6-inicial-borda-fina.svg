@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64"><title>INIA — A6 — Inicial — Borda fina</title><rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="#FFFFFF" stroke="#EB3C7D" stroke-width="3"/>
+  
+  <circle cx="32" cy="18.5" r="6.5" fill="#EB3C7D"/>
+  <path d="M26 35a6 6 0 0 1 12 0v11a6 6 0 0 1-12 0Z" fill="#660099"/>
+</svg>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { assertOutboundDestination, destinationProblem, OutboundDestinationDenied, parseAllowList, unmapIpv4, type OutboundPolicy } from "./outbound-destination-policy.js"
+import { assertOutboundDestination, destinationProblem, localInterfaceAddresses, OutboundDestinationDenied, parseAllowList, unmapIpv4, type OutboundPolicy } from "./outbound-destination-policy.js"
 
 /**
  * Política de destinos de saída (achados I-F3 e A-F11 da auditoria de segurança): redes privadas corporativas continuam
@@ -59,5 +59,31 @@ describe("política de destinos de saída", () => {
     expect(unmapIpv4("::ffff:a9fe:a9fe")).toBe("169.254.169.254")
     expect(unmapIpv4("::ffff:10.0.0.1")).toBe("10.0.0.1")
     expect(unmapIpv4("fd12::1")).toBe("fd12::1")
+  })
+})
+
+describe("política de destinos — banco interno por outro nome e infraestrutura de nuvem (auditoria 17/10/2026, DATA-2/DATA-3)", () => {
+  const open = { mode: "OPEN" as const, allowLoopback: false, allow: [] }
+  it("Azure WireServer e metadados da Alibaba nunca passam", () => {
+    expect(destinationProblem({ ...open, deniedEndpoints: [] }, "168.63.129.16", 80, ["168.63.129.16"])).toMatch(/metadados/)
+    expect(destinationProblem({ ...open, deniedEndpoints: [] }, "100.100.100.200", 80, ["100.100.100.200"])).toMatch(/metadados/)
+  })
+
+  it("o banco interno pelo IP ou por outro nome que resolve para ele é recusado; outro banco da mesma rede passa", async () => {
+    const dns: Record<string, string[]> = { "inia-db.corp.local": ["10.0.0.5"], "apelido.corp.local": ["10.0.0.5"], "rh-db.corp.local": ["10.0.0.6"] }
+    const resolve = async (host: string) => dns[host] ?? (/^\d+\.\d+\.\d+\.\d+$/.test(host) ? [host] : [])
+    const policy = { ...open, deniedEndpoints: [{ host: "inia-db.corp.local", port: 5432 }] }
+    for (const host of ["apelido.corp.local", "10.0.0.5", "inia-db.corp.local"]) await expect(assertOutboundDestination(policy, host, 5432, resolve), host).rejects.toThrow(/banco interno/)
+    await expect(assertOutboundDestination(policy, "rh-db.corp.local", 5432, resolve)).resolves.toBeUndefined()
+    await expect(assertOutboundDestination(policy, "10.0.0.5", 1433, resolve)).resolves.toBeUndefined()
+  })
+
+  it("banco interno em localhost: o IP de rede da própria máquina, na mesma porta, também é o banco interno", async () => {
+    const own = localInterfaceAddresses().find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address) && !address.startsWith("127."))
+    if (!own) return
+    const resolve = async (host: string) => (host === "localhost" ? ["127.0.0.1"] : [host])
+    const policy = { ...open, allowLoopback: true, deniedEndpoints: [{ host: "localhost", port: 5432 }] }
+    await expect(assertOutboundDestination(policy, own, 5432, resolve)).rejects.toThrow(/banco interno/)
+    await expect(assertOutboundDestination(policy, own, 5433, resolve)).resolves.toBeUndefined()
   })
 })

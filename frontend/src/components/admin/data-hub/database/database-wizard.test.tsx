@@ -52,12 +52,15 @@ const DESCRIPTION: DatabaseObjectDescription = {
 }
 
 describe("rascunho da conexão — banco externo", () => {
-  it("padrões por banco, instância nomeada sem porta e problemas em linguagem simples", () => {
+  it("conexão nova valida o certificado (qualquer banco), instância nomeada sem porta e problemas em linguagem simples", () => {
     const draft = { ...emptyDatabaseDraft("POSTGRESQL"), name: "RH", host: "db.cliente.local", database: "rh", username: "leitura", password: "x" }
-    expect(toDatabaseConfig(draft)).toMatchObject({ engine: "POSTGRESQL", host: "db.cliente.local", tls: { mode: "PREFERRED" }, connectTimeoutMs: 15_000 })
+    expect(toDatabaseConfig(draft)).toMatchObject({ engine: "POSTGRESQL", host: "db.cliente.local", tls: { mode: "VERIFY_FULL" }, connectTimeoutMs: 15_000 })
     expect(toDatabaseConfig(draft)).not.toHaveProperty("port")
     const sqlServer = { ...switchEngine(draft, "SQLSERVER"), port: "1433", instanceName: "SQLEXPRESS" }
-    expect(toDatabaseConfig(sqlServer)).toMatchObject({ engine: "SQLSERVER", instanceName: "SQLEXPRESS", tls: { mode: "REQUIRED" } })
+    expect(toDatabaseConfig(sqlServer)).toMatchObject({ engine: "SQLSERVER", instanceName: "SQLEXPRESS", tls: { mode: "VERIFY_FULL" } })
+    // Modo escolhido que o outro banco não tem ("quando oferecer" não existe no SQL Server) volta à validação do certificado.
+    expect(switchEngine({ ...draft, tlsMode: "PREFERRED" }, "SQLSERVER").tlsMode).toBe("VERIFY_FULL")
+    expect(switchEngine({ ...draft, tlsMode: "REQUIRED" }, "MYSQL").tlsMode).toBe("REQUIRED")
     expect(toDatabaseConfig(sqlServer)).not.toHaveProperty("port")
     expect(databaseDraftProblems({ ...draft, host: "postgres://u:p@host" }, true)[0]).toMatch(/sem protocolo/)
     expect(databaseDraftProblems({ ...draft, host: "host:5432" }, true)[0]).toMatch(/Porta/)

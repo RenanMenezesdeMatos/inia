@@ -15,6 +15,8 @@ export type RateLimitDecision = {
   allowed: boolean
   /** Até o fim da janela atual (o que o `Retry-After` informa). */
   retryAfterMs: number
+  /** Janela em que um `consume` aceito contou (para `release` devolver a vaga na mesma janela). */
+  windowIndex?: number
 }
 
 /** Resultado síncrono (memória) ou assíncrono (banco) — o middleware trata os dois sem um tique extra na memória. */
@@ -27,6 +29,12 @@ export interface RateLimitStore {
   check(bucket: string, windowMs: number, max: number): MaybePromise<RateLimitDecision>
   /** Conta uma ocorrência sem conferir (falha observada depois da resposta). */
   record(bucket: string, windowMs: number): MaybePromise<void>
+  /**
+   * Devolve uma vaga contada por `consume` na janela `windowIndex` (nunca abaixo de zero). Regras que contam só as falhas
+   * RESERVAM a vaga antes de atender e a devolvem quando a resposta é sucesso (achado AUTH-2: conferir sem contar deixava uma
+   * rajada paralela inteira passar antes da primeira falha ser gravada).
+   */
+  release(bucket: string, windowMs: number, windowIndex: number): MaybePromise<void>
 }
 
 /** Balde = regra + hash da chave: a loja (e a tabela do banco) nunca guarda IP, e-mail ou id em claro. */
@@ -76,7 +84,7 @@ export function createMemoryRateLimitStore(clock: () => number = Date.now): Rate
     const weighted = counter.current + counter.previous * previousWindowWeight(nowMs, counter.windowIndex, windowMs)
     const allowed = weighted < max
     if (allowed && count) counter.current += 1
-    return { allowed, retryAfterMs: (counter.windowIndex + 1) * windowMs - nowMs }
+    return { allowed, retryAfterMs: (counter.windowIndex + 1) * windowMs - nowMs, windowIndex: counter.windowIndex }
   }
 
   return {
@@ -84,6 +92,11 @@ export function createMemoryRateLimitStore(clock: () => number = Date.now): Rate
     check: (bucket, windowMs, max) => decide(bucket, windowMs, max, false),
     record(bucket, windowMs) {
       counterFor(bucket, windowMs, clock()).current += 1
+    },
+    release(bucket, windowMs, windowIndex) {
+      const counter = counterFor(bucket, windowMs, clock())
+      if (counter.windowIndex === windowIndex) counter.current = Math.max(0, counter.current - 1)
+      else if (counter.windowIndex === windowIndex + 1) counter.previous = Math.max(0, counter.previous - 1)
     },
   }
 }

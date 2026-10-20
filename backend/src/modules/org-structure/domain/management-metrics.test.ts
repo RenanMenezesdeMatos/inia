@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { computeManagementMetrics, isUnconfirmedStatus, MINIMUM_SENSITIVE_AGGREGATE_POPULATION, type ManagementMetricsInput, type StructureMemberRow } from "./management-metrics.js"
+import { computeManagementMetrics, sensitiveBreakdownAllowed, isUnconfirmedStatus, MINIMUM_SENSITIVE_AGGREGATE_POPULATION, type ManagementMetricsInput, type StructureMemberRow } from "./management-metrics.js"
 
 /**
  * Estrutura de teste da Supervisora Vanessa (30 operadores diretos) e do Gerente Roberto
@@ -15,7 +15,8 @@ function member(id: string, role: string, reportsToId: string, status: Structure
 }
 
 function vanessaTeam(): StructureMemberRow[] {
-  const statuses: Array<StructureMemberRow["status"]> = ["FERIAS", "FERIAS", "INSS", "MATERNIDADE"]
+  // Dois de cada afastamento sensível: com um caso isolado o tipo apontaria a pessoa (o detalhamento sumiria — ver privacidade).
+  const statuses: Array<StructureMemberRow["status"]> = ["FERIAS", "FERIAS", "INSS", "INSS", "MATERNIDADE", "MATERNIDADE"]
   return Array.from({ length: 30 }, (_, index) => member(`op-${index + 1}`, "OPERATOR", "vanessa", statuses[index] ?? "EM_PRODUCAO"))
 }
 
@@ -60,12 +61,13 @@ describe("Métricas gerenciais — span, abrangência, camadas", () => {
     ])
   })
 
-  it("férias, INSS, maternidade e paternidade NÃO alteram o span (30 vinculados, 26 em produção → span 30)", () => {
+  it("férias, INSS, maternidade e paternidade NÃO alteram o span (30 vinculados, 22 em produção → span 30)", () => {
     const members = vanessaTeam()
-    members[4] = member("op-5", "OPERATOR", "vanessa", "PATERNIDADE")
+    members[6] = member("op-7", "OPERATOR", "vanessa", "PATERNIDADE")
+    members[7] = member("op-8", "OPERATOR", "vanessa", "PATERNIDADE")
     const metrics = computeManagementMetrics(input({ root: { id: "vanessa", role: "SUPERVISOR" }, members }))
     expect(metrics.directSpan).toBe(30)
-    expect(metrics.statusDistribution.find((share) => share.bucket === "EM_PRODUCAO")?.count).toBe(25)
+    expect(metrics.statusDistribution.find((share) => share.bucket === "EM_PRODUCAO")?.count).toBe(22)
     for (const bucket of ["FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE"]) expect(metrics.statusDistribution.find((share) => share.bucket === bucket)?.count).toBeGreaterThan(0)
   })
 
@@ -96,10 +98,10 @@ describe("Métricas gerenciais — situação atual, denominador e buckets", () 
   it("quantidade + porcentagem com denominador ÚNICO (população estrutural) e 1 casa decimal; buckets explicam o total", () => {
     const metrics = computeManagementMetrics(input({ root: { id: "vanessa", role: "SUPERVISOR" }, members: vanessaTeam() }))
     expect(metrics.statusDistribution).toEqual([
-      { bucket: "EM_PRODUCAO", count: 26, percent: 86.7 },
+      { bucket: "EM_PRODUCAO", count: 24, percent: 80 },
       { bucket: "FERIAS", count: 2, percent: 6.7 },
-      { bucket: "INSS", count: 1, percent: 3.3 },
-      { bucket: "MATERNIDADE", count: 1, percent: 3.3 },
+      { bucket: "INSS", count: 2, percent: 6.7 },
+      { bucket: "MATERNIDADE", count: 2, percent: 6.7 },
       { bucket: "PATERNIDADE", count: 0, percent: 0 },
     ])
     expect(metrics.statusDistribution.reduce((sum, share) => sum + share.count, 0)).toBe(metrics.structuralPopulation)
@@ -118,9 +120,9 @@ describe("Métricas gerenciais — situação atual, denominador e buckets", () 
   it("fonte de situação ATRASADA: status presumido (sem período cobrindo hoje) vira NÃO CONFIRMADO — nunca 'Em produção'; situação sustentada por período continua valendo", () => {
     const metrics = computeManagementMetrics(input({ root: { id: "vanessa", role: "SUPERVISOR" }, members: vanessaTeam(), statusFreshness: STALE }))
     expect(metrics.statusDistribution.find((share) => share.bucket === "EM_PRODUCAO")).toEqual({ bucket: "EM_PRODUCAO", count: 0, percent: 0 })
-    expect(metrics.statusDistribution.find((share) => share.bucket === "UNCONFIRMED")).toEqual({ bucket: "UNCONFIRMED", count: 26, percent: 86.7 })
+    expect(metrics.statusDistribution.find((share) => share.bucket === "UNCONFIRMED")).toEqual({ bucket: "UNCONFIRMED", count: 24, percent: 80 })
     expect(metrics.statusDistribution.find((share) => share.bucket === "FERIAS")?.count).toBe(2)
-    expect(metrics.confidence).toEqual({ statusFreshness: "STALE", unconfirmed: 26 })
+    expect(metrics.confidence).toEqual({ statusFreshness: "STALE", unconfirmed: 24 })
     // Em produção CONFIRMADO por período (retorno informado pela fonte) não é degradado.
     const confirmed = computeManagementMetrics(input({ root: { id: "v", role: "SUPERVISOR" }, members: [member("a", "OPERATOR", "v", "EM_PRODUCAO", true)], statusFreshness: STALE }))
     expect(confirmed.statusDistribution.find((share) => share.bucket === "EM_PRODUCAO")?.count).toBe(1)
@@ -154,10 +156,21 @@ describe("Métricas gerenciais — privacidade dos agregados e referência do Gr
     expect(metrics.statusDistribution.find((share) => share.bucket === "SENSITIVE_LEAVE")).toEqual({ bucket: "SENSITIVE_LEAVE", count: 1, percent: 50 })
     expect(JSON.stringify(metrics.statusDistribution)).not.toContain("MATERNIDADE")
     expect(metrics.statusDistribution.reduce((sum, share) => sum + share.count, 0)).toBe(2)
-    // No limiar (5) o detalhamento volta.
-    const five = computeManagementMetrics(input({ root: { id: "v", role: "SUPERVISOR" }, members: [...members, member("c", "OPERATOR", "v"), member("d", "OPERATOR", "v"), member("e", "OPERATOR", "v")] }))
+    // No limiar (5), com dois tipos de 2+ pessoas, o detalhamento volta.
+    const five = computeManagementMetrics(input({ root: { id: "v", role: "SUPERVISOR" }, members: [...members, member("c", "OPERATOR", "v", "MATERNIDADE"), member("d", "OPERATOR", "v", "INSS"), member("e", "OPERATOR", "v", "INSS")] }))
     expect(five.privacy.sensitiveBreakdownSuppressed).toBe(false)
-    expect(five.statusDistribution.find((share) => share.bucket === "MATERNIDADE")?.count).toBe(1)
+    expect(five.statusDistribution.find((share) => share.bucket === "MATERNIDADE")?.count).toBe(2)
+  })
+
+  it("contagem que apontaria alguém fica somada mesmo em recorte grande: caso isolado de um tipo, ou um tipo só (a lista nominal do mesmo recorte entregaria o motivo) — auditoria 17/10/2026, AI-04", () => {
+    const people = (statuses: StructureMemberRow["status"][]) => Array.from({ length: 30 }, (_, index) => member(`p-${index}`, "OPERATOR", "v", statuses[index] ?? "EM_PRODUCAO"))
+    for (const statuses of [["INSS"], ["INSS", "INSS", "INSS"], ["INSS", "INSS", "MATERNIDADE"]] as StructureMemberRow["status"][][]) {
+      const metrics = computeManagementMetrics(input({ root: { id: "v", role: "SUPERVISOR" }, members: people(statuses) }))
+      expect(metrics.privacy.sensitiveBreakdownSuppressed, statuses.join(",")).toBe(true)
+      expect(JSON.stringify(metrics.statusDistribution)).not.toMatch(/INSS|MATERNIDADE/)
+    }
+    expect(sensitiveBreakdownAllowed(30, ["INSS", "INSS", "MATERNIDADE", "MATERNIDADE"])).toBe(true)
+    expect(sensitiveBreakdownAllowed(30, ["FERIAS"])).toBe(true)
   })
 
   it("referência do Grupo é passada adiante como veio (mesmo cargo + mesmo Grupo é responsabilidade do carregador); sem Grupo → null", () => {

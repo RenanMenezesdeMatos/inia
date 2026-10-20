@@ -20,7 +20,11 @@ export type RateLimitRule = {
   max: number
   /** Chave do contador; null = não limita esta requisição (ex.: sem sessão numa regra por conta). */
   key: (request: Request) => string | null
-  /** Conta só respostas de falha (status ≥ 400) — ex.: tokens inválidos na ingestão. */
+  /**
+   * Conta só respostas de falha (status ≥ 400) — ex.: tokens inválidos na ingestão. A vaga é RESERVADA antes de atender e
+   * devolvida quando a resposta é sucesso: uma rajada paralela não passa inteira antes de a primeira falha ser gravada
+   * (achado AUTH-2). O teto vale para falhas + tentativas ainda em andamento.
+   */
   countOnlyFailures?: boolean
   message?: string
 }
@@ -55,16 +59,17 @@ export function createRateLimiter(rule: RateLimitRule, store: RateLimitStore = c
         response.status(429).json({ error: { code: "RATE_LIMITED", message, details: { retryAfterSeconds } } })
         return
       }
-      if (rule.countOnlyFailures) {
+      if (rule.countOnlyFailures && decision.windowIndex !== undefined) {
+        const windowIndex = decision.windowIndex
         response.on("finish", () => {
-          if (response.statusCode >= 400) settle(rule.name, store.record(bucket, rule.windowMs))
+          if (response.statusCode < 400) settle(rule.name, store.release(bucket, rule.windowMs, windowIndex))
         })
       }
       next()
     }
     let pending: MaybePromise<RateLimitDecision>
     try {
-      pending = rule.countOnlyFailures ? store.check(bucket, rule.windowMs, rule.max) : store.consume(bucket, rule.windowMs, rule.max)
+      pending = store.consume(bucket, rule.windowMs, rule.max)
     } catch (error) {
       warnStoreFailure(rule.name, error)
       return next()
@@ -107,4 +112,13 @@ export const clientIpAndEmailKey = (request: Request) => {
   const email = (request.body as { email?: unknown } | undefined)?.email
   const normalized = typeof email === "string" ? email.trim().toLowerCase() : ""
   return `${clientIpKey(request)}|${normalized}`
+}
+
+/**
+ * Sessão do cookie (rotas que o guard de sessão atende DENTRO do router, como a criação da senha do primeiro acesso): sem cookie,
+ * não limita aqui — a requisição cai no 401 do guard e só conta no teto por IP.
+ */
+export const sessionCookieKey = (cookieName: string) => (request: Request) => {
+  const token = (request.cookies as Record<string, unknown> | undefined)?.[cookieName]
+  return typeof token === "string" && token.length > 0 ? `session:${token}` : null
 }

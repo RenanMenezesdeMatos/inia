@@ -7,7 +7,7 @@ import { productionEffects } from "./effect-sink.js"
 import { classifyExecutionError, EXECUTION_ERROR_CATEGORY_LABELS, type ExecutionFailure } from "../../../shared/domain/execution-failure.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
 import { decideNodeRetry } from "../domain/node-retry-policy.js"
-import { loadLatestTranscript } from "./transcript.js"
+import { loadLatestTranscriptForModel } from "./transcript.js"
 import { processNode, type EnrollmentRow, type NodeOutcome } from "./node-handlers.js"
 
 /** Teto de matrículas por passada de `runWorkflowTick` (uma passada = provas/scripts; o servidor usa o worker). */
@@ -261,7 +261,7 @@ async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): P
 
     let inputContext = ""
     if (row.interaction_id) {
-      inputContext = (await loadLatestTranscript(db, row.interaction_id))?.content ?? ""
+      inputContext = (await loadLatestTranscriptForModel(db, row.interaction_id))?.content ?? ""
     }
 
     const outcome = await processNode(
