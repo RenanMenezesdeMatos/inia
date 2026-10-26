@@ -1,7 +1,7 @@
 import { AiProviderError } from "../../../../shared/application/model-routing/ai-errors.js"
 import type { LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
-import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
+import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
 import { joinUrl, rawRequest, rawStreamRequest, readSse, requestJson, safeJsonParse, testByListing } from "./http.js"
 
 /**
@@ -158,6 +158,55 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
       if (pcm16.length < 2) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA não devolveu áudio." })
       // A resposta é binária: o provider não informa tokens nela — uso desconhecido (custo UNKNOWN), nunca inventado.
       return { pcm16, sampleRate: OPENAI_SPEECH_SAMPLE_RATE, usage: normalizeOpenAiUsage(undefined), model: providerModelId, durationMs: Date.now() - startedAt }
+    },
+    async streamExecute(connection, providerModelId, request: AiExecuteRequest, timeoutMs, onText): Promise<AiStreamExecuteResult> {
+      const startedAt = Date.now()
+      const { response, deadline } = await rawStreamRequest(fetchImpl, connection, joinUrl(connection.baseUrl, "chat/completions"), {
+        method: "POST",
+        headers: authHeaders(connection),
+        body: JSON.stringify({
+          model: providerModelId,
+          messages: toChatMessages(request.systemPrompt, request.contents),
+          ...(request.tools.length > 0 ? { tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })) } : {}),
+          ...responseFormat(request),
+          ...maxTokensField(connection, request.maxOutputTokens),
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
+      }, timeoutMs)
+      // Chamadas de ferramenta chegam em pedaços (nome e argumentos fatiados), identificadas pelo índice.
+      const toolCalls = new Map<number, { id?: string; name: string; arguments: string }>()
+      let text = ""
+      let streamedChars = 0
+      let firstTokenMs: number | null = null
+      let usage: LlmUsage = normalizeOpenAiUsage(undefined)
+      let model = providerModelId
+      let finishReason: string | null = null
+      await readSse(response, (payload) => {
+        const choice = (payload.choices as { delta?: { content?: string | null; tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[] }; finish_reason?: string | null }[] | undefined)?.[0]
+        for (const delta of choice?.delta?.tool_calls ?? []) {
+          const index = delta.index ?? 0
+          const current = toolCalls.get(index) ?? { name: "", arguments: "" }
+          const id = delta.id ?? current.id
+          toolCalls.set(index, { ...(id ? { id } : {}), name: current.name + (delta.function?.name ?? ""), arguments: current.arguments + (delta.function?.arguments ?? "") })
+        }
+        const content = choice?.delta?.content
+        if (content) {
+          text += content
+          firstTokenMs ??= Date.now() - startedAt
+          if (toolCalls.size === 0) {
+            streamedChars += content.length
+            onText(content)
+          }
+        }
+        if (choice?.finish_reason) finishReason = normalizeOpenAiFinishReason(choice.finish_reason)
+        if (payload.usage) usage = normalizeOpenAiUsage(payload.usage as ChatUsage)
+        if (typeof payload.model === "string") model = payload.model
+      }, deadline)
+      const durationMs = Date.now() - startedAt
+      const calls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call).filter((call) => call.name)
+      if (calls.length > 0) return { kind: "functionCalls", calls: calls.map((call) => ({ name: call.name, args: safeJsonParse(call.arguments || "{}"), ...(call.id ? { id: call.id } : {}) })), usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
+      return { kind: "text", text, usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
     },
     async stream(connection, providerModelId, request, timeoutMs, onChunk): Promise<AiStreamResult> {
       const startedAt = Date.now()

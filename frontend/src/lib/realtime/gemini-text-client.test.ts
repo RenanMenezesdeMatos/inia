@@ -121,3 +121,49 @@ describe("fetchTextReply — conversa", () => {
     await expect(fetchConversationMessages(CONVERSATION_ID)).rejects.toThrow()
   })
 })
+
+describe("fetchTextReply — resposta em fluxo", () => {
+  /** Corpo entregue em pedaços arbitrários (o servidor manda cada evento assim que acontece). */
+  function chunkedSse(body: string, size = 9): Response {
+    const bytes = new TextEncoder().encode(body)
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < bytes.length; index += size) controller.enqueue(bytes.slice(index, index + size))
+        controller.close()
+      },
+    })
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } })
+  }
+
+  it("progresso (`status`) vai para onStatus e nunca entra no texto; `retract` apaga o que foi mostrado; batimentos são ignorados", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(chunkedSse(`${CONVERSATION}: ping\n\nevent: status\ndata: ${JSON.stringify({ stage: "TOOLS", label: "Consultando as bases de conhecimento…" })}\n\nevent: chunk\ndata: ${JSON.stringify({ text: "Vou ver" })}\n\nevent: retract\ndata: {}\n\nevent: chunk\ndata: ${JSON.stringify({ text: "Resposta " })}\n\nevent: chunk\ndata: ${JSON.stringify({ text: "final." })}\n\nevent: persisted\ndata: ${JSON.stringify({ interactionId: "int-3" })}\n\nevent: done\ndata: {}\n\n`))
+    const seen: string[] = []
+    const statuses: string[] = []
+    let retracts = 0
+    const reply = await fetchTextReply(MESSAGE("pergunta"), (chunk) => seen.push(chunk), undefined, { onStatus: (status) => statuses.push(status.label), onRetract: () => (retracts += 1) })
+    expect(statuses).toEqual(["Consultando as bases de conhecimento…"])
+    expect(retracts).toBe(1)
+    expect(seen).toEqual(["Vou ver", "Resposta ", "final."])
+    expect(reply.text).toBe("Resposta final.")
+  })
+
+  it("pedaço da resposta pelas bases (`citations`) chega marcado para a tela tirar os marcadores de fonte; os outros, sem marca", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(chunkedSse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "Abra o protocolo [1].", citations: true })}\n\nevent: chunk\ndata: ${JSON.stringify({ text: " Fim." })}\n\nevent: done\ndata: {}\n\n`))
+    const seen: [string, unknown][] = []
+    const reply = await fetchTextReply(MESSAGE("pergunta"), (chunk, meta) => seen.push([chunk, meta]))
+    expect(seen).toEqual([["Abra o protocolo [1].", { citations: true }], [" Fim.", undefined]])
+    expect(reply.text).toBe("Abra o protocolo [1]. Fim.")
+  })
+
+  it("quem pediu desiste (troca de conversa): o pedido é cancelado pelo sinal", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const signal = (init as RequestInit).signal!
+      return await new Promise<Response>((_resolve, reject) => signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))
+    })
+    const controller = new AbortController()
+    const pending = fetchTextReply(MESSAGE("pergunta"), () => {}, undefined, { signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})

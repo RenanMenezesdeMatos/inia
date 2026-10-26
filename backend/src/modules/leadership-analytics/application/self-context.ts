@@ -12,10 +12,12 @@ import type { DirectToolset } from "./leadership-context.js"
 import type { LeadershipToolResult } from "./leadership-toolset.js"
 import { resolveAnalysisPeriod, resolveIndicatorReference } from "./references.js"
 import { buildSelfResults } from "./self-results.js"
+import { executeSelfPractices, SELF_PRACTICES_DECLARATION, SELF_PRACTICES_RULE, SELF_PRACTICES_TOOL } from "../../best-practices/application/operator-guidance.js"
 
 /**
  * INIA para o OPERADOR — a mesma arquitetura da liderança (a IA escolhe a ferramenta, o backend calcula, a IA explica), com UMA
- * ferramenta sempre restrita à pessoa da sessão: `my_results`. Nenhum parâmetro alcança outra pessoa.
+ * ferramentas sempre restritas à pessoa da sessão: `my_results` e `my_best_practices` (base de boas práticas). Nenhum parâmetro
+ * alcança outra pessoa.
  */
 export const SELF_TOOL = "my_results"
 
@@ -41,6 +43,7 @@ export const SELF_RESPONSE_RULES = [
   "- Responda em markdown, completo: frase direta com o número em negrito e a competência, tabela quando houver 3+ números, e o que fazer para melhorar (com o conhecimento dos especialistas quando for de processo). Sem dado nunca é desempenho ruim.",
   "- \"Pior indicador\" = o de menor atingimento (a tabela já vem do menor para o maior, depois do PRV); \"melhor\" = o de maior. Diga qual é, com o número.",
   "- \"Este mês\" ainda não tem fechamento oficial: use a medição diária (fonte OPERACIONAL) e diga que é parcial.",
+  SELF_PRACTICES_RULE,
 ].join("\n")
 
 /** Voz do operador: UMA ferramenta que leva a pergunta à mesma orquestração do chat de texto (`my_results` + especialistas), no
@@ -82,6 +85,7 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
   const closure = await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date())
   const person = { id: scope.viewer.id, name: scope.viewer.name }
   const execute = async (name: string, args: Record<string, unknown>): Promise<LeadershipToolResult> => {
+    if (name === SELF_PRACTICES_TOOL) return executeSelfPractices(db, repository, { scope, closure, args })
     if (name !== SELF_TOOL) return { text: "Ferramenta desconhecida.", card: null, issue: { kind: "INVALID", message: "Ferramenta desconhecida.", candidates: [] } }
     const definitions = await repository.loadIndicatorDefinitions(scope.organizationId)
     const requested = Array.isArray(args.indicadores) ? args.indicadores.filter((value): value is string => typeof value === "string" && value.trim() !== "") : []
@@ -104,5 +108,5 @@ export async function loadSelfChatContext(db: Database, user: AuthTokenPayload, 
     const text = ["[Seus resultados, calculados pelo sistema — use exatamente estes números]", `${card.title} · ${card.scopeNote}`, "", queryTableMarkdown(card), ...(card.limitations.length > 0 ? ["", `Limitações: ${card.limitations.join(" ")}`] : []), `Base: ${card.methods.join(" ")}`].join("\n")
     return { text, card }
   }
-  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset:{ declarations: [SELF_TOOL_DECLARATION], handles: (name) => name === SELF_TOOL, execute } }
+  return { instructions: SELF_RESPONSE_RULES, voiceInstructions: SELF_VOICE_RULES, toolset: { declarations: [SELF_TOOL_DECLARATION, SELF_PRACTICES_DECLARATION], handles: (name) => name === SELF_TOOL || name === SELF_PRACTICES_TOOL, execute } }
 }

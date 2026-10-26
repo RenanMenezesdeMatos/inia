@@ -2496,6 +2496,8 @@ describe("workflow-router", () => {
           { id: "e5", source: "branch", sourceHandle: "false", target: "set-var" },
           { id: "e6", source: "set-var", sourceHandle: "always", target: "join" },
           { id: "e7", source: "join", sourceHandle: "always", target: "end" },
+          // Condição histórica tem a saída "Sem dados": desligada, a execução morreria sem dados (todas as saídas convergem no Join).
+          { id: "e8", source: "branch", sourceHandle: "no_data", target: "join" },
         ],
       }
       const response = await publishWith(graph)

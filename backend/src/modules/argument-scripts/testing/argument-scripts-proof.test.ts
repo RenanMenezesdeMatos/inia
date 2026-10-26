@@ -161,8 +161,12 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
 
     // Rota antiga só leitura; o caminho legado dos Agents lê argumentários (texto antigo preservado + resumo dos estruturados).
     expect((await org.post("/api/v1/admin/call-expectations").send({})).status).toBe(410)
-    const promptLines = await loadArgumentScriptPromptLines(client, ORG, new Date())
+    const promptLines = await loadArgumentScriptPromptLines(client, ORG, new Date(), { teamId: teamA, subteamId: subA })
     expect(promptLines.some((line) => line.expectation.startsWith('Argumentário "Contas em atraso (prova)"'))).toBe(true)
+    // D3 (20/10/2026): argumentário do Grupo A nunca entra no prompt de quem avalia o Grupo B nem num Agent de todos os grupos.
+    const otherGroupLines = await loadArgumentScriptPromptLines(client, ORG, new Date(), { teamId: teamB, subteamId: null })
+    expect(otherGroupLines.some((line) => line.expectation.startsWith('Argumentário "Contas em atraso (prova)"'))).toBe(false)
+    expect((await loadArgumentScriptPromptLines(client, ORG, new Date(), { teamId: null, subteamId: null })).some((line) => line.expectation.startsWith('Argumentário "Contas em atraso (prova)"'))).toBe(false)
 
     // Memória do motor: critério de ARGUMENTÁRIO + regra COMPOSTA persistidos com fonte, versão, aplicabilidade, onde acontece,
     // execução declarada e escopo considerado (leituras simuladas; integridade pelo código).

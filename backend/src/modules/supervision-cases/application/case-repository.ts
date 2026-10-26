@@ -17,7 +17,7 @@ export type CaseListItem = {
 export type CaseDetail = CaseListItem & {
   evidences: Array<{ id: string; type: string; title: string; description: string; sourceType: string; sourceId: string; occurredAt: string }>
   recommendations: Array<{ id: string; actionType: string; description: string; expectedImpact: string; dueAt: string | null }>
-  feedbacks: Array<{ id: string; status: string; impactedIndicator: string; evidenceFound: string; observedBehavior: string; relatedProcedure: string; recommendation: string; suggestedApproach: string | null }>
+  feedbacks: Array<{ id: string; status: string; kind: "INDICATOR" | "MONITORING"; impactedIndicator: string; evidenceFound: string; observedBehavior: string; relatedProcedure: string; recommendation: string; suggestedApproach: string | null }>
 }
 
 /** Onde o caso "mora" para a autorização: o colaborador e o Grupo/Subgrupo dele. */

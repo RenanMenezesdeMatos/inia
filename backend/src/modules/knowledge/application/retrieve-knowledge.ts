@@ -5,8 +5,9 @@ import { selectPrimaryProcessDocument, type PrimaryProcessSelection } from "../d
 import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRolesOf, type ClosingSectionRole, type SectionProcessRole } from "../domain/section-roles.js"
 import { applyCheckpointGovernance, buildProcessCheckpointCatalog, publicCatalogOf, renderExcerptWithCheckpoints, type CheckpointGovernanceSnapshot, type ProcessCheckpointCatalog } from "../../reliable-feedback/domain/checkpoint-catalog.js"
 import { loadCheckpointGovernance } from "../../checkpoint-registry/application/checkpoint-governance-loader.js"
-import { DEFAULT_RETRIEVAL_BUDGET, acronymsKeyOf, buildKnowledgeIndex, documentAnchors, estimateTokens, rankChunks, selectWithinBudget, tokenize, type KnowledgeIndex, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
+import { DEFAULT_RETRIEVAL_BUDGET, acronymsKeyOf, buildKnowledgeIndex, documentAnchors, estimateTokens, queryStandsAlone, complementSelection, rankChunks, selectWithinBudget, tokenize, wordsSharedWith, type KnowledgeIndex, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
 import { expandAcronyms, type AcronymExpansion, type GlossaryAcronym } from "../domain/query-acronyms.js"
+import { liveKnowledgeVersion } from "./live-knowledge-version.js"
 
 
 /**
@@ -69,6 +70,34 @@ export type KnowledgeTrace = {
   /** V1.7.1n — resumo do catálogo no rastro persistido (o catálogo completo não é gravado). */
   /** Resumo persistido do catálogo. `required`/`requiredRefs` = obrigatórias NO PROCESSO; V1.7.3: `mustAssess`/`mustAssessRefs` = plano da avaliação. */
   checkpointSummary?: { version: string; presented: number; required: number; optional: number; supportOnly: number; requiredRefs: string[]; mustAssess?: number; mayAssess?: number; mustAssessRefs?: string[]; coveragePlan?: boolean }
+  /** Conversa — o que a pergunta da PESSOA acrescentou à busca pela pergunta do roteamento (ausente fora da conversa). */
+  askerQuestion?: AskerQuestionRetrievalTrace
+}
+
+/**
+ * PERGUNTA DA PESSOA NA BUSCA (conversa: chat e voz). O especialista recebe a pergunta que o ROTEAMENTO do Orquestrador
+ * escreveu, e a busca usava só ela: em 22/10/2026 a reescrita "…? Passo a passo e procedimentos." tirou da busca a seção
+ * "31. Informações obrigatórias na contestação" que "Como faço para registrar a contestação da fatura de um cliente?" traz,
+ * e a resposta disse que a base não detalhava o registro — as palavras que o roteamento ACRESCENTOU diluíram a busca. Agora a
+ * busca da pergunta do roteamento continua como sempre e corre ao lado uma segunda, com a última pergunta da pessoa reduzida às
+ * palavras que o roteamento também usou (`wordsSharedWith`: sai o que só ele acrescentou e também a saudação, a cortesia e o
+ * assunto que ele mandou para outro especialista). A segunda só COMPLEMENTA a primeira (`complementSelection`): nada da
+ * primeira sai, e entram no máximo 4 trechos, só dos documentos que a primeira já escolheu, sob o mesmo teto de caracteres. O
+ * roteamento continua dizendo o assunto de cada especialista — numa pergunta com dois assuntos, cada um recebe o seu. Menos de 2
+ * palavras em comum (`queryStandsAlone`: "e o prazo?") não abre a segunda busca.
+ * A dúvida de processo (`ambiguousProcesses`) continua só pela pergunta do roteamento, que já leu a conversa.
+ */
+export const ASKER_QUESTION_RETRIEVAL_VERSION = "ASKER_QUESTION_RETRIEVAL_V1" as const
+export type AskerQuestionRetrievalTrace = {
+  version: typeof ASKER_QUESTION_RETRIEVAL_VERSION
+  /** COMPLEMENTED = a segunda busca rodou (pode não ter acrescentado nada); TOO_SHORT = menos de 2 palavras em comum com o roteamento. */
+  outcome: "COMPLEMENTED" | "TOO_SHORT"
+  /** Trechos que só a segunda busca trouxe. */
+  added: { documentId: string; documentTitle: string; heading: string; chunkIndex: number }[]
+  /** Trechos da segunda busca em documentos que a primeira não escolheu — não entram. */
+  otherDocuments: number
+  /** Trechos da segunda busca, dos mesmos documentos, que passaram do teto (4 trechos ou o de caracteres). */
+  overLimit: number
 }
 
 /**
@@ -135,10 +164,8 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
      from agent_knowledge_documents akd
      join knowledge_documents kd on kd.id = akd.knowledge_document_id
      join agents a on a.id = akd.agent_id
-     join lateral (
-       select id, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1
-     ) kv on true
-     where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null
+     join lateral (${liveKnowledgeVersion("kd.id", "id, version")}) kv on true
+     where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null and kv.status = 'PUBLISHED'
        -- Mesma regra do cadastro do Agent (assertKnowledgeDocumentsCompatible), conferida a CADA busca: base que passou a valer
        -- só para outro Grupo sai da recuperação na hora, sem esperar alguém salvar o Agent (achado AI-05 da auditoria de 17/10/2026).
        and (a.scope_type = 'ALL_TEAMS' or exists (
@@ -215,8 +242,9 @@ const CONTEXT_ROLE_LABEL: Partial<Record<SectionProcessRole, string>> = {
   REFERENCE: "referência",
   EXAMPLE_SECTION: "exemplos",
 }
-/** `governanceSubjectPersonId`: colaborador da execução — o registry aplica o ESCOPO das definições (Grupo/Subgrupo). */
-export type KnowledgePresentationOptions = { markProcessRoles?: boolean; governanceSubjectPersonId?: string | null }
+/** `governanceSubjectPersonId`: colaborador da execução — o registry aplica o ESCOPO das definições (Grupo/Subgrupo).
+ * `askerQuestion`: conversa — a última pergunta da pessoa, unida à busca pela `query` (ver `ASKER_QUESTION_RETRIEVAL_VERSION`). */
+export type KnowledgePresentationOptions = { markProcessRoles?: boolean; governanceSubjectPersonId?: string | null; askerQuestion?: string | null }
 
 type CheckpointMarks = ReturnType<typeof buildProcessCheckpointCatalog>
 function formatExcerpt(chunk: RankedChunk, role: SectionProcessRole | null = null, marks: CheckpointMarks | null = null): string {
@@ -290,14 +318,28 @@ export async function retrieveKnowledgeForAgent(
   // Siglas do glossário: "PJ" vira termo próprio e a definição entra na busca ("pessoa jurídica"); a pergunta original
   // não muda — só o que a busca procura.
   const glossary = await loadGlossaryAcronyms(db, organizationId)
-  const expansion = expandAcronyms(query, glossary)
   const tokenizeOptions: TokenizeOptions = { acronyms: new Set(glossary.map((entry) => entry.acronym)) }
-  const anchors = documentAnchors(expansion.searchQuery, chunks, tokenizeOptions)
+  const index = knowledgeIndexOf(snapshot, tokenizeOptions)
+  const search = (text: string) => {
+    const expansion = expandAcronyms(text, glossary)
+    // Termos que vieram SÓ da expansão (não estavam na pergunta): ajudam a achar o documento, pesam pouco na seção.
+    const originalTerms = new Set(tokenize(text, tokenizeOptions))
+    const contextTerms = new Set(expansion.expansions.flatMap((entry) => tokenize(entry.definition)).filter((term) => !originalTerms.has(term)))
+    return { expansion, selected: selectWithinBudget(rankChunks(expansion.searchQuery, index, { ...tokenizeOptions, contextTerms }), budget) }
+  }
+  const primary = search(query)
+  const anchors = documentAnchors(primary.expansion.searchQuery, chunks, tokenizeOptions)
   const ambiguous = ambiguousProcessesOf(anchors)
-  // Termos que vieram SÓ da expansão (não estavam na pergunta): ajudam a achar o documento, pesam pouco na seção.
-  const originalTerms = new Set(tokenize(query, tokenizeOptions))
-  const contextTerms = new Set(expansion.expansions.flatMap((entry) => tokenize(entry.definition)).filter((term) => !originalTerms.has(term)))
-  const ranked = selectWithinBudget(rankChunks(expansion.searchQuery, knowledgeIndexOf(snapshot, tokenizeOptions), { ...tokenizeOptions, contextTerms }), budget)
+  // Conversa: a última pergunta da pessoa, nas palavras em comum com a `query`, complementa a seleção (ver ASKER_QUESTION_RETRIEVAL_VERSION).
+  const askerQuestion = presentation.askerQuestion?.trim() || null
+  const askerWords = askerQuestion ? wordsSharedWith(askerQuestion, query, tokenizeOptions) : ""
+  const asker = queryStandsAlone(askerWords, tokenizeOptions) ? search(askerWords) : null
+  const complement = asker ? complementSelection(primary.selected, asker.selected, budget) : null
+  const ranked = complement ? complement.selected : primary.selected
+  const expansions = primary.expansion.expansions
+  const askerTrace: AskerQuestionRetrievalTrace | null = askerQuestion
+    ? { version: ASKER_QUESTION_RETRIEVAL_VERSION, outcome: complement ? "COMPLEMENTED" : "TOO_SHORT", added: (complement?.added ?? []).map((chunk) => ({ documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, chunkIndex: chunk.index })), otherDocuments: complement?.otherDocuments ?? 0, overLimit: complement?.overLimit ?? 0 }
+    : null
   const planned = coverage && coverage.phases.includes("CLOSING") ? planClosingCoverage(chunks, ranked, coverage) : null
   const selected = planned ? [...ranked, ...planned.chunks] : ranked
   const injectedChars = selected.reduce((sum, chunk) => sum + chunk.text.length, 0)
@@ -310,12 +352,13 @@ export async function retrieveKnowledgeForAgent(
       retrieved: selected.map(toExcerpt),
       injectedChars,
       estimatedTokens: estimateTokens(injectedChars),
-      ...(expansion.expansions.length > 0 ? { queryExpansion: expansion.expansions } : {}),
+      ...(expansions.length > 0 ? { queryExpansion: expansions } : {}),
       ...(anchors.anchored.length > 0 ? { anchoredDocuments: anchors.anchored.map(({ documentId, documentTitle }) => ({ documentId, documentTitle })) } : {}),
       ...(ambiguous.length > 0 ? { ambiguousProcesses: ambiguous } : {}),
       ...(planned ? { coverage: planned.trace } : {}),
       ...(marks ? { checkpointCatalog: publicCatalogOf(marks) } : {}),
       ...governanceTrace,
+      ...(askerTrace ? { askerQuestion: askerTrace } : {}),
     },
   }
 }

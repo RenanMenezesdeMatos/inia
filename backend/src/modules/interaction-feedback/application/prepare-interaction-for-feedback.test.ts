@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { fakeSemanticReply, fakeWriter, SCENARIO_TRANSCRIPTS, type SemanticScenario } from "../testing/fake-semantic-model.js"
 
@@ -78,10 +79,16 @@ describe("V1.5.10 — PrepareInteractionForFeedback (caminho semântico DIRETO, 
     expect(JSON.stringify(writer.calls[0])).not.toMatch(new RegExp(`${INTERACTION}|${OPERATOR}|"I1"`))
   })
 
-  it("evidência só com número longo → item retido → BLOCKED (sem redator, sem QA)", async () => {
+  it("máscara da transcrição desligada (decisão do DPO): evidência só com número longo → item retido → BLOCKED (sem redator, sem QA)", async () => {
+    // Com a máscara ligada (padrão, `SUBJECT_PII_MASK_V2`) o número já chega à IA mascarado; a retenção na exibição é a defesa em
+    // profundidade para quando ela estiver desligada.
     scenario = "BLOCKED"
+    const masking = env.INIA_MODEL_PII_MASKING
+    ;(env as { INIA_MODEL_PII_MASKING: string }).INIA_MODEL_PII_MASKING = "OFF"
     const { db } = fakeDb({ transcript: SCENARIO_TRANSCRIPTS.BLOCKED })
-    const prepared = await prepareInteractionForFeedback(db, { organizationId: ORG, collaboratorId: OPERATOR, interactionId: INTERACTION, now: new Date() })
+    const prepared = await prepareInteractionForFeedback(db, { organizationId: ORG, collaboratorId: OPERATOR, interactionId: INTERACTION, now: new Date() }).finally(() => {
+      ;(env as { INIA_MODEL_PII_MASKING: string }).INIA_MODEL_PII_MASKING = masking
+    })
     if (prepared.kind !== "PREPARED") throw new Error(prepared.kind)
     const writer = fakeWriter()
     const result = await runInteractionFeedbackPipeline({ enabled: true, writer, store: createInMemoryInteractionFeedbackStore().store, now: () => new Date(), deliveryPolicy: FEEDBACK_AUTONOMOUS_DELIVERY_POLICY }, prepared.feedback, prepared.runContext)

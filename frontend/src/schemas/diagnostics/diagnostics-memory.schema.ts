@@ -138,6 +138,25 @@ export type AssessmentRow = z.infer<typeof assessmentRowSchema>
 export const assessmentPageSchema = page(assessmentRowSchema)
 
 const quoteSchema = z.object({ turn: z.string(), speaker: z.string().nullable(), quote: z.string(), timestamp: z.string().nullable().optional() })
+/** `PRODUCT_APPLICABILITY_V1` — efeito do produto numa regra: independente, estabelecida, de outro produto ou suspensa (sem avaliação). */
+export const criterionProductApplicabilitySchema = z.object({ effect: z.enum(["INDEPENDENT", "ESTABLISHED", "OTHER_PRODUCT", "SUSPENDED"]), request: z.string().nullable().catch(null), requestLabel: z.string().nullable().catch(null), products: z.array(z.string()).catch([]), reason: z.string().nullable().catch(null) })
+/** O que foi identificado em cada pedido da chamada, com as evidências (trechos com números mascarados) e o que ficou sem avaliação. */
+export const productIdentificationSchema = z.object({
+  requests: z.array(z.object({
+    ref: z.string(),
+    summary: z.string(),
+    object: z.object({ kind: z.string(), description: z.string().nullable().catch(null) }).catch({ kind: "UNKNOWN", description: null }),
+    status: z.enum(["IDENTIFIED", "FAMILY_ONLY", "MULTIPLE_POSSIBLE", "NOT_IDENTIFIED", "CONFLICTING"]),
+    label: z.string(),
+    possible: z.array(z.string()).catch([]),
+    reviewConfirmed: z.boolean().nullable().catch(null),
+    evidence: z.array(z.object({ reader: z.string(), origin: z.string(), kind: z.string(), turn: z.string().nullable(), speaker: z.string().nullable(), quote: z.string().nullable(), metadata: z.string().nullable(), criterion: z.object({ title: z.string(), version: z.number(), conclusive: z.boolean() }).nullable(), points: z.array(z.string()).catch([]), role: z.string(), roleLabel: z.string(), reason: z.string().nullable() })).catch([]),
+    limitations: z.array(z.string()).catch([]),
+  })),
+  rules: z.array(z.object({ lineHandle: z.string(), title: z.string(), request: z.string().nullable(), products: z.array(z.string()).catch([]), effect: z.string(), reason: z.string().nullable() })).catch([]),
+  counts: z.object({ independent: z.number(), established: z.number(), otherProduct: z.number(), suspended: z.number() }).partial().catch({}),
+})
+export type ProductIdentification = z.infer<typeof productIdentificationSchema>
 export const assessmentDetailSchema = z.object({
   id: z.string(),
   interactionId: z.string(),
@@ -180,7 +199,9 @@ export const assessmentDetailSchema = z.object({
     href: z.string().nullable(),
     /** Mesma conduta julgada por outras regras nesta chamada (ligação da revisão); null = não determinável (análise antiga). */
     occurrence: z.object({ basis: z.string(), sameConductAs: z.array(z.object({ criterionKey: z.string(), text: z.string(), documentTitle: z.string().nullable() })) }).nullable().optional(),
+    productApplicability: criterionProductApplicabilitySchema.nullable().optional().catch(null),
   })),
+  productIdentification: productIdentificationSchema.nullable().optional().catch(null),
   transcript: z.array(z.object({ turn: z.string(), speaker: z.string().nullable(), text: z.string(), timestamp: z.string().nullable() })),
 })
 export type AssessmentDetail = z.infer<typeof assessmentDetailSchema>

@@ -46,6 +46,8 @@ type ChatMessageListProps = {
   liveAssistantText: string | null
   textReplyPending: boolean
   liveTextReply: string | null
+  /** Progresso verdadeiro da resposta por escrito antes do primeiro pedaço de texto (null = só o indicador de digitação). */
+  textReplyStatus?: string | null
   askSuggestion: (event: React.MouseEvent<HTMLButtonElement>) => void
   switchToGeneralConversation: (reason: FeedbackReturn["reason"]) => void
   /** Perguntas para começar (liderança: derivadas das prioridades do dia) — só no estado vazio da conversa geral. */
@@ -57,7 +59,7 @@ type ChatMessageListProps = {
 }
 
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification }: ChatMessageListProps) {
+export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, textReplyStatus = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
   // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
   // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
@@ -127,7 +129,7 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
     {sessionOpen && feedbackCompleted && loadState === "ready" && firstFollowUpIndex === -1 ? <FollowUpSeparator hint/> : null}
     {conversationState === "thinking" && liveAssistantText === null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><Skeleton className="h-3 w-32"/></TypingBubble> : null}
     {liveAssistantText !== null ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={liveAssistantText}/><span aria-hidden className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-current align-middle"/></TypingBubble> : null}
-    {textReplyPending && liveTextReply === null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><Skeleton className="h-3 w-32"/></TypingBubble> : null}
+    {textReplyPending && liveTextReply === null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted>{textReplyStatus ? <span role="status" aria-live="polite" className="animate-pulse text-xs text-muted-foreground" data-testid="text-reply-status">{textReplyStatus}</span> : <Skeleton className="h-3 w-32"/>}</TypingBubble> : null}
     {liveTextReply !== null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={liveTextReply}/><span aria-hidden className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-current align-middle"/></TypingBubble> : null}
     {sessionOpen && sessionApplication && loadState === "ready" ? (
       <div className="flex flex-wrap gap-2" data-testid="feedback-suggestions" aria-label="Perguntas sugeridas">

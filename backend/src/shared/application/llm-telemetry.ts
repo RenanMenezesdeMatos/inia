@@ -50,8 +50,8 @@ export type LlmContextBreakdown = {
 export type LlmRouteRecord = { provider: string; tier: "BASIC" | "STANDARD" | "DEEP"; reason: string; mode: "CURRENT" | "EFFICIENCY"; escalated: boolean; fallback: boolean }
 
 /** CLASSIFICAÇÃO da request (V1.3 — §44): toda request via gateway diz de onde vem e para quê — nunca ids pessoais. */
-export type LlmRequestSource = "AGENT" | "SPECIALIST" | "ORCHESTRATOR" | "INVESTIGATION_TOOL" | "WORKFLOW_POST_JOIN" | "WORKFLOW_ORCHESTRATOR" | "CHAT" | "VOICE" | "FEEDBACK_WRITER" | "INTERVENTION" | "REPORT"
-export type LlmSemanticType = "INVESTIGATION" | "FEEDBACK" | "PROCESS_AUDIT" | "INDICATOR_SUMMARY" | "TEXT" | "SEMANTIC_ANALYSIS" | "MANAGERIAL_SUMMARY" | "STRUCTURED_RESULT" | "ROUTING" | "INTERVENTION_REPORT" | "RECURRING_REPORT" | "KNOWLEDGE_CLARIFICATION"
+export type LlmRequestSource = "AGENT" | "SPECIALIST" | "ORCHESTRATOR" | "INVESTIGATION_TOOL" | "WORKFLOW_POST_JOIN" | "WORKFLOW_ORCHESTRATOR" | "CHAT" | "VOICE" | "FEEDBACK_WRITER" | "INTERVENTION" | "REPORT" | "BEST_PRACTICES"
+export type LlmSemanticType = "INVESTIGATION" | "FEEDBACK" | "PROCESS_AUDIT" | "INDICATOR_SUMMARY" | "TEXT" | "SEMANTIC_ANALYSIS" | "MANAGERIAL_SUMMARY" | "STRUCTURED_RESULT" | "ROUTING" | "INTERVENTION_REPORT" | "RECURRING_REPORT" | "KNOWLEDGE_CLARIFICATION" | "BEST_PRACTICE_ANALYSIS"
 export type LlmRequestClassification = { phase: LlmPhase; purpose: string; source: LlmRequestSource; semanticType: LlmSemanticType; tags?: string[] }
 
 /** Cache de prompt observado na request (V1.3 — §27): modo, versão da chave (hash, nunca conteúdo) e tokens servidos do cache. */

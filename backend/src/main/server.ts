@@ -18,6 +18,7 @@ import { startUsageAnalyticsWorker } from "../modules/usage-analytics/applicatio
 import { createAiRuntime } from "../modules/ai-management/application/ai-runtime-service.js"
 import { registerAiRuntime } from "../shared/application/model-routing/ai-runtime.js"
 import { aiCallLimiter } from "../shared/application/model-routing/ai-call-limiter.js"
+import { chatTurnMetrics } from "../shared/application/observability/chat-turn-trace.js"
 import { purgeExpiredRateLimitHits } from "../shared/infrastructure/rate-limit/postgres-rate-limit-store.js"
 import { purgeOldLoginAttempts } from "../modules/auth/infrastructure/postgres-credential-store.js"
 import { createApp } from "./app.js"
@@ -30,6 +31,7 @@ import type { ExecutorDeps } from "../modules/reports/application/report-executo
 import { createPostgresReportRuntime } from "../modules/reports/application/report-runtime.js"
 import { processReportRuns, scheduleDueReports } from "../modules/reports/application/report-scheduler.js"
 import { createPostgresReportStore } from "../modules/reports/application/report-store.js"
+import { processBestPracticeAnalyses } from "../modules/best-practices/application/analysis-service.js"
 import { createReadiness } from "./readiness.js"
 import { applyHttpTimeouts, createShutdown, installProcessHandlers, processFaults, type LifecycleLog } from "./process-lifecycle.js"
 import { createRuntimeMetrics } from "./runtime-metrics.js"
@@ -55,7 +57,7 @@ const readiness = parts.http ? createReadiness(pool) : null
 const metrics = createRuntimeMetrics({
   role,
   pool,
-  sections: () => ({ aiCalls: aiCallLimiter().stats(), aiConnections: shared.providerGate.stats(), draining: readiness?.draining ?? false, faults: { ...processFaults }, droppedLogLines: droppedLogLines() }),
+  sections: () => ({ chat: chatTurnMetrics().snapshot(), aiCalls: aiCallLimiter().stats(), aiConnections: shared.providerGate.stats(), draining: readiness?.draining ?? false, faults: { ...processFaults }, droppedLogLines: droppedLogLines() }),
 })
 
 let server: Server | null = null
@@ -104,6 +106,8 @@ function startProcessing() {
     // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega). Ver docs/dev/reports-recorrentes.md.
     { name: "report-schedule", intervalMs: 60_000, run: () => scheduleDueReports(pool, new Date()).then(() => undefined), errorLabel: "Falha na agenda de reports:" },
     { name: "report-runs", intervalMs: 15_000, run: () => processReportRuns(pool, reportExecutorDeps).then(() => undefined), errorLabel: "Falha na execução de reports:" },
+    // Base de boas práticas: fila de análises (uma por rodada, com posse de 20 min e uma nova tentativa). Ver docs/dev/memoria/boas-praticas.md.
+    { name: "best-practice-analyses", intervalMs: 15_000, run: () => processBestPracticeAnalyses(pool).then(() => undefined), errorLabel: "Falha nas análises de boas práticas:" },
     { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: () => retryPendingAnalyses(pool, reportExecutorDeps.store, gatewayAnalysisWriter).then(() => undefined), errorLabel: "Falha na análise de reports:" },
     // Read model do analytics da liderança: refaz tudo depois da meia-noite local e recalcula quem tem marca pendente.
     { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: () => runAnalyticsRollup(pool), errorLabel: "Falha no read model do analytics:" },

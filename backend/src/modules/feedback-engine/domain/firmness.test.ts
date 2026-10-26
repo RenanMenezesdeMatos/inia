@@ -62,7 +62,7 @@ describe("brief de monitoria: cada ponto de desenvolvimento leva a prática e o 
     const point = brief.developments[0]!
     expect(point.firmness?.level).toBe("CORRECT")
     expect(point.practiceKeys).toEqual(["KC-recap"])
-    expect(point.history).toBe("Nas 4 chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em 3.")
+    expect(point.history).toBe("Nas chamadas anteriores, esta etapa não foi cumprida em 3 de 4 analisadas em que se aplicava.")
   })
   it("orientação anterior entregue na mesma prática = insistência (o ponto consolidado fica com o nível mais alto)", () => {
     const [first, ...rest] = developmentKeys
@@ -104,7 +104,7 @@ describe("composição: correção comunicada sem frase de ajuste ou amaciada é
     if (!parsed.ok) return
     const usefulness = usefulnessOf(value, [kept("ADJUSTMENT", ["A1"])], parsed.message)
     expect(usefulness.softenedCorrection).toBe("virou sugestão")
-    const reasons = repairInstructionsOf([], usefulness, value, { guidance: {}, why: {} })
+    const reasons = repairInstructionsOf([], usefulness, value)
     expect(reasons.join(" ")).toMatch(/amaciada/)
     expect(reasons.join(" ")).toMatch(/nunca|sem julgar a pessoa/)
   })
@@ -139,7 +139,7 @@ describe("consolidação: etapa reincidente é ponto próprio; o ponto do caminh
   it("validação V14C (L09): recapitulação não cumprida em 7 de 8 chamadas anteriores NÃO é absorvida pelo caminho — fica ponto próprio, com o histórico", async () => {
     const { consolidateDevelopments } = await import("./feedback-brief.js")
     const prazo = finding({ findingKey: "CALL:i:KC-prazo", title: "Conta já paga", criterionKeys: ["KC-prazo"], practiceKeys: ["KC-34"], firmness: { level: "CORRECT", basis: [] } })
-    const recap = finding({ findingKey: "CALL:i:KC-recap", title: "Recapitulação obrigatória", criterionKeys: ["KC-recap"], practiceKeys: ["KC-46"], recurrence: { assessed: 8, notMet: 7 }, history: "Nas 8 chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em 7.", firmness: { level: "CORRECT", basis: [] } })
+    const recap = finding({ findingKey: "CALL:i:KC-recap", title: "Recapitulação obrigatória", criterionKeys: ["KC-recap"], practiceKeys: ["KC-46"], recurrence: { assessed: 8, notMet: 7 }, history: "Nas chamadas anteriores, esta etapa não foi cumprida em 7 de 8 analisadas em que se aplicava.", firmness: { level: "CORRECT", basis: [] } })
     const points = consolidateDevelopments([path(), prazo, recap])
     expect(points.map((point) => point.title)).toEqual(["Caminho do atendimento", "Recapitulação obrigatória"])
     expect(points[1]!.history).toMatch(/não foi cumprida em 7/)
@@ -148,11 +148,11 @@ describe("consolidação: etapa reincidente é ponto próprio; o ponto do caminh
   it("orientada antes e repetida (INSIST) também é ponto próprio; etapa com 1 falha anterior é absorvida e o caminho diz o histórico dela", async () => {
     const { consolidateDevelopments } = await import("./feedback-brief.js")
     const recap = finding({ findingKey: "CALL:i:KC-recap", title: "Recapitulação obrigatória", criterionKeys: ["KC-recap"], practiceKeys: ["KC-46"], firmness: { level: "INSIST", basis: ["Este ponto já foi orientado num retorno entregue em 10/09/2026 e voltou a acontecer."] } })
-    const conf = finding({ findingKey: "CALL:i:KC-conf", title: "Confirmação de entendimento", criterionKeys: ["KC-conf"], practiceKeys: ["KC-47"], recurrence: { assessed: 3, notMet: 1 }, history: "Nas 3 chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em 1.", firmness: { level: "ORIENT", basis: [] } })
+    const conf = finding({ findingKey: "CALL:i:KC-conf", title: "Confirmação de entendimento", criterionKeys: ["KC-conf"], practiceKeys: ["KC-47"], recurrence: { assessed: 3, notMet: 1 }, history: "Nas chamadas anteriores, esta etapa não foi cumprida em 1 de 3 analisadas em que se aplicava.", firmness: { level: "ORIENT", basis: [] } })
     const points = consolidateDevelopments([path(), recap, conf])
     expect(points.map((point) => point.title)).toEqual(["Caminho do atendimento", "Recapitulação obrigatória"])
     expect(points[1]!.firmness?.level).toBe("INSIST")
-    expect(points[0]!.history).toBe("Sobre “Confirmação de entendimento”: nas 3 chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em 1.")
+    expect(points[0]!.history).toBe("Sobre “Confirmação de entendimento”: nas chamadas anteriores, esta etapa não foi cumprida em 1 de 3 analisadas em que se aplicava.")
     expect(points[0]!.practiceKeys).toEqual(["KC-47"])
     expect(points[0]!.firmness?.level).toBe("CORRECT")
   })

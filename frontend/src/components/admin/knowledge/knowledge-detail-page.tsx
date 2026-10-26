@@ -19,6 +19,8 @@ import { DOCUMENT_TYPE_LABELS, SOURCE_TYPE_LABELS, isFileSource, type KnowledgeD
 
 import { KnowledgeArticleContent } from "./knowledge-article-content"
 import { KnowledgeDocumentActionBar } from "./knowledge-document-actions"
+import { ProductScopeCard } from "@/components/admin/product-catalog/product-scope-field"
+
 import { AuthorLine, ScopeTags, SourceTypeBadge, StatusBadge, UpdatedAtLine } from "./knowledge-meta"
 import { DOCUMENT_HTML_CLASS, formatFileSize } from "./knowledge-visuals"
 
@@ -120,6 +122,7 @@ function DetailHeader({ document, children, narrow }: { document: KnowledgeDocum
         <UpdatedAtLine document={document} />
       </div>
       <ScopeTags document={document} />
+      <ProductScopeCard kind="KNOWLEDGE_DOCUMENT" sourceId={document.id} canEdit />
       <KnowledgeDocumentActionBar document={document} onDeleted={() => router.push(LIST_HREF)} />
     </header>
   )

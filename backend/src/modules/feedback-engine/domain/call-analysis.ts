@@ -3,7 +3,7 @@ import { verifyEvidenceUnit, type ProjectedInteraction, type TranscriptProjectio
 import { CALL_REVIEW_VERSION, decideConfirmation, decideExclusionChallenge, decidePathConfirmation, exclusionTargetsOf, reviewDiscoveriesOf, reviewTargetsOf, sameEvidenceAsSibling, type AssessedLine, type CallReview, type ClaimVerdict, type Confirmation, type ConfirmationDecision, type ConfirmationReason, type EvidenceReading, type ListReading, type ReviewClaim, type ReviewFocus, type ReviewIssue } from "./call-review.js"
 import { createHash } from "node:crypto"
 import { normalizeForLiteralQuote } from "../../knowledge/domain/knowledge-match.js"
-import { closingSectionsOf, CUSTOMER_SPEAKERS, listContextOf, listOpeningsOf, OPERATOR_SPEAKERS, turnNumberOf, type ArgumentDocumentMeta, type ArgumentLineMeta, type ProcedureContext, type ProcedureLine, type RulePerspective, type TranscriptStatus } from "./procedure.js"
+import { closingSectionsOf, CUSTOMER_SPEAKERS, isOptionalGuidance, listContextOf, listOpeningsOf, OPERATOR_SPEAKERS, turnNumberOf, type ArgumentDocumentMeta, type ArgumentLineMeta, type ProcedureContext, type ProcedureLine, type RulePerspective, type TranscriptStatus } from "./procedure.js"
 import { CALL_ANALYSIS_LOGIC_VERSION } from "./versions.js"
 
 /**
@@ -29,6 +29,8 @@ import { CALL_ANALYSIS_LOGIC_VERSION } from "./versions.js"
  *     sem ela a análise é PARCIAL, nunca silenciosamente completa.
  * Rebaixar = "não foi possível observar" com o motivo; o que foi dito pelo modelo fica na auditoria (`declaredStatus`).
  */
+import type { CriterionProductApplicability, ProductApplicabilityRecord } from "./product-applicability.js"
+
 export type CriterionStatus = "MET" | "NOT_MET" | "PARTIAL" | "NOT_OBSERVABLE" | "NOT_APPLICABLE" | "NOT_ASSESSED"
 export type EvidenceKind = "CONDUCT_OBSERVED" | "DECLARED_ACTION" | "OMISSION" | "COMPLIANCE_BY_ABSENCE" | "CUSTOMER_CONTEXT" | "NONE"
 export type Materiality = "HIGH" | "MEDIUM" | "LOW"
@@ -368,6 +370,12 @@ export type AssessedCriterion = {
   /** Leitura da revisão que CONTESTA a da análise (mesma obrigação), à espera da confirmação focal — some depois da fusão. */
   contests?: { analysisHandle: string; analysisStatus: CriterionStatus; analysisReading: string | null } | null
   divergence?: { reviewHandle: string; analysisStatus: CriterionStatus; reviewStatus: CriterionStatus; reviewRationale: string | null; outcome: "REVIEW_READING_CONFIRMED" | "REVIEW_READING_REFUTED" | "UNRESOLVED"; reasons: string[] } | null
+  /**
+   * `PRODUCT_APPLICABILITY_V1` (modo produto): a solicitação da regra, os produtos a que ela vale (cadastro da fonte + leitura do texto)
+   * e o efeito — independente do produto, estabelecida, de outro produto (não se aplica) ou SUSPENSA (produto não estabelecido: nem
+   * falha, nem acerto, nunca orientação). Ausente = análise sem catálogo de produtos.
+   */
+  productApplicability?: CriterionProductApplicability | null
 }
 
 /** Aplicabilidade de um ARGUMENTÁRIO nesta chamada: leitura do modelo + integridade (situação sustentada por fala verificada). */
@@ -441,7 +449,10 @@ export type VerifiedCallAnalysis = {
   composites?: { lineHandle: string; lineKey: string; text: string; parts: string[] }[]
   evidenceAvailability?: EvidenceAvailability
   /** V7 — limites de COBERTURA (nunca erro nem acerto): execução fora da conversa, aplicabilidade incerta, declarações e intenções. */
-  coverageLimits?: { outsideConversation: number; applicabilityUncertain: number; declaredExecutions: number; intendedExecutions: number }
+  coverageLimits?: { outsideConversation: number; applicabilityUncertain: number; declaredExecutions: number; intendedExecutions: number; /** `PRODUCT_APPLICABILITY_V1` — regras sem avaliação porque o produto da solicitação não ficou estabelecido. */ productNotEstablished?: number }
+  /** `PRODUCT_APPLICABILITY_V1` — por solicitação: candidatos, evidências (origem e trechos), conflitos, versões do cadastro e o efeito
+   * em cada regra. Fotografia: mudanças posteriores no cadastro nunca mudam o fundamento desta análise. */
+  productApplicability?: ProductApplicabilityRecord
   /** V5 — notas TÉCNICAS (revisão, cobertura, seleção do procedimento): auditoria, nunca exibidas ao colaborador. */
   auditNotes?: string[]
   checks: { procedureSelection: "CONSISTENT_WITH_SUBJECT" | "DIFFERENT_FROM_SUBJECT_EXPLAINED" | "DIFFERENT_FROM_SUBJECT_UNEXPLAINED" | "NO_SUBJECT_ANCHOR" | "NO_PROCEDURE"; evidenceRejected: number; downgraded: number; contractViolations: string[]; review: ReviewSummary }
@@ -592,7 +603,7 @@ export function verifyCallAnalysis(input: VerificationInput): VerifiedCallAnalys
       continue
     }
     // Orientação "pode" do argumentário: opcional — não fazer nunca é falha (a obrigatoriedade é do cadastro, não da leitura).
-    if (line.argument?.field === "GUIDANCE" && line.argument.modality === "MAY" && (criterion.status === "NOT_MET" || criterion.status === "PARTIAL")) {
+    if (isOptionalGuidance(line) && (criterion.status === "NOT_MET" || criterion.status === "PARTIAL")) {
       notRequirements.push(handle)
       auditNotes.push(`[${handle}] é orientação opcional ("pode") do argumentário: não ter sido feita não conta como desvio.`)
       continue
@@ -1135,7 +1146,7 @@ export function missingCoverageOf(model: ModelCallAnalysis, context: ProcedureCo
 
 /** Itens avaliáveis dos argumentários que SE APLICAM: orientação "deve", pontos obrigatórios e condutas a evitar ("pode" nunca é cobrado). */
 export function requiredScriptLinesOf(context: Pick<ProcedureContext, "lines">, applicability: ReadonlyMap<string, Applicability>): ProcedureLine[] {
-  return [...context.lines.values()].filter((line) => line.argument && applicability.get(line.argument.scriptId) === "APPLIES" && !(line.argument.field === "GUIDANCE" && line.argument.modality === "MAY"))
+  return [...context.lines.values()].filter((line) => line.argument && applicability.get(line.argument.scriptId) === "APPLIES" && !isOptionalGuidance(line))
 }
 
 /**

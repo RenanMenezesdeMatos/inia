@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, ImageIcon, Layers, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, ImageIcon, Layers, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
@@ -83,6 +83,8 @@ const GROUPS: NavGroup[] = [
         children: [
           // Bases vinculadas aos Agents (cada especialista consulta só as dele).
           { href: "/admin/knowledge", label: "Base de conhecimento", icon: BookOpen, capability: "canManageKnowledge" },
+          // Produtos, critérios de identificação e a que produtos cada fonte se aplica (aplicabilidade antes do julgamento).
+          { href: "/admin/product-catalog", label: "Produtos", icon: Boxes, capability: "canManageConfiguration" },
           // Catálogo que classifica Agents (Especialista de domínio) e restringe Orquestradores (Domínios específicos).
           { href: "/admin/business-domains", label: "Domínios de negócio", icon: Layers, capability: "canManageConfiguration" },
         ],

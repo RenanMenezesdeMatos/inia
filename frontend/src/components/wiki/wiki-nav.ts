@@ -67,6 +67,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
       { href: "/wiki/estrutura/minha-estrutura", title: "Estrutura organizacional (aba do perfil)", shortTitle: "Organograma", description: "Onde o colaborador está: cadeia de liderança real, Grupo/Subgrupo, estrutura imediata, integrantes, origem e visibilidade por permissão." },
       { href: "/wiki/estrutura/lideranca", title: "A INIA para quem lidera", shortTitle: "INIA para lideranças", description: "Onde atuar hoje, perguntas à INIA sobre a equipe e a estrutura, regras dos números, escopo de acesso e o caminho do consolidado ao detalhe." },
       { href: "/wiki/estrutura/reports", title: "Reports recorrentes", shortTitle: "Reports", description: "Consultas da INIA que viram entregas periódicas no Acompanhamento: chat ou tela, período × frequência, visualizações, permissões, atualização das bases e análise." },
+      { href: "/wiki/estrutura/boas-praticas", title: "Base de boas práticas", shortTitle: "Boas práticas", description: "O que os operadores com melhores resultados fazem nas conversas: comparação no mesmo contexto, obrigação × boa prática, força da evidência, revisão e uso pela INIA." },
     ],
   },
   {

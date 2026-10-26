@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ArrowDown, ArrowLeft, Bot, Lock, Mic } from "lucide-react"
+import { ArrowDown, ArrowLeft, Bot, Lock, Mic, ThumbsDown, ThumbsUp } from "lucide-react"
 
 import { SupportMaterialsSection } from "@/components/feedbacks/support-materials-section"
 import { LeadershipCards } from "@/components/leadership/leadership-cards"
@@ -183,9 +183,17 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
                       {assistant ? <LeadershipCards collapsible readOnly cards={parseLeadershipCards(message.analytics)} /> : null}
                       {/* Esclarecimento pelas bases: trilha completa (opções com a fonte de cada uma, fontes numeradas como no texto). */}
                       {clarification ? <ClarificationAudit view={clarification} /> : null}
+                      {clarification && message.clarificationProvenance === "CHAT_CONFIRMATION" ? <p className="px-1 text-xs text-muted-foreground" data-testid="chat-confirmation-provenance">O que a pessoa escolheu aqui foi confirmado nesta conversa sobre o feedback — não é observação da gravação e não altera a análise da chamada.</p> : null}
                       <MessageFooter className="gap-1 px-1">
                         <time dateTime={message.occurredAt}>{messageTime(message.occurredAt)}</time>
                         {message.channel === "voice" ? <span className="inline-flex items-center gap-0.5" aria-label="Enviada por voz"><Mic className="size-3" aria-hidden />voz</span> : null}
+                        {/* Curtir/descurtir de quem perguntou (gravado no chat dela) — só leitura aqui. */}
+                        {assistant && message.rating ? (
+                          <span className="inline-flex items-center gap-0.5" data-testid="message-rating" aria-label={message.rating === "up" ? "Quem perguntou marcou esta resposta como útil" : "Quem perguntou marcou esta resposta como não útil"}>
+                            {message.rating === "up" ? <ThumbsUp className="size-3" aria-hidden /> : <ThumbsDown className="size-3" aria-hidden />}
+                            {message.rating === "up" ? "marcada como útil" : "marcada como não útil"}
+                          </span>
+                        ) : null}
                       </MessageFooter>
                     </MessageContent>
                   </Message>

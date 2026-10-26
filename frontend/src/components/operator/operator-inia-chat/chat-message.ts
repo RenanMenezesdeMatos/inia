@@ -16,6 +16,9 @@ export type ChatMessage = {
   /** Instante real (ISO) — separadores de data. Mensagens locais usam o instante de criação. */
   occurredAt: string
   channel?: "chat" | "voice"
+  /** Id da mensagem gravada no servidor: o curtir/descurtir de uma resposta da INIA é gravado nela. Ausente = não entrou no
+   * histórico (a avaliação fica só na tela, como antes). */
+  interactionId?: string
   rating?: "up" | "down"
   supportMaterials?: FeedbackSupportMaterial[]
   /** Cartões de dados da liderança desta resposta (escopo, período, base e links) — números do backend. */
@@ -51,6 +54,8 @@ export function toChatMessage(message: ConversationMessage): ChatMessage {
     time: messageTime(message.occurredAt),
     occurredAt: message.occurredAt,
     channel: message.channel,
+    interactionId: message.id,
+    ...(message.rating ? { rating: message.rating } : {}),
     ...(message.supportMaterials.length > 0 ? { supportMaterials: message.supportMaterials } : {}),
     ...(analytics.length > 0 ? { analytics } : {}),
     ...(offer?.success ? { reportOffer: offer.data } : {}),

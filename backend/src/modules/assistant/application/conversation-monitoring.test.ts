@@ -186,3 +186,30 @@ describe("monitoramento de conversas — trilha do esclarecimento pelas bases (a
     expect(new Set(accessQueries[0]!.find((param) => Array.isArray(param) && param.includes(READABLE)) as string[])).toEqual(new Set([READABLE, RESTRICTED]))
   })
 })
+
+describe("monitoramento de conversas — curtir/descurtir de quem perguntou (migration 158), só leitura", () => {
+  const OWNER = "00000000-0000-4000-8000-000000000031"
+  const message = (id: string, role: "user" | "assistant", seq: number) => ({ id, channel: "chat", role, content: `${role} ${id}`, agent_id: null, occurred_at: new Date(`2026-10-22T12:0${seq}:00Z`), seq: String(seq), client_message_id: null, tool_calls: null })
+  const ratingQueries: unknown[][] = []
+  const db = {
+    query: async (sql: string, params: unknown[] = []) => {
+      if (sql.includes("seq::text seq, client_message_id, tool_calls")) return { rows: [message("u1", "user", 1), message("a1", "assistant", 2), message("a2", "assistant", 3)] }
+      if (sql.includes("from assistant_interaction_ratings")) {
+        ratingQueries.push(params)
+        return { rows: [{ interaction_id: "a1", value: "DOWN" }] }
+      }
+      if (sql.includes("person_profile_preferences") || sql.includes("support_materials")) return { rows: [] }
+      return { rows: [conversationRow("conv-1", OWNER, "Larissa Monteiro", null)] }
+    },
+  } as unknown as Database
+
+  it("cada resposta da INIA traz a avaliação vigente da DONA da conversa (nunca a de quem lê); a mensagem da pessoa não tem o campo", async () => {
+    const result = await loadMonitoredMessages(db, VIEWER, "conv-1", { limit: 30 })
+    const byId = new Map(result.messages.map((entry) => [entry.id, entry as Record<string, unknown>]))
+    expect(byId.get("a1")!.rating).toBe("down")
+    expect(byId.get("a2")!.rating).toBeNull()
+    expect(byId.get("u1")).not.toHaveProperty("rating")
+    expect(ratingQueries[0]!.slice(0, 2)).toEqual([VIEWER.organizationId, OWNER])
+    expect([...(ratingQueries[0]![2] as string[])].sort()).toEqual(["a1", "a2"])
+  })
+})

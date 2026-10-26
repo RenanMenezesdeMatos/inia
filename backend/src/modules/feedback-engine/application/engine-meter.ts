@@ -51,7 +51,12 @@ const RESERVE_STAGES: readonly EngineModelStage[] = ["COMPOSITION", "VERIFICATIO
 // (até 60 práticas contra os temas conhecidos — o mesmo tipo de raciocínio contra um catálogo).
 // CALL_CONFIRMATION 8.192 → 16.384 (rodada real V12, cenário B): a confirmação de 3 achados + 1 divergência raciocinou 7.866 tokens e
 // a resposta foi cortada (MAX_TOKENS) com 312 — o teto conta saída + raciocínio. O teto da revisão (12.288) teve folga (≈ 7,5 mil usados).
-export const STAGE_MAX_OUTPUT_TOKENS: Record<EngineModelStage, number> = { CALL_ANALYSIS: 24_576, CALL_REVIEW: 12_288, CALL_CONFIRMATION: 16_384, INVESTIGATION_PLANNING: 4_096, PRACTICE_IDENTITY: 32_768, PRACTICE_THEMES: 32_768, COMPOSITION: 8_192, VERIFICATION: 8_192 }
+// CALL_ANALYSIS 24.576 → 32.768 (cenário TESTE PRODUTOS, 21/10/2026): 3 de 17 análises pararam no teto — a do conflito "internet" ×
+// conta de outro produto raciocinou 23,6 mil e a resposta foi cortada com 969 (as outras duas pagaram a análise de novo). As completas
+// usaram 8–23 mil (20 bases + 6 argumentários no contexto). Análise cortada = análise inteira paga e jogada fora.
+// CALL_REVIEW 12.288 → 24.576 (mesmo cenário): no conflito, a revisão — que agora também relê o produto de cada pedido com as
+// evidências — parou no teto com 3.198 tokens de resposta (JSON cortado no meio de uma citação).
+export const STAGE_MAX_OUTPUT_TOKENS: Record<EngineModelStage, number> = { CALL_ANALYSIS: 32_768, CALL_REVIEW: 24_576, CALL_CONFIRMATION: 16_384, INVESTIGATION_PLANNING: 4_096, PRACTICE_IDENTITY: 32_768, PRACTICE_THEMES: 32_768, COMPOSITION: 8_192, VERIFICATION: 8_192 }
 
 export type EnginePrice = { inputPerMillion: number; outputPerMillion: number }
 

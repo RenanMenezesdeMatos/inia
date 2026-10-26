@@ -135,6 +135,36 @@ export function redactEvidentPii(text: string): { text: string; redactions: Priv
   return { text: result, redactions }
 }
 
+/** Dígito escondido pela máscara que preserva o formato. */
+export const MASKED_DIGIT = "•"
+const hideDigits = (text: string) => text.replace(/\d/g, MASKED_DIGIT)
+// CPF só com a pontuação de CPF; 11 dígitos sem pontuação caem na regra geral de número longo (pode ser conta).
+const FORMATTED_CPF = /(?<!\d)(?:\d{3}\.\d{3}\.\d{3}|\d{9})-\d{2}(?!\d)/gu
+// Telefone BR com DDD opcional ("(11) 98765-4321", "11-98765-4321", "3456-7890"): DDD e o 1º dígito do número ficam.
+const PHONE_PRESERVING = /(?<!\d)(\(?\d{2}\)?[\s-]?)?(\d)(\d{3,4})([-\s])(\d{4})(?!\d)/gu
+// Número longo (conta, LP, código): 6+ dígitos, com separador simples entre eles; valor em dinheiro fica de fora.
+const LONG_NUMBER = /(?<![\d•]|R\$\s?)\d(?:[.\-\s]?\d){5,}(?![\d•]|,\d)/gu
+const KEPT_LEADING_DIGITS = 3
+
+/**
+ * Máscara que PRESERVA O FORMATO (`SUBJECT_PII_MASK_V2`, transcrição que vai para a IA e o que o colaborador vê dela): e-mail, CPF
+ * pontuado e protocolo viram marcadores; telefone mantém o DDD e o 1º dígito ("11-9••••-••••"); qualquer outro número longo mantém
+ * os 3 primeiros dígitos e a quantidade ("123•••••••"). Assim a análise ainda lê o formato que os indícios cadastrados descrevem
+ * (começo da conta, quantidade de dígitos, fixo × móvel) e ninguém recupera o número. Genérico: nenhum prefixo ou produto aqui.
+ * Idempotente — o texto mascarado não volta a casar com nenhuma regra.
+ */
+export function maskPreservingFormat(text: string): string {
+  let result = text
+  for (const rule of PII_PATTERNS) if (rule.kind === "EMAIL" || rule.kind === "PROTOCOL") result = result.replace(rule.pattern, (...args) => (rule.replacement.includes("$1") ? rule.replacement.replace("$1", typeof args[1] === "string" ? args[1] : "") : rule.replacement))
+  result = result.replace(FORMATTED_CPF, PII_PLACEHOLDERS.CPF)
+  result = result.replace(PHONE_PRESERVING, (_match, ddd: string | undefined, first: string, rest: string, separator: string, last: string) => `${ddd ?? ""}${first}${hideDigits(rest)}${separator}${hideDigits(last)}`)
+  result = result.replace(LONG_NUMBER, (run) => {
+    let kept = 0
+    return run.replace(/\d/g, (digit) => (kept++ < KEPT_LEADING_DIGITS ? digit : MASKED_DIGIT))
+  })
+  return result
+}
+
 export function sourceHashOf(transcript: string): string {
   return createHash("sha256").update(transcript, "utf8").digest("hex")
 }

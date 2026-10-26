@@ -87,12 +87,13 @@ describe("gateway + limitador", () => {
     ])
   })
 
-  it("interativa (request de uma pessoa) no legado: uma nova tentativa rápida e erro claro, sem o corpo do provider", async () => {
-    legacyScript.push(legacy429, legacy429)
+  it("interativa (request de uma pessoa) no legado: insiste dentro de 15 s (RetryInfo de 3 s como mínimo) e dá erro claro, sem o corpo do provider", async () => {
+    legacyScript.push(legacy429, legacy429, legacy429, legacy429, legacy429)
     const result = runWithAiOrganization(ORG, () => generateForRoute(request()), { origin: "USER_REQUEST" }).catch((error: unknown) => error)
-    await vi.advanceTimersByTimeAsync(2_000)
+    // Esperas: 3 s, 3 s, 3 s (o RetryInfo vale como mínimo) e 6 s (a que dobrou) = 15 s.
+    await vi.advanceTimersByTimeAsync(15_000)
     const error = await result
-    expect(legacyRecords.map((record) => record?.priority)).toEqual(["INTERACTIVE", "INTERACTIVE"])
+    expect(legacyRecords.map((record) => record?.priority)).toEqual(["INTERACTIVE", "INTERACTIVE", "INTERACTIVE", "INTERACTIVE", "INTERACTIVE"])
     expect(error).toMatchObject({ code: "AI_RATE_LIMIT", statusCode: 429, message: INTERACTIVE_RATE_LIMIT_MESSAGE })
     expect(JSON.stringify((error as DomainError).details)).not.toContain("AIza")
   })
@@ -125,7 +126,7 @@ describe("gateway + limitador", () => {
     expect(error).toMatchObject({ code: "AGENT_EXECUTION_FAILED", details: { status: 429, retryAfterMs: 3_000 } })
   })
 
-  it("chat em streaming: 429 antes do primeiro pedaço repete uma vez; depois de entregar texto, nunca", async () => {
+  it("chat em streaming: 429 antes do primeiro pedaço repete; depois de entregar texto, nunca", async () => {
     let calls = 0
     const stream = createChatStreamer(async (_history, _system, onChunk) => {
       calls++
@@ -135,7 +136,7 @@ describe("gateway + limitador", () => {
     })
     const chunks: string[] = []
     const ok = runWithAiOrganization(ORG, () => stream([{ role: "user", text: "olá" }], "sys", (chunk) => chunks.push(chunk)), { origin: "USER_REQUEST" })
-    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(3_000)
     await ok
     expect([calls, chunks]).toEqual([2, ["oi"]])
 

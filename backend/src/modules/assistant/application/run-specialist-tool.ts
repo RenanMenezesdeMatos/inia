@@ -161,6 +161,12 @@ export type SpecialistToolOptions = {
   excludedCapabilities?: readonly InvestigationCapability[] | undefined
   /** Moldura da conversa de onde veio a pergunta, anexada ao input do especialista (dados; nunca contexto de análise). */
   conversationFrame?: string | undefined
+  /**
+   * Conversa (chat/voz): a última pergunta da PESSOA, nas palavras dela. A busca na base deste especialista une a seleção dela à
+   * da `query` que o roteamento escreveu — a reescrita do roteamento chegava a tirar da busca a seção pedida (22/10/2026; ver
+   * ASKER_QUESTION_RETRIEVAL_VERSION). Só vale com `collaboratorConversation`; o input do especialista continua com a `query`.
+   */
+  askerQuestion?: string | undefined
 }
 
 /** Contrato estruturado se aplica quando há transcrição pra verificar e o especialista audita
@@ -206,7 +212,7 @@ export async function runSpecialistTool(db: Database, organizationId: string, ag
   // V1.7.1d — avaliação de processo de uma chamada que chegou ao fim: o plano de cobertura garante as seções de fechamento.
   // V1.7.1m — o assunto estruturado da interação do enrollment identifica o documento PRIMÁRIO do processo na cobertura.
   const coverage = contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT" && sharedContext && closingPhaseReached(sharedContext) ? { phases: ["CLOSING" as const], subject: await loadInteractionSubject(db, organizationId, options.investigation?.interactionId) } : null
-  const built = await buildSystemPromptWithTrace(db, agentId, agent, { query: sharedContext ? `${query}\n${sharedContext}` : query, coverage, markProcessRoles: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", processAssessment: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", governanceSubjectPersonId: operatorId, collaboratorConversation: options.collaboratorConversation ?? false })
+  const built = await buildSystemPromptWithTrace(db, agentId, agent, { query: sharedContext ? `${query}\n${sharedContext}` : query, coverage, markProcessRoles: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", processAssessment: contract === "FEEDBACK" && options.outputContract === "PROCESS_ASSESSMENT", governanceSubjectPersonId: operatorId, collaboratorConversation: options.collaboratorConversation ?? false, askerQuestion: options.collaboratorConversation === true ? (options.askerQuestion ?? null) : null })
   attachKnowledgeTrace(withoutCheckpointCatalog(built.knowledge))
   // INVESTIGAÇÃO do especialista: com capacidades configuradas no PRÓPRIO Agent, ele investiga
   // com as Tools antes de responder (sujeito = operador da conversa/enrollment; o Orquestrador

@@ -13,7 +13,12 @@ export const DOCUMENT_BUDGET_CHARS = 90_000
 
 export type CandidateDocument = { documentId: string; title: string; version: number; content: string; contentHash: string; perspective: RulePerspective }
 
-export function selectDocumentsForCall(documents: readonly CandidateDocument[], input: { subject: string | null; transcript: string; budgetChars?: number }): { selected: SourceDocument[]; omitted: { documentId: string; title: string; reason: "BUDGET" }[]; anchoredDocumentIds: string[] } {
+/**
+ * `PRODUCT_APPLICABILITY_V1`: documentos com abrangência por produto cadastrada (`productScoped`) nunca são ordenados ENTRE SI pela
+ * relevância léxica — a palavra que aparece na conversa não escolhe o produto. Todos recebem a maior relevância do grupo e ficam juntos
+ * na ordem neutra (título); o que o orçamento cortar fica registrado, e a identificação continua vendo o catálogo inteiro.
+ */
+export function selectDocumentsForCall(documents: readonly CandidateDocument[], input: { subject: string | null; transcript: string; budgetChars?: number; productScoped?: ReadonlySet<string> }): { selected: SourceDocument[]; omitted: { documentId: string; title: string; reason: "BUDGET" }[]; anchoredDocumentIds: string[] } {
   const budget = input.budgetChars ?? DOCUMENT_BUDGET_CHARS
   const primary = selectPrimaryProcessDocument(documents.map((document) => ({ documentId: document.documentId, documentTitle: document.title })), input.subject)
   const anchored = new Set(primary.candidates.map((candidate) => candidate.documentId))
@@ -26,6 +31,11 @@ export function selectDocumentsForCall(documents: readonly CandidateDocument[], 
     if (count >= 3) continue
     seen.set(chunk.documentId, count + 1)
     relevance.set(chunk.documentId, (relevance.get(chunk.documentId) ?? 0) + chunk.score)
+  }
+  const scoped = documents.filter((document) => input.productScoped?.has(document.documentId))
+  if (scoped.length > 1) {
+    const top = Math.max(...scoped.map((document) => relevance.get(document.documentId) ?? 0))
+    for (const document of scoped) relevance.set(document.documentId, top)
   }
   const ordered = [...documents].sort((a, b) => Number(anchored.has(b.documentId)) - Number(anchored.has(a.documentId)) || (relevance.get(b.documentId) ?? 0) - (relevance.get(a.documentId) ?? 0) || a.title.localeCompare(b.title, "pt-BR"))
   const total = ordered.reduce((sum, document) => sum + document.content.length, 0)

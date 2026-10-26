@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarClock, Tag, UserRound, Users } from "lucide-react"
+import { Boxes, CalendarClock, Tag, UserRound, Users } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -42,7 +42,7 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 // Etiquetas discretas de alcance: grupo/subgrupo e assunto, sempre nessa ordem.
-export function ScopeTags({ document, className }: { document: Pick<KnowledgeDocument, "orgScopes" | "subjectScopes">; className?: string }) {
+export function ScopeTags({ document, products, className }: { document: Pick<KnowledgeDocument, "orgScopes" | "subjectScopes">; products?: readonly string[]; className?: string }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
       <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -53,6 +53,13 @@ export function ScopeTags({ document, className }: { document: Pick<KnowledgeDoc
         <Tag className="size-3 shrink-0" />
         <span className="truncate">{subjectScopeLabel(document.subjectScopes[0])}</span>
       </span>
+      {/* Só quando a base vale para alguns produtos (sem marca = todos os produtos). */}
+      {products && products.length > 0 ? (
+        <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground" title="Vale só para estes produtos">
+          <Boxes className="size-3 shrink-0" />
+          <span className="truncate">{products.join(", ")}</span>
+        </span>
+      ) : null}
     </div>
   )
 }

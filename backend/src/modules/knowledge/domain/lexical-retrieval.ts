@@ -40,6 +40,26 @@ function meaningfulQueryTerms(terms: readonly string[]): string[] {
   return kept.length > 0 ? kept : [...terms]
 }
 
+/** A consulta se sustenta sozinha numa busca: ao menos `MIN_MATCHED_TERMS` termos distintos além das palavras de pergunta.
+ * "e o prazo?" e "o que eu preciso fazer?" dependem da conversa para dizer de quê. */
+export function queryStandsAlone(query: string, options: TokenizeOptions = {}): boolean {
+  return [...new Set(tokenize(query, options))].filter((term) => !QUESTION_FILLERS.has(term)).length >= MIN_MATCHED_TERMS
+}
+
+/** As palavras de `text` que `reference` também usa (mesmo radical; siglas pela sigla), na ordem de `text`. Conversa: a pergunta
+ * da pessoa sem o que o roteamento não repetiu — saudação, cortesia ("tudo bem", "por favor") e o assunto que foi para outro
+ * especialista. */
+export function wordsSharedWith(text: string, reference: string, options: TokenizeOptions = {}): string {
+  const referenceTerms = new Set(tokenize(reference, options))
+  return text
+    .split(/\s+/)
+    .filter((word) => {
+      const terms = tokenize(word, options)
+      return terms.length > 0 && terms.every((term) => referenceTerms.has(term))
+    })
+    .join(" ")
+}
+
 export type RetrievalBudget = {
   /** Máximo de trechos incluídos no prompt. */
   maxChunks: number
@@ -219,6 +239,43 @@ export function selectWithinBudget(ranked: RankedChunk[], budget: RetrievalBudge
     totalChars += chunk.text.length
   }
   return selected
+}
+
+/** Teto do que a pergunta da pessoa acrescenta à seleção do roteamento (`complementSelection`). */
+export const MAX_COMPLEMENT_CHUNKS = 4
+
+/**
+ * COMPLEMENTO DE UMA SELEÇÃO (conversa: a pergunta do roteamento e a da pessoa). A seleção da primeira fica INTEIRA — nada do
+ * que ela escolheu sai. Da segunda entram, na ordem dela, só trechos dos MESMOS documentos que a primeira já escolheu (o assunto
+ * que o roteamento deu a este especialista), no máximo `maxAdded`, sob o mesmo teto de caracteres. Assim, numa pergunta com
+ * dois assuntos, cada especialista continua com o seu: o outro assunto está em outros documentos e não entra; e uma pergunta
+ * da pessoa que fala de outra coisa (saudação, outro processo) não traz nada. Trecho escolhido pelas duas entra uma vez.
+ */
+export function complementSelection(primary: readonly RankedChunk[], secondary: readonly RankedChunk[], budget: RetrievalBudget = DEFAULT_RETRIEVAL_BUDGET, maxAdded = MAX_COMPLEMENT_CHUNKS): { selected: RankedChunk[]; added: RankedChunk[]; otherDocuments: number; overLimit: number } {
+  const keyOf = (chunk: RankedChunk) => `${chunk.documentId}#${chunk.index}`
+  const chosen = new Set(primary.map(keyOf))
+  const documents = new Set(primary.map((chunk) => chunk.documentId))
+  const selected = [...primary]
+  const added: RankedChunk[] = []
+  let otherDocuments = 0
+  let overLimit = 0
+  let totalChars = primary.reduce((sum, chunk) => sum + chunk.text.length, 0)
+  for (const chunk of secondary) {
+    if (chosen.has(keyOf(chunk))) continue
+    if (!documents.has(chunk.documentId)) {
+      otherDocuments += 1
+      continue
+    }
+    if (added.length >= maxAdded || totalChars + chunk.text.length > budget.maxTotalChars) {
+      overLimit += 1
+      continue
+    }
+    chosen.add(keyOf(chunk))
+    selected.push(chunk)
+    added.push(chunk)
+    totalChars += chunk.text.length
+  }
+  return { selected, added, otherDocuments, overLimit }
 }
 
 /** Aproximação de tokens para texto em português (≈ 3,5 caracteres por token) — só para

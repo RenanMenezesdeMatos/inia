@@ -152,16 +152,13 @@ describe("ADJUSTMENT_IN_CALL_V1 e OFFICIAL_PHRASING_V1 (titularidade, 2ª rodada
     expect(usefulnessOf(brief, [...kept, { stance: "ADJUSTMENT" as const, refs: ["A2"], verdict }]).missingAdjustment).toBeUndefined()
   })
 
-  it("sem exemplo do redator, os detalhes mostram a fraseologia OFICIAL do argumentário, identificada como tal; com lacuna, não", () => {
+  it("os detalhes mostram a fraseologia OFICIAL do argumentário, identificada como tal e como está — com lacuna também (`LITERAL_QUOTES_V1`)", () => {
     const phrasing = { name: "Troca de titularidade entre empresas", text: "Como a sua empresa é a que vai receber, os documentos são: comprovante do CNPJ, contrato social, termo de aceite." }
     const brief = buildMonitoringBrief({ ...briefInput([LIST]), argumentPhrasings: new Map([[ARG, phrasing]]) })
     const detail = feedbackViewOf(brief, { card: "", paragraphs: [], sentences: [], communicatedRefs: ["A1"] }).developments[0]!
     expect(detail.suggestedResponse).toBe(phrasing.text)
     expect(detail.suggestedResponseSource).toEqual({ kind: "ARGUMENT_SCRIPT", name: phrasing.name })
-    const withWriter = feedbackViewOf(brief, { card: "", paragraphs: [], sentences: [], communicatedRefs: ["A1"], examples: { A1: "Fala do redator." } }).developments[0]!
-    expect(withWriter).toMatchObject({ suggestedResponse: "Fala do redator." })
-    expect(withWriter.suggestedResponseSource).toBeUndefined()
     const gapped = buildMonitoringBrief({ ...briefInput([LIST]), argumentPhrasings: new Map([[ARG, { ...phrasing, text: "Os documentos da [empresa] são…" }]]) })
-    expect(feedbackViewOf(gapped, { card: "", paragraphs: [], sentences: [], communicatedRefs: ["A1"] }).developments[0]!.suggestedResponse).toBeNull()
+    expect(feedbackViewOf(gapped, { card: "", paragraphs: [], sentences: [], communicatedRefs: ["A1"] }).developments[0]!).toMatchObject({ suggestedResponse: "Os documentos da [empresa] são…", suggestedResponseSource: { kind: "ARGUMENT_SCRIPT", name: phrasing.name } })
   })
 })

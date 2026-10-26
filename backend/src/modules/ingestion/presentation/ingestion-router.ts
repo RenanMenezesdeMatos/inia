@@ -22,6 +22,9 @@ const interactionSchema = z.object({
   flags: z.record(z.string().max(100), z.union([z.boolean(), z.number()])).refine((flags) => Object.keys(flags).length <= 50, "No máximo 50 flags por interação.").default({}),
 })
 
+/** Diferença de relógio aceita entre o sistema de origem e o servidor ao receber o fim de uma chamada. */
+export const INGESTION_CLOCK_SKEW_MS = 5 * 60_000
+
 export function createIngestionRouter(db: Database) {
   const router = Router()
   router.post("/indicator-measurements/batch", async (request, response) => {
@@ -67,6 +70,11 @@ export function createIngestionRouter(db: Database) {
     const operator = await db.query(`select 1 from people where id = $1 and organization_id = $2`, [input.operatorId, organizationId])
     if (!operator.rows[0]) return response.status(422).json({ error: { code: "OPERATOR_NOT_FOUND", message: "Colaborador não encontrado nesta organização." } })
     if (new Date(input.endedAt) <= new Date(input.startedAt)) return response.status(422).json({ error: { code: "INVALID_PERIOD", message: "O fim da chamada deve ser posterior ao início." } })
+    // Chamada que termina no futuro é dado errado (relógio ou fuso do sistema de origem) e disparava Workflows como se já tivesse
+    // acontecido (validação funcional de 20/10/2026, D12). Tolerância para diferença de relógio entre os sistemas.
+    if (new Date(input.endedAt).getTime() > Date.now() + INGESTION_CLOCK_SKEW_MS) {
+      return response.status(422).json({ error: { code: "INTERACTION_ENDS_IN_FUTURE", message: "O fim da chamada está no futuro. Confira o relógio e o fuso horário do sistema de origem." } })
+    }
     const client = await db.connect()
     let id: string
     try {
@@ -100,13 +108,19 @@ export function createIngestionRouter(db: Database) {
               422,
             )
           }
-          await client.query(
+          // Reenvio da MESMA flag com o MESMO valor não devolve linha: nada mudou, nada matricula de novo (mesma regra da Central de
+          // Dados, `interaction-writers.ts`). Antes cada reenvio rematriculava todos os Workflows da flag e duplicava escalonamentos e
+          // avisos (validação funcional de 20/10/2026, D4). A linha da interação, travada pelo upsert acima, serializa reenvios simultâneos.
+          const written = await client.query(
             `insert into interaction_flags(organization_id, interaction_id, channel_flag_id, value_boolean, value_numeric)
              values ($1,$2,$3,$4,$5)
              on conflict (interaction_id, channel_flag_id) do update set
-               value_boolean = excluded.value_boolean, value_numeric = excluded.value_numeric, received_at = now()`,
+               value_boolean = excluded.value_boolean, value_numeric = excluded.value_numeric, received_at = now()
+             where interaction_flags.value_boolean is distinct from excluded.value_boolean or interaction_flags.value_numeric is distinct from excluded.value_numeric
+             returning id`,
             [organizationId, id, flag.id, isBoolean ? value : null, isBoolean ? null : value],
           )
+          if (written.rows.length === 0) continue
 
           // Só matricula (Abrangência + Filtro Populacional — mesma regra do agendador e do QA
           // Lab, ver flag-enrollment.ts/workflow-eligibility.ts): quem avalia a condição (SE) e

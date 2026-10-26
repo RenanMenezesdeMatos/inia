@@ -216,3 +216,75 @@ describe("proteção de endpoint", () => {
     expect(endpointProblem("ftp://host")).not.toBeNull()
   })
 })
+
+describe("execução em fluxo com ferramentas (chat pela policy)", () => {
+  const sseBody = (lines: string[]) => new Response([...lines, ""].join("\n"), { status: 200, headers: { "content-type": "text/event-stream" } })
+  const tool = { name: "agent_x", description: "d", parameters: { type: "object", properties: { query: { type: "string" } } } }
+
+  it("OpenAI: texto em deltas vai para onText; chamadas de ferramenta fatiadas são remontadas pelo índice", async () => {
+    const text = sseBody(['data: {"choices":[{"delta":{"content":"Olá"}}]}', 'data: {"choices":[{"delta":{"content":" mundo"},"finish_reason":"stop"}]}', 'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}', "data: [DONE]"])
+    const fake = fakeFetch(() => text)
+    const chunks: string[] = []
+    const result = await createOpenAiChatAdapter(fake.fetch).streamExecute!(connection(), "m", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [tool], structuredOutput: false, maxOutputTokens: null }, 1000, (chunk) => chunks.push(chunk))
+    expect(chunks).toEqual(["Olá", " mundo"])
+    expect(result).toMatchObject({ kind: "text", text: "Olá mundo", streamedChars: 9, finishReason: "STOP", usage: { promptTokens: 5 } })
+    const body = JSON.parse(String(fake.calls[0]!.init!.body)) as Record<string, unknown>
+    expect(body).toMatchObject({ stream: true, stream_options: { include_usage: true }, tools: [{ type: "function", function: { name: "agent_x" } }] })
+
+    const calls = sseBody([
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"agent_","arguments":"{\\"que"}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"x","arguments":"ry\\":\\"q\\"}"}}]}}]}',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_2","function":{"name":"my_results","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}',
+      "data: [DONE]",
+    ])
+    const toolChunks: string[] = []
+    const toolResult = await createOpenAiChatAdapter(fakeFetch(() => calls).fetch).streamExecute!(connection(), "m", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [tool], structuredOutput: false, maxOutputTokens: null }, 1000, (chunk) => toolChunks.push(chunk))
+    expect(toolChunks).toEqual([])
+    expect(toolResult).toMatchObject({ kind: "functionCalls", streamedChars: 0, calls: [{ name: "agent_x", args: { query: "q" }, id: "call_1" }, { name: "my_results", args: {}, id: "call_2" }] })
+  })
+
+  it("Google: texto e chamadas no mesmo fluxo (thoughtSignature preservado; pensamento nunca vai para a tela)", async () => {
+    const google = connection({ providerKey: "GOOGLE_GENAI", adapterType: "GOOGLE_GENAI", baseUrl: "https://generativelanguage.googleapis.com/v1beta" })
+    const fake = fakeFetch(() => sseBody([
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "pensando", thought: true }] } }] })}`,
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Oi" }] } }] })}`,
+      `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "!" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1, totalTokenCount: 4 } })}`,
+    ]))
+    const chunks: string[] = []
+    const result = await createGoogleGenAiAdapter(fake.fetch).streamExecute!(google, "gemini-x", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [tool], structuredOutput: false, maxOutputTokens: null }, 1000, (chunk) => chunks.push(chunk))
+    expect(fake.calls[0]!.url).toContain(":streamGenerateContent?alt=sse")
+    expect(chunks).toEqual(["Oi", "!"])
+    expect(result).toMatchObject({ kind: "text", text: "Oi!", streamedChars: 3, finishReason: "STOP" })
+
+    const withCall = fakeFetch(() => sseBody([`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ functionCall: { name: "agent_x", args: { query: "q" } }, thoughtSignature: "sig" }] } }] })}`]))
+    const callResult = await createGoogleGenAiAdapter(withCall.fetch).streamExecute!(google, "gemini-x", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [tool], structuredOutput: false, maxOutputTokens: null }, 1000, () => {})
+    expect(callResult).toMatchObject({ kind: "functionCalls", calls: [{ name: "agent_x", args: { query: "q" }, thoughtSignature: "sig" }] })
+  })
+
+  it("saída estruturada em fluxo (esclarecimento pelas bases): o pedido é JSON nos dois provedores e o JSON cru chega em pedaços", async () => {
+    const google = connection({ providerKey: "GOOGLE_GENAI", adapterType: "GOOGLE_GENAI", baseUrl: "https://generativelanguage.googleapis.com/v1beta" })
+    const googleFake = fakeFetch(() => sseBody([`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"answer":' }] } }] })}`, `data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: '"ok"}' }] } }] })}`]))
+    const googleChunks: string[] = []
+    const googleResult = await createGoogleGenAiAdapter(googleFake.fetch).streamExecute!(google, "gemini-x", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [], structuredOutput: true, maxOutputTokens: null }, 1000, (chunk) => googleChunks.push(chunk))
+    expect(JSON.parse(String(googleFake.calls[0]!.init?.body)).generationConfig).toMatchObject({ responseMimeType: "application/json" })
+    expect(googleChunks).toEqual(['{"answer":', '"ok"}'])
+    expect(googleResult).toMatchObject({ kind: "text", text: '{"answer":"ok"}' })
+
+    const openAiFake = fakeFetch(() => sseBody([`data: ${JSON.stringify({ choices: [{ delta: { content: '{"answer":"ok"}' } }] })}`, "data: [DONE]"]))
+    const openAiChunks: string[] = []
+    await createOpenAiChatAdapter(openAiFake.fetch).streamExecute!(connection(), "m", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [], structuredOutput: true, maxOutputTokens: null }, 1000, (chunk) => openAiChunks.push(chunk))
+    expect(JSON.parse(String(openAiFake.calls[0]!.init?.body)).response_format).toEqual({ type: "json_object" })
+    expect(openAiChunks).toEqual(['{"answer":"ok"}'])
+  })
+
+  it("Google: menos raciocínio vira thinkingConfig.thinkingLevel; sem o pedido, nenhum ajuste vai", async () => {
+    const google = connection({ providerKey: "GOOGLE_GENAI", adapterType: "GOOGLE_GENAI", baseUrl: "https://generativelanguage.googleapis.com/v1beta" })
+    const fake = fakeFetch(() => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }), { status: 200 }))
+    const adapter = createGoogleGenAiAdapter(fake.fetch)
+    await adapter.execute(google, "gemini-x", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [], structuredOutput: true, maxOutputTokens: null, reasoningEffort: "LOW" }, 1000)
+    await adapter.execute(google, "gemini-x", { systemPrompt: "s", contents: [{ role: "user", text: "t" }], tools: [], structuredOutput: false, maxOutputTokens: null }, 1000)
+    const bodies = fake.calls.map((call) => JSON.parse(String(call.init?.body)) as { generationConfig?: Record<string, unknown> })
+    expect(bodies[0]!.generationConfig).toEqual({ responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "low" } })
+    expect(bodies[1]!.generationConfig).toBeUndefined()
+  })
+})

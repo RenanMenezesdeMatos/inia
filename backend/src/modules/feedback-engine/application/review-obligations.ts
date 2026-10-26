@@ -5,7 +5,8 @@ import { isDeterminate, type AssessedCriterion } from "../domain/call-analysis.j
 import { reviewRuleOf } from "../domain/call-review.js"
 import { CALL_ANALYSIS_FORMAT_RETRY } from "../domain/call-analysis-prompt.js"
 import type { ModelObligationAnalysis } from "../domain/obligation-analysis.js"
-import { obligationClaimOf, OBLIGATION_CONFIRMATION_RESPONSE_SCHEMA, OBLIGATION_CONFIRMATION_SYSTEM_PROMPT, OBLIGATION_REVIEW_RESPONSE_SCHEMA, OBLIGATION_REVIEW_SYSTEM_PROMPT, parseObligationConfirmation, parseObligationReview, renderObligationConfirmationUserTurn, renderObligationReviewUserTurn, type ObligationReviewTargets } from "../domain/obligation-review.js"
+import { obligationClaimWithScopeOf, obligationConfirmationContractFor, obligationReviewContractFor, parseObligationConfirmation, parseObligationReview, renderObligationConfirmationUserTurn, renderObligationReviewUserTurn, type ObligationReviewTargets } from "../domain/obligation-review.js"
+import type { ProductContext } from "../domain/product-applicability.js"
 import { listItemsInPlayOf, obligationDiscoveriesOf, reviewableGapsOf, situationsInPlayOf, verifyObligationAnalysis, type ObligationConfirmationInput, type ObligationReviewInput } from "../domain/obligation-verification.js"
 import type { ProcedureContext, TranscriptStatus } from "../domain/procedure.js"
 import type { StageResponse } from "../domain/analysis-recovery.js"
@@ -28,10 +29,15 @@ function setAsideReasonOf(criterion: AssessedCriterion): string {
  * ela encontrou vai a UMA confirmação focal (só esses achados, sem a base inteira); sem orçamento ou com falha, fica inconclusivo
  * com o motivo. Resposta paga com o MESMO pedido é reaproveitada (nenhuma chamada). Falha da revisão = pendência (nada confirmado).
  */
-export async function reviewObligationAnalysis(deps: { model: EngineModelPort }, input: { model: ModelObligationAnalysis; context: ProcedureContext; projection: TranscriptProjection; transcriptStatus: TranscriptStatus; interactionId: string; subject: string | null; anchored: readonly string[]; storedReviews?: readonly StageResponse[]; storedConfirmations?: readonly StageResponse[] }, metrics: ModelCallMetric[]): Promise<ReviewOutcome> {
-  const base = { model: input.model, context: input.context, projection: input.projection, transcriptStatus: input.transcriptStatus, interactionId: input.interactionId, subjectAnchoredDocumentIds: input.anchored }
+export async function reviewObligationAnalysis(deps: { model: EngineModelPort }, input: { model: ModelObligationAnalysis; context: ProcedureContext; projection: TranscriptProjection; transcriptStatus: TranscriptStatus; interactionId: string; subject: string | null; anchored: readonly string[]; storedReviews?: readonly StageResponse[]; storedConfirmations?: readonly StageResponse[]; products?: ProductContext | null }, metrics: ModelCallMetric[]): Promise<ReviewOutcome> {
+  const products = input.products ?? null
+  const base = { model: input.model, context: input.context, projection: input.projection, transcriptStatus: input.transcriptStatus, interactionId: input.interactionId, subjectAnchoredDocumentIds: input.anchored, ...(products ? { products } : {}) }
   const preliminary = verifyObligationAnalysis(base)
-  const claims = preliminary.criteria.filter((criterion) => criterion.origin === "ANALYSIS" && isDeterminate(criterion.proposedStatus) && !criterion.ruleConflict).map(obligationClaimOf)
+  // `PRODUCT_APPLICABILITY_V1`: conclusão que depende de um produto que nem a análise estabeleceu não vai à revisão (a revisão só pode
+  // tornar a identificação mais restrita, nunca menos) — fica sem avaliação de qualquer forma; as demais levam a abrangência lida.
+  const withScope = (criterion: AssessedCriterion) => obligationClaimWithScopeOf(criterion, products)
+  const blockedByProduct = (criterion: AssessedCriterion) => criterion.productApplicability?.effect === "SUSPENDED" || criterion.productApplicability?.effect === "OTHER_PRODUCT"
+  const claims = preliminary.criteria.filter((criterion) => criterion.origin === "ANALYSIS" && isDeterminate(criterion.proposedStatus) && !criterion.ruleConflict && !blockedByProduct(criterion)).map(withScope)
   // Itens sem avaliação que vão à revisora: os do argumentário aplicável (disposição por item) e, como CONTEXTO, os das listas que as
   // obrigações usam e ninguém avaliou (`LIST_COVERAGE_V2`) — ela aponta em `missed` só os que valiam e faltaram.
   const gaps = reviewableGapsOf(preliminary.criteria)
@@ -58,9 +64,12 @@ export async function reviewObligationAnalysis(deps: { model: EngineModelPort },
       analystReading: criterion.rationale,
     })),
     path: preliminary.scenario.proposedPathAssessment === "CORRECT" || preliminary.scenario.proposedPathAssessment === "INCORRECT" || preliminary.scenario.proposedPathAssessment === "PARTIALLY_CORRECT" ? { assessment: declared, pathTaken: analystPath.pathTaken, analystReading: analystPath.rationale } : null,
+    // Modo produto: a leitura da analista de cada pedido vai à revisora, que dá a PRÓPRIA leitura (mesmo id).
+    ...(products ? { requests: (input.model.requests ?? []).map((request) => ({ id: request.id, summary: request.summary, object: request.object, product: { status: request.product.status, targets: request.product.targets, evidence: request.product.evidence.map((unit) => ({ kind: unit.kind, turn: unit.turn, speaker: unit.speaker, quote: unit.quote, metadata: unit.metadata, criterion: unit.criterion, relation: unit.relation, supports: unit.supports })) } })) } : {}),
   }
   const requested = { linesToAssess: targets.linesToAssess.map((line) => line.id) }
-  const request: EngineModelRequest = { stage: "CALL_REVIEW", systemPrompt: OBLIGATION_REVIEW_SYSTEM_PROMPT, contents: [{ role: "user", text: renderObligationReviewUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, context: input.context, targets }) }], responseSchema: OBLIGATION_REVIEW_RESPONSE_SCHEMA, tag: "review:obligations" }
+  const contract = obligationReviewContractFor(Boolean(products))
+  const request: EngineModelRequest = { stage: "CALL_REVIEW", systemPrompt: contract.systemPrompt, contents: [{ role: "user", text: renderObligationReviewUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, context: input.context, targets, products }) }], responseSchema: contract.schema, tag: "review:obligations" }
   const requestSha256 = sha(`${request.systemPrompt}\n${request.contents[0]!.text}`)
   let review: ObligationReviewInput = { attempted: true, review: null, error: null, sentClaims: claims, requested, actPlaceRequired: true }
   let raw: StageResponse | null = null
@@ -96,18 +105,19 @@ export async function reviewObligationAnalysis(deps: { model: EngineModelPort },
   const discoveries = obligationDiscoveriesOf(analysis.criteria)
   if (discoveries.length === 0) return { analysis, review: legacyView, raw, reviewReused, pending: null, confirmationRaw: null }
   // CONFIRMAÇÃO FOCAL: só os achados pendentes, com o texto das linhas de origem e a transcrição inteira.
-  const confirmationClaims = discoveries.map(obligationClaimOf)
-  const confirmationRequest: EngineModelRequest = { stage: "CALL_CONFIRMATION", systemPrompt: OBLIGATION_CONFIRMATION_SYSTEM_PROMPT, contents: [{ role: "user", text: renderObligationConfirmationUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, claims: confirmationClaims }) }], responseSchema: OBLIGATION_CONFIRMATION_RESPONSE_SCHEMA, tag: "confirmation:obligations" }
+  const confirmationClaims = discoveries.map(withScope)
+  const confirmationContract = obligationConfirmationContractFor(Boolean(products))
+  const confirmationRequest: EngineModelRequest = { stage: "CALL_CONFIRMATION", systemPrompt: confirmationContract.systemPrompt, contents: [{ role: "user", text: renderObligationConfirmationUserTurn({ projection: input.projection, transcriptStatus: input.transcriptStatus, subject: input.subject, claims: confirmationClaims, products }) }], responseSchema: confirmationContract.schema, tag: "confirmation:obligations" }
   const confirmationSha = sha(`${confirmationRequest.systemPrompt}\n${confirmationRequest.contents[0]!.text}`)
   const storedConfirmation = (input.storedConfirmations ?? []).find((entry) => entry.requestSha256 === confirmationSha)
   const storedConfirmationParsed = storedConfirmation ? parseObligationConfirmation(storedConfirmation.text) : null
-  if (storedConfirmation && storedConfirmationParsed?.ok) return { analysis: verifyWith({ attempted: true, claims: storedConfirmationParsed.claims, error: null, reason: null, sentClaims: confirmationClaims, actPlaceRequired: true }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw: storedConfirmation }
+  if (storedConfirmation && storedConfirmationParsed?.ok) return { analysis: verifyWith({ attempted: true, claims: storedConfirmationParsed.claims, error: null, reason: null, sentClaims: confirmationClaims, actPlaceRequired: true, ...(storedConfirmationParsed.scopeReadings ? { scopeReadings: storedConfirmationParsed.scopeReadings } : {}) }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw: storedConfirmation }
   try {
     const response = await callModel(deps.model, confirmationRequest, metrics)
     const parsed = parseObligationConfirmation(response.text)
     const confirmationRaw = { requestSha256: confirmationSha, text: response.text.slice(0, 60_000) }
     if (!parsed.ok) return { analysis: verifyWith({ attempted: true, claims: null, error: `CONFIRMATION_CONTRACT:${parsed.error}`, reason: "CONTRACT", sentClaims: confirmationClaims, actPlaceRequired: true }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw }
-    return { analysis: verifyWith({ attempted: true, claims: parsed.claims, error: null, reason: null, sentClaims: confirmationClaims, actPlaceRequired: true }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw }
+    return { analysis: verifyWith({ attempted: true, claims: parsed.claims, error: null, reason: null, sentClaims: confirmationClaims, actPlaceRequired: true, ...(parsed.scopeReadings ? { scopeReadings: parsed.scopeReadings } : {}) }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw }
   } catch (error) {
     const budget = isBudgetExhausted(error)
     return { analysis: verifyWith({ attempted: true, claims: null, error: error instanceof DomainError ? error.code : error instanceof Error ? error.name : "UNKNOWN", reason: budget ? "BUDGET" : "TECHNICAL", sentClaims: confirmationClaims, actPlaceRequired: true }), review: legacyView, raw, reviewReused, pending: null, confirmationRaw: null }

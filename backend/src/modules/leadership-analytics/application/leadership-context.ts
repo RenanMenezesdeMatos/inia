@@ -20,6 +20,7 @@ import { resolveEmploymentStatusFreshness } from "../../people/application/emplo
 import { executeLeadershipTool, isLeadershipTool, LEADERSHIP_ASK_TOOL, LEADERSHIP_TOOL_DECLARATIONS, type LeadershipToolDependencies, type LeadershipToolResult } from "./leadership-toolset.js"
 import { processScopeOf, structureGroupsOf, type ProcessScope } from "./process-consultation.js"
 import { resolveAnalysisPeriod, resolveStructureReference, type ResolvedStructure } from "./references.js"
+import { createLeadershipPracticesLoader, type LeadershipPracticesLoader } from "../../best-practices/application/leadership-practices.js"
 
 /** Ferramentas executadas pelo próprio backend dentro de um turno do Orquestrador (ver run-orchestrated-reply.ts). */
 export type DirectToolset = {
@@ -58,6 +59,7 @@ export type LeadershipSession = {
   statusFreshness?: () => Promise<StatusFreshness | null>
   loadInteractionStats?: InteractionStatsLoader
   loadHireDates?: HireDatesLoader
+  loadBestPractices?: LeadershipPracticesLoader
 }
 
 /**
@@ -108,6 +110,7 @@ export async function loadLeadershipSession(db: Database, user: AuthTokenPayload
       const result = await db.query<{ id: string; hired_at: string | null }>(`select id, hired_at::text from people where organization_id = $1 and id = any($2::uuid[])`, [scope.organizationId, personIds])
       return new Map(result.rows.map((row) => [row.id, row.hired_at]))
     },
+    loadBestPractices: createLeadershipPracticesLoader(db, scope.organizationId),
     statusFreshness: async () => {
       const freshness = await resolveEmploymentStatusFreshness(db, scope.organizationId, closure.now, closure.timeZone)
       return { state: freshness.state, lastSuccessLocalDate: freshness.lastSuccessLocalDate }
@@ -125,6 +128,7 @@ export function toolDependencies(session: LeadershipSession): LeadershipToolDepe
     ...(session.statusFreshness ? { statusFreshness: session.statusFreshness } : {}),
     ...(session.loadInteractionStats ? { loadInteractionStats: session.loadInteractionStats } : {}),
     ...(session.loadHireDates ? { loadHireDates: session.loadHireDates } : {}),
+    ...(session.loadBestPractices ? { loadBestPractices: session.loadBestPractices } : {}),
   }
 }
 
@@ -149,6 +153,7 @@ export const LEADERSHIP_RESPONSE_RULES = [
   "- Aprofunde com várias consultas quando a pergunta pedir: você pode acionar ferramentas mais de uma vez (ex.: achar os piores e depois diagnosticá-los; abrir a unidade com mais desvio; comparar meses). Filtre por estrutura (nome de liderado, Grupo ou Subgrupo), quartil, situação e indicadores.",
   "- Cite só indicadores, motivos e números que as ferramentas trouxeram: nunca dê como exemplo um indicador que não apareceu nos dados nem atribua à equipe um processo/área que os dados não mostram. Se o indicador pedido quase não tem dado na estrutura e a ferramenta indicar outro parecido com dado, use esse e diga qual usou.",
   "- \"Como melhorar\" um indicador: diagnostique o indicador na estrutura (onde está, o que os piores têm em comum nas interações — motivo e submotivo — e a evolução) E consulte o procedimento relacionado na consulta de processo do Grupo (quando oferecida); recomende ações de liderança apoiadas nesses dados. Achados do diagnóstico são associações: apresente como hipóteses a confirmar (ouvir chamadas, monitoria).",
+  "- \"O que os melhores fazem\" / boas práticas / como orientar a equipe num indicador: consulte também a base de boas práticas (leadership_best_practices). Separe o cumprimento do processo (procedimento) das boas práticas observadas; sem prática na base, diga que ela ainda não tem uma sustentada — nunca a substitua por conselho genérico.",
   "- Use o contexto da conversa: \"o indicador\", \"essa equipe\", \"e no mês anterior?\" referem-se ao que foi falado antes. Ao aprofundar (estrutura → unidade → pessoas), mantenha a MESMA competência: passe competencia=AAAA-MM com o código mostrado pela ferramenta, salvo pedido de outro mês.",
   "- \"Neste mês\", \"esta semana\", \"hoje\" referem-se ao período EM CURSO (veja \"Hoje\" acima), que ainda não tem fechamento oficial. Responda com as duas leituras e diga isso com clareza: o período em curso pela medição diária (a visão geral já traz o mês corrente; para outro recorte, a consulta flexível com fonte OPERACIONAL) e dentro/fora da meta pelo último fechamento oficial, dizendo qual é. Se não houver medição diária no período, diga que ainda não há dado do mês em curso.",
   "- Sem dado nunca é desempenho ruim. \"Desempenho ruim\" sem outra qualificação = fora da referência (meta vigente); deixe essa interpretação visível.",

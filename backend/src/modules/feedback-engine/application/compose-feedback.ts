@@ -1,8 +1,9 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { classifyExecutionError } from "../../../shared/domain/execution-failure.js"
-import { analysisClaimsOf, applyVerdicts, assembleMessage, coherenceNeedOf, exampleClaimsOf, forbiddenContentOf, parseVerdicts, parseWriterDraft, repairInstructionsOf, trustedReadingsOf, usefulnessOf, type AppliedVerdicts, type AssembledMessage, type ContentLeak, type SentenceDecision, type Usefulness, type WriterDraft } from "../domain/composition.js"
+import { analysisClaimsOf, applyVerdicts, assembleMessage, coherenceNeedOf, forbiddenContentOf, parseVerdicts, parseWriterDraft, repairInstructionsOf, resolveDraftQuotes, trustedReadingsOf, usefulnessOf, type AppliedVerdicts, type AssembledMessage, type ContentLeak, type SentenceDecision, type Usefulness, type WriterDraft } from "../domain/composition.js"
 import { COHERENCE_RESPONSE_SCHEMA, COHERENCE_SYSTEM_PROMPT, COMPOSITION_RESPONSE_SCHEMA, COMPOSITION_SYSTEM_PROMPT, parseCoherence, renderCoherenceUserTurn, renderCompositionUserTurn, renderVerificationUserTurn, VERIFICATION_RESPONSE_SCHEMA, VERIFICATION_SYSTEM_PROMPT } from "../domain/composition-prompt.js"
 import type { FeedbackBrief, TrustedReadings } from "../domain/feedback-brief.js"
+import { readabilityOf, type Readability } from "../domain/readability.js"
 import { COHERENCE_PROMPT_VERSION, COMPOSITION_PROMPT_VERSION, COMPOSITION_VERSION, VERIFICATION_PROMPT_VERSION } from "../domain/versions.js"
 import { callModel } from "./analyze-call.js"
 import { isBudgetExhausted } from "./engine-meter.js"
@@ -40,9 +41,9 @@ export type CompositionAudit = {
   notCommunicated: string[]
   /** Trava final: o que foi retirado dos detalhes por reintroduzir conteúdo recusado/não conferido. */
   leaksRemoved: ContentLeak[]
-  /** `SPEECH_EXAMPLE_V1` — exemplos de como dizer propostos pelo redator e a decisão sobre cada um (na versão escolhida). */
-  examples?: { id: string; ref: string; accepted: boolean; reasons: string[]; verdict: string | null; specific: boolean | null; note: string | null }[]
   outcome: "MESSAGE" | "NO_MESSAGE"
+  /** `READABILITY_PT_V1` — medida de leitura do texto entregue (só acompanha; nunca meta nem trava). */
+  readability?: Readability | null
   /** Motivo quando não há mensagem. */
   reason: CompositionFailure | null
 }
@@ -72,35 +73,32 @@ async function writeAndVerify(model: EngineModelPort, brief: FeedbackBrief, repa
     audit.errors.push(`WRITER_PARSE:${parsed.error}`)
     return null
   }
-  const sentenceClaims = [...parsed.draft.sentences.map((sentence, index) => ({ id: `F${index + 1}`, text: sentence.text, stance: sentence.stance, refs: sentence.refs, ...(sentence.format ? { listItem: true } : {}) })), { id: "CARD", text: parsed.draft.card.text, stance: "CONTEXT", refs: parsed.draft.card.refs }]
-  const claims = [...sentenceClaims, ...analysisClaimsOf(brief), ...exampleClaimsOf(parsed.draft)]
+  // `LITERAL_QUOTES_V1`: o redator cita a fala pelo id ([[Q3]]); daqui em diante (verificação, checagens, montagem) vale o texto exato.
+  const draft = resolveDraftQuotes(parsed.draft, brief)
+  const sentenceClaims = [...draft.sentences.map((sentence, index) => ({ id: `F${index + 1}`, text: sentence.text, stance: sentence.stance, refs: sentence.refs, ...(sentence.format ? { listItem: true } : {}) })), { id: "CARD", text: draft.card.text, stance: "CONTEXT", refs: draft.card.refs }]
+  const claims = [...sentenceClaims, ...analysisClaimsOf(brief)]
   audit.attempts.verifier += 1
   try {
     const verificationText = (await callModel(model, { stage: "VERIFICATION", systemPrompt: VERIFICATION_SYSTEM_PROMPT, contents: [{ role: "user", text: renderVerificationUserTurn(brief, claims, { previousApproved }) }], responseSchema: VERIFICATION_RESPONSE_SCHEMA, tag: repair ? "repair" : "draft" }, metrics)).text
     const verdicts = parseVerdicts(verificationText, sentenceClaims.map((claim) => claim.id))
     if (!verdicts.ok) {
       audit.errors.push(`VERIFIER_PARSE:${verdicts.error}`)
-      return { draft: parsed.draft, decisions: null }
+      return { draft, decisions: null }
     }
     // A informação perdida só conta na reescrita (há uma versão anterior aprovada para comparar).
-    return { draft: parsed.draft, decisions: applyVerdicts(parsed.draft, brief, verdicts.verdicts, { message: verdicts.message, lost: previousApproved.length > 0 ? verdicts.lost : [] }) }
+    return { draft, decisions: applyVerdicts(draft, brief, verdicts.verdicts, { message: verdicts.message, lost: previousApproved.length > 0 ? verdicts.lost : [] }) }
   } catch (error) {
     audit.errors.push(`VERIFIER:${error instanceof DomainError ? error.code : error instanceof Error ? error.name : "UNKNOWN"}`)
     rethrowIfTechnical(error)
-    return { draft: parsed.draft, decisions: null }
+    return { draft, decisions: null }
   }
 }
 
-/** Exemplo recusado só volta à reescrita quando ela já vai acontecer por outro motivo (exemplo é opcional — sozinho não paga reescrita). */
-const rejectedExampleNotes = (decisions: AppliedVerdicts) => (decisions.examples ?? []).filter((entry) => !entry.accepted && !entry.reasons.includes("NOT_VERIFIED")).map((entry) => `O exemplo de como dizer para ${entry.ref} ("${entry.text}") foi recusado (${entry.reasons.join(", ")}). ${entry.verdict?.note ?? ""} Corrija ou deixe esse ponto sem exemplo.`.trim())
-
 const keptOf = (decisions: AppliedVerdicts) => decisions.sentences.filter((entry) => entry.kept)
-/** Pontos com exemplo de como dizer ACEITO nesta versão (`ARGUMENT_PHRASING_V1` confere os que têm fraseologia do argumentário). */
-const acceptedExamplesOf = (decisions: AppliedVerdicts) => new Set((decisions.examples ?? []).filter((entry) => entry.accepted).map((entry) => entry.ref))
-const usefulnessOfDecisions = (brief: FeedbackBrief, decisions: AppliedVerdicts) => usefulnessOf(brief, keptOf(decisions), decisions.message, acceptedExamplesOf(decisions))
+const usefulnessOfDecisions = (brief: FeedbackBrief, decisions: AppliedVerdicts) => usefulnessOf(brief, keptOf(decisions), decisions.message)
 const scoreOf = (brief: FeedbackBrief, decisions: AppliedVerdicts) => {
   const usefulness = usefulnessOfDecisions(brief, decisions)
-  return { primary: usefulness.primaryCovered ? 0 : 1, gaps: usefulness.missingGuidance.length + (usefulness.missingRecognition ? 1 : 0) + (usefulness.missingContext ? 1 : 0) + (usefulness.missingValue ? 1 : 0) + ((usefulness.missingPractice ?? []).length > 0 ? 1 : 0) + (usefulness.missingCorrection ?? []).length + (usefulness.softenedCorrection ? 1 : 0) + (usefulness.missingPhrasingExample ?? []).length + (usefulness.missingDevelopment ?? []).length + (usefulness.missingAdjustment ?? []).length + (usefulness.missingList ?? []).length, lost: (decisions.lost ?? []).length, rejected: decisions.sentences.filter((entry) => !entry.kept && !entry.reasons.every((reason) => reason === "REDUNDANT")).length }
+  return { primary: usefulness.primaryCovered ? 0 : 1, gaps: usefulness.missingGuidance.length + (usefulness.missingRecognition ? 1 : 0) + (usefulness.missingContext ? 1 : 0) + (usefulness.missingValue ? 1 : 0) + ((usefulness.missingPractice ?? []).length > 0 ? 1 : 0) + (usefulness.missingCorrection ?? []).length + (usefulness.softenedCorrection ? 1 : 0) + (usefulness.missingDevelopment ?? []).length + (usefulness.missingAdjustment ?? []).length + (usefulness.missingList ?? []).length + ((usefulness.missingBasePractice ?? []).length > 0 ? 1 : 0), lost: (decisions.lost ?? []).length, rejected: decisions.sentences.filter((entry) => !entry.kept && !entry.reasons.every((reason) => reason === "REDUNDANT")).length }
 }
 /** A reescrita só substitui a versão anterior se não ficou pior: ponto principal, lacunas de utilidade, informação útil PERDIDA, recusas. */
 const better = (brief: FeedbackBrief, a: AppliedVerdicts, b: AppliedVerdicts) => {
@@ -124,8 +122,7 @@ export async function composeFeedback(model: EngineModelPort, brief: FeedbackBri
   if (best?.decisions) rounds.push(best.decisions)
   const needsRepair = (attempt: Attempt | null) => !attempt || !attempt.decisions || scoreOf(brief, attempt.decisions).primary > 0 || scoreOf(brief, attempt.decisions).gaps > 0 || scoreOf(brief, attempt.decisions).rejected > 0 || !attempt.decisions.card.kept
   if (needsRepair(best) && !budgetHit()) {
-    const trustedSoFar = trustedReadingsOf(brief, rounds)
-    const instructions = best?.decisions ? [...repairInstructionsOf([...best.decisions.sentences, best.decisions.card], usefulnessOfDecisions(brief, best.decisions), brief, trustedSoFar), ...rejectedExampleNotes(best.decisions)] : ["A versão anterior não pôde ser lida ou verificada. Escreva de novo seguindo o schema."]
+    const instructions = best?.decisions ? repairInstructionsOf([...best.decisions.sentences, best.decisions.card], usefulnessOfDecisions(brief, best.decisions), brief) : ["A versão anterior não pôde ser lida ou verificada. Escreva de novo seguindo o schema."]
     // Reescrita sem verificação não vale nada: se as duas não cabem, nenhuma começa (a decisão fica com a primeira versão).
     const writerChars = COMPOSITION_SYSTEM_PROMPT.length + renderCompositionUserTurn(brief, instructions).length
     const verifierChars = VERIFICATION_SYSTEM_PROMPT.length + writerChars + 4_000
@@ -146,7 +143,6 @@ export async function composeFeedback(model: EngineModelPort, brief: FeedbackBri
     return { id: claim.id, accepted: Boolean(claim.refs[0] && (claim.id.startsWith("G-") ? trusted.guidance[claim.refs[0]] : trusted.why[claim.refs[0]])), verdict: (refused ?? judged[0])?.verdict?.verdict ?? null, note: (refused ?? judged[0])?.verdict?.note ?? null }
   })
   if (!decisions) return fail(best ? "VERIFIER_UNAVAILABLE" : "WRITER_OUTPUT_INVALID")
-  audit.examples = (decisions.examples ?? []).map((entry) => ({ id: entry.id, ref: entry.ref, accepted: entry.accepted, reasons: entry.reasons, verdict: entry.verdict?.verdict ?? null, specific: entry.verdict?.specific ?? null, note: entry.verdict?.note ?? null }))
   audit.decisions = [...decisions.sentences, decisions.card].map(({ id, stance, refs, kept, reasons }) => ({ id, stance, refs, kept, reasons }))
   audit.verdicts = [...decisions.sentences, decisions.card].flatMap((entry) => (entry.verdict ? [{ id: entry.id, verdict: entry.verdict.verdict, specific: entry.verdict.specific, repeats: entry.verdict.repeats, ...(entry.verdict.addsInformation !== undefined && entry.verdict.addsInformation !== null ? { addsInformation: entry.verdict.addsInformation } : {}) }] : []))
   const usefulness = usefulnessOfDecisions(brief, decisions)
@@ -190,6 +186,7 @@ export async function composeFeedback(model: EngineModelPort, brief: FeedbackBri
   audit.communicatedRefs = message.communicatedRefs
   audit.notCommunicated = [...brief.developments, ...brief.strengths].map((finding) => finding.ref).filter((ref) => !message.communicatedRefs.includes(ref))
   audit.leaksRemoved = message.leaksRemoved
+  audit.readability = readabilityOf(message.text)
   audit.outcome = "MESSAGE"
   return { message, audit }
 }

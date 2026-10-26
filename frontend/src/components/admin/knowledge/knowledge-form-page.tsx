@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 
+import { ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { SubjectScopeSelect, type SubjectScopeValue } from "@/components/admin/shared/subject-scope-select"
 import { useTeamsQuery, useSubjectsQuery } from "@/queries/admin/use-org-structure-queries"
@@ -54,6 +55,7 @@ function CreateKnowledgeForm() {
   const [file, setFile] = useState<File | null>(null)
   const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
   const [subjectScope, setSubjectScope] = useState<SubjectScopeValue>({ scopeType: "ALL_SUBJECTS" })
+  const productScope = useSourceProductScope("KNOWLEDGE_DOCUMENT", null)
 
   async function handleSubmit() {
     try {
@@ -65,6 +67,7 @@ function CreateKnowledgeForm() {
         orgScope,
         subjectScope,
       })
+      await productScope.save(created.id).catch(() => undefined)
       router.push(`${LIST_HREF}/${created.id}`)
     } catch {
       // erro já sinalizado via createMutation.isError / toast do useAdminMutation
@@ -134,6 +137,8 @@ function CreateKnowledgeForm() {
         <Skeleton className="h-10 w-full" />
       )}
 
+      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="knowledge-products" /> : null}
+
       {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
 
       <div className="flex justify-end gap-2">
@@ -166,6 +171,7 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
   const subjectsQuery = useSubjectsQuery()
   const updateMutation = useUpdateKnowledgeDocumentMutation()
   const documentId = document.id
+  const productScope = useSourceProductScope("KNOWLEDGE_DOCUMENT", documentId)
 
   const [title, setTitle] = useState(document.title)
   const [documentType, setDocumentType] = useState<KnowledgeDocumentType>(document.documentType)
@@ -185,6 +191,7 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
   async function handleSubmit() {
     try {
       await updateMutation.mutateAsync({ id: documentId, input: { title, documentType, content, status, orgScope, subjectScope } })
+      await productScope.save(documentId)
       router.push(`${LIST_HREF}/${documentId}`)
     } catch {
       // erro já sinalizado via updateMutation.isError / toast do useAdminMutation
@@ -251,6 +258,13 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
       ) : (
         <Skeleton className="h-10 w-full" />
       )}
+
+      {productScope.available ? (
+        <div className="space-y-1">
+          <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="edit-knowledge-products" />
+          <p className="text-xs text-muted-foreground">Mudar para quais produtos a base vale conta a partir de agora: chamadas já analisadas continuam com o que valia na época.</p>
+        </div>
+      ) : null}
 
       {updateMutation.isError ? <p className="text-sm text-destructive">{(updateMutation.error as Error).message}</p> : null}
 

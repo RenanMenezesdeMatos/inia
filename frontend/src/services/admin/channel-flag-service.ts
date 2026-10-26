@@ -2,7 +2,7 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type PageResult } from "@/lib/admin/list-query"
-import { channelFlagSchema, type ChannelFlag, type FlagValueType } from "@/schemas/admin/channel-flag.schema"
+import { channelFlagSchema, type CallOutcome, type ChannelFlag, type FlagValueType } from "@/schemas/admin/channel-flag.schema"
 
 export async function fetchChannelFlags(): Promise<ChannelFlag[]> {
   return z.array(channelFlagSchema).parse(await adminGet("/api/v1/admin/channel-flags"))
@@ -29,6 +29,9 @@ export type CreateChannelFlagInput = {
   /** Nome de exibição e ícone no Acompanhamento ("Monitoria · Rechamada"); null = padrão. */
   label: string | null
   iconKey: string | null
+  /** Boas práticas: chamada boa × ruim (null = o sinal não compara chamadas) e indicador relacionado. */
+  callOutcome: CallOutcome | null
+  relatedIndicatorId: string | null
 }
 
 export async function createChannelFlag(input: CreateChannelFlagInput): Promise<{ id: string }> {
@@ -42,6 +45,8 @@ export type UpdateChannelFlagInput = {
   description?: string
   label: string | null
   iconKey: string | null
+  callOutcome: CallOutcome | null
+  relatedIndicatorId: string | null
 }
 
 export async function updateChannelFlag(input: UpdateChannelFlagInput): Promise<{ id: string }> {
@@ -51,6 +56,8 @@ export async function updateChannelFlag(input: UpdateChannelFlagInput): Promise<
     description: input.description,
     label: input.label,
     iconKey: input.iconKey,
+    callOutcome: input.callOutcome,
+    relatedIndicatorId: input.relatedIndicatorId,
   })
 }
 

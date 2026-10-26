@@ -1,6 +1,6 @@
 import { interactionFeedbackModuleEnabled } from "../../../interaction-feedback/application/pipeline-wiring.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { resolveNodeContexts } from "../../domain/graph-schema.js"
+import { nodeBranches, resolveNodeContexts, type FlowGraph } from "../../domain/graph-schema.js"
 import type { TriggerConfig } from "../../domain/trigger-config-schema.js"
 import type { PublishGraphContext, PublishTriggerContext } from "./context.js"
 
@@ -109,6 +109,30 @@ export function validateGraphShape(context: PublishGraphContext): void {
   }
   if (!graph.nodes.some((node) => node.type === "end")) {
     throw new DomainError("O workflow precisa ter ao menos um nó Fim.", "WORKFLOW_INVALID_GRAPH", 422)
+  }
+}
+
+/**
+ * Toda saída (`nodeBranches`) de um nó alcançável a partir do Gatilho precisa estar ligada: no motor, saída sem aresta encerra a
+ * execução como falha (`WORKFLOW_NODE_INVARIANT`, "Desistiu" na tela). A Condição sem o "Não" publicava e morria quando a
+ * resposta era não (validação funcional de 20/10/2026, D5). Nó solto no canvas, que nunca roda, não é cobrado. Roda por ÚLTIMO na
+ * publicação: o problema mais específico de um nó (configuração, contexto) aparece antes da saída desligada.
+ */
+export function validateBranchEdges(graph: FlowGraph): void {
+  const reachable = new Set<string>()
+  const pending = graph.nodes.filter((node) => node.type === "trigger").map((node) => node.id)
+  while (pending.length > 0) {
+    const id = pending.pop()!
+    if (reachable.has(id)) continue
+    reachable.add(id)
+    for (const edge of graph.edges) if (edge.source === id) pending.push(edge.target)
+  }
+  for (const node of graph.nodes) {
+    if (!reachable.has(node.id)) continue
+    for (const branch of nodeBranches(node)) {
+      if (graph.edges.some((edge) => edge.source === node.id && edge.sourceHandle === branch.id)) continue
+      throw new DomainError(`O nó "${node.label}" não tem para onde seguir na saída "${branch.label}". Ligue essa saída ao próximo passo (ou a um nó Fim) antes de publicar.`, "WORKFLOW_MISSING_BRANCH_EDGE", 422, { nodeId: node.id })
+    }
   }
 }
 

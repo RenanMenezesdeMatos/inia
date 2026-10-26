@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { AiProviderError } from "../../../shared/application/model-routing/ai-errors.js"
 import { DEFAULT_NAVIGATION_BUDGET, type NavigationBudget } from "../domain/knowledge-workspace.js"
 import { KNOWLEDGE_CLARIFICATION_VERSION, optionIdFor, stepIdFor, type ClarificationState, type ClarificationStep } from "../domain/clarification-state.js"
-import { TEST_ORCHESTRATOR_AGENT, TEST_ORG, TEST_OTHER_SPECIALIST_AGENT, TEST_PERSON, TEST_SPECIALIST_AGENT, fixtureKnowledge, refOf, refsInPrompt, scriptedModel, type ScriptedCall } from "../testing/clarification-fixtures.js"
-import { createKnowledgeClarification, type ClarificationOutcome, type ClarificationRequest } from "./knowledge-clarification-service.js"
+import { FailAfterStreaming, TEST_ORCHESTRATOR_AGENT, TEST_ORG, TEST_OTHER_SPECIALIST_AGENT, TEST_PERSON, TEST_SPECIALIST_AGENT, fixtureKnowledge, refOf, refsInPrompt, scriptedModel, type ScriptedCall } from "../testing/clarification-fixtures.js"
+import { ANSWER_DRAFTING_STATUS, createKnowledgeClarification, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "./knowledge-clarification-service.js"
 
 /**
  * Esclarecimento pelas bases de ponta a ponta: o catálogo REAL (autorização, acesso, sumários, leitura de seções), a navegação em
@@ -369,5 +370,130 @@ describe("esclarecimento pelas bases — falhas nunca quebram o chat nem perdem 
     const stale = ask("Empresa", { answer: { clarificationId: "44444444-4444-4444-8444-444444444444", stepId: step.id, optionIds: [step.options[0]!.id], noneMatched: false, revise: false }, previous: { state: first.state, isLatestAssistantMessage: true } })
     await expect(stale).rejects.toMatchObject({ code: "KNOWLEDGE_CLARIFICATION_STALE", statusCode: 409 })
     await expect(ask("Empresa", { answer: { clarificationId: first.state.id, stepId: step.id, optionIds: [step.options[0]!.id], noneMatched: false, revise: false }, previous: null })).rejects.toBeInstanceOf(DomainError)
+  })
+})
+
+/** O que a tela recebeu do fluxo: pedaços, retiradas e progresso, na ordem. */
+function screen() {
+  const events: (["text", string] | ["retract"] | ["status", string])[] = []
+  const stream: ClarificationStream = { text: (chunk) => events.push(["text", chunk]), retract: () => events.push(["retract"]), status: (label) => events.push(["status", label]) }
+  /** O que está na tela agora: o texto depois da última retirada. */
+  const shown = () => {
+    const last = events.map((event) => event[0]).lastIndexOf("retract")
+    return events.slice(last + 1).flatMap((event) => (event[0] === "text" ? [event[1]] : [])).join("")
+  }
+  return { stream, events, shown, retracts: () => events.filter((event) => event[0] === "retract").length }
+}
+
+describe("esclarecimento pelas bases — resposta em fluxo no chat de texto", () => {
+  const planAnswer = (call: ScriptedCall) => ({ decision: "ANSWER", questionFacts: [{ dimension: "Produto", value: "linha FWT" }], answerEvidence: [refOf(call.prompt, "Linha FWT", "Cobertura"), refOf(call.prompt, "Linha FWT", "Prazo")] })
+  const goodAnswer = (call: ScriptedCall) => answerWith(call.prompt, [
+    { text: "Só é possível com cobertura celular no novo endereço.", document: "Linha FWT", heading: "Cobertura" },
+    { text: "O prazo é imediato depois da validação da cobertura.", document: "Linha FWT", heading: "Prazo" },
+  ])
+
+  it("a redação aparece em pedaços, já numerada, e o que apareceu é exatamente a resposta validada; a decisão nunca vai para a tela", async () => {
+    const { ask, calls } = setup((call) => (call.stage === "PLANNER" ? planAnswer(call) : goodAnswer(call)))
+    const tela = screen()
+    const outcome = reply(await ask("Qual o prazo da mudança de endereço da linha FWT?", { stream: tela.stream }))
+    expect(tela.shown()).toBe(outcome.content)
+    expect(tela.events.filter((event) => event[0] === "text").length).toBeGreaterThan(5)
+    expect(tela.retracts()).toBe(0)
+    expect(tela.events[0]).toEqual(["status", ANSWER_DRAFTING_STATUS])
+    // Só a redação vai em fluxo: o planejador decide inteiro, como sempre.
+    expect(calls.map((call) => [call.stage, call.streamed])).toEqual([["PLANNER", false], ["ANSWER", true]])
+    expect(outcome.trace.calls).toEqual(["PLANNER ANSWER", "ANSWER OK"])
+  })
+
+  it("marcador de seção não lida: o fluxo para, o que apareceu é RETIRADO antes da correção, e a correção também vai em fluxo", async () => {
+    let answers = 0
+    const { ask } = setup((call) => {
+      if (call.stage === "PLANNER") return planAnswer(call)
+      answers += 1
+      return answers === 1 ? { answer: `Só com cobertura [${refOf(call.prompt, "Linha FWT", "Cobertura")}]. Prazo de 5 dias [K999]. Texto que nunca aparece.`, sources: [], limitations: null } : goodAnswer(call)
+    })
+    const tela = screen()
+    const outcome = reply(await ask("Qual o prazo da mudança de endereço da linha FWT?", { stream: tela.stream }))
+    const retractAt = tela.events.findIndex((event) => event[0] === "retract")
+    const before = tela.events.slice(0, retractAt).flatMap((event) => (event[0] === "text" ? [event[1]] : [])).join("")
+    // Até o marcador inválido (o espaço antes dele depende de onde o pedaço cortou) — nada do que vem depois.
+    expect(before).toMatch(/^Só com cobertura \[1\]\. Prazo de 5 dias ?$/)
+    expect(tela.retracts()).toBe(1)
+    expect(tela.shown()).toBe(outcome.content)
+    expect(outcome.trace.calls).toEqual(["PLANNER ANSWER", "ANSWER INVALID", "ANSWER(fix) OK"])
+  })
+
+  it("resposta recusada duas vezes: nada fica na tela e a pergunta nova segue pelo caminho de sempre (PASS)", async () => {
+    const { ask } = setup((call) => (call.stage === "PLANNER" ? planAnswer(call) : { answer: `Texto [${refOf(call.prompt, "Linha FWT", "Prazo")}] e fonte inventada [K999].`, sources: ["K999"] }))
+    const tela = screen()
+    expect(await ask("Qual o prazo da mudança de endereço da linha FWT?", { stream: tela.stream })).toMatchObject({ kind: "PASS", reason: "ANSWER_FAILED" })
+    expect(tela.shown()).toBe("")
+    expect(tela.retracts()).toBe(2)
+  })
+
+  it("a chamada cai no meio da redação: o que apareceu é retirado e a pergunta nova segue pelo caminho de sempre", async () => {
+    const { ask } = setup((call) => (call.stage === "PLANNER" ? planAnswer(call) : new FailAfterStreaming(JSON.stringify(goodAnswer(call)).slice(0, 90))))
+    const tela = screen()
+    expect(await ask("Qual o prazo da mudança de endereço da linha FWT?", { stream: tela.stream })).toMatchObject({ kind: "PASS", reason: "ANSWER_FAILED" })
+    expect(tela.events.some((event) => event[0] === "text")).toBe(true)
+    expect(tela.shown()).toBe("")
+  })
+
+  it("pergunta de esclarecimento (CLARIFY) não vai em fluxo: sai inteira, validada", async () => {
+    const { ask, calls } = setup((call) => clarify("Tipo de cliente", "Qual cliente?", [{ label: "Empresa", evidence: [refOf(call.prompt, "titularidade — Empresa")] }, { label: "Residencial", evidence: [refOf(call.prompt, "— Residencial")] }]))
+    const tela = screen()
+    reply(await ask("Quais documentos preciso para troca de titularidade?", { stream: tela.stream }))
+    expect(tela.events).toEqual([])
+    expect(calls.every((call) => !call.streamed)).toBe(true)
+  })
+})
+
+describe("esclarecimento pelas bases — falha passageira do provedor na redação: UMA nova tentativa", () => {
+  const planAnswer = (call: ScriptedCall) => ({ decision: "ANSWER", questionFacts: [{ dimension: "Produto", value: "linha FWT" }], answerEvidence: [refOf(call.prompt, "Linha FWT", "Cobertura"), refOf(call.prompt, "Linha FWT", "Prazo")] })
+  const goodAnswer = (call: ScriptedCall) => answerWith(call.prompt, [
+    { text: "Só é possível com cobertura celular no novo endereço.", document: "Linha FWT", heading: "Cobertura" },
+    { text: "O prazo é imediato depois da validação da cobertura.", document: "Linha FWT", heading: "Prazo" },
+  ])
+  /** A 1ª redação falha com `failure`; as seguintes respondem bem. */
+  const failingFirst = (failure: Error) => {
+    let answers = 0
+    return (call: ScriptedCall) => {
+      if (call.stage === "PLANNER") return planAnswer(call)
+      answers += 1
+      return answers === 1 ? failure : goodAnswer(call)
+    }
+  }
+  const QUESTION = "Qual o prazo da mudança de endereço da linha FWT?"
+
+  it("erro do servidor do provedor (policy ou caminho legado): tenta de novo uma vez e a resposta sai, com a tentativa no rastro", async () => {
+    for (const failure of [new AiProviderError("PROVIDER_ERROR"), new DomainError("O modelo de IA não retornou uma resposta válida.", "AGENT_EXECUTION_FAILED", 502, { status: 500, category: "PROVIDER_ERROR" }), new AiProviderError("NETWORK"), new AiProviderError("MODEL_UNAVAILABLE")]) {
+      const { ask, calls } = setup(failingFirst(failure))
+      const outcome = reply(await ask(QUESTION))
+      expect(outcome.state.status).toBe("ANSWERED")
+      expect(calls.filter((call) => call.stage === "ANSWER")).toHaveLength(2)
+      expect(outcome.trace.calls).toEqual(["PLANNER ANSWER", `ANSWER RETRY(${(failure as AiProviderError).category ?? "PROVIDER_ERROR"})`, "ANSWER OK"])
+    }
+  })
+
+  it("estouro de tempo, limite de uso ou erro que não é do provedor: nenhuma nova tentativa (o caminho de sempre responde)", async () => {
+    for (const failure of [new AiProviderError("TIMEOUT"), new AiProviderError("RATE_LIMIT"), new AiProviderError("INVALID_REQUEST"), new Error("defeito")]) {
+      const { ask, calls } = setup(failingFirst(failure))
+      expect(await ask(QUESTION)).toMatchObject({ kind: "PASS", reason: "ANSWER_FAILED" })
+      expect(calls.filter((call) => call.stage === "ANSWER")).toHaveLength(1)
+    }
+  })
+
+  it("uma só por mensagem: a nova tentativa falhando também, o caminho de sempre responde", async () => {
+    const { ask, calls } = setup((call) => (call.stage === "PLANNER" ? planAnswer(call) : new AiProviderError("PROVIDER_ERROR")))
+    expect(await ask(QUESTION)).toMatchObject({ kind: "PASS", reason: "ANSWER_FAILED" })
+    expect(calls.filter((call) => call.stage === "ANSWER")).toHaveLength(2)
+  })
+
+  it("em fluxo: o que aparece na tela é só a resposta validada da nova tentativa", async () => {
+    const { ask } = setup(failingFirst(new AiProviderError("PROVIDER_ERROR")))
+    const tela = screen()
+    const outcome = reply(await ask(QUESTION, { stream: tela.stream }))
+    expect(tela.shown()).toBe(outcome.content)
+    expect(tela.retracts()).toBe(0)
   })
 })

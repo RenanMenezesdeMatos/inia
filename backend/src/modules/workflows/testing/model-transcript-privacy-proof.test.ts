@@ -52,7 +52,7 @@ describe.skipIf(!ENABLED)("Transcrição mascarada para a IA — prova Postgres"
   it("o banco guarda o original; todo caminho para a IA recebe o mesmo texto mascarado", async () => {
     expect((await loadLatestTranscript(db(), interactionId))!.content).toBe(RAW)
     const forModel = (await loadLatestTranscriptForModel(db(), interactionId))!.content
-    expect(forModel).toContain("Meu CPF é [CPF] e o telefone [TELEFONE].")
+    expect(forModel).toContain("Meu CPF é [CPF] e o telefone (11) 9••••-••••.")
     expect(forModel).toContain("O protocolo deste atendimento é [PROTOCOLO].")
     expect(forModel).not.toMatch(/348\.123\.456-09|98765-4321|202610200031/)
 

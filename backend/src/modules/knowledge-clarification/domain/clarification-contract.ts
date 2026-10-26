@@ -133,6 +133,12 @@ export function parseModelJson(raw: string): unknown {
 
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text)
 const clean = (text: string | null | undefined) => (text ?? "").replace(/\s+/g, " ").trim()
+/** Só a FORMA de frase (maiúscula inicial, pontuação final): o "ask" vem às vezes como fragmento ("especificar qual tipo…") e era
+ * colado no meio da resposta como se fosse frase (validação funcional de 20/10/2026, D11). Nunca mexe no conteúdo. */
+const asSentence = (text: string) => {
+  const capitalized = `${text.charAt(0).toLocaleUpperCase("pt-BR")}${text.slice(1)}`
+  return /[.!?…]$/.test(capitalized) ? capitalized : `${capitalized}.`
+}
 
 function sourcesOf(refs: readonly string[] | null | undefined, evidence: PresentedEvidence, max: number): { valid: { ref: string; source: KnowledgeSourceRef }[]; invalid: string[] } {
   const valid: { ref: string; source: KnowledgeSourceRef }[] = []
@@ -256,7 +262,7 @@ export function validatePlannerOutput(raw: string, context: PlannerValidationCon
   if (output.decision === "INSUFFICIENT") {
     const reason = clip(clean(output.insufficient?.reason), 400)
     if (!reason) issues.push({ code: "MISSING_FIELD", message: "INSUFFICIENT exige \"insufficient.reason\" dizendo o que as fontes não cobrem." })
-    insufficient = { reason, ask: clean(output.insufficient?.ask) ? clip(clean(output.insufficient?.ask), 200) : null }
+    insufficient = { reason, ask: clean(output.insufficient?.ask) ? asSentence(clip(clean(output.insufficient?.ask), 200)) : null }
   }
 
   const conflicts = (output.conflicts ?? []).flatMap((conflict) => {
@@ -272,6 +278,12 @@ export function validatePlannerOutput(raw: string, context: PlannerValidationCon
 export type AnswerValidation = { ok: true; text: string; sources: KnowledgeSourceRef[]; limitations: string | null } | { ok: false; issues: string[] }
 
 const INLINE_REFS = /\[\s*(K\d+(?:\s*[,;]\s*K\d+)*)\s*\]/gi
+
+/** Os marcadores citados no texto ([K3] ou [K3, K5]) viram [1], [2]… pelo número que `register` der (null = some do texto). A
+ * MESMA troca vale para a resposta inteira (`validateAnswerOutput`) e para a resposta em fluxo (`answer-stream.ts`). */
+export function renderAnswerMarkers(answer: string, register: (ref: string) => number | null): string {
+  return answer.replace(INLINE_REFS, (_match, group: string) => group.split(/[,;]/).map((ref) => register(ref)).filter((n): n is number => n !== null).map((n) => `[${n}]`).join(""))
+}
 
 /**
  * Resposta final: os marcadores citados no texto ([K3] ou [K3, K5]) viram [1], [2]… na ordem em que aparecem, e a lista de fontes
@@ -294,7 +306,7 @@ export function validateAnswerOutput(raw: string, evidence: PresentedEvidence): 
     if (!order.includes(normalized)) order.push(normalized)
     return order.indexOf(normalized) + 1
   }
-  const text = output.answer.replace(INLINE_REFS, (_match, group: string) => group.split(/[,;]/).map((ref) => register(ref)).filter((n): n is number => n !== null).map((n) => `[${n}]`).join("")).trim()
+  const text = renderAnswerMarkers(output.answer, register).trim()
   for (const ref of output.sources) register(ref)
   if (!text) issues.push("A resposta está vazia.")
   if (order.length === 0) issues.push("A resposta precisa citar ao menos uma seção lida (K-n).")

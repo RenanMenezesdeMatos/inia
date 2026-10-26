@@ -149,10 +149,15 @@ describe.skipIf(!ENABLED)("Workflow → feedback de atendimento — prova Postgr
 
   it("B/G/F/D) Flag: a interação do gatilho; BLOCKED sem QA nem entrega; HOLD_FOR_QA na fila sem prender o Workflow; concorrência = um feedback", async () => {
     const wf = await insertWorkflow("Prova V1.5.10 · flag", { kind: "channel_flag", channelFlagId: "00000000-0000-4000-8000-000000000000" }, { kind: "TRIGGER_INTERACTION" })
-    // G) BLOCKED: evidência só com número longo — resultado funcional, sem QA e sem entrega.
+    // G) BLOCKED: evidência só com número longo — resultado funcional, sem QA e sem entrega. Com a máscara da transcrição desligada
+    // (com ela ligada, `SUBJECT_PII_MASK_V2`, o número já chega à IA mascarado e a retenção na exibição não é acionada).
     const blockedInteraction = await insertInteraction(new Date("2026-03-10T14:00:00Z"), SCENARIO_TRANSCRIPTS.BLOCKED)
     const blockedEnrollment = await enroll(wf, { interactionId: blockedInteraction })
-    await processEnrollment(pool, await claimed(blockedEnrollment))
+    const masking = env.INIA_MODEL_PII_MASKING
+    ;(env as { INIA_MODEL_PII_MASKING: string }).INIA_MODEL_PII_MASKING = "OFF"
+    await processEnrollment(pool, await claimed(blockedEnrollment)).finally(() => {
+      ;(env as { INIA_MODEL_PII_MASKING: string }).INIA_MODEL_PII_MASKING = masking
+    })
     expect(await enrollmentState(blockedEnrollment)).toMatchObject({ current_node_id: "end", attempts: 0 })
     const [blockedRun] = await runsFor([blockedInteraction])
     expect((await pool.query(`select disposition, reasons, item_review_id from interaction_feedback_delivery_decisions where run_id = $1`, [blockedRun!.id])).rows).toEqual([{ disposition: "BLOCKED", reasons: ["INSUFFICIENT_DISPLAY_EVIDENCE"], item_review_id: null }])

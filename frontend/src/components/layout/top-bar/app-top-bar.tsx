@@ -19,6 +19,7 @@ type AppTopBarProps = {
   /** Diagnóstico: capability do /auth/me (liderança OU `indicators.view`). */
   canViewDiagnostics?: boolean
   canUseReports?: boolean
+  canViewBestPractices?: boolean
   onEditProfile?: () => void
 }
 
@@ -27,14 +28,14 @@ type AppTopBarProps = {
  * seletor de área; à direita, o sino. Compacto (56 px, sem filete) para não empurrar o conteúdo; a faixa de abas do
  * perfil fica fixa logo abaixo dele (`profile-tabs.tsx`).
  */
-export function AppTopBar({ profile, profileHref, onSignOut, onSignOutEverywhere, canAccessAdministration = false, canReviewFeedback = false, canViewDiagnostics = false, canUseReports = false, onEditProfile }: AppTopBarProps) {
+export function AppTopBar({ profile, profileHref, onSignOut, onSignOutEverywhere, canAccessAdministration = false, canReviewFeedback = false, canViewDiagnostics = false, canUseReports = false, canViewBestPractices = false, onEditProfile }: AppTopBarProps) {
   return (
     <header className="sticky top-0 z-30 w-full bg-topbar text-topbar-foreground shadow-sm">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-2 px-4 sm:gap-3 md:px-6">
         <AppUserMenu profile={profile} profileHref={profileHref} onSignOut={onSignOut} onSignOutEverywhere={onSignOutEverywhere} onEditProfile={onEditProfile} />
         <span className="hidden h-6 w-px bg-topbar-foreground/25 sm:block" aria-hidden />
         <nav aria-label="Áreas da INIA" className="min-w-0">
-          <AreaSwitcher profileHref={profileHref} canAccessAdministration={canAccessAdministration} canReviewFeedback={canReviewFeedback} canViewDiagnostics={canViewDiagnostics} canUseReports={canUseReports} />
+          <AreaSwitcher profileHref={profileHref} canAccessAdministration={canAccessAdministration} canReviewFeedback={canReviewFeedback} canViewDiagnostics={canViewDiagnostics} canUseReports={canUseReports} canViewBestPractices={canViewBestPractices} />
         </nav>
         <div className="ml-auto flex shrink-0 items-center">
           <NotificationBell profileHref={profileHref} />

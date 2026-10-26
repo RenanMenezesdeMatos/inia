@@ -46,6 +46,8 @@ export type AiExecuteRequest = {
   /** Schema da saída estruturada pedido pela etapa (mesmo formato que o caminho legado manda ao Gemini). Só vale com
    * `structuredOutput` e sem tools; protocolo que não o transporta ignora — o parser de quem chamou é a validação de verdade. */
   responseSchema?: Record<string, unknown> | null
+  /** Menos raciocínio antes de responder (só chega aqui para modelo com a capacidade REASONING); protocolo sem o ajuste ignora. */
+  reasoningEffort?: "LOW" | null
 }
 
 export type AiExecuteResult = ({ kind: "text"; text: string } | { kind: "functionCalls"; calls: { name: string; args: Record<string, unknown>; id?: string; thoughtSignature?: string }[] }) & {
@@ -59,6 +61,9 @@ export type AiExecuteResult = ({ kind: "text"; text: string } | { kind: "functio
 
 export type AiStreamResult = { usage: LlmUsage; model: string; durationMs: number; text: string }
 
+/** `streamedChars` = texto já entregue a `onText` (numa resposta de ferramentas, o que o modelo escreveu antes de pedi-las). */
+export type AiStreamExecuteResult = AiExecuteResult & { streamedChars: number; firstTokenMs: number | null }
+
 /** Síntese de voz: o texto EXATO lido com a voz do provider (+ instrução de tom, quando o modelo aceita). */
 export type AiSpeechRequest = { text: string; voice: string; instructions: string | null }
 /** PCM16 mono little-endian, sem cabeçalho (o mesmo formato que o avatar já toca). Uso não informado = null em cada campo. */
@@ -70,6 +75,9 @@ export interface AiProviderAdapter {
   listModels(connection: ResolvedConnection): Promise<DiscoveredModel[]>
   /** Lança AiProviderError (categoria normalizada, mensagem segura) em qualquer falha. */
   execute(connection: ResolvedConnection, providerModelId: string, request: AiExecuteRequest, timeoutMs: number): Promise<AiExecuteResult>
+  /** Opcional: `execute` EM FLUXO (texto livre, com ou sem ferramentas — o chat): cada pedaço de texto vai para `onText`; as
+   * chamadas de ferramenta são juntadas como em `execute`. Sem ele, o runtime usa `execute` e o texto sai inteiro no fim. */
+  streamExecute?(connection: ResolvedConnection, providerModelId: string, request: AiExecuteRequest, timeoutMs: number, onText: (text: string) => void): Promise<AiStreamExecuteResult>
   /** Opcional: sem ele o runtime executa sem streaming e entrega a resposta num único chunk. */
   stream?(connection: ResolvedConnection, providerModelId: string, request: Omit<AiExecuteRequest, "tools" | "structuredOutput">, timeoutMs: number, onChunk: (text: string) => void): Promise<AiStreamResult>
   /** Opcional: só os protocolos de `SPEECH_SYNTHESIS_ADAPTERS` (ai-speech.ts) leem texto em voz. Lança AiProviderError; nunca repete. */

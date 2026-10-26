@@ -20,7 +20,7 @@ Estado novo compartilhado = tabela (UNLOGGED quando perder é inofensivo) ou `NO
 | Estado | Onde | Observação |
 | --- | --- | --- |
 | Limites de requisição do `app.ts` (login, 1ª senha, API Push por IP, IA/voz/ações caras por conta, ciência) | `rate_limit_hits` (migration 126, UNLOGGED) — `shared/infrastructure/rate-limit/postgres-rate-limit-store.ts` | Janela fixa pelo relógio do BANCO + anterior ponderada; incremento condicional numa instrução (corrida na última vaga nunca passa duas); balde = regra + sha256 da chave (sem IP/e-mail em claro); loja fora = passa + aviso. Purga na tarefa periódica `rate-limit-purge` |
-| Vagas e pausa POR CONEXÃO DE IA (decisão do usuário em 13/10: o limite é do ACESSO — ex.: o SDK da Vivo informará "vagas por acesso" —, configurável na conexão; nada específico de provedor) | `ai_connections.max_concurrent_calls` + `ai_call_slot_leases` (135, UNLOGGED, prazo renovado) + `ai_provider_cooldowns` (127, uma linha por chave) — porta `shared/application/model-routing/provider-call-gate.ts`, implementação `shared/infrastructure/model-routing/postgres-provider-call-gate.ts`, ligada no runtime da policy por candidato (`attemptAll`) e nas rotas do ambiente (`legacy:<provedor>`, só pausa) | Chave `connection:<id>`. ¼ do teto (≥ 1) reservado à interativa; interativa espera ≤ 20 s (`AI_CAPACITY_BUSY`), lote espera (cancelável). 429/503 grava a pausa (Retry-After ou 5 s/2 s, ≤ 60 s) ANTES de o erro voltar; lote espera a pausa ou, numa FALLBACK_CHAIN com RATE_LIMIT, pula a conexão (`FALLBACK_RATE_LIMIT`). Interativa nunca pausada. Cada processo lê as pausas a cada 2 s. Banco fora = sai sem vaga (aviso). O limitador de cada processo (`ai-call-limiter.ts`) voltou a ser só local (fila/prioridade/vagas/pausa do processo) + cancelamento. O planejador já tirava da frente da cadeia por 1 min o modelo com 429 recente em `ai_usage_events` (`RATE_LIMIT_DEPRIORITIZE_MS`) — continua valendo |
+| Vagas e pausa POR CONEXÃO DE IA (decisão do usuário em 13/10: o limite é do ACESSO — ex.: o SDK da Vivo informará "vagas por acesso" —, configurável na conexão; nada específico de provedor) | `ai_connections.max_concurrent_calls` + `ai_call_slot_leases` (135, UNLOGGED, prazo renovado) + `ai_provider_cooldowns` (127, uma linha por chave) — porta `shared/application/model-routing/provider-call-gate.ts`, implementação `shared/infrastructure/model-routing/postgres-provider-call-gate.ts`, ligada no runtime da policy por candidato (`attemptAll`) e nas rotas do ambiente (`legacy:<provedor>`, só pausa) | Chave `connection:<id>`. ¼ do teto (≥ 1) reservado à interativa; interativa espera ≤ 20 s (`AI_CAPACITY_BUSY`), lote espera (cancelável). 429/503 grava a pausa (Retry-After ou 5 s/2 s, ≤ 60 s) ANTES de o erro voltar; lote espera a pausa ou, numa FALLBACK_CHAIN com RATE_LIMIT, pula a conexão (`FALLBACK_RATE_LIMIT`). Interativa nunca pausada. **O CHAT TEM PRIORIDADE** (decisão do usuário, 21/10, depois de dois Workflows de análise derrubarem o chat com 429): o 429 de uma chamada INTERATIVA pausa os lotes por pelo menos 15 s (`INTERACTIVE_RATE_LIMIT_PAUSE_MS`; Retry-After maior vale) em todas as instâncias e no processo (`interactiveBatchPauseMs`), e a interativa insiste até 4 vezes (0,75 → 1,5 → 3 → 6 s, Retry-After como mínimo, ≤ 15 s somados; 503 = uma só nova tentativa). Só na saturação — o lote nunca é parado preventivamente a cada pergunta. Cada processo lê as pausas a cada 2 s. Banco fora = sai sem vaga (aviso). O limitador de cada processo (`ai-call-limiter.ts`) voltou a ser só local (fila/prioridade/vagas/pausa do processo) + cancelamento. O planejador já tirava da frente da cadeia por 1 min o modelo com 429 recente em `ai_usage_events` (`RATE_LIMIT_DEPRIORITIZE_MS`) — continua valendo |
 | Tarefas periódicas | trava consultiva + `periodic_job_runs` (122) | Uma rodada por intervalo no conjunto |
 | Fila de Workflows e da Central de Dados | posse com lease + `skip locked` | A API (papel `api`) só enfileira a carga da Central e avisa por `NOTIFY inia_data_hub_wake`; o worker escuta numa conexão própria (`shared/infrastructure/process-wake`) e processa; o tick de 15 s é a garantia |
 
@@ -169,3 +169,37 @@ medida — pela conta, monitoria real (4 chamadas, ~1–2 min) com 4 por vez dá
 - `postgres-provider-call-gate-proof`, `postgres-rate-limit-store-proof`, `postgres-wake-channel-proof`, `data-hub-proof`.
 - Worktree sem `node_modules` próprio: o Turbopack recusa `node_modules` por symlink para fora da raiz (`next build`/`next dev`
   com `--webpack` funcionam).
+
+## Prioridade do chat durante disparos em massa — desaceleração controlada do lote (21/10/2026)
+
+O recurso que satura é a COTA DO PROVEDOR (tokens e chamadas por minuto). Escopo confirmado em 21/10 na documentação oficial:
+Gemini = **por projeto, não por chave** ("Rate limits are applied per project, not per API key"; RPM, TPM de entrada, RPD); OpenAI =
+por organização e projeto. Duas chaves no mesmo projeto NÃO isolam chat e lote — isolamento de cota só com projetos/acessos
+diferentes (confirmar com a Vivo o que "vagas por acesso" do SDK cobre).
+
+- **Vazão adaptativa do lote por conexão** (`shared/application/model-routing/adaptive-batch-window.ts`, ligada no portão do
+  PostgreSQL; o gateway marca os tokens de ENTRADA estimados de cada chamada com `runWithEstimatedTokens`): o lote de cada processo
+  tem um teto de tokens/min na conexão, numa janela de 60 s como a do provedor. PARTIDA LENTA (120 mil/min, +30 mil a cada 10 s;
+  passando de 3 milhões o teto some; parado 1 min, recomeça devagar). 429/503 da conexão — visto no processo ou PUBLICADO por outra
+  instância (pausa nova/estendida lida a cada 2 s; `source` diz se foi INTERACTIVE) — corta o teto para METADE do que o lote usou no
+  último minuto (mínimo 20 mil); 429 do CHAT corta para UM QUARTO e segura a subida por 60 s. Uma chamada sozinha sempre passa
+  (nada trava). A interativa nunca passa por aqui. Vale também para a rota do ambiente (`legacy:<provedor>`, sem "Chamadas
+  simultâneas"). `/internal/metrics` → `aiConnections.batchWindows` (`tokensPerMinute`, `usedLastMinute`, `waiting`); log
+  `ai_batch_window_decreased`/`_restored`. Por que tokens e não chamadas simultâneas (medido): metade das simultâneas e depois a
+  partida lenta em simultâneas ainda deixavam 43–51 respostas 429 no chat — 4 chamadas curtas de roteamento já passam da cota de
+  tokens numa rajada, e o que o lote gastou conta por 60 s.
+- **Retentativa de nó progressiva e com variação** (`node-retry-policy.ts`): 5 → 10 → 20 min (teto), ±20%; até 21/10 eram 5 min fixos
+  para todos — num disparo em massa que esbarrou no limite, centenas de nós voltavam no mesmo minuto. Limite de tentativas igual (5).
+- Disparos duplicados: a matrícula por Flag só acontece quando a flag é NOVA ou MUDOU de valor (ingestão e Central de Dados); manual
+  com chave idempotente; agenda e fan-out com índices únicos — nada mudou aqui.
+- Papel `all` (dev): chat e worker no mesmo processo, pool e event loop — produção usa `api` × `worker` (instalador).
+
+Medido em 21/10 (`tools/loadtest/chat-priority*.mjs`, IA falsa com latências reais do dev e a cota do provedor COMPARTILHADA entre
+API e worker — 600 mil tokens/min, 400 chamadas/min; 10 operadores perguntando a cada ~40 s; 7 min por rodada, 30 s de aquecimento;
+1º texto p50/p95 · falhas): sem disparos antes 50,8/63,3 s · 0 → depois 31,5/47,1 s · 0; volume esperado (3 monitorias/min) antes
+46,1/67,2 s · 0 → depois 32,2/56,2 s · 0 (lote igual: 21/21 concluídas); sobrecarga com worker de 8 (60 + 8/min) antes 45,1/78,3 s → depois
+31,4/49,9 s, 0 falhas; SOBRECARGA FORTE com worker de 32 (120 + 10/min; o antes tentava 646 mil tokens/min) antes 51,1/82,3 s, 6 de 44
+respostas falharam, 115 respostas 429 no chat, 68 no lote e 23 nós de Workflow falhos → depois 30,9/46,8 s, 0 falhas, 3 + 3 respostas
+429, 0 nós falhos, consumo 481 mil/min; o lote desacelerou (80 chamadas ok × 133 antes; espera na fila p95 65 s). Limites: uma
+máquina, IA falsa (a latência do modelo real varia mais), amostras de 40–58 respostas por rodada (p95 ≈ 3ª pior), vazão do lote
+medida em chamadas de IA (7 min não fecham uma monitoria completa na sobrecarga).

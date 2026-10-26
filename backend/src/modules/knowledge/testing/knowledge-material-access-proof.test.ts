@@ -152,6 +152,35 @@ describe.skipIf(!ENABLED)("Acesso a material da Base de Conhecimento e relação
     expect(await loadAccessibleKnowledgeMaterial(db(), { organizationId: ORG, viewer: { personId: ADMIN }, materialId: MAT_OTHER_ORG })).toBeNull()
   })
 
+  it("vale a versão VIGENTE: rascunho pendente não tira do ar a publicada; arquivar tira, mesmo com publicada anterior; republicar devolve", async () => {
+    const versions = async (n: number, title: string, list: readonly (readonly [string, string])[]) => {
+      await client.query(`insert into knowledge_documents (id, organization_id, title, document_type, source_type) values ($1, $2, $3, 'PROCEDURE', 'TEXT')`, [id(n), ORG, title])
+      for (const [index, [status, content]] of list.entries()) {
+        await client.query(`insert into knowledge_versions (organization_id, document_id, version, content, status, content_hash) values ($1, $2, $3, $4, $5, $6)`, [ORG, id(n), index + 1, content, status, `hash-${n}-${index + 1}`])
+      }
+      await client.query(`insert into knowledge_document_org_scopes (knowledge_document_id, scope_type) values ($1, 'ALL_TEAMS')`, [id(n)])
+    }
+    const PENDING_DRAFT = id(30)
+    const ARCHIVED_OVER_PUBLISHED = id(31)
+    const ARCHIVED_THEN_DRAFT = id(32)
+    const REPUBLISHED = id(33)
+    await versions(30, "Prova — Publicada com rascunho pendente", [["PUBLISHED", "Preço vigente R$ 139,99"], ["DRAFT", "Preço em edição R$ 999,99"]])
+    await versions(31, "Prova — Arquivada sobre publicada", [["PUBLISHED", "Versão antiga"], ["ARCHIVED", "Versão arquivada"]])
+    await versions(32, "Prova — Arquivada e depois rascunho", [["PUBLISHED", "Versão antiga"], ["ARCHIVED", "Versão arquivada"], ["DRAFT", "Rascunho novo"]])
+    await versions(33, "Prova — Republicada", [["ARCHIVED", "Versão arquivada"], ["PUBLISHED", "Versão republicada"]])
+
+    const accessible = await resolveAccessibleKnowledgeMaterials(db(), { organizationId: ORG, viewer: { personId: OP_A }, materialIds: [PENDING_DRAFT, ARCHIVED_OVER_PUBLISHED, ARCHIVED_THEN_DRAFT, REPUBLISHED] })
+    expect([...accessible.keys()].sort()).toEqual([PENDING_DRAFT, REPUBLISHED].sort())
+
+    // A página do material mostra o conteúdo PUBLICADO, nunca o rascunho em edição.
+    const page = await loadAccessibleKnowledgeMaterial(db(), { organizationId: ORG, viewer: { personId: OP_A }, materialId: PENDING_DRAFT })
+    expect(page?.content).toBe("Preço vigente R$ 139,99")
+    expect(page?.version).toBe(1)
+    expect((await loadAccessibleKnowledgeMaterial(db(), { organizationId: ORG, viewer: { personId: OP_A }, materialId: REPUBLISHED }))?.content).toBe("Versão republicada")
+    expect(await loadAccessibleKnowledgeMaterial(db(), { organizationId: ORG, viewer: { personId: OP_A }, materialId: ARCHIVED_OVER_PUBLISHED })).toBeNull()
+    expect(await loadAccessibleKnowledgeMaterial(db(), { organizationId: ORG, viewer: { personId: OP_A }, materialId: ARCHIVED_THEN_DRAFT })).toBeNull()
+  })
+
   it("persistência: só o que o destinatário pode abrir entra; reabrir resolve o título real; despublicar depois vira indisponível sem título", async () => {
     await client.query(`insert into supervision_cases (id, organization_id, operator_id, team_id, title, summary, status, priority, indicator_code, indicator_value, indicator_target) values ($1, $2, $3, $4, 'Prova caso', 'Prova', 'DIAGNOSED', 'P2', 'X', '1', '2')`, [id(20), ORG, OP_A, TEAM_A])
     await client.query(`insert into feedbacks (id, organization_id, case_id, operator_id, status, feedback_kind, impacted_indicator, evidence_found, observed_behavior, related_procedure, recommendation) values ($1, $2, $3, $4, 'APPROVED', 'MONITORING', 'X', 'e', 'o', 'p', 'r')`, [id(21), ORG, id(20), OP_A])

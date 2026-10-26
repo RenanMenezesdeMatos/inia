@@ -89,6 +89,9 @@ export function chain(...nodes: Node[]) {
   return { nodes, edges }
 }
 
+/** O mesmo grafo sem UMA saída de um nó (para os casos de saída desligada). */
+const withoutBranch = (graph: { nodes: Node[]; edges: Edge[] }, nodeId: string, branch: string) => ({ ...graph, edges: graph.edges.filter((item) => !(item.source === nodeId && item.sourceHandle === branch)) })
+
 const VARIABLES_AB: ParitySetup["variables"] = [
   { id: VARIABLE_A, type: "NUMERIC", name: "A" },
   { id: VARIABLE_B, type: "NUMERIC", name: "B" },
@@ -160,6 +163,9 @@ export const MIRRORED: MirroredCase[] = [
   // ---- trigger-context: gatilho e contexto ------------------------------------------------------------------
   { family: "trigger-context", name: "dois nós Gatilho", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), triggerNode("trigger-2"), endNode())), code: "WORKFLOW_INVALID_GRAPH", nodeId: "trigger" },
   { family: "trigger-context", name: "sem nó Fim", setup: setup(FLAG_BOOLEAN, chain(triggerNode())), code: "WORKFLOW_INVALID_GRAPH", nodeId: "" },
+  // D5 (validação funcional de 20/10/2026): Condição sem a saída "Não" publicava e a execução morria quando a resposta era não.
+  { family: "trigger-context", name: "Condição sem a saída 'Não'", setup: setup(FLAG_BOOLEAN, withoutBranch(chain(triggerNode(), condition("cond", { comparator: "EQUALS", thresholdBoolean: true }), endNode()), "cond", "false")), code: "WORKFLOW_MISSING_BRANCH_EDGE", nodeId: "cond" },
+  { family: "trigger-context", name: "Revisão humana sem a saída 'Escalar'", setup: setup(FLAG_BOOLEAN, withoutBranch(chain(triggerNode(), humanReview("review", { contentSource: "nodeOutputs.trigger" }), endNode()), "review", "escalated")), code: "WORKFLOW_MISSING_BRANCH_EDGE", nodeId: "review" },
   { family: "trigger-context", name: "Agenda de calendário sem horário", setup: setup(schedule({ mode: "CALENDAR" }), chain(triggerNode(), endNode())), code: "WORKFLOW_INVALID_TRIGGER", nodeId: "trigger" },
   { family: "trigger-context", name: "Agenda com horário repetido", setup: setup(schedule({ mode: "CALENDAR", times: ["09:00", "09:00"] }), chain(triggerNode(), endNode())), code: "WORKFLOW_INVALID_TRIGGER", nodeId: "trigger" },
   { family: "trigger-context", name: "Agenda mensal por dia sem o dia", setup: setup(schedule({ mode: "CALENDAR", times: ["09:00"], frequency: { type: "MONTHLY", mode: "DAY_OF_MONTH" } }), chain(triggerNode(), endNode())), code: "WORKFLOW_INVALID_TRIGGER", nodeId: "trigger" },
@@ -436,6 +442,8 @@ export const ACCEPTED: AcceptedCase[] = [
   // D7 (decisão de 08/10/2026: o editor segue o backend) — "está vazio"/"não está vazio" não comparam com um quartil.
   { name: "D7 · quartil de performance com 'está vazio' sem quartil de referência", setup: conditionCase({ comparator: "IS_EMPTY", performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_QUARTILE" } }) },
   { name: "D7 · quartil de performance com 'não está vazio' sem quartil de referência", setup: conditionCase({ comparator: "NOT_EMPTY", performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_QUARTILE" } }) },
+  // D5: só nó alcançável a partir do Gatilho precisa de todas as saídas — um nó solto no canvas nunca roda.
+  { name: "D5 · Condição solta no canvas, sem ligação nenhuma", setup: setup(FLAG_BOOLEAN, { nodes: [triggerNode(), endNode(), condition("loose", { comparator: "EQUALS", thresholdBoolean: true })], edges: [edge("trigger", "always", "end")] }) },
 ]
 
 // ---------------------------------------------------------------------------------------------

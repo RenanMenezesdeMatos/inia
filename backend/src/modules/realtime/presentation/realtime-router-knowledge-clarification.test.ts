@@ -7,6 +7,7 @@ import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import type { ClarificationOutcome, ClarificationRequest } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { CLARIFICATION_ANSWER_TOOL_NAME, CLARIFICATION_TOOL_NAME, KNOWLEDGE_CLARIFICATION_VERSION, optionIdFor, stepIdFor, type ClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
 import type { LeadershipChatContext } from "../../leadership-analytics/application/leadership-context.js"
+import { OrchestrationSuperseded } from "../../assistant/application/run-orchestrated-reply.js"
 import { createRealtimeRouter } from "./realtime-router.js"
 
 /**
@@ -45,7 +46,17 @@ const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, 
 function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean; orchestrator?: boolean; accessible?: (id: string) => boolean } = {}) {
   const memory = createMemoryConversationStore()
   const requests: ClarificationRequest[] = []
-  const orchestratedReply = vi.fn(async () => ({ text: "Resposta do caminho de sempre.", agentId: null, calls: [], results: [], structuredResult: null, supportMaterialCandidates: [] }))
+  // Orquestração falsa que respeita o portão `proceed` como a real: superada = nenhuma ferramenta roda e nada é respondido.
+  const proceeded: boolean[] = []
+  const orchestratedReply = vi.fn(async (...args: unknown[]) => {
+    const hooks = args[7] as { proceed?: () => Promise<boolean> } | undefined
+    if (hooks?.proceed) {
+      const go = await hooks.proceed()
+      proceeded.push(go)
+      if (!go) throw new OrchestrationSuperseded()
+    }
+    return { text: "Resposta do caminho de sempre.", agentId: null, calls: [], results: [], structuredResult: null, supportMaterialCandidates: [] }
+  })
   const leadership = options.leadership ? ({ instructions: "LIDERANÇA", voiceInstructions: "", toolset: { declarations: [], handles: () => false, execute: async () => ({ text: "", card: null }) }, processScope: null } as unknown as LeadershipChatContext) : null
   const app = express()
   app.use(express.json())
@@ -74,7 +85,7 @@ function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean
       accessibleKnowledgeDocuments: async (_organizationId, _personId, ids) => new Set(ids.filter((id) => options.accessible?.(id) ?? true)),
     }),
   )
-  return { app, memory, requests, orchestratedReply }
+  return { app, memory, requests, orchestratedReply, proceeded }
 }
 
 function events(text: string) {
@@ -90,17 +101,19 @@ afterEach(() => {
 })
 
 describe("chat de texto — esclarecimento pelas bases", () => {
-  it("pergunta ambígua: grava a pergunta com as opções, envia o estado validado num evento próprio e NÃO chama a orquestração", async () => {
+  it("pergunta ambígua: grava a pergunta com as opções, envia o estado validado num evento próprio e a orquestração (que corria junto) é descartada sem rodar ferramentas", async () => {
     const state = openState()
-    const { app, memory, requests, orchestratedReply } = setup([{ kind: "REPLY", content: "Qual cenário de teste?\n\nOpções encontradas nas bases consultadas: Cenário A · Cenário B.", state, trace: TRACE }])
+    const { app, memory, requests, orchestratedReply, proceeded } = setup([{ kind: "REPLY", content: "Qual cenário de teste?\n\nOpções encontradas nas bases consultadas: Cenário A · Cenário B.", state, trace: TRACE }])
     const response = await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Pergunta genérica de teste?", clientMessageId: "aaaaaaaa-0000-4000-8000-00000000c001" })
     const sse = events(response.text)
-    expect(sse.map((item) => item.event)).toEqual(["conversation", "chunk", "persisted", "knowledge_clarification", "done"])
+    expect(sse.map((item) => item.event)).toEqual(["conversation", "status", "chunk", "persisted", "knowledge_clarification", "done"])
     const clarification = sse.find((item) => item.event === "knowledge_clarification")!.data as { interactionId: string; clarification: { id: string; steps: { options: { evidence: { available: boolean }[] }[] }[]; scenario: unknown[] } }
     expect(clarification.clarification.id).toBe(state.id)
     expect(clarification.clarification.steps[0]!.options[0]!.evidence[0]!.available).toBe(true)
     expect(clarification.clarification.scenario).toEqual([])
-    expect(orchestratedReply).not.toHaveBeenCalled()
+    // Pergunta nova: o roteamento correu junto do esclarecimento, mas foi superado antes de qualquer ferramenta.
+    expect(orchestratedReply).toHaveBeenCalledTimes(1)
+    expect(proceeded).toEqual([false])
     // O serviço recebe a pessoa, os agentes do Orquestrador dela e nenhum estado anterior.
     expect(requests[0]).toMatchObject({ organizationId: ORG, personId: PERSON, orchestratorAgentId: "agent-orch", specialistAgentIds: ["agent-esp-1", "agent-esp-2"], answer: null, previous: null, recentTurns: [] })
     // Gravado: o estado (e o rastro) em tool_calls da resposta da INIA.

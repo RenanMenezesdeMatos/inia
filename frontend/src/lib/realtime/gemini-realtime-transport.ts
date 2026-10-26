@@ -85,7 +85,7 @@ export type RealtimeTransportEvents = {
   /** Nível do microfone (RMS, ~0–1), ~19×/s com o microfone aberto. Frequente o bastante para exigir escrita direta no DOM, nunca estado do React. */
   onAudioLevel?: (level: number) => void
   /** Resposta escrita completa de um especialista acionado na voz — a fala da INIA é só um resumo verbal disso (áudio não "fala" uma tabela markdown). `conversation` = a conversa persistida em que o backend a gravou. `extras.clarification` = a resposta veio do esclarecimento pelas bases (o formulário/fontes vão para a tela; a fala lê a pergunta e as opções). */
-  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null, analytics?: LeadershipCard[], extras?: { reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView }) => void
+  onSpecialistResult?: (text: string, supportMaterials: FeedbackSupportMaterial[], conversation: VoiceConversationResult | null, analytics?: LeadershipCard[], extras?: { reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView; interactionId?: string }) => void
   /** Conversa persistida e turno em curso no instante da tool-call (a sessão de voz não é a conversa: o chat decide). Com
    * `feedbackApplicationId`, a consulta é de dentro de uma sessão de feedback: o backend decide a conversa e emoldura o especialista.
    * `utterance` = as palavras da pessoa neste turno (digitadas ou a transcrição da fala), das quais o esclarecimento pelas bases parte
@@ -126,7 +126,7 @@ export type RealtimeTransportOptions = {
  * persistido). Chamado uma vez por turno completo, depois que o turno já foi commitado na UI.
  */
 /** Conversa em que o backend gravou um turno de voz (o chat adota o id; `closed` = a conversa foi encerrada no meio). */
-export type VoiceConversationResult = { conversationId: string; created: boolean; closed: boolean; activeConversationId: string | null }
+export type VoiceConversationResult = { conversationId: string; created: boolean; closed: boolean; activeConversationId: string | null; /** Resposta falada gravada neste turno (sem resposta = null). */ assistantInteractionId?: string | null }
 
 /** `feedbackApplicationId`: o turno é sobre uma aplicação de feedback — o backend decide a conversa (a da aplicação ou a complementar). */
 /** `userChannel`: a pergunta foi falada (padrão) ou DIGITADA e respondida por voz — o histórico mostra a origem. */
@@ -879,7 +879,7 @@ export class GeminiRealtimeTransport {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ toolName: call.name, query, periodDays, ...(this.events.getToolCallContext?.() ?? { conversationId: null, turnId: `voice-${session}-${generationSeq}` }), callId: String(call.id ?? call.name).replace(/[^A-Za-z0-9:_-]/g, "_").slice(0, 120) }),
           })
-          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[]; analytics?: unknown; reportOffer?: unknown; navigate?: { href?: unknown } | null; clarification?: unknown } & Partial<VoiceConversationResult> }
+          const payload = (await response.json()) as { data?: { text?: string; modelText?: string; supportMaterials?: FeedbackSupportMaterial[]; analytics?: unknown; reportOffer?: unknown; navigate?: { href?: unknown } | null; clarification?: unknown; interactionId?: unknown } & Partial<VoiceConversationResult> }
           if (response.ok && payload.data?.text) {
             // O card de material vai pra tela (mesma semântica do chat); o modelo recebe
             // `modelText` — o texto + a instrução determinística de mencionar que há apoio na
@@ -892,7 +892,9 @@ export class GeminiRealtimeTransport {
             const href = payload.data.navigate?.href
             // Esclarecimento pelas bases: o estado validado pelo servidor (o formulário fica na tela).
             const clarification = parseClarification(payload.data.clarification)
-            const extras = { ...(offer.success ? { reportOffer: offer.data } : {}), ...(typeof href === "string" && href.startsWith("/reports/") ? { navigate: { href } } : {}), ...(clarification ? { clarification } : {}) }
+            // A resposta gravada pelo backend (o curtir/descurtir do balão se liga a ela).
+            const interactionId = typeof payload.data.interactionId === "string" ? payload.data.interactionId : null
+            const extras = { ...(offer.success ? { reportOffer: offer.data } : {}), ...(typeof href === "string" && href.startsWith("/reports/") ? { navigate: { href } } : {}), ...(clarification ? { clarification } : {}), ...(interactionId ? { interactionId } : {}) }
             const hasExtras = Object.keys(extras).length > 0
             if (stillCurrent()) this.events.onSpecialistResult?.(payload.data.text, payload.data.supportMaterials ?? [], conversation, ...(analytics.length > 0 || hasExtras ? [analytics.length > 0 ? analytics : undefined] : []), ...(hasExtras ? [extras] : []))
             return { id: call.id, name: call.name, response: { result: payload.data.modelText ?? payload.data.text } }

@@ -1,11 +1,15 @@
 import { extractMarkerPayload, type MarkerParseStatus } from "../../../shared/application/prompting/structured-markers.js"
+import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
+import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { StructuredMonitoringFeedback } from "../../feedbacks/application/create-monitoring-feedback.js"
 import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
 import type { ChatTurn, FunctionCall, FunctionDeclaration } from "../infrastructure/gemini-function-calling-client.js"
-import { escalateRoute, generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
+import { escalateRoute, generateForRoute, routeFor, streamForRoute, type GatewayRequest, type GatewayResponse } from "../../../shared/application/model-routing/llm-gateway.js"
+import { traceChatTool } from "../../../shared/application/observability/chat-turn-trace.js"
+import { createMarkerSafeText, type MarkerSafeText } from "../domain/reply-stream.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
-import { collectSpecialistClaims, collectSpecialistTemporalAuthorization, extractEvidenceMarker, gateOrchestratorClaims, renderGatingCorrection as renderOrchestratorCorrection, renderSpecialistClaims, renderTextEvidenceInstructions } from "../../investigation/application/text-evidence-gating.js"
+import { collectSpecialistClaims, collectSpecialistTemporalAuthorization, EVIDENCE_MARKER, extractEvidenceMarker, gateOrchestratorClaims, renderGatingCorrection as renderOrchestratorCorrection, renderSpecialistClaims, renderTextEvidenceInstructions } from "../../investigation/application/text-evidence-gating.js"
 import { renderEnvelopeCorrection } from "../../investigation/domain/evidence-gating.js"
 import type { EvidenceGatingResult, InvestigationSynthesis } from "../../investigation/domain/tool-trace.js"
 import { findSpecialistByToolName, type ResolvedOrchestrator } from "./resolve-orchestrator.js"
@@ -16,6 +20,7 @@ import {
   extractSupportMaterialsMarker,
   mergeSupportMaterialCandidates,
   selectSupportMaterialRecommendations,
+  SUPPORT_MATERIALS_MARKER,
   type SupportMaterialCandidate,
   type SupportMaterialsOutcome,
 } from "../../feedbacks/domain/support-material.js"
@@ -68,6 +73,9 @@ export type OrchestratedReply = {
   orchestration?: OrchestrationTrace
   /** Ferramentas do backend acionadas neste turno, com os argumentos e o cartão (null = pedido não resolvido, ex.: ambíguo). */
   directResults?: { toolName: string; args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> }[]
+  /** Só com `stream`: o texto da resposta que JÁ está na tela (entregue em fluxo e não retirado). Quem envia confere com o texto
+   * final (`reconcileShownText`) e manda só o que falta. */
+  streamedText?: string
 } & SupportMaterialsOutcome
 
 /**
@@ -90,7 +98,40 @@ export type OrchestrationConversationHooks = {
   /** Ferramentas determinísticas do PRÓPRIO backend oferecidas junto dos especialistas neste turno (ex.: dados da liderança no
    * escopo da sessão) — executadas aqui, sem agente, e devolvidas com o cartão estruturado para a tela. */
   directTools?: DirectToolset
+  /** Chat: a resposta final em fluxo e o progresso verdadeiro (ver `OrchestrationStream`). Sem isto, tudo como sempre. */
+  stream?: OrchestrationStream
+  /** Antes de executar a primeira rodada de ferramentas: `false` = esta orquestração foi superada (ex.: o esclarecimento pelas
+   * bases, rodando ao mesmo tempo, já respondeu) — nenhuma ferramenta roda e a orquestração termina com `OrchestrationSuperseded`. */
+  proceed?: () => Promise<boolean>
+  /** Conversa (chat/voz): uma ferramenta que FALHA (prazo do provedor, erro) não derruba a resposta quando outra do mesmo turno
+   * respondeu — a síntese recebe "não foi possível consultar" e diz isso à pessoa. Todas falhando = o erro de sempre. Workflow nunca
+   * passa isto: lá a falha vai para a política de retentativa do nó. */
+  toleratesToolFailure?: boolean
 }
+
+/**
+ * Saída em fluxo de um turno do chat. Só o texto que PODE ser a resposta final vai para `text` — já sem as linhas internas
+ * (marcadores); o que foi mostrado e deixou de ser a resposta (o modelo escreveu e depois pediu uma ferramenta) é retirado por
+ * `retract`. Uma síntese que precisa ser validada antes de aparecer (evidência de investigação) nunca vai em fluxo: sai inteira
+ * no fim, como sempre. `progress` = o que está rodando agora (nomes das ferramentas acionadas ou a escrita da resposta).
+ */
+export type OrchestrationStream = {
+  text(chunk: string): void
+  retract(): void
+  progress(event: OrchestrationProgress): void
+  /** `false` = o texto desta chamada não vai em fluxo agora (ex.: a resposta da liderança vai ser a de um esclarecimento). */
+  allow?(): boolean
+}
+export type OrchestrationProgress = { stage: "TOOLS"; tools: string[] } | { stage: "WRITING" }
+
+/** A orquestração foi superada antes de rodar ferramentas (`proceed` devolveu false). */
+export class OrchestrationSuperseded extends Error {
+  constructor() {
+    super("Orquestração superada por outra resposta.")
+    this.name = "OrchestrationSuperseded"
+  }
+}
+
 
 /** Ferramenta executada pelo backend: `text` vai para a síntese (fatos, base, limitações); `card` vai para a tela, nunca pelo modelo;
  * `trace` (opcional) é o registro auditável do que a ferramenta fez (ex.: qual Orquestrador de Grupo respondeu), gravado com a chamada. */
@@ -112,6 +153,7 @@ export const MAX_DIRECT_ROUNDS = 3
 export const MAX_TOOL_CALLS_PER_ROUND = 6
 export const MAX_TOOL_CALLS_PER_TURN = 12
 export const TOOL_CALL_LIMIT_TEXT = `Consulta não executada: limite de ${MAX_TOOL_CALLS_PER_TURN} consultas por pergunta (${MAX_TOOL_CALLS_PER_ROUND} por rodada). Responda com o que já foi consultado e diga ao usuário que pode pedir o restante numa próxima pergunta.`
+export const TOOL_FAILED_TEXT = "Consulta não concluída: esta fonte não respondeu agora (falha temporária). Responda só com o que as outras consultas trouxeram e diga ao usuário, numa frase, que esta parte não pôde ser consultada agora e pode ser perguntada de novo em instantes."
 
 function agenticRoundHint(round: number): string {
   const left = MAX_DIRECT_ROUNDS - round
@@ -162,6 +204,9 @@ export type StructuredResultValidationSummary =
   | { valid: false; issues: StructuredResultIssue[]; rawResult: Record<string, unknown> | null }
 
 const STRUCTURED_RESULT_MARKER = "STRUCTURED_RESULT_JSON:"
+
+/** Linhas internas que nunca vão para a tela em fluxo (lidas pelos parsers de sempre no fim). */
+const INTERNAL_MARKERS = [SUPPORT_MATERIALS_MARKER, STRUCTURED_RESULT_MARKER, EVIDENCE_MARKER]
 
 /** Exportado pra ser reaproveitado por `executeOrchestratorConsolidated` (orchestrator-executor.ts)
  * — o Orchestrator pós-JOIN faz sua própria chamada (sem tools/operatorId, nunca especialista
@@ -230,7 +275,7 @@ export async function runOrchestratedReply(
   extraContext: string,
   operatorId: string,
   /** Sujeito da investigação dos especialistas (Workflow: interação/indicador do enrollment). */
-  specialistOptions: Pick<SpecialistToolOptions, "investigation" | "outputContract" | "collaboratorConversation" | "analyzeCall" | "excludedCapabilities" | "conversationFrame"> = {},
+  specialistOptions: Pick<SpecialistToolOptions, "investigation" | "outputContract" | "collaboratorConversation" | "analyzeCall" | "excludedCapabilities" | "conversationFrame" | "askerQuestion"> = {},
   fastPath: OrchestrationFastPath = {},
   conversation: OrchestrationConversationHooks = {},
 ): Promise<OrchestratedReply> {
@@ -247,14 +292,30 @@ export async function runOrchestratedReply(
   // a escolha não depende de IA — nenhuma chamada de roteamento. A pergunta ao especialista é a própria instrução do nó.
   const declared = fastPath.fixedDomainIds && fastPath.fixedDomainIds.length > 0 ? resolveDeterministicRouting(orchestrator, fastPath.fixedDomainIds) : null
   const lastUserText = [...history].reverse().find((turn) => turn.role === "user")?.text ?? ""
+  // CONVERSA: a busca do especialista considera também a última pergunta da pessoa (a do chamador — ex.: a fala na voz — ou o
+  // último turno do usuário), não só a que o roteamento escreveu. Workflow e QA Lab: nunca (ver `askerQuestion`).
+  const specialistToolOptions = specialistOptions.collaboratorConversation === true ? { ...specialistOptions, askerQuestion: specialistOptions.askerQuestion || lastUserText } : specialistOptions
   const routingTrace: OrchestrationTrace["routing"] = declared
     ? { mode: "DETERMINISTIC", reason: "DECLARED_DOMAINS", domainIds: [...new Set(fastPath.fixedDomainIds)] }
     : { mode: "MODEL", reason: fastPath.fixedDomainIds && fastPath.fixedDomainIds.length > 0 ? "DECLARED_DOMAINS_AMBIGUOUS" : "NOT_DECLARED" }
+  // CHAT EM FLUXO: uma chamada cujo texto PODE ser a resposta final vai em fluxo para a tela (sem as linhas internas). Se ela
+  // virar um pedido de ferramenta depois de já ter escrito algo (raro), o que apareceu é retirado. `shown` = o texto da resposta
+  // que está na tela agora.
+  const stream = conversation.stream
+  let shown: MarkerSafeText | null = null
+  const callModel = async (request: GatewayRequest, streamable: boolean): Promise<GatewayResponse> => {
+    if (!stream || !streamable || stream.allow?.() === false) return generateForRoute(request)
+    const sink = createMarkerSafeText(INTERNAL_MARKERS, stream.text)
+    const response = await streamForRoute(request, (chunk) => sink.push(chunk))
+    if (response.kind === "text") shown = sink
+    else if (sink.emitted().length > 0) stream.retract()
+    return response
+  }
   const first = declared
     ? { kind: "calls" as const, calls: declared.map((entry) => ({ name: entry.toolName, args: { query: lastUserText } as Record<string, unknown> })) }
     : await (async () => {
         const routingRoute = routeFor({ purpose: "ORCHESTRATOR_ROUTING", phase: "PLANNING", toolSchemaCount: routingTools.length, estimatedInputTokens: estimateTokens(systemPrompt, JSON.stringify(contents)) })
-        return withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => generateForRoute({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt, contents, tools: routingTools, structuredOutput: false, route: routingRoute }))
+        return withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => callModel({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt, contents, tools: routingTools, structuredOutput: false, route: routingRoute }, true))
       })()
   if (first.kind === "text") {
     // Sem especialista acionado não há candidato algum (o Orquestrador não consulta KB por conta
@@ -262,12 +323,14 @@ export async function runOrchestratedReply(
     // própria é removido do texto e descartado.
     const stripped = extractSupportMaterialsMarker(first.text)
     const { text, structuredResult, structuredResultValidation } = extractValidatedStructuredResult(stripped.text, orchestrator.structuredOutput)
-    return { text, agentId: null, calls: [], results: [], structuredResult, supportMaterialCandidates: [], ...(structuredResultValidation ? { structuredResultValidation } : {}), orchestration: { routing: routingTrace, synthesis: { mode: "NONE", reason: "NO_SPECIALIST_CALLED" } } }
+    return { text, agentId: null, calls: [], results: [], structuredResult, supportMaterialCandidates: [], ...(structuredResultValidation ? { structuredResultValidation } : {}), orchestration: { routing: routingTrace, synthesis: { mode: "NONE", reason: "NO_SPECIALIST_CALLED" } }, ...streamedTextOf(shown) }
   }
+  // Superada (ex.: o esclarecimento pelas bases já respondeu enquanto o roteamento rodava): nenhuma ferramenta roda.
+  if (conversation.proceed && !(await conversation.proceed())) throw new OrchestrationSuperseded()
 
   const executeCall = async (call: FunctionCall): Promise<TurnResult> => {
     if (directTools?.handles(call.name)) {
-      const outcome = await directTools.execute(call.name, call.args)
+      const outcome = await traceChatTool(call.name, "DIRECT", () => directTools.execute(call.name, call.args))
       return { toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text: outcome.text, contract: "TEXT" as const, direct: { args: call.args, card: outcome.card, ...(outcome.trace ? { trace: outcome.trace } : {}) } }
     }
     const agentId = findSpecialistByToolName(orchestrator, call.name)
@@ -278,7 +341,7 @@ export async function runOrchestratedReply(
       // A referência da análise do motor viaja no lugar do resultado estruturado (lida por `callAnalysisRefOf` no "Gerar feedback").
       ? ({ contract: "FEEDBACK", text: engineAnalysis.text, structured: engineAnalysis.structured as StructuredMonitoringFeedback } as const)
       : agentId
-        ? await withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistOptions))
+        ? await traceChatTool(call.name, "SPECIALIST", () => withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistToolOptions)))
         : ({ contract: "TEXT", text: "Especialista não encontrado para esse pedido." } as const)
     return {
       toolName: call.name,
@@ -294,24 +357,45 @@ export async function runOrchestratedReply(
   }
   // Orçamento do turno: as chamadas além do teto não executam (resposta de recusa no lugar), na ordem em que o modelo pediu.
   let budget = declared ? Number.POSITIVE_INFINITY : MAX_TOOL_CALLS_PER_TURN
-  const executeRound = (calls: FunctionCall[]): Promise<TurnResult[]> => {
+  const executeRound = async (calls: FunctionCall[]): Promise<TurnResult[]> => {
     const allowed = declared ? calls.length : Math.max(0, Math.min(MAX_TOOL_CALLS_PER_ROUND, budget))
     budget -= Math.min(allowed, calls.length)
-    return Promise.all(calls.map((call, index) => (index < allowed ? executeCall(call) : Promise.resolve<TurnResult>({ toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text: TOOL_CALL_LIMIT_TEXT, contract: "TEXT" }))))
+    stream?.progress({ stage: "TOOLS", tools: calls.slice(0, allowed).map((call) => call.name) })
+    const refused = (call: FunctionCall, text: string): TurnResult => ({ toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text, contract: "TEXT" })
+    if (!conversation.toleratesToolFailure) return Promise.all(calls.map((call, index) => (index < allowed ? executeCall(call) : Promise.resolve(refused(call, TOOL_CALL_LIMIT_TEXT)))))
+    // Conversa: espera todas; uma que falhou (sem ser cancelamento) vira "não foi possível consultar" se outra do turno respondeu.
+    const settled = await Promise.allSettled(calls.map((call, index) => (index < allowed ? executeCall(call) : Promise.resolve(refused(call, TOOL_CALL_LIMIT_TEXT)))))
+    const failures = settled.flatMap((outcome, index) => (outcome.status === "rejected" ? [{ index, reason: outcome.reason as unknown }] : []))
+    const fatal = failures.find((failure) => failure.reason instanceof AiCallCancelledError || failure.reason instanceof OrchestrationSuperseded)
+    if (fatal) throw fatal.reason
+    answeredSoFar += settled.length - failures.length
+    if (failures.length > 0 && answeredSoFar === 0) throw failures[0]!.reason
+    for (const failure of failures) console.warn(JSON.stringify({ event: "orchestrator_tool_failed", orchestratorId: orchestrator.orchestratorId, toolName: calls[failure.index]!.name, code: failure.reason instanceof DomainError ? failure.reason.code : (failure.reason as Error)?.name ?? "UNKNOWN" }))
+    return settled.map((outcome, index) => (outcome.status === "fulfilled" ? outcome.value : refused(calls[index]!, TOOL_FAILED_TEXT)))
   }
+  let answeredSoFar = 0
   const firstResults = await executeRound(first.calls)
+  // A síntese sem ferramentas é OBRIGATÓRIA (e o texto de uma rodada extra seria descartado) quando há evidência de investigação a
+  // validar, materiais a escolher ou resultado estruturado pedido — o que dá para saber com os resultados que já existem.
+  const synthesisForcedBy = (soFar: readonly TurnResult[]) =>
+    soFar.some((result) => result.investigation) || (orchestrator.recommendSupportMaterials && soFar.some((result) => (result.supportMaterialCandidates ?? []).length > 0)) || Boolean(orchestrator.outputInstructions) || Boolean(orchestrator.structuredOutput)
   // RODADAS EXTRAS (só quando há ferramentas do backend, ex.: liderança): a IA lê o resultado e pode consultar de novo — achar os
   // piores e depois diagnosticá-los — até `MAX_DIRECT_ROUNDS` rodadas. Parando de chamar ferramentas, o texto dela é a resposta
-  // (já com todos os dados); no limite de rodadas, a síntese de sempre (sem ferramentas) fecha a resposta.
+  // (já com todos os dados); no limite de rodadas, a síntese de sempre (sem ferramentas) fecha a resposta. Quando a primeira rodada
+  // só acionou ESPECIALISTAS e a síntese já é obrigatória, a rodada extra só produziria um texto descartado (uma chamada a mais
+  // antes da resposta, medido em 21/10: ~4,6 s na mediana) — a síntese vem direto, como num Orquestrador sem ferramentas do backend.
   const rounds: { calls: FunctionCall[]; results: TurnResult[] }[] = [{ calls: first.calls, results: firstResults }]
   let agenticTurns: ChatTurn[] | null = null
   let agenticText: string | null = null
-  if (directTools && !declared) {
+  const deepens = firstResults.some((result) => result.direct) || !synthesisForcedBy(firstResults)
+  if (directTools && !declared && deepens) {
     agenticTurns = [...contents, { role: "model", functionCalls: first.calls }, { role: "user", functionResponses: firstResults.map((result) => ({ name: result.toolName, response: { result: result.text } })) }]
     for (let round = 1; round < MAX_DIRECT_ROUNDS; round += 1) {
       const roundRoute = routeFor({ purpose: "ORCHESTRATOR_ROUTING", phase: "PLANNING", toolSchemaCount: routingTools.length, estimatedInputTokens: estimateTokens(systemPrompt, JSON.stringify(agenticTurns)) })
       const turns: ChatTurn[] = agenticTurns
-      const next = await withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => generateForRoute({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt: `${systemPrompt}\n\n${agenticRoundHint(round)}`, contents: turns, tools: routingTools, structuredOutput: false, route: roundRoute }))
+      // O texto desta rodada só vai em fluxo quando ele PODE ser a resposta final (sem síntese obrigatória até aqui).
+      const finalCandidate = !synthesisForcedBy(rounds.flatMap((entry) => entry.results))
+      const next = await withLlmScope({ role: "orchestrator_routing", ...orchestratorScope }, () => callModel({ classification: { phase: "PLANNING", purpose: "ORCHESTRATOR_ROUTING", source: "ORCHESTRATOR", semanticType: "ROUTING" }, systemPrompt: `${systemPrompt}\n\n${agenticRoundHint(round)}`, contents: turns, tools: routingTools, structuredOutput: false, route: roundRoute }, finalCandidate))
       if (next.kind === "text") {
         agenticText = next.text
         break
@@ -396,18 +480,27 @@ export async function runOrchestratedReply(
   const crossDomain = new Set(results.map((result) => result.agentId).filter(Boolean)).size > 1
   let synthesisRoute = routeFor({ purpose: "ORCHESTRATOR_SYNTHESIS", phase: "SYNTHESIS", specialistCount: results.length, crossDomain, estimatedInputTokens: estimateTokens(synthesisSystemPrompt, JSON.stringify(followUp)) })
   const synthesisClassification = { phase: "SYNTHESIS" as const, purpose: "ORCHESTRATOR_SYNTHESIS", source: "ORCHESTRATOR" as const, semanticType: orchestrator.structuredOutput ? ("STRUCTURED_RESULT" as const) : ("TEXT" as const) }
+  // Em fluxo só a síntese que não precisa de validação antes de aparecer: com evidência de investigação, o texto só sai depois do
+  // gating (fail-closed) — inteiro, no fim, como sempre.
+  const streamSynthesis = !evidenceBlock
   const synthesize = async (turns: ChatTurn[], correction = false) => {
     const classification = correction ? { ...synthesisClassification, purpose: "GATING_CORRECTION" } : synthesisClassification
-    let final = await withLlmScope({ role: "orchestrator_synthesis", ...orchestratorScope }, () => generateForRoute({ classification, systemPrompt: synthesisSystemPrompt, contents: turns, tools: [], structuredOutput: false, route: synthesisRoute }))
+    let final = await withLlmScope({ role: "orchestrator_synthesis", ...orchestratorScope }, () => callModel({ classification, systemPrompt: synthesisSystemPrompt, contents: turns, tools: [], structuredOutput: false, route: synthesisRoute }, streamSynthesis && !correction))
     if (final.kind !== "text") {
       const retry: ChatTurn[] = [...turns, { role: "user", text: "Não há mais especialistas disponíveis nesta análise. Sintetize com as respostas já recebidas, em texto." }]
-      final = await withLlmScope({ role: "orchestrator_synthesis", ...orchestratorScope }, () => generateForRoute({ classification, systemPrompt: synthesisSystemPrompt, contents: retry, tools: [], structuredOutput: false, route: synthesisRoute }))
+      final = await withLlmScope({ role: "orchestrator_synthesis", ...orchestratorScope }, () => callModel({ classification, systemPrompt: synthesisSystemPrompt, contents: retry, tools: [], structuredOutput: false, route: synthesisRoute }, streamSynthesis && !correction))
     }
     return final.kind === "text" ? final.text : "Não consegui sintetizar uma resposta a partir dos especialistas consultados."
   }
   // Rodadas com ferramentas do backend: se a IA já escreveu a resposta com todos os dados (e não há evidência de investigação a
   // validar, recomendação de material nem resultado estruturado), ela é a resposta — sem uma síntese a mais.
   const agenticFinal = agenticText !== null && !evidenceBlock && !recommendationEnabled && !orchestrator.outputInstructions && !orchestrator.structuredOutput
+  if (!agenticFinal) {
+    // Defensivo: um texto de rodada que apareceu e não é a resposta sai da tela antes da síntese.
+    if (shown && (shown as MarkerSafeText).emitted().length > 0) stream?.retract()
+    shown = null
+    stream?.progress({ stage: "WRITING" })
+  }
   let rawFinalText = agenticFinal ? agenticText! : await synthesize(followUp)
   let evidenceGating: EvidenceGatingResult | undefined
   let orchestratorSynthesis: InvestigationSynthesis | undefined
@@ -470,7 +563,13 @@ export async function runOrchestratedReply(
     ...(structuredResultValidation ? { structuredResultValidation } : {}),
     orchestration: { routing: routingTrace, synthesis: { mode: "MODEL", reason: synthesisReason } },
     ...(directResultsOf(results).length > 0 ? { directResults: directResultsOf(results) } : {}),
+    ...streamedTextOf(shown),
   }
+}
+
+/** O texto da resposta que já está na tela (só quando houve fluxo). */
+function streamedTextOf(shown: MarkerSafeText | null): { streamedText?: string } {
+  return shown ? { streamedText: shown.emitted() } : {}
 }
 
 function directResultsOf(results: readonly { toolName: string; direct?: { args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> | undefined } }[]): NonNullable<OrchestratedReply["directResults"]> {

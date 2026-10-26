@@ -30,20 +30,53 @@ export type RichContentProps = {
   className?: string
   /** `compact`: tipografia de card/feed (padrão). `detail`: um pouco mais de respiro para painéis e drawers. */
   density?: "compact" | "detail"
+  /** `emphasis`: trecho entre aspas curvas (“…”) vira citação (`<q>`) — itálico fino sobre fundo suave da cor da marca, com as aspas à
+   * vista. No feedback, a fala literal da chamada (colocada pelo sistema) se distingue do texto do redator. Só apresentação: o texto não muda. */
+  quotes?: "plain" | "emphasis"
 }
 
-export function RichContent({ text, className, density = "compact" }: RichContentProps) {
+export function RichContent({ text, className, density = "compact", quotes = "plain" }: RichContentProps) {
   const content = text.trim()
   if (content.length === 0) return null
   return (
     <div className={cn("rich-content min-w-0 max-w-full break-words", density === "detail" ? "space-y-3 text-sm leading-6" : "space-y-2 text-sm leading-6", className)}>
       <RichContentErrorBoundary text={content}>
-        <Markdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={defaultUrlTransform} components={components}>
+        <Markdown remarkPlugins={quotes === "emphasis" ? [remarkGfm, emphasizeQuotes] : [remarkGfm]} skipHtml urlTransform={defaultUrlTransform} components={components}>
           {content}
         </Markdown>
       </RichContentErrorBoundary>
     </div>
   )
+}
+
+/** Nó mínimo da árvore markdown (mdast) que o plugin precisa ler e trocar (`data.hName` escolhe o elemento HTML). */
+type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[]; data?: { hName?: string; hProperties?: Record<string, unknown> } }
+const QUOTED_SPAN = /(“[^”\n]+”)/u
+/**
+ * Estilo da fala citada: itálico fino (peso 300) da Atkinson Hyperlegible Next — a versão nova da família do texto, escolhida pela
+ * legibilidade; a do texto só tem 400/700 (fonte mono deixava a fala com cara de dado do sistema e cansava nas falas longas) —, sobre um
+ * fundo suave da cor da marca. Citação no meio do texto usa `<q>`
+ * (semântica de citação) e mais de uma pista visual — itálico e fundo (WCAG 1.4.1: nunca só a cor) —, com o texto na cor principal
+ * (contraste acima de 4,5:1). Negrito fica para o que fazer. As aspas da fala ficam à vista (decisão do usuário, 21/10: a caixa sozinha não
+ * dizia que era fala). `box-decoration-clone` mantém o fundo arredondado quando a fala quebra de linha; as aspas automáticas do `<q>` saem
+ * (a fala já traz as dela).
+ */
+const QUOTE_CLASS = "rounded bg-primary/10 px-1 py-0.5 font-quote font-light italic text-foreground box-decoration-clone before:content-none after:content-none dark:bg-primary/25"
+/** A fala, com as aspas dela, dentro da citação. */
+const quoteNodeOf = (quoted: string): MarkdownNode => ({ type: "emphasis", data: { hName: "q", hProperties: { className: QUOTE_CLASS } }, children: [{ type: "text", value: quoted }] })
+/** Plugin remark: cada “…” de um nó de texto vira citação (`<q>`), com as aspas dentro. Código não é tocado. */
+function emphasizeQuotes() {
+  const walk = (node: MarkdownNode) => {
+    if (!node.children || node.type === "inlineCode" || node.type === "code") return
+    node.children = node.children.flatMap((child) => {
+      if (child.type !== "text" || !child.value || !QUOTED_SPAN.test(child.value)) {
+        walk(child)
+        return [child]
+      }
+      return child.value.split(QUOTED_SPAN).filter((part) => part.length > 0).map((part) => (QUOTED_SPAN.test(part) ? quoteNodeOf(part) : { type: "text", value: part }))
+    })
+  }
+  return (tree: MarkdownNode) => walk(tree)
 }
 
 // Títulos internos nunca viram "página de documentação" dentro de um card: h1/h2 e h3+ colapsam

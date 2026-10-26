@@ -1,7 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { attachKnowledgeTrace } from "../../../shared/application/llm-telemetry.js"
 import { renderAcronymContext } from "../../knowledge/domain/query-acronyms.js"
-import { loadArgumentScriptPromptLines } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
+import { loadArgumentScriptPromptLines, type ArgumentScriptAudience } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { retrieveKnowledgeForAgent, type KnowledgeCoverageRequest, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import { loadAgentGuardrails, renderAgentGuardrails } from "./agent-guardrails.js"
 
@@ -28,6 +28,9 @@ export type BuildSystemPromptOptions = {
   /** Conversa com o COLABORADOR (chat/voz): as Regras de chamada descrevem o atendimento do operador ao CLIENTE e só servem
    * para avaliar chamadas — aqui ficam de fora (senão o modelo as cumpre ele mesmo e "encerra" com protocolo inventado). */
   collaboratorConversation?: boolean
+  /** Conversa: a última pergunta da PESSOA, nas palavras dela — a busca na base une a seleção dela à de `query` (a pergunta do
+   * roteamento). Só vale com `collaboratorConversation`; fora da conversa é ignorada (ver ASKER_QUESTION_RETRIEVAL_VERSION). */
+  askerQuestion?: string | null | undefined
   /** V1.7.4 — avaliação de processo da MONITORIA: a régua é só a base aplicável (etapas [CP-…] dos trechos apresentados). As
    * Regras de chamada da organização são expectativas genéricas, não etapas daquele processo — ficam de fora (senão o modelo as
    * avalia como um "processo" a mais, fora de qualquer documento). O diagnóstico de indicador não passa esta opção. */
@@ -96,14 +99,31 @@ function describeKnowledgeBlock(trace: KnowledgeTrace, promptBlock: string): str
   return [RETRIEVED_CONTENT_GUARD, renderAcronymContext(trace.queryExpansion ?? []), renderAmbiguityGuidance(trace), NOT_FOUND_GUIDANCE, "", promptBlock].filter((line, index) => line !== "" || index === 4).join("\n")
 }
 
+/**
+ * Público dos argumentários do prompt: o colaborador da execução (Grupo/Subgrupo dele) ou, sem colaborador (teste do Agent,
+ * coordenador do Orquestrador, síntese, prévia do prompt), o alcance do próprio Agent — só as regras que valem para todos que ele
+ * atende (Agent de "Todos os grupos" → só argumentários de todos os grupos).
+ */
+async function argumentAudienceOf(db: Database, organizationId: string, agentId: string, subjectPersonId: string | null): Promise<ArgumentScriptAudience> {
+  if (subjectPersonId) {
+    const person = (await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [subjectPersonId, organizationId])).rows[0]
+    if (person) return { teamId: person.team_id, subteamId: person.subteam_id }
+  }
+  const agent = (await db.query<{ team_id: string | null; subteam_id: string | null }>(
+    `select coalesce(a.team_id, st.team_id) team_id, a.subteam_id from agents a left join subteams st on st.id = a.subteam_id where a.id = $1 and a.organization_id = $2`,
+    [agentId, organizationId],
+  )).rows[0]
+  return { teamId: agent?.team_id ?? null, subteamId: agent?.subteam_id ?? null }
+}
+
 export async function buildSystemPromptWithTrace(db: Database, agentId: string, agent: AgentConfig, options: BuildSystemPromptOptions = {}): Promise<BuiltSystemPrompt> {
-  const knowledge = await retrieveKnowledgeForAgent(db, agentId, options.query ?? "", undefined, options.coverage ?? null, { markProcessRoles: options.markProcessRoles ?? false, governanceSubjectPersonId: options.governanceSubjectPersonId ?? null })
+  const knowledge = await retrieveKnowledgeForAgent(db, agentId, options.query ?? "", undefined, options.coverage ?? null, { markProcessRoles: options.markProcessRoles ?? false, governanceSubjectPersonId: options.governanceSubjectPersonId ?? null, askerQuestion: options.collaboratorConversation ? (options.askerQuestion ?? null) : null })
 
   // Limites de atuação DESTE Agent (quando ligados) + assuntos proibidos da organização.
   const guardrails = await loadAgentGuardrails(db, agent.organization_id, agentId)
 
   // Argumentários vigentes (evolução das Regras de chamada; o cadastro antigo foi convertido sem perder o texto — migration 105).
-  const expectations = { rows: options.collaboratorConversation || options.processAssessment ? [] : await loadArgumentScriptPromptLines(db, agent.organization_id, new Date()) }
+  const expectations = { rows: options.collaboratorConversation || options.processAssessment ? [] : await loadArgumentScriptPromptLines(db, agent.organization_id, new Date(), await argumentAudienceOf(db, agent.organization_id, agentId, options.governanceSubjectPersonId ?? null)) }
 
   const expectationsBlock = expectations.rows.length
     ? expectations.rows

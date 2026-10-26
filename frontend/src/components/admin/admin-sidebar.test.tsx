@@ -61,6 +61,7 @@ describe("AdminSidebar — organização", () => {
     const agents = link("Agentes").closest<HTMLElement>("li")!
     expect(within(agents).getByRole("link", { name: "Base de conhecimento" })).toHaveAttribute("href", "/admin/knowledge")
     expect(within(agents).getByRole("link", { name: "Domínios de negócio" })).toHaveAttribute("href", "/admin/business-domains")
+    expect(within(agents).getByRole("link", { name: "Produtos" })).toHaveAttribute("href", "/admin/product-catalog")
 
     fireEvent.click(screen.getByRole("button", { name: "Expandir Central de Dados" }))
     const dataHub = link("Central de Dados").closest<HTMLElement>("li")!

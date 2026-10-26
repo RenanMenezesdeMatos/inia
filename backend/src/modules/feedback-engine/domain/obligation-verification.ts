@@ -20,7 +20,8 @@ import {
 import { decidePathConfirmation, type AssessedLine, type ClaimVerdict, type Confirmation, type ConfirmationDecision, type ConfirmationReason } from "./call-review.js"
 import type { ModelObligation, ModelObligationAnalysis, EvidenceRole } from "./obligation-analysis.js"
 import { decideObligationConfirmation, obligationClaimOf, OBLIGATION_REVIEW_VERSION, type CentralNeedReading, type ObligationClaim, type ObligationReview } from "./obligation-review.js"
-import { CUSTOMER_SPEAKERS, OPERATOR_SPEAKERS, type ProcedureContext, type ProcedureLine, type ProcedureSection, type TranscriptStatus } from "./procedure.js"
+import { CUSTOMER_SPEAKERS, isOptionalGuidance, OPERATOR_SPEAKERS, type ProcedureContext, type ProcedureLine, type ProcedureSection, type TranscriptStatus } from "./procedure.js"
+import { catalogRecordOf, circularTurnsOf, effectOf, identifyRequests, isSuspendedByProduct, obligationScopeOf, PRODUCT_APPLICABILITY_VERSION, requestOfObligation, reviewedScopeOf, scopeRecordOf, type ClaimScopeReading, type ObligationProductReading, type ProductApplicabilityRecord, type ProductContext, type RuleEffectRecord, type RuleScope } from "./product-applicability.js"
 import { CALL_ANALYSIS_LOGIC_VERSION } from "./versions.js"
 
 /**
@@ -43,7 +44,7 @@ import { CALL_ANALYSIS_LOGIC_VERSION } from "./versions.js"
  */
 /** `actPlaceRequired`: o pedido foi o prompt V3 (pergunta onde acontece o ato exigido) — sem essa leitura nada é confirmado. */
 export type ObligationReviewInput = { attempted: boolean; review: ObligationReview | null; error: string | null; sentClaims: readonly ObligationClaim[]; requested: { linesToAssess: string[] }; actPlaceRequired?: boolean }
-export type ObligationConfirmationInput = { attempted: boolean; claims: Map<string, ClaimVerdict> | null; error: string | null; reason: "BUDGET" | "TECHNICAL" | "CONTRACT" | null; sentClaims: readonly ObligationClaim[]; actPlaceRequired?: boolean }
+export type ObligationConfirmationInput = { attempted: boolean; claims: Map<string, ClaimVerdict> | null; error: string | null; reason: "BUDGET" | "TECHNICAL" | "CONTRACT" | null; sentClaims: readonly ObligationClaim[]; actPlaceRequired?: boolean; /** Modo produto: leitura da abrangência de produto de cada achado conferido. */ scopeReadings?: Map<string, ClaimScopeReading> }
 export type ObligationVerificationInput = {
   model: ModelObligationAnalysis
   context: ProcedureContext
@@ -54,6 +55,8 @@ export type ObligationVerificationInput = {
   /** Ausente = passagem PRELIMINAR (só integridade e consequências — base dos alvos da revisão); nada é confirmado. */
   review?: ObligationReviewInput
   confirmation?: ObligationConfirmationInput
+  /** `PRODUCT_APPLICABILITY_V1`: catálogo de produtos vigente na data da chamada (null/ausente = sem modo produto: nada muda). */
+  products?: ProductContext | null
 }
 
 const STATUS_OF_FINDING: Record<ModelObligation["finding"], "MET" | "NOT_MET" | "PARTIAL" | "NOT_OBSERVABLE" | "NOT_APPLICABLE"> = { MET: "MET", NOT_MET: "NOT_MET", PARTIAL: "PARTIAL", NOT_VERIFIABLE: "NOT_OBSERVABLE", NOT_APPLICABLE: "NOT_APPLICABLE" }
@@ -243,7 +246,8 @@ function vigentePathOf(criteria: readonly AssessedCriterion[], assessment: PathA
   const low = adverse.filter((criterion) => criterion.materiality === "LOW")
   const outside = considered.filter((criterion) => criterion.observability === "OUTSIDE_CONVERSATION" && !isDeterminate(criterion.status))
   const operationalParts = observed.flatMap((criterion) => (criterion.operationalPart ? [criterion.operationalPart.text] : []))
-  const dropped = considered.filter((criterion) => criterion.origin === "ANALYSIS" && isDeterminate(criterion.declaredStatus as CriterionStatus) && !isDeterminate(criterion.status) && criterion.observability !== "OUTSIDE_CONVERSATION")
+  const dropped = considered.filter((criterion) => criterion.origin === "ANALYSIS" && isDeterminate(criterion.declaredStatus as CriterionStatus) && !isDeterminate(criterion.status) && criterion.observability !== "OUTSIDE_CONVERSATION" && criterion.productApplicability?.effect !== "SUSPENDED" && criterion.productApplicability?.effect !== "OTHER_PRODUCT")
+  const productPending = considered.filter((criterion) => criterion.productApplicability?.effect === "SUSPENDED" && isDeterminate(criterion.declaredStatus as CriterionStatus))
   const quoted = (list: readonly AssessedCriterion[]) => list.map((criterion) => `“${shortTitle(criterion)}”`).join("; ")
   const rationale = [
     `Avaliação vigente: ${PATH_LABEL[assessment]}.`,
@@ -252,6 +256,7 @@ function vigentePathOf(criteria: readonly AssessedCriterion[], assessment: PathA
     ...(observed.length - adverse.length > 0 ? [`Etapa(s) cumprida(s) com evidência na conversa: ${observed.length - adverse.length}.`] : []),
     ...(outside.length > 0 || operationalParts.length > 0 ? [`Não verificável pela gravação (execução em sistema): ${[...(outside.length > 0 ? [quoted(outside)] : []), ...operationalParts.map((text) => `“${text}”`)].join("; ")}.`] : []),
     ...(dropped.length > 0 ? [`Conclusão(ões) da análise que não se sustentaram e ficaram fora do diagnóstico: ${quoted(dropped)}.`] : []),
+    ...(productPending.length > 0 ? [`Sem avaliação por depender de um produto não estabelecido pela gravação: ${quoted(productPending)}.`] : []),
   ].join(" ")
   return { pathTaken: steps.length > 0 ? `Etapas verificadas na conversa, em ordem: ${steps.map((step) => step.text).join("; ")}.` : "Nenhuma etapa do caminho pôde ser verificada pela conversa.", rationale }
 }
@@ -352,6 +357,8 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
   // confirmação focal e, depois, é FUNDIDA na obrigação da análise (uma identidade só): a leitura confirmada vale; a refutada, não; sem
   // decisão, a obrigação fica inconclusiva.
   const divergentOf = new Map<string, string>()
+  // `PRODUCT_APPLICABILITY_V1`: o que a leitura (análise ou revisão) disse da solicitação e da abrangência de produto de cada obrigação.
+  const productReadings = new Map<string, ObligationProductReading>()
 
   const obligationCriterion = (obligation: ModelObligation, handle: string, origin: CriterionOrigin): AssessedCriterion | null => {
     const known = obligation.sources.filter((source) => {
@@ -361,6 +368,12 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
     })
     if (known.length === 0) {
       violations.push(`${handle}:NO_KNOWN_SOURCE`)
+      return null
+    }
+    // `OPTIONAL_GUIDANCE_RECOGNITION_V1`: obrigação só de orientação "pode" — feita, é reconhecimento; não feita (ou em parte), nunca é
+    // desvio, diga o que disser a leitura (da análise ou da revisão). Junto de outra fonte, a obrigação é da outra fonte.
+    if (known.every((source) => isOptionalGuidance(context.lines.get(source)!)) && (obligation.finding === "NOT_MET" || obligation.finding === "PARTIAL")) {
+      auditNotes.push(`[${handle}] é orientação opcional ("pode") do argumentário: não ter sido feita não conta como desvio.`)
       return null
     }
     const primary = context.lines.get(known[0]!)!
@@ -443,6 +456,7 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
       divergentOf.set(handle, readingOf.lineHandle)
     }
     const contests = readingOf ? { analysisHandle: readingOf.lineHandle, analysisStatus: readingOf.declaredStatus as CriterionStatus, analysisReading: readingOf.rationale } : null
+    productReadings.set(handle, { request: obligation.request ?? null, productScope: obligation.productScope ?? null, commonAcrossSources: obligation.commonAcrossSources ?? null })
     if (status !== declaredStatus) downgraded += 1
     const guidance = obligation.guidance && (status === "NOT_MET" || status === "PARTIAL") ? { moment: obligation.guidance.moment, condition: obligation.condition, action: obligation.guidance.action, ruleLines: ordered.map((line) => ({ handle: line.handle, text: line.text, heading: line.heading })) } : null
     return {
@@ -550,6 +564,42 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
     const existing = criteria.find((criterion) => (criterion.identityKey ?? criterion.lineKey) === reading.identity)
     if (existing) existing.downgrades = [...existing.downgrades, `REVIEW_ALSO_LISTED_AS_MISSED:${reading.handle}:${reading.finding}`]
   }
+  // PRODUTO (`PRODUCT_APPLICABILITY_V1`) — ANTES da decisão da revisão: uma regra só é cobrada ou reconhecida com a aplicabilidade
+  // ESTABELECIDA para a solicitação. A abrangência vem do cadastro das fontes e da leitura do texto (a revisão só estreita); a
+  // identificação, das evidências lidas pela análise e pela revisão (vale a leitura mais restrita). Regra suspensa ou de outro produto
+  // não é conclusão a confirmar: não vai à revisão, não é decidida por ela e não conta como "não confirmada".
+  let productRecord: ProductApplicabilityRecord | undefined
+  if (input.products) {
+    const products = input.products
+    const scopeViolations: string[] = []
+    const scoped = criteria.map((criterion) => {
+      const sources = (criterion.sources ?? []).map((source) => source.handle)
+      const handles = sources.length > 0 ? sources : /^L\d+$/.test(criterion.lineHandle) ? [criterion.lineHandle] : []
+      if (handles.length === 0) return null
+      const reading = productReadings.get(criterion.lineHandle) ?? {}
+      const result = obligationScopeOf(products, context, handles, reading)
+      for (const violation of result.violations) scopeViolations.push(`${criterion.lineHandle}:${violation}`)
+      return { scope: result.scope, request: reading.request ?? null }
+    })
+    const circularTurns = circularTurnsOf(criteria, (index) => scoped[index] !== null && scoped[index]!.scope !== null)
+    const identifications = identifyRequests({ context: products, requests: model.requests ?? [], review: input.review ? { readings: input.review.review?.requests ?? [] } : null, interactions, projection, circularTurns })
+    const effects: RuleEffectRecord[] = []
+    const counts = { independent: 0, established: 0, otherProduct: 0, suspended: 0 }
+    criteria.forEach((criterion, index) => {
+      const entry = scoped[index]
+      if (!entry) return
+      const scopeReading = criterion.origin === "REVIEW_REPAIR" ? input.confirmation?.scopeReadings?.get(criterion.lineHandle) ?? null : criterion.origin === "ANALYSIS" ? input.review?.review?.scopeReadings?.get(criterion.lineHandle) ?? null : null
+      const scope: RuleScope = reviewedScopeOf(products, entry.scope, scopeReading)
+      const identification = requestOfObligation(identifications, entry.request)
+      const { effect, reason } = effectOf(scope, identification)
+      criterion.productApplicability = { version: PRODUCT_APPLICABILITY_VERSION, request: identification?.ref ?? entry.request, scope: scopeRecordOf(scope), effect, reason }
+      counts[effect === "INDEPENDENT" ? "independent" : effect === "ESTABLISHED" ? "established" : effect === "OTHER_PRODUCT" ? "otherProduct" : "suspended"] += 1
+      if (effect !== "INDEPENDENT") effects.push({ lineHandle: criterion.lineHandle, ruleKey: criterion.identityKey ?? criterion.lineKey, title: (criterion.titleText ?? criterion.text.split("\n")[0] ?? "").slice(0, 160), request: criterion.productApplicability.request, scope: criterion.productApplicability.scope, effect, reason, statusBefore: criterion.proposedStatus, statusAfter: criterion.proposedStatus })
+    })
+    productRecord = { version: PRODUCT_APPLICABILITY_VERSION, catalog: catalogRecordOf(products), requests: identifications, effects, counts, violations: scopeViolations }
+  }
+  const blockedByProduct = (criterion: AssessedCriterion) => criterion.productApplicability?.effect === "SUSPENDED" || criterion.productApplicability?.effect === "OTHER_PRODUCT"
+
   // CONFIRMAÇÃO das conclusões da análise (revisão) e dos achados só da revisão (confirmação focal) — decisão por código.
   const reviewInput = input.review ?? null
   const sentByHandle = new Map((reviewInput?.sentClaims ?? []).map((claim) => [claim.id, claim]))
@@ -561,7 +611,7 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
   let unconfirmedCount = 0
   let refutedCount = 0
   for (const criterion of criteria) {
-    if (!isDeterminate(criterion.proposedStatus) || criterion.ruleConflict) continue
+    if (!isDeterminate(criterion.proposedStatus) || criterion.ruleConflict || blockedByProduct(criterion)) continue
     const fromReview = criterion.origin === "REVIEW_REPAIR"
     const claim = fromReview ? confirmationSent.get(criterion.lineHandle) : sentByHandle.get(criterion.lineHandle)
     const verdict = fromReview ? confirmationInput?.claims?.get(criterion.lineHandle) ?? null : review?.claims.get(criterion.lineHandle) ?? null
@@ -682,6 +732,45 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
     })
   }
 
+  // PRODUTO — consequências (regras marcadas antes da decisão da revisão): suspensa = nem falha, nem acerto, nunca orientação; de outro
+  // produto = não se aplica. Vale também para a leitura que a revisão apontou de fora e para itens de argumentário sem avaliação.
+  let suspendedFindings = 0
+  if (productRecord) {
+    for (const criterion of criteria) {
+      const applicability = criterion.productApplicability
+      if (!applicability || (applicability.effect !== "SUSPENDED" && applicability.effect !== "OTHER_PRODUCT")) continue
+      const proposed = isDeterminate(criterion.proposedStatus)
+      if (applicability.effect === "SUSPENDED" && (proposed || isDeterminate(criterion.status) || criterion.status === "NOT_ASSESSED")) {
+        if (proposed && !criterion.ruleConflict) suspendedFindings += 1
+        Object.assign(criterion, {
+          status: "NOT_OBSERVABLE" as CriterionStatus,
+          confirmation: (proposed ? "UNCONFIRMED" : criterion.confirmation) as Confirmation,
+          confirmationReasons: [...criterion.confirmationReasons, "PRODUCT_APPLICABILITY_NOT_ESTABLISHED" as ConfirmationReason],
+          applicability: "UNCERTAIN" as const,
+          guidance: null,
+          whyItMatters: null,
+          judgedPart: null,
+          operationalPart: null,
+          downgrades: [...criterion.downgrades, `PRODUCT_SUSPENDED:${applicability.reason ?? "UNSPECIFIED"}`],
+        })
+      } else if (applicability.effect === "OTHER_PRODUCT" && criterion.status !== "NOT_APPLICABLE") {
+        Object.assign(criterion, {
+          status: "NOT_APPLICABLE" as CriterionStatus,
+          confirmation: "NOT_A_CLAIM" as Confirmation,
+          confirmationReasons: [...criterion.confirmationReasons, "PRODUCT_OUT_OF_RULE_SCOPE" as ConfirmationReason],
+          applicability: "DOES_NOT_APPLY" as const,
+          guidance: null,
+          whyItMatters: null,
+          judgedPart: null,
+          operationalPart: null,
+          downgrades: [...criterion.downgrades, `PRODUCT_OTHER:${applicability.reason ?? "UNSPECIFIED"}`],
+        })
+      }
+    }
+    for (const effect of productRecord.effects) effect.statusAfter = criteria.find((criterion) => criterion.lineHandle === effect.lineHandle)?.status ?? effect.statusAfter
+    if (suspendedFindings > 0) auditNotes.push(`${suspendedFindings} conclusão(ões) dependem de um produto que a gravação não estabeleceu para a solicitação: ficam sem avaliação (nem falha, nem acerto).`)
+  }
+
   // OCORRÊNCIAS (`CONDUCT_OCCURRENCE_V1`): regras diferentes que julgam a MESMA conduta, no mesmo momento, viram uma ocorrência.
   const linkOf = (criterion: AssessedCriterion) => (criterion.origin === "REVIEW_REPAIR" ? confirmationInput?.claims?.get(criterion.lineHandle)?.sameConductAs : review?.claims.get(criterion.lineHandle)?.sameConductAs) ?? null
   const occurrenceLinks = occurrencesOf(criteria, linkOf, { interactionId: input.interactionId, reviewAvailable: Boolean(review) })
@@ -742,8 +831,12 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
     outcomeReasons.push("NO_APPLICABLE_PROCEDURE")
   } else if (findings.length === 0) {
     outcome = "INSUFFICIENT_EVIDENCE"
-    outcomeReasons.push(proposedFindings.length === 0 ? "NO_VERIFIED_FINDING" : reviewInput && !review ? "REVIEW_UNAVAILABLE" : "NO_CONFIRMED_FINDING")
+    // Nada útil sustentado porque o que havia dependia de um produto não estabelecido: abstenção com o motivo rastreável.
+    const onlyProductDependent = suspendedFindings > 0 && proposedFindings.every((criterion) => criterion.productApplicability?.effect === "SUSPENDED" || criterion.productApplicability?.effect === "OTHER_PRODUCT")
+    outcomeReasons.push(proposedFindings.length === 0 ? "NO_VERIFIED_FINDING" : reviewInput && !review ? "REVIEW_UNAVAILABLE" : onlyProductDependent ? "PRODUCT_NOT_ESTABLISHED" : "NO_CONFIRMED_FINDING")
+    if (suspendedFindings > 0 && !onlyProductDependent) outcomeReasons.push("PRODUCT_DEPENDENT_POINTS_SUSPENDED")
   } else {
+    if (suspendedFindings > 0) outcomeReasons.push("PRODUCT_DEPENDENT_POINTS_SUSPENDED")
     if (missing.length > 0) outcomeReasons.push("COVERAGE_PARTIAL")
     if (procedureSelection === "DIFFERENT_FROM_SUBJECT_UNEXPLAINED") outcomeReasons.push("PROCEDURE_SELECTION_UNEXPLAINED")
     if (transcriptStatus === "INCOMPLETE") outcomeReasons.push("TRANSCRIPT_INCOMPLETE")
@@ -792,7 +885,9 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
       applicabilityUncertain: count((criterion) => criterion.applicability === "UNCERTAIN" && criterion.status === "NOT_OBSERVABLE"),
       declaredExecutions: count((criterion) => criterion.executionClaim === "DECLARED"),
       intendedExecutions: count((criterion) => criterion.executionClaim === "INTENDED"),
+      ...(productRecord ? { productNotEstablished: count((criterion) => isSuspendedByProduct(criterion)) } : {}),
     },
+    ...(productRecord ? { productApplicability: productRecord } : {}),
     auditNotes: [...new Set(auditNotes)],
     checks: {
       procedureSelection,
@@ -835,5 +930,6 @@ function centralNeedOf(need: CentralNeedReading | null, criteria: readonly Asses
  * não substituiria nada, e a obrigação ficaria com a leitura da análise só por ordem de execução.
  */
 export function obligationDiscoveriesOf(criteria: readonly AssessedCriterion[]): AssessedCriterion[] {
-  return criteria.filter((criterion) => criterion.origin === "REVIEW_REPAIR" && !criterion.ruleConflict && (criterion.proposedStatus === "NOT_MET" || criterion.proposedStatus === "PARTIAL" || (criterion.contests !== undefined && criterion.proposedStatus === "MET")) && criterion.applicability === "APPLIES" && criterion.observability !== "OUTSIDE_CONVERSATION")
+  // `PRODUCT_APPLICABILITY_V1`: achado que depende de produto não estabelecido (ou de outro produto) não vai à confirmação focal.
+  return criteria.filter((criterion) => criterion.origin === "REVIEW_REPAIR" && !criterion.ruleConflict && criterion.productApplicability?.effect !== "SUSPENDED" && criterion.productApplicability?.effect !== "OTHER_PRODUCT" && (criterion.proposedStatus === "NOT_MET" || criterion.proposedStatus === "PARTIAL" || (criterion.contests !== undefined && criterion.proposedStatus === "MET")) && criterion.applicability === "APPLIES" && criterion.observability !== "OUTSIDE_CONVERSATION")
 }

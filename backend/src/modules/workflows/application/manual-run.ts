@@ -35,6 +35,8 @@ export type ManualRunTarget = {
   trigger: ManualTrigger | null
   indicatorName: string | null
   indicatorUnit: string | null
+  /** Agents/Orquestradores da versão PUBLICADA que não podem rodar agora (inativos, excluídos, só de chat) — impedem o disparo. */
+  unavailableReferences?: ManualRunBlocker[]
 }
 
 export type ManualRunBlocker = { code: string; message: string }
@@ -54,6 +56,9 @@ export function manualRunBlockers(target: ManualRunTarget): ManualRunBlocker[] {
   }
   if (!target.versionId) blockers.push({ code: "WORKFLOW_MANUAL_RUN_NOT_PUBLISHED", message: "O workflow ainda não foi publicado. Publique o rascunho antes de executar." })
   if (!target.active) blockers.push({ code: "WORKFLOW_MANUAL_RUN_INACTIVE", message: "O workflow está desativado. Ative-o antes de executar." })
+  // Agent/Orquestrador desligado depois de publicar: o disparo era aceito e o nó falhava em seguida (validação funcional de
+  // 20/10/2026, D10) — agora a tela mostra o motivo antes e o backend recusa.
+  blockers.push(...(target.unavailableReferences ?? []))
   if (target.consolidated) blockers.push({ code: "WORKFLOW_MANUAL_TRIGGER_CONSOLIDATED", message: "O gatilho Manual executa para um colaborador — troque o Alvo da avaliação para Individual." })
   if (target.trigger.context === "INDICATOR_MEASUREMENT" && !target.trigger.indicatorCode) {
     blockers.push({ code: "WORKFLOW_INVALID_TRIGGER", message: "O gatilho Manual não diz de qual indicador é a medição. Escolha o indicador nas configurações do workflow." })
@@ -93,6 +98,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
   const row = result.rows[0]
   if (!row) return null
   const parsed = triggerConfigSchema.safeParse(row.trigger_config)
+  const unavailableReferences = row.active_version_id ? await loadUnavailableReferences(db, organizationId, row.active_version_id) : []
   return {
     id: row.id,
     name: row.name,
@@ -106,7 +112,35 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     trigger: parsed.success && parsed.data.kind === "manual" ? parsed.data : null,
     indicatorName: row.indicator_name,
     indicatorUnit: row.indicator_unit,
+    unavailableReferences,
   }
+}
+
+/**
+ * Agents ("Chamar agente") e Orquestradores da versão publicada que não rodariam agora — as mesmas recusas da publicação
+ * (`WORKFLOW_AGENT_INACTIVE`, `WORKFLOW_ORCHESTRATOR_INACTIVE`…), mas sobre o estado ATUAL do cadastro.
+ */
+async function loadUnavailableReferences(db: Database, organizationId: string, versionId: string): Promise<ManualRunBlocker[]> {
+  const version = (await db.query<{ graph: unknown }>(`select graph from workflow_versions where id = $1`, [versionId])).rows[0]
+  const graph = flowGraphSchema.safeParse(version?.graph)
+  if (!graph.success) return []
+  const agentNodes = graph.data.nodes.flatMap((node) => (node.type === "action" && node.config.actionType === "CALL_AGENT" ? [{ label: node.label, id: node.config.agentId }] : []))
+  const orchestratorNodes = graph.data.nodes.flatMap((node) => (node.type === "orchestrator" ? [{ label: node.label, id: node.config.orchestratorId }] : []))
+  const agents = new Map((await db.query<{ id: string; name: string; active: boolean }>(`select id, name, active from agents where organization_id = $1 and id = any($2::uuid[])`, [organizationId, agentNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
+  const orchestrators = new Map((await db.query<{ id: string; name: string; active: boolean; invocation_mode: string }>(`select id, name, active, invocation_mode from assistant_orchestrators where organization_id = $1 and id = any($2::uuid[])`, [organizationId, orchestratorNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
+  const blockers: ManualRunBlocker[] = []
+  for (const node of agentNodes) {
+    const agent = agents.get(node.id)
+    if (!agent) blockers.push({ code: "WORKFLOW_AGENT_NOT_FOUND", message: `O nó "${node.label}" usa um agente que não existe mais. Publique uma versão com outro agente antes de executar.` })
+    else if (!agent.active) blockers.push({ code: "WORKFLOW_AGENT_INACTIVE", message: `O nó "${node.label}" usa o agente "${agent.name}", que está inativo. Ative-o (ou publique uma versão sem ele) antes de executar.` })
+  }
+  for (const node of orchestratorNodes) {
+    const orchestrator = orchestrators.get(node.id)
+    if (!orchestrator) blockers.push({ code: "WORKFLOW_ORCHESTRATOR_NOT_FOUND", message: `O nó "${node.label}" usa um Orquestrador que não existe mais. Publique uma versão com outro Orquestrador antes de executar.` })
+    else if (!orchestrator.active) blockers.push({ code: "WORKFLOW_ORCHESTRATOR_INACTIVE", message: `O nó "${node.label}" usa o Orquestrador "${orchestrator.name}", que está inativo. Ative-o (ou publique uma versão sem ele) antes de executar.` })
+    else if (orchestrator.invocation_mode === "INTERACTIVE") blockers.push({ code: "WORKFLOW_ORCHESTRATOR_INVALID_INVOCATION", message: `O nó "${node.label}" usa o Orquestrador "${orchestrator.name}", que só atende chat/voz. Publique uma versão com um Orquestrador habilitado para Workflows antes de executar.` })
+  }
+  return blockers
 }
 
 function populationOf(target: ManualRunTarget): WorkflowPopulation {

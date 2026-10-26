@@ -1,16 +1,17 @@
 import { createHash } from "node:crypto"
-import type { MemoryRow } from "./indicator-investigation.js"
+import type { MemoryArgument, MemoryRow } from "./indicator-investigation.js"
+import { criterionProductOf, ruleScopeNamesOf, type CriterionProductApplicability, type ProductApplicabilityRecord } from "./product-applicability.js"
 
 /**
  * AGREGAÇÕES da memória (domínio puro) — calculadas sobre a MESMA leitura primitiva (`currentMemory`) em qualquer armazenamento.
  * Só entram leituras vigentes e utilizáveis (USABLE/PARTIAL) da lógica de análise atual; regra em conflito nunca conta.
  */
 export type MemoryWindow = { start: Date; end: Date }
-export type MemoryAssessment = { callAssessmentId: string; analysisRunId: string; interactionId: string; personId: string; occurredAt: Date; asOf: Date; segmentKey: string | null; pathAssessment: string | null; outcome: string; logicVersion: string | null; /** Regra vigente na data × regra atual usada para reavaliar a chamada. */ rulePerspective?: string | null }
+export type MemoryAssessment = { /** `PRODUCT_IN_FEEDBACK_V1`: o registro de produto da leitura (solicitações e cadastro), para resolver o produto de cada critério. */ productRecord?: ProductApplicabilityRecord | null; callAssessmentId: string; analysisRunId: string; interactionId: string; personId: string; occurredAt: Date; asOf: Date; segmentKey: string | null; pathAssessment: string | null; outcome: string; logicVersion: string | null; /** Regra vigente na data × regra atual usada para reavaliar a chamada. */ rulePerspective?: string | null }
 /** `anchorLineKey`: a linha-âncora da obrigação (chave de linha antes do '#'); `sourceLineKeys`: as linhas da obrigação em ordem — a
  * prática é a da primeira dessas linhas que pede conduta (`PRACTICE_IDENTITY_V1`). `obligationLineKey`: a chave da obrigação de várias
  * linhas (com '#') — organizada como regra COMPOSTA quando nenhuma das linhas pede conduta sozinha; é a última procurada. */
-export type MemoryCriterionRow = MemoryRow & { callAssessmentId: string; segmentKey: string | null; anchorLineKey?: string; sourceLineKeys?: string[]; obligationLineKey?: string }
+export type MemoryCriterionRow = MemoryRow & { callAssessmentId: string; segmentKey: string | null; anchorLineKey?: string; sourceLineKeys?: string[]; /** `PRODUCT_IN_FEEDBACK_V1`: documentos das linhas-fonte da obrigação (para o "Vale para" da regra ser o da fonte dela). */ sourceDocumentIds?: string[]; obligationLineKey?: string; /** Dado cru da avaliação (`PRODUCT_IN_FEEDBACK_V1`): a solicitação e o "Vale para" da regra; o produto é resolvido em `memoryRowsOf`. */ productApplicability?: Pick<CriterionProductApplicability, "request" | "scope"> | null; argumentItem?: MemoryArgument | null }
 /** Linhas pelas quais a prática de uma leitura é procurada, em ordem (âncora primeiro, a obrigação composta por último). */
 export const practiceLineKeysOf = (row: Pick<MemoryCriterionRow, "anchorLineKey" | "sourceLineKeys" | "obligationLineKey">) => [...new Set([...(row.anchorLineKey ? [row.anchorLineKey] : []), ...(row.sourceLineKeys ?? []), ...(row.obligationLineKey ? [row.obligationLineKey] : [])])]
 export type MemorySnapshot = { assessments: MemoryAssessment[]; criteria: MemoryCriterionRow[] }
@@ -26,9 +27,22 @@ export function analyzedInteractionIds(snapshot: MemorySnapshot, logicVersion: s
 export function memoryRowsOf(snapshot: MemorySnapshot, logicVersion: string, segmentKey: string | null, personIds?: readonly string[]): MemoryRow[] {
   const valid = new Set(snapshot.assessments.filter((assessment) => usable(assessment, logicVersion)).map((assessment) => assessment.callAssessmentId))
   const perspective = new Map(snapshot.assessments.map((assessment) => [assessment.callAssessmentId, assessment.rulePerspective ?? null]))
+  const assessmentOf = new Map(snapshot.assessments.map((assessment) => [assessment.callAssessmentId, assessment]))
   return snapshot.criteria
     .filter((row) => valid.has(row.callAssessmentId) && (segmentKey === null || row.segmentKey === segmentKey) && (!personIds || personIds.includes(row.personId)))
-    .map((row): MemoryRow => ({ interactionId: row.interactionId, personId: row.personId, criterionKey: row.criterionKey, ...(row.practiceKey ? { practiceKey: row.practiceKey } : {}), ...(row.practiceTitle ? { practiceTitle: row.practiceTitle } : {}), documentId: row.documentId, documentTitle: row.documentTitle, heading: row.heading, text: row.text, status: row.status, localDate: row.localDate, evidence: row.evidence, rationale: row.rationale, guidance: row.guidance, materiality: row.materiality, reevaluation: perspective.get(row.callAssessmentId) === "CURRENT_RULE_REEVALUATION" }))
+    .map((row): MemoryRow => ({ interactionId: row.interactionId, personId: row.personId, criterionKey: row.criterionKey, ...(row.practiceKey ? { practiceKey: row.practiceKey } : {}), ...(row.practiceTitle ? { practiceTitle: row.practiceTitle } : {}), documentId: row.documentId, documentTitle: row.documentTitle, heading: row.heading, text: row.text, status: row.status, localDate: row.localDate, evidence: row.evidence, rationale: row.rationale, guidance: row.guidance, materiality: row.materiality, reevaluation: perspective.get(row.callAssessmentId) === "CURRENT_RULE_REEVALUATION", ...contextOf(row, assessmentOf.get(row.callAssessmentId)) }))
+}
+
+/** `PRODUCT_IN_FEEDBACK_V1`: produto da solicitação, "Vale para" da regra, item do argumentário e quando a chamada aconteceu. */
+function contextOf(row: MemoryCriterionRow, assessment: MemoryAssessment | undefined): Pick<MemoryRow, "product" | "ruleScope" | "argument" | "occurredAt"> {
+  const product = criterionProductOf(assessment?.productRecord, row.productApplicability ?? null)
+  const ruleScope = ruleScopeNamesOf(assessment?.productRecord, row.productApplicability?.scope, row.documentId, row.sourceDocumentIds ?? [])
+  return {
+    ...(product ? { product } : {}),
+    ...(ruleScope.length > 0 ? { ruleScope } : {}),
+    ...(row.argumentItem ? { argument: row.argumentItem } : {}),
+    ...(assessment?.occurredAt ? { occurredAt: new Date(assessment.occurredAt).toISOString() } : {}),
+  }
 }
 
 export function pathStatsOf(snapshot: MemorySnapshot, logicVersion: string, personId: string, segmentKey: string): { assessed: number; incorrect: number } {

@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Ban, ChevronDown, CircleCheck, CircleDashed, CircleMinus, CircleX, ExternalLink, MessageSquareQuote, type LucideIcon } from "lucide-react"
+import { Ban, ChevronDown, CircleCheck, CircleDashed, CircleHelp, CircleMinus, CircleX, ExternalLink, MessageSquareQuote, type LucideIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { RelevantPracticesHint } from "@/components/best-practices/relevant-practices-hint"
 import type { AssessmentDetail } from "@/schemas/diagnostics/diagnostics-memory.schema"
 
 import { EVIDENCE_KIND_LABELS, OUTCOME_LABELS, PATH_LABELS, SPEAKER_LABELS, STATUS_LABELS, shortDate } from "./memory-labels"
@@ -27,10 +28,13 @@ const STATUS_LOOK: Record<string, { icon: LucideIcon; color: string | null }> = 
 }
 const lookOf = (status: string) => STATUS_LOOK[status] ?? { icon: CircleDashed, color: null }
 
-const GROUPS: { key: string; title: string; statuses: string[]; open: boolean }[] = [
+/** `PRODUCT_APPLICABILITY_V1`: ponto que depende de um produto que a gravação não estabeleceu — nem falha, nem acerto, grupo próprio. */
+const dependsOnProduct = (criterion: Criterion) => criterion.productApplicability?.effect === "SUSPENDED"
+const GROUPS: { key: string; title: string; statuses: string[]; open: boolean; icon?: LucideIcon; belongs?: (criterion: Criterion) => boolean }[] = [
   { key: "deviations", title: "Desvios", statuses: ["NOT_MET", "PARTIAL"], open: true },
   { key: "met", title: "Acertos", statuses: ["MET"], open: true },
-  { key: "inconclusive", title: "Sem conclusão", statuses: ["NOT_OBSERVABLE", "NOT_ASSESSED"], open: false },
+  { key: "productPending", title: "Sem avaliação — depende do produto", statuses: ["NOT_OBSERVABLE"], open: false, icon: CircleHelp, belongs: dependsOnProduct },
+  { key: "inconclusive", title: "Sem conclusão", statuses: ["NOT_OBSERVABLE", "NOT_ASSESSED"], open: false, belongs: (criterion) => !dependsOnProduct(criterion) },
   { key: "notApplicable", title: "Não se aplicam neste cenário", statuses: ["NOT_APPLICABLE"], open: false },
 ]
 
@@ -73,9 +77,12 @@ export function CallAssessmentDetail({ detail, focusId = null }: { detail: Asses
           <Badge variant="outline">{OUTCOME_LABELS[detail.outcome] ?? detail.outcome}</Badge>
           {detail.transcriptStatus !== "COMPLETE" ? <Badge variant="outline">Transcrição incompleta</Badge> : null}
           {!detail.isCurrent ? <Badge variant="outline">Leitura substituída por uma mais nova</Badge> : null}
+          {(detail.productIdentification?.requests ?? []).map((request) => <Badge key={request.ref} variant="outline" title={request.summary}>{request.label}</Badge>)}
         </div>
         <StatusSummary counts={counts} />
       </header>
+
+      <RelevantPracticesHint interactionId={detail.interactionId} />
 
       {focused ? (
         <section className="space-y-2" aria-label="O ponto que trouxe você até aqui">
@@ -94,9 +101,9 @@ export function CallAssessmentDetail({ detail, focusId = null }: { detail: Asses
         <TabsContent value="points" className="mt-4 space-y-3">
           {others.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum outro ponto avaliado nesta chamada.</p> : null}
           {GROUPS.map((group) => {
-            const criteria = others.filter((criterion) => group.statuses.includes(criterion.status))
+            const criteria = others.filter((criterion) => group.statuses.includes(criterion.status) && (group.belongs ? group.belongs(criterion) : true))
             if (criteria.length === 0) return null
-            return <CriteriaGroup key={group.key} title={group.title} statuses={group.statuses} criteria={criteria} defaultOpen={group.open} onShowTurn={showTurn} />
+            return <CriteriaGroup key={group.key} title={group.title} statuses={group.statuses} icon={group.icon} criteria={criteria} defaultOpen={group.open} onShowTurn={showTurn} />
           })}
         </TabsContent>
 
@@ -112,11 +119,12 @@ export function CallAssessmentDetail({ detail, focusId = null }: { detail: Asses
   )
 }
 
-type StatusCounts = { deviations: number; met: number; inconclusive: number; notApplicable: number }
+type StatusCounts = { deviations: number; met: number; inconclusive: number; notApplicable: number; productPending: number }
 function countStatuses(criteria: Criterion[]): StatusCounts {
-  const counts: StatusCounts = { deviations: 0, met: 0, inconclusive: 0, notApplicable: 0 }
+  const counts: StatusCounts = { deviations: 0, met: 0, inconclusive: 0, notApplicable: 0, productPending: 0 }
   for (const criterion of criteria) {
-    if (criterion.status === "NOT_MET" || criterion.status === "PARTIAL") counts.deviations += 1
+    if (dependsOnProduct(criterion)) counts.productPending += 1
+    else if (criterion.status === "NOT_MET" || criterion.status === "PARTIAL") counts.deviations += 1
     else if (criterion.status === "MET") counts.met += 1
     else if (criterion.status === "NOT_APPLICABLE") counts.notApplicable += 1
     else counts.inconclusive += 1
@@ -133,6 +141,7 @@ function StatusSummary({ counts }: { counts: StatusCounts }) {
         <Legend color={OUTCOME_CHART_CONFIG.deviations.color} label={`${counts.deviations} ${counts.deviations === 1 ? "desvio" : "desvios"}`} />
         <Legend color={OUTCOME_CHART_CONFIG.met.color} label={`${counts.met} ${counts.met === 1 ? "acerto" : "acertos"}`} />
         {counts.inconclusive > 0 ? <span>{counts.inconclusive} sem conclusão</span> : null}
+        {counts.productPending > 0 ? <span>{counts.productPending} dependem do produto</span> : null}
         {counts.notApplicable > 0 ? <span>{counts.notApplicable} não se aplicam</span> : null}
       </p>
       {assessed > 0 ? (
@@ -149,9 +158,9 @@ function Legend({ color, label }: { color: string; label: string }) {
   return <span className="inline-flex items-center gap-1.5 font-medium text-foreground"><span className="size-2 rounded-full" style={{ background: color }} aria-hidden />{label}</span>
 }
 
-function CriteriaGroup({ title, statuses, criteria, defaultOpen, onShowTurn }: { title: string; statuses: string[]; criteria: Criterion[]; defaultOpen: boolean; onShowTurn: (turn: string) => void }) {
+function CriteriaGroup({ title, statuses, icon, criteria, defaultOpen, onShowTurn }: { title: string; statuses: string[]; icon?: LucideIcon; criteria: Criterion[]; defaultOpen: boolean; onShowTurn: (turn: string) => void }) {
   const [open, setOpen] = useState(defaultOpen)
-  const Icon = lookOf(statuses[0]!).icon
+  const Icon = icon ?? lookOf(statuses[0]!).icon
   const color = lookOf(statuses[0]!).color
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="space-y-2">
@@ -192,6 +201,7 @@ function CriterionCard({ criterion, focused = false, onShowTurn }: { criterion: 
         ) : null}
       </div>
 
+      {criterion.productApplicability && criterion.productApplicability.effect !== "INDEPENDENT" ? <ProductNote applicability={criterion.productApplicability} /> : null}
       {criterion.rationale ? <p className="leading-relaxed">{criterion.rationale}</p> : null}
 
       {criterion.evidence.length > 0 ? (
@@ -230,6 +240,17 @@ function CriterionCard({ criterion, focused = false, onShowTurn }: { criterion: 
       </div>
     </article>
   )
+}
+
+/** O efeito do produto no ponto, em linguagem simples (montado pelo sistema a partir da fotografia da análise). */
+function ProductNote({ applicability }: { applicability: NonNullable<Criterion["productApplicability"]> }) {
+  const products = applicability.products.length > 0 ? applicability.products.join(", ") : null
+  const text = applicability.effect === "SUSPENDED"
+    ? `Regra ${products ? `de ${products}` : "que depende do produto"}: sem avaliação — ${applicability.reason ?? "o produto do pedido não ficou estabelecido"}. Não conta como falha nem como acerto.`
+    : applicability.effect === "OTHER_PRODUCT"
+      ? `Regra ${products ? `de ${products}` : "de outro produto"}: não se aplica ao produto deste pedido.`
+      : `Vale para ${products ?? "o produto"} — produto do pedido estabelecido pela gravação.`
+  return <p className="rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground" data-testid="criterion-product-note">{text}</p>
 }
 
 /** Texto longo do sistema (o caminho e o porquê) recolhido em algumas linhas, com "mostrar tudo". */
@@ -281,6 +302,7 @@ function ScenarioView({ detail }: { detail: AssessmentDetail }) {
   const both = Boolean(scenario.correctPath && scenario.pathTaken)
   return (
     <div className="@container space-y-4 text-sm">
+      {detail.productIdentification ? <ProductIdentificationView identification={detail.productIdentification} /> : null}
       <section className="space-y-1 rounded-lg bg-muted/50 p-3">
         <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Necessidade do cliente</h3>
         <p className="leading-relaxed">{scenario.customerNeed}</p>
@@ -320,6 +342,55 @@ function ScenarioView({ detail }: { detail: AssessmentDetail }) {
         </section>
       ) : null}
     </div>
+  )
+}
+
+/**
+ * `PRODUCT_APPLICABILITY_V1` — o que foi identificado em cada pedido da chamada, com o que sustentou (ou não) a identificação, e os
+ * pontos que ficaram sem avaliação por depender de um produto não estabelecido. Tudo vem do registro gravado na análise.
+ */
+function ProductIdentificationView({ identification }: { identification: NonNullable<AssessmentDetail["productIdentification"]> }) {
+  const suspended = identification.rules.filter((rule) => rule.effect === "SUSPENDED")
+  const otherProduct = identification.rules.filter((rule) => rule.effect === "OTHER_PRODUCT")
+  return (
+    <section className="space-y-3 rounded-lg border p-3" aria-label="Produto do atendimento" data-testid="product-identification">
+      <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Produto do atendimento</h3>
+      {identification.requests.map((request) => (
+        <div key={request.ref} className="space-y-1.5">
+          <p className="font-medium">{request.label}</p>
+          <p className="text-xs text-muted-foreground">Pedido: {request.summary}{request.object.description ? ` · ${request.object.description}` : ""}{request.reviewConfirmed === false ? " · a segunda leitura não confirmou" : ""}</p>
+          {request.evidence.length > 0 ? (
+            <ul className="space-y-1 text-xs">
+              {request.evidence.map((entry, index) => (
+                <li key={`${entry.reader}-${entry.turn ?? entry.metadata}-${index}`} className="text-muted-foreground">
+                  <span className="font-medium text-foreground/80">{entry.kind}</span>
+                  {entry.turn ? ` · ${speakerLabel(entry.speaker)} · ${entry.turn}` : ""}
+                  {entry.metadata ? ` · ${entry.metadata}` : ""}
+                  {entry.quote ? <>: <span className="italic">“{entry.quote}”</span></> : null}
+                  {entry.criterion ? ` · indício “${entry.criterion.title}” (versão ${entry.criterion.version}${entry.criterion.conclusive ? ", confirma o produto sob condição" : ", apenas sugere"})` : ""}
+                  {` — ${entry.roleLabel}`}
+                  {entry.reason ? ` (${entry.reason})` : ""}
+                  {entry.reader === "REVIEW" ? " · segunda leitura" : ""}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {request.limitations.length > 0 ? <ul className="list-disc pl-5 text-xs text-muted-foreground">{request.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul> : null}
+        </div>
+      ))}
+      {suspended.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium">Ficaram sem avaliação por depender do produto ({suspended.length})</p>
+          <ul className="list-disc pl-5 text-xs text-muted-foreground">{suspended.map((rule) => <li key={rule.lineHandle}>{rule.title}{rule.products.length > 0 ? ` — vale para ${rule.products.join(", ")}` : ""}{rule.reason ? `: ${rule.reason}` : ""}</li>)}</ul>
+        </div>
+      ) : null}
+      {otherProduct.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium">Regras de outro produto, que não se aplicam ({otherProduct.length})</p>
+          <ul className="list-disc pl-5 text-xs text-muted-foreground">{otherProduct.map((rule) => <li key={rule.lineHandle}>{rule.title}{rule.products.length > 0 ? ` — ${rule.products.join(", ")}` : ""}</li>)}</ul>
+        </div>
+      ) : null}
+    </section>
   )
 }
 

@@ -141,17 +141,36 @@ export function refOf(prompt: string, document: string, heading?: string): strin
 }
 
 /** `prompt` = sistema + mensagem: o que o modelo lê inteiro (a lista das bases fica no sistema; o resto, na mensagem). */
-export type ScriptedCall = { stage: "PLANNER" | "ANSWER"; system: string; user: string; prompt: string; correction: boolean }
+export type ScriptedCall = { stage: "PLANNER" | "ANSWER"; system: string; user: string; prompt: string; correction: boolean; streamed: boolean }
 
-/** IA falsa: cada chamada recebe o que o modelo receberia e devolve o JSON roteirizado pelo teste (string = resposta crua). */
+/** A chamada cai DEPOIS de já ter entregue `partial` em fluxo (a conexão caiu no meio da resposta). */
+export class FailAfterStreaming extends Error {
+  constructor(readonly partial: string) {
+    super("conexão caiu no meio da resposta")
+  }
+}
+
+/** Pedaço do fluxo da IA falsa: pequeno, para cortar marcadores, escapes e campos no meio. */
+const STREAM_PIECE = 7
+
+/**
+ * IA falsa: cada chamada recebe o que o modelo receberia e devolve o JSON roteirizado pelo teste (string = resposta crua). Pedida em
+ * fluxo (`onText`), entrega o mesmo texto em pedaços antes de devolvê-lo.
+ */
 export function scriptedModel(script: (call: ScriptedCall, index: number) => unknown) {
   const calls: ScriptedCall[] = []
   const model: ClarificationModel = async (input) => {
-    const call = { stage: input.stage, system: input.system, user: input.user, prompt: `${input.system}\n\n${input.user}`, correction: input.correction }
+    const call = { stage: input.stage, system: input.system, user: input.user, prompt: `${input.system}\n\n${input.user}`, correction: input.correction, streamed: Boolean(input.onText) }
     calls.push(call)
     const output = script(call, calls.length - 1)
+    const deliver = (text: string) => {
+      for (let index = 0; input.onText && index < text.length; index += STREAM_PIECE) input.onText(text.slice(index, index + STREAM_PIECE))
+    }
+    if (output instanceof FailAfterStreaming) deliver(output.partial)
     if (output instanceof Error) throw output
-    return typeof output === "string" ? output : JSON.stringify(output)
+    const text = typeof output === "string" ? output : JSON.stringify(output)
+    deliver(text)
+    return text
   }
   return { model, calls }
 }

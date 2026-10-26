@@ -18,7 +18,12 @@ const SCALE = Number(process.env.LT_AI_LATENCY_SCALE ?? "1")
 const stats = (globalThis.__iniaLoadtestAiStats ??= { calls: 0, engine: 0, stream: 0, structured: 0, other: 0 })
 
 // Latência real (banco de dev, 30 dias até 14/10/2026): mediana e p95 → lognormal (sigma = ln(p95/p50) / 1,645).
+// Chat (ROUTING, CLARIFY, SPECIALIST, SYNTHESIS): chamadas INTERATIVAS do banco de dev, 30 dias até 21/10/2026.
 const LATENCY = {
+  ROUTING: { p50: 4_581, p95: 13_178, cap: 45_000 }, // ORCHESTRATOR_ROUTING que devolveu ferramentas
+  CLARIFY: { p50: 7_118, p95: 19_124, cap: 60_000 }, // KNOWLEDGE_CLARIFICATION (planejador)
+  SPECIALIST: { p50: 13_290, p95: 28_374, cap: 45_000 }, // SPECIALIST_SYNTHESIS
+  SYNTHESIS: { p50: 9_402, p95: 15_139, cap: 45_000 }, // ORCHESTRATOR_SYNTHESIS (resposta final escrita)
   ENGINE_ANALYSIS: { p50: 26_000, p95: 97_000, cap: 200_000 }, // FEEDBACK_ANALYSIS (análise, revisão, confirmação, práticas)
   ENGINE_WRITER: { p50: 2_500, p95: 34_500, cap: 110_000 }, // FEEDBACK_WRITER (composição, verificação)
   STRUCTURED: { p50: 8_000, p95: 14_000, cap: 40_000 }, // roteamento do Orquestrador / especialista com resposta estruturada
@@ -94,10 +99,79 @@ function sseStream(text, signal) {
 
 const CHAT_TEXT = "Claro! Pelo procedimento, confirme primeiro os dados do titular, depois registre o protocolo e informe o prazo de retorno ao cliente. Se ainda tiver dúvida, me chama que eu te ajudo com o passo a passo."
 
+// Em fluxo, o primeiro pedaço chega depois do raciocínio do modelo: fração da duração total (medida ao vivo — ver o relatório).
+const STREAM_FIRST_RATIO = Number(process.env.LT_STREAM_FIRST_RATIO ?? "0.45")
+const QUOTA_URL = process.env.LT_QUOTA_URL ?? null
+const ROLE_HINT = process.env.INIA_PROCESS_ROLE === "worker" ? "batch" : "chat"
+const quota = (globalThis.__iniaLoadtestQuota ??= { admitted: 0, rejected: 0 })
+
+/** Cota compartilhada do provedor (fake-quota.mjs): tokens de entrada contados no começo da chamada. Fora dela = 429 do Google. */
+async function admitted(body) {
+  if (!QUOTA_URL) return null
+  const tokens = Math.ceil(JSON.stringify(body ?? {}).length / 4) + 600
+  const response = await realFetch(`${QUOTA_URL}/admit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tokens, priorityHint: ROLE_HINT }) }).catch(() => null)
+  if (!response || response.status !== 429) {
+    quota.admitted += 1
+    return null
+  }
+  quota.rejected += 1
+  const { retryAfterMs } = await response.json()
+  // Mesmo formato do Gemini: RetryInfo no corpo (o cliente legado lê `retryDelay`).
+  return json({ error: { code: 429, message: "Resource has been exhausted (e.g. check quota).", status: "RESOURCE_EXHAUSTED", details: [{ "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: `${Math.ceil(retryAfterMs / 1000)}s` }] } }, 429)
+}
+
+/** O que um modelo com ferramentas responde: com a pergunta da pessoa por último, aciona um especialista (nunca as de dados);
+ * com as respostas das ferramentas por último, escreve. Sem ferramentas: escreve. */
+function plan(body) {
+  const contents = Array.isArray(body?.contents) ? body.contents : []
+  const last = contents.at(-1)
+  const tools = body?.tools?.[0]?.functionDeclarations ?? []
+  const lastIsUserText = last?.role === "user" && (last.parts ?? []).some((part) => typeof part.text === "string")
+  const specialist = tools.find((tool) => !/^(my_|self_|leadership_)/.test(tool.name))
+  if (tools.length > 0 && lastIsUserText && specialist) {
+    const question = [...(last.parts ?? [])].map((part) => part.text ?? "").join(" ").slice(0, 200)
+    return { kind: "call", latency: "ROUTING", part: { functionCall: { name: specialist.name, args: { query: question } }, thoughtSignature: "fake-signature" } }
+  }
+  const afterTools = contents.some((turn) => (turn.parts ?? []).some((part) => part.functionResponse))
+  return { kind: "text", latency: afterTools ? "SYNTHESIS" : tools.length > 0 ? "ROUTING" : contents.length === 1 ? "SPECIALIST" : "TEXT" }
+}
+
+function sseChat(planned, signal) {
+  const encoder = new TextEncoder()
+  const total = latency(planned.latency)
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        if (planned.kind === "call") {
+          await sleep(total, signal)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { role: "model", parts: [planned.part] }, index: 0 }], usageMetadata: usage(6_500, 40) })}\r\n\r\n`))
+          controller.close()
+          return
+        }
+        const words = CHAT_TEXT.split(" ")
+        const steps = Math.ceil(words.length / 6)
+        await sleep(total * STREAM_FIRST_RATIO, signal)
+        for (let index = 0; index < words.length; index += 6) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: `${words.slice(index, index + 6).join(" ")} ` }] }, index: 0 }] })}\r\n\r\n`))
+          await sleep((total * (1 - STREAM_FIRST_RATIO)) / steps, signal)
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ candidates: [{ content: { role: "model", parts: [{ text: "" }] }, finishReason: "STOP", index: 0 }], usageMetadata: usage(4_000, 160) })}\r\n\r\n`))
+        controller.close()
+      } catch (error) {
+        controller.error(error)
+      }
+    },
+  })
+}
+
 async function fakeGoogle(url, init) {
   const signal = init?.signal
   const body = typeof init?.body === "string" ? safeJson(init.body) : null
   stats.calls += 1
+  if (/:(stream)?[gG]enerateContent/.test(url)) {
+    const limited = await admitted(body)
+    if (limited) return limited
+  }
   if (url.includes("/auth_tokens")) {
     await sleep(latency("TOKEN"), signal)
     return json({ name: `auth_tokens/fake-${Date.now()}`, expireTime: new Date(Date.now() + 1_800_000).toISOString() })
@@ -105,7 +179,10 @@ async function fakeGoogle(url, init) {
   if (url.includes("/cachedContents")) return json({ name: `cachedContents/fake-${Date.now()}`, expireTime: new Date(Date.now() + 1_800_000).toISOString(), usageMetadata: { totalTokenCount: 2000 } })
   if (url.includes(":streamGenerateContent")) {
     stats.stream += 1
-    return new Response(sseStream(CHAT_TEXT, signal), { status: 200, headers: { "content-type": "text/event-stream" } })
+    // Chat sem Orquestrador (persona): o fluxo de sempre; com ferramentas/histórico de ferramentas: o mesmo comportamento da
+    // resposta inteira (chamada de ferramenta ou texto), em fluxo.
+    const planned = body?.tools || (body?.contents ?? []).some((turn) => (turn.parts ?? []).some((part) => part.functionResponse)) ? plan(body) : null
+    return new Response(planned ? sseChat(planned, signal) : sseStream(CHAT_TEXT, signal), { status: 200, headers: { "content-type": "text/event-stream" } })
   }
   const engine = engineContext.getStore()
   if (engine) {
@@ -123,6 +200,13 @@ async function fakeGoogle(url, init) {
     const silence = Buffer.alloc(24_000 * 2).toString("base64") // 1 s de silêncio PCM 16 bits, 24 kHz
     return json({ candidates: [{ content: { role: "model", parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: silence } }] }, finishReason: "STOP" }], usageMetadata: usage(300, 50) })
   }
+  const system = JSON.stringify(body?.systemInstruction ?? "")
+  if (system.includes("KNOWLEDGE_CLARIFICATION_PLANNER_V1")) {
+    // Esclarecimento pelas bases: o caso comum do chat — a pergunta não depende de cenário (segue o caminho de sempre).
+    stats.structured += 1
+    await sleep(latency("CLARIFY"), signal)
+    return textResponse(JSON.stringify({ contract: "KNOWLEDGE_CLARIFICATION_PLANNER_V1", decision: "NOT_APPLICABLE" }), 5_000, 120)
+  }
   const schema = config.responseJsonSchema ?? config.responseSchema ?? config.response_json_schema
   if (schema || config.responseMimeType === "application/json") {
     stats.structured += 1
@@ -130,7 +214,13 @@ async function fakeGoogle(url, init) {
     return textResponse(JSON.stringify(schema ? sample(schema) : {}), 7_000, 300)
   }
   stats.other += 1
-  await sleep(latency("TEXT"), signal)
+  if (body?.tools || (body?.contents ?? []).some((turn) => (turn.parts ?? []).some((part) => part.functionResponse))) {
+    const planned = plan(body)
+    await sleep(latency(planned.latency), signal)
+    if (planned.kind === "call") return json({ candidates: [{ content: { role: "model", parts: [planned.part] }, finishReason: "STOP", index: 0 }], usageMetadata: usage(6_500, 40), modelVersion: "fake-loadtest" })
+    return textResponse(CHAT_TEXT, 4_000, 160)
+  }
+  await sleep(latency((body?.contents ?? []).length === 1 ? "SPECIALIST" : "TEXT"), signal)
   return textResponse(CHAT_TEXT, 7_000, 250)
 }
 
@@ -153,4 +243,4 @@ globalThis.fetch = async function loadtestFetch(input, init) {
   return json({ id: "fake", object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: CHAT_TEXT }, finish_reason: "stop" }], usage: { prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100 } })
 }
 
-process.stdout.write(`[loadtest] IA falsa ativa (escala de latência ${SCALE}); nenhuma chamada de IA sai da máquina.\n`)
+process.stdout.write(`[loadtest] IA falsa ativa (escala de latência ${SCALE}${QUOTA_URL ? `; cota compartilhada em ${QUOTA_URL}` : ""}); nenhuma chamada de IA sai da máquina.\n`)

@@ -159,9 +159,15 @@ export type PolicyExecutionRequest = {
   responseSchema?: Record<string, unknown> | undefined
   maxOutputTokens?: number | undefined
   timeoutMs?: number | undefined
+  /** Menos raciocínio (ver `AdapterRequest.reasoningEffort`): só vai para modelo cadastrado com a capacidade REASONING. */
+  reasoningEffort?: "LOW" | undefined
+  /** Chat: o texto da resposta vai para cá EM FLUXO quando o adapter e o modelo suportam (sem isso, sai inteiro no fim). Depois do
+   * primeiro pedaço entregue não há fallback (trocaria a resposta no meio). */
+  onText?: ((text: string) => void) | undefined
 }
 
-export type PolicyExecutionResult = AdapterResponse & { cache: LlmCacheRecord; cost: CostEstimate; resolvedRoute: ResolvedAiRoute }
+/** `streamedChars`/`firstTokenMs` só numa execução com `onText` que de fato foi em fluxo. */
+export type PolicyExecutionResult = AdapterResponse & { cache: LlmCacheRecord; cost: CostEstimate; resolvedRoute: ResolvedAiRoute; streamedChars?: number; firstTokenMs?: number | null }
 
 export type PolicyStreamRequest = Omit<PolicyExecutionRequest, "tools" | "structuredOutput" | "legacyRoute" | "responseSchema" | "maxOutputTokens" | "timeoutMs"> & { onChunk: (text: string) => void }
 

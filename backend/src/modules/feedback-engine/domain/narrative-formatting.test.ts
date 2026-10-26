@@ -32,6 +32,11 @@ describe("NARRATIVE_FORMATTING_V1 — listas e negrito montados pelo sistema", (
     expect(inlineMarkdownOf("Isto é **desbalanceado")).toBe("Isto é desbalanceado")
     expect(inlineMarkdownOf("**A frase inteira em negrito.**")).toBe("A frase inteira em negrito.")
     expect(inlineMarkdownOf("um *itálico* solto")).toBe("um itálico solto")
+    // LITERAL_ASTERISK_V1: asterisco solto é conteúdo (código de serviço), nunca marca a tirar.
+    expect(inlineMarkdownOf("emita pelo Portal Vagalume ou discando *7734# do celular cadastrado.")).toBe("emita pelo Portal Vagalume ou discando *7734# do celular cadastrado.")
+    expect(inlineMarkdownOf("disque *144 ou *7734# e confirme **o protocolo**.")).toBe("disque *144 ou *7734# e confirme **o protocolo**.")
+    expect(inlineMarkdownOf("o *passo* e o código *7734#")).toBe("o passo e o código *7734#")
+    expect(plainInlineOf("Disque *7734# no **celular cadastrado**.")).toBe("Disque *7734# no celular cadastrado.")
     expect(plainInlineOf("Confirme **qual empresa** o cliente representa.")).toBe("Confirme qual empresa o cliente representa.")
   })
 
@@ -80,7 +85,7 @@ describe("NARRATIVE_FORMATTING_V1 — a reescrita não desfaz a lista aprovada",
     ]
     const brief = { domain: "MONITORING", developments: [], strengths: [], referencePractices: [] } as unknown as FeedbackBrief
     const usefulness = { primaryRef: null, primaryCovered: true, missingGuidance: [], missingRecognition: false, missingContext: false }
-    const instructions = repairInstructionsOf(decisions, usefulness, brief, { guidance: {}, why: {} }).join("\n")
+    const instructions = repairInstructionsOf(decisions, usefulness, brief).join("\n")
     expect(instructions).toContain("\"[item de lista] termo de aceite;\"")
     expect(instructions).toContain("o que era item de lista continua item de lista")
     expect(COMPOSITION_SYSTEM_PROMPT).toContain("escreva essa relação em lista")
@@ -96,7 +101,7 @@ describe("LIST_CHECK_V1 e BOLD_LIMIT_V1 — as duas garantias, sem engessar o te
     expect(flagged.missingList).toEqual(["F2"])
     expect(usefulnessOf(brief, kept, { conveysPrimary: true, valueBeyondNarration: true, note: null }).missingList).toBeUndefined()
     const decisions = [{ id: "F2", text: "Recapitule o número, a etapa, a data e o protocolo.", stance: "GUIDANCE" as const, refs: [], paragraph: 1, kept: true, finalText: "Recapitule o número, a etapa, a data e o protocolo.", reasons: [], verdict }]
-    expect(repairInstructionsOf(decisions, flagged, brief, { guidance: {}, why: {} }).join("\n")).toContain("escreva esses itens como lista (format BULLET")
+    expect(repairInstructionsOf(decisions, flagged, brief).join("\n")).toContain("escreva esses itens como lista (format BULLET")
     expect(VERIFICATION_SYSTEM_PROMPT).toContain("vazio é o normal")
     expect(COMPOSITION_SYSTEM_PROMPT).toContain("um texto corrido bem escrito, sem marca nenhuma, é um bom retorno")
   })

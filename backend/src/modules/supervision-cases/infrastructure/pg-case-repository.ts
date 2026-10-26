@@ -53,7 +53,7 @@ export class PgCaseRepository implements CaseRepository {
     const [evidences, recommendations, feedbacks] = await Promise.all([
       this.db.query(`select id, evidence_type as type, title, description, source_type as "sourceType", source_id as "sourceId", occurred_at as "occurredAt" from evidences where case_id = $1 order by occurred_at desc`, [id]),
       this.db.query(`select id, action_type as "actionType", description, expected_impact as "expectedImpact", due_at as "dueAt" from recommendations where case_id = $1 order by created_at`, [id]),
-      this.db.query(`select id, status, impacted_indicator as "impactedIndicator", evidence_found as "evidenceFound", observed_behavior as "observedBehavior", related_procedure as "relatedProcedure", recommendation, suggested_approach as "suggestedApproach" from feedbacks where case_id = $1 order by created_at desc`, [id]),
+      this.db.query(`select id, status, feedback_kind as kind, impacted_indicator as "impactedIndicator", evidence_found as "evidenceFound", observed_behavior as "observedBehavior", related_procedure as "relatedProcedure", recommendation, suggested_approach as "suggestedApproach" from feedbacks where case_id = $1 order by created_at desc`, [id]),
     ])
     return {
       ...mapCase(row),

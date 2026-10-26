@@ -219,3 +219,25 @@ describe("V1.7.1d — plano de cobertura da base no especialista", () => {
     expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ coverage: null, markProcessRoles: false }))
   })
 })
+
+describe("conversa: a busca na base considera também a última pergunta da pessoa (ASKER_QUESTION_RETRIEVAL_V1)", () => {
+  const PERSON = "Como faço para registrar a contestação da fatura de um cliente?"
+  const ROUTING = "Como registrar a contestação da fatura de um cliente? Passo a passo e procedimentos."
+
+  it("chat/voz: a pergunta da pessoa vai para a busca e o input do especialista continua com a pergunta do roteamento", async () => {
+    generateWithTools.mockResolvedValue({ kind: "text", text: "Registre conta, linha, valor e data." })
+    await runSpecialistTool(fakeDb(faturamento), ORG, "a-1", ROUTING, "op-1", undefined, undefined, { collaboratorConversation: true, askerQuestion: PERSON })
+    expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ query: ROUTING, collaboratorConversation: true, askerQuestion: PERSON }))
+    const [contents] = generateWithTools.mock.calls[0]! as [{ text: string }[], string, unknown[]]
+    expect(contents[0]!.text).toContain(`Pergunta do colaborador: ${ROUTING}`)
+  })
+
+  it("fora da conversa (Workflow, QA Lab) a pergunta nunca entra na busca, mesmo se vier", async () => {
+    generateWithTools.mockResolvedValue({ kind: "text", text: JSON.stringify(structured) })
+    await runSpecialistTool(fakeDb(faturamento), ORG, "a-1", "Analise a contestação.", "op-1", undefined, TRANSCRIPT, { askerQuestion: PERSON })
+    expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ collaboratorConversation: false, askerQuestion: null }))
+    generateWithTools.mockResolvedValue({ kind: "text", text: "ok" })
+    await runSpecialistTool(fakeDb(faturamento), ORG, "a-1", ROUTING, "op-1")
+    expect(promptOptions).toHaveBeenLastCalledWith(expect.objectContaining({ askerQuestion: null }))
+  })
+})

@@ -4,10 +4,17 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { displayIconKeySchema } from "../../../shared/domain/display-icon.js"
 import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { callOutcomeSchema, type CallOutcome } from "../domain/call-outcome.js"
 
 
 // Nome de exibição e ícone (migration 115): como a flag aparece para o colaborador no motivo do feedback ("Monitoria · Rechamada").
 const labelSchema = z.string().trim().min(1).max(60).nullable()
+
+// Chamada boa × ruim e indicador relacionado (migration 156): o que a base de boas práticas e o feedback precisam saber do sinal.
+const callOutcomeFields = {
+  callOutcome: callOutcomeSchema.nullable().optional(),
+  relatedIndicatorId: z.string().uuid().nullable().optional(),
+}
 
 const channelFlagSchema = z.object({
   channel: z.string().trim().min(2).default("VOICE"),
@@ -16,6 +23,7 @@ const channelFlagSchema = z.object({
   description: z.string().trim().optional(),
   label: labelSchema.optional(),
   iconKey: displayIconKeySchema.nullable().optional(),
+  ...callOutcomeFields,
 })
 
 const updateChannelFlagSchema = z.object({
@@ -26,7 +34,14 @@ const updateChannelFlagSchema = z.object({
   // Presente (mesmo null) = altera; ausente = mantém.
   label: labelSchema.optional(),
   iconKey: displayIconKeySchema.nullable().optional(),
+  ...callOutcomeFields,
 })
+
+/** O critério de chamada boa/ruim tem de ser do tipo do sinal; o indicador relacionado, da organização. */
+async function validateOutcome(db: Database, organizationId: string, valueType: string, outcome: CallOutcome | null | undefined, relatedIndicatorId: string | null | undefined) {
+  if (outcome && outcome.kind !== valueType) throw new DomainError(valueType === "NUMERIC" ? "Sinal numérico: informe as faixas de chamada boa e ruim." : "Sinal sim/não: informe qual valor é o ruim.", "CHANNEL_FLAG_OUTCOME_TYPE", 422)
+  if (relatedIndicatorId && !(await db.query(`select 1 from indicator_definitions where id = $1 and organization_id = $2`, [relatedIndicatorId, organizationId])).rowCount) throw new DomainError("Indicador relacionado não encontrado.", "CHANNEL_FLAG_INDICATOR_NOT_FOUND", 422)
+}
 
 const listChannelFlagsSchema = z.object({
   search: searchParam,
@@ -38,9 +53,10 @@ const listChannelFlagsSchema = z.object({
 })
 
 const SELECT_CHANNEL_FLAGS = `
-  select id, channel, flag_name "flagName", value_type "valueType", description, label, icon_key "iconKey", active, created_at "createdAt"
-  from channel_flags
-  where organization_id = $1
+  select f.id, f.channel, f.flag_name "flagName", f.value_type "valueType", f.description, f.label, f.icon_key "iconKey", f.active, f.created_at "createdAt",
+         f.call_outcome "callOutcome", f.related_indicator_definition_id "relatedIndicatorId", i.name "relatedIndicatorName"
+  from channel_flags f left join indicator_definitions i on i.id = f.related_indicator_definition_id
+  where f.organization_id = $1
 `
 
 export function createChannelFlagRouter(db: Database) {
@@ -69,11 +85,12 @@ export function createChannelFlagRouter(db: Database) {
   router.post("/", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = channelFlagSchema.parse(request.body)
+    await validateOutcome(db, organizationId, input.valueType, input.callOutcome, input.relatedIndicatorId)
     try {
       const result = await db.query<{ id: string }>(
-        `insert into channel_flags(organization_id, channel, flag_name, value_type, description, label, icon_key)
-         values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-        [organizationId, input.channel.toUpperCase(), input.flagName.trim().toLowerCase(), input.valueType, input.description ?? null, input.label ?? null, input.iconKey ?? null],
+        `insert into channel_flags(organization_id, channel, flag_name, value_type, description, label, icon_key, call_outcome, related_indicator_definition_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+        [organizationId, input.channel.toUpperCase(), input.flagName.trim().toLowerCase(), input.valueType, input.description ?? null, input.label ?? null, input.iconKey ?? null, input.callOutcome ? JSON.stringify(input.callOutcome) : null, input.relatedIndicatorId ?? null],
       )
       response.status(201).json({ data: { id: result.rows[0]!.id } })
     } catch (error) {
@@ -87,6 +104,8 @@ export function createChannelFlagRouter(db: Database) {
   router.patch("/:id", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = updateChannelFlagSchema.parse(request.body)
+    const current = (await db.query<{ value_type: string }>(`select value_type from channel_flags where id = $1 and organization_id = $2`, [request.params.id, organizationId])).rows[0]
+    if (current) await validateOutcome(db, organizationId, current.value_type, input.callOutcome, input.relatedIndicatorId)
     try {
       const result = await db.query<{ id: string }>(
         `update channel_flags set
@@ -95,7 +114,9 @@ export function createChannelFlagRouter(db: Database) {
            description = coalesce($3, description),
            active = coalesce($4, active),
            label = case when $7::boolean then $8 else label end,
-           icon_key = case when $9::boolean then $10 else icon_key end
+           icon_key = case when $9::boolean then $10 else icon_key end,
+           call_outcome = case when $11::boolean then $12::jsonb else call_outcome end,
+           related_indicator_definition_id = case when $13::boolean then $14::uuid else related_indicator_definition_id end
          where id = $5 and organization_id = $6 returning id`,
         [
           input.channel ? input.channel.toUpperCase() : null,
@@ -108,6 +129,10 @@ export function createChannelFlagRouter(db: Database) {
           input.label ?? null,
           input.iconKey !== undefined,
           input.iconKey ?? null,
+          input.callOutcome !== undefined,
+          input.callOutcome ? JSON.stringify(input.callOutcome) : null,
+          input.relatedIndicatorId !== undefined,
+          input.relatedIndicatorId ?? null,
         ],
       )
       if (!result.rows[0]) return response.status(404).json({ error: { code: "CHANNEL_FLAG_NOT_FOUND", message: "Flag não encontrada." } })

@@ -7,6 +7,7 @@ import type { EngineModelPort } from "./ports.js"
 import { fakeEngineModel as fakeModel } from "../testing/fake-engine-model.js"
 import { CHECKLIST_ID, CHECKLIST_V1, DOC_ID, INTERACTION_ID, PROCEDURE_V1, TRANSCRIPT } from "../testing/fixtures.js"
 import type { InteractionForAnalysis } from "../infrastructure/postgres-engine-loaders.js"
+import type { FeedbackBestPractices } from "../../best-practices/domain/feedback-section.js"
 
 const ORG = "00000000-0000-4000-8000-000000000001"
 const OPERATOR = "00000000-0000-4000-8000-0000000000aa"
@@ -159,5 +160,61 @@ describe("motor de feedback — geração ponta a ponta (modelo falso, memória 
     expect(current).toHaveLength(1)
     expect(current[0]!.snapshot.selectionReason).toBe("nova")
     expect(stores.assessments.find((entry) => entry.snapshot.selectionReason === "antiga")!.isCurrent).toBe(false)
+  })
+})
+
+describe("BASE_PRACTICES_IN_TEXT_V1 — a prática da base vai ao redator antes da redação", () => {
+  const SECTION: FeedbackBestPractices = { version: "BEST_PRACTICE_FEEDBACK_V3", title: "Oportunidades inspiradas em boas práticas", note: "…", items: [{ patternId: "p-explica", name: "Checar compreensão oferecendo explicar de outra forma", indicatorName: "Nota da URA", context: "Segunda via", association: "Nas chamadas comparáveis de Segunda via analisadas (01/09/2026 a 31/10/2026), o comportamento apareceu em 72% das chamadas com resultado bom em Nota da URA em que a situação existiu (8 operadores, 32 chamadas) e em 22% das chamadas com resultado ruim (8 operadores, 32 chamadas).", strength: "Forte", you: "Suas chamadas não estavam nesta análise: não há evidência sobre como você faz isso hoje.", youKind: "NOT_ANALYZED", howTo: "Pergunte se ficou claro.", guidance: "Ao terminar de explicar, pergunte se ficou claro e ofereça explicar de outro jeito.", suggestedPhrasing: "Ficou claro? Se quiser, eu explico de outro jeito.", notApplicableWhen: null, source: { population: "GROUP", populationName: "B2C · Atendimento Geral", context: "SUB_REASON", subjectLabel: "Segunda via", outcomeName: "Nota da URA", outcomeKind: "CALL_SIGNAL", text: "Das chamadas de Segunda via com resultado bom em Nota da URA, no seu grupo (B2C · Atendimento Geral)." } }] }
+  const DRAFT = [
+    { text: "Você confirmou se a segunda via era da fatura ou do parcelamento antes de enviar.", stance: "RECOGNITION", refs: ["S1"], paragraph: 1 },
+    { text: "Mas enviou os dados sem confirmar a data de nascimento, que o procedimento pede junto com o nome.", stance: "ADJUSTMENT", refs: ["A1"], paragraph: 2 },
+    { text: "Na próxima vez, logo depois de confirmar o nome, peça a data de nascimento antes de enviar qualquer dado da conta.", stance: "GUIDANCE", refs: ["A1"], paragraph: 2 },
+  ]
+  const CARD = { text: "Confirme a data de nascimento antes de enviar a segunda via.", refs: ["A1"] }
+  const PRACTICE_SENTENCE = { text: "Ao terminar de explicar a segunda via, vale experimentar perguntar se ficou claro. Por exemplo: [[B1]]", stance: "GUIDANCE", refs: ["B1"], paragraph: 3 }
+  const writerTurns = (calls: { stage: string; contents: { text: string }[] }[]) => calls.filter((call) => call.stage === "COMPOSITION").map((call) => call.contents[0]!.text)
+
+  it("o redator recebe B1 com as regras, cita a prática com a fala exata e o bloco marca a citada", async () => {
+    const { model, calls } = fakeModel({ composition: { sentences: [...DRAFT, PRACTICE_SENTENCE], card: CARD } })
+    const { deps, stores } = setup(model)
+    const inputs: unknown[] = []
+    const result = await generateFeedback({ ...deps, bestPractices: async (input) => (inputs.push(input), SECTION) }, request())
+    expect(result.kind).toBe("PUBLISHABLE")
+    if (result.kind !== "PUBLISHABLE") return
+    expect(inputs).toEqual([expect.objectContaining({ domain: "MONITORING", interactionId: INTERACTION_ID, personId: OPERATOR })])
+    const [turn] = writerTurns(calls)
+    expect(turn).toContain("BOAS PRÁTICAS DA BASE")
+    expect(turn).toContain('"ref": "B1"')
+    const message = stores.messages.get(result.messageId)!
+    expect(message.brief!.basePractices).toEqual([expect.objectContaining({ ref: "B1", patternId: "p-explica", you: null })])
+    expect(message.message!.text).toContain("Por exemplo: “Ficou claro? Se quiser, eu explico de outro jeito.”")
+    expect(message.message!.view.bestPractices!.items[0]!.citedInText).toBe(true)
+    // A prática não é ponto do caso: nada além dos achados comunicados conta como entregue.
+    expect(message.findingKeys).toHaveLength(2)
+  })
+
+  it("o redator não usa a prática: a reescrita pede; sem uso, publica do mesmo jeito e o bloco não a marca", async () => {
+    const { model, calls } = fakeModel({ composition: { sentences: DRAFT, card: CARD } })
+    const { deps, stores } = setup(model)
+    const result = await generateFeedback({ ...deps, bestPractices: async () => SECTION }, request())
+    expect(result.kind).toBe("PUBLISHABLE")
+    if (result.kind !== "PUBLISHABLE") return
+    const turns = writerTurns(calls)
+    expect(turns).toHaveLength(2)
+    expect(turns[1]).toContain("boa(s) prática(s) da base para este assunto (B1")
+    expect(stores.messages.get(result.messageId)!.message!.view.bestPractices!.items[0]!.citedInText).toBeUndefined()
+  })
+
+  it("sem prática disponível (ou com falha na escolha), o redator recebe o mesmo turno de antes e não há reescrita por isso", async () => {
+    for (const bestPractices of [async () => null, async () => { throw new Error("banco fora") }]) {
+      const { model, calls } = fakeModel()
+      const { deps, stores } = setup(model)
+      const result = await generateFeedback({ ...deps, bestPractices }, request())
+      expect(result.kind).toBe("PUBLISHABLE")
+      if (result.kind !== "PUBLISHABLE") continue
+      expect(writerTurns(calls)).toHaveLength(1)
+      expect(writerTurns(calls)[0]).not.toContain("BOAS PRÁTICAS DA BASE")
+      expect(stores.messages.get(result.messageId)!.brief!.basePractices).toBeUndefined()
+    }
   })
 })

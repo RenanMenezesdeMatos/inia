@@ -69,6 +69,9 @@ export const accessCapabilitiesSchema = z.object({
   // Reports recorrentes: quem lidera/tem acesso de consulta (para si) ou tem o papel Report (distribuir). O recorte é do backend.
   canUseReports: capability,
   canDistributeReports: capability,
+  // Base de boas práticas: o público do Diagnóstico lê; quem administra a configuração também lê e revisa (o escopo é do backend).
+  canViewBestPractices: capability,
+  canManageBestPractices: capability,
   // Cenário da INIA (fundo atrás do avatar) — só o Administrador geral, na organização inteira.
   canManageIniaScenes: capability,
   // Monitoria de usabilidade — fora de canAccessAdministration (como as conversas): quem só tem a monitoria vê só ela.

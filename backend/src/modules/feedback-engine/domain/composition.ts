@@ -3,6 +3,7 @@ import { unwrapJsonFence } from "./call-analysis.js"
 import { groundingTextsOf, type BriefFinding, type ComposedMessage, type ComposedSentence, type FeedbackBrief, type TrustedReadings } from "./feedback-brief.js"
 import { feedbackViewOf, plainTextOf } from "./feedback-view.js"
 import type { VerificationClaim } from "./composition-prompt.js"
+import { callQuoteTextsOf, hasUnresolvedReference, nonLiteralQuotesOf, resolveQuoteRefs } from "./literal-quotes.js"
 
 /**
  * COMPOSIÇÃO VERIFICADA (domínio puro, `FEEDBACK_COMPOSITION_V3`). Duas perguntas diferentes, duas checagens diferentes:
@@ -20,8 +21,8 @@ import type { VerificationClaim } from "./composition-prompt.js"
  * Checagens determinísticas locais: refs válidas por stance, nenhum código interno/UUID no texto, todo número presente nos fatos,
  * repetição da mesma ideia.
  */
-/** `examples` (`SPEECH_EXAMPLE_V1`): fala ao cliente proposta pelo redator por ponto de desenvolvimento — formulação, nunca fato. */
-export type WriterDraft = { sentences: { text: string; stance: ComposedSentence["stance"]; refs: string[]; paragraph: number; format?: SentenceFormat }[]; card: { text: string; refs: string[] }; examples?: { ref: string; text: string }[] }
+/** `LITERAL_QUOTES_V1`: o redator não escreve fala ao cliente (o "como dizer" é só a fraseologia do argumentário, colada pelo sistema). */
+export type WriterDraft = { sentences: { text: string; stance: ComposedSentence["stance"]; refs: string[]; paragraph: number; format?: SentenceFormat }[]; card: { text: string; refs: string[] } }
 
 /**
  * `NARRATIVE_FORMATTING_V1` — formatação para facilitar a leitura, decidida pelo redator e montada pelo SISTEMA: cada frase pode ser item
@@ -40,7 +41,9 @@ export function inlineMarkdownOf(text: string, options: { listItem?: boolean } =
     .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, "$1")
     .replace(/\|/gu, " ")
     .replace(/__/gu, "")
-    .replace(/(?<!\*)\*(?!\*)/gu, "")
+    // `LITERAL_ASTERISK_V1`: itálico de um asterisco (*assim*) sai, ficando o texto; asterisco SOLTO é conteúdo — códigos como
+    // *7734# e *144 —, e antes saía junto: o colaborador recebia o código errado (validação funcional de 20/10/2026, D8).
+    .replace(/(?<![\p{L}\p{N}*])\*(?![\s*])([^*\n]*?[^\s*])\*(?![\p{L}\p{N}*])/gu, "$1")
     .trim()
   if ((clean.match(/\*\*/gu) ?? []).length % 2 !== 0) clean = clean.replace(/\*\*/gu, "")
   // A frase INTEIRA em negrito não destaca nada: volta a ser texto (num item de lista, o rótulo curto em negrito é legítimo).
@@ -100,7 +103,6 @@ const draftSchema = z.object({
   sentences: z.array(z.object({ text: z.string().trim().min(1), stance: z.enum(["CONTEXT", "RECOGNITION", "ADJUSTMENT", "GUIDANCE", "VALUE"]), refs: z.array(z.string()).default([]), paragraph: z.number().int().min(1).max(20).catch(1), format: z.unknown().optional().transform(formatOf) })).min(1),
   card: z.object({ text: z.string().trim().min(1), refs: z.array(z.string()).default([]) }),
 })
-const exampleSchema = z.object({ ref: z.string().trim().min(1), text: z.string().trim().min(1) })
 export function parseWriterDraft(text: string): { ok: true; draft: WriterDraft } | { ok: false; error: string } {
   let raw: unknown
   try {
@@ -110,22 +112,13 @@ export function parseWriterDraft(text: string): { ok: true; draft: WriterDraft }
   }
   const parsed = draftSchema.safeParse(raw)
   if (!parsed.success) return { ok: false, error: `SCHEMA_INVALID:${parsed.error.issues.map((issue) => issue.path.join(".")).slice(0, 5).join(",")}` }
-  // Exemplo é opcional: um item malformado sai sozinho, nunca derruba o rascunho; um por ponto (o primeiro).
-  const examples: { ref: string; text: string }[] = []
-  for (const entry of Array.isArray((raw as { examples?: unknown }).examples) ? (raw as { examples: unknown[] }).examples : []) {
-    const example = exampleSchema.safeParse(entry)
-    if (!example.success) continue
-    const ref = example.data.ref.trim().toUpperCase()
-    if (!examples.some((existing) => existing.ref === ref)) examples.push({ ref, text: example.data.text })
-  }
   const sentences = parsed.data.sentences.map(({ format, ...sentence }) => (format ? { ...sentence, format } : sentence))
-  return { ok: true, draft: { ...parsed.data, sentences, ...(examples.length > 0 ? { examples } : {}) } }
+  return { ok: true, draft: { ...parsed.data, sentences } }
 }
 
-/** Exemplos do rascunho como itens a conferir (E-<ref>), na mesma verificação das frases. */
-export const exampleClaimId = (ref: string) => `E-${ref}`
-export function exampleClaimsOf(draft: Pick<WriterDraft, "examples">): VerificationClaim[] {
-  return (draft.examples ?? []).map((example) => ({ id: exampleClaimId(example.ref), text: example.text, stance: "EXAMPLE", refs: [example.ref] }))
+/** `LITERAL_QUOTES_V1`: cada [[Qn]] do rascunho vira a fala exata da chamada — antes da verificação, das checagens e da montagem. */
+export function resolveDraftQuotes(draft: WriterDraft, brief: FeedbackBrief): WriterDraft {
+  return { sentences: draft.sentences.map((sentence) => ({ ...sentence, text: resolveQuoteRefs(sentence.text, brief) })), card: { ...draft.card, text: resolveQuoteRefs(draft.card.text, brief) } }
 }
 
 const verdictSchema = z.object({
@@ -155,7 +148,7 @@ export function parseVerdicts(text: string, requiredIds: readonly string[]): { o
 // ---------------------------------------------------------------------------------------------
 // Checagens locais
 // ---------------------------------------------------------------------------------------------
-const INTERNAL_TOKEN = /\b(?:[ASLTDCP]\d{1,3}|KC-[0-9a-f]+|CP-[0-9a-f]+)\b|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\/materiais\//i
+const INTERNAL_TOKEN = /\b(?:[ABSLTDCP]\d{1,3}|KC-[0-9a-f]+|CP-[0-9a-f]+)\b|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\/materiais\//i
 export const fold = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
 const numbersOf = (text: string) => [...text.matchAll(/\d+(?:[.,]\d+)?/g)].map((match) => match[0].replace(",", "."))
 /** Palavras de conteúdo (≥ 4 letras, sem as de ligação mais comuns) — base da trava de vazamento dos DETALHES montados pelo sistema
@@ -163,7 +156,8 @@ const numbersOf = (text: string) => [...text.matchAll(/\d+(?:[.,]\d+)?/g)].map((
 const STOPWORDS = new Set(["para", "como", "quando", "antes", "depois", "sobre", "entre", "mais", "menos", "muito", "essa", "esse", "esta", "este", "isso", "isto", "aquele", "aquela", "pela", "pelo", "pelas", "pelos", "numa", "num", "uma", "umas", "uns", "cada", "que", "com", "sem", "você", "voce", "seus", "suas", "seu", "sua", "também", "tambem", "ainda", "porque", "então", "entao", "assim", "nesta", "neste", "nessa", "nesse", "chamada", "cliente", "etapa", "próxima", "proxima", "vez"])
 export const contentTermsOf = (text: string) => new Set((fold(text).match(/\p{L}{4,}/gu) ?? []).filter((word) => !STOPWORDS.has(word)))
 
-export type LocalViolation = "INTERNAL_REFERENCE" | "UNGROUNDED_NUMBER" | "UNKNOWN_REF" | "STANCE_REF_MISMATCH" | "PROHIBITED_CLAIM" | "IDENTIFIER_NOT_FROM_CALL"
+/** `QUOTE_NOT_LITERAL` (`LITERAL_QUOTES_V1`): trecho entre aspas que não é igual à fala da chamada, à regra nem ao argumentário. */
+export type LocalViolation = "INTERNAL_REFERENCE" | "UNGROUNDED_NUMBER" | "UNKNOWN_REF" | "STANCE_REF_MISMATCH" | "PROHIBITED_CLAIM" | "IDENTIFIER_NOT_FROM_CALL" | "QUOTE_NOT_LITERAL"
 /**
  * `CALL_IDENTIFIER_INTEGRITY_V1` (06/10/2026): identificador longo — protocolo, número de atendimento, telefone, documento: 8 dígitos
  * ou mais, juntos ou separados por ponto, hífen ou espaço — só vale se estiver numa FALA desta chamada. O número que aparece no texto
@@ -172,35 +166,34 @@ export type LocalViolation = "INTERNAL_REFERENCE" | "UNGROUNDED_NUMBER" | "UNKNO
  */
 const DATE_TOKEN = /^(?:\d{4}-\d{2}-\d{2}|\d{2}[.-]\d{2}[.-]\d{4})$/
 const identifiersOf = (text: string) => [...text.matchAll(/\d(?:[\d.\- ]*\d)?/g)].map((match) => match[0].trim()).filter((token) => !DATE_TOKEN.test(token)).map((token) => token.replace(/\D/g, "")).filter((digits) => digits.length >= 8)
-const callQuotesOf = (brief: FeedbackBrief) => [
-  ...(brief.scenarioQuotes ?? []).map((quote) => quote.text),
-  ...[...brief.developments, ...brief.strengths].flatMap((finding) => [...finding.quotes.map((quote) => quote.text), ...(finding.absence?.opportunity ? [finding.absence.opportunity.text] : []), ...(finding.steps ?? []).flatMap((step) => step.quotes.map((quote) => quote.text))]),
-  ...(brief.openPoints ?? []).flatMap((point) => point.quotes.map((quote) => quote.text)),
-]
 /** Afirmação proibida pela ESTRATÉGIA do indicador (texto configurado pela operação — comparação pelo próprio texto configurado). */
 export const containsProhibitedClaim = (text: string, prohibited: readonly string[]) => prohibited.some((claim) => claim.trim().length >= 3 && fold(text).includes(fold(claim).trim()))
 export function localViolationsOf(sentence: { text: string; stance: ComposedSentence["stance"]; refs: readonly string[] }, brief: FeedbackBrief, grounding: string): LocalViolation[] {
   const violations: LocalViolation[] = []
-  if (INTERNAL_TOKEN.test(sentence.text)) violations.push("INTERNAL_REFERENCE")
+  // Referência de fala que não existe ([[Q99]]) fica no texto sem resolver: é código interno, nunca chega ao colaborador.
+  if (INTERNAL_TOKEN.test(sentence.text) || hasUnresolvedReference(sentence.text)) violations.push("INTERNAL_REFERENCE")
   if (containsProhibitedClaim(sentence.text, brief.prohibitedClaims ?? [])) violations.push("PROHIBITED_CLAIM")
   const allowed = new Set(numbersOf(grounding))
   if (numbersOf(sentence.text).some((number) => !allowed.has(number))) violations.push("UNGROUNDED_NUMBER")
   const identifiers = identifiersOf(sentence.text)
   if (identifiers.length > 0) {
-    const fromCall = new Set(callQuotesOf(brief).flatMap(identifiersOf))
+    const fromCall = new Set(callQuoteTextsOf(brief).flatMap(identifiersOf))
     if (identifiers.some((identifier) => !fromCall.has(identifier))) violations.push("IDENTIFIER_NOT_FROM_CALL")
   }
+  if (nonLiteralQuotesOf(sentence.text, brief).length > 0) violations.push("QUOTE_NOT_LITERAL")
   const developments = new Set(brief.developments.map((finding) => finding.ref))
   const strengths = new Set(brief.strengths.map((finding) => finding.ref))
   const openPoints = new Set((brief.openPoints ?? []).map((point) => point.ref))
   const practices = new Set((brief.referencePractices ?? []).map((practice) => practice.ref))
+  // `BASE_PRACTICES_IN_TEXT_V1`: prática da base (B-n) só orienta ou situa — nunca é ajuste nem reconhecimento.
+  const basePractices = new Set((brief.basePractices ?? []).map((practice) => practice.ref))
   // Ponto feito só em parte: a parte cumprida pode ser reconhecida (os itens cumpridos da mesma lista estão nos fatos dele).
   const partlyDone = new Set(brief.developments.filter((finding) => (finding.sameList ?? []).some((sibling) => sibling.status === "MET")).map((finding) => finding.ref))
   const refs = sentence.refs.map((ref) => ref.trim().toUpperCase())
-  if (refs.some((ref) => !developments.has(ref) && !strengths.has(ref) && !openPoints.has(ref) && !practices.has(ref))) violations.push("UNKNOWN_REF")
+  if (refs.some((ref) => !developments.has(ref) && !strengths.has(ref) && !openPoints.has(ref) && !practices.has(ref) && !basePractices.has(ref))) violations.push("UNKNOWN_REF")
   if (sentence.stance === "RECOGNITION" && (refs.length === 0 || refs.some((ref) => !strengths.has(ref) && !partlyDone.has(ref)))) violations.push("STANCE_REF_MISMATCH")
   if (sentence.stance === "ADJUSTMENT" && (refs.length === 0 || refs.some((ref) => !developments.has(ref)))) violations.push("STANCE_REF_MISMATCH")
-  if (sentence.stance === "GUIDANCE" && (refs.length === 0 || refs.some((ref) => !developments.has(ref) && !openPoints.has(ref) && !practices.has(ref)))) violations.push("STANCE_REF_MISMATCH")
+  if (sentence.stance === "GUIDANCE" && (refs.length === 0 || refs.some((ref) => !developments.has(ref) && !openPoints.has(ref) && !practices.has(ref) && !basePractices.has(ref)))) violations.push("STANCE_REF_MISMATCH")
   return violations
 }
 
@@ -239,9 +232,7 @@ export type SentenceDecision = { id: string; text: string; stance: ComposedSente
 const FACTUAL_REJECTIONS = new Set(["UNSUPPORTED_ADDITION", "CONTRADICTION", "OVERREACH"])
 const accepted = (verdict: Verdict | null | undefined) => verdict?.verdict === "SUPPORTED" || verdict?.verdict === "GENERALIZATION"
 
-/** Decisão sobre um exemplo de como dizer: vale só se o verificador o sustentou, como fala concreta, de um ponto de desenvolvimento. */
-export type ExampleDecision = { id: string; ref: string; text: string; accepted: boolean; reasons: string[]; verdict: Verdict | null }
-export type AppliedVerdicts = { sentences: SentenceDecision[]; card: SentenceDecision; analysis: { id: string; text: string; accepted: boolean; verdict: Verdict | null }[]; /** V5 */ message?: MessageAssessment | null; /** V5 — informação útil aprovada antes e perdida nesta versão. */ lost?: string[]; /** `SPEECH_EXAMPLE_V1` */ examples?: ExampleDecision[] }
+export type AppliedVerdicts = { sentences: SentenceDecision[]; card: SentenceDecision; analysis: { id: string; text: string; accepted: boolean; verdict: Verdict | null }[]; /** V5 */ message?: MessageAssessment | null; /** V5 — informação útil aprovada antes e perdida nesta versão. */ lost?: string[] }
 
 export function applyVerdicts(draft: WriterDraft, brief: FeedbackBrief, verdicts: ReadonlyMap<string, Verdict> | null, assessment: { message?: MessageAssessment | null; lost?: readonly string[] } = {}): AppliedVerdicts {
   const grounding = groundingTextsOf(brief).join("\n")
@@ -288,20 +279,7 @@ export function applyVerdicts(draft: WriterDraft, brief: FeedbackBrief, verdicts
     const local = localViolationsOf({ text: claim.text, stance: claim.stance as ComposedSentence["stance"], refs: claim.refs }, brief, grounding)
     return { id: claim.id, text: claim.text, accepted: accepted(verdict) && local.length === 0 && (claim.stance !== "GUIDANCE" || verdict?.specific !== false), verdict }
   })
-  // Exemplo de como dizer: as mesmas checagens locais de uma frase (código interno, número fora dos fatos, ref), só de ponto de
-  // desenvolvimento, e o verificador precisa sustentá-lo E dizê-lo concreto (fala pronta ao cliente, sem lacuna) — ausente = recusado.
-  const developments = new Set(brief.developments.map((finding) => finding.ref))
-  const examples: ExampleDecision[] = (draft.examples ?? []).map((example) => {
-    const id = exampleClaimId(example.ref)
-    const verdict = verdicts?.get(id) ?? null
-    const reasons: string[] = [...localViolationsOf({ text: example.text, stance: "CONTEXT", refs: [example.ref] }, brief, grounding)]
-    if (!developments.has(example.ref)) reasons.push("NOT_A_DEVELOPMENT")
-    if (!verdict) reasons.push("NOT_VERIFIED")
-    else if (FACTUAL_REJECTIONS.has(verdict.verdict)) reasons.push(verdict.verdict)
-    else if (verdict.specific !== true) reasons.push("NOT_USABLE_AS_SPEECH")
-    return { id, ref: example.ref, text: example.text, accepted: reasons.length === 0, reasons, verdict }
-  })
-  return { sentences, card, analysis, message: assessment.message ?? null, lost: [...(assessment.lost ?? [])], ...(examples.length > 0 ? { examples } : {}) }
+  return { sentences, card, analysis, message: assessment.message ?? null, lost: [...(assessment.lost ?? [])] }
 }
 
 /** Leituras da análise APROVADAS em todas as verificações que as conferiram (uma recusa em qualquer rodada = não confiável). */
@@ -325,13 +303,10 @@ export function trustedReadingsOf(brief: FeedbackBrief, rounds: readonly Applied
  *   - os demais desvios HIGH sem orientação são pedidos na reescrita, mas não impedem a mensagem: a IA decide o que comunicar; o que
  *     não foi comunicado não é marcado como entregue e continua disponível para outro retorno.
  */
-export type Usefulness = { primaryRef: string | null; primaryCovered: boolean; missingGuidance: string[]; missingRecognition: boolean; missingContext: boolean; /** V5 — leitura do verificador sobre a mensagem inteira: não transmite o ponto principal ou só narra etapas. */ missingValue?: string | null; /** `REFERENCE_PRACTICES_V1` — há prática dos colegas com melhor resultado que orienta (P-n) e nenhuma frase a usa. */ missingPractice?: string[]; /** `FEEDBACK_FIRMNESS_V1` — pontos CORRECT/INSIST comunicados sem nenhuma frase de ajuste (viraram só sugestão). */ missingCorrection?: string[]; /** O verificador leu a mensagem e a correção ficou amaciada (ou a insistência sem a orientação anterior). */ softenedCorrection?: string | null; /** `ARGUMENT_PHRASING_V1` — pontos comunicados com fraseologia do argumentário e sem exemplo de como dizer aceito. */ missingPhrasingExample?: string[]; /** `ALL_DEVELOPMENTS_V1` — pontos de desenvolvimento que nenhuma frase mantida comunica. */ missingDevelopment?: string[]; /** `ADJUSTMENT_IN_CALL_V1` — pontos comunicados só como orientação para a próxima vez, sem dizer o que aconteceu nesta chamada. */ missingAdjustment?: string[]; /** `LIST_CHECK_V1` — frases mantidas com uma relação de itens em texto corrido (o verificador leu). */ missingList?: string[] }
+export type Usefulness = { primaryRef: string | null; primaryCovered: boolean; missingGuidance: string[]; missingRecognition: boolean; missingContext: boolean; /** V5 — leitura do verificador sobre a mensagem inteira: não transmite o ponto principal ou só narra etapas. */ missingValue?: string | null; /** `REFERENCE_PRACTICES_V1` — há prática dos colegas com melhor resultado que orienta (P-n) e nenhuma frase a usa. */ missingPractice?: string[]; /** `FEEDBACK_FIRMNESS_V1` — pontos CORRECT/INSIST comunicados sem nenhuma frase de ajuste (viraram só sugestão). */ missingCorrection?: string[]; /** O verificador leu a mensagem e a correção ficou amaciada (ou a insistência sem a orientação anterior). */ softenedCorrection?: string | null; /** `ALL_DEVELOPMENTS_V1` — pontos de desenvolvimento que nenhuma frase mantida comunica. */ missingDevelopment?: string[]; /** `ADJUSTMENT_IN_CALL_V1` — pontos comunicados só como orientação para a próxima vez, sem dizer o que aconteceu nesta chamada. */ missingAdjustment?: string[]; /** `LIST_CHECK_V1` — frases mantidas com uma relação de itens em texto corrido (o verificador leu). */ missingList?: string[]; /** `BASE_PRACTICES_IN_TEXT_V1` — há prática da base (B-n) para o caso e nenhuma frase mantida a usa. */ missingBasePractice?: string[] }
 /** Práticas dos colegas que ACRESCENTAM orientação (a pessoa não tem avaliação dela, ou o grupo cumpre e ela não): pedidas na reescrita. */
 const actionablePracticesOf = (brief: FeedbackBrief) => (brief.referencePractices ?? []).filter((practice) => practice.contrast === "REFERENCE_ONLY" || practice.contrast === "REFERENCE_FOLLOWS_PERSON_MISSES")
-/** Pontos de desenvolvimento cuja regra (ou etapa) vem com a fraseologia sugerida pelo argumentário. */
-const phrasedDevelopmentsOf = (brief: FeedbackBrief) => brief.developments.filter((finding) => [...finding.rules, ...(finding.steps ?? []).flatMap((step) => step.rules ?? (step.rule ? [step.rule] : []))].some((rule) => rule.phrasing)).map((finding) => finding.ref)
-/** `acceptedExamples` ausente = a exigência da fraseologia não é conferida (leitores antigos da auditoria). */
-export function usefulnessOf(brief: FeedbackBrief, kept: readonly (Pick<SentenceDecision, "stance" | "refs" | "verdict"> & { id?: string })[], message?: MessageAssessment | null, acceptedExamples?: ReadonlySet<string>): Usefulness {
+export function usefulnessOf(brief: FeedbackBrief, kept: readonly (Pick<SentenceDecision, "stance" | "refs" | "verdict"> & { id?: string })[], message?: MessageAssessment | null): Usefulness {
   const covered = (ref: string) => kept.some((sentence) => sentence.refs.includes(ref) && ((sentence.stance === "GUIDANCE" && sentence.verdict?.specific !== false) || (sentence.stance === "ADJUSTMENT" && sentence.verdict?.specific === true)))
   const missingGuidance = brief.developments.filter((finding) => finding.materiality === "HIGH" && !covered(finding.ref)).map((finding) => finding.ref)
   const recognized = brief.strengths.some((finding) => kept.some((sentence) => sentence.refs.includes(finding.ref) && sentence.stance === "RECOGNITION" && sentence.verdict?.specific !== false))
@@ -348,9 +323,6 @@ export function usefulnessOf(brief: FeedbackBrief, kept: readonly (Pick<Sentence
   const firm = brief.developments.filter((finding) => finding.firmness && finding.firmness.level !== "ORIENT")
   const missingCorrection = firm.filter((finding) => kept.some((sentence) => sentence.refs.includes(finding.ref)) && !kept.some((sentence) => sentence.stance === "ADJUSTMENT" && sentence.refs.includes(finding.ref))).map((finding) => finding.ref)
   const softenedCorrection = firm.length > 0 && message?.firmnessRespected === false ? (message.note ?? "a correção ficou amaciada") : null
-  // `ARGUMENT_PHRASING_V1`: a operação escreveu como dizer — o ponto comunicado que tem essa fraseologia leva um exemplo a partir dela.
-  // Lacuna de utilidade (pede a reescrita), nunca bloqueio: sem exemplo aceito, a mensagem sai sem ele.
-  const missingPhrasingExample = acceptedExamples ? phrasedDevelopmentsOf(brief).filter((ref) => kept.some((sentence) => sentence.refs.includes(ref)) && !acceptedExamples.has(ref)) : []
   // `ALL_DEVELOPMENTS_V1`: todo ponto de desenvolvimento é uma conduta confirmada nesta chamada (o brief só traz os materiais) — ponto
   // que nenhuma frase comunica é lacuna pedida na reescrita (titularidade, 06/10: recapitulação e contato anterior ficaram de fora).
   // Nunca bloqueia: sem reescrita que caiba, a mensagem sai e o ponto não comunicado não é marcado como entregue.
@@ -360,7 +332,11 @@ export function usefulnessOf(brief: FeedbackBrief, kept: readonly (Pick<Sentence
   // aconteceu NESTA chamada. Ponto que pede correção já é cobrado por `missingCorrection`; reavaliação pela regra atual não cobra a época.
   const missingAdjustment = brief.domain !== "MONITORING" ? [] : brief.developments.filter((finding) => (!finding.firmness || finding.firmness.level === "ORIENT") && finding.ruleBasis !== "CURRENT_RULE_REEVALUATION" && kept.some((sentence) => sentence.refs.includes(finding.ref)) && !kept.some((sentence) => sentence.stance === "ADJUSTMENT" && sentence.refs.includes(finding.ref))).map((finding) => finding.ref)
   const missingList = (message?.unlistedRelation ?? []).filter((id) => kept.some((sentence) => sentence.id === id))
-  return { primaryRef: primary?.ref ?? null, primaryCovered, missingGuidance, missingRecognition, missingContext, missingValue, ...(missingPractice.length > 0 ? { missingPractice } : {}), ...(missingCorrection.length > 0 ? { missingCorrection } : {}), ...(softenedCorrection ? { softenedCorrection } : {}), ...(missingPhrasingExample.length > 0 ? { missingPhrasingExample } : {}), ...(missingDevelopment.length > 0 ? { missingDevelopment } : {}), ...(missingAdjustment.length > 0 ? { missingAdjustment } : {}), ...(missingList.length > 0 ? { missingList } : {}) }
+  // `BASE_PRACTICES_IN_TEXT_V1`: a prática da base escolhida para o caso entra no texto (pedida na reescrita, como a dos colegas); nunca
+  // bloqueia — sem reescrita que caiba, a mensagem sai sem ela e o bloco continua mostrando a prática.
+  const baseRefs = new Set((brief.basePractices ?? []).map((practice) => practice.ref))
+  const missingBasePractice = baseRefs.size > 0 && !kept.some((sentence) => sentence.refs.some((ref) => baseRefs.has(ref))) ? [...baseRefs] : []
+  return { primaryRef: primary?.ref ?? null, primaryCovered, missingGuidance, missingRecognition, missingContext, missingValue, ...(missingPractice.length > 0 ? { missingPractice } : {}), ...(missingCorrection.length > 0 ? { missingCorrection } : {}), ...(softenedCorrection ? { softenedCorrection } : {}), ...(missingDevelopment.length > 0 ? { missingDevelopment } : {}), ...(missingAdjustment.length > 0 ? { missingAdjustment } : {}), ...(missingList.length > 0 ? { missingList } : {}), ...(missingBasePractice.length > 0 ? { missingBasePractice } : {}) }
 }
 /** Compatibilidade com leitores antigos da auditoria (`gaps`). */
 export const utilityGapsOf = (brief: FeedbackBrief, kept: readonly Pick<SentenceDecision, "stance" | "refs" | "verdict">[]) => {
@@ -369,11 +345,11 @@ export const utilityGapsOf = (brief: FeedbackBrief, kept: readonly Pick<Sentence
 }
 
 /** Instruções da reescrita: só motivos e FATOS (a regra literal para situar) — nunca a orientação da análise que não foi aprovada. */
-export function repairInstructionsOf(decisions: readonly SentenceDecision[], usefulness: Usefulness, brief: FeedbackBrief, trusted: TrustedReadings): string[] {
+export function repairInstructionsOf(decisions: readonly SentenceDecision[], usefulness: Usefulness, brief: FeedbackBrief): string[] {
   const reasons: string[] = []
   for (const decision of decisions.filter((entry) => !entry.kept)) {
     if (decision.id === "CARD" && decision.reasons.includes("CARD_NOT_IN_TEXT")) reasons.push(`O resumo (card) "${decision.text}" cita ponto(s) que o texto não comunica mais (${decision.refs.join(", ")}): o resumo só pode resumir o que está no texto — reescreva-o a partir das frases mantidas.`)
-    else reasons.push(`A frase "${decision.text}" foi recusada (${decision.reasons.join(", ")}). ${decision.verdict?.note ?? ""}`.trim())
+    else reasons.push(`A frase "${decision.text}" foi recusada (${decision.reasons.join(", ")}). ${decision.reasons.includes("QUOTE_NOT_LITERAL") ? "Um trecho entre aspas não é igual à fala da chamada nem ao texto da regra: cite a fala só pela referência dela ([[Q…]]), sem escrever a fala. " : ""}${decision.verdict?.note ?? ""}`.trim())
   }
   for (const ref of usefulness.missingDevelopment ?? []) {
     const finding = brief.developments.find((entry) => entry.ref === ref)
@@ -393,8 +369,8 @@ export function repairInstructionsOf(decisions: readonly SentenceDecision[], use
   for (const ref of usefulness.missingGuidance) {
     const finding = brief.developments.find((entry) => entry.ref === ref)
     if (!finding) continue
-    const approved = trusted.guidance[ref]
-    reasons.push(`Para ${ref} ("${finding.title}") ainda não há uma orientação praticável: diga o que fazer e em que momento, com base na regra desse ponto${approved ? ` (a leitura conferida pode ajudar: ${approved})` : ""}. Se esse ponto não for o que importa comunicar agora, ele pode ficar de fora — mas o ponto principal (${usefulness.primaryRef ?? "—"}) precisa estar claro.`)
+    // `ANALYSIS_CONTEXT_ONLY_V1`: a orientação da análise (mesmo aprovada) não volta pela reescrita — o que fazer vem só da regra.
+    reasons.push(`Para ${ref} ("${finding.title}") ainda não há uma orientação praticável: diga o que fazer e em que momento, com base na regra desse ponto. Se esse ponto não for o que importa comunicar agora, ele pode ficar de fora — mas o ponto principal (${usefulness.primaryRef ?? "—"}) precisa estar claro.`)
   }
   if (usefulness.missingRecognition) reasons.push("Falta um reconhecimento ESPECÍFICO (RECOGNITION com ref S-n): diga exatamente o que foi bem feito neste caso e por que isso importou nesta situação.")
   if (usefulness.missingContext) reasons.push("Falta dizer, com os fatos do caso, o que a investigação mostrou (CONTEXT).")
@@ -402,15 +378,15 @@ export function repairInstructionsOf(decisions: readonly SentenceDecision[], use
     const practices = (brief.referencePractices ?? []).filter((practice) => usefulness.missingPractice!.includes(practice.ref))
     reasons.push(`Os fatos trazem prática(s) dos colegas com melhor resultado que dão uma orientação concreta (${practices.map((practice) => `${practice.ref} "${practice.title}"`).join("; ")}). Inclua ao menos uma como boa prática que vale reforçar (GUIDANCE ou CONTEXT com a ref P-n), com o número agregado como está — sem nomes, sem dizer que ela explica o resultado de alguém e, quando you é null, sem dizer nem insinuar que a pessoa não faz.`)
   }
+  if ((usefulness.missingBasePractice ?? []).length > 0) {
+    const practices = (brief.basePractices ?? []).filter((practice) => usefulness.missingBasePractice!.includes(practice.ref))
+    const recognition = brief.developments.length === 0
+    reasons.push(`Os fatos trazem boa(s) prática(s) da base para este assunto (${practices.map((practice) => `${practice.ref}: ${practice.howTo}`).join("; ")}). ${recognition ? "Depois dos parabéns, no fim, inclua no máximo uma como um passo a mais" : "Inclua ao menos uma no momento da chamada em que ela cabia, depois do que a regra pede"} (GUIDANCE ou CONTEXT com a ref B-n), em linguagem simples: o que fazer, que quem tem melhor resultado faz isso nesses casos e, se ajudar, para que serve — sem período, contagem, porcentagem nem o nome da prática; nunca como regra, falta ou causa do resultado, e, quando you é null, sem dizer nem insinuar o que a pessoa faz.`)
+  }
   for (const ref of usefulness.missingCorrection ?? []) {
     const finding = brief.developments.find((entry) => entry.ref === ref)
     if (!finding?.firmness) continue
     reasons.push(`O ponto ${ref} ("${finding.title}") pede correção (firmness ${finding.firmness.level}): diga com clareza, numa frase ADJUSTMENT com a ref ${ref}, o que não foi feito naquela chamada e por que importa${finding.firmness.level === "INSIST" ? ", e que esse ponto já tinha sido orientado antes (como está no basis)" : ""} — não só uma sugestão para a próxima vez. Firme sobre a conduta, nunca sobre a pessoa.`)
-  }
-  for (const ref of usefulness.missingPhrasingExample ?? []) {
-    const finding = brief.developments.find((entry) => entry.ref === ref)
-    if (!finding) continue
-    reasons.push(`O ponto ${ref} ("${finding.title}") traz a fraseologia sugerida pelo argumentário da operação (suggestedPhrasing) e ainda não tem um exemplo de como dizer aceito: proponha em examples, com a ref ${ref}, uma fala ao cliente a partir dela — adaptada ao caso, com as lacunas preenchidas só pelos fatos (o prazo da regra, as palavras do cliente) e sem protocolo, telefone ou documento que não esteja nas falas desta chamada.`)
   }
   if (usefulness.softenedCorrection) reasons.push(`A correção ficou amaciada: ${usefulness.softenedCorrection}. Nos pontos com firmness CORRECT ou INSIST, diga diretamente o que não foi feito e o que fazer, sem transformar em sugestão nem esconder atrás de elogio — e sem julgar a pessoa.`)
   if (usefulness.missingValue) reasons.push(`A mensagem como um todo ainda não ajuda o suficiente: ${usefulness.missingValue}. O ponto principal (${usefulness.primaryRef ?? "—"}) precisa ficar claro — o que aconteceu e o que fazer e quando (ajuste), ou a decisão concreta e o que ela significou no caso (reconhecimento) — sem narrar etapas.`)
@@ -524,9 +500,7 @@ export function assembleMessage(brief: FeedbackBrief, decisions: AppliedVerdicts
   const card = plainInlineOf(decisions.card.kept && decisions.card.finalText ? decisions.card.finalText : (sentences.find((sentence) => primaryRef !== null && sentence.refs.includes(primaryRef)) ?? sentences[0]!).text)
   const approved: TrustedReadings = { guidance: { ...trusted.guidance }, why: { ...trusted.why } }
   const paragraphs = [...new Set(sentences.map((entry) => entry.paragraph))].sort((a, b) => a - b).map((number) => paragraphMarkdownOf(sentences.filter((entry) => entry.paragraph === number))).filter((paragraph) => paragraph.length > 0)
-  // Exemplo verificado vai aos detalhes do ponto ("Como melhorar"); de ponto não comunicado, não aparece (o ponto não aparece).
-  const examples = Object.fromEntries((decisions.examples ?? []).filter((entry) => entry.accepted).map((entry) => [entry.ref, entry.text]))
-  let view = feedbackViewOf(brief, { card, paragraphs, sentences, trusted: approved, communicatedRefs, examples })
+  let view = feedbackViewOf(brief, { card, paragraphs, sentences, communicatedRefs })
   const leaksRemoved: ContentLeak[] = []
   // Trava final: leitura aprovada suspeita deixa de aparecer nos detalhes; conteúdo recusado no texto ou no card = sem mensagem.
   for (let round = 0; round < 2; round++) {
@@ -549,7 +523,7 @@ export function assembleMessage(brief: FeedbackBrief, decisions: AppliedVerdicts
         if (finding) delete approved.why[finding.ref]
       }
     }
-    view = feedbackViewOf(brief, { card, paragraphs, sentences, trusted: approved, communicatedRefs, examples })
+    view = feedbackViewOf(brief, { card, paragraphs, sentences, communicatedRefs })
     if (round === 1 && contentLeaksOf({ card, sentences, view }, brief, forbidden).length > 0) return null
   }
   return { card, paragraphs, sentences, view, text: plainTextOf(view), source: "WRITER", trusted: approved, leaksRemoved, communicatedRefs }

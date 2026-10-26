@@ -229,10 +229,10 @@ describe("brief e composição (utilidade ≠ factualidade)", () => {
     const key = `CALL:${INTERACTION_ID}:${keys.get(analysis.criteria.find((criterion) => criterion.text.includes("nascimento"))!.lineKey)}`
     const history = new Map([[keys.get(analysis.criteria.find((criterion) => criterion.text.includes("nascimento"))!.lineKey)!, { assessed: 4, notMet: 3, met: 1 }]])
     expect(brief(new Set([key])).suppressed).toEqual([{ findingKey: key, title: "Confirmar data de nascimento", reason: "ALREADY_DELIVERED" }])
-    expect(brief(new Set(), history).developments[0]!.history).toBe("Nas 4 chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em 3.")
+    expect(brief(new Set(), history).developments[0]!.history).toBe("Nas chamadas anteriores, esta etapa não foi cumprida em 3 de 4 analisadas em que se aplicava.")
     // Sem reincidência: o fato é que ela costuma ser cumprida — dito como o número mostra (antes saía "não foi cumprida em 0").
     const clean = new Map([[keys.get(analysis.criteria.find((criterion) => criterion.text.includes("nascimento"))!.lineKey)!, { assessed: 4, notMet: 0, met: 4 }]])
-    expect(brief(new Set(), clean).developments[0]!.history).toBe("Nas 4 chamadas anteriores analisadas em que esta etapa se aplicava, ela foi cumprida em todas.")
+    expect(brief(new Set(), clean).developments[0]!.history).toBe("Nas chamadas anteriores, esta etapa foi cumprida em todas as 4 analisadas em que se aplicava.")
   })
   it("checagens locais: código interno, número sem fonte e stance × ref", () => {
     const value = brief()

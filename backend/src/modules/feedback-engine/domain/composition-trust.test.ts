@@ -105,7 +105,7 @@ describe("contrato de confiança — leitura do modelo nunca vira fato", () => {
     expect(message!.sentences.filter((sentence) => sentence.source === "SYSTEM")).toEqual([])
   })
 
-  it("orientação APROVADA pelo verificador aparece só nos detalhes ('como aplicar') — nunca é colada na conversa; ajuste específico do redator basta", () => {
+  it("orientação APROVADA pelo verificador nunca é colada na conversa nem nos detalhes (`LITERAL_QUOTES_V1`); ajuste específico do redator basta", () => {
     const brief = inventedBrief()
     brief.developments[0]!.guidance = { moment: "Logo depois de confirmar o nome", condition: null, action: "confirme a data de nascimento do titular" }
     const approved = compose(brief, {
@@ -113,7 +113,7 @@ describe("contrato de confiança — leitura do modelo nunca vira fato", () => {
       card: { text: "Confirme a data de nascimento do titular.", refs: ["A1"] },
     }, [verdict("F1", "SUPPORTED", false), verdict("CARD", "SUPPORTED"), verdict("G-A1", "SUPPORTED", true)])
     expect(approved.message!.sentences.filter((sentence) => sentence.source === "SYSTEM")).toEqual([])
-    expect(approved.message!.view.developments[0]!.howToApply).toBe("Na próxima vez, logo depois de confirmar o nome: confirme a data de nascimento do titular.")
+    expect(approved.message!.view.developments[0]!.howToApply).toBeNull()
     const specific = compose(brief, {
       sentences: [{ text: "Logo depois de confirmar o nome, faltou pedir a data de nascimento antes de enviar a segunda via.", stance: "ADJUSTMENT", refs: ["A1"], paragraph: 1 }],
       card: { text: "Confirme a data de nascimento do titular.", refs: ["A1"] },
@@ -121,13 +121,13 @@ describe("contrato de confiança — leitura do modelo nunca vira fato", () => {
     expect(specific.message!.sentences.filter((sentence) => sentence.source === "SYSTEM")).toEqual([])
   })
 
-  it("'por que importa' inventado (consequência) não aparece em 'o que manter' nem nos detalhes; aprovado, aparece", () => {
+  it("'por que importa' da análise não aparece em 'o que manter' nem nos detalhes — recusado ou aprovado, fica a afirmação do sistema", () => {
     const brief = inventedBrief()
     const refused = compose(brief, { sentences: [{ text: "Você confirmou se era fatura ou parcelamento antes de enviar.", stance: "RECOGNITION", refs: ["S1"], paragraph: 1 }, { text: "Faltou a data de nascimento; peça logo depois do nome.", stance: "GUIDANCE", refs: ["A1"], paragraph: 2 }], card: { text: "Peça a data de nascimento logo depois do nome.", refs: ["A1"] } }, [verdict("F1", "SUPPORTED", true), verdict("F2", "SUPPORTED", true), verdict("CARD", "SUPPORTED"), verdict("G-A1", "UNSUPPORTED_ADDITION"), verdict("W-S1", "UNSUPPORTED_ADDITION")])
     expect(refused.message!.view.maintain!.evidence[0]!.statement).toBe("Esta etapa foi cumprida nesta chamada.")
     expect(surfaces(refused.message)).not.toMatch(/fideliza|negociações indevidas/i)
     const approvedWhy = compose(brief, { sentences: [{ text: "Você confirmou se era fatura ou parcelamento antes de enviar.", stance: "RECOGNITION", refs: ["S1"], paragraph: 1 }, { text: "Faltou a data de nascimento; peça logo depois do nome.", stance: "GUIDANCE", refs: ["A1"], paragraph: 2 }], card: { text: "Peça a data de nascimento logo depois do nome.", refs: ["A1"] } }, [verdict("F1", "SUPPORTED", true), verdict("F2", "SUPPORTED", true), verdict("CARD", "SUPPORTED"), verdict("W-S1", "SUPPORTED")])
-    expect(approvedWhy.message!.view.maintain!.evidence[0]!.statement).toBe(INVENTED_WHY)
+    expect(approvedWhy.message!.view.maintain!.evidence[0]!.statement).toBe("Esta etapa foi cumprida nesta chamada.")
   })
 
   it("reescrita do verificador que REMOVE uma negação ou condição nunca é aceita: a frase recusada sai inteira", () => {

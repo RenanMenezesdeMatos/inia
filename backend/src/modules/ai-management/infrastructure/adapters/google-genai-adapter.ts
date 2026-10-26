@@ -2,7 +2,9 @@ import { AiProviderError } from "../../../../shared/application/model-routing/ai
 import { usageFromGeminiPayload, type LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
 import type { ModelCapabilities } from "../../domain/ai-capabilities.js"
-import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
+import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
+
+type AiStreamExecuteCall = Extract<AiExecuteResult, { kind: "functionCalls" }>["calls"][number]
 import { joinUrl, rawStreamRequest, readSse, requestJson, testByListing } from "./http.js"
 
 /**
@@ -62,13 +64,15 @@ export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProvid
   }
 
   // Schema da etapa no mesmo lugar em que o cliente legado o manda (`generationConfig.responseSchema`, só com o modo JSON).
-  const body = (request: Pick<AiExecuteRequest, "systemPrompt" | "contents" | "maxOutputTokens" | "responseSchema"> & { tools?: AiExecuteRequest["tools"]; structuredOutput?: boolean }) => {
+  // Menos raciocínio = `thinkingConfig.thinkingLevel` (o runtime só pede para modelo com a capacidade REASONING).
+  const body = (request: Pick<AiExecuteRequest, "systemPrompt" | "contents" | "maxOutputTokens" | "responseSchema" | "reasoningEffort"> & { tools?: AiExecuteRequest["tools"]; structuredOutput?: boolean }) => {
     const json = Boolean(request.structuredOutput) && !(request.tools && request.tools.length > 0)
+    const generationConfig = { ...(json ? { responseMimeType: "application/json" } : {}), ...(json && request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}), ...(request.reasoningEffort === "LOW" ? { thinkingConfig: { thinkingLevel: "low" } } : {}) }
     return JSON.stringify({
       contents: toGeminiContents(request.contents),
       systemInstruction: { parts: [{ text: request.systemPrompt }] },
       ...(request.tools && request.tools.length > 0 ? { tools: [{ functionDeclarations: request.tools }] } : {}),
-      ...(request.structuredOutput || request.maxOutputTokens ? { generationConfig: { ...(json ? { responseMimeType: "application/json" } : {}), ...(json && request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}) } } : {}),
+      ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {}),
     })
   }
 
@@ -88,6 +92,40 @@ export function createGoogleGenAiAdapter(fetchImpl: FetchLike = fetch): AiProvid
       if (calls.length > 0) return { kind: "functionCalls", calls, usage, model, durationMs, finishReason }
       if (parts.length === 0) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA não devolveu nenhuma resposta." })
       return { kind: "text", text: parts.map((part) => part.text ?? "").join(""), usage, model, durationMs, finishReason }
+    },
+    async streamExecute(connection, providerModelId, request, timeoutMs, onText): Promise<AiStreamExecuteResult> {
+      const startedAt = Date.now()
+      const { response, deadline } = await rawStreamRequest(fetchImpl, connection, joinUrl(connection.baseUrl, `models/${encodeURIComponent(providerModelId)}:streamGenerateContent?alt=sse`), { method: "POST", headers: headers(connection), body: body(request) }, timeoutMs)
+      const calls: AiStreamExecuteCall[] = []
+      let text = ""
+      let streamedChars = 0
+      let firstTokenMs: number | null = null
+      let usage: LlmUsage = usageFromGeminiPayload(null)
+      let model = providerModelId
+      let finishReason: string | null = null
+      await readSse(response, (payload) => {
+        const candidate = (payload as GeminiResponse).candidates?.[0]
+        for (const part of (candidate?.content?.parts ?? []) as (GeminiPart & { thought?: boolean })[]) {
+          if (part.functionCall) {
+            calls.push({ name: part.functionCall.name, args: part.functionCall.args ?? {}, ...(part.functionCall.id ? { id: part.functionCall.id } : {}), ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}) })
+            continue
+          }
+          if (part.thought || !part.text) continue
+          text += part.text
+          firstTokenMs ??= Date.now() - startedAt
+          if (calls.length === 0) {
+            streamedChars += part.text.length
+            onText(part.text)
+          }
+        }
+        if (candidate?.finishReason) finishReason = candidate.finishReason
+        if ("usageMetadata" in payload) usage = usageFromGeminiPayload(payload)
+        if (typeof payload.modelVersion === "string") model = payload.modelVersion
+      }, deadline)
+      const durationMs = Date.now() - startedAt
+      if (calls.length > 0) return { kind: "functionCalls", calls, usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
+      if (!text) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA não devolveu nenhuma resposta." })
+      return { kind: "text", text, usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
     },
     async stream(connection, providerModelId, request, timeoutMs, onChunk): Promise<AiStreamResult> {
       const startedAt = Date.now()

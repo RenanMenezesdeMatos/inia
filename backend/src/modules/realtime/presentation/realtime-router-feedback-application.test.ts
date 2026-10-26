@@ -295,4 +295,12 @@ describe("sessão de feedback com consultas aos especialistas", () => {
     expect(specialistCalls[0]![7]).toEqual({ selectSupportMaterials: false, collaboratorConversation: true })
     expect(relations).toHaveLength(0)
   })
+
+  it("voz: as palavras da pessoa (`utterance`) vão para a busca do especialista; a pergunta dele continua a `query` do modelo de voz", async () => {
+    const { app, specialistCalls } = setupConsultation()
+    const response = await request(app).post("/api/v1/realtime/tool-call").send({ toolName: "consultar_faturamento", query: "Procedimento de registro de contestação de fatura no atendimento B2C, passo a passo", utterance: "Como faço para registrar a contestação da fatura?", conversationId: null, turnId: "voice-general-0002", callId: "call-1" })
+    expect(response.status).toBe(200)
+    expect(specialistCalls[0]![3]).toBe("Procedimento de registro de contestação de fatura no atendimento B2C, passo a passo")
+    expect(specialistCalls[0]![7]).toEqual({ selectSupportMaterials: false, collaboratorConversation: true, askerQuestion: "Como faço para registrar a contestação da fatura?" })
+  })
 })

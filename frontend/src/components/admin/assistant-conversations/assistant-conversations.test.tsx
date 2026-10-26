@@ -105,6 +105,24 @@ describe("Conversas com a INIA — leitura da conversa", () => {
     expect(screen.getByText(/Somente leitura/)).toBeInTheDocument()
   })
 
+  it("curtir/descurtir de quem perguntou aparece na resposta da INIA, só para leitura (sem botões)", async () => {
+    service.fetchMonitoredMessages.mockResolvedValue({
+      conversation: conversation("c1"),
+      messages: [
+        message("Qual o prazo?", "user", "1"),
+        message("Até 5 dias úteis.", "assistant", "2", { rating: "up" }),
+        message("Não sei informar.", "assistant", "3", { rating: "down" }),
+        message("Sem avaliação.", "assistant", "4", { rating: null }),
+      ],
+      hasMore: false,
+    })
+    renderWithQuery(<ConversationThread conversationId="c1" />)
+    const bubbles = await screen.findAllByTestId("monitored-message")
+    expect(bubbles.map((bubble) => within(bubble).queryByTestId("message-rating")?.textContent ?? null)).toEqual([null, "marcada como útil", "marcada como não útil", null])
+    expect(within(bubbles[1]!).getByLabelText("Quem perguntou marcou esta resposta como útil")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Resposta útil|não foi útil/ })).toBeNull()
+  })
+
   it("cabeçalho diz o tipo, o assunto, quem conversou e quantas mensagens; a apresentação do feedback vem marcada", async () => {
     service.fetchMonitoredMessages.mockResolvedValue({
       conversation: conversation("c1", { origin: "FEEDBACK", title: "Troca de titularidade", messageCount: 3, voiceMessageCount: 1 }),

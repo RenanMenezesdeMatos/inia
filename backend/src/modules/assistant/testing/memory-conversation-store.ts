@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { DEFAULT_CONVERSATION_INACTIVITY_HOURS, decideConversationForWrite, encodeCursor, isInactive, previewOf, type ConversationRecord, type MessageCursor } from "../domain/assistant-conversation.js"
+import { ratingView, sameRating, type AssistantRatingValue } from "../domain/assistant-interaction-rating.js"
 import { analyticsCardsOf, clarificationPayloadOf, clarificationScopeOf, messageOriginOf, type ConversationMessage, type ConversationScope, type ConversationStore, type ConversationSummary, type MessageInput } from "../application/assistant-conversations.js"
 
 /**
@@ -8,11 +9,14 @@ import { analyticsCardsOf, clarificationPayloadOf, clarificationScopeOf, message
  * para testar rotas e fluxos sem banco. Não é usado em produção.
  */
 export type MemoryMessage = MessageInput & { id: string; seq: number }
+/** Linha do histórico de curtir/descurtir (mesmas regras da tabela `assistant_interaction_ratings`). */
+export type MemoryRating = { personId: string; conversationId: string; interactionId: string; value: AssistantRatingValue; createdAt: Date; supersededAt: Date | null }
 
 export function createMemoryConversationStore(options: { inactivityHours?: number } = {}) {
   const inactivityMs = (options.inactivityHours ?? DEFAULT_CONVERSATION_INACTIVITY_HOURS) * 3_600_000
   const conversations: ConversationRecord[] = []
   const messages: MemoryMessage[] = []
+  const ratings: MemoryRating[] = []
   let seq = 0
   const owned = (scope: ConversationScope, id: string) => conversations.find((c) => c.id === id && c.organizationId === scope.organizationId && c.ownerPersonId === scope.ownerPersonId) ?? null
   const active = (scope: ConversationScope) => conversations.find((c) => c.status === "ACTIVE" && (c.origin ?? "USER") === "USER" && c.organizationId === scope.organizationId && c.ownerPersonId === scope.ownerPersonId) ?? null
@@ -123,6 +127,19 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
       const conversation = owned(scope, id)
       return conversation ? summary(conversation) : null
     },
+    async rate(scope, input, now) {
+      const message = messages.find((m) => m.id === input.interactionId && m.conversationId === input.conversationId && m.role === "assistant")
+      if (!message || !owned(scope, input.conversationId)) throw new DomainError("Resposta não encontrada.", "ASSISTANT_MESSAGE_NOT_FOUND", 404)
+      const current = ratings.find((r) => r.personId === scope.ownerPersonId && r.interactionId === input.interactionId && !r.supersededAt) ?? null
+      if (sameRating(current?.value ?? null, input.value)) return ratingView(current?.value)
+      if (current) current.supersededAt = now
+      ratings.push({ personId: scope.ownerPersonId, conversationId: input.conversationId, interactionId: input.interactionId, value: input.value, createdAt: now, supersededAt: null })
+      return ratingView(input.value)
+    },
+    async ratingsOf(scope, interactionIds) {
+      const current = ratings.filter((r) => r.personId === scope.ownerPersonId && interactionIds.includes(r.interactionId) && !r.supersededAt && r.value !== "NONE")
+      return new Map(current.map((r) => [r.interactionId, ratingView(r.value)!] as const))
+    },
   }
-  return { store, conversations, messages, seedWorkflowConversation, seedFeedbackConversation, completeConversation }
+  return { store, conversations, messages, ratings, seedWorkflowConversation, seedFeedbackConversation, completeConversation }
 }

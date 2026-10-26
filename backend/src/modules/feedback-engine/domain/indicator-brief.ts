@@ -1,6 +1,6 @@
 import { formatIndicatorValue } from "../../indicators/domain/indicator-definition.js"
-import { briefQuoteOf, cleanHeading, criterionTitleOf, materialsOf, type BriefFinding, type BriefReferencePractice, type BriefSubjects, type FeedbackBrief } from "./feedback-brief.js"
-import { ATTRIBUTION_LIMIT, isAdverseFocus, PATTERN_MINIMUM_ELIGIBLE, type CriterionPattern, type IndicatorInvestigation, type ReferencePractice, type SegmentComparison, type SegmentEvidence } from "./indicator-investigation.js"
+import { briefQuoteOf, cleanHeading, criterionTitleOf, materialsOf, type BriefFinding, type BriefReferencePractice, type BriefRule, type BriefSubjects, type FeedbackBrief } from "./feedback-brief.js"
+import { ATTRIBUTION_LIMIT, isAdverseFocus, PATTERN_MINIMUM_ELIGIBLE, type CriterionPattern, type IndicatorInvestigation, type PracticeRule, type ReferencePractice, type SegmentComparison, type SegmentEvidence } from "./indicator-investigation.js"
 import { firmnessOf } from "./firmness.js"
 import { COMPOSITION_VERSION } from "./versions.js"
 
@@ -70,6 +70,18 @@ export function subjectsOf(investigation: IndicatorInvestigation): BriefSubjects
   return { proxyKind: localization.proxy.kind, description: localization.proxy.description, previousLabel: localization.windows.previous.label, currentLabel: localization.windows.current.label, rows }
 }
 
+/**
+ * Assuntos para as boas práticas do feedback de indicador (`BEST_PRACTICE_SELECTION_V1`): onde a investigação localizou o problema;
+ * sem localização, os que pioraram; sem isso, os três de maior volume — sempre na ordem de `subjectsOf`. Só escolhe a seção de boas
+ * práticas (montada depois da redação); o texto do feedback não muda.
+ */
+export function practiceSubjectKeysOf(investigation: IndicatorInvestigation): string[] {
+  const rows = subjectsOf(investigation)?.rows ?? []
+  const focus = rows.filter((row) => row.focus)
+  const worse = rows.filter((row) => row.direction === "WORSE")
+  return (focus.length > 0 ? focus : worse.length > 0 ? worse : rows.slice(0, 3)).map((row) => row.key)
+}
+
 const PRACTICE_ORDER: Record<BriefReferencePractice["contrast"], number> = { REFERENCE_FOLLOWS_PERSON_MISSES: 0, REFERENCE_ONLY: 1, BOTH_FOLLOW: 2, REFERENCE_ALSO_MISSES: 3 }
 /** Práticas do grupo de referência que não estão presas a um ponto do brief (`REFERENCE_PRACTICES_V1`), como fatos agregados P-n.
  * Título repetido de um ponto do brief (mesma seção, outra regra) leva a frase que abre a regra, para não confundir as duas. */
@@ -86,7 +98,7 @@ function referencePracticesOf(investigation: IndicatorInvestigation, used: Reado
       return {
         ref: `P${index + 1}`,
         title: usedTitles.has(base) && opening && opening !== base ? `${base} — ${opening.charAt(0).toLowerCase()}${opening.slice(1)}` : base,
-        rule: { text: practice.text, section: cleanHeading(practice.heading), documentId: "", documentTitle: practice.documentTitle },
+        rule: { text: practice.text, section: cleanHeading(practice.heading), documentId: "", documentTitle: practice.documentTitle, ...((practice.appliesTo ?? []).length > 0 ? { appliesTo: practice.appliesTo! } : {}) },
         group: `Entre os ${who}, ${practiceNumbersOf(practice, investigation)}.`,
         you: practice.person ? `Nas suas chamadas analisadas do período, em ${practice.person.met} de ${practice.person.eligible}.` : null,
         contrast: practice.contrast,
@@ -109,7 +121,13 @@ export const practiceTitleOf = (entry: { text: string; heading: string | null; p
 /** Como o recorte entra numa frase de fato: "No assunto X" ou "Nas chamadas do recorte dia 14/08" (recorte descoberto). */
 const scopeOf = (entry: Pick<SegmentEvidence, "scope" | "segmentLabel">) => entry.scope ?? `No assunto ${entry.segmentLabel}`
 
-function patternFinding(pattern: CriterionPattern, investigation: IndicatorInvestigation, scope: string, sampleNote: string, kind: "DEVELOPMENT" | "STRENGTH", priorOrientation: { dateLabel: string } | null = null): BriefFinding {
+/** `PRODUCT_IN_FEEDBACK_V1`: a regra do padrão como fato — com o "Vale para", o "evitar" e o "deve/pode" (a mesma marcação da monitoria). */
+const briefRuleOfPractice = (rule: PracticeRule): BriefRule => ({ text: rule.text, section: cleanHeading(rule.heading), documentId: rule.documentId, documentTitle: rule.documentTitle, ...(rule.sourceKind ? { sourceKind: rule.sourceKind } : {}), ...((rule.appliesTo ?? []).length > 0 ? { appliesTo: rule.appliesTo! } : {}), ...(rule.avoid ? { avoid: true } : {}), ...(rule.requirement ? { requirement: rule.requirement } : {}) })
+/** Fala sugerida do argumentário de UMA chamada do padrão (chave `interação|script`): da versão que a análise daquela chamada usou. */
+export type ExamplePhrasings = ReadonlyMap<string, { name: string; text: string }>
+export const examplePhrasingKeyOf = (interactionId: string, scriptId: string) => `${interactionId}|${scriptId}`
+
+function patternFinding(pattern: CriterionPattern, investigation: IndicatorInvestigation, scope: string, sampleNote: string, kind: "DEVELOPMENT" | "STRENGTH", priorOrientation: { dateLabel: string } | null = null, examplePhrasings?: ExamplePhrasings): BriefFinding {
   const deviations = pattern.notMet + pattern.partial
   const example = pattern.examples.find((entry) => entry.rationale) ?? pattern.examples[0]
   // `observed` = só os NÚMEROS do sistema; a justificativa de um exemplo (leitura do modelo) fica em `reading`, fora dos fatos.
@@ -130,10 +148,17 @@ function patternFinding(pattern: CriterionPattern, investigation: IndicatorInves
     status: "PATTERN",
     observed,
     reading: example?.rationale ?? null,
-    quotes: pattern.examples.flatMap((entry) => (entry.quote ? [briefQuoteOf(entry.quote)] : [])).slice(0, 2),
+    // `PATTERN_EXAMPLE_CONTEXT_V1` + `PRODUCT_IN_FEEDBACK_V1`: cada fala de exemplo leva o produto da SOLICITAÇÃO e a regra da chamada de
+    // onde veio — com o "Vale para" e a fala do argumentário da versão que a análise DAQUELA chamada usou (nunca a do fim do período).
+    quotes: pattern.examples.flatMap((entry) => {
+      if (!entry.quote) return []
+      if (!entry.rule) return [briefQuoteOf(entry.quote)]
+      const phrasing = entry.argument && !entry.rule.avoid ? examplePhrasings?.get(examplePhrasingKeyOf(entry.interactionId, entry.argument.scriptId)) : undefined
+      return [{ ...briefQuoteOf(entry.quote), call: { product: entry.product ?? null, rule: { ...briefRuleOfPractice(entry.rule), ...(phrasing ? { phrasing: { scriptName: phrasing.name, text: phrasing.text } } : {}) } } }]
+    }).slice(0, 2),
     absence: null,
     declaredOnly: false,
-    rules: (pattern.memberRules ?? [{ documentId: pattern.documentId, documentTitle: pattern.documentTitle, heading: pattern.heading, text: pattern.text, ...(pattern.sourceKind ? { sourceKind: pattern.sourceKind } : {}) }]).map((rule) => ({ text: rule.text, section: cleanHeading(rule.heading), documentId: rule.documentId, documentTitle: rule.documentTitle, ...(rule.sourceKind ? { sourceKind: rule.sourceKind } : {}) })),
+    rules: (pattern.memberRules ?? [pattern.examples.find((entry) => entry.rule)?.rule ?? { documentId: pattern.documentId, documentTitle: pattern.documentTitle, heading: pattern.heading, text: pattern.text, ...(pattern.sourceKind ? { sourceKind: pattern.sourceKind } : {}) }]).map(briefRuleOfPractice),
     ...((pattern.reevaluated ?? 0) > 0 ? { ruleBasis: "CURRENT_RULE_REEVALUATION" as const } : {}),
     guidance: kind === "DEVELOPMENT" && example?.guidance ? { moment: example.guidance.moment, condition: example.guidance.condition, action: example.guidance.action } : null,
     whyItMatters: null,
@@ -146,7 +171,7 @@ function patternFinding(pattern: CriterionPattern, investigation: IndicatorInves
   }
 }
 
-export function buildIndicatorBrief(investigation: IndicatorInvestigation, input: { documentVersions: ReadonlyMap<string, number>; delivered: ReadonlySet<string>; factualWhenInconclusive: boolean; priorOrientations?: ReadonlyMap<string, string>; argumentPhrasings?: ReadonlyMap<string, { name: string; text: string }> }): FeedbackBrief {
+export function buildIndicatorBrief(investigation: IndicatorInvestigation, input: { documentVersions: ReadonlyMap<string, number>; delivered: ReadonlySet<string>; factualWhenInconclusive: boolean; priorOrientations?: ReadonlyMap<string, string>; examplePhrasings?: ExamplePhrasings }): FeedbackBrief {
   const { official, localization } = investigation
   const officialLines = [
     { label: "Resultado oficial", value: `${fmt(official.value, official.unit)} (${official.periodLabel})` },
@@ -166,7 +191,7 @@ export function buildIndicatorBrief(investigation: IndicatorInvestigation, input
       }
       if (isAdverseFocus(entry.focusReason) && pattern.classification === "DEVELOPMENT_PATTERN") {
         const prior = input.priorOrientations?.get(pattern.criterionKey)
-        const finding = patternFinding(pattern, investigation, scopeOf(entry), entry.sampleNote, "DEVELOPMENT", prior ? { dateLabel: prior } : null)
+        const finding = patternFinding(pattern, investigation, scopeOf(entry), entry.sampleNote, "DEVELOPMENT", prior ? { dateLabel: prior } : null, input.examplePhrasings)
         if (input.delivered.has(finding.findingKey)) suppressed.push({ findingKey: finding.findingKey, title: finding.title, reason: "ALREADY_DELIVERED" })
         else developments.push(finding)
       } else if (pattern.classification === "STRENGTH_PATTERN" && (entry.focusReason === "IMPROVED" || investigation.conclusion === "STRENGTH_PATTERN" || (resultGood && !isAdverseFocus(entry.focusReason)))) {
@@ -174,7 +199,7 @@ export function buildIndicatorBrief(investigation: IndicatorInvestigation, input
         // (fato com denominador) é reconhecível mesmo quando um dia fora do padrão foi examinado e a conclusão deixou de ser "padrão de
         // força" — antes ela sumia do brief e a mensagem ficava só com o número. Nunca como causa do resultado (o redator e o
         // verificador cuidam disso); recorte que piorou nunca gera reconhecimento.
-        const finding = patternFinding(pattern, investigation, scopeOf(entry), entry.sampleNote, "STRENGTH")
+        const finding = patternFinding(pattern, investigation, scopeOf(entry), entry.sampleNote, "STRENGTH", null, input.examplePhrasings)
         if (!input.delivered.has(finding.findingKey)) strengths.push(finding)
       }
     }
@@ -190,13 +215,8 @@ export function buildIndicatorBrief(investigation: IndicatorInvestigation, input
   }
   developments.slice(0, 3).forEach((finding, index) => (finding.ref = `A${index + 1}`))
   strengths.slice(0, 3).forEach((finding, index) => (finding.ref = `S${index + 1}`))
-  // `ARGUMENT_PHRASING_V1`: regra de padrão que vem de um argumentário leva a fraseologia sugerida dele (modelo de como dizer, fato).
-  for (const finding of developments) {
-    finding.rules = finding.rules.map((rule) => {
-      const phrasing = rule.sourceKind === "ARGUMENT_SCRIPT" ? input.argumentPhrasings?.get(rule.documentId) : undefined
-      return phrasing ? { ...rule, phrasing: { scriptName: phrasing.name, text: phrasing.text } } : rule
-    })
-  }
+  // `ARGUMENT_PHRASING_V1` (V19, `PRODUCT_IN_FEEDBACK_V1`): a fraseologia do argumentário vem POR CHAMADA, na fala de exemplo (a versão que a
+  // análise daquela chamada usou, com o produto dela) — nunca uma fala do fim do período para o padrão inteiro, que mistura produtos.
 
   const context: string[] = []
   const overall = localization.overall

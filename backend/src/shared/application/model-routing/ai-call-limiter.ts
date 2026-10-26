@@ -53,9 +53,15 @@ export type AiCallLimiterConfig = {
   reservedInteractive: number
   /** Quanto uma chamada interativa espera por vaga antes de desistir com erro claro (o lote espera o quanto precisar). */
   interactiveQueueTimeoutMs: number
-  /** Espera antes da única nova tentativa interativa (sem Retry-After) e o teto dela (com Retry-After maior, espera só o teto). */
+  /** Espera antes da 1ª nova tentativa interativa (sem Retry-After; dobra a cada nova) e o teto de cada espera (com Retry-After
+   * maior, espera só o teto). */
   interactiveRetryDelayMs: number
   interactiveMaxRetryWaitMs: number
+  /** O CHAT TEM PRIORIDADE: novas tentativas da interativa depois de 429 (503 = uma só), dentro de `interactiveRetryBudgetMs`
+   * de espera somada; e quanto o 429 dela pausa os lotes deste processo (o portão compartilhado pausa os das outras instâncias). */
+  interactiveRateLimitRetries: number
+  interactiveRetryBudgetMs: number
+  interactiveBatchPauseMs: number
   /** Novas tentativas do lote depois de 429/503 (total = 1 + isto). */
   batchMaxRetries: number
   /** Backoff exponencial do lote: base × 2^(tentativa−1), com jitter, nunca acima do teto — o Retry-After também respeita o teto. */
@@ -67,7 +73,8 @@ export type AiCallLimiterConfig = {
  * Padrões (escolhidos para não mudar quem não configurar nada, só impedir o estouro): 16 chamadas por processo, 4 reservadas ao
  * chat (lote até 12 — o worker roda 8 matrículas e cada nó dispara no máximo ~4 chamadas paralelas); interativa desiste depois
  * de 20 s na fila; lote repete até 5 vezes com backoff de 2 s → 60 s (no pior caso ~2 min de espera antes de a falha voltar
- * para a política de retentativa do nó do Workflow, que tenta de novo em 5 min).
+ * para a política de retentativa do nó do Workflow, que tenta de novo em 5 min). Chat em 429 (decisão do usuário, 21/10: "a
+ * prioridade é sempre do CHAT"): pausa os lotes por 15 s e tenta até mais 4 vezes (0,75 → 1,5 → 3 → 6 s), no máximo 15 s de espera.
  */
 export const DEFAULT_AI_CALL_LIMITER_CONFIG: AiCallLimiterConfig = {
   enabled: true,
@@ -75,7 +82,10 @@ export const DEFAULT_AI_CALL_LIMITER_CONFIG: AiCallLimiterConfig = {
   reservedInteractive: 4,
   interactiveQueueTimeoutMs: 20_000,
   interactiveRetryDelayMs: 750,
-  interactiveMaxRetryWaitMs: 2_000,
+  interactiveMaxRetryWaitMs: 6_000,
+  interactiveRateLimitRetries: 4,
+  interactiveRetryBudgetMs: 15_000,
+  interactiveBatchPauseMs: 15_000,
   batchMaxRetries: 5,
   batchBackoffBaseMs: 2_000,
   batchBackoffMaxMs: 60_000,
@@ -321,15 +331,22 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
 
   type Decision = { retry: true; waitMs: number; pauseBatchMs: number; signal: AiRetrySignal } | { retry: false; error: unknown }
 
-  function decide(call: AiLimitedCall, attempt: number, error: unknown): Decision {
+  function decide(call: AiLimitedCall, attempt: number, error: unknown, waitedMs: number): Decision {
     const signal = retrySignalOf(error)
     if (!signal || call.noRetry || call.signal?.aborted) return { retry: false, error }
     const canRetry = call.canRetry ? call.canRetry() : true
     if (call.priority === "INTERACTIVE") {
-      const allowed = canRetry && attempt === 1 && !(signal.kind === "UNAVAILABLE" && signal.providerAlreadyRetried)
-      if (!allowed) return { retry: false, error: signal.kind === "RATE_LIMIT" ? new AiProviderError("RATE_LIMIT", { message: INTERACTIVE_RATE_LIMIT_MESSAGE, httpStatus: 429, retryAfterMs: signal.retryAfterMs }) : error }
-      const base = Math.min(signal.retryAfterMs ?? config.interactiveRetryDelayMs, config.interactiveMaxRetryWaitMs)
-      return { retry: true, waitMs: Math.round(Math.min(config.interactiveMaxRetryWaitMs, base + random() * base * 0.25)), pauseBatchMs: 0, signal }
+      const rateLimited = signal.kind === "RATE_LIMIT"
+      // O chat tem prioridade: em 429, os lotes param (aqui e, pelo portão, nas outras instâncias) enquanto ele tenta de novo.
+      const pauseBatchMs = rateLimited ? config.interactiveBatchPauseMs : 0
+      const retries = rateLimited ? config.interactiveRateLimitRetries : 1
+      const giveUp = (): Decision => ({ retry: false, error: rateLimited ? new AiProviderError("RATE_LIMIT", { message: INTERACTIVE_RATE_LIMIT_MESSAGE, httpStatus: 429, retryAfterMs: signal.retryAfterMs }) : error })
+      if (!canRetry || attempt > retries || (signal.kind === "UNAVAILABLE" && signal.providerAlreadyRetried)) return giveUp()
+      const grown = config.interactiveRetryDelayMs * 2 ** (attempt - 1)
+      const base = Math.min(Math.max(signal.retryAfterMs ?? 0, grown), config.interactiveMaxRetryWaitMs)
+      const waitMs = Math.round(Math.min(config.interactiveMaxRetryWaitMs, base + random() * base * 0.25))
+      if (waitedMs + waitMs > config.interactiveRetryBudgetMs) return giveUp()
+      return { retry: true, waitMs, pauseBatchMs, signal }
     }
     if (!canRetry || attempt > config.batchMaxRetries) return { retry: false, error }
     const backoff = Math.min(config.batchBackoffMaxMs, config.batchBackoffBaseMs * 2 ** (attempt - 1))
@@ -350,6 +367,7 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
       if (!config.enabled) return records.run({ priority: call.priority, priorityReason: call.priorityReason, attempt: 1, queueWaitMs: 0, queueReason: "NONE" }, fn)
       let attempt = 1
       let backoffWaitMs = 0
+      let totalBackoffMs = 0
       for (;;) {
         const slot = await acquire(call.priority, call.priority === "INTERACTIVE" ? config.interactiveQueueTimeoutMs : null, call.useCase, call.signal)
         const record: AiCallLimiterRecord = { priority: call.priority, priorityReason: call.priorityReason, attempt, queueWaitMs: backoffWaitMs + slot.waitedMs, queueReason: attempt > 1 ? "RETRY_BACKOFF" : slot.reason }
@@ -358,15 +376,18 @@ export function createAiCallLimiter(rawConfig: AiCallLimiterConfig = DEFAULT_AI_
         try {
           return await records.run(record, fn)
         } catch (error) {
-          decision = decide(call, attempt, error)
+          decision = decide(call, attempt, error, totalBackoffMs)
+          // 429 do chat pausa os lotes mesmo quando ele desiste (a próxima pergunta encontra a cota mais livre).
+          if (!decision.retry && call.priority === "INTERACTIVE" && retrySignalOf(error)?.kind === "RATE_LIMIT") pauseBatch(config.interactiveBatchPauseMs)
         } finally {
           slot.release()
         }
         if (!decision.retry) throw decision.error
-        if (call.priority === "BATCH") pauseBatch(decision.pauseBatchMs)
-        log({ event: "ai_call_retry", useCase: call.useCase, priority: call.priority, attempt, kind: decision.signal.kind, retryAfterMs: decision.signal.retryAfterMs, waitMs: decision.waitMs, batchPausedMs: call.priority === "BATCH" ? decision.pauseBatchMs : 0 })
+        pauseBatch(decision.pauseBatchMs)
+        log({ event: "ai_call_retry", useCase: call.useCase, priority: call.priority, attempt, kind: decision.signal.kind, retryAfterMs: decision.signal.retryAfterMs, waitMs: decision.waitMs, batchPausedMs: decision.pauseBatchMs })
         await backoff(decision.waitMs, call.signal)
         backoffWaitMs = decision.waitMs
+        totalBackoffMs += decision.waitMs
         attempt++
       }
     },

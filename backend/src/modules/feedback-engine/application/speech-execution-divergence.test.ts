@@ -140,8 +140,9 @@ describe("relato do resultado ≠ execução (V11: 'Verificar: data da solicita�
     // ligação) — para escrever "você informou que…", nunca o conteúdo da fala como fato apurado.
     const brief = message(stores).brief!
     expect(brief.coverageLimits!.find((limit) => limit.title.startsWith("Verificar"))).toMatchObject({ executionClaim: "DECLARED", saidIn: [{ turn: "T3" }] })
-    expect(JSON.stringify(verificationFactsOf(brief))).toContain("\"saidIn\":[\"[T3] Encontrei aqui.")
-    expect(JSON.stringify(compositionPayloadOf(brief))).toContain("\"saidIn\":[\"[T3] Encontrei aqui.")
+    // `LITERAL_QUOTES_V1`: a fala vai com o id dela — o redator cita pela referência e o sistema coloca o texto exato.
+    expect(JSON.stringify(verificationFactsOf(brief))).toMatch(/"saidIn":\[\{"id":"Q\d+","turn":"T3","text":"Encontrei aqui\./)
+    expect(JSON.stringify(compositionPayloadOf(brief))).toMatch(/"saidIn":\[\{"id":"Q\d+","turn":"T3","text":"Encontrei aqui\./)
   })
 
   it("resposta sem a leitura do ato exigido (contrato anterior) não confirma nada: a confirmação depende de a revisora ter lido a fonte", () => {

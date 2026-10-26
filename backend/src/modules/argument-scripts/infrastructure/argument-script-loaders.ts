@@ -72,13 +72,17 @@ export async function loadArgumentScriptsInForce(db: Queryable, organizationId: 
   return rows.map(toSource).filter((source) => scopeAppliesTo(source.scope, person))
 }
 
+/** Quem o prompt vai avaliar, pelo Grupo/Subgrupo: entram só os argumentários cujo escopo o cobre (mesma regra de `scopeAppliesTo`). */
+export type ArgumentScriptAudience = { teamId: string | null; subteamId: string | null }
+
 /**
  * Linhas para o prompt LEGADO dos Agents (`buildSystemPrompt`, caminho fora do motor de feedback): o que antes vinha de
- * `call_expectations` (todas as regras da organização com o nome do grupo/assunto) agora vem dos argumentários vigentes e ativos.
+ * `call_expectations` agora vem dos argumentários vigentes e ativos que valem para o PÚBLICO avaliado — antes entravam todos os
+ * da organização, inclusive os restritos a outros Grupos/Subgrupos (validação funcional de 20/10/2026, D3).
  * Conversão antiga = o mesmo texto de antes, com o mesmo grupo/assunto; argumentário estruturado = resumo dos campos.
  */
-export async function loadArgumentScriptPromptLines(db: Queryable, organizationId: string, at: Date): Promise<{ expectation: string; team_name: string | null; subject_name: string | null }[]> {
-  const rows = (await db.query<SourceRow>(`${SELECT_IN_FORCE} and s.status = 'ACTIVE' /* argument_scripts (ex-call_expectations) */ order by s.created_at`, [organizationId, at])).rows
+export async function loadArgumentScriptPromptLines(db: Queryable, organizationId: string, at: Date, audience: ArgumentScriptAudience): Promise<{ expectation: string; team_name: string | null; subject_name: string | null }[]> {
+  const rows = (await db.query<SourceRow>(`${SELECT_IN_FORCE} and s.status = 'ACTIVE' /* argument_scripts (ex-call_expectations) */ and (s.scope_type = 'ALL_TEAMS' or (s.scope_type = 'TEAM' and s.team_id = $3) or (s.scope_type = 'SUBTEAM' and s.subteam_id = $4)) order by s.created_at`, [organizationId, at, audience.teamId, audience.subteamId])).rows
   return rows.map((row) => {
     const content = readStoredContent(row.content)
     const items = criterionItemsOf(content)

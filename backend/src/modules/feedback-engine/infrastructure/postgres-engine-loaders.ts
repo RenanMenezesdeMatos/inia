@@ -5,6 +5,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { CandidateDocument } from "../domain/document-selection.js"
 import { normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
+import { liveKnowledgeVersion } from "../../knowledge/application/live-knowledge-version.js"
 
 /**
  * LEITURAS do motor (só leitura, escopadas à organização). Nenhuma leitura cruza organização: id de outra organização = ausente.
@@ -80,7 +81,8 @@ export async function loadAgentProfile(db: Queryable, organizationId: string, ag
 
 /**
  * Bases autorizadas para o especialista na versão VIGENTE na data da chamada (publicada com vigência/criação ≤ data). Sem versão
- * vigente naquela data, a atual — com a perspectiva explícita (CURRENT_RULE_REEVALUATION).
+ * vigente naquela data, a atual — com a perspectiva explícita (CURRENT_RULE_REEVALUATION). Base ARQUIVADA (a versão vigente de hoje
+ * é arquivada, `live-knowledge-version.ts`) não entra: antes uma versão publicada anterior voltava a valer (D13, 20/10/2026).
  */
 export async function loadAgentDocumentsAt(db: Queryable, organizationId: string, agentId: string, at: Date): Promise<CandidateDocument[]> {
   const rows = (await db.query<{ id: string; title: string; in_force_version: number | null; in_force_content: string | null; in_force_hash: string | null; latest_version: number | null; latest_content: string | null; latest_hash: string | null }>(
@@ -90,8 +92,8 @@ export async function loadAgentDocumentsAt(db: Queryable, organizationId: string
      from agent_knowledge_documents akd
      join knowledge_documents kd on kd.id = akd.knowledge_document_id and kd.organization_id = $2 and kd.deleted_at is null
      left join lateral (select version, content, content_hash from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' and coalesce(effective_from, created_at) <= $3 order by version desc limit 1) f on true
-     left join lateral (select version, content, content_hash from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1) l on true
-     where akd.agent_id = $1
+     left join lateral (${liveKnowledgeVersion("kd.id", "version, content, content_hash")}) l on true
+     where akd.agent_id = $1 and l.status = 'PUBLISHED'
      order by kd.title`,
     [agentId, organizationId, at],
   )).rows

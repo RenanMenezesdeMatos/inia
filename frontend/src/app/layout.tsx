@@ -1,7 +1,7 @@
 //src\app\layout.tsx
 
 import type { Metadata } from "next"
-import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google"
+import { Atkinson_Hyperlegible, Atkinson_Hyperlegible_Next, IBM_Plex_Mono } from "next/font/google"
 import { headers } from "next/headers"
 
 import { CSP_NONCE_HEADER } from "@/lib/security/content-security-policy"
@@ -20,6 +20,17 @@ const atkinson = Atkinson_Hyperlegible({
   variable: "--font-atkinson",
 })
 
+// Fala citada no feedback (`RichContent quotes="emphasis"`): a versão nova da mesma família, só em itálico fino — a Atkinson Hyperlegible
+// do texto não tem peso abaixo de 400. Sem preload: só as telas com feedback usam.
+const atkinsonNext = Atkinson_Hyperlegible_Next({
+  subsets: ["latin"],
+  weight: ["300"],
+  style: ["italic"],
+  display: "swap",
+  preload: false,
+  variable: "--font-atkinson-next",
+})
+
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -36,7 +47,7 @@ export default async function RootLayout({
   // dinâmicas, de propósito: página pré-renderizada no build não tem como levar o nonce e teria os próprios scripts bloqueados.
   const nonce = (await headers()).get(CSP_NONCE_HEADER) ?? undefined
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={`${atkinson.variable} ${plexMono.variable}`}>
+    <html lang="pt-BR" suppressHydrationWarning className={`${atkinson.variable} ${atkinsonNext.variable} ${plexMono.variable}`}>
       <body className="font-sans" suppressHydrationWarning>
         {/* Todos os providers de cliente (tema, acessibilidade, query, tooltip, toaster) vivem em UM lugar: ./providers.tsx. */}
         <Providers nonce={nonce}>{children}</Providers>

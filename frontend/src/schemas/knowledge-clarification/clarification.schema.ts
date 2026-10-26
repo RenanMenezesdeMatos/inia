@@ -114,6 +114,17 @@ export function withoutSourceMarkers(text: string, sourceCount: number): string 
   return text.replace(/[ \t]*\[(\d{1,2})\]/g, (marker, number: string) => (Number(number) >= 1 && Number(number) <= sourceCount ? "" : marker))
 }
 
+/** Fontes de uma resposta pelas bases (o mesmo teto do backend, `MAX_ANSWER_SOURCES`). */
+export const MAX_CLARIFICATION_SOURCES = 12
+
+/**
+ * A resposta pelas bases chegando em fluxo: ainda sem a lista de fontes, saem os marcadores que podem ser de uma fonte (até o teto)
+ * — o mesmo texto que a pessoa lê quando a resposta termina (`clarificationBubbleText`), sem marcadores piscando no meio.
+ */
+export function withoutLiveSourceMarkers(text: string): string {
+  return withoutSourceMarkers(text, MAX_CLARIFICATION_SOURCES)
+}
+
 /** Texto legível da escolha — a mensagem de quem pergunta gravada na conversa. */
 export function describeClarificationAnswer(step: ClarificationStep, answer: Pick<ClarificationAnswer, "optionIds" | "freeText" | "noneMatched">): string {
   const labels = step.options.filter((option) => answer.optionIds.includes(option.id)).map((option) => option.label)

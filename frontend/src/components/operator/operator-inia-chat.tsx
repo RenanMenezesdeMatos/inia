@@ -18,7 +18,7 @@ import type { FarewellSpeech } from "@/lib/avatar/avatar-driver"
 import { fetchEphemeralSession, GeminiRealtimeTransport, recordVoiceTurn, type RealtimeCallState, type VoiceConversationResult } from "@/lib/realtime/gemini-realtime-transport"
 import { ApiError } from "@/lib/api/api-client"
 import { startUsageAction, trackUsage } from "@/lib/usage/usage-provider"
-import { ConversationClosedError, FeedbackConversationChangedError, fetchConversationMessages, fetchCurrentConversation, fetchTextReply, startNewConversation, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
+import { ConversationClosedError, FeedbackConversationChangedError, fetchConversationMessages, fetchCurrentConversation, fetchTextReply, saveMessageRating, startNewConversation, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
 import { newClientKey } from "@/lib/realtime/conversation-format"
 import { IniaConversationHistorySheet } from "./inia-conversation-history-sheet"
 import { IniaRecadoInvite } from "./inia-recado-invite"
@@ -51,7 +51,7 @@ import { useFeedbackInvite } from "./operator-inia-chat/use-feedback-invite"
 import { useRecado } from "./operator-inia-chat/use-recado"
 import { describeFeedbackSession } from "./operator-inia-chat/feedback-session-speech"
 import { ChatMessageList } from "./operator-inia-chat/chat-message-list"
-import type { ClarificationAnswer } from "@/schemas/knowledge-clarification/clarification.schema"
+import { withoutLiveSourceMarkers, type ClarificationAnswer } from "@/schemas/knowledge-clarification/clarification.schema"
 import { PanelConversationBanners } from "./operator-inia-chat/panel-conversation-banners"
 import { MicConsentDialog } from "./operator-inia-chat/mic-consent-dialog"
 import { ChatComposer } from "./operator-inia-chat/chat-composer"
@@ -103,6 +103,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // typewriter behavior is identical — typed messages must never touch
   // avatar/voice state, so the two paths stay independent all the way down.
   const [liveTextReply, setLiveTextReply] = useState<string | null>(null)
+  // A resposta em fluxo é a do esclarecimento pelas bases (traz marcadores de fonte, que saem do que a pessoa lê).
+  const [liveTextCitations, setLiveTextCitations] = useState(false)
+  // Progresso verdadeiro da resposta por escrito enquanto o texto não começa ("Consultando as bases de conhecimento…").
+  const [textReplyStatus, setTextReplyStatus] = useState<string | null>(null)
   const {
     stageUtterance, stageUtteranceRef, stageTranscriptRef, stageHiddenIds, presentationLandRef, stageGreeting, setStageGreeting,
     setStage, hideOnStage, revealOnStage, beginStageUtterance, appendStageText, endStageUtterance, attachStageMessage,
@@ -139,6 +143,15 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // Toda troca de conversa incrementa a geração: resposta, transcrição ou página que chegar depois para a conversa
   // anterior é descartada da tela (já está salva na conversa certa pelo backend) — nunca aparece no lugar errado.
   const viewGenerationRef = useRef(0)
+  // Resposta por escrito em andamento: trocar de conversa (ou fechar o chat) cancela o pedido — o servidor para de gerar e a vaga de
+  // IA volta para os outros, em vez de terminar uma resposta que ninguém vai ver.
+  const textReplyAbortRef = useRef<AbortController | null>(null)
+  const advanceView = () => {
+    textReplyAbortRef.current?.abort()
+    textReplyAbortRef.current = null
+    return ++viewGenerationRef.current
+  }
+  useEffect(() => () => textReplyAbortRef.current?.abort(), [])
   const inactivityMsRef = useRef(24 * 3_600_000)
   const lastActivityRef = useRef<number | null>(null)
   const messagesContentRef = useRef<HTMLDivElement>(null)
@@ -282,7 +295,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   /** Abrir o chat / recarregar / voltar à conversa atual: a conversa ATIVA do backend, ou um chat limpo. */
   const loadCurrentConversation = async () => {
-    const generation = ++viewGenerationRef.current
+    const generation = advanceView()
     clearFeedbackView()
     olderConversationIdRef.current = null
     setLoadState("loading")
@@ -343,7 +356,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   /** Chat limpo (conversa nova ainda não criada). Resposta pendente da conversa anterior é descartada da tela. */
   const resetToFreshConversation = () => {
-    viewGenerationRef.current += 1
+    advanceView()
     clearFeedbackView()
     setFeedbackReturn(null)
     conversationIdRef.current = null
@@ -398,7 +411,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       return
     }
     closeVoiceSessionForSwitch()
-    const generation = ++viewGenerationRef.current
+    const generation = advanceView()
     clearFeedbackView()
     setReadOnlyConversation(summary)
     setTextReplyPending(false)
@@ -420,7 +433,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setHistoryOpen(false)
     setConversationNotice("")
     closeVoiceSessionForSwitch()
-    const generation = ++viewGenerationRef.current
+    const generation = advanceView()
     clearFeedbackView()
     setFeedbackReturn(null)
     setReadOnlyConversation(null)
@@ -546,7 +559,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     const key = feedbackSourceKey(request.source)
     openingKeyRef.current = key
     sessionKeyRef.current = key
-    const generation = ++viewGenerationRef.current
+    const generation = advanceView()
     clearFeedbackView()
     workspace?.setActiveSourceKey(key)
     setConversationNotice("")
@@ -1023,8 +1036,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     // Com especialista no turno, o balão e o registro da resposta já existem (o backend grava no /tool-call): só a
     // PERGUNTA falada vai para o backend. Sem especialista, pergunta + resposta falada.
     const replyText = assistantText && !specialistAnswered ? assistantText : undefined
+    let replyBubbleId: number | null = null
     if (replyText) {
       const id = nextMessageId()
+      replyBubbleId = id
       localIds.push(id)
       setMessages((current) => [...current, { id, sender: "assistant", text: replyText, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment() }])
       // No palco a resposta está no balão: a mensagem só aparece quando a fala pousa nela.
@@ -1038,7 +1053,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     if (!recordedUserText && !replyText) return
     const generation = viewGenerationRef.current
     // Turno sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar) — nunca a conversa geral.
-    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: recordedUserText || undefined, userChannel, userSpokenAt, assistantText: replyText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => applyVoiceConversationResult(result, generation, localIds))
+    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: recordedUserText || undefined, userChannel, userSpokenAt, assistantText: replyText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => {
+      applyVoiceConversationResult(result, generation, localIds)
+      // A resposta falada gravada: o curtir/descurtir do balão passa a ser gravado nela.
+      const interactionId = result?.assistantInteractionId
+      if (interactionId && replyBubbleId !== null) setMessages((current) => current.map((message) => (message.id === replyBubbleId ? { ...message, interactionId } : message)))
+    })
   }
 
   /** Mensagem nova numa sessão de feedback concluída = dúvida da conversa complementar (separador próprio). */
@@ -1170,7 +1190,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
           // Algo falado antes da tool ("vou verificar…") some: a resposta é o balão do especialista.
           setLiveAssistantText(null)
           const id = nextMessageId()
-          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}), ...(analytics.length > 0 ? { analytics } : {}), ...(extras.reportOffer ? { reportOffer: extras.reportOffer } : {}), ...(extras.clarification ? { clarification: extras.clarification } : {}) }])
+          setMessages((current) => [...current, { id, sender: "assistant", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice", ...currentSegment(), ...(supportMaterials.length > 0 ? { supportMaterials } : {}), ...(analytics.length > 0 ? { analytics } : {}), ...(extras.reportOffer ? { reportOffer: extras.reportOffer } : {}), ...(extras.clarification ? { clarification: extras.clarification } : {}), ...(extras.interactionId ? { interactionId: extras.interactionId } : {}) }])
           if (extras.navigate) routerRef.current.push(extras.navigate.href)
           if (stageOpen()) landSpecialistOnStage(id)
           applyVoiceConversationResult(conversation, viewGenerationRef.current, [])
@@ -1348,7 +1368,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     }
     setTextReplyPending(true)
     setLiveTextReply(null)
+    setLiveTextCitations(false)
+    setTextReplyStatus(null)
     scrollToLatest()
+    textReplyAbortRef.current?.abort()
+    const abort = new AbortController()
+    textReplyAbortRef.current = abort
     // Na conversa de um feedback o indicador ATUAL nunca entra (o backend também ignora esta instrução nesse caso).
     const contextHint = inFeedback ? "" : focus
       ? focus.recommendation
@@ -1379,9 +1404,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       const reply = await fetchTextReply(
         // Sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar, criada nesta primeira dúvida).
         { conversationId: requestedConversationId, text, clientMessageId: newClientKey(), contextHint: contextHint.trim().slice(0, 1_000) || undefined, feedbackApplicationId, ...(options.clarification ? { clarification: options.clarification } : {}) },
-        (chunk) => {
+        (chunk, meta) => {
           recordFirstText("OK")
           if (!current()) return
+          if (meta?.citations) setLiveTextCitations(true)
           setLiveTextReply((value) => (value ?? "") + chunk)
           if (!onStage) return
           if (stageKey === null) {
@@ -1400,13 +1426,28 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
           }
           adoptConversation(conversation.conversationId)
         },
+        {
+          signal: abort.signal,
+          onStatus: (status) => {
+            if (current()) setTextReplyStatus(status.label)
+          },
+          // O texto mostrado deixou de ser a resposta: some da tela (e do palco) e os próximos pedaços recomeçam.
+          onRetract: () => {
+            if (!current()) return
+            setLiveTextReply(null)
+            setLiveTextCitations(false)
+            if (stageKey !== null && stageUtteranceRef.current?.key === stageKey) setStage(null)
+            stageKey = null
+            reading = null
+          },
+        },
       )
       recordFirstText("OK")
       if (reply.persisted) usageAction.succeed()
       else usageAction.fail("REPLY_NOT_PERSISTED")
       if (!current()) return
       const replyId = nextMessageId()
-      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
+      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...(reply.persisted && reply.interactionId ? { interactionId: reply.interactionId } : {}), ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
       // "Sim" à oferta de report: abre a configuração já preenchida (o backend decidiu o destino).
       if (reply.navigate) routerRef.current.push(reply.navigate.href)
       const shownIn = reading as ReturnType<typeof createReadingClock> | null
@@ -1441,9 +1482,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       if (!userSaved) setMessages((list) => list.map((message) => (message.id === userBubbleId ? { ...message, saveState: "failed" } : message)))
       setMessages((list) => [...list, { id: nextMessageId(), sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), text: TEXT_REPLY_FALLBACK_TEXT, localError: true }])
     } finally {
+      if (textReplyAbortRef.current === abort) textReplyAbortRef.current = null
       if (current()) {
         setTextReplyPending(false)
         setLiveTextReply(null)
+        setTextReplyStatus(null)
       }
     }
   }
@@ -1543,7 +1586,12 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const askQuestion = (question: string) => void send(question)
 
   const rate = (id: number, rating: "up" | "down") => {
+    const target = messages.find((message) => message.id === id)
     setMessages((current) => current.map((message) => message.id === id ? { ...message, rating: message.rating === rating ? undefined : rating } : message))
+    // Gravado por trás: a tela não espera nem avisa. Resposta sem id no servidor (não entrou no histórico) fica só na tela.
+    const conversationId = conversationIdRef.current
+    if (!target?.interactionId || !conversationId) return
+    void saveMessageRating(conversationId, target.interactionId, target.rating === rating ? undefined : rating).catch((error: unknown) => console.warn("[INIA] avaliação da resposta não gravada", error))
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1742,7 +1790,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     conversationState={conversationState}
     liveAssistantText={liveAssistantText}
     textReplyPending={textReplyPending}
-    liveTextReply={liveTextReply}
+    textReplyStatus={textReplyStatus}
+    liveTextReply={liveTextReply !== null && liveTextCitations ? withoutLiveSourceMarkers(liveTextReply) : liveTextReply}
     askSuggestion={askSuggestion}
     switchToGeneralConversation={switchToGeneralConversation}
     starterSuggestions={starterSuggestions}

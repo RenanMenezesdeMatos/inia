@@ -34,6 +34,8 @@ import {
   type KnowledgeDocument,
 } from "@/schemas/admin/knowledge.schema"
 
+import { useProductScopeLabels } from "@/components/admin/product-catalog/product-scope-field"
+
 import { KnowledgeDocumentMenu } from "./knowledge-document-actions"
 import { AuthorLine, DocumentTypeLabel, ScopeTags, SourceTypeIcon, StatusBadge, formatDateOnly } from "./knowledge-meta"
 import { orgScopeLabel, subjectScopeLabel } from "./knowledge-visuals"
@@ -53,7 +55,7 @@ function cleanExcerpt(excerpt: string | null) {
   return cleaned.length ? cleaned : null
 }
 
-function KnowledgeCard({ document }: { document: KnowledgeDocument }) {
+function KnowledgeCard({ document, products }: { document: KnowledgeDocument; products: readonly string[] }) {
   const excerpt = cleanExcerpt(document.excerpt)
   return (
     <article className="group relative flex flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/30 focus-within:border-primary/40">
@@ -84,7 +86,7 @@ function KnowledgeCard({ document }: { document: KnowledgeDocument }) {
       )}
 
       <div className="mt-auto space-y-2 pt-4">
-        <ScopeTags document={document} />
+        <ScopeTags document={document} products={products} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <AuthorLine document={document} />
           <StatusBadge status={document.status} />
@@ -95,6 +97,7 @@ function KnowledgeCard({ document }: { document: KnowledgeDocument }) {
 }
 
 function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
+  const productScope = useProductScopeLabels("KNOWLEDGE_DOCUMENT")
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -104,6 +107,7 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
             <TableHead>Tipo</TableHead>
             <TableHead>Grupo</TableHead>
             <TableHead>Assunto</TableHead>
+            {productScope.available ? <TableHead>Produtos</TableHead> : null}
             <TableHead>Autor</TableHead>
             <TableHead>Criada em</TableHead>
             <TableHead>Status</TableHead>
@@ -129,6 +133,7 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{orgScopeLabel(document.orgScopes[0])}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{subjectScopeLabel(document.subjectScopes[0])}</TableCell>
+              {productScope.available ? <TableCell className="text-sm text-muted-foreground">{productScope.labelsOf(document.id).join(", ") || "Todos"}</TableCell> : null}
               <TableCell className="text-sm text-muted-foreground">{document.authorName ?? <span className="italic">Não informado</span>}</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 <time dateTime={document.createdAt}>{formatDateOnly(document.createdAt)}</time>
@@ -163,6 +168,7 @@ const STATUS_OPTIONS = optionsFromLabels(KNOWLEDGE_STATUS_LABELS)
 
 export function KnowledgePage() {
   const router = useRouter()
+  const productScope = useProductScopeLabels("KNOWLEDGE_DOCUMENT")
   const [autoOpen] = useAutoOpenFromQuery("new")
   const teamsQuery = useTeamsQuery()
   const subjectsQuery = useSubjectsQuery()
@@ -246,7 +252,7 @@ export function KnowledgePage() {
           renderCards={(documents) => (
             <ListCardGrid>
               {documents.map((document) => (
-                <KnowledgeCard key={document.id} document={document} />
+                <KnowledgeCard key={document.id} document={document} products={productScope.labelsOf(document.id)} />
               ))}
             </ListCardGrid>
           )}

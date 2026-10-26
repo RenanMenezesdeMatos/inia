@@ -137,7 +137,7 @@ describe("Feedback por Flag V2 — hierarquia no Acompanhamento (A–D, H)", () 
     expect(screen.queryByText("RESUMO-ANTIGO-DO-CARD")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Ver feedback completo/ })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Entenda este feedback/ })).toHaveAttribute("aria-expanded", "false")
-    expect(screen.getByRole("region", { name: "Materiais utilizados" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Materiais utilizados/ })).toHaveAttribute("aria-expanded", "false")
   })
   it("H) feedback legado (sem view V2) continua como antes: resumo + 'Ver feedback completo' + texto publicado", async () => {
     service.fetchMyDeliveredFeedback.mockResolvedValue([])

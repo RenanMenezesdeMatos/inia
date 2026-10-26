@@ -5,15 +5,16 @@ import { AiCallBlockedError, annotateLastLlmCall, EMPTY_USAGE, hasLlmTelemetrySt
 // Registro do único provedor configurado hoje (efeito colateral do import — ver provider-adapter.ts).
 import "../../../modules/assistant/infrastructure/gemini-provider-adapter.js"
 import { providerAdapterFor, type AdapterRequest, type AdapterResponse } from "./provider-adapter.js"
+import { currentChatTurnTrace } from "../observability/chat-turn-trace.js"
 import { addCost, estimateCost, pricingFor, type CostEstimate } from "./model-pricing.js"
 import { observedCacheRecord } from "./cache-record.js"
 import { escalateRoute, resolveRoute, type RouteDecision, type RouteSignals, type RoutingMode } from "./route-policy.js"
 import type { PromptComponentUsage } from "../prompting/prompt-components.js"
-import { legacyGateKey, runThroughProviderGate } from "./provider-call-gate.js"
+import { legacyGateKey, runThroughProviderGate, runWithEstimatedTokens } from "./provider-call-gate.js"
 import { aiRuntime, currentAiAbortSignal, currentAiOrganizationId, type AiUsageEventInput, type AiUsageOrigin, type ResolvedAiRoute, type SpeechCacheIdentity } from "./ai-runtime.js"
 import { useCaseForPurpose, type AiUseCaseKey } from "./ai-use-cases.js"
-import { categorizeHttpStatus, retryAfterMsFrom, type AiErrorCategory } from "./ai-errors.js"
-import { runLimitedAiCall } from "./ai-call-limiter.js"
+import { AiCallCancelledError, categorizeHttpStatus, retryAfterMsFrom, type AiErrorCategory } from "./ai-errors.js"
+import { currentAiCallLimiterRecord, runLimitedAiCall } from "./ai-call-limiter.js"
 import { estimateTokens } from "./token-estimate.js"
 
 /**
@@ -114,6 +115,30 @@ async function recordLegacyUsage(input: Omit<LegacyUsageInput, "useCase"> & { us
 }
 
 export async function generateForRoute(request: GatewayRequest): Promise<GatewayResponse> {
+  const { streamedChars: _streamed, firstTokenMs: _first, ...response } = await callRoute(request, null)
+  void _streamed
+  void _first
+  return response
+}
+
+/** Resposta de `streamForRoute`: a de sempre + quanto texto já foi entregue em fluxo (ver `streamForRoute`). */
+export type GatewayStreamResponse = GatewayResponse & { streamedChars: number; firstTokenMs: number | null }
+
+/**
+ * A MESMA chamada de `generateForRoute` (limitador, portão da conexão, policy/legado, uso, custo), com o texto da resposta entregue
+ * a `onText` assim que chega — o chat mostra a resposta enquanto ela é escrita. Garantias para quem chama:
+ *
+ *  - resposta de TEXTO: `onText` recebeu o texto inteiro, exatamente uma vez (em pedaços, ou de uma vez quando o adapter/modelo
+ *    não faz fluxo);
+ *  - resposta de FERRAMENTAS: `streamedChars` > 0 = o modelo escreveu algo antes de pedir a ferramenta (raro) e isso já foi
+ *    entregue — quem mostrou retira;
+ *  - depois do primeiro pedaço entregue, nada repete nem troca de modelo (a resposta mudaria no meio).
+ */
+export function streamForRoute(request: GatewayRequest, onText: (text: string) => void): Promise<GatewayStreamResponse> {
+  return callRoute(request, onText)
+}
+
+async function callRoute(request: GatewayRequest, onText: ((text: string) => void) | null): Promise<GatewayStreamResponse> {
   const meta = { classification: request.classification, ...(request.promptComponents ? { promptComponents: request.promptComponents } : {}), ...(request.contextBreakdown ? { contextBreakdown: request.contextBreakdown } : {}) }
   return withLlmRequestMeta(meta, async () => {
     const runtime = aiRuntime()
@@ -122,10 +147,18 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
     // (não roteável — nenhuma policy é escolhida por palpite; segue o legado).
     const useCase: AiUseCaseKey = useCaseForPurpose(request.route.purpose ?? request.classification.purpose, request.classification) ?? "UNCLASSIFIED"
     const correlationId = randomUUID()
+    let streamed = 0
+    const emit = onText
+      ? (text: string) => {
+          streamed += text.length
+          onText(text)
+        }
+      : null
 
     // Capacidade: espera vaga no limitador do processo (interativa à frente do lote) e repete 429/503 conforme a classe.
     // `transport.retries: 0` = o chamador decide a falha sozinho (Feedback Writer) — só enfileira, nunca repete.
-    return runLimitedAiCall(useCase, { noRetry: request.transport?.retries === 0 }, async () => {
+    const estimatedInputTokens = estimateTokens(request.systemPrompt, textOfTurns(request.contents), request.tools && request.tools.length > 0 ? JSON.stringify(request.tools) : "")
+    const response = await runLimitedAiCall(useCase, { noRetry: request.transport?.retries === 0, ...(emit ? { canRetry: () => streamed === 0 } : {}) }, () => runWithEstimatedTokens(estimatedInputTokens, () => traceLlmCall(request.classification.purpose, emit !== null, async (): Promise<GatewayStreamResponse> => {
       // 1) Policy ACTIVE da organização para o Use Case (null = não há → legado).
       if (runtime && organizationId) {
         const viaPolicy = useCase === "UNCLASSIFIED" ? null : await runtime.executeWithPolicy({
@@ -137,17 +170,21 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
           contents: request.contents,
           tools: request.tools ?? [],
           structuredOutput: request.structuredOutput ?? false,
-          estimatedInputTokens: estimateTokens(request.systemPrompt, textOfTurns(request.contents), request.tools && request.tools.length > 0 ? JSON.stringify(request.tools) : ""),
+          estimatedInputTokens,
           legacyRoute: request.route,
           // O que a etapa exige vale também pela policy (o legado recebe o mesmo, abaixo): schema, teto de saída e tempo.
           ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}),
           ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
+          ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}),
           ...(request.transport?.timeoutMs ? { timeoutMs: request.transport.timeoutMs } : {}),
+          ...(emit ? { onText: emit } : {}),
         })
         if (viaPolicy) {
           const route = viaPolicy.resolvedRoute
           annotateLastLlmCall({ cache: viaPolicy.cache, cost: viaPolicy.cost, aiRoute: { requestedUseCase: route.requestedUseCase, routingMode: route.routingMode, providerKey: route.providerKey, connectionName: route.connectionName, modelName: route.modelName, routeReason: route.routeReason, fallbackAttempt: route.fallbackAttempt, fallbackReason: route.fallbackReason, correlationId: route.correlationId } })
-          return viaPolicy
+          const { streamedChars: _ignored, firstTokenMs, ...policyResponse } = viaPolicy
+          void _ignored
+          return { ...policyResponse, streamedChars: streamed, firstTokenMs: firstTokenMs ?? null }
         }
         await runtime.assertLegacyCallAllowed({ organizationId, useCase, providerKey: legacyProviderKey(request.route.profile.provider) })
       }
@@ -156,11 +193,18 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
       const adapter = providerAdapterFor(request.route.profile)
       const providerKey = legacyProviderKey(request.route.profile.provider)
       const startedAt = Date.now()
+      let firstTokenMs: number | null = null
       // Rota do ambiente (sem conexão cadastrada): sem teto compartilhado, mas a pausa depois de um 429 vale para todas as
       // instâncias (chave do provedor da rota).
       const raw: AdapterResponse = await runThroughProviderGate(legacyGateKey(providerKey), null, async () => {
         try {
-          return await adapter.generate({ systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools ?? [], structuredOutput: request.structuredOutput ?? false, route: request.route, cache: request.cache, ...(request.transport ? { transport: request.transport } : {}), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}) })
+          const adapterRequest: AdapterRequest = { systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools ?? [], structuredOutput: request.structuredOutput ?? false, route: request.route, cache: request.cache, ...(request.transport ? { transport: request.transport } : {}), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}), ...(request.reasoningEffort ? { reasoningEffort: request.reasoningEffort } : {}) }
+          if (emit && adapter.stream) {
+            const streamedResponse = await adapter.stream(adapterRequest, emit)
+            firstTokenMs = streamedResponse.firstTokenMs
+            return streamedResponse
+          }
+          return await adapter.generate(adapterRequest)
         } catch (error) {
           if (error instanceof AiCallBlockedError) throw error
           const sanitized = sanitizeLegacyError(error)
@@ -169,7 +213,10 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
         }
       })
       // Adapters (e clientes mockados em teste) podem não informar uso/modelo — nunca inventamos números.
-      const response: AdapterResponse = { ...raw, usage: raw.usage ?? EMPTY_USAGE, durationMs: raw.durationMs ?? 0, model: raw.model ?? request.route.profile.model, provider: raw.provider ?? request.route.profile.provider }
+      const { streamedChars: _adapterStreamed, firstTokenMs: _adapterFirst, ...plain } = { streamedChars: 0, firstTokenMs: null, ...raw }
+      void _adapterStreamed
+      void _adapterFirst
+      const response: AdapterResponse = { ...plain, usage: raw.usage ?? EMPTY_USAGE, durationMs: raw.durationMs ?? 0, model: raw.model ?? request.route.profile.model, provider: raw.provider ?? request.route.profile.provider }
       const { createdTokens, ...declaredCache } = response.cache ?? { ...observedCacheRecord(response.usage, request.cache?.cacheKeyVersion ?? null), createdTokens: 0 }
       const pricing = pricingFor(request.route.profile.id, response.model)
       let cost = estimateCost(response.usage, pricing)
@@ -178,9 +225,28 @@ export async function generateForRoute(request: GatewayRequest): Promise<Gateway
       const cache: LlmCacheRecord = declaredCache
       annotateLastLlmCall({ cache, cost })
       await recordLegacyUsage({ organizationId, useCase, classification: request.classification, route: request.route, providerKey, modelName: response.model, correlationId, usage: response.usage, durationMs: response.durationMs, status: "SUCCESS", errorCategory: null, legacyCost: pricing ? cost : null })
-      return { ...response, cache, cost }
-    })
+      return { ...response, cache, cost, streamedChars: streamed, firstTokenMs }
+    })))
+    // Texto que não veio em fluxo (adapter/modelo sem fluxo): entregue inteiro agora — quem pediu fluxo sempre recebe o texto todo.
+    if (emit && response.kind === "text" && streamed === 0) emit(response.text)
+    return response
   })
+}
+
+/** Registra a chamada no rastreamento do turno do chat em andamento (propósito, fila, duração, 1º pedaço) — sem conteúdo. */
+async function traceLlmCall<T extends { firstTokenMs?: number | null }>(purpose: string, streamed: boolean, fn: () => Promise<T>): Promise<T> {
+  const trace = currentChatTurnTrace()
+  if (!trace) return fn()
+  const startMs = trace.elapsed()
+  const queueMs = currentAiCallLimiterRecord()?.queueWaitMs ?? 0
+  try {
+    const result = await fn()
+    trace.llmCall({ purpose, startMs, ms: trace.elapsed() - startMs, queueMs, firstTokenMs: result.firstTokenMs ?? null, streamed, status: "OK" })
+    return result
+  } catch (error) {
+    trace.llmCall({ purpose, startMs, ms: trace.elapsed() - startMs, queueMs, firstTokenMs: null, streamed, status: error instanceof AiCallCancelledError ? "CANCELLED" : "ERROR" })
+    throw error
+  }
 }
 
 /** Registro compacto da decisão (telemetria) — sem o perfil inteiro. */
@@ -204,11 +270,20 @@ export function createChatStreamer(legacy: LegacyChatStream): (history: ChatHist
     const classification: LlmRequestClassification = { phase: "SYNTHESIS", purpose: "CHAT_STREAM", source: "CHAT", semanticType: "TEXT" }
     // Depois do primeiro pedaço entregue ao usuário, nunca repete (trocaria a resposta no meio).
     let emitted = false
+    let attemptStartedAt = Date.now()
+    let firstTokenMs: number | null = null
     const onChunk = (text: string) => {
       emitted = true
+      firstTokenMs ??= Date.now() - attemptStartedAt
       userOnChunk(text)
     }
-    return runLimitedAiCall("CHAT", { canRetry: () => !emitted }, async () => {
+    return runLimitedAiCall("CHAT", { canRetry: () => !emitted }, () => traceLlmCall(classification.purpose, true, async () => {
+      attemptStartedAt = Date.now()
+      await streamChatAttempt()
+      return { firstTokenMs }
+    }).then(() => undefined))
+
+    async function streamChatAttempt(): Promise<void> {
       if (runtime && organizationId) {
         const contents = history.map((turn) => ({ role: turn.role, text: turn.text }))
         const viaPolicy = await runtime.streamWithPolicy({ organizationId, useCase: "CHAT", classification, correlationId, systemPrompt: systemInstruction, contents, estimatedInputTokens: estimateTokens(systemInstruction, ...history.map((turn) => turn.text)), onChunk })
@@ -226,7 +301,7 @@ export function createChatStreamer(legacy: LegacyChatStream): (history: ChatHist
           throw sanitized.error
         }
       })
-    })
+    }
   }
 }
 

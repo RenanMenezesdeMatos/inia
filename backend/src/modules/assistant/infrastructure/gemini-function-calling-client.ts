@@ -3,14 +3,16 @@ import { beforeLlmCall, countTechnicalIdsInPrompt, recordLlmCall, usageFromGemin
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
 import { currentAiAbortSignal, withAiCancellation } from "../../../shared/application/model-routing/ai-runtime.js"
+import { createStreamDeadline, type StreamDeadline } from "../../../shared/infrastructure/http/stream-deadline.js"
 
 // Modelo diferente do chat de texto simples (backend/src/modules/realtime/infrastructure/gemini-text-client.ts,
 // que fica no 3.1-flash-lite de propósito, sem etapa de "thinking") — o Orquestrador precisa de
 // raciocínio mais profundo pra function calling/Structured Output em fluxos empresariais
-// complexos. Sem streaming aqui de propósito: precisamos inspecionar a resposta inteira pra
-// saber se veio um functionCall antes de decidir o que mostrar pro operador.
+// complexos. `generateWithTools` devolve a resposta inteira; `streamWithTools` (chat) entrega o
+// texto em fluxo e junta as chamadas de ferramenta do mesmo jeito.
 const MODEL = "gemini-3.8-flash"
 const generateUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+const streamUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`
 const REQUEST_TIMEOUT_MS = 45_000
 // Mesma instabilidade de "high demand" já documentada em gemini-text-client.ts (2026-09-09) —
 // confirmado de novo ao vivo aqui em 2026-09-11 (503 "This model is currently experiencing
@@ -101,6 +103,15 @@ export type GenerateWithToolsOptions = {
   cachedContent?: string | undefined
 }
 
+/** Só em fluxo: resposta JSON (saída estruturada sem ferramentas — o texto em fluxo é o JSON cru; quem chama extrai o que mostra)
+ * e o prazo de quem chamou (até começar e de silêncio entre pedaços). */
+export type StreamWithToolsOptions = GenerateWithToolsOptions & {
+  json?: { responseSchema?: Record<string, unknown> | undefined; maxOutputTokens?: number | undefined } | undefined
+  timeoutMs?: number | undefined
+  /** Menos raciocínio (`thinkingConfig.thinkingLevel`) — só para modelo que raciocina (quem chama confere). */
+  thinkingLevel?: "low" | undefined
+}
+
 export async function generateWithTools(
   contents: ChatTurn[],
   systemInstruction: string,
@@ -146,6 +157,154 @@ export async function generateWithTools(
   return { kind: "text", text, usage, durationMs, model }
 }
 
+/** Prazos da resposta EM FLUXO: até ela começar e de silêncio entre pedaços (o raciocínio do modelo acontece antes do 1º). */
+const STREAM_CONNECT_TIMEOUT_MS = REQUEST_TIMEOUT_MS
+const STREAM_IDLE_TIMEOUT_MS = REQUEST_TIMEOUT_MS
+
+type StreamPart = { text?: string; thought?: boolean; functionCall?: { name: string; args?: Record<string, unknown>; id?: string }; thoughtSignature?: string }
+
+/**
+ * A MESMA chamada de `generateWithTools`, em fluxo (`streamGenerateContent`): cada pedaço de TEXTO vai para `onText` assim que
+ * chega — a pessoa vê a resposta começar sem esperar o fim —, e as chamadas de ferramenta são juntadas como na resposta inteira
+ * (com o `thoughtSignature` de cada uma). `streamedChars` = quanto texto já foi entregue: se o modelo escreveu algo e DEPOIS pediu
+ * uma ferramenta (raro), quem chamou sabe que precisa retirar o que foi mostrado.
+ */
+export async function streamWithTools(
+  contents: ChatTurn[],
+  systemInstruction: string,
+  tools: FunctionDeclaration[],
+  onText: (text: string) => void,
+  options?: StreamWithToolsOptions,
+): Promise<GenerateWithToolsResult & { streamedChars: number; firstTokenMs: number | null }> {
+  const model = options?.model ?? MODEL
+  if (!env.GEMINI_API_KEY) {
+    throw new DomainError("Orquestrador de chat não está configurado neste ambiente (falta GEMINI_API_KEY).", "ASSISTANT_NOT_CONFIGURED", 503)
+  }
+  beforeLlmCall()
+  const startedAt = new Date()
+  const json = options?.json && tools.length === 0 ? { responseMimeType: "application/json", ...(options.json.responseSchema ? { responseSchema: options.json.responseSchema } : {}), ...(options.json.maxOutputTokens ? { maxOutputTokens: options.json.maxOutputTokens } : {}) } : {}
+  const generationConfig = options?.thinkingLevel || Object.keys(json).length > 0 ? { ...json, ...(options?.thinkingLevel ? { thinkingConfig: { thinkingLevel: options.thinkingLevel } } : {}) } : undefined
+  const { response, deadline } = await connectStreamWithRetry(model, requestBody(contents, systemInstruction, tools, options?.cachedContent, generationConfig), options?.timeoutMs)
+  const calls: FunctionCall[] = []
+  let text = ""
+  let streamedChars = 0
+  let firstTokenMs: number | null = null
+  let usage = usageFromGeminiPayload(null)
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  const consume = (payload: Record<string, unknown>) => {
+    if ("usageMetadata" in payload) usage = usageFromGeminiPayload(payload)
+    const parts = ((payload as GenerateContentResponse).candidates?.[0]?.content?.parts ?? []) as StreamPart[]
+    for (const part of parts) {
+      if (part.functionCall) {
+        calls.push({ name: part.functionCall.name, args: part.functionCall.args ?? {}, ...(part.functionCall.id ? { id: part.functionCall.id } : {}), ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}) })
+        continue
+      }
+      if (part.thought || !part.text) continue
+      text += part.text
+      firstTokenMs ??= Date.now() - startedAt.getTime()
+      // Depois de uma chamada de ferramenta, o texto não vai para a tela: a resposta deste turno é a ferramenta.
+      if (calls.length === 0) {
+        streamedChars += part.text.length
+        onText(part.text)
+      }
+    }
+  }
+  try {
+    for (;;) {
+      let read: ReadableStreamReadResult<Uint8Array>
+      try {
+        read = await reader.read()
+      } catch (error) {
+        if (deadline.cancelled) throw new AiCallCancelledError()
+        if (deadline.timedOut) throw new DomainError("A INIA demorou demais para responder.", "ASSISTANT_TIMEOUT", 504)
+        throw new DomainError("Não foi possível contatar a INIA.", "ASSISTANT_NETWORK_ERROR", 504, { cause: error instanceof Error ? error.message : String(error) })
+      }
+      if (read.done) break
+      deadline.progressed()
+      buffer += decoder.decode(read.value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() ?? ""
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith("data:")) continue
+        const data = trimmed.slice(5).trim()
+        if (!data) continue
+        let payload: Record<string, unknown> | null = null
+        try {
+          payload = JSON.parse(data) as Record<string, unknown>
+        } catch {
+          payload = null
+        }
+        if (payload) consume(payload)
+      }
+    }
+  } finally {
+    deadline.dispose()
+    reader.releaseLock()
+  }
+  const durationMs = Date.now() - startedAt.getTime()
+  const inputChars = contents.reduce((sum, turn) => sum + ("text" in turn ? turn.text.length : JSON.stringify(turn).length), 0)
+  recordLlmCall({
+    model,
+    ...usage,
+    durationMs,
+    startedAt,
+    systemPrompt: systemInstruction,
+    input: describeLastTurn(contents),
+    outputText: calls.length > 0 ? `[function calls] ${calls.map((call) => call.name).join(", ")}` : text || null,
+    ...(calls.length > 0 ? { toolCalls: calls.map((call) => call.name) } : {}),
+    promptBreakdown: { systemPromptChars: systemInstruction.length, toolSchemaChars: tools.length > 0 ? JSON.stringify(tools).length : 0, inputChars, declaredTools: tools.length, technicalIds: countTechnicalIdsInPrompt(systemInstruction, ...contents.map((turn) => ("text" in turn ? turn.text : JSON.stringify(turn)))) },
+    ...(options?.route ? { route: options.route } : {}),
+  })
+  if (calls.length > 0) return { kind: "functionCalls", calls, usage, durationMs, model, streamedChars, firstTokenMs }
+  if (!text.trim()) throw new DomainError("A INIA não retornou nenhum texto.", "ASSISTANT_EMPTY", 502)
+  return { kind: "text", text, usage, durationMs, model, streamedChars, firstTokenMs }
+}
+
+function requestBody(contents: ChatTurn[], systemInstruction: string, tools: FunctionDeclaration[], cachedContent?: string, generationConfig?: Record<string, unknown>): string {
+  return JSON.stringify({
+    contents: contents.map(turnToContent),
+    ...(cachedContent
+      ? { cachedContent }
+      : { systemInstruction: { parts: [{ text: systemInstruction }] }, ...(tools.length > 0 ? { tools: [{ functionDeclarations: tools }] } : {}) }),
+    ...(generationConfig ? { generationConfig } : {}),
+  })
+}
+
+/** Abre o fluxo; 503 antes de qualquer pedaço = uma nova tentativa curta (como na resposta inteira). */
+async function connectStreamWithRetry(model: string, body: string, timeoutMs?: number): Promise<{ response: Response; deadline: StreamDeadline }> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const deadline = createStreamDeadline({ connectTimeoutMs: timeoutMs ?? STREAM_CONNECT_TIMEOUT_MS, idleTimeoutMs: timeoutMs ?? STREAM_IDLE_TIMEOUT_MS, cancel: currentAiAbortSignal() })
+    let response: Response
+    try {
+      response = await fetch(streamUrl(model), {
+        method: "POST",
+        headers: { "x-goog-api-key": env.GEMINI_API_KEY!, "content-type": "application/json" },
+        body,
+        signal: deadline.signal,
+      })
+    } catch (error) {
+      deadline.dispose()
+      if (deadline.cancelled || currentAiAbortSignal()?.aborted) throw new AiCallCancelledError()
+      const timedOut = deadline.timedOut || (error instanceof Error && error.name === "TimeoutError")
+      throw new DomainError(timedOut ? "A INIA demorou demais para responder." : "Não foi possível contatar a INIA.", timedOut ? "ASSISTANT_TIMEOUT" : "ASSISTANT_NETWORK_ERROR", 504)
+    }
+    if (response.ok && response.body) {
+      deadline.started()
+      return { response, deadline }
+    }
+    deadline.dispose()
+    if (response.status !== 503 || attempt === 2) {
+      const body = await response.text()
+      throw new DomainError("Não foi possível obter uma resposta da INIA.", "ASSISTANT_FAILED", 502, { status: response.status, body })
+    }
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS))
+  }
+  throw new DomainError("Não foi possível contatar a INIA.", "ASSISTANT_NETWORK_ERROR", 504)
+}
+
 async function connectWithRetry(model: string, contents: ChatTurn[], systemInstruction: string, tools: FunctionDeclaration[], cachedContent?: string): Promise<Response> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     let response: Response
@@ -153,12 +312,7 @@ async function connectWithRetry(model: string, contents: ChatTurn[], systemInstr
       response = await fetch(generateUrl(model), {
         method: "POST",
         headers: { "x-goog-api-key": env.GEMINI_API_KEY!, "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: contents.map(turnToContent),
-          ...(cachedContent
-            ? { cachedContent }
-            : { systemInstruction: { parts: [{ text: systemInstruction }] }, ...(tools.length > 0 ? { tools: [{ functionDeclarations: tools }] } : {}) }),
-        }),
+        body: requestBody(contents, systemInstruction, tools, cachedContent),
         // Prazo da chamada + cancelamento de quem pediu (SSE do chat fechado): o fetch para e a vaga do limitador volta.
         signal: withAiCancellation(AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
       })

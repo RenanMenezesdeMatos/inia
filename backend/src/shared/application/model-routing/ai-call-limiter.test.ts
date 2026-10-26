@@ -217,7 +217,7 @@ describe("limitador — vagas, prioridade e repetição", () => {
     expect(records[1]).toMatchObject({ attempt: 2, queueWaitMs: 10_000 })
   })
 
-  it("interativa: tenta UMA vez a mais, rápido (Retry-After de 30 s vira ≤ 2 s), e falha com erro claro", async () => {
+  it("interativa em 429 (o chat tem prioridade): insiste com esperas crescentes dentro de 15 s — Retry-After grande vira o teto de 6 s — e falha com erro claro", async () => {
     const { limiter } = limiterWith({}, () => 0)
     let attempts = 0
     const records: AiCallLimiterRecord[] = []
@@ -226,12 +226,49 @@ describe("limitador — vagas, prioridade e repetição", () => {
       records.push(currentAiCallLimiterRecord()!)
       throw rateLimited(30_000)
     })
-    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(12_000)
     await chat.promise
-    expect(attempts).toBe(2)
-    expect(records[1]).toMatchObject({ attempt: 2, queueReason: "RETRY_BACKOFF", queueWaitMs: 2_000 })
+    // 6 s + 6 s cabem nos 15 s; a terceira espera (18 s no total) não cabe.
+    expect(attempts).toBe(3)
+    expect(records.slice(1).map((record) => [record.attempt, record.queueReason, record.queueWaitMs])).toEqual([[2, "RETRY_BACKOFF", 6_000], [3, "RETRY_BACKOFF", 6_000]])
     expect(chat.state.error).toBeInstanceOf(AiProviderError)
     expect(chat.state.error).toMatchObject({ code: "AI_RATE_LIMIT", statusCode: 429, message: INTERACTIVE_RATE_LIMIT_MESSAGE, details: { retryAfterMs: 30_000 } })
+  })
+
+  it("interativa em 429 sem Retry-After: as esperas dobram (0,75 → 1,5 → 3 → 6 s) — até 4 novas tentativas", async () => {
+    const { limiter, logs } = limiterWith({}, () => 0)
+    let attempts = 0
+    const chat = track(limiter, "INTERACTIVE", async () => {
+      attempts++
+      throw legacyError(429)
+    })
+    await vi.advanceTimersByTimeAsync(11_250)
+    await chat.promise
+    expect(attempts).toBe(5)
+    expect(logs.filter((event) => event.event === "ai_call_retry").map((event) => event.waitMs)).toEqual([750, 1_500, 3_000, 6_000])
+    expect(chat.state.error).toMatchObject({ code: "AI_RATE_LIMIT", message: INTERACTIVE_RATE_LIMIT_MESSAGE })
+  })
+
+  it("429 do chat pausa os lotes por 15 s enquanto ele tenta de novo: o lote novo espera, o chat responde", async () => {
+    const { limiter, logs } = limiterWith({ maxConcurrent: 4, reservedInteractive: 1 }, () => 0)
+    let chatAttempts = 0
+    const chat = track(limiter, "INTERACTIVE", async () => {
+      chatAttempts++
+      if (chatAttempts === 1) throw rateLimited()
+      return "respondeu"
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    const batch = track(limiter, "BATCH", async () => "lote")
+    await vi.advanceTimersByTimeAsync(750)
+    await chat.promise
+    expect(chat.state.value).toBe("respondeu")
+    expect(batch.state.started).toBe(false)
+    expect(logs.find((event) => event.event === "ai_call_retry")).toMatchObject({ priority: "INTERACTIVE", kind: "RATE_LIMIT", batchPausedMs: 15_000 })
+    await vi.advanceTimersByTimeAsync(14_000)
+    expect(batch.state.started).toBe(false)
+    await vi.advanceTimersByTimeAsync(1_500)
+    await batch.promise
+    expect(batch.state).toMatchObject({ value: "lote", record: { queueReason: "PROVIDER_COOLDOWN" } })
   })
 
   it("interativa: a segunda tentativa que dá certo devolve a resposta; sem Retry-After espera ~750 ms", async () => {

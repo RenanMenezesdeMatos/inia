@@ -51,6 +51,7 @@ import {
 import type { ChannelFlagListParams } from "@/services/admin/channel-flag-service"
 import { FLAG_VALUE_TYPE_LABELS, type ChannelFlag, type FlagValueType } from "@/schemas/admin/channel-flag.schema"
 import { DisplayIconSelect } from "@/components/admin/shared/display-icon-select"
+import { CallOutcomeFields, callOutcomeDraftOf, callOutcomeOfDraft } from "./call-outcome-fields"
 import { DISPLAY_ICONS, DisplayIcon, flagDefaultIconKey, isDisplayIconKey, type DisplayIconKey } from "@/lib/display-icons"
 
 /** Ícone da flag no Acompanhamento: o configurado, senão o padrão pelo tipo de valor. */
@@ -108,14 +109,20 @@ function ChannelFlagForm({ flag, onDone }: { flag?: ChannelFlag; onDone: () => v
   const [description, setDescription] = useState(flag?.description ?? "")
   const [label, setLabel] = useState(flag?.label ?? "")
   const [iconKey, setIconKey] = useState<DisplayIconKey | null>(isDisplayIconKey(flag?.iconKey) ? flag.iconKey : null)
+  const [outcomeDraft, setOutcomeDraft] = useState(callOutcomeDraftOf(flag?.callOutcome))
+  const [relatedIndicatorId, setRelatedIndicatorId] = useState<string | null>(flag?.relatedIndicatorId ?? null)
   const defaultIconKey = flagDefaultIconKey(valueType)
+  const callOutcome = callOutcomeOfDraft(outcomeDraft, valueType)
 
   async function handleSubmit() {
-    const display = { label: label.trim() || null, iconKey }
+    if (callOutcome === undefined) return
+    const display = { label: label.trim() || null, iconKey, callOutcome, relatedIndicatorId }
     if (flag) {
       await updateMutation.mutateAsync({ id: flag.id, channel, flagName, description: description || undefined, ...display })
     } else {
       await createMutation.mutateAsync({ channel, flagName, valueType, description: description || undefined, ...display })
+      setOutcomeDraft(callOutcomeDraftOf(null))
+      setRelatedIndicatorId(null)
       setChannel("VOICE")
       setFlagName("")
       setValueType("BOOLEAN")
@@ -127,7 +134,7 @@ function ChannelFlagForm({ flag, onDone }: { flag?: ChannelFlag; onDone: () => v
     onDone()
   }
 
-  const canSubmit = channel.trim().length > 1 && flagName.trim().length > 1
+  const canSubmit = channel.trim().length > 1 && flagName.trim().length > 1 && callOutcome !== undefined
 
   return (
     <div className="max-w-xl space-y-4">
@@ -170,6 +177,7 @@ function ChannelFlagForm({ flag, onDone }: { flag?: ChannelFlag; onDone: () => v
           Aparecem no Acompanhamento do colaborador como o motivo da monitoria (ex.: “Monitoria · {label.trim() || "Rechamada"}”). Sem nome, vale o nome técnico da flag.
         </p>
       </div>
+      <CallOutcomeFields valueType={valueType} draft={outcomeDraft} onDraftChange={setOutcomeDraft} relatedIndicatorId={relatedIndicatorId} onRelatedIndicatorChange={setRelatedIndicatorId} />
       <div className="space-y-1.5">
         <Label htmlFor="flag-description">Descrição (opcional)</Label>
         <Textarea id="flag-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={2} placeholder="O que essa flag representa" />

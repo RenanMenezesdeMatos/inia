@@ -139,6 +139,12 @@ const ENGINE_REASON_LABELS: Record<string, string> = {
   NO_BRIEF: "Sem conteúdo para compor",
   NO_SAFE_MESSAGE: "Nenhuma mensagem útil, coerente e sustentada pôde ser escrita — a análise ficou registrada, nada foi enviado",
 }
+/** Motivos técnicos do detalhe da abstenção que têm leitura própria (os demais aparecem como vieram). */
+const ENGINE_DETAIL_LABELS: Record<string, string> = {
+  PRODUCT_NOT_ESTABLISHED: "o que havia para avaliar dependia de um produto que a gravação não estabeleceu — nada foi cobrado nem reconhecido",
+  PRODUCT_DEPENDENT_POINTS_SUSPENDED: "pontos que dependiam do produto ficaram sem avaliação",
+}
+const engineDetailOf = (detail: string) => detail.split(",").map((code) => ENGINE_DETAIL_LABELS[code.trim()] ?? code.trim()).join("; ")
 const TONE_LABELS: Record<string, string> = { RECOGNITION: "reconhecimento", DEVELOPMENT: "desenvolvimento", MIXED: "reconhecimento e desenvolvimento", INFORMATIVE: "informativo (sem causa sustentada)" }
 const OUTPUT_STATUS_LABELS: Record<PersonResult["outputs"][number]["status"], string> = { SENT: "enviado", RECORDED_NOT_DELIVERED: "registrado, não entregue", NOT_EMITTED: "não emitido" }
 const QA_LABELS: Record<ResultFeedback["items"][number]["qaStatus"], string | null> = {
@@ -278,7 +284,7 @@ function FeedbackView({ feedback, subjectName, outputs = [] }: { feedback: Resul
           {feedback.engine.tone ? <p className="text-xs text-muted-foreground">Tom: {TONE_LABELS[feedback.engine.tone] ?? feedback.engine.tone} · {feedback.engine.developments} ponto(s) de ajuste · {feedback.engine.strengths} ponto(s) forte(s)</p> : null}
           <WordingBlock label="Resumo" text={feedback.engine.card ?? ""} />
           <WordingBlock label="Mensagem" text={feedback.engine.narrative.join("\n\n")} />
-          {feedback.engine.abstainDetail ? <p className="text-xs text-muted-foreground">Detalhe: {feedback.engine.abstainDetail}</p> : null}
+          {feedback.engine.abstainDetail ? <p className="text-xs text-muted-foreground">Detalhe: {engineDetailOf(feedback.engine.abstainDetail)}</p> : null}
         </div>
       ) : null}
       {feedback.legacy ? (

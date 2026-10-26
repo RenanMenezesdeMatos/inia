@@ -7,7 +7,7 @@ import { buildContentSecurityPolicy, createCspNonce, CSP_NONCE_HEADER, originOf 
 
 const CREATE_PASSWORD_ROUTE = "/auth/create-password"
 // Áreas que exigem sessão. As demais páginas (login, wiki, raiz) passam pelo proxy só para receber a CSP.
-const AUTHENTICATED_PREFIXES = ["/admin", "/operator", "/supervisor", "/diagnostics", "/perfil", "/qa-lab", "/materiais"]
+const AUTHENTICATED_PREFIXES = ["/admin", "/operator", "/supervisor", "/diagnostics", "/best-practices", "/perfil", "/qa-lab", "/materiais"]
 const IS_DEVELOPMENT = process.env.NODE_ENV !== "production"
 const API_ORIGIN = originOf(process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333")
 

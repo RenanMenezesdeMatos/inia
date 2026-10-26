@@ -11,6 +11,7 @@
 
   --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, Arial, sans-serif;
   --font-mono: var(--font-plex-mono), "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-quote: var(--font-atkinson-next), var(--font-atkinson), ui-sans-serif, system-ui, Arial, sans-serif;
   --font-heading: var(--font-sans);
 
   --color-card: var(--card);

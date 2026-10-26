@@ -23,6 +23,7 @@ const TOC: WikiTocEntry[] = [
   { id: "embeddings", label: "Sem embeddings (hoje)" },
   { id: "evidencia", label: "Evidência de base" },
   { id: "material-apoio", label: "Material de apoio no feedback" },
+  { id: "produtos", label: "Produtos e aplicabilidade" },
   { id: "process-audit", label: "Conformidade de processo" },
   { id: "catalogo", label: "Bases auditadas" },
   { id: "casos-por-kb", label: "Casos de uso por base" },
@@ -145,6 +146,13 @@ export default function KnowledgeBasesPage() {
             ~1.400 caracteres; mínimo de 2 termos casados por trecho. O QA Lab mostra caracteres/tokens injetados versus o que seria injetado sem
             retrieval.
           </p>
+          <p className="mt-2 text-muted-foreground">
+            Na conversa com a INIA (chat e voz), o especialista recebe a pergunta escrita pelo Orquestrador, e a busca também confere a pergunta
+            da própria pessoa, só com as palavras que as duas têm em comum: assim, o que o Orquestrador acrescentou por conta própria não tira da
+            busca a seção que a pessoa pediu. Essa segunda busca só complementa a primeira: nada do que a primeira escolheu sai, e entram no
+            máximo 4 trechos, só dos documentos que a primeira já encontrou, sob o mesmo teto de 9.000 caracteres. Numa pergunta com dois
+            assuntos, cada especialista continua recebendo só o seu. Workflows não mudam.
+          </p>
         </details>
       </WikiSection>
 
@@ -216,6 +224,25 @@ export default function KnowledgeBasesPage() {
           A INIA diz “Encontrei estes cenários nas bases consultadas” — nunca “todas as possibilidades”. Ela decide o que abrir pelo título e pelo
           começo do sumário de cada base: uma base com título pouco descritivo depende de ela abrir. Com muitas bases (mais de 120 legíveis), a lista
           é cortada e a tela avisa. A escolha esclarece a pergunta; não autoriza nenhuma ação em sistema.
+        </WarningCallout>
+      </WikiSection>
+
+      <WikiSection id="produtos" title="Produtos e aplicabilidade" eyebrow="Admin › Agentes › Produtos">
+        <p>
+          O mesmo motivo (segunda via, cancelamento, mudança de endereço) existe em produtos diferentes, e cada produto pode ter o seu procedimento.
+          O motivo não determina o produto. Por isso a INIA só cobra ou reconhece a regra de um produto quando o produto do pedido ficou{" "}
+          <strong className="font-medium text-foreground">estabelecido</strong> pelas evidências da chamada.
+        </p>
+        <FieldRow label="Produtos e categorias" value="Os produtos da operação (dados, nunca código — o código técnico é gerado pelo nome e não aparece). Cadastro: nome, categoria (opcional, criada no próprio seletor; serve quando uma base ou um indício vale para todos os produtos dela) e como o cliente e a operação chamam o produto — é com esses nomes que a INIA o reconhece quando alguém fala dele." />
+        <FieldRow label="Vale para (não é 1×1)" value="Cada documento da base e cada argumentário vale para todos os produtos (padrão) ou só para alguns; marcar uma categoria vale para os produtos dela. Escolha no editor da base ou do argumentário (Vale para) ou no detalhe do produto (Adicionar base / Tirar) — é o mesmo registro. A lista de bases mostra a coluna Produtos. Mudar vale a partir da mudança: chamadas anteriores continuam avaliadas com o que valia na época." />
+        <FieldRow label="Indícios — como reconhecer o produto na chamada" value="Em um passo: o que aparece na chamada (ex.: o começo do número da conta), se confirma o produto (sob a condição escrita em “Confirma quando”) ou apenas sugere, e de onde vem; em Mais detalhes, outros produtos que ele indica, em que situação vale, exceções, documento da base e data de início. “Salvar e usar” põe em uso na hora (a vigência nunca começa antes); “Salvar como rascunho” guarda para depois. Versões aprovadas não mudam; Encerrar/Reativar. A análise só considera indícios em uso na data da chamada; um indício que apenas sugere nunca basta sozinho." />
+        <FieldRow label="Na análise da chamada" value="A IA separa cada pedido, o objeto dele (conta, contrato, linha, produto, serviço) e as evidências com a origem e o trecho; diferencia produto identificado, só a categoria, mais de um possível, não identificado e evidências em conflito. Menção em negação, hipótese, outro contrato ou corrigida depois não prova o produto; o procedimento que o operador executou também não. A fala do operador que diz ou confirma o produto vale quando o cliente deu, sobre o mesmo pedido, um contexto compatível (a conta, a linha, o serviço); sozinha, só sugere. A IA recebe os números com o formato preservado (o começo, a quantidade de dígitos, o DDD) — o bastante para os indícios, nunca o número inteiro; número cortado ou incerto fica como limitação e nunca é reconstruído." />
+        <FieldRow label="Quando o produto não fica estabelecido" value="Os pontos que dependem dele ficam sem avaliação (nem falha, nem acerto) e não são cobrados; os pontos que não dependem do produto, ou que valem para todos os produtos ainda possíveis, continuam avaliados e o feedback acontece com eles. Em “Vale confirmar”, o bloco “Depende do produto” mostra, com o texto literal de cada base, o que o procedimento de cada produto possível pede — informação, não avaliação. Se nada útil sobra, não há feedback, com o motivo registrado. Nunca se escolhe o produto mais comum." />
+        <FieldRow label="Em todo feedback" value="Monitoria e indicador levam o produto até o fim. Numa chamada com dois pedidos, cada ponto é dito no pedido dele e dois pontos de produtos diferentes nunca viram um só. No indicador, cada fala de exemplo vem com o produto do pedido e a regra da própria chamada, e a fala do argumentário é a da versão que aquela chamada usou. Os colegas de referência só entram com prática do mesmo produto, ou de regra geral. Em “Entenda este feedback”, o ponto, a fala, a regra (“Vale para”) e a fala do argumentário mostram o produto. Uma boa prática vista só nas chamadas de um produto só é sugerida no feedback desse produto." />
+        <FieldRow label="No Diagnóstico" value="O detalhe da chamada mostra, por pedido, o que foi identificado e o que sustentou (ou não) a identificação, e lista os pontos que ficaram sem avaliação por depender do produto." />
+        <FieldRow label="Na conversa sobre o feedback" value="Se a orientação pedida depende de um produto que a gravação não estabeleceu, a INIA pode perguntar qual era (sem pedir número completo de conta ou documento). A resposta orienta aquela conversa e fica registrada como confirmação feita na conversa — nunca como algo observado na gravação, e não muda a análise." />
+        <WarningCallout kind="tip" title="Sem catálogo, nada muda">
+          Enquanto não houver produto com indício aprovado ou base marcada para ele, a análise das chamadas funciona exatamente como antes.
         </WarningCallout>
       </WikiSection>
 

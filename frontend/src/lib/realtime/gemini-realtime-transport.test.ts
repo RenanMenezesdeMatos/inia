@@ -274,6 +274,21 @@ describe("GeminiRealtimeTransport — resposta", () => {
     expect(states.at(-1)).toBe("idle")
   })
 
+  it("a resposta do especialista gravada pelo backend leva o id dela ao balão (curtir/descurtir gravado nela)", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { text: "TMA 320 s", modelText: "TMA 320 s", interactionId: "44444444-4444-4444-8444-444444444444", conversationId: "33333333-3333-4333-8333-333333333333", created: false, closed: false, activeConversationId: null } }) }))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { socket } = await connectedTransport()
+      vi.mocked(events.getToolCallContext!).mockReturnValueOnce({ conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-id" })
+      socket.receive({ toolCall: { functionCalls: [{ id: "c9", name: "consultar", args: { query: "TMA" } }] } })
+      await tick()
+      await tick()
+      expect(events.onSpecialistResult).toHaveBeenCalledWith("TMA 320 s", [], expect.objectContaining({ conversationId: "33333333-3333-4333-8333-333333333333" }), undefined, { interactionId: "44444444-4444-4444-8444-444444444444" })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("com uma tool em andamento, o áudio drenado é 'thinking' e a resposta retoma depois do toolResponse", async () => {
     let answer: (value: unknown) => void = () => {}
     const fetchMock = vi.fn(() => new Promise((resolve) => { answer = resolve }))

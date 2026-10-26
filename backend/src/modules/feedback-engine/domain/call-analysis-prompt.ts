@@ -1,4 +1,5 @@
 import { renderTranscriptForModel, type TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
+import { renderInteractionMetadataForModel, renderProductCatalogForModel, type ProductContext } from "./product-applicability.js"
 import { renderArgumentScriptsForModel, renderProcedureForModel, type ProcedureContext, type TranscriptStatus } from "./procedure.js"
 import { CALL_ANALYSIS_PROMPT_VERSION } from "./versions.js"
 
@@ -155,6 +156,8 @@ export type CallAnalysisPromptInput = {
   projection: TranscriptProjection
   transcriptStatus: TranscriptStatus
   context: ProcedureContext
+  /** `PRODUCT_APPLICABILITY_V1`: catálogo vigente na data da chamada (ausente = mensagem idêntica à de antes). */
+  products?: ProductContext | null
 }
 
 const SPECIALIST_GUIDANCE_MAX = 3_000
@@ -185,6 +188,12 @@ export function renderCallAnalysisUserTurn(input: CallAnalysisPromptInput): stri
     lines.push("")
     lines.push("ARGUMENTÁRIOS DA OPERAÇÃO PARA O ESCOPO DO COLABORADOR (versões vigentes na data da chamada; G-n)")
     lines.push(scripts)
+  }
+  if (input.products) {
+    lines.push("")
+    lines.push(renderInteractionMetadataForModel(input.products))
+    lines.push("")
+    lines.push(renderProductCatalogForModel(input.products))
   }
   lines.push("")
   lines.push("EVIDÊNCIA DISPONÍVEL NESTA ANÁLISE: a transcrição acima. Registros operacionais de sistemas não estão integrados.")

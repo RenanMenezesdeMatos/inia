@@ -3,6 +3,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { AiCallCancelledError } from "../../application/model-routing/ai-errors.js"
 import { AiCapacityBusyError } from "../../application/model-routing/ai-call-limiter.js"
 import { batchShareOf, cooldownMsOf, gateSignalOf, type ProviderCallGate, type ProviderGateCall, type ProviderGateStats } from "../../application/model-routing/provider-call-gate.js"
+import { createAdaptiveBatchWindow, type AdaptiveBatchWindow } from "../../application/model-routing/adaptive-batch-window.js"
 
 /**
  * PORTÃO POR CONEXÃO NO POSTGRESQL (migrations 127 e 137) — o mesmo estado para todas as instâncias:
@@ -42,6 +43,8 @@ export type PostgresProviderCallGateOptions = {
   slotPollMs?: number
   /** Quanto a interativa espera por vaga antes de AI_CAPACITY_BUSY. */
   interactiveWaitMs?: number
+  /** Vazão adaptativa do lote por chave (testes injetam uma sem timer). */
+  batchWindow?: AdaptiveBatchWindow
 }
 
 export type PostgresProviderCallGate = ProviderCallGate & {
@@ -79,12 +82,19 @@ export function createPostgresProviderCallGate(db: Pick<Database, "query">, opti
     if (until > (cooldowns.get(key) ?? 0)) cooldowns.set(key, until)
   }
   const cooldownRemainingMs = (key: string) => Math.max(0, (cooldowns.get(key) ?? 0) - Date.now())
+  // Saturação de uma conexão (429/503 aqui ou em outra instância) reduz o lote DESTE processo nela; a calma o devolve aos poucos.
+  const batchWindow = options.batchWindow ?? createAdaptiveBatchWindow()
 
   async function refresh(): Promise<void> {
-    const result = await db.query<{ scope: string; remainingMs: number }>(
-      `select scope, (extract(epoch from (paused_until - clock_timestamp())) * 1000)::float8 as "remainingMs" from ai_provider_cooldowns where paused_until > clock_timestamp()`,
+    const result = await db.query<{ scope: string; remainingMs: number; interactive: boolean }>(
+      `select scope, (extract(epoch from (paused_until - clock_timestamp())) * 1000)::float8 as "remainingMs", coalesce(source like '%· INTERACTIVE', false) as interactive from ai_provider_cooldowns where paused_until > clock_timestamp()`,
     )
-    for (const row of result.rows) extendCooldown(row.scope, Number(row.remainingMs))
+    for (const row of result.rows) {
+      // Pausa nova ou estendida por OUTRA instância = a conexão saturou de novo: o lote daqui também desacelera (mais, se foi o chat).
+      const before = cooldowns.get(row.scope) ?? 0
+      extendCooldown(row.scope, Number(row.remainingMs))
+      if ((cooldowns.get(row.scope) ?? 0) > before + 500) batchWindow.congestion(row.scope, { interactive: row.interactive })
+    }
     for (const [key, until] of cooldowns) if (until <= Date.now()) cooldowns.delete(key)
   }
   const timer = setInterval(() => {
@@ -154,6 +164,7 @@ export function createPostgresProviderCallGate(db: Pick<Database, "query">, opti
     refresh,
     stop() {
       clearInterval(timer)
+      batchWindow.stop()
     },
     stats(): ProviderGateStats {
       const now = Date.now()
@@ -161,6 +172,7 @@ export function createPostgresProviderCallGate(db: Pick<Database, "query">, opti
         held: Object.fromEntries(held),
         waiting: Object.fromEntries(waiting),
         cooldowns: Object.fromEntries([...cooldowns].filter(([, until]) => until > now).map(([key, until]) => [key, new Date(until).toISOString()])),
+        batchWindows: batchWindow.stats(),
       }
     },
     async run<T>(call: ProviderGateCall, fn: () => Promise<T>): Promise<T> {
@@ -168,6 +180,8 @@ export function createPostgresProviderCallGate(db: Pick<Database, "query">, opti
       bump(waiting, call.key, 1)
       try {
         await waitCooldown(call)
+        // Lote: a vez dele na vazão adaptativa da conexão (tokens de entrada estimados por minuto).
+        if (call.priority === "BATCH") await batchWindow.admit(call.key, call.estimatedTokens, call.signal)
         if (call.maxConcurrent !== null) lease = await acquire(call, call.maxConcurrent)
       } finally {
         bump(waiting, call.key, -1)
@@ -184,9 +198,10 @@ export function createPostgresProviderCallGate(db: Pick<Database, "query">, opti
       try {
         return await fn()
       } catch (error) {
-        // 429/503 desta conexão: os lotes de TODAS as instâncias esperam (a interativa, nunca).
+        // 429/503 desta conexão: os lotes de TODAS as instâncias esperam (a interativa, nunca); 429 do chat = pausa mais longa.
         const signal = gateSignalOf(error)
-        const pauseMs = cooldownMsOf(signal)
+        const pauseMs = cooldownMsOf(signal, call.priority)
+        if (signal) batchWindow.congestion(call.key, { interactive: call.priority === "INTERACTIVE" })
         if (signal && pauseMs > 0) await publish(call.key, pauseMs, signal.kind, call.priority)
         throw error
       } finally {

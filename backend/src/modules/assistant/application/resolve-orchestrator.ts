@@ -141,12 +141,12 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
 }
 
 /**
- * Acha o orquestrador ativo pro time do operador — prefere um orquestrador específico do time
- * dele; sem isso, cai pro orquestrador ALL_TEAMS mais recente. Mesma lógica de "TEAM antes de
- * ALL_TEAMS" que faz sentido pro resto do produto, só que aqui resolve pra exatamente UM
- * orquestrador (não uma lista, como nos workflows) — é ele quem vai atender esse operador.
- * Usado pelo caminho interativo (chat/voz), onde não há como o operador escolher qual
- * orquestrador quer — é sempre "o" orquestrador do escopo dele.
+ * Acha o orquestrador ativo de quem conversa — o do Subgrupo dele; sem isso, o do Grupo; sem
+ * isso, o ALL_TEAMS mais recente. Resolve pra exatamente UM orquestrador (não uma lista, como nos
+ * workflows) — é ele quem vai atender essa pessoa. Usado pelo caminho interativo (chat/voz), onde
+ * não há como escolher qual orquestrador — é sempre "o" orquestrador do escopo dela. O Subgrupo
+ * era ignorado: o cadastro aceitava orquestrador de Subgrupo, mas quem era do Subgrupo continuava
+ * no do Grupo (validação funcional de 20/10/2026, D6).
  *
  * `invocationContext` filtra por `invocation_mode` — um orquestrador pode ser restrito a só o
  * chat/voz interativo ou só o node de workflow; "BOTH" (padrão de todo orquestrador já
@@ -159,16 +159,16 @@ export async function resolveOrchestratorForSubject(
   invocationContext: OrchestratorInvocationContext,
   query?: string,
 ): Promise<ResolvedOrchestrator | null> {
-  const person = await db.query<{ team_id: string | null }>(`select team_id from people where id = $1 and organization_id = $2`, [
+  const person = await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [
     subjectId,
     organizationId,
   ])
-  return resolveOrchestratorForTeam(db, organizationId, person.rows[0]?.team_id ?? null, invocationContext, query)
+  return resolveOrchestratorForPlacement(db, organizationId, { teamId: person.rows[0]?.team_id ?? null, subteamId: person.rows[0]?.subteam_id ?? null }, invocationContext, query)
 }
 
 /**
- * O Orquestrador de um GRUPO: o do próprio Grupo (escopo TEAM) ou, sem ele, o de "Todos os grupos" — a mesma regra de quem
- * conversa (acima) e da consulta de processo de quem lidera vários Grupos (`listInteractiveOrchestratorScopes` + `orchestratorForTeam`).
+ * O Orquestrador de um GRUPO: o do próprio Grupo (escopo TEAM) ou, sem ele, o de "Todos os grupos" — a mesma regra da consulta
+ * de processo de quem lidera vários Grupos (`listInteractiveOrchestratorScopes` + `orchestratorForTeam`), que escolhe por Grupo.
  */
 export async function resolveOrchestratorForTeam(
   db: Database,
@@ -177,15 +177,26 @@ export async function resolveOrchestratorForTeam(
   invocationContext: OrchestratorInvocationContext,
   query?: string,
 ): Promise<ResolvedOrchestrator | null> {
+  return resolveOrchestratorForPlacement(db, organizationId, { teamId, subteamId: null }, invocationContext, query)
+}
+
+/** Preferência: Subgrupo > Grupo > Todos os grupos (o mais recente de cada nível). */
+async function resolveOrchestratorForPlacement(
+  db: Database,
+  organizationId: string,
+  placement: { teamId: string | null; subteamId: string | null },
+  invocationContext: OrchestratorInvocationContext,
+  query?: string,
+): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
     `select o.organization_id, o.id, o.name, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', $3)
-       and (o.scope_type = 'ALL_TEAMS' or (o.scope_type = 'TEAM' and o.team_id = $2))
-     order by (o.scope_type = 'TEAM') desc, o.created_at desc
+       and (o.scope_type = 'ALL_TEAMS' or (o.scope_type = 'TEAM' and o.team_id = $2) or (o.scope_type = 'SUBTEAM' and o.subteam_id = $4))
+     order by case o.scope_type when 'SUBTEAM' then 0 when 'TEAM' then 1 else 2 end, o.created_at desc
      limit 1`,
-    [organizationId, teamId, invocationContext],
+    [organizationId, placement.teamId, invocationContext, placement.subteamId],
   )
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null

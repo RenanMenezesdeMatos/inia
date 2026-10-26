@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { fakeKnowledgeDb as fakeDb } from "../testing/fake-knowledge-db.js"
-import { clearKnowledgeSnapshotCache, retrieveKnowledgeForAgent } from "./retrieve-knowledge.js"
+import { ASKER_QUESTION_RETRIEVAL_VERSION, clearKnowledgeSnapshotCache, retrieveKnowledgeForAgent } from "./retrieve-knowledge.js"
 
 function bigDocument(id: string, title: string, topic: string, sections: number): { id: string; title: string; content: string } {
   const body = Array.from({ length: sections }, (_, index) =>
@@ -87,6 +87,66 @@ describe("retrieveKnowledgeForAgent", () => {
       const after = await retrieveKnowledgeForAgent(fakeDb({ agent: updated }), "agent", "prazo de estorno")
       expect(after.trace.authorizedDocuments.map((document) => document.id)).toContain("kb-estorno")
       expect(after.promptBlock).toContain("Prazo de estorno")
+    })
+  })
+
+  describe("conversa: a pergunta da pessoa complementa a busca do roteamento (ASKER_QUESTION_RETRIEVAL_V1)", () => {
+    // Reprodução do achado de 22/10/2026 em base fictícia: as seções "Passo k do procedimento" casam com tudo o que o roteamento
+    // acrescentou ("Passo a passo e procedimentos") e ocupam o orçamento; a seção que a pessoa pediu fica de fora só por isso.
+    const contestacao = {
+      id: "kb-cont",
+      title: "Contestação de Contas",
+      content: [
+        "# Contestação de Contas",
+        ...Array.from({ length: 9 }, (_, index) => `## 28.${index + 1} Passo ${index + 1} do procedimento\nRegistre a contestação da fatura no sistema e siga o passo do procedimento ${index + 1}.`),
+        "## 31. Registro obrigatório na contestação da fatura\nAo registrar a contestação da fatura, informe a conta, a linha, o valor, a data e o motivo apontado.",
+      ].join("\n\n"),
+    }
+    const base = () => [contestacao, bigDocument("kb-ferias", "Política de Férias", "férias e banco de horas", 10)]
+    const ROUTING = "Como registrar a contestação da fatura de um cliente? Passo a passo e procedimentos."
+    const PERSON = "Como faço para registrar a contestação da fatura de um cliente?"
+    const headings = (result: { trace: { retrieved: { heading: string }[] } }) => result.trace.retrieved.map((excerpt) => excerpt.heading)
+
+    it("sem a pergunta da pessoa, nada muda (mesmo resultado de sempre, sem rastro novo)", async () => {
+      const routingOnly = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING)
+      expect(headings(routingOnly)).not.toContain("31. Registro obrigatório na contestação da fatura")
+      expect(await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: null })).toEqual(routingOnly)
+      expect(routingOnly.trace.askerQuestion).toBeUndefined()
+    })
+
+    it("com a pergunta da pessoa: tudo o que o roteamento trazia continua e a seção pedida volta, registrada como acréscimo", async () => {
+      const routingOnly = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING)
+      const result = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: PERSON })
+      expect(headings(result)).toEqual(expect.arrayContaining(headings(routingOnly)))
+      expect(headings(result)).toContain("31. Registro obrigatório na contestação da fatura")
+      expect(result.promptBlock).toContain("informe a conta, a linha, o valor")
+      expect(result.trace.askerQuestion).toEqual({ version: ASKER_QUESTION_RETRIEVAL_VERSION, outcome: "COMPLEMENTED", added: [expect.objectContaining({ documentId: "kb-cont", heading: "31. Registro obrigatório na contestação da fatura" })], otherDocuments: 0, overLimit: 0 })
+      expect(result.trace.injectedChars).toBeLessThanOrEqual(result.trace.budget.maxTotalChars)
+    })
+
+    it("cortesia na pergunta da pessoa não muda nada: o resultado é o mesmo da pergunta sem ela", async () => {
+      const plain = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: PERSON })
+      const polite = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: `Olá, tudo bem? Por favor, me ajuda: ${PERSON}` })
+      expect(polite).toEqual(plain)
+    })
+
+    it("pergunta com dois assuntos, um por especialista: cada busca fica no assunto que o roteamento lhe deu", async () => {
+      const BOTH = "Como faço para registrar a contestação da fatura de um cliente e quantos dias de férias e banco de horas eu tenho?"
+      const contestacaoCall = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: BOTH })
+      expect(headings(contestacaoCall)).toContain("31. Registro obrigatório na contestação da fatura")
+      expect(contestacaoCall.trace.retrieved.every((excerpt) => excerpt.documentId === "kb-cont")).toBe(true)
+      const FERIAS = "Quantos dias de férias e banco de horas o colaborador tem?"
+      const feriasCall = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", FERIAS, undefined, null, { askerQuestion: BOTH })
+      expect(feriasCall.trace.retrieved.length).toBeGreaterThan(0)
+      expect(feriasCall.trace.retrieved.every((excerpt) => excerpt.documentId === "kb-ferias")).toBe(true)
+      expect(feriasCall.trace.retrieved).toEqual((await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", FERIAS)).trace.retrieved)
+    })
+
+    it("pergunta que depende da conversa (\"e qual o prazo?\") não abre busca própria: resultado do roteamento, rastro TOO_SHORT", async () => {
+      const routingOnly = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING)
+      const result = await retrieveKnowledgeForAgent(fakeDb({ agent: base() }), "agent", ROUTING, undefined, null, { askerQuestion: "e qual o prazo?" })
+      expect(result.trace.retrieved).toEqual(routingOnly.trace.retrieved)
+      expect(result.trace.askerQuestion).toMatchObject({ outcome: "TOO_SHORT", added: [] })
     })
   })
 })

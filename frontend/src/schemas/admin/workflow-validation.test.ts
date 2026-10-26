@@ -15,8 +15,9 @@ function conditionNode(config: Extract<FlowNode, { type: "condition" }>["config"
   return { id, type: "condition", label: "Condição", position, config }
 }
 
+/** Nós soltos entre o Gatilho e o Fim: cada teste olha a configuração de um nó, não as ligações (o Gatilho segue direto para o Fim). */
 function graphWith(...nodes: FlowNode[]): FlowGraph {
-  return { nodes: [triggerNode, ...nodes, endNode], edges: [] }
+  return { nodes: [triggerNode, ...nodes, endNode], edges: [{ id: "trigger-always-end", source: "trigger", sourceHandle: "always", target: "end" }] }
 }
 
 describe("validateWorkflowGraph — group AND/OR (Parte 3)", () => {
@@ -462,10 +463,11 @@ describe("validateWorkflowGraph — Human Review hierárquico (Parte 4)", () => 
     const second = humanReviewNode({ reviewTarget: { type: "ROLE_OF_PREVIOUS_REVIEWER", role: "MANAGER", previousReviewNodeId: "hr-1" } }, "hr-2")
     const graph: FlowGraph = {
       nodes: [triggerNode, first, second, endNode],
+      // Revisão humana sai por Aprovado/Reprovado/Escalar (nunca "Sempre"): todas ligadas, senão a execução morreria.
       edges: [
         { id: "e1", source: "trigger", sourceHandle: "always", target: "hr-1" },
-        { id: "e2", source: "hr-1", sourceHandle: "always", target: "hr-2" },
-        { id: "e3", source: "hr-2", sourceHandle: "always", target: "end" },
+        ...["approved", "rejected", "escalated"].map((branch) => ({ id: `hr-1-${branch}`, source: "hr-1", sourceHandle: branch, target: "hr-2" })),
+        ...["approved", "rejected", "escalated"].map((branch) => ({ id: `hr-2-${branch}`, source: "hr-2", sourceHandle: branch, target: "end" })),
       ],
     }
     const issues = validateWorkflowGraph(graph, trigger)
@@ -1068,6 +1070,8 @@ describe("validateWorkflowGraph — Consolidar resultados (fan-in/JOIN)", () => 
         { id: "e5", source: "branch", sourceHandle: "false", target: "set-var" },
         { id: "e6", source: "set-var", sourceHandle: "always", target: "join" },
         { id: "e7", source: "join", sourceHandle: "always", target: "end" },
+        // Condição histórica tem a saída "Sem dados": desligada, a execução morreria sem dados (todas as saídas convergem no Join).
+        { id: "e8", source: "branch", sourceHandle: "no_data", target: "join" },
       ],
     )
     expect(validateWorkflowGraph(graph, scheduleTrigger, new Map(), new Map(), true)).toEqual([])

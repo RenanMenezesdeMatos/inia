@@ -42,6 +42,9 @@ export class ConversationClosedError extends Error {
 
 export type ConversationRef = { conversationId: string; created: boolean; rotatedFrom: string | null }
 
+/** Progresso verdadeiro da resposta (o que está rodando agora no servidor) — rótulo pronto para a tela. */
+export type ReplyStatus = { stage: string; label: string }
+
 /** A tela estava desatualizada: a conversa pedida não é mais a desta aplicação de feedback (ex.: concluída em outra aba). Nada foi
  * gravado — o chat recarrega a aplicação e devolve o texto ao campo. */
 export class FeedbackConversationChangedError extends Error {
@@ -63,15 +66,22 @@ export async function fetchTextReply(
   // A persona da INIA é do servidor; daqui só sai o contexto da tela (dado, não instrução).
   // `clarification`: escolha (ou correção) de uma etapa do esclarecimento pelas bases — `text` é a forma legível dela.
   input: { conversationId: string | null; text: string; clientMessageId: string; contextHint?: string; feedbackApplicationId?: string | null; clarification?: ClarificationAnswer },
-  onChunk: (text: string) => void,
+  /** `citations`: o pedaço é da resposta pelas bases, com marcadores de fonte ([1], [2]…) que a tela tira do que a pessoa lê. */
+  onChunk: (text: string, meta?: { citations: true }) => void,
   onConversation?: (conversation: ConversationRef) => void,
+  /** `onStatus`: o que o servidor está fazendo agora (progresso verdadeiro, nunca texto da resposta). `onRetract`: o texto mostrado
+   * até aqui deixou de ser a resposta (o modelo pediu uma ferramenta depois de escrever) — a tela apaga e os próximos pedaços
+   * recomeçam. `signal`: quem pediu desistiu (trocou de conversa) — o pedido é cancelado e o servidor para de gerar. */
+  options: { onStatus?: (status: ReplyStatus) => void; onRetract?: () => void; signal?: AbortSignal } = {},
 ): Promise<TextReply> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+  const signal = options.signal && typeof AbortSignal.any === "function" ? AbortSignal.any([options.signal, timeout]) : timeout
   const response = await fetch(`${API_URL}/api/v1/realtime/messages`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...input, feedbackApplicationId: input.feedbackApplicationId ?? undefined }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal,
   }).catch(() => {
     throw new Error("Não foi possível contatar a INIA. Verifique sua conexão e tente de novo.")
   })
@@ -110,9 +120,16 @@ export async function fetchTextReply(
         conversationId = payload.conversationId
         onConversation?.(payload)
       } else if (name === "chunk") {
-        const text = (JSON.parse(data) as { text: string }).text
-        full += text
-        onChunk(text)
+        const payload = JSON.parse(data) as { text: string; citations?: unknown }
+        full += payload.text
+        if (payload.citations === true) onChunk(payload.text, { citations: true })
+        else onChunk(payload.text)
+      } else if (name === "retract") {
+        full = ""
+        options.onRetract?.()
+      } else if (name === "status") {
+        const status = JSON.parse(data) as { stage?: unknown; label?: unknown }
+        if (typeof status.label === "string") options.onStatus?.({ stage: typeof status.stage === "string" ? status.stage : "", label: status.label })
       } else if (name === "persisted") {
         persisted = true
         interactionId = (JSON.parse(data) as { interactionId?: string }).interactionId ?? interactionId
@@ -184,9 +201,14 @@ export type ConversationMessage = {
   reportOffer?: unknown
   /** Estado do esclarecimento pelas bases desta resposta (fontes já revalidadas para quem lê). */
   clarification?: unknown
+  /** `PRODUCT_APPLICABILITY_V1` (monitoramento): o esclarecimento foi uma confirmação feita NA CONVERSA sobre um feedback — não é
+   * observação da gravação. */
+  clarificationProvenance?: "CHAT_CONFIRMATION"
   /** "WORKFLOW" = recado entregue por um fluxo da INIA (mensagem destacada); "FEEDBACK" = apresentação de uma aplicação de
    * feedback; null nas demais. */
   origin?: "WORKFLOW" | "FEEDBACK" | null
+  /** Curtir/descurtir vigente da dona nesta resposta da INIA (null = sem marcação); ausente nas mensagens da pessoa. */
+  rating?: "up" | "down" | null
 }
 
 async function getJson<T>(path: string, errorMessage: string): Promise<T> {
@@ -213,6 +235,18 @@ export function fetchConversationMessages(conversationId: string, options: { bef
   if (options.before) params.set("before", options.before)
   if (options.after) params.set("after", options.after)
   return getJson<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean }>(`/api/v1/realtime/conversations/${conversationId}/messages?${params}`, "Não foi possível carregar as mensagens da conversa.")
+}
+
+/** Grava o curtir/descurtir de uma resposta da INIA (`undefined` = retirou). Só a dona da conversa; o histórico fica no banco. */
+export async function saveMessageRating(conversationId: string, interactionId: string, rating: "up" | "down" | undefined): Promise<void> {
+  const value = rating === "up" ? "UP" : rating === "down" ? "DOWN" : "NONE"
+  const response = await fetch(`${API_URL}/api/v1/realtime/conversations/${conversationId}/messages/${interactionId}/rating`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  })
+  if (!response.ok) throw new Error(`Avaliação não gravada (${response.status}).`)
 }
 
 /** "Nova conversa": encerra a atual no backend (nada é criado até a próxima mensagem). */

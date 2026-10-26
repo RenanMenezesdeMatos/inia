@@ -1,10 +1,12 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { parseFeedbackSessionClarificationScope } from "../../feedback-application/domain/product-confirmation.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { rolesWithPermission } from "../../access/domain/roles.js"
 import { loadAvatarPresenter, personAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
 import { decodeCursor } from "../domain/assistant-conversation.js"
 import { CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
+import { loadConversationRatings } from "./assistant-interaction-ratings.js"
 import { loadAssistantSupportMaterials } from "./assistant-support-materials.js"
 import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
 import { parseClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
@@ -199,13 +201,19 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
   const documentIds = [...new Set(clarifications.flatMap((item) => referencedDocumentIds(item.state)))]
   const readable = documentIds.length > 0 ? new Set((await resolveAccessibleKnowledgeMaterials(db, { organizationId: viewer.organizationId, viewer: { personId: viewer.personId }, materialIds: documentIds })).keys()) : new Set<string>()
   const clarificationViews = new Map(clarifications.map((item) => [item.id, toClarificationView(item.state, readable)]))
+  // Curtir/descurtir da DONA da conversa em cada resposta da INIA (migration 158) — só leitura; falhar nunca impede a conversa.
+  const ratings = await loadConversationRatings(db, { organizationId: viewer.organizationId, ownerPersonId: conversation.owner.personId }, result.messages.filter((m) => m.role === "assistant").map((m) => m.id)).catch((error: unknown) => {
+    console.error(JSON.stringify({ event: "monitored_ratings_load_failed", message: (error as Error)?.message ?? String(error) }))
+    return new Map<string, "up" | "down">()
+  })
   return {
     conversation,
-    // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela.
+    // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela — só a PROCEDÊNCIA de uma
+    // confirmação feita na sessão de feedback (`PRODUCT_APPLICABILITY_V1`): o que a pessoa respondeu ali não é evidência da gravação.
     messages: result.messages.map(({ clarificationScope, ...message }) => {
-      void clarificationScope
+      const confirmedInChat = parseFeedbackSessionClarificationScope(clarificationScope)?.provenance === "CHAT_CONFIRMATION"
       const hidden = message.analytics.some((card) => !visible.has(card))
-      return { ...message, ...(hidden ? { content: OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null) }
+      return { ...message, ...(hidden ? { content: OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
     }),
     hasMore: result.hasMore,
   }

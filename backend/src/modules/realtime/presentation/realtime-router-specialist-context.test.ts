@@ -23,7 +23,15 @@ import { INIA_CHAT_PERSONA, createRealtimeRouter } from "./realtime-router.js"
  */
 const generateWithTools = vi.fn()
 const specialistCalls: { agentId: string; query: string; sharedContext: string | undefined; options: Record<string, unknown> }[] = []
-vi.mock("../../assistant/infrastructure/gemini-function-calling-client.js", () => ({ generateWithTools: (...args: unknown[]) => generateWithTools(...args) }))
+// O chat usa a chamada EM FLUXO: o mesmo modelo falso, com o texto entregue de uma vez.
+vi.mock("../../assistant/infrastructure/gemini-function-calling-client.js", () => ({
+  generateWithTools: (...args: unknown[]) => generateWithTools(...args),
+  streamWithTools: async (contents: unknown, system: unknown, tools: unknown, onText: (text: string) => void, options: unknown) => {
+    const result = (await generateWithTools(contents, system, tools, options)) as { kind: string; text?: string }
+    if (result.kind === "text" && result.text) onText(result.text)
+    return { ...result, streamedChars: result.kind === "text" ? (result.text ?? "").length : 0, firstTokenMs: 0 }
+  },
+}))
 vi.mock("../../assistant/application/run-specialist-tool.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../assistant/application/run-specialist-tool.js")>()
   return { ...actual, runSpecialistTool: (...args: unknown[]) => fakeSpecialist(...(args as Parameters<typeof fakeSpecialist>)) }

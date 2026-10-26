@@ -25,8 +25,10 @@ export function formatIndicatorValue(value: number | null | undefined, unit: str
   if (value === null || value === undefined) return NO_DATA_LABEL
   switch (unit) {
     case "SECONDS": {
-      const minutes = Math.floor(value / 60)
-      const seconds = Math.round(value % 60)
+      // Arredonda o total antes de dividir: 479,6 s é 8m00s, nunca 7m60s.
+      const total = Math.round(value)
+      const minutes = Math.floor(total / 60)
+      const seconds = total % 60
       return `${minutes}m${seconds.toString().padStart(2, "0")}s`
     }
     case "PERCENT":

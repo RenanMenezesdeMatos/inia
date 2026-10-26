@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import { AiCallCancelledError } from "../../../shared/application/model-routing/ai-errors.js"
+import { AiCallCancelledError, AiProviderError } from "../../../shared/application/model-routing/ai-errors.js"
 import { currentAiAbortSignal } from "../../../shared/application/model-routing/ai-runtime.js"
+import { currentChatTurnTrace } from "../../../shared/application/observability/chat-turn-trace.js"
 import type { ReadableKnowledge, ReadableKnowledgeRequest } from "../../knowledge/application/knowledge-catalog.js"
-import { CONVERGENCE_ISSUES, validateAnswerOutput, validatePlannerOutput, type PlannerIssue, type PlannerValidation, type PlannerValidationContext, type RejectedOption, type ValidatedPlan } from "../domain/clarification-contract.js"
-import { ANSWER_SYSTEM, renderAnswerInput, renderCorrection, renderPlannerInput, renderPlannerSystem, type AnswerSection, type PlannerInput } from "../domain/clarification-prompts.js"
+import { createAnswerStream } from "../domain/answer-stream.js"
+import { CONVERGENCE_ISSUES, validateAnswerOutput, validatePlannerOutput, type AnswerValidation, type PlannerIssue, type PlannerValidation, type PlannerValidationContext, type PresentedEvidence, type RejectedOption, type ValidatedPlan } from "../domain/clarification-contract.js"
+import { ANSWER_SYSTEM, renderAnswerInput, renderCorrection, renderPlannerInput, renderPlannerSystem, SESSION_ANSWER_RULE, type AnswerSection, type PlannerInput } from "../domain/clarification-prompts.js"
 import {
   KNOWLEDGE_CLARIFICATION_VERSION,
   MAX_CLARIFICATION_STEPS,
@@ -66,7 +68,23 @@ export type ClarificationRequest = {
   previous: { state: ClarificationState; isLatestAssistantMessage: boolean } | null
   /** Turnos anteriores da conversa (só para referências como "isso"). */
   recentTurns: readonly { role: "user" | "model"; text: string }[]
+  /**
+   * Sessão de feedback (`PRODUCT_APPLICABILITY_V1`): o registro do que a análise da gravação estabeleceu sobre o atendimento (ex.: produto
+   * não estabelecido e os pontos que dependem dele). Dado para o planejador e regra para a resposta; ausente = chat de sempre.
+   */
+  sessionContext?: string | null
+  /** Chat de texto: a resposta (ANSWER) aparece enquanto é redigida. Ausente = só a resposta inteira e validada (voz, liderança). */
+  stream?: ClarificationStream | null
 }
+
+/**
+ * A resposta pelas bases em fluxo: o texto da redação vai para a tela enquanto chega, só até onde a conferência incremental dos
+ * marcadores passa (`answer-stream.ts`). Quem decide continua sendo a validação final: recusada (ou a chamada falhou), o que
+ * apareceu é retirado (`retract`) ANTES da correção ou do caminho de sempre. `status`: o que está acontecendo (nunca conteúdo).
+ */
+export type ClarificationStream = { text(chunk: string): void; retract(): void; status?(label: string): void }
+
+export const ANSWER_DRAFTING_STATUS = "Escrevendo a resposta com as fontes…"
 
 export type ClarificationMode = "NEW" | "ANSWER" | "REVISE" | "PENDING_TEXT"
 export type ClarificationPassReason = "NO_AGENTS" | "NO_KNOWLEDGE" | "NOT_APPLICABLE" | "KNOWLEDGE_UNAVAILABLE" | "PLANNER_FAILED" | "ANSWER_FAILED"
@@ -85,6 +103,9 @@ export type ClarificationTrace = {
   plannerAttempts: number
   answerAttempts: number
   issues: string[]
+  /** Cada chamada à IA nesta mensagem, em ordem: etapa, correção e o que decidiu (ex.: `PLANNER READ +1B +4K`, `ANSWER OK`). Sem
+   * conteúdo — mostra quantas rodadas a pergunta custou. */
+  calls?: string[]
 }
 
 export type ClarificationOutcome =
@@ -234,7 +255,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       const view = workspace.render()
       const readsRemaining = MAX_READ_ROUNDS - reads
       const system = renderPlannerSystem({ guardrails, glossary: knowledge.glossary, coverage: workspace.coverage(), catalog: view.catalog })
-      const user = renderPlannerInput({ ...conversation, stepsRemaining: context.stepsRemaining, readsRemaining, recentTurns: request.recentTurns.slice(-6), details: view.details })
+      const user = renderPlannerInput({ ...conversation, stepsRemaining: context.stepsRemaining, readsRemaining, recentTurns: request.recentTurns.slice(-6), details: view.details, sessionContext: request.sessionContext ?? null })
       const validation = await plan(request, record, system, user, { ...context, evidence: view.evidence, answerable: view.answerable, readable: readsRemaining > 0 ? view.readable : null })
       record.navigation = { ...workspace.trace(), readRounds: reads, excludedByAccess: knowledge.excludedByAccess }
       if (!validation || !validation.ok || validation.plan.decision !== "READ") return validation
@@ -249,12 +270,14 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       record.plannerAttempts += 1
       const first = await deps.model({ organizationId: request.organizationId, stage: "PLANNER", system, user, correction: false })
       let validation = validatePlannerOutput(first, context)
+      noteCall(record, plannerCallLabel(validation, false))
       record.rejectedOptions.push(...validation.rejectedOptions)
       if (!validation.ok) {
         record.issues.push(...validation.issues.map((issue) => issue.message))
         record.plannerAttempts += 1
         const second = await deps.model({ organizationId: request.organizationId, stage: "PLANNER", system, user: `${user}\n\n${renderCorrection(validation.issues)}\n\nRESPOSTA ANTERIOR (rejeitada):\n${first.slice(0, 6_000)}`, correction: true })
         validation = validatePlannerOutput(second, context)
+        noteCall(record, plannerCallLabel(validation, true))
         record.rejectedOptions.push(...validation.rejectedOptions)
         if (!validation.ok) record.issues.push(...validation.issues.map((issue) => issue.message))
       }
@@ -316,16 +339,34 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     const user = renderAnswerInput({ state, sections, conflicts, glossary: knowledge.glossary })
     try {
       const [guardrails, instructions] = await Promise.all([deps.guardrails(request.organizationId, [...(request.orchestratorAgentId ? [request.orchestratorAgentId] : []), ...owners]), deps.specialistInstructions(request.organizationId, owners)])
-      const system = [ANSWER_SYSTEM, instructions, guardrails].filter(Boolean).join("\n\n")
+      const system = [ANSWER_SYSTEM, request.sessionContext ? SESSION_ANSWER_RULE : null, instructions, guardrails].filter(Boolean).join("\n\n")
       const evidence = new Map(sections.map((section) => [section.ref, section.source]))
       record.answerAttempts = 1
-      const first = await deps.model({ organizationId: request.organizationId, stage: "ANSWER", system, user, correction: false })
-      let validation = validateAnswerOutput(first, evidence)
+      request.stream?.status?.(ANSWER_DRAFTING_STATUS)
+      // Falha passageira do provedor: UMA nova tentativa por mensagem (vale para a redação e para a correção).
+      let providerRetried = false
+      const draft = async (input: Omit<Parameters<ClarificationModel>[0], "onText">, label: string) => {
+        try {
+          return await draftAnswer(request, input, evidence)
+        } catch (error) {
+          rethrowIfCancelled(error)
+          const category = transientProviderFailure(error)
+          if (!category || providerRetried) throw error
+          providerRetried = true
+          logFailure("answer", error)
+          noteCall(record, `${label} RETRY(${category})`)
+          return draftAnswer(request, input, evidence)
+        }
+      }
+      const first = await draft({ organizationId: request.organizationId, stage: "ANSWER", system, user, correction: false }, "ANSWER")
+      let validation = first.validation
+      noteCall(record, `ANSWER ${validation.ok ? "OK" : "INVALID"}`)
       if (!validation.ok) {
         record.issues.push(...validation.issues)
         record.answerAttempts = 2
-        const second = await deps.model({ organizationId: request.organizationId, stage: "ANSWER", system, user: `${user}\n\n${renderCorrection(validation.issues)}\n\nRESPOSTA ANTERIOR (rejeitada):\n${first.slice(0, 8_000)}`, correction: true })
-        validation = validateAnswerOutput(second, evidence)
+        const second = await draft({ organizationId: request.organizationId, stage: "ANSWER", system, user: `${user}\n\n${renderCorrection(validation.issues)}\n\nRESPOSTA ANTERIOR (rejeitada):\n${first.raw.slice(0, 8_000)}`, correction: true }, "ANSWER(fix)")
+        validation = second.validation
+        noteCall(record, `ANSWER(fix) ${validation.ok ? "OK" : "INVALID"}`)
         if (!validation.ok) record.issues.push(...validation.issues)
       }
       return validation.ok ? validation : null
@@ -333,6 +374,21 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       rethrowIfCancelled(error)
       logFailure("answer", error)
       return null
+    }
+  }
+
+  /** Uma redação. Em fluxo, o texto aparece enquanto chega e é retirado quando a validação final recusa ou a chamada falha. */
+  async function draftAnswer(request: ClarificationRequest, input: Omit<Parameters<ClarificationModel>[0], "onText">, evidence: PresentedEvidence): Promise<{ raw: string; validation: AnswerValidation }> {
+    const stream = request.stream
+    const live = stream ? createAnswerStream(evidence, (text) => stream.text(text)) : null
+    try {
+      const raw = await deps.model(live ? { ...input, onText: (text) => live.push(text) } : input)
+      const validation = validateAnswerOutput(raw, evidence)
+      if (!validation.ok && live?.emitted()) stream!.retract()
+      return { raw, validation }
+    } catch (error) {
+      if (live?.emitted()) stream!.retract()
+      throw error
     }
   }
 
@@ -361,6 +417,35 @@ function mergeFacts(existing: readonly QuestionFact[], incoming: readonly Questi
     merged.push(fact)
   }
   return merged
+}
+
+/**
+ * Falha PASSAGEIRA do provedor na redação da resposta (erro do servidor dele, rede, modelo indisponível): vale UMA nova tentativa
+ * antes de desistir — desistir joga a pergunta no caminho de sempre, 50 a 60 s mais lento (1 de 20 turnos na medição de 22/10/2026:
+ * "O modelo de IA não retornou uma resposta válida", 0,9 s). Estouro de tempo não repete (custaria o mesmo que o caminho de sempre),
+ * limite de uso fica com o limitador de chamadas e resposta recusada pela conferência tem a correção própria. A categoria vem do
+ * erro normalizado do gateway (policy: `AiProviderError`; legado: `details.category`).
+ */
+const TRANSIENT_PROVIDER_FAILURES: ReadonlySet<string> = new Set(["PROVIDER_ERROR", "NETWORK", "MODEL_UNAVAILABLE"])
+
+function transientProviderFailure(error: unknown): string | null {
+  if (!(error instanceof DomainError)) return null
+  const details = (error.details && typeof error.details === "object" ? error.details : {}) as { category?: unknown }
+  const category = error instanceof AiProviderError ? error.category : typeof details.category === "string" ? details.category : error.code.includes("NETWORK") ? "NETWORK" : null
+  return category && TRANSIENT_PROVIDER_FAILURES.has(category) ? category : null
+}
+
+function plannerCallLabel(validation: PlannerValidation, correction: boolean): string {
+  const stage = correction ? "PLANNER(fix)" : "PLANNER"
+  if (!validation.ok) return `${stage} INVALID`
+  const { plan } = validation
+  return plan.decision === "READ" ? `${stage} READ +${plan.read.documentIds.length}B +${plan.read.sections.length}K` : `${stage} ${plan.decision}`
+}
+
+/** Rastro das chamadas (gravado com a resposta e no rastreamento do turno do chat, `clarificationCalls`). */
+function noteCall(record: ClarificationTrace, label: string): void {
+  record.calls = [...(record.calls ?? []), label]
+  currentChatTurnTrace()?.note("clarificationCalls", record.calls.join(" > "))
 }
 
 function logFailure(stage: string, error: unknown): void {

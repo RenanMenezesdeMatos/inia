@@ -3,6 +3,7 @@ import { firmnessOf, RECURRENCE_FOR_CORRECTION, strongestFirmness, type Firmness
 import type { HeadingSubjectSource } from "../../feedbacks/domain/feedback-heading.js"
 import { CUSTOMER_SPEAKERS, OPERATOR_SPEAKERS, type RulePerspective } from "./procedure.js"
 import type { FeedbackView } from "./feedback-view.js"
+import { criterionProductOf, isSuspendedByProduct, ruleScopeNamesOf } from "./product-applicability.js"
 import { COMPOSITION_VERSION } from "./versions.js"
 
 /**
@@ -20,7 +21,10 @@ import { COMPOSITION_VERSION } from "./versions.js"
  * precisam aparecer); condutas materiais verificadas viram reconhecimento (poucas e as mais relevantes — a mensagem não reconta a
  * chamada). Achados menores continuam na memória; nada material some.
  */
-export type BriefQuote = { speaker: "OPERATOR" | "CUSTOMER" | "OTHER"; text: string; turn: string | null }
+/** `call` (`PATTERN_EXAMPLE_CONTEXT_V1`, só fala de exemplo de um padrão do indicador): os produtos estabelecidos na chamada de onde a fala
+ * veio e a regra que valeu NELA — a fala só pode ser lida contra a regra da própria chamada. V19 (`PRODUCT_IN_FEEDBACK_V1`): o produto é o da
+ * SOLICITAÇÃO a que a avaliação se refere (não todos os da chamada), e a regra traz o "Vale para" e a fala do argumentário da versão usada. */
+export type BriefQuote = { speaker: "OPERATOR" | "CUSTOMER" | "OTHER"; text: string; turn: string | null; call?: { product: string | null; rule: BriefRule } }
 /** Regra LITERAL da base. `leadIn` = a frase que abre a lista do item (condição, "avaliar:", "informar:") — a regra só tem o seu
  * sentido junto dela. */
 export type BriefRule = {
@@ -41,6 +45,22 @@ export type BriefRule = {
   /** `RULE_SOURCES_V1`: item do campo "evitar" do argumentário (estrutura do cadastro) — o que a operação pede para NÃO fazer. Nunca é
    * apresentado como orientação: vai para "o procedimento pede evitar". */
   avoid?: boolean
+  /** `ARGUMENT_REQUIREMENT_V1`: se o item do argumentário é obrigatório ou opcional, como o cadastro diz. Ausente = regra da base (ou sem
+   * classificação). */
+  requirement?: ArgumentRequirement
+  /** `PRODUCT_IN_FEEDBACK_V1`: os produtos a que a regra vale ("Vale para", do cadastro); ausente = regra geral. */
+  appliesTo?: string[]
+}
+/**
+ * `ARGUMENT_REQUIREMENT_V1`: o que o CADASTRO do argumentário diz sobre o item — "Pontos obrigatórios na fala" e a orientação "deve" são
+ * obrigatórios; a orientação "pode" é opcional (fazer é iniciativa, não fazer nunca é desvio). Item "evitar" e orientação sem
+ * classificação ficam sem marca (o "evitar" tem lugar próprio; o sem classificação nem é avaliado).
+ */
+export type ArgumentRequirement = "REQUIRED" | "OPTIONAL"
+export function argumentRequirementOf(argument: { field: string; modality?: string | null } | null | undefined): ArgumentRequirement | null {
+  if (argument?.field === "REQUIRED_POINT") return "REQUIRED"
+  if (argument?.field !== "GUIDANCE") return null
+  return argument.modality === "MUST" ? "REQUIRED" : argument.modality === "MAY" ? "OPTIONAL" : null
 }
 /** Outra linha da MESMA lista e como foi avaliada nesta chamada (fato: texto literal + status verificado). */
 export type BriefSibling = { text: string; status: CriterionStatus }
@@ -50,7 +70,7 @@ export type BriefSibling = { text: string; status: CriterionStatus }
  * orientação do argumentário, o item "evitar"); sem isto elas viravam uma "regra" só, com a seção da primeira — e o item "evitar"
  * aparecia como orientação.
  */
-export type SourceLineMeta = { documentId: string; documentTitle: string; heading: string | null; source: "KNOWLEDGE_DOCUMENT" | "ARGUMENT_SCRIPT"; avoid: boolean; leadIn: string | null; condition: string | null }
+export type SourceLineMeta = { documentId: string; documentTitle: string; heading: string | null; source: "KNOWLEDGE_DOCUMENT" | "ARGUMENT_SCRIPT"; avoid: boolean; leadIn: string | null; condition: string | null; requirement?: ArgumentRequirement | null }
 /**
  * `CONSOLIDATED_STEPS_V1`: uma ETAPA de um ponto consolidado (caminho inadequado ou várias etapas da mesma seção/prática), com os FATOS
  * dela — status confirmado, falas verificadas ou ausência, regra literal. Sem isso o redator via só o status do ponto inteiro e as
@@ -64,6 +84,8 @@ export type BriefFinding = {
   kind: "DEVELOPMENT" | "STRENGTH"
   origin: "CRITERION" | "PATH" | "INDICATOR_PATTERN" | "INDICATOR_RESULT"
   title: string
+  /** `PRODUCT_IN_FEEDBACK_V1` (monitoria): o produto ESTABELECIDO do pedido a que o ponto pertence (nome do cadastro); ausente = não estabelecido. */
+  product?: string
   materiality: Materiality
   status: CriterionStatus | "PATH_INCORRECT" | "PATH_PARTIAL" | "PATH_CORRECT" | "PATTERN" | "RESULT"
   /** O que aconteceu — afirmação do SISTEMA derivada do status verificado (ou números do sistema). Fato. */
@@ -122,7 +144,7 @@ export type BriefOpenPoint = { ref: string; findingKey: string; title: string; n
  * conversa (com o que a fala mostra: declaração, intenção, nada) ou aplicabilidade incerta. Não é falha nem acerto. */
 /** `saidIn`: falas do operador que DIZEM que a ação (em sistema) foi ou será feita — comprovam o que foi dito, nunca a execução nem o estado
  * relatado (rodada real V12: "Ao identificar a pendência no cancelamento…" foi aprovado porque nada ligava T7 à verificação declarada). */
-export type BriefCoverageLimit = { title: string; reason: "OUTSIDE_CONVERSATION" | "APPLICABILITY_UNCERTAIN"; executionClaim: "DECLARED" | "INTENDED" | "NONE" | null; role: ScenarioRole | null; criterionKey: string; saidIn?: { turn: string; quote: string }[] }
+export type BriefCoverageLimit = { title: string; reason: "OUTSIDE_CONVERSATION" | "APPLICABILITY_UNCERTAIN" | "PRODUCT_NOT_ESTABLISHED"; executionClaim: "DECLARED" | "INTENDED" | "NONE" | null; role: ScenarioRole | null; criterionKey: string; saidIn?: { turn: string; quote: string }[] }
 export type BriefMaterial = { documentId: string; documentVersion: number | null; title: string; sections: string[]; reason: string; criterionKeys: string[]; usedIn: string[] }
 export type BriefSubjectRow = {
   key: string
@@ -182,16 +204,37 @@ export type FeedbackBrief = {
   /** Afirmações proibidas pela estratégia do indicador (configuração da operação) — nenhuma frase pode contê-las. */
   prohibitedClaims?: string[]
   /**
+   * `PRODUCT_APPLICABILITY_V1` (monitoria com catálogo de produtos): o produto ESTABELECIDO de cada solicitação (nomes do cadastro — fato) e
+   * as regras que ficaram sem avaliação porque dependem de um produto não estabelecido (nunca cobrar, orientar nem reconhecer). Hipótese
+   * de produto nunca chega ao redator como certeza.
+   */
+  productScope?: BriefProductScope | null
+  /**
    * `REFERENCE_PRACTICES_V1` (indicador): o que os colegas com melhor resultado comparável fazem nas chamadas deles (P-n) — AGREGADO,
    * com os mínimos de privacidade, sem nomes. Boa prática para orientar, nunca causa do resultado (deles ou da pessoa); `you` = como
    * a mesma etapa aparece nas chamadas analisadas da pessoa (null = sem avaliação dela — nunca é falta dela).
    */
   referencePractices?: BriefReferencePractice[]
   /**
+   * `BASE_PRACTICES_IN_TEXT_V1` (22/10/2026, indicador e monitoria): práticas da BASE DE BOAS PRÁTICAS escolhidas para este feedback (B-n),
+   * pela mesma escolha do bloco "Oportunidades inspiradas em boas práticas" (assunto e resultado do caso, recuo por subgrupo/grupo). São
+   * OPCIONAIS, aprovadas por uma pessoa, associação e nunca causa nem obrigação; textos e números são do sistema (`guidance.ts`). Sem
+   * prática, o campo não existe e o redator recebe exatamente o mesmo caso de antes.
+   */
+  basePractices?: BriefBasePractice[]
+  /**
    * `INDICATOR_SUBJECTS_V1` (indicador): a métrica das chamadas da pessoa POR ASSUNTO nos dois períodos da investigação — números do
    * SISTEMA (localização), nunca do modelo; aproximação pelas chamadas gravadas, não o valor oficial. Só para os detalhes da tela.
    */
   subjects?: BriefSubjects | null
+}
+export type BriefProductScope = {
+  identified: { request: string; name: string; kind: "PRODUCT" | "FAMILY" }[]
+  undetermined: number
+  rulesNotEstablished: BriefRule[]
+  /** `PRODUCT_APPLICABILITY_V2`: as regras suspensas agrupadas pelos produtos a que valem (nomes do cadastro gravado na análise) — o
+   * sistema mostra ao colaborador, com o texto literal da fonte, o que cada produto possível pede; nunca vai ao redator como orientação. */
+  byProduct?: { products: string[]; rules: BriefRule[] }[]
 }
 export type OfficialTableRow = { indicator: string; periodLabel: string; result: string; target: string | null; withinTarget: boolean | null; previousLabel: string | null; previous: string | null }
 export type BriefReferencePractice = {
@@ -201,6 +244,36 @@ export type BriefReferencePractice = {
   group: string
   you: string | null
   contrast: "REFERENCE_FOLLOWS_PERSON_MISSES" | "BOTH_FOLLOW" | "REFERENCE_ALSO_MISSES" | "REFERENCE_ONLY"
+}
+export type BriefBasePractice = {
+  ref: string
+  patternId: string
+  name: string
+  /** Como fazer (sem o detalhe técnico da verificação de obrigação). */
+  howTo: string
+  /** Assunto em que a prática casou com o caso (submotivo, ou motivo). */
+  subject: string
+  /** O que "melhor resultado" quer dizer para esta prática: o indicador (operadores do 1º quartil) ou o sinal da chamada (boas × ruins). */
+  outcome: string
+  /** A associação com os números, como o sistema escreve — só para o VERIFICADOR conferir (o redator recebe `whereItShowsUp`). */
+  association: string
+  /** A comparação em palavras, sem período, contagem nem porcentagem ("Entre quem tem o melhor TMA em Reparo, isso aparece bem mais
+   * do que entre os demais."). É o que o redator usa. */
+  whereItShowsUp: string
+  strength: string
+  /** O que as chamadas da pessoa mostram, como o sistema escreve (para o verificador); null = as chamadas dela não estavam na análise
+   * (nunca é falta dela). */
+  you: string | null
+  /** O mesmo, em palavras e sem números, para o redator; null quando não há o que dizer sobre ela. */
+  youInWords: string | null
+  /** Fala da base para experimentar (nunca de uma chamada): entra no texto só por [[B-n]], exata. */
+  suggestedPhrasing: string | null
+  /** `BEST_PRACTICE_SELECTION_V2`: a prática foi vista só nas chamadas deste produto — liga-se só a ponto, fala ou chamada dele. Ausente = geral. */
+  product?: string
+  /** `BASE_PRACTICES_IN_TEXT_V4`: como a prática ajuda no resultado, aprovado por quem revisou — o ÚNICO fundamento para o texto ligar a
+   * prática ao indicador ou ao sinal. Ausente = não ligar. */
+  howItHelps?: string
+  notApplicableWhen: string | null
 }
 /** Fundamento de cada frase entregue: verificada pelo verificador, texto literal da regra, status verificado, leitura do modelo
  * APROVADA pelo verificador, ou fato calculado pelo sistema. Nunca "leitura não conferida". */
@@ -277,7 +350,8 @@ export function rulesFromSources(input: { sources: readonly { lineKey: string; t
   const groups: { meta: SourceLineMeta; texts: string[] }[] = []
   for (const { source, meta } of metas as { source: { lineKey: string; text: string }; meta: SourceLineMeta }[]) {
     const last = groups[groups.length - 1]
-    if (last && !meta.avoid && !last.meta.avoid && last.meta.documentId === meta.documentId && last.meta.heading === meta.heading) last.texts.push(source.text)
+    // Item obrigatório e item opcional do mesmo argumentário nunca viram uma regra só (`ARGUMENT_REQUIREMENT_V1`).
+    if (last && !meta.avoid && !last.meta.avoid && last.meta.documentId === meta.documentId && last.meta.heading === meta.heading && (last.meta.requirement ?? null) === (meta.requirement ?? null)) last.texts.push(source.text)
     else groups.push({ meta, texts: [source.text] })
   }
   const rules = groups.map(({ meta, texts }): BriefRule => {
@@ -292,6 +366,7 @@ export function rulesFromSources(input: { sources: readonly { lineKey: string; t
       leadIn,
       ...(argument ? { sourceKind: "ARGUMENT_SCRIPT" as const, argumentName: meta.documentTitle } : {}),
       ...(meta.avoid ? { avoid: true } : {}),
+      ...(argument && !meta.avoid && meta.requirement ? { requirement: meta.requirement } : {}),
     }
   })
   const primaryIndex = rules.findIndex((rule) => !rule.avoid && rule.documentId === input.primary.documentId && rule.section === cleanHeading(input.primary.heading))
@@ -306,13 +381,17 @@ const isStrength = (criterion: AssessedCriterion) => criterion.status === "MET" 
 /** A condição da regra que a revisão encontrou nesta chamada (falas VERIFICADAS) — só de acerto confirmado. */
 const situationQuotesOf = (criterion: AssessedCriterion): BriefQuote[] => (criterion.status === "MET" && criterion.confirmation === "CONFIRMED" ? (criterion.review?.conditionEvidence ?? []).map(briefQuoteOf).slice(0, 1) : [])
 
+/** Rótulo da linha de contexto que diz como a chamada foi escolhida — o redator não a recebe (`ANALYSIS_CONTEXT_ONLY_V1`). */
+export const SELECTION_REASON_LABEL = "Como a chamada chegou à análise:"
+
 function historySentence(entry: { assessed: number; notMet: number; met: number } | undefined, kind: "DEVELOPMENT" | "STRENGTH"): string | null {
   if (!entry || entry.assessed < 2) return null
+  // `PLAIN_LANGUAGE_V1`: a proporção vem na frente ("em 3 de 4"), como no histórico do indicador — o redator copia este fato.
   return kind === "DEVELOPMENT"
     ? entry.notMet === 0
-      ? `Nas ${entry.assessed} chamadas anteriores analisadas em que esta etapa se aplicava, ela foi cumprida em todas.`
-      : `Nas ${entry.assessed} chamadas anteriores analisadas em que esta etapa se aplicava, ela não foi cumprida em ${entry.notMet}.`
-    : `Nas ${entry.assessed} chamadas anteriores analisadas em que esta etapa se aplicava, ela foi cumprida em ${entry.met}.`
+      ? `Nas chamadas anteriores, esta etapa foi cumprida em todas as ${entry.assessed} analisadas em que se aplicava.`
+      : `Nas chamadas anteriores, esta etapa não foi cumprida em ${entry.notMet} de ${entry.assessed} analisadas em que se aplicava.`
+    : `Nas chamadas anteriores, esta etapa foi cumprida em ${entry.met} de ${entry.assessed} analisadas em que se aplicava.`
 }
 
 /**
@@ -378,12 +457,20 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
     leadIn: criterion.argument ? (criterion.argument.condition ? argumentConditionLeadIn(criterion.argument.condition) : null) : criterion.lineKey ? input.listContext?.get(criterion.obligation?.parentLineKey ?? criterion.lineKey)?.leadIn ?? null : null,
     ...(criterion.argument ? { sourceKind: "ARGUMENT_SCRIPT" as const, argumentName: criterion.argument.scriptName } : {}),
     ...(criterion.argument?.field === "AVOID" ? { avoid: true } : {}),
+    ...(argumentRequirementOf(criterion.argument) ? { requirement: argumentRequirementOf(criterion.argument)! } : {}),
     ...(criterion.obligation ? { part: criterion.obligation.part } : {}),
   })
   /** As regras de um critério: uma por origem (`RULE_SOURCES_V1`) quando a origem de todas as linhas-fonte é conhecida; senão a regra única. */
-  const rulesOf = (criterion: Pick<AssessedCriterion, "text" | "heading" | "documentId"> & { lineKey?: string; obligation?: AssessedCriterion["obligation"]; argument?: AssessedCriterion["argument"]; alsoRequiredBy?: AssessedCriterion["alsoRequiredBy"]; sources?: AssessedCriterion["sources"] }): BriefRule[] => {
+  const rulesOf = (criterion: Pick<AssessedCriterion, "text" | "heading" | "documentId"> & { lineKey?: string; obligation?: AssessedCriterion["obligation"]; argument?: AssessedCriterion["argument"]; alsoRequiredBy?: AssessedCriterion["alsoRequiredBy"]; sources?: AssessedCriterion["sources"]; productApplicability?: AssessedCriterion["productApplicability"] }): BriefRule[] => {
     const split = input.sourceLines && (criterion.sources ?? []).length > 0 ? rulesFromSources({ sources: criterion.sources!, primary: { documentId: criterion.documentId, heading: criterion.heading }, sourceLines: input.sourceLines }) : null
-    const rules = split ?? [singleRuleOf(criterion)]
+    // `PRODUCT_IN_FEEDBACK_V1`: cada regra leva o "Vale para" da PRÓPRIA fonte, dentro da abrangência da avaliação (a regra geral que a
+    // obrigação juntou com a do produto não vira "do produto").
+    const ruleList = split ?? [singleRuleOf(criterion)]
+    const criterionSources = [criterion.documentId, ...ruleList.map((rule) => rule.documentId), ...(criterion.alsoRequiredBy ?? []).map((source) => source.scriptId)]
+    const rules = ruleList.map((rule) => {
+      const appliesTo = ruleScopeNamesOf(analysis.productApplicability, criterion.productApplicability?.scope, rule.documentId, criterionSources)
+      return appliesTo.length > 0 ? { ...rule, appliesTo } : rule
+    })
     const phrasing = phrasingOf(criterion)
     if (!phrasing) return rules
     // A fraseologia vai na regra do argumentário de onde ela vem (ou na primeira, quando o argumentário só "também exige" a linha).
@@ -457,6 +544,11 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
     else developments.push(finding)
   }
 
+  /** `PRODUCT_IN_FEEDBACK_V1`: o produto do pedido a que a regra do ponto pertence (o da solicitação; sem solicitação, o único da chamada). */
+  const productOfCriterion = (criterion: AssessedCriterion): { product?: string } => {
+    const product = criterionProductOf(analysis.productApplicability, criterion.productApplicability ?? null)
+    return product ? { product } : {}
+  }
   const reevaluated = (criterion: AssessedCriterion) => analysis.scenario.rulePerspective === "CURRENT_RULE_REEVALUATION" || criterion.argument?.perspective === "CURRENT_RULE_REEVALUATION"
   const ordered = [...analysis.criteria].sort((a, b) => roleRankOf(a.scenarioRole) - roleRankOf(b.scenarioRole) || byMateriality(a, b) || Number(b.onPath) - Number(a.onPath))
   for (const criterion of ordered) {
@@ -470,6 +562,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
         kind: "DEVELOPMENT",
         origin: "CRITERION",
         title: titleOf(criterion),
+        ...productOfCriterion(criterion),
         materiality: criterion.materiality,
         status: criterion.status,
         observed: verifiedStatementOf({ kind: "DEVELOPMENT", status: criterion.status, omission, declaredOnly, part: criterion.obligation?.part ?? null, mixed: Boolean(criterion.judgedPart) }),
@@ -503,6 +596,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
         kind: "STRENGTH",
         origin: "CRITERION",
         title: titleOf(criterion),
+        ...productOfCriterion(criterion),
         materiality: criterion.materiality,
         status: criterion.status,
         observed: verifiedStatementOf({ kind: "STRENGTH", status: criterion.status, omission: false, declaredOnly, part: criterion.obligation?.part ?? null, mixed: Boolean(criterion.judgedPart) }),
@@ -566,7 +660,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
   const reevaluation = analysis.scenario.rulePerspective === "CURRENT_RULE_REEVALUATION"
   const context = [
     ...(analysis.scenario.pathAssessment === "PARTIALLY_CORRECT" ? ["Caminho: o indicado para o cenário, com etapas faltando."] : []),
-    `Como a chamada chegou à análise: ${input.selectionReason}`,
+    `${SELECTION_REASON_LABEL} ${input.selectionReason}`,
     ...(analysis.scenario.procedureTitle ? [`Procedimento aplicado: ${analysis.scenario.procedureTitle}`] : []),
     ...(reevaluation ? ["A versão do procedimento usada foi publicada depois desta chamada: o que ela aponta é orientação para as próximas chamadas, não descumprimento de uma regra que valia na época."] : []),
     ...(analysis.criteria.some((criterion) => criterion.argument?.perspective === "CURRENT_RULE_REEVALUATION") ? ["Argumentários usados numa REAVALIAÇÃO pela regra atual (não estavam vigentes na data desta chamada): o que eles apontam é orientação para as próximas chamadas, não descumprimento da época."] : []),
@@ -574,6 +668,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
   const scenarioQuotes = [...analysis.scenario.conditions.flatMap((condition) => condition.evidence), ...analysis.scenario.pathEvidence].map(briefQuoteOf).filter((quote, index, all) => all.findIndex((other) => other.turn === quote.turn && other.text === quote.text) === index).slice(0, 4)
   const openPoints = openPointsOf(analysis, input.interactionId, keyOf, rulesOf)
   const coverageLimits = coverageLimitsOf(analysis, keyOf)
+  const productScope = productScopeOf(analysis, rulesOf)
   // `CENTRAL_NEED_V1`: necessidade central sem conclusão confirmada → a mensagem não a apresenta como resolvida nem acusa; o colaborador
   // lê, nos detalhes, que esse ponto não foi avaliado (regras LITERAIS das linhas apontadas — nunca o texto da revisão).
   const need = analysis.scenario.centralNeed ?? null
@@ -585,6 +680,8 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
     // Neutro: explica por que etapas feitas em sistemas não aparecem no retorno — nunca sugere que faltaram.
     ...(coverageLimits.some((limit) => limit.reason === "OUTSIDE_CONVERSATION" && limit.role === "CENTRAL") ? ["O que é feito em sistemas, fora da conversa, não aparece na gravação e não foi avaliado neste retorno."] : []),
     ...(needOpen ? ["A gravação não permitiu concluir se a orientação sobre a necessidade principal do cliente ficou completa: esse ponto não conta como acerto nem como falha neste retorno."] : []),
+    // Neutro e só quando um ponto central ficou de fora: o produto não confirmado nunca é falha de quem atendeu.
+    ...(analysis.criteria.some((criterion) => isSuspendedByProduct(criterion) && criterion.scenarioRole === "CENTRAL") ? ["Parte do que o procedimento pede depende do produto do cliente, e a gravação não permitiu confirmar qual era: esses pontos não foram avaliados neste retorno."] : []),
   ]
   const tone: FeedbackBrief["tone"] = developments.length === 0 ? "RECOGNITION" : selectedStrengths.length === 0 ? "DEVELOPMENT" : "MIXED"
   return {
@@ -599,6 +696,7 @@ export function buildMonitoringBrief(input: MonitoringBriefInput): FeedbackBrief
     readerNotes,
     ...(coverageLimits.length > 0 ? { coverageLimits } : {}),
     ...(needOpen ? { centralNeedOpen: { rules: needRules } } : {}),
+    ...(productScope ? { productScope } : {}),
     developments,
     strengths: selectedStrengths,
     limitations: analysis.limitations.filter((limitation) => !/item\(ns\) do caminho/.test(limitation) || analysis.coverage.status === "PARTIAL"),
@@ -659,7 +757,9 @@ export function consolidateDevelopments(developments: readonly BriefFinding[]): 
     const rule = finding.rules[0]
     const sharedPractice = (finding.practiceKeys ?? []).find((key) => (practiceCount.get(key) ?? 0) > 1)
     // A MESMA ocorrência (mesma conduta julgada por regras diferentes) e a mesma prática vêm antes do agrupamento por seção.
-    const key = finding.occurrenceKey ? `occ:${finding.occurrenceKey}` : sharedPractice ? `prc:${sharedPractice}` : finding.origin === "CRITERION" && rule ? `${rule.documentId}|${rule.section ?? ""}` : `single:${finding.findingKey}`
+    // `PRODUCT_IN_FEEDBACK_V1`: pontos de pedidos (produtos) diferentes nunca viram um ponto só.
+    const baseKey = finding.occurrenceKey ? `occ:${finding.occurrenceKey}` : sharedPractice ? `prc:${sharedPractice}` : finding.origin === "CRITERION" && rule ? `${rule.documentId}|${rule.section ?? ""}` : `single:${finding.findingKey}`
+    const key = `${baseKey}|${finding.product ?? ""}`
     groups.set(key, [...(groups.get(key) ?? []), finding])
   }
   for (const [groupKey, members] of groups.entries()) {
@@ -812,9 +912,10 @@ export function groundingTextsOf(brief: FeedbackBrief): string[] {
     ...brief.officialLines.flatMap((line) => [line.label, line.value]),
     ...brief.limitations,
     ...(brief.scenarioQuotes ?? []).map((quote) => quote.text),
-    ...findings.flatMap((finding) => [finding.title, finding.observed, finding.history ?? "", ...finding.stats, ...finding.quotes.map((quote) => quote.text), ...finding.rules.flatMap((rule) => [rule.leadIn ?? "", rule.text, rule.phrasing?.text ?? ""]), ...(finding.sameList ?? []).map((sibling) => sibling.text)]),
+    ...findings.flatMap((finding) => [finding.title, finding.observed, finding.product ?? "", finding.history ?? "", ...finding.stats, ...finding.quotes.flatMap((quote) => [quote.text, ...(quote.call ? [quote.call.product ?? "", quote.call.rule.text, quote.call.rule.phrasing?.text ?? "", ...(quote.call.rule.appliesTo ?? [])] : [])]), ...finding.rules.flatMap((rule) => [rule.leadIn ?? "", rule.text, rule.phrasing?.text ?? ""]), ...(finding.sameList ?? []).map((sibling) => sibling.text)]),
     ...(brief.openPoints ?? []).flatMap((point) => [point.title, point.why, ...point.quotes.map((quote) => quote.text), ...point.rules.flatMap((rule) => [rule.leadIn ?? "", rule.text])]),
     ...(brief.referencePractices ?? []).flatMap((practice) => [practice.title, practice.group, practice.you ?? "", practice.rule.text]),
+    ...(brief.basePractices ?? []).flatMap((practice) => [practice.name, practice.howTo, practice.subject, practice.outcome, practice.association, practice.whereItShowsUp, practice.you ?? "", practice.youInWords ?? "", practice.suggestedPhrasing ?? "", practice.notApplicableWhen ?? ""]),
   ]
 }
 
@@ -833,7 +934,9 @@ function openPointsOf(analysis: VerifiedCallAnalysis, interactionId: string, key
   const uncertain = (criterion: AssessedCriterion) => (criterion.confirmation === "UNCONFIRMED" && criterion.confirmationReasons.includes("REVIEW_UNCERTAIN")) || criterion.applicability === "UNCERTAIN"
   const quotesOf = (criterion: AssessedCriterion) => [...(criterion.review?.conditionEvidence ?? []), ...(criterion.applicabilityEvidence ?? []), ...criterion.evidence].map(briefQuoteOf).filter((quote, position, all) => all.findIndex((other) => other.turn === quote.turn && other.text === quote.text) === position).slice(0, 3)
   return analysis.criteria
-    .filter((criterion) => criterion.status === "NOT_OBSERVABLE" && criterion.scenarioRole === "CENTRAL" && !criterion.ruleConflict && !outside(criterion) && (reopened(criterion) || uncertain(criterion)) && quotesOf(criterion).length > 0)
+    // Regra suspensa por produto não estabelecido nunca vira ponto em aberto: orientar sobre ela misturaria procedimentos de produtos
+    // diferentes (`PRODUCT_APPLICABILITY_V1`) — fica como limite de cobertura.
+    .filter((criterion) => criterion.status === "NOT_OBSERVABLE" && criterion.scenarioRole === "CENTRAL" && !criterion.ruleConflict && !outside(criterion) && !isSuspendedByProduct(criterion) && (reopened(criterion) || uncertain(criterion)) && quotesOf(criterion).length > 0)
     .slice(0, MAX_OPEN_POINTS)
     .map((criterion, index) => ({
       ref: `O${index + 1}`,
@@ -851,7 +954,7 @@ function coverageLimitsOf(analysis: VerifiedCallAnalysis, keyOf: (criterion: Ass
   return [
     ...analysis.criteria
       .filter((criterion) => criterion.status === "NOT_OBSERVABLE" && !criterion.ruleConflict && (criterion.observability === "OUTSIDE_CONVERSATION" || criterion.applicability === "UNCERTAIN"))
-      .map((criterion) => ({ title: criterionTitleOf(criterion), reason: criterion.observability === "OUTSIDE_CONVERSATION" ? ("OUTSIDE_CONVERSATION" as const) : ("APPLICABILITY_UNCERTAIN" as const), executionClaim: criterion.executionClaim ?? null, role: criterion.scenarioRole ?? null, criterionKey: keyOf(criterion), ...saidInOf(criterion, criterion.executionClaim ?? null, () => true) })),
+      .map((criterion) => ({ title: criterionTitleOf(criterion), reason: isSuspendedByProduct(criterion) ? ("PRODUCT_NOT_ESTABLISHED" as const) : criterion.observability === "OUTSIDE_CONVERSATION" ? ("OUTSIDE_CONVERSATION" as const) : ("APPLICABILITY_UNCERTAIN" as const), executionClaim: criterion.executionClaim ?? null, role: criterion.scenarioRole ?? null, criterionKey: keyOf(criterion), ...saidInOf(criterion, criterion.executionClaim ?? null, () => true) })),
     // Obrigação MISTA confirmada: a parte em sistema é limite de cobertura (o que a fala mostra sobre ela fica registrado).
     ...analysis.criteria
       .filter((criterion) => criterion.operationalPart && !criterion.ruleConflict)
@@ -863,4 +966,39 @@ function saidInOf(criterion: AssessedCriterion, claim: BriefCoverageLimit["execu
   if (claim !== "DECLARED" && claim !== "INTENDED") return {}
   const said = criterion.evidence.flatMap((quote, index) => (speakerKind(quote.speaker) === "OPERATOR" && include(index) ? [{ turn: quote.turn, quote: quote.quote }] : []))
   return said.length > 0 ? { saidIn: said.slice(0, 3) } : {}
+}
+
+/**
+ * `PRODUCT_APPLICABILITY_V1` — o que o redator e o verificador recebem do produto: o ESTABELECIDO (produto ou família de cada solicitação,
+ * pelos nomes do cadastro gravado na análise), quantas solicitações ficaram sem produto estabelecido e o texto literal das regras
+ * suspensas (para o verificador recusar qualquer frase que as cobre, oriente ou reconheça). Sem modo produto = null (brief de antes).
+ */
+function productScopeOf(analysis: VerifiedCallAnalysis, rulesOf: (criterion: AssessedCriterion) => BriefRule[]): BriefProductScope | null {
+  const record = analysis.productApplicability
+  if (!record) return null
+  const nodeOf = (handle: string) => record.catalog.nodes.find((node) => node.handle === handle)
+  const identified = record.requests.flatMap((request) => {
+    const node = request.identified ? nodeOf(request.identified) : undefined
+    return node && (request.status === "IDENTIFIED" || request.status === "FAMILY_ONLY") ? [{ request: request.ref, name: node.name, kind: node.kind }] : []
+  })
+  const suspended = analysis.criteria.filter((criterion) => isSuspendedByProduct(criterion) && !criterion.ruleConflict)
+  const seen = new Set<string>()
+  const rulesNotEstablished = suspended.flatMap(rulesOf).filter((rule) => (seen.has(rule.text) ? false : (seen.add(rule.text), true))).slice(0, 12)
+  // Por produto: só regra com abrangência conhecida (lista de produtos); a de abrangência incerta fica só em rulesNotEstablished.
+  const groups = new Map<string, { products: string[]; rules: BriefRule[]; texts: Set<string> }>()
+  for (const criterion of suspended) {
+    const scope = criterion.productApplicability?.scope
+    if (!Array.isArray(scope) || scope.length === 0) continue
+    const products = scope.map((handle) => nodeOf(handle)?.name ?? handle)
+    const key = products.join("|")
+    const group = groups.get(key) ?? { products, rules: [], texts: new Set<string>() }
+    for (const rule of rulesOf(criterion)) {
+      if (group.texts.has(rule.text)) continue
+      group.texts.add(rule.text)
+      group.rules.push(rule)
+    }
+    groups.set(key, group)
+  }
+  const byProduct = [...groups.values()].slice(0, 6).map((group) => ({ products: group.products, rules: group.rules.slice(0, 4) }))
+  return { identified, undetermined: record.requests.filter((request) => request.status !== "IDENTIFIED" && request.status !== "FAMILY_ONLY").length, rulesNotEstablished, ...(byProduct.length > 0 ? { byProduct } : {}) }
 }

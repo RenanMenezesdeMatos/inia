@@ -79,6 +79,13 @@ describe("contrato do planejador — validação por código", () => {
     expect(!insufficient.ok && insufficient.issues.map((issue) => issue.code)).toContain("MISSING_FIELD")
   })
 
+  it("D11: o que o colaborador pode informar vira FRASE (maiúscula e ponto), sem mudar o conteúdo", () => {
+    const fragment = validatePlannerOutput(JSON.stringify({ decision: "INSUFFICIENT", insufficient: { reason: "As bases não tratam de trocas.", ask: "especificar qual tipo de troca você precisa realizar" } }), context())
+    expect(fragment.ok && fragment.plan.insufficient?.ask).toBe("Especificar qual tipo de troca você precisa realizar.")
+    const sentence = validatePlannerOutput(JSON.stringify({ decision: "INSUFFICIENT", insufficient: { reason: "As bases não citam o plano.", ask: "Verifique o nome do plano?" } }), context())
+    expect(sentence.ok && sentence.plan.insufficient?.ask).toBe("Verifique o nome do plano?")
+  })
+
   it("a base inteira (B-n) sustenta uma opção, mas a resposta só cita SEÇÕES (K-n)", () => {
     const option = validatePlannerOutput(clarify([{ label: "Cenário da base", evidence: ["B1"] }, { label: "Outro", evidence: ["K3"] }]), context())
     expect(option.ok && option.plan.step!.options[0]!.evidence).toEqual([baseOfZ])

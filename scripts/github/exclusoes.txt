@@ -21,6 +21,11 @@ frontend/public/models/inia-avatar-poc.glb
 # Instruções de trabalho (IT-INIA-*.docx/.pdf): documentos internos, distribuídos à parte.
 docs/manuais/**
 
+# Materiais para a Vivo (apresentações, dossiê de avaliação, especificação funcional em Word/PDF com capturas): documentos
+# internos, distribuídos à parte, como as ITs.
+docs/apresentacoes/**
+docs/especificacao-funcional-ia-vivo/**
+
 # Transcrições de chamadas reais.
 docs/CHAMADAS - *.rtf
 

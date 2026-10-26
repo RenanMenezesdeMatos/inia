@@ -19,6 +19,7 @@ import { periodCoveredFor, resolveAnalysisPeriod, resolveIndicatorReference, res
 import { PRV_DEFINITION } from "./official-query.js"
 import { buildStructureOverview } from "./structure-overview.js"
 import { buildStructurePeople } from "./structure-people.js"
+import { leadershipPracticesResult, type LeadershipPracticesLoader } from "../../best-practices/application/leadership-practices.js"
 
 /**
  * FERRAMENTAS DA LIDERANÇA — o catálogo ÚNICO que o chat oferece a quem tem escopo de liderança (qualquer nível: o escopo
@@ -28,7 +29,7 @@ import { buildStructurePeople } from "./structure-people.js"
  *  - `card`: o mesmo resultado estruturado, exibido na tela com os números do backend e os links de aprofundamento.
  */
 
-export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis"] as const
+export const LEADERSHIP_TOOL_NAMES = ["leadership_priorities", "leadership_structure_overview", "leadership_indicator_analysis", "leadership_people", "leadership_indicator_query", "leadership_workforce", "leadership_indicator_diagnosis", "leadership_best_practices"] as const
 export type LeadershipToolName = (typeof LEADERSHIP_TOOL_NAMES)[number]
 
 export function isLeadershipTool(name: string): name is LeadershipToolName {
@@ -142,6 +143,17 @@ LEADERSHIP_TOOL_DECLARATIONS.push({
   },
 })
 
+LEADERSHIP_TOOL_DECLARATIONS.push({
+  name: "leadership_best_practices",
+  description:
+    "BOAS PRÁTICAS da base para um indicador nos Grupos da estrutura: comportamentos opcionais observados com mais frequência nas chamadas dos operadores com melhores resultados do que no grupo de referência (mesmo contexto e período), aprovados por uma pessoa e que não são obrigação do processo — com os números da comparação, a orientação e uma sugestão de fala. Use para \"o que os melhores fazem em X\", \"como orientar a equipe para melhorar X\", \"boas práticas de X\" e junto do diagnóstico quando perguntarem como melhorar. Associação, não causa.",
+  parameters: {
+    type: "object",
+    properties: { indicador: indicatorParameter, estrutura: structureParameter, motivo: { type: "string", description: "Motivo de contato, só se o usuário citar (ex.: Fatura)." } },
+    required: ["indicador"],
+  },
+})
+
 /** Voz: UMA ferramenta que leva a pergunta ao mesmo raciocínio do chat de texto (dados da estrutura + especialistas), no backend. */
 export const LEADERSHIP_ASK_TOOL = "leadership_ask"
 export const LEADERSHIP_ASK_DECLARATION: FunctionDeclaration = {
@@ -162,6 +174,8 @@ export type LeadershipToolDependencies = {
   /** Interações agregadas (diagnóstico) e datas de admissão. Ausentes = diagnóstico indisponível. */
   loadInteractionStats?: InteractionStatsLoader
   loadHireDates?: HireDatesLoader
+  /** Base de boas práticas (padrões disponíveis por indicador × Grupo). Ausente = ferramenta indisponível. */
+  loadBestPractices?: LeadershipPracticesLoader
 }
 
 /** `issue` = pedido não resolvido (ambíguo, fora do escopo/inexistente, inválido): o chat repassa ao modelo, a rota vira 422. */
@@ -262,6 +276,16 @@ export async function executeLeadershipTool(deps: LeadershipToolDependencies, na
         diagnosisPeriod.note,
       )
       return { text: renderQueryTable(card), card }
+    }
+    if (name === "leadership_best_practices") {
+      if (!deps.loadBestPractices) return { text: "A base de boas práticas não está disponível aqui.", card: null, issue: { kind: "INVALID", message: "Base de boas práticas indisponível.", candidates: [] } }
+      const indicatorOutcome = resolveIndicatorReference(definitions, str(args.indicador))
+      const indicatorBlocked = clarification(indicatorOutcome, "indicador")
+      if (indicatorBlocked || indicatorOutcome.kind !== "OK") return indicatorBlocked!
+      if (indicatorOutcome.value.code === PRV_DEFINITION.code) return { text: "Boas práticas são por indicador (TMA, Nota da URA…), não pelo PRV. Pergunte qual indicador.", card: null, issue: { kind: "INVALID", message: "PRV não tem boas práticas próprias.", candidates: [] } }
+      const teamIds = structure.resolved.members.flatMap((member) => (member.teamId ? [member.teamId] : []))
+      const practices = await deps.loadBestPractices({ indicatorId: indicatorOutcome.value.id, teamIds, reason: str(args.motivo) })
+      return leadershipPracticesResult({ structure, indicator: indicatorOutcome.value, reason: str(args.motivo), practices, now: closure.now })
     }
     if (name === "leadership_indicator_query") {
       const requested = Array.isArray(args.indicadores) ? args.indicadores.map(str).filter((value): value is string => value !== null) : []

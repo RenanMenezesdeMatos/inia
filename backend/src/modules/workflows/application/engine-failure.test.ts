@@ -63,7 +63,12 @@ describe("V1.7.1c — classificação e política de retry (§11/§23)", () => {
     expect(classifyExecutionError(new DomainError("O modelo de IA não retornou uma resposta válida.", "AGENT_EXECUTION_FAILED", 502, { status: 503, category: "PROVIDER_ERROR" })).category).toBe("TRANSIENT_PROVIDER_ERROR")
     expect(classifyExecutionError(new DomainError("rate", "AI_RATE_LIMIT", 429, { category: "RATE_LIMIT" })).category).toBe("TRANSIENT_PROVIDER_ERROR")
     const now = new Date("2026-09-25T18:00:00Z")
-    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 0, now)).toMatchObject({ attempts: 1, willRetry: true, retryReason: "TRANSIENT_PROVIDER_ERROR", nextRetryAt: new Date("2026-09-25T18:05:00Z"), repairAttempt: false })
+    // Sem variação (random = 0,5): 5 min na 1ª; a espera dobra e a variação espalha a volta de um disparo em massa (±20%).
+    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 0, now, () => 0.5)).toMatchObject({ attempts: 1, willRetry: true, retryReason: "TRANSIENT_PROVIDER_ERROR", nextRetryAt: new Date("2026-09-25T18:05:00Z"), repairAttempt: false })
+    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 1, now, () => 0.5).nextRetryAt).toEqual(new Date("2026-09-25T18:10:00Z"))
+    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 3, now, () => 0.5).nextRetryAt).toEqual(new Date("2026-09-25T18:20:00Z"))
+    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 0, now, () => 0).nextRetryAt).toEqual(new Date("2026-09-25T18:04:00Z"))
+    expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", 0, now, () => 0.999999).nextRetryAt!.getTime()).toBeLessThanOrEqual(new Date("2026-09-25T18:06:00Z").getTime())
     expect(decideNodeRetry("TRANSIENT_PROVIDER_ERROR", MAX_NODE_ATTEMPTS - 1, now)).toMatchObject({ willRetry: false, retryReason: "MAX_ATTEMPTS_REACHED", nextRetryAt: null })
   })
 

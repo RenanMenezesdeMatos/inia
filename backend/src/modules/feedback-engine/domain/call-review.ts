@@ -588,6 +588,10 @@ export function parseCallReview(text: string, options: { contract?: ReviewContra
 // ---------------------------------------------------------------------------------------------
 export type Confirmation = "CONFIRMED" | "UNCONFIRMED" | "REFUTED" | "NOT_A_CLAIM"
 export type ConfirmationReason =
+  /** `PRODUCT_APPLICABILITY_V1` — a regra depende de um produto que a evidência não estabeleceu para a solicitação: sem avaliação. */
+  | "PRODUCT_APPLICABILITY_NOT_ESTABLISHED"
+  /** `PRODUCT_APPLICABILITY_V1` — a regra é de outro produto que não o estabelecido para a solicitação: não se aplica. */
+  | "PRODUCT_OUT_OF_RULE_SCOPE"
   | "REVIEW_UNAVAILABLE"
   | "REVIEW_MISSING_ITEM"
   | "REVIEW_UNCERTAIN"

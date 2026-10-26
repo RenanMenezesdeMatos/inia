@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { completeTransition, isInviteEligible, pauseTransition, pickInvite, presentationEventAccepted, startTransition, type InviteCandidate } from "./feedback-application.js"
 import { buildDeliveredFeedbackContext, buildPublishedFeedbackContext, renderHistoricalContextForModel, type PublishedFeedbackRecord } from "./historical-context.js"
-import { buildApplicationPresentation, FEEDBACK_PRESENTATION_CUE, renderApplicationInstruction } from "./application-presentation.js"
+import { buildApplicationPresentation, FEEDBACK_PRESENTATION_CUE, PRODUCT_APPLICATION_RULE, renderApplicationInstruction } from "./application-presentation.js"
+import { consultationOf, renderSpecialistFrame } from "./session-consultation.js"
 
 const NOW = new Date("2026-10-01T15:00:00.000Z")
 
@@ -139,3 +140,87 @@ describe("apresentação — fala do que já foi publicado, situando o período"
     expect(followUp).not.toContain("<<<APRESENTACAO")
   })
 })
+
+describe("FEEDBACK_APPLICATION_PRESENTATION_V2 — as boas práticas do feedback na conclusão da aplicação", () => {
+  const PRACTICE = {
+    patternId: "p1", name: "Checar compreensão oferecendo explicar de outra forma", indicatorName: "Nota da URA", context: "Reparo",
+    association: "Nas chamadas comparáveis de Reparo analisadas (…), o comportamento apareceu em 72% das chamadas com resultado bom … e em 22% das com resultado ruim.",
+    strength: "Forte", you: "Suas chamadas não estavam nesta análise: não há evidência sobre como você faz isso hoje.",
+    howTo: "Ao terminar de explicar, pergunte se ficou compreensível e ofereça explicar de outra forma. (O diferencial é o que vai além da etapa obrigatória: oferecer explicar de outro jeito.)",
+    suggestedPhrasing: "Ficou claro? Se quiser, eu explico de outro jeito.", notApplicableWhen: null,
+    source: { text: "Das chamadas de Reparo com resultado bom em Nota da URA, no seu grupo (B2C)." },
+  }
+  const VIEW = { ...INDICATOR_VIEW, bestPractices: { version: "BEST_PRACTICE_FEEDBACK_V2", title: "Oportunidades inspiradas em boas práticas", note: "…", items: [PRACTICE] } }
+
+  it("a conclusão sugere como aplicar com a prática registrada — opcional, com a fala de exemplo e sem o detalhe técnico", () => {
+    const context = buildPublishedFeedbackContext(record({ snapshot: { reliableFeedback: { feedbackView: VIEW } } }), NOW)
+    expect(context.bestPractices).toEqual([expect.objectContaining({ name: PRACTICE.name, suggestedPhrasing: PRACTICE.suggestedPhrasing, source: PRACTICE.source.text })])
+    const presentation = buildApplicationPresentation({ context, view: VIEW as never, addressName: "Larissa", now: NOW })
+    expect(presentation.chatText).toContain("**Para colocar em prática** — sugestões que aparecem mais nos melhores resultados (são opcionais, não são regra do processo):")
+    expect(presentation.chatText).toContain(`- **${PRACTICE.name}.** Ao terminar de explicar, pergunte se ficou compreensível e ofereça explicar de outra forma. Você pode dizer, por exemplo: “Ficou claro? Se quiser, eu explico de outro jeito.”`)
+    expect(presentation.chatText).not.toContain("O diferencial é")
+    // A ordem da conclusão: o feedback, a prática e, por fim, o convite para dúvidas.
+    expect(presentation.chatText.indexOf("Para colocar em prática")).toBeLessThan(presentation.chatText.indexOf("Pode me perguntar"))
+    expect(presentation.speechText).toContain("Para colocar em prática, uma sugestão que aparece mais nos melhores resultados: Ao terminar de explicar")
+    expect(presentation.suggestions).toContain("Como faço essa boa prática na próxima chamada?")
+    const instruction = renderApplicationInstruction({ context, presentation, now: NOW })
+    expect(instruction).toContain("BOAS PRÁTICAS: o registro traz sugestões OPCIONAIS")
+    expect(instruction).toContain("Boas práticas registradas (sugestões OPCIONAIS")
+  })
+
+  it("FEEDBACK_APPLICATION_PRESENTATION_V3: a prática que o texto já citou não se repete na conclusão (a pergunta sugerida continua)", () => {
+    const OTHER = { ...PRACTICE, patternId: "p2", name: "Orientar prevenção ou autoatendimento", suggestedPhrasing: null }
+    const cited = { ...VIEW, bestPractices: { ...VIEW.bestPractices, version: "BEST_PRACTICE_FEEDBACK_V3", items: [{ ...PRACTICE, citedInText: true }, OTHER] } }
+    const context = buildPublishedFeedbackContext(record({ snapshot: { reliableFeedback: { feedbackView: cited } } }), NOW)
+    const presentation = buildApplicationPresentation({ context, view: cited as never, addressName: "Larissa", now: NOW })
+    expect(presentation.chatText).toContain(`- **${OTHER.name}.**`)
+    expect(presentation.chatText).not.toContain(`- **${PRACTICE.name}.**`)
+    expect(presentation.speechText).not.toContain("Tem mais uma sugestão escrita aqui no painel.")
+    const allCited = { ...cited, bestPractices: { ...cited.bestPractices, items: [{ ...PRACTICE, citedInText: true }] } }
+    const onlyText = buildApplicationPresentation({ context, view: allCited as never, addressName: "Larissa", now: NOW })
+    expect(onlyText.chatText).not.toContain("Para colocar em prática")
+    expect(onlyText.suggestions).toContain("Como faço essa boa prática na próxima chamada?")
+  })
+
+  it("sem boas práticas no feedback, a apresentação e as regras ficam como antes", () => {
+    const context = buildPublishedFeedbackContext(record(), NOW)
+    const presentation = buildApplicationPresentation({ context, view: INDICATOR_VIEW as never, addressName: "Joana", now: NOW })
+    expect(presentation.chatText).not.toContain("Para colocar em prática")
+    expect(presentation.suggestions).toContain("Como aplico essa orientação?")
+    expect(renderApplicationInstruction({ context, presentation, now: NOW })).not.toContain("BOAS PRÁTICAS:")
+  })
+})
+
+describe("PRODUCT_IN_FEEDBACK_V1 — a sessão do feedback sabe o produto de cada ponto", () => {
+  const DEVELOPMENT = {
+    key: "k1", title: "Prazo do reparo", whatHappened: "", product: "IP Dedicado",
+    call: { kind: "QUOTES", quotes: [{ speaker: "OPERATOR", intro: "Você disse", text: "O prazo de solução é de 24 horas.", truncated: false, product: "IP Dedicado" }] },
+    adjustment: [], guidance: { rules: [{ text: "O prazo (SLA) de solução do IP Dedicado é de 4 horas.", section: "Prazo", appliesTo: ["IP Dedicado"] }, { text: "Pode oferecer o envio do resumo por SMS.", section: "Argumentário", requirement: "OPTIONAL" }], avoid: [], examples: [] },
+    sources: [], whyItMatters: [], howToApply: null, suggestedResponse: "Para o IP Dedicado, o prazo de solução é de 4 horas.", suggestedResponseSource: { kind: "ARGUMENT_SCRIPT", name: "Reparo de Dados Avançados" }, suggestedResponseProduct: "IP Dedicado", itemIndexes: [0],
+  }
+  const VIEW = { ...INDICATOR_VIEW, kind: "MONITORING", cycle: null, developments: [DEVELOPMENT], product: { identified: ["IP Dedicado"], undetermined: false, pendingPoints: [], byProduct: [{ products: ["Colocation"], rules: ["O prazo (SLA) de solução do Colocation é de 2 horas."] }] } }
+  const context = () => buildPublishedFeedbackContext(record({ kind: "MONITORING", snapshot: { reliableFeedback: { feedbackView: VIEW } } }), NOW)
+
+  it("cada ponto e cada fala com o produto do pedido; cada regra com o 'Vale para' e o 'deve/pode'; a fala oficial com o produto dela", () => {
+    const built = context()
+    expect(built.evidence).toContain("Prazo do reparo [pedido de IP Dedicado] — Você disse (chamada de IP Dedicado): “O prazo de solução é de 24 horas.”")
+    expect(built.guidance).toContain("Prazo do reparo [pedido de IP Dedicado] — o processo orienta (Prazo; vale para: IP Dedicado): “O prazo (SLA) de solução do IP Dedicado é de 4 horas.”")
+    expect(built.guidance.some((line) => line.includes("opcional — fazer é iniciativa, não fazer não é falha"))).toBe(true)
+    expect(built.guidance).toContain("Prazo do reparo [pedido de IP Dedicado] — como o argumentário “Reparo de Dados Avançados” orienta dizer (para IP Dedicado): “Para o IP Dedicado, o prazo de solução é de 4 horas.”")
+    expect(built.products).toEqual(["IP Dedicado"])
+    // O que cada produto possível pede vai para a conversa, marcado como "só vale se o produto se confirmar".
+    expect(renderHistoricalContextForModel(built)).toContain("O que cada produto possível pede (só vale para o produto que se confirmar; nunca é falha deste atendimento):")
+  })
+
+  it("a instrução da sessão manda usar a regra, o prazo e a fala do produto do ponto; o especialista recebe o produto do atendimento", () => {
+    const built = context()
+    const presentation = buildApplicationPresentation({ context: built, view: VIEW as never, addressName: "Larissa", now: NOW })
+    expect(renderApplicationInstruction({ context: built, presentation, now: NOW })).toContain(PRODUCT_APPLICATION_RULE)
+    expect(renderSpecialistFrame(consultationOf("app-1", built))).toContain("Produto do atendimento, como a gravação estabeleceu: IP Dedicado.")
+    // Sem produto no registro, nada muda.
+    const plain = buildPublishedFeedbackContext(record(), NOW)
+    expect(renderApplicationInstruction({ context: plain, presentation: buildApplicationPresentation({ context: plain, view: INDICATOR_VIEW as never, addressName: "Joana", now: NOW }), now: NOW })).not.toContain("PRODUTOS:")
+    expect(renderSpecialistFrame(consultationOf("app-2", plain))).not.toContain("Produto do atendimento")
+  })
+})
+

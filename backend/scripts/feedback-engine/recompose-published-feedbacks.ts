@@ -80,7 +80,11 @@ try {
     totalCost += meter.costUsd ?? 0
     if (result.kind === "ABSTAINED") {
       const abstained = await overlay.getMessage(organizationId, result.messageId)
-      const errors = ((abstained?.composition ?? {}) as { errors?: string[] }).errors ?? []
+      const composition = (abstained?.composition ?? {}) as { errors?: string[]; decisions?: { id: string; kept: boolean; reasons: string[] }[]; coherence?: { problems?: { kind: string; note: string | null }[]; danglingAfterRemoval?: string[] } }
+      const errors = composition.errors ?? []
+      // Sem mensagem: o porquê fica na tela (frases recusadas e o que a conferência do conjunto apontou) — o texto não é gravado.
+      const refused = (composition.decisions ?? []).filter((decision) => !decision.kept).map((decision) => `${decision.id}: ${decision.reasons.join(", ")}`)
+      console.log(`\n===== ${feedback.id} · SEM MENSAGEM (${result.reason}) =====\nRecusadas: ${refused.join(" | ") || "nenhuma"}\nConjunto: ${JSON.stringify(composition.coherence ?? null)}`)
       report.push({ feedbackId: feedback.id, domain: message.domain, outcome: `ABSTAINED:${result.reason}${errors.length > 0 ? ` [${errors.join(" | ").slice(0, 300)}]` : ""}`, costUsd: meter.costUsd ?? null, modelCalls: meter.calls })
       continue
     }
@@ -90,7 +94,8 @@ try {
       continue
     }
     const view = await deliveredViewOf(pool, organizationId, feedback.operator_id, record.message.view)
-    console.log(`\n===== ${feedback.id} · ${message.domain} =====\nCARD: ${record.message.card}\n\n${view.narrative.join("\n\n")}`)
+    const readability = (record.composition as { readability?: { wordsPerSentence: number; fleschPt: number } | null } | null)?.readability
+    console.log(`\n===== ${feedback.id} · ${message.domain} =====\nCARD: ${record.message.card}${readability ? `\nLEITURA: ${readability.wordsPerSentence} palavras por frase · índice ≈ ${readability.fleschPt}` : ""}\n\n${view.narrative.join("\n\n")}`)
     report.push({ feedbackId: feedback.id, domain: message.domain, outcome: apply ? "APPLIED" : "COMPOSED_DRY_RUN", costUsd: meter.costUsd ?? null, modelCalls: meter.calls })
     if (!apply) continue
     const brief = record.brief

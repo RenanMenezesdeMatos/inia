@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { buildFeedbackBestPractices } from "../../best-practices/application/feedback-section.js"
 import type { DeliveredMonitoring, DeliverySkip } from "../domain/delivery-guards.js"
 import type { PublishEngineResult } from "../infrastructure/publish-engine-feedback.js"
 import { deliverySkipFromMemory } from "./delivery-skip.js"
@@ -21,6 +22,7 @@ import { createPostgresIndicatorData } from "../infrastructure/postgres-indicato
 import { loadAgentDocumentsAt, loadAgentProfile, loadDocumentTitles, loadInteractionForAnalysis, loadPreviousPublishedVersion } from "../infrastructure/postgres-engine-loaders.js"
 import { deliveredViewOf, engineProjectionSource, publishEngineFeedbackToFollowUp, type PublishEngineInput } from "../infrastructure/publish-engine-feedback.js"
 import { loadArgumentScriptsInForce } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
+import { loadProductCatalogAt } from "../../product-catalog/infrastructure/product-catalog-loaders.js"
 
 /**
  * MONTAGEM do motor de feedback e a FRONTEIRA DE EFEITOS do Workflow (`WorkflowEffectSink.feedbackEngine`). Produção grava na
@@ -48,6 +50,7 @@ export function createEngineDeps(input: { db: Database; model?: EngineModelPort;
     loadDocuments: (organizationId, agentId, at) => loadAgentDocumentsAt(input.db, organizationId, agentId, at),
     loadPreviousVersion: (organizationId, documentId, version) => loadPreviousPublishedVersion(input.db, organizationId, documentId, version),
     loadArgumentScripts: (organizationId, person, at) => loadArgumentScriptsInForce(input.db, organizationId, person, at),
+    loadProductCatalog: (organizationId, at, sourceIds) => loadProductCatalogAt(input.db, organizationId, at, sourceIds),
     now: () => clock.now(),
     ...(input.allowCollaborator ? { allowCollaborator: input.allowCollaborator } : {}),
     organizePractices: input.organizePractices ?? true,
@@ -73,6 +76,7 @@ export function createEngineDeps(input: { db: Database; model?: EngineModelPort;
     investigate,
     loadDocumentTitles: (organizationId, documentIds) => loadDocumentTitles(input.db, organizationId, documentIds),
     loadAgentConfiguredAt: async (organizationId, agentId) => (await loadAgentProfile(input.db, organizationId, agentId))?.updatedAt.toISOString() ?? null,
+    bestPractices: (practiceInput) => buildFeedbackBestPractices(input.db, practiceInput),
     now: () => clock.now(),
   }
 }

@@ -75,6 +75,9 @@ export type ProcedureLine = {
   argument?: ArgumentLineMeta
 }
 
+/** Orientação "pode" de argumentário: opcional — feita, é iniciativa; não feita, nunca é desvio (a obrigatoriedade é do cadastro). */
+export const isOptionalGuidance = (line: Pick<ProcedureLine, "argument">) => line.argument?.field === "GUIDANCE" && line.argument.modality === "MAY"
+
 export type ProcedureSection = {
   handle: string
   documentHandle: string
@@ -122,6 +125,8 @@ export type ProcedureDocument = {
   perspective: RulePerspective
   selection: DocumentSelection
   sections: ProcedureSection[]
+  /** `PRODUCT_APPLICABILITY_V1`: abrangência por produto REGISTRADA da fonte (só em modo produto; ausente = vale para qualquer produto). */
+  productScopeLabel?: string | null
 }
 
 export type ProcedureContext = {
@@ -379,7 +384,7 @@ export function renderProcedureForModel(context: Pick<ProcedureContext, "documen
   const blocks: string[] = []
   for (const document of context.documents) {
     if (document.kind === "ARGUMENT_SCRIPT") continue
-    blocks.push(`=== ${document.handle} · ${document.title} (versão ${document.version} · ${PERSPECTIVE_LABEL[document.perspective]}) ===`)
+    blocks.push(`=== ${document.handle} · ${document.title} (versão ${document.version} · ${PERSPECTIVE_LABEL[document.perspective]}${document.productScopeLabel ? ` · ${document.productScopeLabel}` : ""}) ===`)
     for (const section of document.sections) {
       const title = section.heading ?? "(cabeçalho do documento)"
       if (section.lines.length === 0) continue
@@ -401,7 +406,7 @@ export function renderArgumentScriptsForModel(context: Pick<ProcedureContext, "d
     const meta = document.argument
     if (document.kind !== "ARGUMENT_SCRIPT" || !meta) continue
     const when = document.perspective === "CURRENT_RULE_REEVALUATION" ? "versão atual — REAVALIAÇÃO: não estava vigente na data da chamada; o que ela apontar é orientação para as próximas chamadas, nunca descumprimento da época" : "vigente na data da chamada"
-    blocks.push(`=== ${document.handle} · Argumentário "${meta.name}" (versão ${document.version} · ${when}${meta.areaName ? ` · área: ${meta.areaName}` : ""} · vale para: ${meta.scopeLabel}) ===`)
+    blocks.push(`=== ${document.handle} · Argumentário "${meta.name}" (versão ${document.version} · ${when}${meta.areaName ? ` · área: ${meta.areaName}` : ""} · vale para: ${meta.scopeLabel}${document.productScopeLabel ? ` · ${document.productScopeLabel}` : ""}) ===`)
     if (meta.sourceDocumentTitle || meta.sourceReference) blocks.push(`Fonte de origem: ${[meta.sourceDocumentTitle, meta.sourceReference].filter(Boolean).join(" — ")}`)
     if (meta.subjectName) blocks.push(`Assunto do cadastro antigo: ${meta.subjectName}`)
     blocks.push(`CONDIÇÃO / GATILHO (situação a reconhecer na conversa inteira — não é busca de palavras): ${meta.trigger ?? "não informada"}`)
@@ -446,6 +451,8 @@ export type TranscriptStatus = "COMPLETE" | "INCOMPLETE" | "UNAVAILABLE"
 /** Marcas de corte/perda que a PRÓPRIA fonte registra ("[inaudível]", "[trecho perdido]", "…" no fim) — formato da fonte, não significado. */
 const TRUNCATION = /\[(?:\.{3}|…|[^\]]*(?:cortad|interrompid|incomplet|inaud[íi]vel|trecho\s+perdido)[^\]]*)\]|\((?:inaud[íi]vel|trecho\s+cortado)\)/iu
 const CUT_ENDING = /(?:\.{3}|…|—|-)\s*$/
+/** O turno traz uma marca de perda que a PRÓPRIA fonte registrou ("[inaudível]", "[trecho perdido]") — formato, não significado. */
+export const turnHasLossMark = (text: string) => TRUNCATION.test(text)
 
 /**
  * A transcrição permite julgar AUSÊNCIA? Só quando nenhum turno ficou fora do contexto, a fonte não registra perda e a última

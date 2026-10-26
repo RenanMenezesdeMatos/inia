@@ -1,8 +1,7 @@
 "use client"
 
-import { useId } from "react"
 import Link from "next/link"
-import { BookOpen, ChevronDown, ExternalLink, FileSearch, Lightbulb, Minus, TrendingDown, TrendingUp } from "lucide-react"
+import { BookOpen, ChevronDown, ExternalLink, FileSearch, Lightbulb, Minus, Sparkles, TrendingDown, TrendingUp } from "lucide-react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
@@ -12,10 +11,14 @@ import { RichContent } from "@/components/rich-content/rich-content"
 import { cn } from "@/lib/utils"
 import type { FeedbackView, FeedbackViewDevelopment, FeedbackViewQuote, FeedbackViewSubjects } from "@/schemas/feedbacks/feedback-view.schema"
 
+import { BEST_PRACTICES_HINT, BestPracticesList } from "./best-practices-list"
+import { FeedbackSupportTiles, type FeedbackSupportTile } from "./feedback-support-tiles"
+import { ProductTag } from "./product-tag"
+
 /**
- * Feedback por Flag V2 — o feedback como um supervisor escreveria (camada 1) e, logo abaixo, dois blocos IRMÃOS (mesma caixa,
- * mesmo cabeçalho): "Entenda este feedback" (progressive disclosure, fechado por padrão) e "Materiais utilizados" (sempre
- * visível). Cada ajuste mostra só o essencial — o que aconteceu, na chamada, o que o processo orienta e como melhorar; "por que
+ * Feedback por Flag V2 — o feedback como um supervisor escreveria (camada 1) e, logo abaixo, os blocos de apoio como CARDS lado a
+ * lado ("Entenda este feedback", "Oportunidades inspiradas em boas práticas", "Materiais utilizados"; `feedback-support-tiles.tsx`):
+ * fechados por padrão, o escolhido abre embaixo (progressive disclosure). Cada ajuste mostra só o essencial — o que aconteceu, na chamada, o que o processo orienta e como melhorar; "por que
  * importa" e o exemplo aparecem só quando existem.
  *
  * Tudo aqui é texto puro vindo do view model (o sistema já decidiu e validou o conteúdo); só o ponto de "confirmar o produto"
@@ -25,13 +28,6 @@ import type { FeedbackView, FeedbackViewDevelopment, FeedbackViewQuote, Feedback
 /** O conteúdo do Accordion do design system tem altura fixa (animação); aqui o conteúdo é dinâmico (accordions aninhados,
  * "Ver evidências"), então a altura acompanha o conteúdo e os parágrafos usam o espaçamento do próprio layout. */
 const DYNAMIC_CONTENT = "h-auto [&_p:not(:last-child)]:mb-0"
-/** Linguagem visual COMUM de "Entenda este feedback" e "Materiais utilizados" (componentes irmãos). */
-const PANEL = "min-w-0 rounded-xl border bg-card"
-const PANEL_HEADER = "flex w-full min-w-0 items-center gap-3 px-3 py-3 text-left sm:px-4"
-const PANEL_ICON = "flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-const PANEL_TITLE = "block text-sm font-semibold leading-5"
-const PANEL_HINT = "block text-xs font-normal leading-5 text-muted-foreground"
-const PANEL_BODY = "border-t px-2.5 py-3 sm:px-4"
 
 type Phase = NonNullable<NonNullable<FeedbackView["maintain"]>["evidence"][number]["phase"]>
 const PHASE_LABEL: Record<Phase, string> = { INVESTIGATION: "Investigação", TREATMENT: "Tratativa", CLOSING: "Encerramento", OTHER: "Outros pontos" }
@@ -39,8 +35,6 @@ const PHASE_ORDER: Phase[] = ["INVESTIGATION", "TREATMENT", "CLOSING", "OTHER"]
 
 /** `hideMaterials`: a superfície mostra os materiais em outro lugar (a sessão de feedback tem uma faixa própria para eles). */
 export function FeedbackNarrativeView({ view, className, hideMaterials = false }: { view: FeedbackView; className?: string; hideMaterials?: boolean }) {
-  const materialsId = useId()
-  const hasDetails = view.developments.length > 0 || view.maintain !== null || view.attention.length > 0 || (view.cycle?.indicators.length ?? 0) > 0 || (view.subjects?.rows.length ?? 0) > 0
   // Indicator Diagnosis V1 — o feedback de INDICADOR usa os MESMOS blocos, com rótulos próprios vindos do backend.
   const labels = { developments: view.sectionLabels?.developments ?? "O que precisa ser ajustado", maintain: view.sectionLabels?.maintain ?? "O que manter", call: view.sectionLabels?.call ?? "Na chamada", hint: view.sectionLabels?.detailsHint ?? "A fala da chamada, o que o processo orienta e como melhorar em cada ponto." }
   return (
@@ -49,102 +43,113 @@ export function FeedbackNarrativeView({ view, className, hideMaterials = false }
         {view.greeting ? <p className="font-medium">{view.greeting}</p> : null}
         {/* Cada parágrafo pode trazer markdown seguro montado pelo motor (lista, **negrito**); texto puro vira o mesmo parágrafo. */}
         {view.narrative.map((paragraph, index) => (
-          <RichContent key={index} text={paragraph} className="space-y-2 text-[15px] leading-7 [&_li]:pl-0.5 [&_strong]:font-semibold" />
+          <RichContent key={index} text={paragraph} quotes="emphasis" className="space-y-2 text-[15px] leading-7 [&_li]:pl-0.5 [&_strong]:font-semibold" />
         ))}
       </div>
-      {hasDetails ? (
-        <Collapsible className={cn(PANEL, "group/details")} data-slot="feedback-panel">
-          <h4 className="m-0">
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className={cn(PANEL_HEADER, "h-auto rounded-xl whitespace-normal hover:bg-muted/40 group-data-[state=open]/details:rounded-b-none")} data-usage-element="feedback.open_detail">
-                <span className={PANEL_ICON} aria-hidden><FileSearch className="size-4" /></span>
-                <span className="min-w-0 flex-1">
-                  <span className={PANEL_TITLE}>Entenda este feedback</span>
-                  <span className={PANEL_HINT}>{labels.hint}</span>
-                </span>
-                <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/details:rotate-180" aria-hidden />
-              </Button>
-            </CollapsibleTrigger>
-          </h4>
-          <CollapsibleContent className={cn(PANEL_BODY, "space-y-3")} data-usage-screen="feedback.detail">
-            {view.context ? <p className="text-xs text-muted-foreground">{view.context}</p> : null}
-            <Accordion type="multiple">
-              {view.cycle && view.cycle.indicators.length > 0 ? (
-                <AccordionItem value="ciclo">
-                  <AccordionTrigger headingLevel={5}>{view.cycle.title}</AccordionTrigger>
-                  <AccordionContent className={DYNAMIC_CONTENT}>
-                    <CycleDetail cycle={view.cycle} />
-                  </AccordionContent>
-                </AccordionItem>
-              ) : null}
-              {view.subjects && view.subjects.rows.length > 0 ? (
-                <AccordionItem value="assuntos">
-                  <AccordionTrigger headingLevel={5}>{view.subjects.title}</AccordionTrigger>
-                  <AccordionContent className={DYNAMIC_CONTENT}>
-                    <SubjectsDetail subjects={view.subjects} />
-                  </AccordionContent>
-                </AccordionItem>
-              ) : null}
-              {view.developments.length > 0 ? (
-                <AccordionItem value="ajustes">
-                  <AccordionTrigger headingLevel={5}>{labels.developments}</AccordionTrigger>
-                  <AccordionContent className={DYNAMIC_CONTENT}>
-                    <Accordion type="multiple" className="rounded-lg border px-2 sm:px-3">
-                      {view.developments.map((detail) => (
-                        <AccordionItem key={detail.key} value={detail.key}>
-                          <AccordionTrigger headingLevel={6} className="text-[13px]">{detail.title}</AccordionTrigger>
-                          <AccordionContent className={DYNAMIC_CONTENT}>
-                            <DevelopmentDetail detail={detail} callLabel={labels.call} />
-                          </AccordionContent>
-                        </AccordionItem>
-                      ))}
-                    </Accordion>
-                  </AccordionContent>
-                </AccordionItem>
-              ) : null}
-              {view.maintain ? (
-                <AccordionItem value="manter">
-                  <AccordionTrigger headingLevel={5}>{labels.maintain}</AccordionTrigger>
-                  <AccordionContent className={DYNAMIC_CONTENT}>
-                    <MaintainDetail maintain={view.maintain} />
-                  </AccordionContent>
-                </AccordionItem>
-              ) : null}
-              {view.attention.length > 0 ? (
-                <AccordionItem value="confirmar">
-                  <AccordionTrigger headingLevel={5}>Vale confirmar</AccordionTrigger>
-                  <AccordionContent className={DYNAMIC_CONTENT}>
-                    <div className="space-y-4">{view.attention.map((entry) => <RichContent key={entry.itemIndex} text={entry.markdown} density="detail" />)}</div>
-                  </AccordionContent>
-                </AccordionItem>
-              ) : null}
-            </Accordion>
-          </CollapsibleContent>
-        </Collapsible>
-      ) : null}
-      {/* Materiais utilizados: bloco PRÓPRIO (irmão visual de "Entenda este feedback"), fora dele e sempre visível — vêm só do
-          diagnóstico deste feedback. */}
-      {view.materials.length > 0 && !hideMaterials ? (
-        <section aria-labelledby={`${materialsId}-title`} className={PANEL} data-slot="feedback-panel">
-          <div className={PANEL_HEADER}>
-            <span className={PANEL_ICON} aria-hidden><BookOpen className="size-4" /></span>
-            <span className="min-w-0 flex-1">
-              <h4 id={`${materialsId}-title`} className={PANEL_TITLE}>Materiais utilizados</h4>
-              <span className={PANEL_HINT}>Documentos do procedimento usados neste feedback.</span>
-            </span>
-          </div>
-          <ul className={cn(PANEL_BODY, "space-y-3")}>
-            {view.materials.map((material) => (
-              <li key={material.documentId} className="min-w-0 space-y-1">
-                <p className="text-sm font-medium leading-snug break-words">{material.title}</p>
-                {(material.sections?.length ?? 0) > 0 ? <p className="text-xs leading-5 text-muted-foreground break-words">{material.sections!.join(" · ")}</p> : null}
-                <MaterialLink href={material.href} title={material.title} label="Abrir material" />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {/* Os blocos de apoio são cards lado a lado, abaixo do texto: o escolhido abre embaixo (o texto é o feedback). */}
+      <FeedbackSupportTiles tiles={supportTilesOf(view, labels, hideMaterials)} />
     </article>
+  )
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+/** Linha curta do card "Entenda este feedback": quantos pontos há para ajustar e o que mais ele traz. */
+function detailsSummaryOf(view: FeedbackView): string {
+  const indicator = (view.cycle?.indicators.length ?? 0) > 0 || (view.subjects?.rows.length ?? 0) > 0
+  const parts = [
+    view.developments.length > 0 ? plural(view.developments.length, "ponto para ajustar", "pontos para ajustar") : null,
+    view.maintain ? "o que manter" : null,
+    view.developments.length === 0 && indicator ? "o resultado e os assuntos" : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length > 0 ? capitalized(parts.join(" · ")) : "Os detalhes deste feedback"
+}
+
+type Labels = { developments: string; maintain: string; call: string; hint: string }
+
+/** Os três blocos de apoio — cada um só quando tem conteúdo; boas práticas e materiais ficam FORA de "Entenda este feedback". */
+function supportTilesOf(view: FeedbackView, labels: Labels, hideMaterials: boolean): FeedbackSupportTile[] {
+  const hasDetails = view.developments.length > 0 || view.maintain !== null || view.attention.length > 0 || (view.cycle?.indicators.length ?? 0) > 0 || (view.subjects?.rows.length ?? 0) > 0
+  const tiles: FeedbackSupportTile[] = []
+  if (hasDetails) tiles.push({ key: "details", icon: FileSearch, title: "Entenda este feedback", summary: detailsSummaryOf(view), hint: labels.hint, usageElement: "feedback.open_detail", content: <FeedbackDetails view={view} labels={labels} /> })
+  if (view.bestPractices && view.bestPractices.items.length > 0) tiles.push({ key: "practices", icon: Sparkles, title: view.bestPractices.title, summary: capitalized(plural(view.bestPractices.items.length, "sugestão opcional", "sugestões opcionais")), hint: BEST_PRACTICES_HINT, usageElement: "feedback.open_best_practices", content: <BestPracticesList section={view.bestPractices} /> })
+  if (view.materials.length > 0 && !hideMaterials) tiles.push({ key: "materials", icon: BookOpen, title: "Materiais utilizados", summary: capitalized(plural(view.materials.length, "documento", "documentos")), hint: "Documentos do procedimento usados neste feedback.", content: <MaterialsList materials={view.materials} /> })
+  return tiles
+}
+
+/** Conteúdo de "Entenda este feedback": o ciclo, os assuntos, o que ajustar, o que manter e o que vale confirmar. */
+function FeedbackDetails({ view, labels }: { view: FeedbackView; labels: Labels }) {
+  return (
+    <div className="space-y-3" data-usage-screen="feedback.detail">
+      {view.context ? <p className="text-xs text-muted-foreground">{view.context}</p> : null}
+      <Accordion type="multiple">
+        {view.cycle && view.cycle.indicators.length > 0 ? (
+          <AccordionItem value="ciclo">
+            <AccordionTrigger headingLevel={5}>{view.cycle.title}</AccordionTrigger>
+            <AccordionContent className={DYNAMIC_CONTENT}>
+              <CycleDetail cycle={view.cycle} />
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+        {view.subjects && view.subjects.rows.length > 0 ? (
+          <AccordionItem value="assuntos">
+            <AccordionTrigger headingLevel={5}>{view.subjects.title}</AccordionTrigger>
+            <AccordionContent className={DYNAMIC_CONTENT}>
+              <SubjectsDetail subjects={view.subjects} />
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+        {view.developments.length > 0 ? (
+          <AccordionItem value="ajustes">
+            <AccordionTrigger headingLevel={5}>{labels.developments}</AccordionTrigger>
+            <AccordionContent className={DYNAMIC_CONTENT}>
+              <Accordion type="multiple" className="rounded-lg border px-2 sm:px-3">
+                {view.developments.map((detail) => (
+                  <AccordionItem key={detail.key} value={detail.key}>
+                    <AccordionTrigger headingLevel={6} className="text-[13px]">{detail.title}</AccordionTrigger>
+                    <AccordionContent className={DYNAMIC_CONTENT}>
+                      <DevelopmentDetail detail={detail} callLabel={labels.call} />
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+        {view.maintain ? (
+          <AccordionItem value="manter">
+            <AccordionTrigger headingLevel={5}>{labels.maintain}</AccordionTrigger>
+            <AccordionContent className={DYNAMIC_CONTENT}>
+              <MaintainDetail maintain={view.maintain} />
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+        {view.attention.length > 0 ? (
+          <AccordionItem value="confirmar">
+            <AccordionTrigger headingLevel={5}>Vale confirmar</AccordionTrigger>
+            <AccordionContent className={DYNAMIC_CONTENT}>
+              <div className="space-y-4">{view.attention.map((entry) => <RichContent key={entry.itemIndex} text={entry.markdown} density="detail" />)}</div>
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+      </Accordion>
+    </div>
+  )
+}
+
+/** Conteúdo de "Materiais utilizados": os documentos do diagnóstico deste feedback, com as seções e o link. */
+function MaterialsList({ materials }: { materials: FeedbackView["materials"] }) {
+  return (
+    <ul className="space-y-3">
+      {materials.map((material) => (
+        <li key={material.documentId} className="min-w-0 space-y-1">
+          <p className="text-sm font-medium leading-snug break-words">{material.title}</p>
+          {(material.sections?.length ?? 0) > 0 ? <p className="text-xs leading-5 text-muted-foreground break-words">{material.sections!.join(" · ")}</p> : null}
+          <MaterialLink href={material.href} title={material.title} label="Abrir material" />
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -161,9 +166,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+/** Selo discreto do produto (`PRODUCT_IN_FEEDBACK_V1`): de que produto é o ponto, a fala ou a regra. */
 function CallQuote({ quote }: { quote: FeedbackViewQuote }) {
   return (
     <blockquote className="border-l-2 border-primary/40 pl-2 text-sm leading-6 break-words sm:pl-3">
+      {quote.product ? <span className="mr-1.5 align-middle"><ProductTag product={quote.product} /></span> : null}
       <span className="text-muted-foreground">{quote.intro}: </span>
       <q className="italic">{quote.text}{quote.truncated ? "…" : ""}</q>
     </blockquote>
@@ -188,6 +195,7 @@ function DevelopmentDetail({ detail, callLabel = "Na chamada" }: { detail: Feedb
   return (
     <div className="space-y-4">
       {detail.consolidates && detail.consolidates.length > 1 ? <p className="text-xs text-muted-foreground">Reúne: {detail.consolidates.join(" · ")}</p> : null}
+      {detail.product ? <p className="text-xs text-muted-foreground">Pedido de <ProductTag product={detail.product} /></p> : null}
       {happened.length > 0 ? (
         <Section title="O que aconteceu">
           {happened.map((text, index) => <p key={index} className="leading-6 break-words">{text}</p>)}
@@ -214,7 +222,13 @@ function DevelopmentDetail({ detail, callLabel = "Na chamada" }: { detail: Feedb
         <Section title="O processo orienta">
           {detail.guidance.rules.map((rule, index) => (
             <blockquote key={index} className="rounded-md border-l-2 border-emerald-500/50 bg-muted/40 px-3 py-2 text-sm leading-6 whitespace-pre-line break-words">
-              {rule.label || rule.section ? <span className="mb-1 block text-xs text-muted-foreground">{rule.label ?? `Seção “${rule.section}”`}</span> : null}
+              {rule.label || rule.section || (rule.appliesTo ?? []).length > 0 ? (
+                <span className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  {rule.label ?? (rule.section ? `Seção “${rule.section}”` : null)}
+                  {rule.requirement ? <Badge variant={rule.requirement === "REQUIRED" ? "secondary" : "outline"} className="text-[11px] not-italic">{REQUIREMENT_LABEL[rule.requirement]}</Badge> : null}
+                  {(rule.appliesTo ?? []).length > 0 ? <ProductTag prefix="Vale para" product={rule.appliesTo!.join(", ")} /> : null}
+                </span>
+              ) : null}
               {checklistMarks(rule.text)}
             </blockquote>
           ))}
@@ -248,7 +262,7 @@ function DevelopmentDetail({ detail, callLabel = "Na chamada" }: { detail: Feedb
           {/* Sugestão do redator (só quando passou nas validações) ou a fraseologia OFICIAL do argumentário — nunca fala desta chamada. */}
           {detail.suggestedResponse ? (
             <div className="space-y-1 pt-1">
-              <p className="text-xs text-muted-foreground">{detail.suggestedResponseSource ? `Como o argumentário “${detail.suggestedResponseSource.name}” orienta dizer — não é fala desta chamada.` : "Sugestão de como dizer — não é fala desta chamada."}</p>
+              <p className="text-xs text-muted-foreground">{detail.suggestedResponseSource ? `Como o argumentário “${detail.suggestedResponseSource.name}” orienta dizer — não é fala desta chamada.` : "Sugestão de como dizer — não é fala desta chamada."}{detail.suggestedResponseProduct ? <span className="ml-1.5 align-middle"><ProductTag prefix="Para" product={detail.suggestedResponseProduct} /></span> : null}</p>
               <p className="leading-6 italic break-words">“{detail.suggestedResponse}”</p>
             </div>
           ) : null}
@@ -336,6 +350,9 @@ function CycleDetail({ cycle }: { cycle: NonNullable<FeedbackView["cycle"]> }) {
   )
 }
 
+/** Como o cadastro do argumentário classifica o item ("deve"/ponto obrigatório na fala × "pode"). */
+const REQUIREMENT_LABEL = { REQUIRED: "Obrigatório", OPTIONAL: "Opcional" } as const
+
 type EvidenceEntry = NonNullable<FeedbackView["maintain"]>["evidence"][number]
 /** Evidências dos pontos que vale manter: o assunto, a frase da conduta (quando existe) e as falas. */
 function EvidenceGroups({ groups }: { groups: { label: string | null; entries: EvidenceEntry[] }[] }) {
@@ -347,7 +364,12 @@ function EvidenceGroups({ groups }: { groups: { label: string | null; entries: E
           <ul className="space-y-3">
             {group.entries.map((entry) => (
               <li key={entry.itemIndex} className="space-y-1.5">
-                <p className="leading-6 break-words"><span className="font-medium">{entry.title}{entry.statement ? ":" : ""}</span>{entry.statement ? ` ${entry.statement}` : null}</p>
+                <p className="leading-6 break-words">
+                  <span className="font-medium">{entry.title}</span>
+                  {entry.optional ? <Badge variant="outline" className="ml-1.5 align-middle text-[11px]">{REQUIREMENT_LABEL.OPTIONAL}</Badge> : null}
+                  {entry.statement ? <span className="font-medium">:</span> : null}
+                  {entry.statement ? ` ${entry.statement}` : null}
+                </p>
                 {entry.quotes.map((quote, index) => <CallQuote key={index} quote={quote} />)}
               </li>
             ))}

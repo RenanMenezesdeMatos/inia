@@ -22,7 +22,7 @@ import { createAdapterRegistry, type AdapterRegistry } from "../infrastructure/a
 import { decryptAiSecret } from "./ai-secrets.js"
 import { insertUsageEvent, legacyPricingKey, loadMonthSpend, loadOrgSnapshot, type ConnectionRuntime, type MonthSpendRow, type OrgAiSnapshot, type UsageRow } from "./ai-runtime-store.js"
 import { syncBudgetAlerts } from "./ai-budget-alerts.js"
-import type { ResolvedConnection } from "./provider-adapter-port.js"
+import type { AiExecuteResult, AiStreamExecuteResult, ResolvedConnection } from "./provider-adapter-port.js"
 
 /**
  * RUNTIME DE IA DA ORGANIZAÇÃO — implementação da porta consultada pelo gateway (ai-runtime.ts).
@@ -337,17 +337,23 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
       const prepared = await prepare(request)
       if (!prepared) return null
       const startedAtDate = now()
+      // Em fluxo (chat): depois do primeiro pedaço entregue, nenhum fallback — trocaria a resposta no meio.
+      let streamed = 0
+      const onText = request.onText
       const result = await attemptAll(request, prepared, async (candidate, connection, timeoutMs) => {
         const provider = findAiProvider(connection.providerKey)!
         const adapter = adapters(provider.adapterType)
-        const executed = await adapter.execute(
-          connection,
-          candidate.model.providerModelId,
-          { systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools, structuredOutput: request.structuredOutput, maxOutputTokens: effectiveMaxOutputTokens(request.maxOutputTokens, candidate.model.maxOutputTokens), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}) },
-          effectiveTimeoutMs(request.timeoutMs, timeoutMs),
-        )
+        const executeRequest = { systemPrompt: request.systemPrompt, contents: request.contents, tools: request.tools, structuredOutput: request.structuredOutput, maxOutputTokens: effectiveMaxOutputTokens(request.maxOutputTokens, candidate.model.maxOutputTokens), ...(request.responseSchema ? { responseSchema: request.responseSchema } : {}), ...(request.reasoningEffort && supportsCapability(candidate.model.capabilities, "REASONING") ? { reasoningEffort: request.reasoningEffort } : {}) }
+        const timeout = effectiveTimeoutMs(request.timeoutMs, timeoutMs)
+        // Saída estruturada em fluxo: o texto entregue é o JSON cru — só quem extrai o que mostra pede (esclarecimento pelas bases).
+        const executed = onText && adapter.streamExecute && supportsCapability(candidate.model.capabilities, "STREAMING")
+          ? await adapter.streamExecute(connection, candidate.model.providerModelId, executeRequest, timeout, (text) => {
+              streamed += text.length
+              onText(text)
+            })
+          : await adapter.execute(connection, candidate.model.providerModelId, executeRequest, timeout)
         return { value: executed, usage: executed.usage, durationMs: executed.durationMs }
-      })
+      }, () => streamed === 0)
       const executed = result.value
       // Telemetria do QA Lab (no-op fora dele) — o mesmo registro que os clientes legados fazem.
       recordLlmCall({
@@ -361,11 +367,12 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
         ...(executed.kind === "functionCalls" ? { toolCalls: executed.calls.map((call) => call.name) } : {}),
         promptBreakdown: { systemPromptChars: request.systemPrompt.length, toolSchemaChars: request.tools.length > 0 ? JSON.stringify(request.tools).length : 0, inputChars: request.contents.reduce((sum, turn) => sum + ("text" in turn ? turn.text.length : JSON.stringify(turn).length), 0), declaredTools: request.tools.length, technicalIds: countTechnicalIdsInPrompt(request.systemPrompt, ...request.contents.map((turn) => ("text" in turn ? turn.text : JSON.stringify(turn)))) },
       })
-      const { usage: _usage, model, durationMs, ...payload } = executed
+      const { usage: _usage, model, durationMs, streamedChars, firstTokenMs, ...payload } = executed as AiExecuteResult & Partial<Pick<AiStreamExecuteResult, "streamedChars" | "firstTokenMs">>
       void _usage
       if (payload.kind === "text" && !payload.text.trim()) throw new AiProviderError("PROVIDER_ERROR", { message: "O modelo não retornou nenhum texto." })
       return {
         ...payload,
+        ...(streamedChars !== undefined ? { streamedChars, firstTokenMs: firstTokenMs ?? null } : {}),
         usage: result.usage ?? EMPTY_USAGE,
         durationMs,
         model,

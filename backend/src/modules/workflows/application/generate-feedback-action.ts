@@ -52,6 +52,7 @@ export async function executeGenerateFeedback(config: Extract<ActionConfig, { ac
     indicatorMeasurementId: context.enrollment.indicatorMeasurementId,
     configuredAgentId: source.type === "action" && source.config.actionType === "CALL_AGENT" ? source.config.agentId : null,
     selectionReason: selectionReasonOf(context),
+    triggerFlagName: context.enrollment.matchedFlagName ?? null,
     now: context.now,
   })
   if (result.kind === "ABSTAINED") return { control: { kind: "COMPLETE", eventPayload: { actionType: "GENERATE_FEEDBACK", engine: "FEEDBACK_ENGINE_V1", outcome: "ABSTAINED", messageId: result.messageId, reason: result.reason, analysisRunIds: result.analysisRunIds, reused: result.reused } } }

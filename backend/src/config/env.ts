@@ -129,6 +129,12 @@ export const envSchema = z.object({
   // Monitoria de usabilidade — COLETA (ingestão do navegador, fatos de servidor e projeções) e PAINEL (Administração) ligam
   // separados, para ativar aos poucos. OFF (padrão) = nada é coletado / a área não é montada; o produto funciona igual.
   INIA_USAGE_COLLECTION: z.enum(["OFF", "ON"]).default("OFF"),
+  /**
+   * Base de boas práticas — SÓ DESENVOLVIMENTO: chave de um dataset SINTÉTICO (ex.: BP_SINTETICO_V1) cujos padrões aprovados a
+   * ferramenta do chat do operador usa NO LUGAR dos reais, sempre rotulados como sintéticos, para demonstrar a integração ponta a
+   * ponta. Ausente (padrão) = só padrões de dados reais. Ignorado com NODE_ENV=production.
+   */
+  INIA_BEST_PRACTICES_CHAT_SYNTHETIC_DATASET: z.string().trim().min(1).optional(),
   INIA_USABILITY_PANEL: z.enum(["OFF", "ON"]).default("OFF"),
   /** Ambiente que carimba os eventos de uso (padrão = NODE_ENV). */
   INIA_ENVIRONMENT: z.string().trim().min(1).max(40).optional(),

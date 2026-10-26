@@ -11,7 +11,7 @@ const recommendationSchema = z.object({
 })
 
 const feedbackSchema = z.object({
-  id: z.string(), status: z.string(), impactedIndicator: z.string(),
+  id: z.string(), status: z.string(), kind: z.enum(["INDICATOR", "MONITORING"]), impactedIndicator: z.string(),
   evidenceFound: z.string(), observedBehavior: z.string(), relatedProcedure: z.string(),
   recommendation: z.string(), suggestedApproach: z.string().nullable(),
 })

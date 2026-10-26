@@ -164,7 +164,7 @@ describe("rodada real V13, cenário C — resultado bom não pode virar 'só o n
     const onlyNumber = [{ stance: "RECOGNITION" as const, refs: ["S1"], verdict: { id: "F1", verdict: "SUPPORTED" as const, specific: true, repeats: null, note: null, addsInformation: null } }]
     const usefulness = usefulnessOf(brief, onlyNumber, null)
     expect(usefulness).toMatchObject({ primaryCovered: true, missingPractice: ["P1"] })
-    expect(repairInstructionsOf([], usefulness, brief, { guidance: {}, why: {} }).join(" ")).toContain("P1")
+    expect(repairInstructionsOf([], usefulness, brief).join(" ")).toContain("P1")
     const withPractice = [...onlyNumber, { stance: "GUIDANCE" as const, refs: ["P1"], verdict: { id: "F2", verdict: "SUPPORTED" as const, specific: true, repeats: null, note: null, addsInformation: null } }]
     expect(usefulnessOf(brief, withPractice, null).missingPractice).toBeUndefined()
   })

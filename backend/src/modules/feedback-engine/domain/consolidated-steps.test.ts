@@ -38,11 +38,11 @@ describe("CONSOLIDATED_STEPS_V1 — cada etapa de um ponto consolidado é fato p
   it("as etapas chegam ao redator e ao verificador como fatos (status em palavras, falas, ausência, regra)", () => {
     const brief = briefWith(consolidateDevelopments([path(), promessa, bloqueio, espera]))
     for (const facts of [compositionPayloadOf(brief).facts.developments[0], verificationFactsOf(brief).developments[0]]) {
-      const steps = (facts as { steps?: { title: string; status: string; absentInCall: boolean; quotes?: { who: string; text: string }[]; rule?: string }[] }).steps!
+      const steps = (facts as { steps?: { title: string; status: string; absentInCall: boolean; quotes?: { id: string | null; who: string; text: string }[]; rule?: string }[] }).steps!
       expect(steps.map((step) => step.title)).toEqual(["Conta já paga", "Serviços digitais não reconhecidos", "Tempo de espera"])
       expect(steps[1]).toMatchObject({ status: "não cumprida (confirmado)", absentInCall: true })
       expect(steps[1]!.rule).toContain("Oferecer bloqueio preventivo")
-      expect(steps[2]!.quotes).toEqual([{ who: "você", text: "Só um minutinho." }])
+      expect(steps[2]!.quotes).toEqual([{ id: expect.stringMatching(/^Q\d+$/), who: "você", text: "Só um minutinho." }])
     }
   })
 

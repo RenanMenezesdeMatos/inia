@@ -13,6 +13,7 @@ import { createGovernanceRouter } from "../modules/governance/presentation/gover
 import { createInterventionAdminRouter } from "../modules/interventions/presentation/intervention-admin-router.js"
 import { createInterventionRouter } from "../modules/interventions/presentation/intervention-router.js"
 import { createDiagnosticsRouter } from "../modules/diagnostics/presentation/diagnostics-router.js"
+import { createBestPracticesRouter } from "../modules/best-practices/presentation/best-practices-router.js"
 import { createIngestionRouter } from "../modules/ingestion/presentation/ingestion-router.js"
 import { createEphemeralRealtimeSession } from "../modules/realtime/infrastructure/gemini-realtime-client.js"
 import { streamTextReply } from "../modules/realtime/infrastructure/gemini-text-client.js"
@@ -41,6 +42,7 @@ import { createCheckpointRegistryRouter } from "../modules/checkpoint-registry/p
 import { createKnowledgeMaterialRouter } from "../modules/knowledge/presentation/knowledge-material-router.js"
 import { createAgentRouter } from "../modules/agents/presentation/agent-router.js"
 import { createBusinessDomainRouter } from "../modules/business-domains/presentation/business-domain-router.js"
+import { createProductCatalogRouter } from "../modules/product-catalog/presentation/product-catalog-router.js"
 import { createOperationalCalendarRouter } from "../modules/people/presentation/operational-calendar-router.js"
 import { createOrgStructureRouter } from "../modules/org-structure/presentation/org-structure-router.js"
 import { createPersonOrganizationStructureRouter } from "../modules/org-structure/presentation/person-organization-structure-router.js"
@@ -286,6 +288,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Catálogos da organização inteira: lê com a permissão em qualquer escopo, altera só com escopo de organização.
   const orgWideWrites = writesRequireOrganization("configuration.manage")
   app.use("/api/v1/admin/business-domains", can("configuration.manage"), orgWideWrites, createBusinessDomainRouter(database))
+  // Produtos, famílias e critérios de identificação + abrangência por produto das fontes (`PRODUCT_APPLICABILITY_V1`).
+  app.use("/api/v1/admin/product-catalog", can("configuration.manage"), orgWideWrites, createProductCatalogRouter(database))
   app.use("/api/v1/admin/operational-calendar", can("configuration.manage"), orgWideWrites, createOperationalCalendarRouter(database))
   app.use("/api/v1/admin/org-structure", can("configuration.manage"), createOrgStructureRouter(database))
   app.use("/api/v1/admin/indicator-rules", can("configuration.manage"), createIndicatorRuleRouter(database))
@@ -332,6 +336,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin", can("configuration.manage"), orgWideWrites, createGovernanceRouter(database))
   app.use("/api/v1/data-ingestion", createDataIngestionRouter(database, dataHubOverrides))
   app.use("/api/v1/diagnostics", requireAuth, createDiagnosticsRouter(database))
+  // Base de boas práticas: leitura pelo público do Diagnóstico; pedir análise (IA) e revisar com `configuration.manage` no escopo.
+  app.use("/api/v1/best-practices", requireAuth, costly(/^\/analyses$/), createBestPracticesRouter(database))
   app.use("/api/v1/ingestion", can("data_hub.manage", { organizationWide: true }), createIngestionRouter(database))
   app.use(
     "/api/v1/realtime",

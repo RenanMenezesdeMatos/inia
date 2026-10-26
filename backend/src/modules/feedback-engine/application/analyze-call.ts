@@ -5,9 +5,11 @@ import { rawSubjectOf } from "../../interactions/domain/interaction-subject.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
 import { mergeReviewedLines, missingCoverageOf, parseCallAnalysisResponse, sectionsInPlayOf, verifyCallAnalysis, type ConfirmationInput, type ModelCallAnalysis, type ReviewInput, type VerifiedCallAnalysis } from "../domain/call-analysis.js"
 import { CALL_ANALYSIS_FORMAT_RETRY, renderCallAnalysisUserTurn } from "../domain/call-analysis-prompt.js"
-import { OBLIGATION_ANALYSIS_RESPONSE_SCHEMA, OBLIGATION_ANALYSIS_SYSTEM_PROMPT } from "../domain/obligation-analysis-prompt.js"
+import { obligationAnalysisContractFor } from "../domain/obligation-analysis-prompt.js"
+import { productContextOf, scopeLabelFor, PRODUCT_APPLICABILITY_VERSION, type ProductContext } from "../domain/product-applicability.js"
+import type { ProductCatalogSource } from "../../product-catalog/domain/product-catalog.js"
 import { parseObligationAnalysisResponse, type ModelObligationAnalysis } from "../domain/obligation-analysis.js"
-import { OBLIGATION_REVIEW_PROMPT_VERSION } from "../domain/obligation-review.js"
+import { OBLIGATION_REVIEW_PROMPT_VERSION, obligationReviewContractFor } from "../domain/obligation-review.js"
 import { reviewObligationAnalysis } from "./review-obligations.js"
 import { callReviewResponseSchemaFor, CALL_REVIEW_PROMPT_VERSION, CALL_REVIEW_VERSION, CALL_REVIEW_SYSTEM_PROMPT, confirmationTargetsOf, exclusionTargetsOf, linesToAssessOf, parseCallReview, renderCallReviewUserTurn, reviewDiscoveriesOf, reviewTargetsOf, type ReviewPathClaim } from "../domain/call-review.js"
 import { effectiveRuleText } from "../domain/criteria-identity.js"
@@ -50,6 +52,11 @@ export type AnalyzeCallDeps = {
   loadPreviousVersion: (organizationId: string, documentId: string, version: number) => Promise<{ version: number; content: string } | null>
   /** Argumentários vigentes NA DATA DA CHAMADA no escopo (Grupo/Subgrupo) do colaborador. Ausente = nenhum (testes antigos). */
   loadArgumentScripts?: (organizationId: string, person: { teamId: string | null; subteamId: string | null }, at: Date) => Promise<ArgumentScriptSource[]>
+  /**
+   * `PRODUCT_APPLICABILITY_V1`: cadastro de produtos como valia NA DATA DA CHAMADA (itens, critérios aprovados e vigentes, abrangência das
+   * fontes apresentadas). Ausente ou sem nada vigente = análise sem modo produto (idêntica à de antes).
+   */
+  loadProductCatalog?: (organizationId: string, at: Date, sourceIds: readonly string[]) => Promise<ProductCatalogSource | null>
   now: () => Date
   /**
    * Trava de SUJEITO (ensaios/avaliações): só estes colaboradores podem ter chamadas analisadas. Checada antes de qualquer leitura
@@ -255,14 +262,18 @@ const PROPOSAL_SELECTION_PLACEHOLDER = "(motivo de seleção fora da chave da pr
  * CHAVES POR ETAPA. Proposta = o que o analisador VIU (sem o motivo de seleção) + versões do contrato e da extração; a execução
  * completa = proposta + lógica de verificação + contrato da revisão. Mudou só a revisão/lógica → só a revisão é refeita.
  */
-export function analysisKeysOf(input: { interaction: InteractionForAnalysis; agent: AgentProfile | null; documents: readonly { documentId: string; version: number; contentHash: string }[]; context: ProcedureContext; projection: TranscriptProjection; transcriptStatus: TranscriptStatus; subject: string | null }) {
+export function analysisKeysOf(input: { interaction: InteractionForAnalysis; agent: AgentProfile | null; documents: readonly { documentId: string; version: number; contentHash: string }[]; context: ProcedureContext; projection: TranscriptProjection; transcriptStatus: TranscriptStatus; subject: string | null; products?: ProductContext | null }) {
   const { interaction, agent } = input
   const specialist = agent ? { name: agent.name, guidance: [agent.objective, agent.contextPrompt].filter(Boolean).join("\n\n") || null } : null
   const interactionView = (selectionReason: string) => ({ dateLabel: dateLabelOf(interaction.startedAt, interaction.timeZone), channel: interaction.channel, subject: input.subject, durationSeconds: interaction.endedAt ? (interaction.endedAt.getTime() - interaction.startedAt.getTime()) / 1000 : null, signals: interaction.flags.map((flag) => `${flag.name} = ${flag.value}`), selectionReason })
-  const proposalTurn = renderCallAnalysisUserTurn({ specialist, interaction: interactionView(PROPOSAL_SELECTION_PLACEHOLDER), projection: input.projection, transcriptStatus: input.transcriptStatus, context: input.context })
+  const products = input.products ?? null
+  const proposalTurn = renderCallAnalysisUserTurn({ specialist, interaction: interactionView(PROPOSAL_SELECTION_PLACEHOLDER), projection: input.projection, transcriptStatus: input.transcriptStatus, context: input.context, products })
   const scripts = input.context.documents.filter((document) => document.kind === "ARGUMENT_SCRIPT").map((document) => `G:${document.documentId}@${document.version}@${document.contentHash}`)
-  const proposalKey = sha([CALL_ANALYSIS_PROMPT_VERSION, CRITERIA_EXTRACTION_VERSION, interaction.id, interaction.transcript?.checksum ?? "none", agent ? `${agent.id}@${agent.updatedAt.toISOString()}` : "none", ...input.documents.map((document) => `${document.documentId}@${document.version}@${document.contentHash}`), ...scripts, sha(`${OBLIGATION_ANALYSIS_SYSTEM_PROMPT}\n${proposalTurn}`)].join("|"))
-  return { proposalKey, analysisKey: sha([CALL_ANALYSIS_LOGIC_VERSION, CALL_REVIEW_PROMPT_VERSION, OBLIGATION_REVIEW_PROMPT_VERSION, proposalKey].join("|")), specialist, interactionView }
+  // Modo produto: o contrato com produto e a fotografia do cadastro (o texto do catálogo já está na mensagem) mudam a proposta; sem
+  // catálogo, a chave é exatamente a de antes (nenhuma análise anterior deixa de ser reaproveitada por causa do modo produto).
+  const contract = obligationAnalysisContractFor(Boolean(products))
+  const proposalKey = sha([CALL_ANALYSIS_PROMPT_VERSION, CRITERIA_EXTRACTION_VERSION, interaction.id, interaction.transcript?.checksum ?? "none", agent ? `${agent.id}@${agent.updatedAt.toISOString()}` : "none", ...input.documents.map((document) => `${document.documentId}@${document.version}@${document.contentHash}`), ...scripts, ...(products ? [`PRODUCTS:${products.fingerprint}`] : []), sha(`${contract.systemPrompt}\n${proposalTurn}`)].join("|"))
+  return { proposalKey, analysisKey: sha([CALL_ANALYSIS_LOGIC_VERSION, CALL_REVIEW_PROMPT_VERSION, obligationReviewContractFor(Boolean(products)).promptVersion, proposalKey].join("|")), specialist, interactionView, contract }
 }
 
 export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallRequest): Promise<AnalyzeCallResult> {
@@ -277,14 +288,18 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
   // `SUBJECT_RESOLUTION_V2`: o assunto é o canônico do nível preferencial, senão o submotivo (sem submotivo, o motivo).
   const subject = interaction.subjectCanonical?.name ?? rawSubjectOf(interaction)
   const candidates = agent ? await deps.loadDocuments(request.organizationId, agent.id, interaction.startedAt) : []
-  const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "" })
   // Argumentários: vigentes na DATA DA CHAMADA no escopo do colaborador (a mesma versão vale para análise, revisão e composição).
   const scripts = deps.loadArgumentScripts ? await deps.loadArgumentScripts(request.organizationId, { teamId: interaction.teamId, subteamId: interaction.subteamId }, interaction.startedAt) : []
+  // `PRODUCT_APPLICABILITY_V1`: o cadastro vigente NA DATA DA CHAMADA (antes da seleção: variantes de produto não competem pela relevância).
+  const catalog = deps.loadProductCatalog ? await deps.loadProductCatalog(request.organizationId, interaction.startedAt, [...candidates.map((document) => document.documentId), ...scripts.map((script) => script.scriptId)]) : null
+  const selection = selectDocumentsForCall(candidates, { subject, transcript: interaction.transcript?.content ?? "", productScoped: new Set((catalog?.scopes ?? []).map((scope) => scope.sourceId)) })
   const context = buildProcedureContext(selection.selected, scripts)
   context.omitted = selection.omitted
   const presentedScripts = context.documents.filter((document) => document.kind === "ARGUMENT_SCRIPT")
+  const products = productContextOf(catalog, { presentedSourceIds: context.documents.map((document) => document.documentId), metadata: interactionMetadataOf(interaction, subject) })
+  if (products) for (const document of context.documents) document.productScopeLabel = scopeLabelFor(products, document.documentId)
 
-  const { proposalKey, analysisKey, specialist, interactionView } = analysisKeysOf({ interaction, agent, documents: selection.selected, context, projection, transcriptStatus, subject })
+  const { proposalKey, analysisKey, specialist, interactionView, contract } = analysisKeysOf({ interaction, agent, documents: selection.selected, context, projection, transcriptStatus, subject, products })
   const claim = await deps.memory.claimAnalysis({
     organizationId: request.organizationId,
     kind: "CALL_ANALYSIS",
@@ -327,6 +342,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
       // Coincidências de TEXTO entre argumentário e base (nunca decisão; a equivalência é da leitura — `analysis.duplicates`).
       argumentSameText: context.sameText ?? [],
       evidenceAvailability: { transcript: transcriptStatus, operationalRecords: "NOT_INTEGRATED" },
+      productApplicability: products ? { version: PRODUCT_APPLICABILITY_VERSION, fingerprint: products.fingerprint, analysisPromptVersion: contract.promptVersion, reviewPromptVersion: obligationReviewContractFor(true).promptVersion, nodes: products.nodes.length, criteria: products.criteria.map((criterion) => ({ handle: criterion.handle, versionId: criterion.versionId, version: criterion.version })), scopes: [...products.scopes.entries()].map(([sourceId, scope]) => ({ sourceId, assignmentId: scope.assignmentId, handles: scope.handles })) } : null,
       subjectAnchoredDocumentIds: selection.anchoredDocumentIds,
       procedureChars: context.renderedChars,
     }
@@ -387,8 +403,8 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     if (!proposals) {
       // CONTRATO DA ANÁLISE (`CALL_ANALYSIS_PROMPT_V8` = `OBLIGATIONS_V1`): orientado ao caso — obrigações completas, não um
       // formulário por linha do documento. A mesma mensagem do usuário do contrato anterior (fontes, transcrição, argumentários).
-      const userTurn = renderCallAnalysisUserTurn({ specialist, interaction: interactionView(request.trigger.selectionReason), projection, transcriptStatus, context })
-      const base: EngineModelRequest = { stage: "CALL_ANALYSIS", systemPrompt: OBLIGATION_ANALYSIS_SYSTEM_PROMPT, contents: [{ role: "user", text: userTurn }], responseSchema: OBLIGATION_ANALYSIS_RESPONSE_SCHEMA, tag: "analysis" }
+      const userTurn = renderCallAnalysisUserTurn({ specialist, interaction: interactionView(request.trigger.selectionReason), projection, transcriptStatus, context, products })
+      const base: EngineModelRequest = { stage: "CALL_ANALYSIS", systemPrompt: contract.systemPrompt, contents: [{ role: "user", text: userTurn }], responseSchema: contract.schema, tag: "analysis" }
       const first = await callModel(deps.model, base, metrics)
       let parsed = parseAnalysisProposals(first.text)
       let lastText = first.text
@@ -405,7 +421,7 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
 
     // ETAPA 2 — revisão (a já paga com o mesmo pedido é reaproveitada) e confirmação focal do que só a revisão encontrou.
     const reviewInputs = { context, projection, transcriptStatus, interactionId: interaction.id, subject, anchored: selection.anchoredDocumentIds, storedReviews: prior.flatMap((entry) => (entry.review ? [entry.review] : [])), storedConfirmations: prior.flatMap((entry) => (entry.confirmation ? [entry.confirmation] : [])) }
-    const reviewed = proposals.contract === "OBLIGATIONS_V1" ? await reviewObligationAnalysis(deps, { model: proposals.value, ...reviewInputs }, metrics) : await reviewAnalysis(deps, { model: proposals.value, ...reviewInputs }, metrics)
+    const reviewed = proposals.contract === "OBLIGATIONS_V1" ? await reviewObligationAnalysis(deps, { model: proposals.value, ...reviewInputs, products }, metrics) : await reviewAnalysis(deps, { model: proposals.value, ...reviewInputs }, metrics)
     // Respostas BRUTAS (com a assinatura do pedido): permitem retomar/reaproveitar uma etapa paga — nunca vão a nenhuma tela.
     provenance.modelResponses = { analysis: analysisResponse, review: reviewed.raw, ...(reviewed.confirmationRaw ? { confirmation: reviewed.confirmationRaw } : {}) }
     provenance.stageReuse = { analysis: resumedFrom ? { reused: true, fromRunId: resumedFrom.runId, fromStatus: resumedFrom.status } : { reused: false }, review: { reused: reviewed.reviewReused } }
@@ -443,6 +459,20 @@ export async function analyzeCall(deps: AnalyzeCallDeps, request: AnalyzeCallReq
     await deps.memory.failAnalysis(request.organizationId, runId, error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 2_000) : "erro desconhecido", deps.now()).catch(() => undefined)
     throw error
   }
+}
+
+/**
+ * METADADOS da chamada que a identificação pode citar (M-n): registros do sistema gravados com a interação — nunca falas. O que cada
+ * um diz sobre o produto é leitura do modelo (um assunto registrado pode nomear o motivo e não o produto).
+ */
+export function interactionMetadataOf(interaction: InteractionForAnalysis, subject: string | null): { label: string; value: string }[] {
+  return [
+    ...(subject ? [{ label: "Assunto registrado", value: subject }] : []),
+    ...(interaction.reason && interaction.reason !== subject ? [{ label: "Motivo registrado", value: interaction.reason }] : []),
+    ...(interaction.subReason && interaction.subReason !== subject ? [{ label: "Submotivo registrado", value: interaction.subReason }] : []),
+    ...(interaction.channel ? [{ label: "Canal", value: interaction.channel }] : []),
+    ...interaction.flags.map((flag) => ({ label: `Sinal ${flag.name}`, value: flag.value })),
+  ]
 }
 
 function emptyAnalysis(transcriptStatus: VerifiedCallAnalysis["transcriptStatus"], reason: string): VerifiedCallAnalysis {

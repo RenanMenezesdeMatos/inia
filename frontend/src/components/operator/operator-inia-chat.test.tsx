@@ -128,6 +128,7 @@ vi.mock("@/lib/realtime/gemini-text-client", () => {
     fetchOwnConversations: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20 })),
     fetchTextReply: vi.fn(async () => ({ text: "", supportMaterials: [], interactionId: null, conversationId: "c", persisted: true })),
     startNewConversation: vi.fn(async () => {}),
+    saveMessageRating: vi.fn(async () => {}),
   }
 })
 
@@ -405,7 +406,7 @@ describe("OperatorIniaChat — conversas", () => {
     await waitFor(() => expect(composer()).toBeEnabled())
     fireEvent.change(composer(), { target: { value: "oi" } })
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
-    expect(textClient.fetchTextReply).toHaveBeenCalledWith(expect.objectContaining({ conversationId: null, text: "oi" }), expect.any(Function), expect.any(Function))
+    expect(textClient.fetchTextReply).toHaveBeenCalledWith(expect.objectContaining({ conversationId: null, text: "oi" }), expect.any(Function), expect.any(Function), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(await screen.findByText("Olá!")).toBeInTheDocument()
     fireEvent.change(composer(), { target: { value: "e agora?" } })
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
@@ -416,14 +417,21 @@ describe("OperatorIniaChat — conversas", () => {
     vi.mocked(textClient.fetchCurrentConversation).mockResolvedValue({ conversation: summary(CONV) as never, inactivityHours: 24 })
     vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("pergunta antiga", "user", "c1")], hasMore: false })
     const pending = deferred<Awaited<ReturnType<typeof textClient.fetchTextReply>>>()
-    vi.mocked(textClient.fetchTextReply).mockImplementation(() => pending.promise)
+    let signal: AbortSignal | undefined
+    vi.mocked(textClient.fetchTextReply).mockImplementation((_input, _onChunk, _onConversation, options) => {
+      signal = options?.signal
+      return pending.promise
+    })
     const transport = await openVoice()
     expect(await screen.findByText("pergunta antiga")).toBeInTheDocument()
     act(() => transport.events.onStateChange?.("idle"))
     fireEvent.change(composer(), { target: { value: "vai demorar" } })
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
 
+    expect(signal?.aborted).toBe(false)
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Nova conversa" })) })
+    // O pedido da resposta pendente é cancelado: o servidor para de gerar algo que ninguém vai ver.
+    expect(signal?.aborted).toBe(true)
     expect(textClient.startNewConversation).toHaveBeenCalledTimes(1)
     expect(transport.calls).toContain("disconnect")
     expect(screen.queryByText("pergunta antiga")).toBeNull()
@@ -685,7 +693,7 @@ describe("OperatorIniaChat — ela fala por padrão; mudo = só texto", () => {
     fireEvent.change(composer(), { target: { value: "oi" } })
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
     expect(await screen.findByText("Por escrito.")).toBeInTheDocument()
-    expect(textClient.fetchTextReply).toHaveBeenCalledWith(expect.objectContaining({ text: "oi" }), expect.any(Function), expect.any(Function))
+    expect(textClient.fetchTextReply).toHaveBeenCalledWith(expect.objectContaining({ text: "oi" }), expect.any(Function), expect.any(Function), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(screen.getAllByText("oi")).toHaveLength(1)
   })
 
@@ -1012,5 +1020,131 @@ describe("OperatorIniaChat — caracterização do comportamento", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar recado" }))
     expect(screen.queryByTestId("inia-recado")).toBeNull()
+  })
+})
+
+describe("OperatorIniaChat — resposta por escrito em fluxo", () => {
+  it("antes do primeiro texto mostra o progresso verdadeiro do servidor; o texto retirado some; trocar de conversa cancela o pedido", async () => {
+    let finish: () => void = () => {}
+    let signal: AbortSignal | undefined
+    vi.mocked(textClient.fetchTextReply).mockImplementation(async (_input, onChunk, _onConversation, options) => {
+      signal = options?.signal
+      options?.onStatus?.({ stage: "TOOLS", label: "Consultando as bases de conhecimento…" })
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      onChunk("Rascunho")
+      options?.onRetract?.()
+      onChunk("Resposta final.")
+      return { text: "Resposta final.", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true }
+    })
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
+    fireEvent.change(composer(), { target: { value: "como contesto?" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    expect(await screen.findByTestId("text-reply-status")).toHaveTextContent("Consultando as bases de conhecimento…")
+    await act(async () => { finish() })
+    expect(await screen.findByText("Resposta final.")).toBeInTheDocument()
+    expect(screen.queryByText("Rascunho")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("text-reply-status")).not.toBeInTheDocument()
+    expect(signal?.aborted).toBe(false)
+  })
+
+  it("resposta pelas bases em fluxo: o balão ao vivo já sai sem os marcadores de fonte; retirada, a próxima resposta volta a mostrar colchetes", async () => {
+    let next: () => void = () => {}
+    const step = () => new Promise<void>((resolve) => {
+      next = resolve
+    })
+    vi.mocked(textClient.fetchTextReply).mockImplementation(async (_input, onChunk, _onConversation, options) => {
+      onChunk("Abra o protocolo [1] e confira", { citations: true })
+      await step()
+      options?.onRetract?.()
+      onChunk("Veja o item [2] do manual")
+      await step()
+      return { text: "Veja o item [2] do manual", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true }
+    })
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
+    fireEvent.change(composer(), { target: { value: "como contesto?" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    expect(await screen.findByText("Abra o protocolo e confira")).toBeInTheDocument()
+    expect(screen.queryByText(/\[1\]/)).not.toBeInTheDocument()
+    await act(async () => { next() })
+    expect(await screen.findByText("Veja o item [2] do manual")).toBeInTheDocument()
+    await act(async () => { next() })
+  })
+})
+
+describe("OperatorIniaChat — curtir/descurtir gravado (migration 158), a tela igual", () => {
+  beforeEach(() => {
+    vi.mocked(textClient.fetchCurrentConversation).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, inactivityHours: 24 })
+    vi.mocked(textClient.fetchConversationMessages).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("Qual o prazo?", "user", "c1"), message("Até 5 dias úteis.", "assistant", "c2")], hasMore: false })
+    vi.mocked(textClient.fetchTextReply).mockReset()
+    vi.mocked(textClient.saveMessageRating).mockReset().mockResolvedValue()
+    setVoiceMuted(true)
+  })
+
+  it("resposta do histórico: cada clique grava na resposta do servidor (clicar de novo retira) e os botões continuam os mesmos", async () => {
+    renderChat()
+    expect(await screen.findByText("Até 5 dias úteis.")).toBeInTheDocument()
+    const up = screen.getByRole("button", { name: "Resposta útil" })
+    fireEvent.click(up)
+    fireEvent.click(up)
+    fireEvent.click(screen.getByRole("button", { name: "Resposta não foi útil" }))
+    expect(vi.mocked(textClient.saveMessageRating).mock.calls).toEqual([[CONV, "m-c2", "up"], [CONV, "m-c2", undefined], [CONV, "m-c2", "down"]])
+    // Só a resposta da INIA tem os botões (a pergunta da pessoa não).
+    expect(screen.getAllByRole("button", { name: "Resposta útil" })).toHaveLength(1)
+  })
+
+  it("a avaliação gravada volta ao reabrir: clicar no mesmo botão retira", async () => {
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("Qual o prazo?", "user", "c1"), { ...message("Até 5 dias úteis.", "assistant", "c2"), rating: "up" }], hasMore: false })
+    renderChat()
+    expect(await screen.findByText("Até 5 dias úteis.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Resposta útil" }))
+    expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-c2", undefined)
+  })
+
+  it("resposta escrita gravada usa o id devolvido; a que não entrou no histórico fica só na tela; falha ao gravar não muda nada", async () => {
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [], hasMore: false })
+    vi.mocked(textClient.fetchTextReply)
+      .mockImplementationOnce(async (_input, onChunk) => {
+        onChunk("Gravada.")
+        return { text: "Gravada.", supportMaterials: [], interactionId: "int-saved", conversationId: CONV, persisted: true }
+      })
+      .mockImplementationOnce(async (_input, onChunk) => {
+        onChunk("Não gravada.")
+        return { text: "Não gravada.", supportMaterials: [], interactionId: null, conversationId: CONV, persisted: false }
+      })
+    vi.mocked(textClient.saveMessageRating).mockRejectedValue(new Error("offline"))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    for (const text of ["primeira", "segunda"]) {
+      fireEvent.change(composer(), { target: { value: text } })
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    }
+    expect(await screen.findByText("Não gravada.")).toBeInTheDocument()
+    const [saved, unsaved] = screen.getAllByRole("button", { name: "Resposta útil" })
+    await act(async () => { fireEvent.click(saved!) })
+    await act(async () => { fireEvent.click(unsaved!) })
+    expect(vi.mocked(textClient.saveMessageRating).mock.calls).toEqual([[CONV, "int-saved", "up"]])
+    expect(warn).toHaveBeenCalledWith("[INIA] avaliação da resposta não gravada", expect.any(Error))
+    expect(screen.getByText("Gravada.")).toBeInTheDocument()
+    warn.mockRestore()
+  })
+
+  it("voz: a resposta do especialista e a resposta falada gravadas recebem o id do servidor", async () => {
+    vi.mocked(transportModule.recordVoiceTurn).mockReset().mockResolvedValue({ conversationId: CONV, created: false, closed: false, activeConversationId: null, assistantInteractionId: "int-spoken" })
+    setVoiceMuted(false)
+    const transport = await openVoice()
+    act(() => transport.events.onSpecialistResult?.("TMA 320 s", [], { conversationId: CONV, created: false, closed: false, activeConversationId: null }, undefined, { interactionId: "int-specialist" }))
+    act(() => transport.events.onTurnComplete?.())
+    act(() => transport.events.onOutputTranscript?.("Bom dia, Larissa."))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    await waitFor(() => expect(transportModule.recordVoiceTurn).toHaveBeenCalled())
+    for (const button of screen.getAllByRole("button", { name: "Resposta útil" })) await act(async () => { fireEvent.click(button) })
+    expect(vi.mocked(textClient.saveMessageRating).mock.calls.map((call) => call[1])).toEqual(expect.arrayContaining(["int-specialist", "int-spoken"]))
   })
 })

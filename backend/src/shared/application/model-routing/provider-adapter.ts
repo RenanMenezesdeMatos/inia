@@ -34,6 +34,10 @@ export type AdapterRequest = {
   /** Teto de tokens de SAÍDA (inclui raciocínio no Gemini). Ausente = o padrão do provedor. Quem chama define pelo uso normal
    * da etapa — protege contra resposta degenerada (repetição até o limite do modelo). */
   maxOutputTokens?: number | undefined
+  /** Menos raciocínio antes de responder (Gemini: `thinkingLevel: "low"`), para etapas interativas em que o tempo pesa. Só vai para
+   * modelo que raciocina (`supportsReasoning`; na policy, a capacidade REASONING) — quem não raciocina ou não tem o ajuste ignora.
+   * Ausente = o padrão do modelo. */
+  reasoningEffort?: "LOW" | undefined
 }
 
 export type AdapterResponse = ({ kind: "text"; text: string } | { kind: "functionCalls"; calls: { name: string; args: Record<string, unknown>; id?: string; thoughtSignature?: string }[] }) & {
@@ -47,9 +51,16 @@ export type AdapterResponse = ({ kind: "text"; text: string } | { kind: "functio
   cache?: LlmCacheRecord & { /** Tokens gastos para CRIAR o cache nesta request (cobrados como entrada) — 0 quando reaproveitado. */ createdTokens?: number }
 }
 
+/** Resposta de uma chamada EM FLUXO: a mesma de `generate` + quanto texto já foi entregue (`streamedChars` > 0 numa resposta de
+ * ferramentas = o modelo escreveu antes de pedir a ferramenta; quem chamou retira o que mostrou) e quando chegou o 1º pedaço. */
+export type AdapterStreamResponse = AdapterResponse & { streamedChars: number; firstTokenMs: number | null }
+
 export interface ProviderAdapter {
   readonly provider: ModelProvider
   generate(request: AdapterRequest): Promise<AdapterResponse>
+  /** Opcional: a mesma chamada com o texto entregue em fluxo (`onText`). Sem ele, o gateway usa `generate` e entrega o texto
+   * inteiro de uma vez. */
+  stream?(request: AdapterRequest, onText: (text: string) => void): Promise<AdapterStreamResponse>
 }
 
 const adapters = new Map<ModelProvider, ProviderAdapter>()

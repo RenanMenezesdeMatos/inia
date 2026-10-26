@@ -160,7 +160,6 @@ export default function LeadershipPage() {
           <li>Contribuição de cada unidade para o resultado consolidado em valor do indicador (ainda não calculada).</li>
           <li>Pendências dos líderes abaixo de você (cada pessoa vê as que são endereçadas a ela).</li>
           <li>Análise com a estrutura como era no passado (a hierarquia não tem histórico).</li>
-          <li>Curtir/descurtir respostas do chat ainda não é gravado.</li>
           <li>O diagnóstico do indicador mostra associações nas interações, não causa; depende de volume (motivos com menos de 5 interações dos piores ficam somados em “outros”).</li>
         </ul>
       </WikiSection>

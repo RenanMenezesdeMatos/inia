@@ -149,6 +149,8 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     await pool.query("delete from knowledge_documents where id = any($1::uuid[])", [created.documents])
     await pool.query("delete from transcripts where interaction_id = any($1::uuid[])", [created.interactions])
     await pool.query("delete from interactions where id = any($1::uuid[])", [created.interactions])
+    // As consultas da liderança (caso H) registram o acesso a dados pessoais; sem isto a pessoa não sai (FK do registro).
+    await pool.query("delete from personal_data_access_log where viewer_person_id = any($1::uuid[]) or subject_person_id = any($1::uuid[])", [people])
     await pool.query("delete from people where id = any($1::uuid[])", [people])
     await pool.end()
   })
@@ -779,7 +781,7 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     expect(point.firmness).toMatchObject({ level: "INSIST" })
     expect(point.firmness!.basis[0]).toMatch(/já foi orientado num retorno entregue em \d{2}\/\d{2}\/\d{4}/)
     // Histórico pela PRÁTICA (a chamada anterior da prova A conta, mesmo com outra identidade de obrigação).
-    expect(point.history).toMatch(/chamadas anteriores analisadas/)
+    expect(point.history).toMatch(/Nas chamadas anteriores, esta etapa .* analisadas em que se aplicava/)
   })
 
   it("N) PRACTICE_IDENTITY_V1: duas regras de documentos diferentes que pedem a mesma conduta viram UM ponto na liderança, com as duas fontes; memória e orientação anterior (chave antiga KC-) seguem a prática", async () => {

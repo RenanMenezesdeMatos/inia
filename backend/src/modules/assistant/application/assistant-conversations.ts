@@ -12,6 +12,8 @@ import {
   type MessageCursor,
 } from "../domain/assistant-conversation.js"
 import { CLARIFICATION_TOOL_NAME } from "../../knowledge-clarification/domain/clarification-state.js"
+import { loadConversationRatings, rateConversationMessage, type RateConversationMessageInput } from "./assistant-interaction-ratings.js"
+import type { AssistantRatingView } from "../domain/assistant-interaction-rating.js"
 
 /**
  * Persistência das CONVERSAS com a INIA (migration 094). Toda escrita resolve a conversa AQUI, no backend, sob um lock
@@ -391,6 +393,10 @@ export type ConversationStore = {
   contextTurns(input: { organizationId: string; conversationId: string }): Promise<{ role: "user" | "model"; text: string }[]>
   listOwn(scope: ConversationScope, page: number, pageSize: number): Promise<{ items: ConversationSummary[]; total: number }>
   ownSummary(scope: ConversationScope, id: string): Promise<ConversationSummary | null>
+  /** Curtir/descurtir de uma resposta da INIA pela dona da conversa (migration 158); 404 fora disso. */
+  rate(scope: ConversationScope, input: RateConversationMessageInput, now: Date): Promise<AssistantRatingView>
+  /** Avaliações vigentes da dona para estas respostas. */
+  ratingsOf(scope: ConversationScope, interactionIds: readonly string[]): Promise<Map<string, Exclude<AssistantRatingView, null>>>
 }
 
 export function createPostgresConversationStore(db: Database): ConversationStore {
@@ -408,5 +414,7 @@ export function createPostgresConversationStore(db: Database): ConversationStore
     contextTurns: (input) => loadConversationContextTurns(db, input),
     listOwn: (scope, page, pageSize) => listOwnConversations(db, scope, page, pageSize),
     ownSummary: (scope, id) => loadOwnConversationSummary(db, scope, id),
+    rate: (scope, input, now) => rateConversationMessage(db, scope, input, now),
+    ratingsOf: (scope, interactionIds) => loadConversationRatings(db, scope, interactionIds),
   }
 }

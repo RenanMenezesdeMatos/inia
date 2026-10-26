@@ -2,15 +2,18 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { CALL_ALREADY_MONITORED, PERIOD_ALREADY_DELIVERED } from "../domain/delivery-guards.js"
 import { startOfLocalDate } from "../../workflows/application/time-window.js"
 import { NEUTRAL_INTERACTION_TITLE, readableSubjectOf } from "../../feedbacks/domain/feedback-heading.js"
-import { buildMonitoringBrief, type FeedbackBrief, type SourceLineMeta } from "../domain/feedback-brief.js"
+import { argumentRequirementOf, buildMonitoringBrief, type FeedbackBrief, type SourceLineMeta } from "../domain/feedback-brief.js"
 import { buildProcedureContext, listContextOf, type ListContext } from "../domain/procedure.js"
-import { buildIndicatorBrief, informativeHasContent } from "../domain/indicator-brief.js"
+import { buildIndicatorBrief, examplePhrasingKeyOf, informativeHasContent, practiceSubjectKeysOf, type ExamplePhrasings } from "../domain/indicator-brief.js"
 import { onePerInteraction, practiceKeyOf, withCurrentPracticeTitles, type IndicatorInvestigation } from "../domain/indicator-investigation.js"
 import { callAnalysisRefOf, ENGINE_MESSAGE_NODE_OUTPUT_KIND, isIndicatorAnalysisNodeOutput, sourceAgentIdOf, type EngineMessageNodeOutput } from "../domain/node-output.js"
 import { analyzeCall, metricsSummaryOf, type AnalyzeCallDeps } from "./analyze-call.js"
 import { isLegacyPendingOutcome } from "../domain/analysis-recovery.js"
 import { composeFeedback } from "./compose-feedback.js"
 import { investigateIndicator, type InvestigateIndicatorDeps, type InvestigationTarget } from "./investigate-indicator.js"
+import { withCitedInText, type FeedbackBestPractices } from "../../best-practices/domain/feedback-section.js"
+import { basePracticesOf, citedPracticeIdsOf, establishedProductsOfBrief } from "../domain/base-practices.js"
+import type { FeedbackPracticeInput } from "../../best-practices/application/feedback-section.js"
 import type { FeedbackMemoryStore, FeedbackMessageStore, MaterialRecommendation, MessageRecord, ModelCallMetric, EngineModelPort, StoredCallAssessment } from "./ports.js"
 
 /**
@@ -41,6 +44,8 @@ export type GenerateFeedbackRequest = {
   configuredAgentId: string | null
   /** Como a chamada chegou até aqui (sinal do gatilho, execução manual…) — vira o motivo de seleção na memória. */
   selectionReason: string
+  /** Nome do sinal que disparou o Workflow (ex.: nota_ura): as boas práticas do feedback de monitoria vêm das melhores chamadas dele. */
+  triggerFlagName?: string | null
   now: Date
 }
 
@@ -59,6 +64,8 @@ export type GenerateFeedbackDeps = {
   now: () => Date
   /** Medidor do orçamento da execução (o mesmo do modelo) — o resumo vai para as métricas da mensagem. */
   meter?: { summary(): unknown }
+  /** Base de boas práticas: seção de oportunidades opcionais, montada pelo sistema DEPOIS da redação (nunca vai ao redator). */
+  bestPractices?: (input: FeedbackPracticeInput) => Promise<FeedbackBestPractices | null>
 }
 
 export class FeedbackGenerationInProgressError extends DomainError {
@@ -219,7 +226,7 @@ async function procedureForRun(deps: GenerateFeedbackDeps, organizationId: strin
     for (const line of full.lines.values()) {
       const document = documentOf.get(line.documentHandle)
       if (!document || sourceLines.has(line.lineKey)) continue
-      sourceLines.set(line.lineKey, { documentId: line.documentId, documentTitle: document.title, heading: line.heading, source: document.kind === "ARGUMENT_SCRIPT" ? "ARGUMENT_SCRIPT" : "KNOWLEDGE_DOCUMENT", avoid: line.argument?.field === "AVOID", leadIn: line.leadIn, condition: line.argument?.condition ?? null })
+      sourceLines.set(line.lineKey, { documentId: line.documentId, documentTitle: document.title, heading: line.heading, source: document.kind === "ARGUMENT_SCRIPT" ? "ARGUMENT_SCRIPT" : "KNOWLEDGE_DOCUMENT", avoid: line.argument?.field === "AVOID", leadIn: line.leadIn, condition: line.argument?.condition ?? null, requirement: argumentRequirementOf(line.argument) })
     }
     return { ...(listContext ? { listContext } : {}), ...(sourceLines.size > 0 ? { sourceLines } : {}) }
   } catch {
@@ -259,16 +266,27 @@ async function argumentPhrasingsForRun(deps: GenerateFeedbackDeps, organizationI
   }
 }
 
-/** Fraseologia dos argumentários em vigor no fim do período investigado, no escopo da pessoa (só os padrões de argumentário a usam). */
-async function argumentPhrasingsAt(deps: GenerateFeedbackDeps, organizationId: string, personId: string, investigations: readonly IndicatorInvestigation[]): Promise<Map<string, { name: string; text: string }> | undefined> {
+/**
+ * `PRODUCT_IN_FEEDBACK_V1` (substitui a fraseologia do fim do período): a fala sugerida do argumentário de CADA chamada de exemplo de um
+ * padrão — a versão que a análise daquela chamada usou, em vigor na hora da chamada (versão diferente = sem fraseologia, nunca mistura
+ * versões). Um padrão com chamadas de produtos diferentes nunca recebe a fala de um produto para todas.
+ */
+async function examplePhrasingsOf(deps: GenerateFeedbackDeps, organizationId: string, personId: string, investigations: readonly IndicatorInvestigation[]): Promise<ExamplePhrasings | undefined> {
   try {
     if (!deps.analyze.loadArgumentScripts) return undefined
-    const fromArgument = investigations.some((investigation) => investigation.evidence.some((entry) => entry.patterns.some((pattern) => pattern.sourceKind === "ARGUMENT_SCRIPT" || (pattern.memberRules ?? []).some((rule) => rule.sourceKind === "ARGUMENT_SCRIPT"))))
-    if (!fromArgument) return undefined
+    const examples = investigations.flatMap((investigation) => investigation.evidence.flatMap((entry) => entry.patterns.flatMap((pattern) => pattern.examples))).filter((example) => example.argument && example.occurredAt)
+    if (examples.length === 0) return undefined
     const placement = await deps.investigate.data.placement(organizationId, personId)
-    const end = new Date(Math.max(...investigations.map((investigation) => new Date(`${investigation.official.periodEnd}T23:59:59Z`).getTime())))
-    const scripts = (await deps.analyze.loadArgumentScripts(organizationId, { teamId: placement?.teamId ?? null, subteamId: placement?.subteamId ?? null }, end)).filter((script) => Boolean(script.content.suggestedScript?.trim()))
-    return scripts.length > 0 ? new Map(scripts.map((script) => [script.scriptId, { name: script.name, text: script.content.suggestedScript!.trim() }])) : undefined
+    const scriptsAt = new Map<string, Awaited<ReturnType<NonNullable<typeof deps.analyze.loadArgumentScripts>>>>()
+    const phrasings = new Map<string, { name: string; text: string }>()
+    for (const example of examples) {
+      const at = example.occurredAt!
+      if (!scriptsAt.has(at)) scriptsAt.set(at, await deps.analyze.loadArgumentScripts(organizationId, { teamId: placement?.teamId ?? null, subteamId: placement?.subteamId ?? null }, new Date(at)))
+      const script = scriptsAt.get(at)!.find((entry) => entry.scriptId === example.argument!.scriptId && (example.argument!.version === null || entry.version === example.argument!.version))
+      const text = script?.content.suggestedScript?.trim()
+      if (script && text) phrasings.set(examplePhrasingKeyOf(example.interactionId, script.scriptId), { name: script.name, text })
+    }
+    return phrasings.size > 0 ? phrasings : undefined
   } catch {
     return undefined
   }
@@ -332,10 +350,10 @@ async function indicatorBrief(deps: GenerateFeedbackDeps, request: GenerateFeedb
     const before = startOfLocalDate(investigation.official.periodStart, timeZone)
     for (const entry of await deps.memory.deliveredPractices(request.organizationId, request.collaboratorId, [...new Set(practiceKeys)], before)) priorOrientations.set(entry.practiceKey, dateLabelOf(entry.deliveredAt, timeZone))
   }
-  // `ARGUMENT_PHRASING_V1`: fraseologia dos argumentários em vigor no fim do período, para os padrões que vêm de um argumentário.
-  const argumentPhrasings = await argumentPhrasingsAt(deps, request.organizationId, request.collaboratorId, investigations)
+  // `ARGUMENT_PHRASING_V1` + `PRODUCT_IN_FEEDBACK_V1`: a fraseologia de cada chamada de exemplo, na versão que a análise dela usou.
+  const examplePhrasings = await examplePhrasingsOf(deps, request.organizationId, request.collaboratorId, investigations)
   const briefs = investigations
-    .map((investigation) => buildIndicatorBrief(investigation, { documentVersions: new Map(), delivered, factualWhenInconclusive: false, priorOrientations, ...(argumentPhrasings ? { argumentPhrasings } : {}) }))
+    .map((investigation) => buildIndicatorBrief(investigation, { documentVersions: new Map(), delivered, factualWhenInconclusive: false, priorOrientations, ...(examplePhrasings ? { examplePhrasings } : {}) }))
     .filter((brief, index) => {
       const investigation = investigations[index]!
       if (brief.developments.length > 0 || brief.strengths.length > 0) return true
@@ -364,22 +382,35 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
       const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: prepared.abstain ?? "NO_BRIEF", findingKeys: [], brief: null, suppressed: [], metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now())
       return resultOf(record, false)
     }
-    const brief = prepared.brief
     // Já houve retorno deste mesmo caso e não há AJUSTE novo: reconhecimentos que ficaram de fora da primeira mensagem não
     // justificam uma segunda (entrega duplicada do mesmo atendimento/período).
-    const alreadyAnswered = brief.suppressed.length > 0 && brief.developments.length === 0
-    if (alreadyAnswered || (brief.developments.length === 0 && brief.strengths.length === 0 && brief.tone !== "INFORMATIVE")) {
-      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: brief.suppressed.length > 0 ? "ALREADY_DELIVERED" : "NOTHING_MATERIAL", findingKeys: [], brief, suppressed: brief.suppressed, metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now())
+    const caseBrief = prepared.brief
+    const alreadyAnswered = caseBrief.suppressed.length > 0 && caseBrief.developments.length === 0
+    if (alreadyAnswered || (caseBrief.developments.length === 0 && caseBrief.strengths.length === 0 && caseBrief.tone !== "INFORMATIVE")) {
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: caseBrief.suppressed.length > 0 ? "ALREADY_DELIVERED" : "NOTHING_MATERIAL", findingKeys: [], brief: caseBrief, suppressed: caseBrief.suppressed, metrics: { durationMs: deps.now().getTime() - now.getTime() } }, deps.now())
       return resultOf(record, false)
     }
+    // Boas práticas da base (opcionais, separadas do processo): escolhidas pelo sistema ANTES da redação (`BASE_PRACTICES_IN_TEXT_V1`) — o
+    // texto pode ligar o ponto daquele assunto à prática (B-n) e o bloco continua mostrando todas. Falha aqui nunca derruba o feedback.
+    const investigated = "investigations" in prepared ? prepared.investigations : []
+    const bestPractices = deps.bestPractices
+      ? await deps.bestPractices({ organizationId: request.organizationId, personId: request.collaboratorId, domain: request.domain, interactionId: request.interactionId, signalFlagName: request.triggerFlagName ?? null, indicators: investigated.map((investigation) => ({ indicatorId: investigation.official.indicatorId, periodStart: investigation.official.periodStart, periodEnd: investigation.official.periodEnd, subjectKeys: practiceSubjectKeysOf(investigation) })), products: establishedProductsOfBrief(caseBrief) }).catch((error: unknown) => {
+          console.warn(JSON.stringify({ event: "feedback_best_practices_failed", message: error instanceof Error ? error.message : String(error) }))
+          return null
+        })
+      : null
+    const basePractices = basePracticesOf(bestPractices)
+    const brief: FeedbackBrief = basePractices.length > 0 ? { ...caseBrief, basePractices } : caseBrief
     const { message: assembled, audit } = await composeFeedback(deps.model, brief, metrics)
     if (!assembled) {
       // Sem mensagem útil, coerente e sustentada: a análise fica na memória; nada é publicado "para não ficar sem feedback".
       const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${audit.reason ?? "UNKNOWN"}`, findingKeys: [], brief, composition: audit as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now())
       return resultOf(record, false)
     }
+    // O bloco marca as práticas que o texto citou (a aplicação do feedback não as repete na conclusão).
+    const view = bestPractices ? { ...assembled.view, bestPractices: withCitedInText(bestPractices, citedPracticeIdsOf(brief, assembled.communicatedRefs)) } : assembled.view
     // A mensagem persistida é o contrato da tela; o que a trava retirou dos detalhes vai na auditoria da composição.
-    const message = { card: assembled.card, paragraphs: assembled.paragraphs, sentences: assembled.sentences, view: assembled.view, text: assembled.text, source: assembled.source, communicatedRefs: assembled.communicatedRefs, ...(assembled.trusted ? { trusted: assembled.trusted } : {}) }
+    const message = { card: assembled.card, paragraphs: assembled.paragraphs, sentences: assembled.sentences, view, text: assembled.text, source: assembled.source, communicatedRefs: assembled.communicatedRefs, ...(assembled.trusted ? { trusted: assembled.trusted } : {}) }
     // Só o que a mensagem COMUNICOU conta como entregue (o resto continua disponível para outro retorno).
     const communicated = new Set(assembled.communicatedRefs)
     const findingKeys = [...brief.developments, ...brief.strengths].filter((finding) => communicated.has(finding.ref)).flatMap((finding) => [finding.findingKey, ...(finding.memberFindingKeys ?? [])])

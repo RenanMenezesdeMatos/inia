@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { canonicalHandle, unwrapJsonFence } from "./call-analysis.js"
+import { catalogHandleOf, parseModelRequests, type ModelRequest } from "./product-applicability.js"
 
 /**
  * RESPOSTA DA ANÁLISE ORIENTADA AO CASO (`OBLIGATIONS_V1`) — leitura ESTRITA do envelope e TOLERANTE por item: uma obrigação malformada
@@ -45,8 +46,13 @@ const obligationSchema = z.object({
   role: z.enum(["CENTRAL", "SUPPORTING", "ROUTINE"]).nullish().catch(null).transform((value) => value ?? null),
   rationale: nullableText,
   guidance: z.object({ moment: z.string().trim().min(1), action: z.string().trim().min(1) }).nullish().catch(null).transform((value) => value ?? null),
+  // `PRODUCT_APPLICABILITY_V1` (só no modo produto): a solicitação da obrigação e os produtos a que a FONTE restringe a regra.
+  request: z.string().trim().nullish().catch(null).transform((value) => (value && value.length > 0 ? catalogHandleOf(value) : undefined)),
+  productScope: z.array(z.unknown()).nullish().catch(null).transform((value) => (value === null || value === undefined ? undefined : value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).map(catalogHandleOf))),
+  commonAcrossSources: z.boolean().nullish().catch(null).transform((value) => value ?? undefined),
 })
-export type ModelObligation = z.infer<typeof obligationSchema>
+/** Campos de produto são OPCIONAIS no tipo (só existem no modo produto; respostas e testes anteriores não os têm). */
+export type ModelObligation = Omit<z.infer<typeof obligationSchema>, "request" | "productScope" | "commonAcrossSources"> & { request?: string | undefined; productScope?: string[] | undefined; commonAcrossSources?: boolean | undefined }
 export type ModelQuote = z.infer<typeof quoteSchema>
 
 export type ModelObligationAnalysis = {
@@ -63,6 +69,8 @@ export type ModelObligationAnalysis = {
   sourceConflicts: { lines: string[]; description: string }[]
   limitations: string[]
   contractViolations: string[]
+  /** `PRODUCT_APPLICABILITY_V1` — solicitações da chamada e o produto de cada uma (só no modo produto). */
+  requests?: ModelRequest[]
 }
 
 export function parseObligationAnalysisResponse(text: string): { ok: true; value: ModelObligationAnalysis } | { ok: false; error: string } {
@@ -99,6 +107,8 @@ export function parseObligationAnalysisResponse(text: string): { ok: true; value
   const situations = tolerantList(z.object({ section: z.string().trim().min(1), happened: z.enum(["YES", "NO", "UNCLEAR"]), evidence: tolerantList(quoteSchema) })).parse(envelope.situations)
   const sourceConflicts = tolerantList(z.object({ lines: sourceList, description: z.string().trim().min(1) })).parse(envelope.sourceConflicts)
   const limitations = Array.isArray(envelope.limitations) ? envelope.limitations.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim()) : []
+  const requests = "requests" in envelope ? parseModelRequests(envelope.requests) : null
+  if (requests) violations.push(...requests.violations)
   return {
     ok: true,
     value: {
@@ -115,6 +125,7 @@ export function parseObligationAnalysisResponse(text: string): { ok: true; value
       sourceConflicts,
       limitations,
       contractViolations: violations,
+      ...(requests ? { requests: requests.requests } : {}),
     },
   }
 }

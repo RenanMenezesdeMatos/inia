@@ -1,4 +1,4 @@
-import { resolveNodeContexts } from "../workflow-graph.schema"
+import { nodeBranches, resolveNodeContexts } from "../workflow-graph.schema"
 import { triggerDataOrigin } from "../workflow.schema"
 import type { ValidationContext } from "./types"
 
@@ -13,6 +13,30 @@ export function validateGraphShape(context: ValidationContext): void {
   }
   if (!graph.nodes.some((node) => node.type === "end")) {
     issues.push({ nodeId: "", code: "WORKFLOW_INVALID_GRAPH", message: "O workflow precisa ter ao menos um nó Fim." })
+  }
+}
+
+/**
+ * Toda saída de um nó alcançável a partir do Gatilho precisa estar ligada — no motor, saída sem aresta encerra a execução como falha.
+ * Nó solto no canvas não é cobrado. Espelho de `validateBranchEdges` (backend): só com a forma do grafo válida, por último.
+ */
+export function validateBranchEdges(context: ValidationContext): void {
+  const { graph, triggerNodes, issues } = context
+  if (triggerNodes.length !== 1 || !graph.nodes.some((node) => node.type === "end")) return
+  const reachable = new Set<string>()
+  const pending = triggerNodes.map((node) => node.id)
+  while (pending.length > 0) {
+    const id = pending.pop()!
+    if (reachable.has(id)) continue
+    reachable.add(id)
+    for (const edge of graph.edges) if (edge.source === id) pending.push(edge.target)
+  }
+  for (const node of graph.nodes) {
+    if (!reachable.has(node.id)) continue
+    for (const branch of nodeBranches(node)) {
+      if (graph.edges.some((edge) => edge.source === node.id && edge.sourceHandle === branch.id)) continue
+      issues.push({ nodeId: node.id, code: "WORKFLOW_MISSING_BRANCH_EDGE", message: `Ligue a saída "${branch.label}" de "${node.label}" ao próximo passo (ou a um nó Fim).` })
+    }
   }
 }
 

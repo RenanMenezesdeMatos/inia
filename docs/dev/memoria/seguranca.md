@@ -61,8 +61,12 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   `__Host-inia_session` quando `SESSION_COOKIE_SECURE` (ler sempre por `readSessionCookie`/`SESSION_COOKIE_NAME`, nunca o nome
   literal). HMAC fora da assinatura da sessão só com `derivedKey(<rótulo>)` (HKDF) — rótulo novo para cada uso.
 - **Transcrição para a IA**: toda leitura de transcrição que vai a um modelo passa por `transcriptForModel` /
-  `loadLatestTranscriptForModel` (`workflows/application/transcript.ts`, `SUBJECT_PII_MASK_V1`), e a conferência literal da
-  evidência usa o MESMO texto mascarado. Loader novo de transcrição para modelo que leia `transcripts.content` direto é bug.
+  `loadLatestTranscriptForModel` (`workflows/application/transcript.ts`, `SUBJECT_PII_MASK_V2` desde 21/10/2026), e a conferência
+  literal da evidência usa o MESMO texto mascarado. V2 = formato preservado (`maskPreservingFormat`, `peer-privacy-projection.ts`):
+  e-mail, CPF pontuado e protocolo viram marcadores; telefone mantém DDD + 1º dígito ("11-9••••-••••"); outro número longo mantém os
+  3 primeiros dígitos e a quantidade ("123•••••••"); valor em R$ fica. Aprovado pelo usuário para os indícios de produto (prefixo de
+  conta, fixo × móvel); vale também para o que colaborador e liderança veem nas citações. Transcrição de COLEGA segue com a projeção
+  de pares (marcadores). Loader novo de transcrição para modelo que leia `transcripts.content` direto é bug.
   `INIA_MODEL_PII_MASKING=OFF` só com decisão do DPO.
 - **Segredos cifrados**: grava sempre na v2 (`encryptBoundSecret`, AAD = loja + organização + dono + propósito); leitura por
   `decryptStoredSecret` (chave atual, depois `DATA_HUB_SECRET_KEY_PREVIOUS`). Tabela nova de segredo entra no

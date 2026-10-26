@@ -29,7 +29,7 @@ describe("Indicator Diagnosis V1 — feedback de indicador no Acompanhamento", (
 
   it("detalhes do indicador: resultado do ciclo (oficial), o que trabalhar com exemplos das chamadas e a regra; materiais fora dos detalhes", () => {
     render(<FeedbackNarrativeView view={COLLABORATOR} />)
-    expect(screen.getByRole("heading", { name: "Materiais utilizados" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /^Materiais utilizados/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /Entenda este feedback/ }))
     expect(screen.getByText(/O resultado do ciclo, o padrão encontrado/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Resultado do ciclo · agosto de 2026" }))

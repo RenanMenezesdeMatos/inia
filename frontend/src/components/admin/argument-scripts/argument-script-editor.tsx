@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+import { ProductScopeCard, ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import {
@@ -140,6 +141,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
   const knowledge = useKnowledgeOptions()
   const [header, setHeader] = useState<HeaderState>(() => ({ name: "", businessDomainId: null, scope: { scopeType: defaultScopeType(scopeOptions) } }))
   const [content, setContent] = useState<ContentFormState>(EMPTY_CONTENT_FORM)
+  const productScope = useSourceProductScope("ARGUMENT_SCRIPT", null)
 
   const canSubmit = header.name.trim().length >= 3 && header.businessDomainId !== null && scopeIsComplete(header.scope)
 
@@ -153,6 +155,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
         content: formToContent(content),
         ...formSource(content),
       })
+      await productScope.save(created.id).catch(() => undefined)
       onCreated(created.id)
     } catch {
       // erro exibido abaixo (e no toast)
@@ -164,6 +167,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
       <p className="text-sm text-muted-foreground">O argumentário nasce como rascunho. Ele só passa a valer depois de publicado.</p>
       <HeaderFields value={header} onChange={setHeader} teams={teams} scopeOptions={scopeOptions} currentAreaName={null} />
       <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} />
+      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="argument-script-products" /> : null}
       {createMutation.isError ? <p className="text-sm text-destructive">{createMutation.error.message}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
@@ -320,6 +324,9 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
           </div>
         ) : null}
       </div>
+
+      {/* Para quais produtos vale: vigência própria (vale a partir da mudança), fora do rascunho e da publicação. */}
+      <ProductScopeCard kind="ARGUMENT_SCRIPT" sourceId={detail.id} canEdit={detail.canEdit} />
 
       {editing ? (
         <>

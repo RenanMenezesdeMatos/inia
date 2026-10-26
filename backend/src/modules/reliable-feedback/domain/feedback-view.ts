@@ -1,4 +1,5 @@
 import { cleanSectionHeading } from "./process-items.js"
+import type { FeedbackBestPractices } from "../../best-practices/domain/feedback-section.js"
 import { NEUTRAL_INTERACTION_TITLE, type HeadingSubjectSource } from "../../feedbacks/domain/feedback-heading.js"
 import { renderApplicabilityMarkdown, composeDevelopmentBlocks, developmentBlockLabelOf, escapeMarkdownQuote, feedbackKnowledgeOf, findingLabelOf, knowledgeGuidanceOf, processGuidanceBlocks, renderSuggestedResponse, supportMaterialLineageOf, type ConfirmedProduct, type EmittedItem, type FeedbackDocumentPart } from "./reliable-feedback-artifact.js"
 import { aboutOf, fold, narrativeGapOf } from "./supervisor-narrative.js"
@@ -22,10 +23,12 @@ import type { FeedbackPresentation } from "./feedback-presentation.js"
  */
 export const FEEDBACK_VIEW_VERSION = "FEEDBACK_VIEW_V1" as const
 
-export type FeedbackViewQuote = { speaker: "OPERATOR" | "CUSTOMER" | "OTHER"; intro: string; text: string; truncated: boolean }
+/** `product`: campo da view do motor de feedback (`PRODUCT_IN_FEEDBACK_V1`) — o produto da solicitação da chamada de onde a fala veio. */
+export type FeedbackViewQuote = { speaker: "OPERATOR" | "CUSTOMER" | "OTHER"; intro: string; text: string; truncated: boolean; product?: string | null }
 /** `href`/`accessible`: resolvidos PARA QUEM LÊ na leitura (sem acesso = sem link, "Material indisponível para este perfil"). */
 export type FeedbackViewSource = { documentId: string; documentTitle: string; section: string | null; href: string | null; accessible?: boolean }
-export type FeedbackViewRule = { text: string; section: string | null }
+/** `appliesTo`/`requirement`: campos da view do motor (`PRODUCT_IN_FEEDBACK_V1`, `ARGUMENT_REQUIREMENT_V1`) — "Vale para" e "deve/pode". */
+export type FeedbackViewRule = { text: string; section: string | null; appliesTo?: string[]; requirement?: "REQUIRED" | "OPTIONAL" }
 export type FeedbackViewCall =
   | { kind: "QUOTES"; quotes: FeedbackViewQuote[] }
   /** Ausência VERIFICADA (a análise da chamada inteira) — a fala do momento em que caberia é só contexto. */
@@ -44,6 +47,10 @@ export type FeedbackViewDevelopment = {
   whyItMatters: string[]
   howToApply: string | null
   suggestedResponse: string | null
+  /** Campos da view do motor de feedback: a origem e o produto da fala do argumentário e o produto do pedido do ponto (`PRODUCT_IN_FEEDBACK_V1`). */
+  suggestedResponseSource?: { kind: "ARGUMENT_SCRIPT"; name: string }
+  suggestedResponseProduct?: string | null
+  product?: string | null
   itemIndexes: number[]
   /** Consolidação de APRESENTAÇÃO: os pontos (títulos) que este bloco reúne — os achados continuam separados no artefato. */
   consolidates?: string[]
@@ -78,6 +85,8 @@ export type FeedbackView = {
   sectionLabels?: { developments?: string; call?: string; maintain?: string; detailsHint?: string }
   /** INDICATOR DIAGNOSIS V1 — resultado OFICIAL do ciclo por indicador (linhas prontas do sistema) + notas de contexto. */
   cycle?: { title: string; indicators: { name: string; lines: { label: string; value: string }[]; notes: string[] }[] } | null
+  /** Base de boas práticas (`BEST_PRACTICE_FEEDBACK_V1`) — ver best-practices/domain/feedback-section.ts. */
+  bestPractices?: FeedbackBestPractices | null
 }
 
 const sectionLabelOf = (heading: string | null | undefined) => (heading ? cleanSectionHeading(heading) : null)

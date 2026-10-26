@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { visibilityOf } from "../../access/application/access-service.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
+import { liveKnowledgeVersion } from "./live-knowledge-version.js"
 
 /**
  * Autorização de LEITURA de um material da Base de Conhecimento por quem não é Admin — a mesma
@@ -11,8 +12,11 @@ import { createPostgresAccessRepository } from "../../access/infrastructure/post
  * grupos" / Grupo / Subgrupo) — não existe uma segunda lista de permissões. Um material é acessível
  * ao leitor quando, cumulativamente:
  *   1. pertence à organização do leitor (material de outra organização é invisível, mesmo com id válido);
- *   2. não foi excluído (`deleted_at`) e a versão mais recente está PUBLISHED (rascunho/arquivado não
- *      viram link — o mesmo "Publicado" que o admin vê na listagem);
+ *   2. não foi excluído (`deleted_at`) e a versão VIGENTE está PUBLISHED. Vigente = a mais recente já decidida (publicada
+ *      ou arquivada); rascunho/aprovada ainda não publicada fica de fora (`LIVE_VERSION`). Assim um rascunho em edição não
+ *      tira do ar a versão publicada — a mesma que os Agents usam (`retrieve-knowledge.ts`) — e arquivar tira. Antes valia a
+ *      versão mais recente de qualquer status: salvar um rascunho escondia a base do esclarecimento no chat/voz e o
+ *      material dos Feedbacks dava 404 (validação funcional de 20/10/2026);
  *   3. o alcance cobre o leitor: Todos os grupos; ou o Grupo/Subgrupo do próprio leitor; ou o
  *      Grupo/Subgrupo de alguém ativo abaixo dele na cadeia real de `reports_to_id` (gestão lê o
  *      material do time que lidera); ou a CONTA do leitor tem `knowledge.manage` num escopo que cobre o
@@ -30,6 +34,9 @@ export type AccessibleKnowledgeMaterial = {
   documentType: string
   sourceType: string
 }
+
+/** A versão vigente do documento `d` (ver regra 2 e `live-knowledge-version.ts`). */
+const LIVE_VERSION = liveKnowledgeVersion("d.id", "content, version")
 
 const ACCESS_CLAUSE = `
   exists (select 1 from chain)
@@ -76,7 +83,7 @@ export async function resolveAccessibleKnowledgeMaterials(
     `${REACHABLE_CTE}
      select d.id, d.title, d.document_type "documentType", d.source_type "sourceType"
      from knowledge_documents d
-     join lateral (select v.status from knowledge_versions v where v.document_id = d.id order by v.version desc limit 1) lv on true
+     join lateral (${LIVE_VERSION}) lv on true
      where d.organization_id = $1 and d.deleted_at is null and d.id = any($4::uuid[]) and lv.status = 'PUBLISHED'
        and ${ACCESS_CLAUSE}`,
     [input.organizationId, input.viewer.personId, ...(await knowledgeManagerParams(db, input.organizationId, input.viewer.personId, ids))],
@@ -108,7 +115,7 @@ export async function loadAccessibleKnowledgeMaterial(
             d.original_filename "originalFilename", d.mime_type "mimeType", d.file_size_bytes "fileSizeBytes",
             coalesce(d.updated_at, d.created_at) "updatedAt", lv.content, lv.version
      from knowledge_documents d
-     join lateral (select v.status, v.content, v.version from knowledge_versions v where v.document_id = d.id order by v.version desc limit 1) lv on true
+     join lateral (${LIVE_VERSION}) lv on true
      where d.organization_id = $1 and d.deleted_at is null and d.id = $4 and lv.status = 'PUBLISHED'
        and ${ACCESS_CLAUSE}`,
     [input.organizationId, input.viewer.personId, ...(await knowledgeManagerParams(db, input.organizationId, input.viewer.personId, input.materialId))],

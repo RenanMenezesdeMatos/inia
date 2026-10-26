@@ -18,6 +18,7 @@ import { executeGenerateFeedback } from "./generate-feedback-action.js"
 import { callAgentForIndicatorDiagnosis, callAgentForPrvClosing } from "./prv-closing-agent-action.js"
 import { INDICATOR_ANALYSIS_NODE_OUTPUT_KIND, type IndicatorAnalysisNodeOutput } from "../../feedback-engine/domain/node-output.js"
 import type { InvestigationTarget } from "../../feedback-engine/application/investigate-indicator.js"
+import { DomainError } from "../../../shared/domain/domain-error.js"
 
 export type ActionExecutionContext = {
   db: Database
@@ -575,6 +576,18 @@ const CONCLUSION_LABELS: Record<string, string> = {
 }
 
 /**
+ * O motor recebe o Agent do nó como especialista, então valem as mesmas recusas do `runAgent`: Agent inexistente ou INATIVO
+ * nunca analisa nem publica. A publicação já recusa Agent inativo; isto cobre o Agent desativado DEPOIS de publicar
+ * (validação funcional de 20/10/2026: o nó rodou o motor com o Agent desligado e publicou feedback).
+ */
+async function loadRunnableEngineAgent(context: ActionExecutionContext, agentId: string): Promise<{ updatedAt: Date | null }> {
+  const agent = (await context.db.query<{ active: boolean; updated_at: Date | null }>(`select active, updated_at from agents where id = $1 and organization_id = $2`, [agentId, context.organizationId])).rows[0]
+  if (!agent) throw new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
+  if (!agent.active) throw new DomainError("Este agente está inativo.", "AGENT_INACTIVE", 422)
+  return { updatedAt: agent.updated_at }
+}
+
+/**
  * MOTOR DE FEEDBACK — formatos de análise que o motor executa (a MESMA análise vira memória, diagnóstico e feedback):
  *   Flag + "Avaliação de processo"                        → análise da chamada contra o procedimento completo;
  *   Indicador + "Diagnóstico do indicador"                → investigação a partir da medição;
@@ -592,6 +605,7 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
     // `ONE_MONITORING_PER_CALL_V1`: chamada já monitorada não é analisada de novo para monitoria (zero IA); o "Gerar feedback" se abstém.
     const monitored = await context.effects.feedbackEngine.deliveredMonitoring(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId })
     if (monitored) return { nodeOutput: { kind: "FEEDBACK_ENGINE_CALL_ALREADY_MONITORED", interactionId: context.enrollment.interactionId, personId: operator.operator_id, skippedReason: "CALL_ALREADY_MONITORED", existing: { source: monitored.source, id: monitored.id, deliveredAt: monitored.deliveredAt.toISOString() }, text: `Chamada já monitorada (${monitored.deliveredAt.toISOString().slice(0, 10)}): uma chamada recebe uma monitoria só — nada foi analisado.` } }
+    await loadRunnableEngineAgent(context, config.agentId)
     const nodeOutput = await context.effects.feedbackEngine.analyzeCall(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId, collaboratorId: operator.operator_id, agentId: config.agentId, trigger: { ...trigger, selectionReason } })
     return { nodeOutput }
   }
@@ -607,7 +621,7 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
   }
   if (!target) return null
   if (!personId) throw new Error("Não foi possível identificar o colaborador da investigação do indicador.")
-  const agentConfiguredAt = (await context.db.query<{ updated_at: Date }>(`select updated_at from agents where id = $1 and organization_id = $2`, [config.agentId, context.organizationId])).rows[0]?.updated_at ?? null
+  const agentConfiguredAt = (await loadRunnableEngineAgent(context, config.agentId)).updatedAt
   // "Ferramentas nesta execução" do nó restringe as capacidades do especialista (nunca concede) — também no motor.
   const result = await context.effects.feedbackEngine.investigateIndicator(context.db, { organizationId: context.organizationId, personId, agentId: config.agentId, agentConfiguredAt: agentConfiguredAt ? new Date(agentConfiguredAt).toISOString() : null, enrollmentId: context.enrollment.id, target, trigger: { ...trigger, kind: "INDICATOR_INVESTIGATION", selectionReason: "Investigação do indicador pelo Workflow." }, now: context.now, allowedCapabilities: config.allowedCapabilities ?? null })
   const nodeOutput: IndicatorAnalysisNodeOutput = {

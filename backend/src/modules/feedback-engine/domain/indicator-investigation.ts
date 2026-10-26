@@ -2,6 +2,7 @@ import type { CriterionStatus, VerifiedGuidance, VerifiedQuote } from "./call-an
 import type { ContractSteps, DiagnosticSignals, EffectiveCapabilities, ENGINE_INVESTIGATION_TOOLS_VERSION, INVESTIGATION_CLOSURE_VERSION, OpenQuestion, QuestionDisposition, QuestionStatus, ToolAvailability, ToolLedgerEntry } from "./investigation-toolbox.js"
 import type { InvestigationSlice, SliceFilter, SliceOrigin } from "./investigation-slices.js"
 import { INDICATOR_INVESTIGATION_LOGIC_VERSION } from "./versions.js"
+import { argumentRequirementOf, type ArgumentRequirement } from "./feedback-brief.js"
 
 /**
  * INVESTIGAÇÃO DE INDICADOR (domínio puro, determinístico — o modelo só entra na leitura das chamadas).
@@ -213,7 +214,16 @@ export type MemoryRow = {
   reevaluation?: boolean
   /** Critério vindo de ARGUMENTÁRIO (documentId = id do argumentário; nunca vira material da base). */
   sourceKind?: "ARGUMENT_SCRIPT"
+  /** `PRODUCT_IN_FEEDBACK_V1`: o produto ESTABELECIDO da solicitação a que esta avaliação se refere (nome do cadastro); ausente = não estabelecido. */
+  product?: string
+  /** Os produtos a que a regra avaliada vale ("Vale para"); ausente = regra geral. */
+  ruleScope?: string[]
+  /** Item de argumentário avaliado (script, versão, campo, deve/pode) — a fala sugerida é a DESSA versão. */
+  argument?: MemoryArgument
+  /** Quando a chamada aconteceu (ISO) — para ler o argumentário em vigor nela. */
+  occurredAt?: string
 }
+export type MemoryArgument = { scriptId: string; version: number | null; field: string | null; modality: string | null }
 export type CriterionPattern = {
   criterionKey: string
   sourceKind?: "ARGUMENT_SCRIPT"
@@ -234,14 +244,32 @@ export type CriterionPattern = {
   currentRule?: "IN_FORCE" | "CHANGED" | "UNKNOWN"
   /** Avaliações feitas pela regra ATUAL publicada depois das chamadas (reavaliação): orientam daqui para frente, não explicam o resultado da época. */
   reevaluated?: number
-  examples: { interactionId: string; localDate: string; quote: VerifiedQuote | null; rationale: string | null; guidance: VerifiedGuidance | null }[]
+  /** `PATTERN_EXAMPLE_CONTEXT_V1` (22/10/2026): cada exemplo leva os produtos da chamada e a REGRA avaliada nela — num padrão que junta
+   * chamadas de produtos diferentes, a fala de uma chamada nunca pode ser lida contra a regra de outra (no TMA da Larissa, a fala do
+   * prazo da Banda Larga, certa, saiu no texto como erro do IP Dedicado). Investigações gravadas antes não têm os campos. */
+  examples: { interactionId: string; localDate: string; quote: VerifiedQuote | null; rationale: string | null; guidance: VerifiedGuidance | null; /** V19: o produto da SOLICITAÇÃO (não todos os da chamada). */ product?: string; rule?: PracticeRule; argument?: MemoryArgument; occurredAt?: string }[]
+  /** `PRODUCT_IN_FEEDBACK_V1`: os produtos estabelecidos nas chamadas avaliadas desta prática (comparação com os colegas por produto). */
+  products?: string[]
   /** `PRACTICE_IDENTITY_V1`: título da prática (rótulo — a regra literal continua em `text`/`memberRules`). */
   practiceTitle?: string
   /** As regras (literais) da prática que aparecem nestas avaliações — a mesma conduta pode vir de mais de uma linha ou fonte. */
   memberRules?: PracticeRule[]
 }
-export type PracticeRule = { documentId: string; documentTitle: string; heading: string | null; text: string; sourceKind?: "ARGUMENT_SCRIPT" }
+/** `PRODUCT_IN_FEEDBACK_V1`: a regra leva o "Vale para" (`appliesTo`), o "evitar" e o "deve/pode" do argumentário — a mesma marcação da monitoria. */
+export type PracticeRule = { documentId: string; documentTitle: string; heading: string | null; text: string; sourceKind?: "ARGUMENT_SCRIPT"; appliesTo?: string[]; avoid?: boolean; requirement?: ArgumentRequirement }
+/** A regra avaliada numa linha da memória, com o "Vale para", o "evitar" e o "deve/pode" dela. */
+export function practiceRuleOf(row: MemoryRow): PracticeRule {
+  const requirement = argumentRequirementOf(row.argument?.field ? { field: row.argument.field, modality: row.argument.modality } : null)
+  return {
+    documentId: row.documentId, documentTitle: row.documentTitle, heading: row.heading, text: row.text,
+    ...(row.sourceKind ? { sourceKind: row.sourceKind } : {}),
+    ...((row.ruleScope ?? []).length > 0 ? { appliesTo: row.ruleScope! } : {}),
+    ...(row.argument?.field === "AVOID" ? { avoid: true } : {}),
+    ...(requirement ? { requirement } : {}),
+  }
+}
 export const PATTERN_MINIMUM_ELIGIBLE = 3
+export const PATTERN_EXAMPLE_CONTEXT_VERSION = "PATTERN_EXAMPLE_CONTEXT_V1" as const
 
 export const PRACTICE_ANCHOR_VERSION = "PRACTICE_ANCHOR_V1" as const
 /** Chave de agregação de padrões e práticas: a linha-âncora da base (`PRACTICE_ANCHOR_V1`); sem ela, a identidade da obrigação. */
@@ -259,14 +287,16 @@ const modalTextOf = (rows: readonly MemoryRow[]) => {
 const memberRulesOf = (rows: readonly MemoryRow[]): PracticeRule[] => {
   const counts = new Map<string, { rule: PracticeRule; count: number }>()
   for (const row of rows) {
-    const key = `${row.documentId}|${row.heading ?? ""}|${row.text}`
-    const entry = counts.get(key) ?? { rule: { documentId: row.documentId, documentTitle: row.documentTitle, heading: row.heading, text: row.text, ...(row.sourceKind ? { sourceKind: row.sourceKind } : {}) }, count: 0 }
+    const key = `${row.documentId}|${row.heading ?? ""}|${row.text}|${(row.ruleScope ?? []).join(",")}`
+    const entry = counts.get(key) ?? { rule: practiceRuleOf(row), count: 0 }
     entry.count += 1
     counts.set(key, entry)
   }
   return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 3).map((entry) => entry.rule)
 }
 const practiceTitleOfRows = (rows: readonly MemoryRow[]) => rows.find((row) => row.practiceTitle)?.practiceTitle
+/** Produtos estabelecidos nas avaliações de uma prática, sem repetir (as que não têm produto não entram). */
+const productsOfRows = (rows: readonly MemoryRow[]) => [...new Set(rows.flatMap((row) => (row.product ? [row.product] : [])))]
 /**
  * `CURRENT_PRACTICE_TITLE_V1` (06/10/2026): o nome da prática é RÓTULO, não evidência — vale o atual do catálogo. A investigação
  * guardada carrega o nome da época e é reaproveitada; sem isto, um nome corrigido depois (ou generalizado quando outra regra entrou na
@@ -335,7 +365,8 @@ export function criterionPatternsOf(rows: readonly MemoryRow[]): CriterionPatter
       reevaluated: group.filter((row) => row.reevaluation && (row.status === "MET" || row.status === "NOT_MET" || row.status === "PARTIAL")).length,
       ...(practiceTitleOfRows(all) ? { practiceTitle: practiceTitleOfRows(all)! } : {}),
       ...(memberRulesOf(group).length > 1 ? { memberRules: memberRulesOf(group) } : {}),
-      examples: exampleRows.slice(0, 3).map((row) => ({ interactionId: row.interactionId, localDate: row.localDate, quote: row.evidence.find((quote) => /OPERADOR|ATENDENTE|AGENTE/i.test(quote.speaker ?? "")) ?? row.evidence[0] ?? null, rationale: row.rationale, guidance: row.guidance })),
+      ...(productsOfRows(group).length > 0 ? { products: productsOfRows(group) } : {}),
+      examples: exampleRows.slice(0, 3).map((row) => ({ interactionId: row.interactionId, localDate: row.localDate, quote: row.evidence.find((quote) => /OPERADOR|ATENDENTE|AGENTE/i.test(quote.speaker ?? "")) ?? row.evidence[0] ?? null, rationale: row.rationale, guidance: row.guidance, ...(row.product ? { product: row.product } : {}), rule: practiceRuleOf(row), ...(row.argument ? { argument: row.argument } : {}), ...(row.occurredAt ? { occurredAt: row.occurredAt } : {}) })),
     }
   }).sort((a, b) => (b.notMet + b.partial) / Math.max(b.eligible, 1) - (a.notMet + a.partial) / Math.max(a.eligible, 1) || b.eligible - a.eligible)
 }
@@ -492,6 +523,8 @@ export type PeriodSampleRecord = {
 // ---------------------------------------------------------------------------------------------
 export type ReferencePractice = {
   criterionKey: string
+  /** `PRODUCT_IN_FEEDBACK_V1`: os produtos a que a regra dos colegas vale ("Vale para"); ausente = regra geral. */
+  appliesTo?: string[]
   /** `PRACTICE_IDENTITY_V1`: título da prática (rótulo). */
   practiceTitle?: string
   text: string
@@ -557,7 +590,11 @@ export function referencePracticesOf(referenceRows: readonly MemoryRow[], person
   const minimumContributors = Math.max(REFERENCE_MINIMUM_CONTRIBUTORS, minimums?.contributors ?? 0)
   const byKey = new Map<string, MemoryRow[]>()
   for (const row of referenceRows) byKey.set(practiceKeyOf(row), [...(byKey.get(practiceKeyOf(row)) ?? []), row])
-  return [...byKey.entries()].flatMap(([criterionKey, all]) => {
+  return [...byKey.entries()].flatMap(([criterionKey, every]) => {
+    // `PRODUCT_IN_FEEDBACK_V1`: regra de um produto só compara quando a pessoa tem chamadas desse produto nesta prática; regra geral, sempre.
+    const personProducts = new Set(personPatterns.find((entry) => entry.criterionKey === criterionKey)?.products ?? [])
+    const all = every.filter((row) => (row.ruleScope ?? []).length === 0 || (row.product !== undefined && personProducts.has(row.product)))
+    if (all.length === 0) return []
     const rows = onePerInteraction(all)
     const eligibleRows = rows.filter((row) => row.status === "MET" || row.status === "NOT_MET" || row.status === "PARTIAL")
     const contributors = new Set(eligibleRows.map((row) => row.personId)).size
@@ -575,7 +612,7 @@ export function referencePracticesOf(referenceRows: readonly MemoryRow[], person
       : "INSUFFICIENT"
     if (contrast === "INSUFFICIENT") return []
     const representative = modalTextOf(eligibleRows.length > 0 ? eligibleRows : rows)
-    return [{ criterionKey, ...(practiceTitleOfRows(all) ? { practiceTitle: practiceTitleOfRows(all)! } : {}), text: representative.text, heading: representative.heading, documentTitle: representative.documentTitle, reference: { eligible: eligibleRows.length, met, contributors }, person: pattern ? { eligible: pattern.eligible, met: pattern.met, notMet: pattern.notMet + pattern.partial } : null, contrast }]
+    return [{ criterionKey, ...((representative.ruleScope ?? []).length > 0 ? { appliesTo: representative.ruleScope! } : {}), ...(practiceTitleOfRows(all) ? { practiceTitle: practiceTitleOfRows(all)! } : {}), text: representative.text, heading: representative.heading, documentTitle: representative.documentTitle, reference: { eligible: eligibleRows.length, met, contributors }, person: pattern ? { eligible: pattern.eligible, met: pattern.met, notMet: pattern.notMet + pattern.partial } : null, contrast }]
   })
 }
 

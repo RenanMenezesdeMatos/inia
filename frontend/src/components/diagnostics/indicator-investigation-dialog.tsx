@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Skeleton } from "@/components/ui/skeleton"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
+import { RelevantPracticesHint } from "@/components/best-practices/relevant-practices-hint"
 import { useAssessmentDetailQuery, useIndicatorInvestigationQuery } from "@/queries/diagnostics/use-diagnostics-memory"
 
 import { CallAssessmentDetail } from "./call-assessment-detail"
@@ -46,7 +47,7 @@ export function IndicatorInvestigationDialog({ investigationId, onClose }: { inv
 function InvestigationView({ investigationId, call, onCall, onClose }: { investigationId: string; call: InvestigationCall | null; onCall: (call: InvestigationCall | null) => void; onClose: () => void }) {
   const isMobile = useIsMobile()
   const query = useIndicatorInvestigationQuery(investigationId)
-  const official = (query.data?.official ?? {}) as { name?: string; periodLabel?: string }
+  const official = (query.data?.official ?? {}) as { name?: string; periodLabel?: string; indicatorId?: string }
   const showReport = !isMobile || call === null
   return (
     <>
@@ -77,6 +78,7 @@ function InvestigationView({ investigationId, call, onCall, onClose }: { investi
               {query.isPending ? <TableSkeleton rows={8} /> : null}
               {query.isError ? <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
               {query.data ? <InvestigationReport investigation={query.data} callAssessments={query.data.callAssessments} onOpenCall={onCall} activeInteractionId={call?.interactionId ?? null} /> : null}
+              {query.data && official.indicatorId ? <RelevantPracticesHint className="mt-6" indicatorId={official.indicatorId} personId={query.data.personId} /> : null}
             </div>
           </div>
         ) : null}

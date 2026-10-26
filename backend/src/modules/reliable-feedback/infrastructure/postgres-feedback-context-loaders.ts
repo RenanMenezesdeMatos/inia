@@ -9,6 +9,7 @@ import { firstNameOf } from "../domain/feedback-presentation.js"
 import { loadPersonPresentation } from "../../profile-preferences/application/person-presentation-loader.js"
 import type { PublishedKnowledgeDocument } from "../domain/process-assessment.js"
 import { loadIndicatorCanonicalContext } from "../../indicators/application/load-indicator-canonical-context.js"
+import { liveKnowledgeVersion } from "../../knowledge/application/live-knowledge-version.js"
 
 /**
  * Leitura do contexto REAL de cada domínio (V1.5.12) — sempre escopada: a interação/medição precisa ser DA organização e DO
@@ -50,8 +51,8 @@ export function createPostgresPublishedKnowledgeLoader(db: Database): PublishedK
     const rows = await db.query<{ id: string; title: string; content: string; version: number }>(
       `select kd.id, kd.title, kv.content, kv.version
        from knowledge_documents kd
-       join lateral (select content, version from knowledge_versions where document_id = kd.id and status = 'PUBLISHED' order by version desc limit 1) kv on true
-       where kd.id = any($1::uuid[]) and kd.organization_id = $2 and kd.deleted_at is null`,
+       join lateral (${liveKnowledgeVersion("kd.id", "content, version")}) kv on true
+       where kd.id = any($1::uuid[]) and kd.organization_id = $2 and kd.deleted_at is null and kv.status = 'PUBLISHED'`,
       [ids, organizationId],
     )
     for (const row of rows.rows) map.set(row.id, { documentId: row.id, title: row.title, content: row.content, version: Number(row.version) })

@@ -119,6 +119,17 @@ describe.skipIf(!ENABLED)("Gatilho Manual — prova Postgres (API real, motor re
     await admin.patch(`${base}/${workflowId}`).send({ active: true })
     expect((await admin.get(`${base}/${workflowId}/manual-run`)).body.data.blockers).toEqual([])
 
+    // 4b) D10 (20/10/2026): Agent da versão publicada desativado DEPOIS de publicar = impedimento visível e disparo recusado.
+    const agentWorkflowId = (await admin.post(base).send({ name: "Proof Manual WF com Agent", scopeType: "TEAM", teamId: teamA, trigger: { kind: "manual", context: "INTERACTION" } })).body.data.id as string
+    const agentId = (await client.query<{ id: string }>("insert into agents (organization_id, name, agent_type, objective, description, context_prompt, active) values ($1, 'Proof Manual Agent desligado', 'CUSTOM', 'Avaliar', 'Prova', 'Avalie.', false) returning id", [ORG])).rows[0]!.id
+    const agentGraph = { nodes: [{ id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} }, { id: "agent", type: "action", label: "Especialista", position: { x: 0, y: 80 }, config: { actionType: "CALL_AGENT", agentId } }, { id: "end", type: "end", label: "Fim", position: { x: 0, y: 160 }, config: {} }], edges: [{ id: "e1", source: "trigger", sourceHandle: "always", target: "agent" }, { id: "e2", source: "agent", sourceHandle: "always", target: "end" }] }
+    const agentVersion = (await client.query<{ id: string }>("insert into workflow_versions (workflow_id, graph, created_by) values ($1, $2, $3) returning id", [agentWorkflowId, JSON.stringify(agentGraph), geral.id])).rows[0]!.id
+    await client.query("update workflows set active_version_id = $1 where id = $2", [agentVersion, agentWorkflowId])
+    expect((await admin.get(`${base}/${agentWorkflowId}/manual-run`)).body.data.blockers.map((blocker: { code: string }) => blocker.code)).toEqual(["WORKFLOW_AGENT_INACTIVE"])
+    const agentOff = await admin.post(`${base}/${agentWorkflowId}/manual-runs`).send({ collaboratorId: operatorA.id, interactionId: callA, idempotencyKey: key() })
+    expect([agentOff.status, agentOff.body.error.code]).toEqual([409, "WORKFLOW_AGENT_INACTIVE"])
+    expect((await client.query("select count(*)::int n from workflow_enrollments where workflow_id = $1", [agentWorkflowId])).rows[0].n).toBe(0)
+
     // 5) Permissão: sem papel = 403; admin de outro Grupo não enxerga o Workflow (404).
     expect((await (await login(semPapel.email)).post(`${base}/${workflowId}/manual-runs`).send({ collaboratorId: operatorA.id, interactionId: callA, idempotencyKey: key() })).status).toBe(403)
     expect((await (await login(adminB.email)).post(`${base}/${workflowId}/manual-runs`).send({ collaboratorId: operatorB.id, interactionId: callB, idempotencyKey: key() })).status).toBe(404)

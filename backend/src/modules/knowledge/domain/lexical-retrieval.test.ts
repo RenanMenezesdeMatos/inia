@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { chunkKnowledgeDocument } from "./knowledge-chunking.js"
-import { DEFAULT_RETRIEVAL_BUDGET, buildKnowledgeIndex, documentAnchors, rankChunks, selectWithinBudget, tokenize } from "./lexical-retrieval.js"
+import { DEFAULT_RETRIEVAL_BUDGET, buildKnowledgeIndex, documentAnchors, complementSelection, queryStandsAlone, rankChunks, selectWithinBudget, tokenize, wordsSharedWith, type RankedChunk } from "./lexical-retrieval.js"
 import { expandAcronyms } from "./query-acronyms.js"
 import { ambiguousProcessesOf } from "../application/retrieve-knowledge.js"
 
@@ -261,3 +261,42 @@ describe("índice pronto (cache por versão das bases)", () => {
   })
 })
 
+
+describe("conversa: a pergunta da pessoa complementa a seleção do roteamento", () => {
+  const chunk = (documentId: string, index: number, score: number, chars = 100): RankedChunk => ({ documentId, documentTitle: documentId, heading: `${index}. Seção`, text: "x".repeat(chars), index, score })
+  const keys = (chunks: readonly RankedChunk[]) => chunks.map((entry) => `${entry.documentId}#${entry.index}`)
+  const routing = [chunk("contestacao", 0, 10), chunk("contestacao", 28, 9), chunk("titularidade", 25, 6)]
+
+  it("a seleção do roteamento fica inteira e na frente; entram só trechos novos dos MESMOS documentos — outro documento é outro assunto", () => {
+    const person = [chunk("contestacao", 0, 6), chunk("ferias", 3, 5.5), chunk("contestacao", 31, 5), chunk("titularidade", 25, 4)]
+    const result = complementSelection(routing, person)
+    expect(keys(result.selected)).toEqual(["contestacao#0", "contestacao#28", "titularidade#25", "contestacao#31"])
+    expect(result.selected[0]!.score).toBe(10)
+    expect(result.added.map((entry) => entry.index)).toEqual([31])
+    expect(result).toMatchObject({ otherDocuments: 1, overLimit: 0 })
+  })
+
+  it("no máximo 4 acréscimos e nunca acima do teto de caracteres — nada do roteamento sai; seleções iguais = a de sempre", () => {
+    const many = Array.from({ length: 6 }, (_, offset) => chunk("contestacao", 40 + offset, 5 - offset / 10))
+    expect(complementSelection(routing, many)).toMatchObject({ added: many.slice(0, 4), overLimit: 2 })
+    const big = (index: number) => chunk("r", index, 1, 3_000)
+    const full = complementSelection([big(1), big(2)], [big(3), big(4)], { ...DEFAULT_RETRIEVAL_BUDGET, maxTotalChars: 9_000 })
+    expect(keys(full.selected)).toEqual(["r#1", "r#2", "r#3"])
+    expect(full.overLimit).toBe(1)
+    expect(complementSelection(routing, routing)).toEqual({ selected: routing, added: [], otherDocuments: 0, overLimit: 0 })
+  })
+
+  it("da pergunta da pessoa ficam só as palavras que o roteamento também usou: sai a cortesia, o que só ela disse e o outro assunto", () => {
+    const routingQuery = "Como registrar a contestação da fatura de um cliente? Passo a passo e procedimentos."
+    expect(wordsSharedWith("Olá, tudo bem? Por favor, como faço para registrar a contestação da fatura e quantos dias de férias eu tenho?", routingQuery)).toBe("registrar contestação fatura")
+    expect(wordsSharedWith("contestar a fatura", routingQuery)).toBe("contestar fatura")
+    expect(wordsSharedWith("documentos da TT de PJ", "Quais documentos da TT?", { acronyms: new Set(["PJ", "TT"]) })).toBe("documentos TT")
+  })
+
+  it("a pergunta da pessoa só busca sozinha quando se sustenta (≥ 2 termos além das palavras de pergunta)", () => {
+    expect(queryStandsAlone("Como faço para registrar a contestação da fatura de um cliente?")).toBe(true)
+    expect(queryStandsAlone("e qual o prazo?")).toBe(false)
+    expect(queryStandsAlone("O que eu preciso fazer?")).toBe(false)
+    expect(queryStandsAlone("prazo da TT", { acronyms: new Set(["TT"]) })).toBe(true)
+  })
+})

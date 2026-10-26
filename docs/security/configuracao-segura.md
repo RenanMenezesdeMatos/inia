@@ -223,7 +223,7 @@ rode `npm run db:migrate` antes de subir o código novo.
 |---|---|---|
 | `CORS_ORIGIN` | — | Agora **obrigatória em produção**: a API não sobe sem ela, nem com `localhost` ou `http://` para um endereço público. Fora de produção, ausente = `http://localhost:3000` |
 | `SESSION_IDLE_TIMEOUT_MINUTES` | `30` | Sessão sem uso (nenhuma interação com a tela nem fala na voz) encerra sozinha; a tela avisa 2 minutos antes. `0` desliga |
-| `INIA_MODEL_PII_MASKING` | `ON` | CPF, telefone, e-mail e protocolo do cliente saem mascarados das transcrições enviadas à IA. `OFF` só com decisão do DPO |
+| `INIA_MODEL_PII_MASKING` | `ON` | E-mail, CPF pontuado e protocolo do cliente viram marcadores nas transcrições enviadas à IA; telefone e outros números longos saem mascarados com o formato preservado (DDD + 1º dígito; 3 primeiros dígitos e a quantidade). `OFF` só com decisão do DPO |
 | `DATA_HUB_SECRET_KEY_PREVIOUS` | vazia | Só durante a troca da chave de cifra (abaixo) |
 
 ### O que muda para quem usa

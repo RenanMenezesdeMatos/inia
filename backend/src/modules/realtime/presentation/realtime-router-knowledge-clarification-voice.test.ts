@@ -10,6 +10,7 @@ import { CLARIFICATION_TOOL_NAME } from "../../knowledge-clarification/domain/cl
 import { refOf, TEST_ORCHESTRATOR_AGENT, TEST_ORG, TEST_PERSON, TEST_SPECIALIST_AGENT, type ScriptedCall } from "../../knowledge-clarification/testing/clarification-fixtures.js"
 import { fixtureClarificationService } from "../../knowledge-clarification/testing/clarification-service-fixture.js"
 import type { SelfChatContext } from "../../leadership-analytics/application/self-context.js"
+import { OrchestrationSuperseded } from "../../assistant/application/run-orchestrated-reply.js"
 import { createRealtimeRouter } from "./realtime-router.js"
 
 /**
@@ -40,7 +41,17 @@ const answerFor = (call: ScriptedCall) =>
 function setup(script: (call: ScriptedCall, index: number) => unknown) {
   const memory = createMemoryConversationStore()
   const clarification = fixtureClarificationService(script, { now: () => NOW })
-  const orchestratedReply = vi.fn(async () => ({ text: "Resposta do caminho de sempre.", agentId: null, calls: [], results: [], structuredResult: null, supportMaterialCandidates: [] }))
+  // Orquestração falsa que respeita o portão `proceed` como a real (pergunta nova: ela corre junto do esclarecimento).
+  const proceeded: boolean[] = []
+  const orchestratedReply = vi.fn(async (...args: unknown[]) => {
+    const hooks = args[7] as { proceed?: () => Promise<boolean> } | undefined
+    if (hooks?.proceed) {
+      const go = await hooks.proceed()
+      proceeded.push(go)
+      if (!go) throw new OrchestrationSuperseded()
+    }
+    return { text: "Resposta do caminho de sempre.", agentId: null, calls: [], results: [], structuredResult: null, supportMaterialCandidates: [] }
+  })
   const app = express()
   app.use(express.json())
   app.use((req, _res, next) => {
@@ -70,7 +81,7 @@ function setup(script: (call: ScriptedCall, index: number) => unknown) {
     await request(app).post("/api/v1/realtime/voice-turn").send({ conversationId: response.body.data?.conversationId ?? conversationId, turnId: `voice-1-${turn}`, userText: spoken })
     return response
   }
-  return { app, memory, clarification, orchestratedReply, speak }
+  return { app, memory, clarification, orchestratedReply, speak, proceeded }
 }
 
 afterEach(() => {
@@ -78,8 +89,8 @@ afterEach(() => {
 })
 
 describe("voz de quem atende — esclarecimento pelas bases", () => {
-  it("pergunta ambígua pela voz: estado na tela, fala com a pergunta e as opções curtas, nenhuma orquestração; gravado no canal de voz", async () => {
-    const { speak, memory, clarification, orchestratedReply } = setup((call) => clarify(call))
+  it("pergunta ambígua pela voz: estado na tela, fala com a pergunta e as opções curtas, a orquestração que corria junto é descartada sem ferramentas; gravado no canal de voz", async () => {
+    const { speak, memory, clarification, orchestratedReply, proceeded } = setup((call) => clarify(call))
     const response = await speak("quais documentos para troca de titularidade?", "Quais documentos preciso para troca de titularidade?", null)
     expect(response.status).toBe(200)
     const data = response.body.data as { text: string; modelText: string; clarification: { status: string; steps: { options: { label: string; evidence: { available: boolean }[] }[] }[] }; conversationId: string }
@@ -91,7 +102,9 @@ describe("voz de quem atende — esclarecimento pelas bases", () => {
     expect(data.modelText).toContain("Empresa ou Residencial")
     expect(data.modelText).toContain('acione self_ask de novo com a pergunta original ("Quais documentos preciso para troca de titularidade?")')
     expect(data.modelText).toContain("Não leia fontes")
-    expect(orchestratedReply).not.toHaveBeenCalled()
+    // Pergunta nova: o roteamento correu junto e foi superado antes de qualquer ferramenta.
+    expect(orchestratedReply).toHaveBeenCalledTimes(1)
+    expect(proceeded).toEqual([false])
     const saved = memory.messages.find((message) => message.role === "assistant")!
     expect(saved.channel).toBe("voice")
     expect((saved.toolCalls as { toolName: string }[])[0]!.toolName).toBe(CLARIFICATION_TOOL_NAME)
@@ -125,7 +138,7 @@ describe("voz de quem atende — esclarecimento pelas bases", () => {
   })
 
   it("o esclarecimento parte das palavras da PESSOA (`utterance`), nunca da `query` que o modelo de voz monta com contexto do perfil", async () => {
-    const { app, clarification, orchestratedReply } = setup((call) => clarify(call))
+    const { app, clarification, orchestratedReply, proceeded } = setup((call) => clarify(call))
     // Visto no QA de 20/10: a pessoa disse "Troca de titularidade." e o modelo de voz mandou o perfil junto ("atendimento B2C"); o
     // esclarecimento tomou "B2C" como dito por ela, concluiu "residencial" e pulou a etapa Empresa × Residencial.
     const rewritten = "Pessoa que atende, operadora de atendimento B2C, perguntou sobre o procedimento de troca de titularidade. Qual o processo no atendimento B2C?"
@@ -133,7 +146,11 @@ describe("voz de quem atende — esclarecimento pelas bases", () => {
     expect(clarification.calls[0]!.prompt).toContain("Troca de titularidade.")
     expect(clarification.calls[0]!.prompt).not.toContain("B2C")
     expect(response.body.data.clarification).toMatchObject({ status: "OPEN", originalQuestion: "Troca de titularidade." })
-    expect(orchestratedReply).not.toHaveBeenCalled()
+    // Pergunta nova: o roteamento correu junto e foi superado antes de qualquer ferramenta.
+    expect(orchestratedReply).toHaveBeenCalledTimes(1)
+    expect(proceeded).toEqual([false])
+    // A busca dos especialistas também parte das palavras dela (ASKER_QUESTION_RETRIEVAL_V1), nunca só da `query` montada.
+    expect(orchestratedReply.mock.calls[0]![5]).toEqual({ collaboratorConversation: true, askerQuestion: "Troca de titularidade." })
   })
 
   it("escolha no formulário com a voz aberta: vai na consulta da voz (`clarification`) e vale EXATAMENTE — \"nenhuma corresponde\" + complemento, como no texto", async () => {

@@ -422,3 +422,53 @@ describe("runOrchestratedReply — ganchos da conversa (sessão de feedback)", (
     expect(reply.results[0]!.text).toBe("Pelo procedimento atual, o prazo é de 5 dias úteis.")
   })
 })
+
+describe("runOrchestratedReply — a busca do especialista considera a última pergunta da pessoa (ASKER_QUESTION_RETRIEVAL_V1)", () => {
+  const KNOWLEDGE = { mode: "NONE", authorizedDocuments: [], retrieved: [], injectedChars: 0, estimatedTokens: 0, authorizedChars: 0, budget: { maxChunks: 8, maxTotalChars: 9000 } }
+  const PERSON = "Como faço para registrar a contestação da fatura de um cliente?"
+  const ROUTING = "Como registrar a contestação da fatura de um cliente? Passo a passo e procedimentos."
+  const processos = () => orchestrator({ specialists: [{ agentId: "agent-proc", toolName: "agente_de_processos" }], tools: [{ name: "agente_de_processos", description: "x", parameters: { type: "OBJECT", properties: {} } } as never] })
+  const history = [{ role: "user" as const, text: "Oi" }, { role: "model" as const, text: "Olá!" }, { role: "user" as const, text: PERSON }]
+  const run = (specialistOptions: Parameters<typeof runOrchestratedReply>[5]) => {
+    runSpecialistTool.mockReset().mockResolvedValue({ contract: "TEXT", text: "Registre conta, linha, valor e data.", knowledge: KNOWLEDGE, supportMaterialCandidates: [] })
+    generateWithTools.mockReset().mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "agente_de_processos", args: { query: ROUTING } }] }).mockResolvedValueOnce({ kind: "text", text: "Síntese." })
+    return runOrchestratedReply(fakeDb, processos(), history, "", "op-1", specialistOptions)
+  }
+
+  it("chat: o especialista recebe a pergunta do roteamento e, para a busca, o último turno da pessoa", async () => {
+    await run({ collaboratorConversation: true })
+    expect(runSpecialistTool.mock.calls[0]![3]).toBe(ROUTING)
+    expect(runSpecialistTool.mock.calls[0]![7]).toEqual({ collaboratorConversation: true, askerQuestion: PERSON })
+  })
+
+  it("voz: as palavras da pessoa vindas do chamador valem no lugar do último turno (a `query` do modelo de voz)", async () => {
+    await run({ collaboratorConversation: true, askerQuestion: "registrar contestação da fatura" })
+    expect(runSpecialistTool.mock.calls[0]![7]).toMatchObject({ askerQuestion: "registrar contestação da fatura" })
+  })
+
+  it("fora da conversa (Workflow, QA Lab) nada muda: as opções do especialista são as recebidas", async () => {
+    await run({})
+    expect(runSpecialistTool.mock.calls[0]![7]).toEqual({})
+  })
+
+  it("pergunta com dois assuntos: o roteamento continua acionando os dois especialistas, cada um com a sua pergunta, e a síntese lê os dois", async () => {
+    const BOTH = "Como registro a contestação da fatura e quantos dias de férias eu tenho?"
+    const twoSpecialists = orchestrator({
+      specialists: [{ agentId: "agent-proc", toolName: "agente_de_processos" }, { agentId: "agent-rh", toolName: "agente_de_rh" }],
+      tools: [{ name: "agente_de_processos", description: "x", parameters: { type: "OBJECT", properties: {} } } as never, { name: "agente_de_rh", description: "y", parameters: { type: "OBJECT", properties: {} } } as never],
+    })
+    runSpecialistTool.mockReset().mockImplementation(async (_db: unknown, _org: unknown, agentId: string) => ({ contract: "TEXT", text: `resposta de ${agentId}`, knowledge: KNOWLEDGE, supportMaterialCandidates: [] }))
+    generateWithTools
+      .mockReset()
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "agente_de_processos", args: { query: "Como registrar a contestação da fatura?" } }, { name: "agente_de_rh", args: { query: "Quantos dias de férias o colaborador tem?" } }] })
+      .mockResolvedValueOnce({ kind: "text", text: "Síntese dos dois." })
+    const reply = await runOrchestratedReply(fakeDb, twoSpecialists, [{ role: "user", text: BOTH }], "", "op-1", { collaboratorConversation: true })
+    expect(runSpecialistTool.mock.calls.map((call) => [call[2], call[3], call[7]])).toEqual([
+      ["agent-proc", "Como registrar a contestação da fatura?", { collaboratorConversation: true, askerQuestion: BOTH }],
+      ["agent-rh", "Quantos dias de férias o colaborador tem?", { collaboratorConversation: true, askerQuestion: BOTH }],
+    ])
+    const synthesisTurns = generateWithTools.mock.calls[1]![0] as { functionResponses?: { response: { result: string } }[] }[]
+    expect(synthesisTurns.at(-1)!.functionResponses!.map((entry) => entry.response.result)).toEqual(["resposta de agent-proc", "resposta de agent-rh"])
+    expect(reply.text).toBe("Síntese dos dois.")
+  })
+})

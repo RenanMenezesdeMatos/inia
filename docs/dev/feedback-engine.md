@@ -1676,6 +1676,13 @@ mesmo período.
   nenhum, `NO_INDICATOR_WITH_STRATEGY`.
 - Limite: Chat/Avatar sem Acompanhamento conferem sem trava (a corrida entre duas entregas só conversacionais não é serializada).
 
+### Produto da solicitação e aplicabilidade antes do julgamento (21/10/2026) — `PRODUCT_APPLICABILITY_V1`
+
+Documento próprio: [produtos-e-aplicabilidade.md](produtos-e-aplicabilidade.md). Com catálogo de produtos vigente na data da chamada, a
+análise devolve as solicitações (Q-n) com o produto sustentado pelas evidências e a abrangência de produto de cada obrigação; a revisão dá a
+própria leitura; o código (`domain/product-applicability.ts`) aplica integridade e consequências e só deixa cobrar ou reconhecer regra cuja
+aplicabilidade está estabelecida. Sem catálogo, prompt, schema, chave e resultado são os de antes.
+
 ## Limitações conhecidas
 
 - A análise depende da estrutura da base (seções/listas); regra escrita em prosa corrida vira critério por frase normativa.

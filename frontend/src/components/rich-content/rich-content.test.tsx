@@ -92,3 +92,27 @@ describe("RichContent — segurança", () => {
     expect(screen.getByText("<b>").tagName).toBe("CODE")
   })
 })
+
+describe("RichContent — fala citada destacada (quotes=\"emphasis\")", () => {
+  it("cada trecho entre aspas curvas vira citação (<q>, itálico e fundo, na fonte do texto); o resto do texto não muda", () => {
+    const { container } = render(<RichContent quotes="emphasis" text="Quando o cliente disse “Isso é fraude.”, você respondeu “Isso não é comigo.” e transferiu." />)
+    const quotes = [...container.querySelectorAll("q")]
+    const emphasized = quotes.map((element) => element.textContent)
+    expect(quotes[0]!.className).toContain("italic")
+    expect(quotes[0]!.className).not.toContain("font-mono")
+    expect(quotes[0]!.className).toContain("font-quote")
+    expect(quotes[0]!.className).toContain("font-light")
+    expect(quotes[0]!.className).toContain("bg-primary/10")
+    // As aspas ficam à vista, dentro da citação (nada escondido só para leitor de tela).
+    expect(quotes[0]!.querySelector(".sr-only")).toBeNull()
+    expect(emphasized).toEqual(["“Isso é fraude.”", "“Isso não é comigo.”"])
+    expect(container.textContent).toBe("Quando o cliente disse “Isso é fraude.”, você respondeu “Isso não é comigo.” e transferiu.")
+  })
+  it("vale dentro de negrito e de lista; sem a opção, nada muda", () => {
+    const { container } = render(<RichContent quotes="emphasis" text={"**Diga “Vou te ajudar.”** ao cliente.\n\n- Você disse “Lá eles te atendem.”"} />)
+    expect([...container.querySelectorAll("strong q, li q")].map((element) => element.textContent)).toEqual(["“Vou te ajudar.”", "“Lá eles te atendem.”"])
+    cleanup()
+    const plain = render(<RichContent text="Você disse “Isso não é comigo.”" />)
+    expect(plain.container.querySelector("q")).toBeNull()
+  })
+})

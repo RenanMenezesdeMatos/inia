@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import "../testing/no-external-ai.js"
 import { analysis, briefOf, challenge, confirmAllClaims, line, T3, verified } from "../testing/cancellation-case.js"
-import { applyVerdicts, assembleMessage, parseVerdicts, parseWriterDraft, repairInstructionsOf, trustedReadingsOf, usefulnessOf, type Verdict } from "./composition.js"
+import { applyVerdicts, assembleMessage, parseVerdicts, parseWriterDraft, repairInstructionsOf, usefulnessOf, type Verdict } from "./composition.js"
 import { renderVerificationUserTurn } from "./composition-prompt.js"
 import { composeFeedback } from "../application/compose-feedback.js"
 import type { EngineModelPort, ModelCallMetric } from "../application/ports.js"
@@ -57,7 +57,7 @@ describe("repetição × detalhe concreto", () => {
     const brief = caseBrief()
     const draft = draftOf([ADJUST, GUIDE, REPEAT_WITH_DETAIL, { text: "Você foi excelente em todo o atendimento.", stance: "RECOGNITION", refs: ["S1"] }])
     const decisions = applyVerdicts(draft, brief, new Map([ok("F1"), ok("F2"), ok("F3", { repeats: "F2", addsInformation: true }), ok("F4", { verdict: "OVERREACH", note: "superlativo para rotina" }), ok("CARD")]))
-    const instructions = repairInstructionsOf([...decisions.sentences, decisions.card], usefulnessOf(brief, decisions.sentences.filter((entry) => entry.kept), null), brief, trustedReadingsOf(brief, [decisions]))
+    const instructions = repairInstructionsOf([...decisions.sentences, decisions.card], usefulnessOf(brief, decisions.sentences.filter((entry) => entry.kept), null), brief)
     expect(instructions.join("\n")).toContain("Mantenha a informação destas frases aprovadas")
     expect(instructions.join("\n")).toContain("estava aberto desde julho")
     expect(instructions.join("\n")).toContain("OVERREACH")
@@ -73,7 +73,7 @@ describe("a mensagem inteira precisa ter valor", () => {
     const decisions = applyVerdicts(draft, brief, parsed.verdicts, { message: parsed.message })
     const usefulness = usefulnessOf(brief, decisions.sentences.filter((entry) => entry.kept), decisions.message)
     expect(usefulness.missingValue).toBe("lista o que foi feito e não diz o que faltou no fechamento")
-    const instructions = repairInstructionsOf([...decisions.sentences, decisions.card], usefulness, brief, trustedReadingsOf(brief, [decisions]))
+    const instructions = repairInstructionsOf([...decisions.sentences, decisions.card], usefulness, brief)
     expect(instructions.some((instruction) => instruction.includes("ainda não ajuda o suficiente") && instruction.includes("A1"))).toBe(true)
   })
 
@@ -127,6 +127,8 @@ describe("a escolha entre a versão e a reescrita", () => {
     expect(audit.attempts.writer).toBe(2)
     expect(audit.lostInformation).toEqual([])
     expect(message?.text).toContain("aberto desde julho")
+    // `READABILITY_PT_V1`: a medida de leitura do texto entregue fica na auditoria (só acompanha).
+    expect(audit.readability).toMatchObject({ version: "READABILITY_PT_V1", sentences: expect.any(Number), fleschPt: expect.any(Number) })
   })
 
   it("reescrita que não cabe no orçamento (com a sua verificação) nem começa: vale a primeira versão, e o motivo fica na auditoria (`ENGINE_BUDGET_V2`)", async () => {
@@ -150,6 +152,7 @@ describe("a escolha entre a versão e a reescrita", () => {
     expect(message).toBeNull()
     expect(audit.reason).toBe("NO_USEFUL_MESSAGE")
     expect(audit.messageAssessment).toMatchObject({ valueBeyondNarration: false })
+    expect(audit.readability).toBeUndefined()
   })
 })
 

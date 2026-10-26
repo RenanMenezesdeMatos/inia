@@ -153,6 +153,12 @@ describe("Gatilho Manual — impedimentos e estágio da execução", () => {
     expect(manualRunBlockers({ ...base, trigger: manual("INTERACTION") as never })).toEqual([])
   })
 
+  it("D10: Agent/Orquestrador da versão publicada que não pode rodar agora impede o disparo (depois dos impedimentos do Workflow)", () => {
+    const unavailableReferences = [{ code: "WORKFLOW_AGENT_INACTIVE", message: "O nó \"Agente\" usa o agente \"X\", que está inativo." }]
+    expect(manualRunBlockers({ ...base, trigger: manual("INTERACTION") as never, unavailableReferences }).map((blocker) => blocker.code)).toEqual(["WORKFLOW_AGENT_INACTIVE"])
+    expect(manualRunBlockers({ ...base, trigger: manual("INTERACTION") as never, active: false, unavailableReferences }).map((blocker) => blocker.code)).toEqual(["WORKFLOW_MANUAL_RUN_INACTIVE", "WORKFLOW_AGENT_INACTIVE"])
+  })
+
   it("solicitado ≠ processando ≠ concluído ≠ falha", () => {
     expect(manualRunStageOf("active", true, "manual_run_requested")).toBe("QUEUED")
     expect(manualRunStageOf("active", false, "node_advanced")).toBe("PROCESSING")

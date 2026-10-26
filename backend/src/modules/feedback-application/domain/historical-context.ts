@@ -14,10 +14,17 @@ import type { FeedbackSourceRef } from "./feedback-application.js"
  * Ela NÃO é "um snapshot criado agora": cada campo diz de onde veio, e o que entra no modelo é apresentado como "registro
  * publicado em <data>".
  */
-export const HISTORICAL_CONTEXT_VERSION = "FEEDBACK_APPLICATION_CONTEXT_V1" as const
+/** V2 (22/10/2026): leva as boas práticas registradas no feedback (sugestões opcionais) — a aplicação as usa na conclusão. */
+/** V3 (22/10/2026, `PRODUCT_IN_FEEDBACK_V1`): cada ponto e cada fala com o produto do pedido, cada regra com o "Vale para" e o "deve/pode",
+ * a fala oficial do argumentário com o produto dela, as regras por produto possível e os produtos do atendimento. */
+/** V4 (22/10/2026, `BEST_PRACTICE_HOW_IT_HELPS_V1`): cada prática leva o "como ajuda no resultado" aprovado na revisão — o único
+ * fundamento para a sessão dizer como ela ajuda no indicador. */
+export const HISTORICAL_CONTEXT_VERSION = "FEEDBACK_APPLICATION_CONTEXT_V4" as const
 
 export type HistoricalIndicator = { name: string; lines: { label: string; value: string }[]; notes: string[] }
 export type HistoricalMaterial = { documentId: string; title: string; sections: string[]; reason: string | null }
+/** Boa prática registrada no feedback (bloco "Oportunidades inspiradas em boas práticas"): sugestão opcional, nunca regra do processo. */
+export type HistoricalPractice = { name: string; howTo: string; suggestedPhrasing: string | null; source: string | null; association: string; you: string; /** V4: como ajuda no resultado, aprovado na revisão. */ howItHelps?: string }
 
 export type FeedbackHistoricalContext = {
   version: typeof HISTORICAL_CONTEXT_VERSION
@@ -47,8 +54,17 @@ export type FeedbackHistoricalContext = {
   /** Pontos fortes registrados (reconhecimento só existe se estiver aqui). */
   strengths: string[]
   materials: HistoricalMaterial[]
+  /** V2: boas práticas registradas no feedback (ausente = contexto anterior ou feedback sem o bloco). */
+  bestPractices?: HistoricalPractice[]
   /** O que o registro não guarda — a IA declara a limitação em vez de completar. */
   limitations: string[]
+  /**
+   * `PRODUCT_APPLICABILITY_V1`: o que a análise da GRAVAÇÃO estabeleceu sobre o produto do atendimento e os pontos que ficaram sem
+   * avaliação por depender dele (registro publicado). Ausente = feedback sem catálogo de produtos ou anterior a ele.
+   */
+  product?: { identified: string[]; undetermined: boolean; pendingPoints: string[]; /** V3: o que cada produto possível pede (só vale se o produto se confirmar). */ byProduct?: { products: string[]; rules: string[] }[] } | null
+  /** `PRODUCT_IN_FEEDBACK_V1`: os produtos a que os pontos do feedback se referem (pedidos estabelecidos pela gravação). */
+  products?: string[]
 }
 
 /** Registro de um feedback PUBLICADO (linha de `feedbacks` + caso + materiais), exatamente como gravado. */
@@ -160,12 +176,15 @@ function legacyPublishedText(record: PublishedFeedbackRecord): string {
   return parts.filter(Boolean).join("\n\n")
 }
 
+/** `PRODUCT_IN_FEEDBACK_V1`: o ponto com o produto do pedido dele ("Prazo [pedido de IP Dedicado]"). */
+const pointLabelOf = (development: FeedbackView["developments"][number]) => (development.product ? `${development.title} [pedido de ${development.product}]` : development.title)
 function viewEvidence(view: FeedbackView): string[] {
   const lines: string[] = []
   for (const development of view.developments ?? []) {
-    if (development.whatHappened) lines.push(`${development.title}: ${development.whatHappened}`)
-    if (development.call.kind === "QUOTES") for (const quote of development.call.quotes) lines.push(`${development.title} — ${quote.intro}: “${quote.text}${quote.truncated ? "…" : ""}”`)
-    if (development.call.kind === "ABSENCE") lines.push(`${development.title} — ${development.call.statement}`)
+    const point = pointLabelOf(development)
+    if (development.whatHappened) lines.push(`${point}: ${development.whatHappened}`)
+    if (development.call.kind === "QUOTES") for (const quote of development.call.quotes) lines.push(`${point} — ${quote.intro}${quote.product ? ` (chamada de ${quote.product})` : ""}: “${quote.text}${quote.truncated ? "…" : ""}”`)
+    if (development.call.kind === "ABSENCE") lines.push(`${point} — ${development.call.statement}`)
   }
   for (const positive of view.maintain?.evidence ?? []) {
     for (const quote of positive.quotes) lines.push(`${positive.title} — ${quote.intro}: “${quote.text}${quote.truncated ? "…" : ""}”`)
@@ -174,17 +193,28 @@ function viewEvidence(view: FeedbackView): string[] {
   return unique(lines)
 }
 
+const REQUIREMENT_WORDS = { REQUIRED: "obrigatório", OPTIONAL: "opcional — fazer é iniciativa, não fazer não é falha" } as const
 function viewGuidance(view: FeedbackView): string[] {
   const lines: string[] = []
   for (const development of view.developments ?? []) {
-    for (const text of development.adjustment) lines.push(`${development.title} — ajuste: ${text}`)
-    for (const rule of development.guidance.rules) lines.push(`${development.title} — o processo orienta${rule.section ? ` (${rule.section})` : ""}: “${rule.text}”`)
-    for (const avoid of development.guidance.avoid) lines.push(`${development.title} — o procedimento pede evitar: “${avoid}”`)
-    if (development.howToApply) lines.push(`${development.title} — como aplicar: ${development.howToApply}`)
-    for (const why of development.whyItMatters) lines.push(`${development.title} — por que importa: ${why}`)
+    const point = pointLabelOf(development)
+    for (const text of development.adjustment) lines.push(`${point} — ajuste: ${text}`)
+    for (const rule of development.guidance.rules) {
+      // `PRODUCT_IN_FEEDBACK_V1`: o "Vale para" e o "deve/pode" do argumentário vão junto da regra (o "pode" nunca vira exigência na conversa).
+      const marks = [rule.section ? rule.section : null, (rule.appliesTo ?? []).length > 0 ? `vale para: ${rule.appliesTo!.join(", ")}` : null, rule.requirement ? REQUIREMENT_WORDS[rule.requirement] : null].filter(Boolean)
+      lines.push(`${point} — o processo orienta${marks.length > 0 ? ` (${marks.join("; ")})` : ""}: “${rule.text}”`)
+    }
+    for (const avoid of development.guidance.avoid) lines.push(`${point} — o procedimento pede evitar: “${avoid}”`)
+    if (development.howToApply) lines.push(`${point} — como aplicar: ${development.howToApply}`)
+    // A fala OFICIAL do argumentário (como está cadastrada), com o produto dela — a sessão pode repeti-la exatamente.
+    if (development.suggestedResponse && development.suggestedResponseSource) lines.push(`${point} — como o argumentário “${development.suggestedResponseSource.name}” orienta dizer${development.suggestedResponseProduct ? ` (para ${development.suggestedResponseProduct})` : ""}: “${development.suggestedResponse}”`)
+    for (const why of development.whyItMatters) lines.push(`${point} — por que importa: ${why}`)
   }
   return unique(lines)
 }
+
+/** Produtos a que os pontos do feedback se referem (pedidos estabelecidos), sem repetir. */
+const viewProductsOf = (view: FeedbackView | null) => [...new Set((view?.developments ?? []).flatMap((development) => [development.product ?? null, ...(development.call.kind === "QUOTES" ? development.call.quotes.map((quote) => quote.product ?? null) : [])]).filter((entry): entry is string => Boolean(entry)))]
 
 function viewStrengths(view: FeedbackView): string[] {
   const lines = (view.maintain?.evidence ?? []).map((positive) => `${positive.title}: ${positive.statement}`)
@@ -220,6 +250,8 @@ export function buildPublishedFeedbackContext(record: PublishedFeedbackRecord, c
   const evidence = view ? viewEvidence(view) : unique([record.evidenceFound, record.observedBehavior ? `Comportamento observado: ${record.observedBehavior}` : ""])
   const guidance = view ? viewGuidance(view) : unique([record.recommendation, record.relatedProcedure ? `Procedimento relacionado: ${record.relatedProcedure}` : "", record.suggestedApproach ?? ""])
   const strengths = view ? viewStrengths(view) : []
+  const product = productOfView(view)
+  const bestPractices = (view?.bestPractices?.items ?? []).map((item): HistoricalPractice => ({ name: item.name, howTo: item.howTo, suggestedPhrasing: item.suggestedPhrasing, source: item.source?.text ?? null, association: item.association, you: item.you, ...(item.howItHelps ? { howItHelps: item.howItHelps } : {}) }))
 
   const limitations: string[] = []
   if (!periodLabel && !registered.period) limitations.push("O registro deste feedback não informa o período avaliado — só a data de publicação.")
@@ -229,7 +261,7 @@ export function buildPublishedFeedbackContext(record: PublishedFeedbackRecord, c
   if (!view) limitations.push("Este é um feedback publicado antes da apresentação detalhada: os detalhes por ponto (falas, regras citadas, seções do procedimento) não foram registrados separadamente.")
 
   return {
-    version: "FEEDBACK_APPLICATION_CONTEXT_V1",
+    version: HISTORICAL_CONTEXT_VERSION,
     capturedAt: capturedAt.toISOString(),
     provenance: "PUBLISHED_RECORD",
     source: { kind: "PUBLISHED_FEEDBACK", id: record.feedbackId, version: record.version },
@@ -247,8 +279,20 @@ export function buildPublishedFeedbackContext(record: PublishedFeedbackRecord, c
     guidance,
     strengths,
     materials,
+    ...(bestPractices.length > 0 ? { bestPractices } : {}),
     limitations,
+    ...(product ? { product } : {}),
+    ...(viewProductsOf(view).length > 0 ? { products: viewProductsOf(view) } : {}),
   }
+}
+
+/** `PRODUCT_APPLICABILITY_V1`: o produto como a análise da gravação o deixou (lido do view model publicado; forma conferida). */
+function productOfView(view: FeedbackView | null): FeedbackHistoricalContext["product"] {
+  const raw = (view as unknown as { product?: unknown } | null)?.product
+  if (!isRecord(raw)) return null
+  const strings = (value: unknown) => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0) : [])
+  const byProduct = Array.isArray(raw.byProduct) ? raw.byProduct.flatMap((group) => (isRecord(group) && strings(group.products).length > 0 && strings(group.rules).length > 0 ? [{ products: strings(group.products), rules: strings(group.rules) }] : [])) : []
+  return { identified: strings(raw.identified), undetermined: raw.undetermined === true, pendingPoints: strings(raw.pendingPoints), ...(byProduct.length > 0 ? { byProduct } : {}) }
 }
 
 export function buildDeliveredFeedbackContext(record: DeliveredFeedbackRecord, capturedAt: Date): FeedbackHistoricalContext {
@@ -257,7 +301,7 @@ export function buildDeliveredFeedbackContext(record: DeliveredFeedbackRecord, c
   const observed = record.blocks.filter((block) => block.key === "observed").map((block) => block.text)
   const guidance = record.blocks.filter((block) => block.key !== "observed").map((block) => `${block.label}: ${block.text}`)
   return {
-    version: "FEEDBACK_APPLICATION_CONTEXT_V1",
+    version: HISTORICAL_CONTEXT_VERSION,
     capturedAt: capturedAt.toISOString(),
     provenance: "DELIVERED_RECORD",
     source: { kind: "INTERACTION_FEEDBACK_DELIVERY", id: record.deliveryId, version: null },
@@ -320,8 +364,21 @@ export function renderHistoricalContextForModel(context: FeedbackHistoricalConte
     section("Orientações e procedimentos (como publicados)", context.guidance),
     section("Pontos fortes registrados", context.strengths),
     section("Materiais de apoio registrados", context.materials.map((material) => `${material.title}${material.sections.length > 0 ? ` (seções: ${material.sections.join(", ")})` : ""}${material.reason ? ` — ${material.reason}` : ""}`)),
+    section("Boas práticas registradas (sugestões OPCIONAIS — associação com melhores resultados, nunca causa nem regra do processo; a fala é exemplo, não fala de nenhuma chamada)", (context.bestPractices ?? []).map((practice) => `${practice.name}: ${practice.howTo}${practice.suggestedPhrasing ? ` Exemplo de fala: “${practice.suggestedPhrasing}”` : ""}${practice.source ? ` (${practice.source})` : ""} ${practice.association}${practice.howItHelps ? ` Como ajuda no resultado (aprovado na revisão; só isto, sem ir além nem prometer resultado): ${practice.howItHelps}` : ""} Nas chamadas da pessoa: ${practice.you}`)),
     section("Limitações do registro (diga isso se perguntarem; não complete)", context.limitations),
+    context.product ? renderProductForModel(context.product) : null,
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n")
+}
+
+/** O produto do atendimento como a análise da GRAVAÇÃO o deixou — o que estiver aqui é registro; o que a pessoa disser na conversa não é. */
+export function renderProductForModel(product: NonNullable<FeedbackHistoricalContext["product"]>): string {
+  return [
+    "Produto do atendimento (o que a análise da gravação estabeleceu):",
+    ...(product.identified.length > 0 ? [`- Estabelecido pela gravação: ${product.identified.join(", ")}.`] : []),
+    ...(product.undetermined ? ["- O produto do pedido NÃO ficou estabelecido pela gravação."] : []),
+    ...(product.pendingPoints.length > 0 ? ["- Pontos que dependem do produto e NÃO foram avaliados neste feedback (não são falha nem acerto):", ...product.pendingPoints.map((point) => `  - ${point}`)] : []),
+    ...((product.byProduct ?? []).length > 0 ? ["- O que cada produto possível pede (só vale para o produto que se confirmar; nunca é falha deste atendimento):", ...product.byProduct!.flatMap((group) => [`  - ${group.products.join(", ")}:`, ...group.rules.map((rule) => `    - “${rule}”`)])] : []),
+  ].join("\n")
 }

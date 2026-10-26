@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { productSessionContextOf } from "../domain/product-confirmation.js"
 import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -574,7 +575,7 @@ const MAX_ORIGINAL_TURNS = 12
 export async function loadApplicationInstructionByConversation(
   db: Queryable,
   input: { organizationId: string; ownerPersonId: string; conversationId: string; now: Date; consultation?: boolean },
-): Promise<{ applicationId: string; status: FeedbackApplicationStatus; role: ApplicationConversationRole; instruction: string; consultation: FeedbackConsultation } | null> {
+): Promise<{ applicationId: string; status: FeedbackApplicationStatus; role: ApplicationConversationRole; instruction: string; consultation: FeedbackConsultation; productContext: string | null } | null> {
   const row = (
     await db.query<ApplicationRow & { follow_up: boolean }>(
       `select ${COLUMNS}, (a.conversation_id is distinct from $1) follow_up from feedback_applications a
@@ -592,6 +593,8 @@ export async function loadApplicationInstructionByConversation(
     role: row.follow_up ? "FOLLOW_UP" : "APPLICATION",
     instruction: renderApplicationInstruction({ context: row.context, presentation: row.presentation, now: input.now, timeZone, followUp, consultation: input.consultation ?? false }),
     consultation: consultationOf(row.id, row.context, timeZone),
+    // `PRODUCT_APPLICABILITY_V1`: produto não estabelecido pela gravação → a sessão pode esclarecer (só nesse caso).
+    productContext: productSessionContextOf(row.context),
   }
 }
 

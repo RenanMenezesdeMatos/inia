@@ -2,7 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
 import { triggerDataOriginOf, triggerIndicatorCodeOf } from "../domain/trigger-config-schema.js"
 import type { PublishCatalogContext, PublishGraphContext, PublishTriggerContext, PublishValidationOptions, PublishValidationRow } from "./publish-validation/context.js"
-import { validateDraftConfigurationModes, validateGraphShape, validateInteractionFeedbackSource, validateManualTriggerMode, validateScheduleDataSources, validateTranscriptRequirements } from "./publish-validation/trigger-context.js"
+import { validateBranchEdges, validateDraftConfigurationModes, validateGraphShape, validateInteractionFeedbackSource, validateManualTriggerMode, validateScheduleDataSources, validateTranscriptRequirements } from "./publish-validation/trigger-context.js"
 import { validateConditions } from "./publish-validation/conditions.js"
 import { validateAgentHasOutput, validateAgentReferences, validateVariables } from "./publish-validation/actions.js"
 import { loadWorkflowOrchestrators, validateOrchestratorReferences } from "./publish-validation/orchestrators.js"
@@ -92,6 +92,7 @@ export async function validateWorkflowForPublish(db: Database, organizationId: s
   await validateFixedRecipients(catalogContext)
   await validateInterventionPolicyReferences(catalogContext)
   validateDraftConfigurationModes(catalogContext)
+  validateBranchEdges(graph)
 
   return graph
 }

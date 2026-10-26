@@ -20,6 +20,7 @@ import TeamPage from "./estrutura/equipe/page"
 import MyStructurePage from "./estrutura/minha-estrutura/page"
 import LeadershipPage from "./estrutura/lideranca/page"
 import ReportsWikiPage from "./estrutura/reports/page"
+import BestPracticesWikiPage from "./estrutura/boas-praticas/page"
 import IndicatorsPage from "./indicadores/page"
 import AnalyticsPage from "./indicadores/analytics/page"
 import MedicaoOperacionalPage from "./indicadores/medicao-operacional/page"
@@ -88,6 +89,7 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/estrutura/minha-estrutura": MyStructurePage,
   "/wiki/estrutura/lideranca": LeadershipPage,
   "/wiki/estrutura/reports": ReportsWikiPage,
+  "/wiki/estrutura/boas-praticas": BestPracticesWikiPage,
   "/wiki/indicadores": IndicatorsPage,
   "/wiki/indicadores/analytics": AnalyticsPage,
   "/wiki/indicadores/medicao-operacional": MedicaoOperacionalPage,

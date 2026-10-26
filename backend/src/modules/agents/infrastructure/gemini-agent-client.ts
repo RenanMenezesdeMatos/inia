@@ -32,6 +32,8 @@ export type AgentReplyOptions = {
   responseSchema?: Record<string, unknown> | undefined
   /** Teto de tokens de saída (`generationConfig.maxOutputTokens`) — ausente = padrão do modelo. */
   maxOutputTokens?: number | undefined
+  /** Menos raciocínio (`thinkingConfig.thinkingLevel`) — só para modelo que raciocina (quem chama confere). */
+  thinkingLevel?: "low" | undefined
 }
 
 /** Chamada ao modelo devolvendo o texto e o uso informado pelo provider (Token Budget do runtime de investigação). */
@@ -49,7 +51,7 @@ export async function generateAgentReplyWithUsage(
   // `beforeLlmCall` aplica "Parar antes da IA"/orçamento ANTES de consumir qualquer token.
   beforeLlmCall()
   const startedAt = new Date()
-  const response = await fetchWithRetry(model, systemPrompt, inputContext, Boolean(options?.structuredOutput), options?.cachedContent, options?.transport, options?.responseSchema, options?.maxOutputTokens)
+  const response = await fetchWithRetry(model, systemPrompt, inputContext, Boolean(options?.structuredOutput), options?.cachedContent, options?.transport, options?.responseSchema, options?.maxOutputTokens, options?.thinkingLevel)
 
   const payload = (await response.json()) as GenerateContentResponse
   const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? ""
@@ -72,7 +74,7 @@ export async function generateAgentReplyWithUsage(
   return { text, usage, durationMs, model, finishReason: payload.candidates?.[0]?.finishReason ?? null }
 }
 
-async function fetchWithRetry(model: string, systemPrompt: string, inputContext: string, structuredOutput: boolean, cachedContent?: string, transport?: AgentReplyOptions["transport"], responseSchema?: Record<string, unknown>, maxOutputTokens?: number): Promise<Response> {
+async function fetchWithRetry(model: string, systemPrompt: string, inputContext: string, structuredOutput: boolean, cachedContent?: string, transport?: AgentReplyOptions["transport"], responseSchema?: Record<string, unknown>, maxOutputTokens?: number, thinkingLevel?: "low"): Promise<Response> {
   const attempts = 1 + Math.max(0, transport?.retries ?? 1)
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let response: Response
@@ -83,7 +85,7 @@ async function fetchWithRetry(model: string, systemPrompt: string, inputContext:
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: inputContext }] }],
           ...(cachedContent ? { cachedContent } : { systemInstruction: { parts: [{ text: systemPrompt }] } }),
-          ...(structuredOutput || maxOutputTokens ? { generationConfig: { ...(structuredOutput ? { responseMimeType: "application/json" } : {}), ...(structuredOutput && responseSchema ? { responseSchema } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}) } } : {}),
+          ...(structuredOutput || maxOutputTokens || thinkingLevel ? { generationConfig: { ...(structuredOutput ? { responseMimeType: "application/json" } : {}), ...(structuredOutput && responseSchema ? { responseSchema } : {}), ...(maxOutputTokens ? { maxOutputTokens } : {}), ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}) } } : {}),
         }),
         // Prazo da chamada + cancelamento de quem pediu (SSE do chat fechado): o fetch para e a vaga do limitador volta.
         signal: withAiCancellation(AbortSignal.timeout(transport?.timeoutMs ?? REQUEST_TIMEOUT_MS)),
