@@ -151,7 +151,7 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 | P-03 | `next` 16.3.8 — RCE/DoS publicados | caminho não usado aqui; o SCA vai marcar | **atualizado** para 16.4.1 (29/10) — sai do inventário |
 | P-04 | Prévia DOCX roda o `mammoth` a cada leitura, sem cache nem limite por conta (`knowledge-material-router.ts:46-64`) — ~300 KB podem virar até 300 MB descompactados | teste de memória (não-DoS) | gerar a prévia uma vez por sha256 ou em processo filho com limite |
 | P-05 | Upload da Central de Dados lê o XLSX/CSV inteiro dentro do request só para mostrar 20 linhas | idem | leitura em streaming com parada no limite |
-| P-06 | C-N3: custódia só é avaliada na 1ª aplicação da base; promoções seguintes não revalidam | — | **descartado pelo usuário** (segundo a sessão da auditoria Cloudflare): atrapalharia transferências de quem já usa a própria senha — risco aceito, registrar no `pendencias-e-riscos.md` |
+| P-06 | C-N3: custódia só é avaliada na 1ª aplicação da base; promoções seguintes não revalidam | — | **descartado pelo usuário** (segundo a sessão da auditoria Cloudflare): atrapalharia transferências de quem já usa a própria senha — risco aceito, registrado como **R-39** em `pendencias-e-riscos.md` |
 | P-07 | `GET /reports/proposals/:id` altera estado (nota da auditoria Cloudflare) | revalidar | trocar para POST |
 
 ### 4.3 Rejeitados (com motivo)
@@ -166,7 +166,7 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 
 ### 4.4 Recomendações de endurecimento (sem exploração demonstrada)
 
-1. **MFA ou SSO corporativo** (ASVS V6.3.3 — principal lacuna de autenticação). **Adiado por decisão da INIA** (29/10) para uma próxima etapa.
+1. **MFA ou SSO corporativo** (ASVS V6.3.3 — principal lacuna de autenticação). **Adiado por decisão da INIA** (29/10) para uma próxima etapa — **R-40**.
 2. JWT do cookie carrega nome, e-mail, cargo, foto e Grupo (SESS-02): reduzir a `sub`, `organizationId`, `sv`, `jti`, `exp`.
 3. HSTS: **as páginas já enviam** quando a instalação é HTTPS (`next.config.ts`, `httpsDeployment` a partir do `NEXT_PUBLIC_INIA_API_URL`; conferido carregando a configuração com URL `https://` e `http://`) — no teste local em HTTP ele não aparece, como deve. Resta alinhar o `includeSubDomains` (a API o envia, as páginas não). CSP com `report-to`; R-07 (`style-src 'unsafe-inline'`).
 4. Lista de senhas vazadas local (top-10k) e mínimo maior para administradores (R-22); lista de sessões ativas com encerramento individual (V7.5.2).

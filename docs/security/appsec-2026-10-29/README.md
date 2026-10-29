@@ -22,7 +22,7 @@ já corrigidos (409/400).
 | 2 | APPSEC-02 (= h19 da auditoria Cloudflare): carga de Estrutura dá a uma conta sob custódia de admin de outro Grupo acesso às fichas do Grupo B e desarma a correção do C09 | média | **corrigido** pela sessão da auditoria Cloudflare em `4859d40f` + `77c5adcd` (os 2 cenários que o reteste desta rodada achou depois do 1º commit) e **retestado** aqui com a prova independente (3/3) |
 | 3 | APPSEC-01: simulação de política mostrava o tipo exato de afastamento (INSS/maternidade) de líderes | média | **corrigido e retestado** |
 | 4 | `body-parser@2.3.0` (derrubar a API sem login) e `zod@4.5.4` (memória) | alto/médio no scanner; crash não reproduzido | **aplicado em 29/10** (`body-parser 2.4.0`, `qs 6.16.1`, `zod 4.6.7`, `multer 2.5.0`); 5.246 testes do backend passaram. O `zod` do frontend também foi para 4.6.7 (ajustes rápidos) |
-| 5 | Sem MFA/SSO corporativo (ASVS V6.3.3) | lacuna de controle | **adiado por decisão da INIA** (29/10): fica para uma próxima etapa |
+| 5 | Sem MFA/SSO corporativo (ASVS V6.3.3) | lacuna de controle | **adiado por decisão da INIA** (29/10): fica para uma próxima etapa — registrado como R-40 |
 | 6 | APPSEC-03: consultas de liderança gravadas em conversa de treino somem da monitoria (código não commitado) | baixa | aberto (frente suspensa) |
 | 7 | APPSEC-04 (EXIF/GPS em foto) e APPSEC-05 (tag GCM truncada) | baixa / endurecimento | **corrigidos e retestados** |
 
@@ -47,8 +47,8 @@ OSV, Syft e ZAP, logs, cópias isoladas do código e o arquivo de segredos aleat
 
 1. Atualizações de `next`, `body-parser`, `zod` (backend e frontend) e `multer` aplicadas em 29/10. Prazos de correção de
    dependências propostos em [../politica-de-dependencias.md](../politica-de-dependencias.md) — falta a aprovação formal.
-2. Registrar como risco aceito o C-N3 (revalidar custódia em toda promoção/transferência), descartado pelo usuário segundo a
-   sessão da auditoria Cloudflare.
+2. Riscos aceitos registrados em `../pendencias-e-riscos.md`: C-N3 como **R-39**, MFA/SSO adiado como **R-40** e nota de 29/10 no
+   **R-07** (CSP `style-src 'unsafe-inline'`, que o ZAP marca como médio).
 3. Cofre de segredos e antivírus nos uploads — dependem do padrão da Vivo. MFA/SSO adiado para uma próxima etapa (decisão da INIA).
 4. Testes dinâmicos na homologação só com alvo e contas autorizados (ver plano).
 5. Informar ao Conviso os riscos aceitos já documentados (R-01…R-38 em `../pendencias-e-riscos.md`).
