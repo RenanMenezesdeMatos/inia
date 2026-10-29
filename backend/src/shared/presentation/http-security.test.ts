@@ -249,6 +249,16 @@ describe("limites de requisições", () => {
     expect((await send()).status).toBe(429)
   })
 
+  it("prévia de documento: teto por conta, nas duas telas (material e administração) e sem contornar pela grafia do caminho", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { knowledgePreviewsPerAccount: 2 } })
+    const cookie = await loggedInCookie(app)
+    const id = "33333333-3333-4333-8333-333333333333"
+    expect((await request(app).get(`/api/v1/knowledge-materials/${id}/preview`).set("Cookie", cookie)).status).not.toBe(429)
+    expect((await request(app).get(`/api/v1/KNOWLEDGE-MATERIALS/${id}/Preview/`).set("Cookie", cookie)).status).not.toBe(429)
+    expect((await request(app).get(`/api/v1/knowledge-materials/${id}/preview`).set("Cookie", cookie)).status).toBe(429)
+    expect((await request(app).get(`/api/v1/knowledge-materials/${id}`).set("Cookie", cookie)).status).not.toBe(429)
+  })
+
   it("limites por caminho não se contornam com maiúsculas nem barra final (o Express casa a mesma rota)", async () => {
     const app = createApp(fakeDatabase().database, { rateLimits: { adminCostlyActionsPerAccount: 1, voiceSessionsPerAccount: 1, aiInteractivePerAccount: 1000 } })
     const cookie = await loggedInCookie(app)

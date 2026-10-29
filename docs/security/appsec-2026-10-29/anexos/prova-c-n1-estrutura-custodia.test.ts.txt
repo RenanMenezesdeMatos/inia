@@ -1,0 +1,104 @@
+import pg from "pg"
+import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { env } from "../../../config/env.js"
+import type { Database } from "../../../infrastructure/database/pool.js"
+import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
+import { canOpenEmployeeProfile, loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
+import { createDataHubContext, type DataHubContext } from "../application/data-hub-context.js"
+import { createFeed, setFeedStatus } from "../application/feed-service.js"
+import type { DataFeedRow, DataRunRow } from "../application/records.js"
+import { enqueueRun } from "../application/run-service.js"
+import { executeRun } from "../application/run-pipeline.js"
+import { createSource } from "../application/source-service.js"
+import { CapturingLogger, FakeSftpClient, InMemorySecretStore, MockHttpClient } from "./fakes.js"
+
+/**
+ * PROVA APPSEC C-N1 (29/10/2026, só no banco descartável): conta pré-cadastrada à mão (matrícula futura) por um admin de Grupo A.
+ * A carga de ESTRUTURA liga um operador do Grupo B a ela e a move para o Grupo B — sem passar pela custódia do C09.
+ */
+const ENABLED = process.env.INIA_DB_PROOF === "1"
+const ORG = "de00ee00-0000-4000-8000-00000000c0a1"
+const OPERATION = "de00ee00-0000-4000-8000-00000000c0a2"
+const NOW = new Date("2026-10-29T15:00:00-03:00")
+const DOMAIN = "cn1-proof.test"
+let pool: pg.Pool
+let db: Database
+let ctx: DataHubContext
+let employees: DataFeedRow
+let structure: DataFeedRow
+let teamA: string
+let teamB: string
+const csv = (rows: string[][]) => new TextEncoder().encode(rows.map((row) => row.join(";")).join("\n"))
+const fileFeedConfig = { connector: "FILE_UPLOAD" as const, file: { format: "CSV" as const, csv: { encoding: "utf-8" as const, delimiter: "auto" as const, hasHeader: true, skipRows: 0 }, excel: { hasHeader: true, skipRows: 0 } } }
+const identity = (fields: string[]) => ({ fields: fields.map((field) => ({ target: field, source: field, transforms: [] })) })
+const EMP = ["externalEmployeeId", "name", "role", "email", "groupExternalCode", "active"]
+const STR = ["externalEmployeeId", "reportsToExternalId", "groupExternalCode"]
+async function runOn(feed: DataFeedRow, header: string[], rows: string[][], filename: string): Promise<DataRunRow> {
+  const raw = await ctx.rawObjects.put({ organizationId: ORG, sourceId: feed.sourceId, feedId: feed.id, filename, contentType: "text/csv", content: csv([header, ...rows]) })
+  const { run } = await enqueueRun(ctx, { organizationId: ORG, feed, triggerKind: "FILE_UPLOAD", requestedBy: null, rawObjectId: raw.id })
+  return (await executeRun(ctx, run.id))!
+}
+async function preRegistered(name: string, matricula: string, email: string) {
+  const person = await db.query<{ id: string }>(`insert into people (organization_id, name, role, team_id, matricula) values ($1, $2, 'OPERATOR', $3, $4) returning id`, [ORG, name, teamA, matricula])
+  const account = await db.query<{ id: string }>(`insert into user_accounts (organization_id, person_id, email, password_hash) values ($1, $2, $3, 'x') returning id`, [ORG, person.rows[0]!.id, email])
+  return { personId: person.rows[0]!.id, accountId: account.rows[0]!.id }
+}
+const accountOf = async (id: string) => (await db.query<{ active: boolean; session_version: number }>(`select active, session_version from user_accounts where id = $1`, [id])).rows[0]
+async function cleanup() {
+  for (const sql of ["delete from user_accounts where organization_id = $1", "delete from audit_logs where organization_id = $1", "delete from data_sources where organization_id = $1", "delete from data_raw_objects where organization_id = $1", "update people set reports_to_id = null where organization_id = $1", "delete from people where organization_id = $1", "delete from teams where organization_id = $1", "delete from operations where organization_id = $1", "delete from organizations where id = $1"]) await db.query(sql, [ORG])
+}
+
+describe.skipIf(!ENABLED)("APPSEC C-N1 — carga de Estrutura × custódia da credencial pré-cadastrada", () => {
+  beforeAll(async () => {
+    pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL })
+    db = pool
+    ctx = createDataHubContext(db, { http: new MockHttpClient(), sftp: new FakeSftpClient(), logger: new CapturingLogger(), secrets: new InMemorySecretStore(), clock: { now: () => NOW } })
+    await cleanup()
+    await db.query(`insert into organizations (id, name, slug) values ($1, 'CN1 Prova', 'cn1-prova')`, [ORG])
+    await db.query(`insert into operations (id, organization_id, name, timezone) values ($1, $2, 'CN1 Operação', 'America/Fortaleza')`, [OPERATION, ORG])
+    teamA = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name, external_code) values ($1, $2, 'CN1 Grupo A', 'CN1-GA') returning id`, [ORG, OPERATION])).rows[0]!.id
+    teamB = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name, external_code) values ($1, $2, 'CN1 Grupo B', 'CN1-GB') returning id`, [ORG, OPERATION])).rows[0]!.id
+    const source = await createSource(ctx, ORG, null, { name: "CN1 RH", config: { kind: "FILE_UPLOAD" } })
+    employees = await setFeedStatus(ctx, ORG, null, (await createFeed(ctx, ORG, null, source.id, { feedKey: "colaboradores", name: "Colaboradores", contractKey: "EMPLOYEES", connectorConfig: fileFeedConfig, authoritative: false, sourceNamespace: "cn1-rh", cadence: { kind: "MANUAL" }, mapping: identity(EMP) })).id, "ACTIVATE")
+    structure = await setFeedStatus(ctx, ORG, null, (await createFeed(ctx, ORG, null, source.id, { feedKey: "hierarquia", name: "Hierarquia", contractKey: "ORGANIZATIONAL_STRUCTURE", connectorConfig: fileFeedConfig, authoritative: true, sourceNamespace: "cn1-org", cadence: { kind: "MANUAL" }, mapping: identity(STR) })).id, "ACTIVATE")
+    const placed = await runOn(employees, EMP, [["CN1-31", "Otto Base", "OPERATOR", "", "CN1-GB", "true"]], "cn1-emp-1.csv")
+    expect(placed.status).toBe("COMPLETED")
+  }, 60_000)
+  afterAll(async () => {
+    if (!db) return
+    await cleanup()
+    await pool.end()
+  })
+
+  it("controle (C09): pré-cadastro posto pela carga de Colaboradores como Supervisor do Grupo B → conta desativada", async () => {
+    const lia = await preRegistered("Lia Campos", "CN1-20", `lia@${DOMAIN}`)
+    const run = await runOn(employees, EMP, [["CN1-20", "Lia Campos", "SUPERVISOR", "", "CN1-GB", "true"]], "cn1-emp-2.csv")
+    expect(run.status).toBe("COMPLETED")
+    expect((await accountOf(lia.accountId))!.active).toBe(false)
+  })
+
+  it("C-N1: a carga de Estrutura liga o operador do Grupo B à conta pré-cadastrada e a move para o Grupo B — a conta segue ativa e passa a abrir a ficha", async () => {
+    const nina = await preRegistered("Nina Prado", "CN1-30", `nina@${DOMAIN}`)
+    const before = await accountOf(nina.accountId)
+    const run = await runOn(structure, STR, [["CN1-31", "CN1-30", ""], ["CN1-30", "", "CN1-GB"]], "cn1-str-1.csv")
+    expect(run.status).toBe("COMPLETED")
+    const otto = (await db.query<{ id: string; reports_to_id: string }>(`select id, reports_to_id from people where organization_id = $1 and matricula = 'CN1-31'`, [ORG])).rows[0]!
+    const ninaNow = (await db.query<{ team_id: string }>(`select team_id from people where id = $1`, [nina.personId])).rows[0]!
+    const after = await accountOf(nina.accountId)
+    const scope = await loadViewerScope(new PgAnalyticsReadRepository(db), { sub: nina.accountId, personId: nina.personId, organizationId: ORG, role: "OPERATOR" } as never)
+    console.log(JSON.stringify({ ottoReportsToNina: otto.reports_to_id === nina.personId, ninaMovedToB: ninaNow.team_id === teamB, accountBefore: before, accountAfter: after, ninaCanOpenOttoProfile: canOpenEmployeeProfile(scope, otto.id) }))
+    // Comportamento SEGURO esperado: conta desativada (ou sessão derrubada) antes de a pessoa ganhar alcance no Grupo B.
+    expect(after!.active && after!.session_version === before!.session_version && canOpenEmployeeProfile(scope, otto.id)).toBe(false)
+  })
+
+  it("C-N1 (desarme do C09): depois da Estrutura, Colaboradores promove a conta a Supervisora do Grupo B — a conta deveria cair", async () => {
+    const rui = await preRegistered("Rui Dias", "CN1-40", `rui@${DOMAIN}`)
+    const str = await runOn(structure, STR, [["CN1-40", "CN1-31", ""]], "cn1-str-2.csv")
+    expect(str.status).toBe("COMPLETED")
+    const run = await runOn(employees, EMP, [["CN1-40", "Rui Dias", "SUPERVISOR", "", "CN1-GB", "true"]], "cn1-emp-3.csv")
+    expect(run.status).toBe("COMPLETED")
+    const after = await accountOf(rui.accountId)
+    console.log(JSON.stringify({ promotedAfterStructure: after }))
+    expect(after!.active).toBe(false)
+  })
+})

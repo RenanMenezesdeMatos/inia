@@ -141,6 +141,8 @@ export type RateLimitSettings = {
   adminCostlyActionsPerAccount: number
   /** Envio de foto/capa do perfil (até 2 imagens de 8 MB em memória cada) por conta, por minuto (AUTH-17). */
   profileWritesPerAccount: number
+  /** Prévias de documento (DOCX → HTML) por conta, por minuto: cada uma descompacta e converte o arquivo (lote 3 da 4ª auditoria). */
+  knowledgePreviewsPerAccount: number
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
@@ -156,6 +158,7 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   voiceSessionsPerAccountHalfHour: 60,
   adminCostlyActionsPerAccount: 30,
   profileWritesPerAccount: 20,
+  knowledgePreviewsPerAccount: 30,
 }
 
 const httpLog = createLogger("http")
@@ -236,6 +239,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // destino externo (sondagem de rede). Montado depois do guard de cada área (precisa da conta da sessão).
   const adminCostlyLimiter = limit({ name: "admin-costly-account", windowMs: 60_000, max: "adminCostlyActionsPerAccount", key: accountKey, message: "Muitos testes e simulações em pouco tempo. Aguarde um instante." })
   const costly = (pattern: RegExp): express.RequestHandler => (request, response, next) => (request.method === "POST" && pattern.test(routePath(request)) ? adminCostlyLimiter(request, response, next) : next())
+  // Prévia de documento: qualquer leitor do material pode pedir, e cada uma descompacta e converte o arquivo — teto por conta.
+  const previewPerAccount = limit({ name: "knowledge-preview-account", windowMs: 60_000, max: "knowledgePreviewsPerAccount", key: accountKey, message: "Muitas prévias de documento em pouco tempo. Aguarde um instante." })
+  const previews: express.RequestHandler = (request, response, next) => (request.method === "GET" && /^\/[^/]+\/preview$/.test(routePath(request)) ? previewPerAccount(request, response, next) : next())
   const readConfirmationFailures = limit({ name: "read-confirmation-account", windowMs: 15 * 60_000, max: "readConfirmationFailuresPerAccount", key: accountKey, countOnlyFailures: true, message: "Muitas tentativas de confirmação. Aguarde alguns minutos e tente novamente." })
   // Monitoria de usabilidade: fatos de servidor observados na RESPOSTA 2xx das rotas existentes (login, voz, aplicação,
   // notificação) — montados antes delas e só com a coleta ligada; nunca alteram a resposta.
@@ -278,13 +284,13 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!)))
   app.use("/api/v1/feedbacks", requireAuth, createFeedbackRouter(database))
   app.use("/api/v1/admin/access", requireAuth, createAccessRouter(database))
-  app.use("/api/v1/admin/knowledge", can("knowledge.manage"), createKnowledgeRouter(database))
+  app.use("/api/v1/admin/knowledge", can("knowledge.manage"), previews, createKnowledgeRouter(database))
   // Checkpoint Registry — checkpoints derivados da Base de Conhecimento (carregam o literal da base). LER também exige a
   // organização inteira: a rota de Bases só mostra uma base a quem alcança o Grupo dela (SEC-03) e a tela "Checkpoints da
   // operação" saiu em 07/10 — nenhum fluxo precisa da leitura escopada (achado C03 da 4ª auditoria).
   app.use("/api/v1/admin/checkpoints", can("knowledge.manage", { organizationWide: true }), createCheckpointRegistryRouter(database))
   // Leitor de material para qualquer usuário autenticado — acesso pelo alcance da base (backend é a autoridade).
-  app.use("/api/v1/knowledge-materials", requireAuth, createKnowledgeMaterialRouter(database))
+  app.use("/api/v1/knowledge-materials", requireAuth, previews, createKnowledgeMaterialRouter(database))
   app.use("/api/v1/admin/agents", can("agents.manage"), costly(/^\/[^/]+\/test$/), createAgentRouter(database))
   // Catálogo administrável de domínios de negócio (classifica Agents DOMAIN e restringe Orquestradores DOMAINS).
   // Catálogos da organização inteira: lê com a permissão em qualquer escopo, altera só com escopo de organização.

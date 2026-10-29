@@ -1,7 +1,7 @@
 import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { loadAccessibleKnowledgeMaterial } from "../application/knowledge-material-access.js"
-import { renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
+import { DocxPreviewTooLargeError, renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { sendKnowledgeFile } from "./knowledge-file-response.js"
 
 /**
@@ -58,7 +58,8 @@ export function createKnowledgeMaterialRouter(db: Database) {
     try {
       const html = await renderDocxPreviewHtml(row.file_data)
       response.json({ data: { format: "html", html } })
-    } catch {
+    } catch (error) {
+      if (error instanceof DocxPreviewTooLargeError) return response.status(422).json({ error: { code: "KNOWLEDGE_PREVIEW_TOO_LARGE", message: error.message } })
       response.status(422).json({ error: { code: "KNOWLEDGE_PREVIEW_FAILED", message: "Não foi possível gerar a prévia deste documento." } })
     }
   })

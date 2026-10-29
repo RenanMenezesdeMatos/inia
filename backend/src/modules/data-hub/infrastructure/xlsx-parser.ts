@@ -42,6 +42,13 @@ async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
   return workbook
 }
 
+/** Largura da planilha (a linha mais larga). Linha a linha: `Math.max(...linhas)` estoura a pilha a partir de ~100 mil linhas. */
+export function widestRow(rows: readonly (readonly unknown[])[]): number {
+  let width = 0
+  for (const row of rows) if (row.length > width) width = row.length
+  return width
+}
+
 export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit?: number): Promise<ParsedTable & { sheets: string[] }> {
   const workbook = await loadWorkbook(bytes)
   const sheets = workbook.worksheets.map((sheet) => sheet.name)
@@ -57,7 +64,7 @@ export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit
   })
   const all = matrix.slice(options.skipRows)
   if (all.length === 0) throw new DataRunError("DATA_FILE_INVALID", "A aba selecionada está vazia.")
-  const width = Math.max(...all.map((row) => row.length))
+  const width = widestRow(all)
   const columns = Array.from({ length: width }, (_, index) => {
     const header = options.hasHeader ? all[0]![index] : null
     const text = header === null || header === undefined ? "" : String(header).trim()

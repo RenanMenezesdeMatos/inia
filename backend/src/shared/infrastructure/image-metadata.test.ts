@@ -101,6 +101,15 @@ describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
     expect(inspectImage(clean)).toEqual({ mimeType: "image/webp", width: 800, height: 200 })
   })
 
+  it("JPEG com marcador sem tamanho (RST/TEM) antes do SOF: a validação aceita e o EXIF/GPS também sai (auditoria AppSec 29/10/2026)", () => {
+    const original = jpeg(1)
+    const withStandalone = Buffer.concat([original.subarray(0, 2), Buffer.from([0xff, 0xd0, 0xff, 0x01]), original.subarray(2)])
+    expect(inspectImage(withStandalone)).toEqual({ mimeType: "image/jpeg", width: 800, height: 600 })
+    const clean = stripImageMetadata(withStandalone, "image/jpeg")
+    for (const leaked of ["GPS", "iPhone", "xmpmeta", "IPTC"]) expect(clean.toString("latin1")).not.toContain(leaked)
+    expect(inspectImage(clean)).toEqual({ mimeType: "image/jpeg", width: 800, height: 600 })
+  })
+
   it("estrutura inesperada volta igual (nada é cortado no escuro)", () => {
     const broken = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0x00])
     expect(stripImageMetadata(broken, "image/jpeg").equals(broken)).toBe(true)

@@ -6,6 +6,7 @@ import { resolveEligibleDaysBySubject } from "../../indicators/application/opera
 import { resolveEmployeeStatusAt } from "../../people/application/employment-status-service.js"
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { isOperationallyEligibleStatus } from "../../people/domain/employment-status.js"
+import { isSensitiveLeave } from "../../org-structure/domain/management-metrics.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
 import { NUMERIC_COMPARATOR_TEXT, numericComparatorMatches, type PolicyCondition } from "../domain/policy-definition.js"
 import type { ConditionOutcome, ConditionResolver, FactReference } from "../domain/policy-evaluation.js"
@@ -98,6 +99,29 @@ async function resolveIndicator(db: Db, subject: PolicySubject, condition: Extra
   return { status, summary, facts: { indicatorCode: code, indicatorName: code ? (labels.get(code)?.name ?? null) : null, unit: code ? (labels.get(code)?.unit ?? null) : null, ...evaluation }, ...(status === "INCONCLUSIVE" && typeof evaluation.reason === "string" ? { reasonCode: evaluation.reason } : {}), references }
 }
 
+/**
+ * O TIPO do afastamento sensível (INSS, maternidade, paternidade) nunca sai da avaliação de política: a decisão só usa
+ * "elegível ou não", e o resumo e os fatos chegam à simulação, à justificativa e ao texto do nó de Workflow — lidos por quem
+ * tem o papel de políticas ou `workflows.manage`, sem `people.manage`. Mesma regra do C14 (R-37): achado APPSEC-01, 29/10/2026.
+ */
+const PROTECTED_LEAVE = "AFASTAMENTO_PROTEGIDO"
+const PROTECTED_LEAVE_TEXT = "afastamento — motivo protegido"
+const protectedLeaveStatus = (status: string) => (isSensitiveLeave(status) ? PROTECTED_LEAVE : status)
+/** Fatos de QUALQUER condição (a de indicador também traz `eligibility.excludedByStatus` da medição operacional): chave ou valor
+ * com o tipo sensível vira AFASTAMENTO_PROTEGIDO, com as contagens somadas. */
+function protectLeave(value: unknown): unknown {
+  if (typeof value === "string") return protectedLeaveStatus(value)
+  if (Array.isArray(value)) return value.map(protectLeave)
+  if (value === null || typeof value !== "object" || value instanceof Date) return value
+  const result: Record<string, unknown> = {}
+  for (const [key, inner] of Object.entries(value)) {
+    const target = protectedLeaveStatus(key)
+    const safe = protectLeave(inner)
+    result[target] = target !== key && typeof result[target] === "number" && typeof safe === "number" ? (result[target] as number) + safe : safe
+  }
+  return result
+}
+
 async function resolveEmployment(db: Db, subject: PolicySubject, condition: Extract<PolicyCondition, { kind: "EMPLOYMENT" }>): Promise<ConditionOutcome> {
   const today = localDateOf(subject.asOf, subject.timeZone)
   if (condition.check === "CURRENTLY_ELIGIBLE") {
@@ -110,7 +134,7 @@ async function resolveEmployment(db: Db, subject: PolicySubject, condition: Extr
     // Presumido "em produção" com a fonte de situação ATRASADA = não se sabe (nunca afirma que deveria estar produzindo).
     if (!resolved.confirmed && freshness.state === "STALE") return { status: "INCONCLUSIVE", summary: `Situação funcional em ${today}: presumida, com a fonte de situação atrasada desde ${freshness.lastSuccessLocalDate ?? "?"}`, facts, reasonCode: "EMPLOYMENT_STATUS_STALE", references: [] }
     const eligible = (person.rows[0]?.active ?? false) && isOperationallyEligibleStatus(resolved.status)
-    return { status: eligible === condition.expected ? "MET" : "NOT_MET", summary: `Situação funcional em ${today}: ${eligible ? "elegível (em produção)" : `não elegível (${resolved.status})`}`, facts, references: [{ kind: "EMPLOYMENT", ref: `${subject.personId}|${today}`, label: `Situação funcional em ${today}` }] }
+    return { status: eligible === condition.expected ? "MET" : "NOT_MET", summary: `Situação funcional em ${today}: ${eligible ? "elegível (em produção)" : `não elegível (${isSensitiveLeave(resolved.status) ? PROTECTED_LEAVE_TEXT : resolved.status})`}`, facts, references: [{ kind: "EMPLOYMENT", ref: `${subject.personId}|${today}`, label: `Situação funcional em ${today}` }] }
   }
   const window = resolveTimeWindow(condition.period, subject.asOf, subject.timeZone)
   const result = (await resolveEligibleDaysBySubject(db as Database, [subject.personId], window, subject.timeZone, { now: subject.asOf })).get(subject.personId)
@@ -311,6 +335,14 @@ async function resolveInteractionFlag(db: Db, subject: PolicySubject, condition:
 const HIDDEN_INTERVENTION_HISTORY: ConditionOutcome = { status: "INCONCLUSIVE", summary: "Intervenções anteriores: não consultadas — o seu acesso não inclui as intervenções deste colaborador.", facts: {}, reasonCode: "INTERVENTIONS_NOT_VISIBLE", references: [] }
 
 export function createConditionResolver(db: Db, subject: PolicySubject): ConditionResolver {
+  const resolve = createUnprotectedResolver(db, subject)
+  return async (condition) => {
+    const outcome = await resolve(condition)
+    return { ...outcome, facts: protectLeave(outcome.facts) as ConditionOutcome["facts"] }
+  }
+}
+
+function createUnprotectedResolver(db: Db, subject: PolicySubject): ConditionResolver {
   let labels: Promise<Map<string, { name: string; unit: string }>> | null = null
   return async (condition) => {
     switch (condition.kind) {

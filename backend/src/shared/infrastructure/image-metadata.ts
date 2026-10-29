@@ -38,6 +38,13 @@ function stripJpeg(data: Buffer): Buffer {
       parts.push(data.subarray(offset))
       return Buffer.concat(parts)
     }
+    // Marcadores sem tamanho (SOI repetido, TEM, RST0–RST7) — os mesmos que a validação (`jpegSize`) aceita: sem tratá-los, um
+    // arquivo com um deles antes do SOF passava na validação e voltava inteiro daqui, COM o EXIF/GPS (auditoria AppSec 29/10/2026).
+    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+      parts.push(data.subarray(offset, offset + 2))
+      offset += 2
+      continue
+    }
     const length = data.readUInt16BE(offset + 2)
     const end = offset + 2 + length
     if (length < 2 || end > data.length) return data

@@ -6,7 +6,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { extractTextFromFile, fileContentAccepted, resolveSourceType } from "../infrastructure/text-extractor.js"
-import { renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
+import { DocxPreviewTooLargeError, renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { knowledgeFileContentType, sendKnowledgeFile } from "./knowledge-file-response.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
 import { canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
@@ -290,7 +290,8 @@ export function createKnowledgeRouter(db: Database) {
     try {
       const html = await renderDocxPreviewHtml(row.file_data)
       response.json({ data: { format: "html", html } })
-    } catch {
+    } catch (error) {
+      if (error instanceof DocxPreviewTooLargeError) return response.status(422).json({ error: { code: "KNOWLEDGE_PREVIEW_TOO_LARGE", message: error.message } })
       response.status(422).json({ error: { code: "KNOWLEDGE_PREVIEW_FAILED", message: "Não foi possível gerar a prévia deste documento." } })
     }
   })

@@ -18,7 +18,8 @@ export type ZipLimits = { maxEntries: number; maxTotalUncompressedBytes: number;
 
 export const OFFICE_ZIP_LIMITS: ZipLimits = { maxEntries: 20_000, maxTotalUncompressedBytes: 300 * 1024 * 1024, maxEntryRatio: 1_000 }
 
-export type ZipInspection = { ok: true; entries: number; totalUncompressedBytes: number } | { ok: false; reason: string }
+/** `files`: nome e tamanho descompactado de cada parte, como o diretório central declara (e a guarda conferiu). */
+export type ZipInspection = { ok: true; entries: number; totalUncompressedBytes: number; files: { name: string; bytes: number }[] } | { ok: false; reason: string }
 
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_SIGNATURE = 0x02014b50
@@ -74,6 +75,7 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
   let cursor = centralOffset
   let total = 0
   const names = new Set<string>()
+  const files: { name: string; bytes: number }[] = []
   for (let index = 0; index < entries; index += 1) {
     if (cursor + 46 > data.length || data.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) return { ok: false, reason: "diretório central corrompido" }
     const name = data.toString("latin1", cursor + 46, cursor + 46 + data.readUInt16LE(cursor + 28))
@@ -87,11 +89,12 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
     if (uncompressed > 1024 * 1024 && uncompressed / Math.max(compressed, 1) > limits.maxEntryRatio) return { ok: false, reason: "taxa de compressão suspeita" }
     const mismatch = verifyEntry(data, cursor, compressed, uncompressed)
     if (mismatch) return { ok: false, reason: mismatch }
+    files.push({ name, bytes: uncompressed })
     cursor += 46 + data.readUInt16LE(cursor + 28) + data.readUInt16LE(cursor + 30) + data.readUInt16LE(cursor + 32)
   }
   // Registro além da contagem (o JSZip leria e descompactaria sem esta conferência).
   if (cursor !== centralOffset + centralSize) return { ok: false, reason: "diretório central com registros não contados" }
-  return { ok: true, entries, totalUncompressedBytes: total }
+  return { ok: true, entries, totalUncompressedBytes: total, files }
 }
 
 /** Limites completos do multer para uploads em memória: além do tamanho, partes, campos e tamanho de campo. */

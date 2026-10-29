@@ -88,3 +88,8 @@ O MOTIVO (`interactions.reason`, obrigatório) é a categoria genérica que a fo
 ### Ingestão legada: chamada com fim no futuro (2026-10-20)
 
 Achado D12 da validação funcional de 20/10: `POST /api/v1/ingestion/interactions` recusa fim da chamada mais de 5 min à frente do relógio do servidor (`INGESTION_CLOCK_SKEW_MS`) com 422 `INTERACTION_ENDS_IN_FUTURE` — antes aceitava e disparava Workflows como se a chamada já tivesse acontecido (relógio ou fuso errados na origem). A Central de Dados (`interaction-contracts.ts`) confere só "fim depois do início"; aplicar a mesma regra lá é decisão à parte (recusaria cargas inteiras com fuso errado). Teste `ingestion-router.test.ts`.
+
+### XLSX grande (2026-10-29, lote 3 da 4ª auditoria)
+
+A largura da planilha (`xlsx-parser.ts › widestRow`) é contada linha a linha: `Math.max(...linhas)` estourava a pilha a partir de ~100 mil linhas — XLSX legítimo de 300 mil linhas falhava no upload e na carga agendada. Pendente (R-38): o upload ainda lê o arquivo inteiro para mostrar 20 linhas (CSV de 44 MB → ~1,1 GB de pico).
+

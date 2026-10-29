@@ -60,16 +60,20 @@ export function secretAad(binding: SecretBinding): Buffer {
   return Buffer.from(`inia-secret:v2:${binding.store}:${binding.organizationId}:${binding.ownerId}:${binding.purpose}`, "utf8")
 }
 
+/** Tag do GCM sempre com 16 bytes: sem `authTagLength`, o Node aceita na decifragem uma tag truncada (até 4 bytes), o que
+ * reduz a proteção contra adulteração da cifra gravada (auditoria AppSec 29/10/2026, Semgrep gcm-no-tag-length). */
+const GCM_TAG_BYTES = 16
+
 export function encryptSecret(plain: string, key: Buffer, aad?: Buffer): { ciphertext: Buffer; iv: Buffer; authTag: Buffer } {
   const iv = randomBytes(12)
-  const cipher = createCipheriv("aes-256-gcm", key, iv)
+  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: GCM_TAG_BYTES })
   if (aad) cipher.setAAD(aad)
   const ciphertext = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()])
   return { ciphertext, iv, authTag: cipher.getAuthTag() }
 }
 
 export function decryptSecret(input: { ciphertext: Buffer; iv: Buffer; authTag: Buffer }, key: Buffer, aad?: Buffer): string {
-  const decipher = createDecipheriv("aes-256-gcm", key, input.iv)
+  const decipher = createDecipheriv("aes-256-gcm", key, input.iv, { authTagLength: GCM_TAG_BYTES })
   if (aad) decipher.setAAD(aad)
   decipher.setAuthTag(input.authTag)
   return Buffer.concat([decipher.update(input.ciphertext), decipher.final()]).toString("utf8")

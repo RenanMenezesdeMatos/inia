@@ -51,13 +51,13 @@
     "jsonwebtoken": "^9.0.3",
     "mammoth": "^1.12.2",
     "mssql": "^12.7.4",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
     "mysql2": "^3.24.5",
     "pdf-parse": "^2.4.5",
     "pg": "^8.16.3",
     "pino": "^9.9.4",
     "ssh2": "^1.17.0",
-    "zod": "^4.1.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

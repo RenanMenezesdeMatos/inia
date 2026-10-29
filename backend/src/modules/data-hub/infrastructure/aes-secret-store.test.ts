@@ -16,6 +16,13 @@ describe("cifra das credenciais (R-12/R-25)", () => {
     }
   })
 
+  it("tag do GCM truncada é recusada — só a tag inteira de 16 bytes abre (auditoria AppSec 29/10/2026)", () => {
+    const stored = encryptBoundSecret("s3nha-do-banco", BINDING, NEW)
+    expect(stored.authTag).toHaveLength(16)
+    expect(() => decryptStoredSecret({ ...stored, authTag: stored.authTag.subarray(0, 4) }, BINDING, { current: NEW, previous: null })).toThrow()
+    expect(() => decryptStoredSecret({ ...stored, authTag: stored.authTag.subarray(0, 12) }, BINDING, { current: NEW, previous: null })).toThrow()
+  })
+
   it("linhas antigas (v1, sem dados associados) continuam legíveis", () => {
     expect(decryptStoredSecret(legacy("antiga", NEW), BINDING, { current: NEW, previous: null })).toBe("antiga")
   })

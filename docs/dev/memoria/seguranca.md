@@ -95,6 +95,14 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
 
 - Migration `123_auth_session_revocations.sql` aplicada em `inia` e `inia_test` (08/10/2026); `inia_test` também tem 121/122 do
   branch `claude/ai-limiter-worker-split`.
-- Dependências fixadas: `next ~16.3.8` (16.4.0 evitado), `multer ^2.4.0`; `proxy-addr` 2.0.8, `sharp` 0.35.5 no lock.
+- Dependências fixadas: `next ~16.4.1` (29/10/2026, avisos GHSA-2464/673q/p3m5 da 16.3.8), `multer ^2.5.0`, `zod ^4.6.7` (backend), `body-parser` 2.4.0 e `qs` 6.16.1 no lock (o `npm update` puxava `qs` de um dia); `proxy-addr` 2.0.8, `sharp` 0.35.5 no lock.
+- Preparação AppSec (29/10/2026, `docs/security/appsec-2026-10-29/`): avaliação de política nunca expõe o tipo do afastamento
+  sensível (`protectLeave` em `interventions/application/condition-resolvers.ts`, APPSEC-01); o removedor de metadados JPEG trata
+  os mesmos marcadores sem tamanho que a validação (APPSEC-04); GCM com `authTagLength: 16` (APPSEC-05). APPSEC-02 = h19 da
+  4ª rodada: custódia pendente (migration 163) em `4859d40f` e, para a Estrutura como 1ª carga, `77c5adcd` — a prova independente
+  (`anexos/`) passa 3/3; C-N3 (revalidar em toda promoção) descartado pelo usuário. N03 (backup) em `a36909d9`. Atualizações
+  `next 16.4.1`, `body-parser 2.4.0`, `zod 4.6.7`, `multer 2.5.0` aplicadas em 29/10 (árvore verificada). Aberto: APPSEC-03
+  (treino); recomendado: `zod` do frontend (4.4.3). `npm run security:scan` = Semgrep/Gitleaks/OSV/Syft
+  em contêiner fixado por digest, barrando só achado novo em relação a `scripts/security/appsec-baseline.json`.
 - Pendências principais: organização fixa em ~30 arquivos (R-01), voz Live sem `setup` travado (R-04), CSP com estilos inline
   (R-07; os scripts já usam nonce), limitador por processo (R-02), manuais 003/004 desatualizados sobre HTTP (R-11).

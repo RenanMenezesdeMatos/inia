@@ -28,6 +28,7 @@
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "start": "node scripts/install/run.mjs start",
     "github:publish": "node scripts/github/publicar.mjs",
-    "security:check": "node scripts/security/verificar.mjs"
+    "security:check": "node scripts/security/verificar.mjs",
+    "security:scan": "node scripts/security/varredura-appsec.mjs"
   }
 }
