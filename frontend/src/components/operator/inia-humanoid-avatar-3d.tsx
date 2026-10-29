@@ -141,7 +141,7 @@ export function IniaHumanoidAvatar3D({
       )}
 
       {showStatus ? <span className="absolute top-3 left-3 whitespace-nowrap rounded-full bg-background/88 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur-sm">
-        <span className={`mr-1.5 inline-block size-1.5 rounded-full ${statusLabel ? "animate-pulse bg-amber-500 motion-reduce:animate-none" : state === "listening" ? "animate-pulse bg-emerald-500" : state === "speaking" ? "animate-pulse bg-primary" : "bg-emerald-500"}`} />
+        <span className={cn("mr-1.5 inline-block size-1.5 rounded-full", statusLabel ? "animate-pulse bg-amber-500 motion-reduce:animate-none" : state === "listening" ? "animate-pulse bg-emerald-500" : state === "speaking" ? "animate-pulse bg-primary" : "bg-emerald-500")} />
         {statusLabel ?? STATE_LABEL[state]}
       </span> : null}
       {attribution ? <AvatarCredit placement={attributionPlacement} /> : null}

@@ -13,6 +13,7 @@ import {
   type PublishIssue,
   type ScriptScope,
 } from "../domain/argument-script.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * CADASTRO DE ARGUMENTÁRIOS (serviço único — rota admin e provas usam o mesmo). Organização SEMPRE da sessão; permissão
@@ -325,31 +326,7 @@ export async function deleteArgumentScript(db: Database, actor: ArgumentScriptAc
 }
 
 /** Com o POOL, conexão dedicada (begin/commit); com um CLIENT já em transação (provas, QA Lab), savepoint — nunca um commit de fora. */
-async function inTransaction<T>(db: Database, work: (client: Pick<Database, "query">) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint argument_script_tx")
-    try {
-      const result = await work(db)
-      await db.query("release savepoint argument_script_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint argument_script_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("argument_script_tx")
 
 /**
  * PUBLICAR o rascunho. Vigência começa em `effectiveFrom` (padrão: agora) — nunca antes da publicação (tolerância de relógio de 5

@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * VINCULAR À PESSOA DA BASE — corrige um duplicado que já existe: a pessoa cadastrada à mão na INIA (sem matrícula, com login
@@ -18,9 +19,7 @@ export type PersonSourceLinkResult = { fromPersonId: string; toPersonId: string;
 
 export async function linkPersonToSourcePerson(db: Database, input: PersonSourceLinkInput): Promise<PersonSourceLinkResult> {
   if (input.fromPersonId === input.toPersonId) throw new DomainError("Escolha outra pessoa: não dá para vincular alguém a si mesmo.", "PERSON_LINK_SAME_PERSON", 422)
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  return inTransaction(db, async (client) => {
     const people = await client.query<{ id: string; matricula: string | null; active: boolean; account_id: string | null }>(
       `select person.id, person.matricula, person.active, (select account.id from user_accounts account where account.person_id = person.id) account_id
          from people person
@@ -52,14 +51,8 @@ export async function linkPersonToSourcePerson(db: Database, input: PersonSource
       `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, 'people', $4, $5::jsonb)`,
       [input.organizationId, input.actorPersonId, PERSON_LINK_ACTION, from.id, JSON.stringify({ mode: "MANUAL", fromPersonId: from.id, toPersonId: to.id, matricula: to.matricula, accountId, actorAccountId: input.actorAccountId, sessionsRevoked: accountId !== null })],
     )
-    await client.query("commit")
     return { fromPersonId: from.id, toPersonId: to.id, matricula: to.matricula, accountId, sessionsRevoked: accountId !== null }
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }
 
 /** "Vinculada a": o último vínculo manual da pessoa avulsa (pessoa da base e quando), lido do `audit_logs`. */

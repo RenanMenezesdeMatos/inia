@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto"
 import { stripImageMetadata } from "../../../shared/infrastructure/image-metadata.js"
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { COVER_PRESETS, normalizePreferredName, PREFERRED_NAME_MAX_LENGTH, type CoverPreset, type PersonPresentation } from "../domain/person-presentation.js"
 import { IMAGE_ERROR_MESSAGES, validateProfileImage, type ProfileImageUsage } from "../domain/profile-image.js"
 import { loadPersonPresentation } from "./person-presentation-loader.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Preferências pessoais do perfil. A PESSOA editada é SEMPRE a da sessão (organização + pessoa do token verificado): não
@@ -42,33 +42,7 @@ export async function loadMyProfile(db: Queryable, owner: Pick<ProfileOwner, "or
   return { ...presentation, professional: { jobTitle: row?.job_title ?? null, teamName: row?.team_name ?? null, matricula: row?.matricula ?? null }, updatedAt: row?.updated_at ? row.updated_at.toISOString() : null }
 }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  // Já dentro de uma transação (cliente dedicado das provas contra o banco de teste): savepoint no lugar de begin/commit.
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint profile_preferences")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint profile_preferences")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint profile_preferences").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("profile_preferences")
 
 function checkedImage(data: Buffer, usage: ProfileImageUsage) {
   const validation = validateProfileImage(data, usage)

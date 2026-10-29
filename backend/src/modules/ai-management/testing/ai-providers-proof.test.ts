@@ -240,6 +240,14 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
 
   it("uso LEGADO é precificado pela tabela da organização (mesmo provider + id do modelo) — rota inalterada; cadastro ambíguo = sem preço", async () => {
     const legacyModel = routeFor({ purpose: "AGENT_SYNTHESIS", phase: "SYNTHESIS" }, "CURRENT").profile.model
+    // Preço do uso legado só sai da tabela com o modelo cadastrado UMA vez na organização (regra "ambíguo = sem preço"). Um
+    // cadastro dele feito fora da prova (ex.: a configuração inicial de IA aplicada no banco de teste) torna o caso impossível:
+    // falha dizendo isso, em vez de um "UNKNOWN" sem contexto.
+    const preexisting = await pool.query<{ connection: string }>(
+      `select c.name connection from ai_models m join ai_connections c on c.id = m.connection_id
+        where m.organization_id = $1 and c.provider_key = $4 and m.provider_model_id = $2 and c.name not like $3`,
+      [ORG, legacyModel, `${PREFIX}%`, "GOOGLE_GENAI"],
+    )
     const gemini = await api.post("/api/v1/admin/ai/connections").send({ providerKey: "GOOGLE_GENAI", name: `${PREFIX}Gemini`, baseUrl: fake.url, apiKey: "AIza-qa-proof-000000000000", isLocal: false })
     expect(gemini.status, JSON.stringify(gemini.body)).toBe(201)
     const model = await api.post("/api/v1/admin/ai/models").send({ connectionId: gemini.body.data.id, providerModelId: legacyModel, displayName: "Legado da prova" })
@@ -250,6 +258,8 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     expect(textOf(await execute("AGENT_SYNTHESIS"))).toBe("resposta legada (fake)")
     expect(legacyCalls.length).toBe(before + 1)
     const priced = await pool.query(`select routing_mode, cost::text, currency, cost_status, pricing_source, pricing_id from ai_usage_events where organization_id = $1 and occurred_at >= $2 order by id desc limit 1`, [ORG, startedAt])
+    // Conferida só aqui: a chamada legada acima acontece de qualquer jeito (os casos seguintes contam com o uso dela).
+    expect(preexisting.rows.map((row) => row.connection), `banco de teste com "${legacyModel}" já cadastrado fora da prova: com dois cadastros o preço legado fica ambíguo por regra`).toEqual([])
     // 50 × 0,25/1M + 5 × 1,5/1M (fake legado)
     expect(priced.rows[0]).toMatchObject({ routing_mode: "LEGACY", cost_status: "ESTIMATED", pricing_source: "TABLE", currency: "USD" })
     expect(Number(priced.rows[0].cost)).toBeCloseTo(0.00002, 10)

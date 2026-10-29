@@ -6,6 +6,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, XAxis, YAxis } from "rec
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { formatPercent, NO_DATA_LABEL } from "@/lib/analytics/format"
 import type { HistoryPoint } from "@/schemas/analytics/analytics.schema"
+import { cn } from "@/lib/utils"
 
 const chartConfig = { value: { label: "Atingimento", color: "var(--primary)" } } satisfies ChartConfig
 
@@ -21,16 +22,12 @@ export function IndicatorHistoryChart({ points, title, heightClassName = "h-52",
   if (!hasAnyValue) {
     return <p className="rounded-lg bg-muted/60 px-4 py-6 text-center text-sm text-muted-foreground">Sem histórico oficial nas últimas {points.length} períodos.</p>
   }
-  const values = points.map((point) => point.value).filter((value): value is number => value !== null)
-  // Eixo sempre rotulado e sempre incluindo a linha de 100%; a base acompanha os dados (com folga)
-  // pra variação de poucos p.p. não virar uma linha reta colada no topo.
-  const max = Math.ceil((Math.max(110, ...values) + 5) / 10) * 10
-  const min = Math.max(0, Math.floor((Math.min(90, ...values) - 15) / 10) * 10)
+  const { min, max } = achievementAxisDomain(points)
 
   return (
     <figure aria-describedby={captionId}>
       <DeferredMount heightClassName={heightClassName}>
-        <ChartContainer config={chartConfig} className={`${heightClassName} w-full aspect-auto`}>
+        <ChartContainer config={chartConfig} className={cn(heightClassName, "w-full aspect-auto")}>
           <LineChart data={points} margin={{ left: compact ? 0 : 4, right: 12, top: 12, bottom: 0 }} accessibilityLayer>
             <CartesianGrid vertical={false} strokeDasharray="3 3" />
             <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
@@ -51,12 +48,25 @@ export function IndicatorHistoryChart({ points, title, heightClassName = "h-52",
   )
 }
 
+/**
+ * Eixo sempre rotulado e sempre incluindo a linha de 100%; a base acompanha os dados (com folga)
+ * pra variação de poucos p.p. não virar uma linha reta colada no topo. Fora do componente: o
+ * React Compiler (lint) falhava internamente no `Math.max(110, ...values)` dentro do render e
+ * deixava o componente inteiro sem análise.
+ */
+function achievementAxisDomain(points: HistoryPoint[]): { min: number; max: number } {
+  const values = points.map((point) => point.value).filter((value): value is number => value !== null)
+  const max = Math.ceil((Math.max(110, ...values) + 5) / 10) * 10
+  const min = Math.max(0, Math.floor((Math.min(90, ...values) - 15) / 10) * 10)
+  return { min, max }
+}
+
 function DeferredMount({ children, heightClassName }: { children: React.ReactNode; heightClassName: string }) {
   const [ready, setReady] = useState(false)
   useEffect(() => {
     const timeout = window.setTimeout(() => setReady(true), 150)
     return () => window.clearTimeout(timeout)
   }, [])
-  if (!ready) return <div className={`w-full animate-pulse rounded-lg bg-muted/40 ${heightClassName}`} aria-hidden />
+  if (!ready) return <div className={cn("w-full animate-pulse rounded-lg bg-muted/40", heightClassName)} aria-hidden />
   return <>{children}</>
 }

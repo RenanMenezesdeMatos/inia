@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { Clock } from "../../../shared/domain/clock.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { loadPersonPresentations } from "../../profile-preferences/application/person-presentation-loader.js"
 import { FEEDBACK_GREETING_VERSION, greetingOf } from "../domain/feedback-view.js"
 
@@ -49,28 +50,21 @@ export async function reprojectFeedbackGreetings(db: Database, input: { organiza
     const at = input.clock.now()
     const revisions = Array.isArray(container.presentationRevisions) ? container.presentationRevisions : []
     const snapshot = { ...feedback.context_snapshot, feedbackEngine: { ...container, feedbackView: { ...view, greeting: after }, presentationRevisions: [...revisions, { replacedAt: at.toISOString(), reason: FEEDBACK_GREETING_VERSION, previous: { greeting: before } }] } }
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const written = await inTransaction(db, async (client) => {
       // Só grava se o snapshot ainda é o lido (outra escrita no meio = nada é sobrescrito; relatado).
       const updated = await client.query(`update feedbacks set context_snapshot = $2::jsonb, updated_at = $3 where id = $1 and organization_id = $4 and context_snapshot = $5::jsonb`, [feedback.id, JSON.stringify(snapshot), at, input.organizationId, JSON.stringify(feedback.context_snapshot)])
-      if (updated.rowCount !== 1) {
-        await client.query("rollback")
-        row.outcome = "SKIPPED_CHANGED_DURING_RUN"
-        continue
-      }
+      if (updated.rowCount !== 1) return false
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at) values ($1, $2, 'FEEDBACK_GREETING_REPROJECTED', 'FEEDBACK', $3, $4, $5)`,
         [input.organizationId, input.actorId, feedback.id, JSON.stringify({ version: FEEDBACK_GREETING_VERSION, before, after, revision: revisions.length + 1 }), at],
       )
-      await client.query("commit")
-      applied += 1
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
+      return true
+    })
+    if (!written) {
+      row.outcome = "SKIPPED_CHANGED_DURING_RUN"
+      continue
     }
+    applied += 1
   }
   return { version: FEEDBACK_GREETING_VERSION, apply: input.apply, rows, changed: rows.filter((row) => row.outcome === "ADDED" || row.outcome === "UPDATED").length, applied }
 }

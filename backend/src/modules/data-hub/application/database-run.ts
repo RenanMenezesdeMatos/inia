@@ -12,6 +12,7 @@ import { APPLY_BATCH, closeStages, finishRun, mapAll, persistLineage, persistRej
 import { emptyApply, mergeApply, type WriteContext } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
 import { useBatchStatementTimeout } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Carga de um conjunto de dados de BANCO EXTERNO.
@@ -237,35 +238,31 @@ export async function runDatabasePages(ctx: DataHubContext, loaded: LoadedRun, b
           throw new DataRunError("DATA_NO_VALID_RECORDS", `Nenhum registro válido nas linhas ${offset + 1}–${offset + rows.length} — veja a quarentena. A leitura parou ANTES delas (o checkpoint não avançou); corrija o mapeamento ou os dados e sincronize de novo.`)
         }
         const total = emptyApply()
-        const client = await ctx.db.connect()
         try {
-          await client.query("begin")
-          await useBatchStatementTimeout(client)
-          await persistRejections(client, run, rejections)
-          for (let index = 0; index < prepared.ready.length; index += APPLY_BATCH) {
-            const part = await writer.apply(writeContext, client, prepared.ready.slice(index, index + APPLY_BATCH))
-            await persistLineage(client, run, part.lineage)
-            part.lineage = []
-            mergeApply(total, part)
-          }
-          if (total.warnings.length) await persistRejections(client, run, total.warnings)
-          await client.query(`update data_feeds set checkpoint = $2 where id = $1`, [feed.id, JSON.stringify(checkpoint)])
-          await client.query(
-            `update data_ingestion_runs set records_received = $2, records_parsed = $3, records_valid = $4, records_rejected = $5, records_inserted = $6, records_updated = $7,
+          await inTransaction(ctx.db, async (client) => {
+            await useBatchStatementTimeout(client)
+            await persistRejections(client, run, rejections)
+            for (let index = 0; index < prepared.ready.length; index += APPLY_BATCH) {
+              const part = await writer.apply(writeContext, client, prepared.ready.slice(index, index + APPLY_BATCH))
+              await persistLineage(client, run, part.lineage)
+              part.lineage = []
+              mergeApply(total, part)
+            }
+            if (total.warnings.length) await persistRejections(client, run, total.warnings)
+            await client.query(`update data_feeds set checkpoint = $2 where id = $1`, [feed.id, JSON.stringify(checkpoint)])
+            await client.query(
+              `update data_ingestion_runs set records_received = $2, records_parsed = $3, records_valid = $4, records_rejected = $5, records_inserted = $6, records_updated = $7,
                records_unchanged = $8, error_count = $9, warning_count = $10, checkpoint_after = $11 where id = $1`,
-            [run.id, metrics.recordsReceived, metrics.recordsParsed, metrics.recordsValid + prepared.ready.length, metrics.recordsRejected, metrics.recordsInserted + total.inserted, metrics.recordsUpdated + total.updated, metrics.recordsUnchanged + total.unchanged, metrics.errorCount, metrics.warningCount + total.warnings.length, JSON.stringify(checkpoint)],
-          )
-          await client.query("commit")
+              [run.id, metrics.recordsReceived, metrics.recordsParsed, metrics.recordsValid + prepared.ready.length, metrics.recordsRejected, metrics.recordsInserted + total.inserted, metrics.recordsUpdated + total.updated, metrics.recordsUnchanged + total.unchanged, metrics.errorCount, metrics.warningCount + total.warnings.length, JSON.stringify(checkpoint)],
+            )
+          })
         } catch (error) {
-          await client.query("rollback").catch(() => {})
           // Nada da página ficou gravado: as contagens dela saem do total em memória.
           metrics.recordsReceived -= rows.length
           metrics.recordsParsed -= rows.length
           metrics.recordsRejected -= rejectedRecords
           metrics.errorCount -= rejections.length
           throw error
-        } finally {
-          client.release()
         }
         metrics.recordsValid += prepared.ready.length
         metrics.recordsInserted += total.inserted

@@ -3,6 +3,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { StructuralCheckpointExtractor, type CheckpointCandidate, type CheckpointExtractor } from "../domain/checkpoint-extraction.js"
 import { CHECKPOINT_RECONCILIATION_VERSION, reconcileCheckpoints, statusAfterReconciliation, type CheckpointChangeKind, type RegistryEntry, type ReconciliationItem } from "../domain/checkpoint-reconciliation.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 type Queryable = Pick<Database, "query">
 export type RegistryActor = { organizationId: string; personId: string | null }
@@ -23,31 +24,7 @@ async function audit(db: Queryable, actor: RegistryActor, action: string, entity
 }
 
 /** Com o POOL, conexão dedicada (begin/commit); com um CLIENT já em transação (provas/QA), savepoint — nunca um commit de fora. */
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint checkpoint_registry_tx")
-    try {
-      const result = await work(db)
-      await db.query("release savepoint checkpoint_registry_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint checkpoint_registry_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("checkpoint_registry_tx")
 
 type VersionRow = {
   id: string; definition_id: string; definition_version: number; knowledge_version: number; status: string; checkpoint_ref: string | null; kind: CheckpointCandidate["kind"]; segment_role: CheckpointCandidate["segmentRole"]

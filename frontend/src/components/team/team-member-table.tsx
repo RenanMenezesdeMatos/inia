@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatPercent } from "@/lib/analytics/format"
 import { MEMBER_SITUATION_LABELS, type MemberSituation, type TeamMembersPage, type TeamMemberSummary } from "@/schemas/analytics/analytics.schema"
 import type { TeamMembersParams } from "@/services/analytics/analytics-service"
+import { cn } from "@/lib/utils"
 
 type Sort = NonNullable<TeamMembersParams["sort"]>
 const SORT_LABELS: Record<Sort, string> = { situation: "Situação", name: "Nome", achievement: "Atingimento médio", prv: "PRV", delta: "Variação" }
@@ -131,7 +132,7 @@ function MemberRow({ member, href }: { member: TeamMemberSummary; href: string }
         </div>
       </TableCell>
       <TableCell>
-        <span className={`text-xs font-medium ${SITUATION_CLASS[member.situation]}`}>{MEMBER_SITUATION_LABELS[member.situation]}</span>
+        <span className={cn("text-xs font-medium", SITUATION_CLASS[member.situation])}>{MEMBER_SITUATION_LABELS[member.situation]}</span>
       </TableCell>
       <TableCell className="text-right tabular-nums">
         {formatPercent(member.prvAchievementPercent)}

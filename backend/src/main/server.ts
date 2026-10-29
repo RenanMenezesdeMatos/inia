@@ -33,7 +33,7 @@ import { processReportRuns, scheduleDueReports } from "../modules/reports/applic
 import { createPostgresReportStore } from "../modules/reports/application/report-store.js"
 import { processBestPracticeAnalyses } from "../modules/best-practices/application/analysis-service.js"
 import { createReadiness } from "./readiness.js"
-import { applyHttpTimeouts, createShutdown, installProcessHandlers, processFaults, type LifecycleLog } from "./process-lifecycle.js"
+import { applyHttpTimeouts, createShutdown, installProcessHandlers, onHttpListen, processFaults, type LifecycleLog } from "./process-lifecycle.js"
 import { createRuntimeMetrics } from "./runtime-metrics.js"
 import { droppedLogLines, flushLogs, routeConsoleToLog } from "../shared/infrastructure/logging/logger.js"
 
@@ -69,7 +69,8 @@ if (parts.http) {
     ? undefined
     : () => notifyWake(pool, DATA_HUB_WAKE_CHANNEL).catch((error: unknown) => console.warn("Aviso à Central de Dados não enviado (o tick de 15 s do processamento pega a carga):", error instanceof Error ? error.message : error))
   const app = createApp(pool, { registerAiRuntime: true, rateLimitStore: shared.rateLimitStore, readiness: readiness!, metrics, ...(dataHubWakeWorker ? { dataHubWakeWorker } : {}) })
-  const onListening = () => process.stdout.write(`INIA API (${role}) listening on http://${env.HOST ?? "localhost"}:${env.PORT}\n`)
+  // `shutdown` é declarado mais abaixo; o callback só roda depois do carregamento do módulo.
+  const onListening = onHttpListen({ listening: () => process.stdout.write(`INIA API (${role}) listening on http://${env.HOST ?? "localhost"}:${env.PORT}\n`), shutdown: (reason, exitCode) => shutdown(reason, exitCode), log: lifecycleLog })
   server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening)
   applyHttpTimeouts(server)
 } else {

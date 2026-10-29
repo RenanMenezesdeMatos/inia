@@ -5,6 +5,7 @@ import { CONFIGURATION_CHANGE_LABELS, type WorkflowConfiguration } from "../doma
 import { assertGoLiveConfirmed, computeGoLiveImpact, type GoLiveImpact } from "./go-live-impact.js"
 import { validateWorkflowForPublish } from "./validate-workflow-for-publish.js"
 import { loadWorkflowConfigurationRow, type WorkflowConfigurationRow } from "./workflow-configuration-store.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 type Queryable = Pick<Database, "query">
 
@@ -33,7 +34,7 @@ export type PublishWorkflowInput = {
 export type PublishWorkflowResult = { versionId: string; impact: GoLiveImpact } | null
 
 export async function publishWorkflow(db: Database, input: PublishWorkflowInput): Promise<PublishWorkflowResult> {
-  return inTransaction(db, async (tx) => {
+  return inTransaction(db, async (tx: Queryable) => {
     const row = await loadWorkflowConfigurationRow(tx, input.organizationId, input.workflowId, { forUpdate: true })
     if (!row) return null
     if (!input.canManageScope(row.live)) return null
@@ -116,28 +117,4 @@ export function draftConfigurationOf(row: WorkflowConfigurationRow): WorkflowCon
 }
 
 /** Com o POOL, conexão dedicada (begin/commit); com um CLIENT já em transação (provas/QA), savepoint — nunca um commit de fora. */
-async function inTransaction<T>(db: Database, work: (tx: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint workflow_publish_tx")
-    try {
-      const result = await work(db)
-      await db.query("release savepoint workflow_publish_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint workflow_publish_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("workflow_publish_tx")

@@ -1,14 +1,13 @@
-import type pg from "pg"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
-import type { Queryable } from "../../people/application/schedule-exception-service.js"
 import { effectiveCapabilities } from "../domain/capabilities.js"
 import type { IntelligenceReport } from "../domain/intelligence-report.js"
 import type { InterventionPlan } from "../domain/intervention-plan.js"
 import { recordInterventionEvent } from "./apply-evaluation.js"
 import { getInterventionDetail, type InterventionDetail, type Viewer } from "./intervention-service.js"
 import { gatewayNarrativeWriter, type NarrativeWriter } from "./report-narrative.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * RASCUNHO pela IA de um treinamento ou plano de ação — a IA PROPÕE a partir de fatos, diagnóstico e conteúdos APROVADOS
@@ -45,20 +44,6 @@ export type AiDraftState =
   | { contract: typeof AI_DRAFT_CONTRACT; status: "FAILED"; kind: "TRAINING" | "ACTION_PLAN"; generatedAt: string; requestedBy: string; error: string }
   | { contract: typeof AI_DRAFT_CONTRACT; status: "INVESTIGATION_NEEDED"; kind: "TRAINING"; generatedAt: string; requestedBy: string; message: string }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  const client: pg.PoolClient = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 const SYSTEM = {
   TRAINING: [

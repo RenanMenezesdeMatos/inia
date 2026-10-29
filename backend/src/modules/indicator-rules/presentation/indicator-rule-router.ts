@@ -1,6 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express"
 import { canManageScope, coversOrganization, getManageableScopes, normalizeScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { strategyDraftPendingSql, strategyStatusSql } from "../../indicator-diagnosis/application/diagnostic-strategy-service.js"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -237,9 +238,7 @@ export function createIndicatorRuleRouter(db: Database) {
   router.put("/glossary", organizationOnly, async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = glossaryUpsertSchema.parse(request.body)
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    await inTransaction(db, async (client) => {
       await client.query(
         `update indicator_glossary set active = false where indicator_definition_id = $1 and organization_id = $2`,
         [input.indicatorDefinitionId, organizationId],
@@ -261,13 +260,7 @@ export function createIndicatorRuleRouter(db: Database) {
           nextVersion.rows[0]!.next,
         ],
       )
-      await client.query("commit")
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
-    }
+    })
     response.status(201).json({ data: { indicatorDefinitionId: input.indicatorDefinitionId } })
   })
 

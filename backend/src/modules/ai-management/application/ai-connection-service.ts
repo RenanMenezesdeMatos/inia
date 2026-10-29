@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AiProviderError } from "../../../shared/application/model-routing/ai-errors.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { mergeCapabilities, type ModelCapabilities } from "../domain/ai-capabilities.js"
 import { AI_PROVIDERS, findAiProvider, isLocalDeployment, type AiProviderDefinition } from "../domain/ai-provider-catalog.js"
 import { endpointProblem } from "../infrastructure/adapters/http.js"
@@ -159,18 +160,10 @@ function validateHeaders(provider: AiProviderDefinition, headers: Record<string,
 
 async function storeSecret(context: AiAdminContext, actor: Actor, connectionId: string, purpose: "API_KEY" | "CUSTOM_HEADERS", plain: string, hint: string): Promise<void> {
   const encrypted = encryptAiSecret(plain, { organizationId: actor.organizationId, connectionId, purpose })
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(context.db, async (client) => {
     await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and purpose = $2 and revoked_at is null`, [connectionId, purpose, context.now()])
     await client.query(`insert into ai_connection_secrets (organization_id, connection_id, purpose, key_version, ciphertext, iv, auth_tag, hint, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [actor.organizationId, connectionId, purpose, encrypted.keyVersion, encrypted.ciphertext, encrypted.iv, encrypted.authTag, hint, actor.personId, context.now()])
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }
 
 function uniqueViolation(error: unknown): boolean {
@@ -238,23 +231,19 @@ export async function updateConnection(context: AiAdminContext, actor: Actor, id
   const changed = Object.keys(input).filter((key) => key !== "enabled")
   // Endpoint novo e revogação da chave num commit só (achado N01 da 4ª auditoria): com o endpoint já gravado e a chave ainda
   // ativa, um "Testar" no meio-tempo mandava a chave antiga para o endpoint novo.
-  const client = await context.db.connect()
   try {
-    await client.query("begin")
-    await client.query(`update ai_connections set ${sets.join(", ")} where organization_id = $1 and id = $2`, values)
-    if (endpointChanged && (current.credential.configured || current.customHeaderNames.length > 0)) {
-      await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
-      await auditAi(client, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(current.effectiveBaseUrl), toHost: originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) })
-    }
-    if (changed.length > 0) await auditAi(client, actor, "AI_CONNECTION_UPDATED", "ai_connection", id, { fields: changed })
-    if (input.enabled !== undefined && input.enabled !== current.enabled) await auditAi(client, actor, input.enabled ? "AI_CONNECTION_ENABLED" : "AI_CONNECTION_DISABLED", "ai_connection", id, { activePolicyUseCases: current.activePolicyUseCases })
-    await client.query("commit")
+    await inTransaction(context.db, async (client) => {
+      await client.query(`update ai_connections set ${sets.join(", ")} where organization_id = $1 and id = $2`, values)
+      if (endpointChanged && (current.credential.configured || current.customHeaderNames.length > 0)) {
+        await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
+        await auditAi(client, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(current.effectiveBaseUrl), toHost: originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) })
+      }
+      if (changed.length > 0) await auditAi(client, actor, "AI_CONNECTION_UPDATED", "ai_connection", id, { fields: changed })
+      if (input.enabled !== undefined && input.enabled !== current.enabled) await auditAi(client, actor, input.enabled ? "AI_CONNECTION_ENABLED" : "AI_CONNECTION_DISABLED", "ai_connection", id, { activePolicyUseCases: current.activePolicyUseCases })
+    })
   } catch (error) {
-    await client.query("rollback")
     if (uniqueViolation(error)) throw new DomainError("Já existe uma conexão com esse nome.", "AI_CONNECTION_NAME_TAKEN", 409)
     throw error
-  } finally {
-    client.release()
   }
   context.runtime.invalidate(actor.organizationId)
   return getConnection(context, actor.organizationId, id)
@@ -305,21 +294,13 @@ export async function deleteConnection(context: AiAdminContext, actor: Actor, id
     [id],
   )
   if (deps.rows.length > 0) throw new DomainError(`A conexão é usada por política(s) de roteamento (${deps.rows.map((row) => `${row.use_case} ${row.status === "ACTIVE" ? "ativa" : "rascunho"}`).join(", ")}). Remova-a das políticas ou desabilite a conexão.`, "AI_CONNECTION_IN_USE", 409, { policies: deps.rows.map((row) => ({ useCase: row.use_case, status: row.status })) })
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(context.db, async (client) => {
     // Políticas ARQUIVADAS que citam modelos desta conexão perdem só a referência (histórico de uso guarda os nomes).
     await client.query(`delete from ai_routing_policy_models where model_id in (select id from ai_models where connection_id = $1)`, [id])
     await client.query(`delete from ai_model_pricing where model_id in (select id from ai_models where connection_id = $1)`, [id])
     await client.query(`delete from ai_models where connection_id = $1`, [id])
     await client.query(`delete from ai_connections where organization_id = $1 and id = $2`, [actor.organizationId, id])
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   await auditAi(context.db, actor, "AI_CONNECTION_DELETED", "ai_connection", id, { providerKey: current.providerKey, name: current.name })
   context.runtime.invalidate(actor.organizationId)
 }

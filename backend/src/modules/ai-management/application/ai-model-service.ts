@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AiProviderError } from "../../../shared/application/model-routing/ai-errors.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { AI_CAPABILITIES, AI_MODEL_KINDS, AI_QUALITY_TIERS, type ModelCapabilities } from "../domain/ai-capabilities.js"
 import { findAiProvider } from "../domain/ai-provider-catalog.js"
 import { computeCallCost, pricingAt, validatePricingInput, type AiPricingVersion } from "../domain/ai-pricing.js"
@@ -253,19 +254,11 @@ export async function updateModel(context: AiAdminContext, actor: Actor, id: str
 export async function deleteModel(context: AiAdminContext, actor: Actor, id: string): Promise<void> {
   const current = await getModel(context, actor.organizationId, id)
   if (current.policies.length > 0) throw new DomainError(`O modelo é usado por política(s) (${current.policies.map((policy) => `${policy.useCase} ${policy.status === "ACTIVE" ? "ativa" : "rascunho"}`).join(", ")}). Remova-o das políticas antes.`, "AI_MODEL_IN_USE", 409, { policies: current.policies })
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(context.db, async (client) => {
     await client.query(`delete from ai_routing_policy_models where model_id = $1`, [id])
     await client.query(`delete from ai_model_pricing where organization_id = $1 and model_id = $2`, [actor.organizationId, id])
     await client.query(`delete from ai_models where organization_id = $1 and id = $2`, [actor.organizationId, id])
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   await auditAi(context.db, actor, "AI_MODEL_DELETED", "ai_model", id, { providerModelId: current.providerModelId })
   context.runtime.invalidate(actor.organizationId)
 }
@@ -287,9 +280,7 @@ export async function addPricing(context: AiAdminContext, actor: Actor, modelId:
   const effectiveFrom = input.effectiveFrom ?? context.now()
   const issues = validatePricingInput({ currency: input.currency, inputPerMillion: input.inputPerMillion, outputPerMillion: input.outputPerMillion, cachedInputPerMillion: input.cachedInputPerMillion ?? null, reasoningPerMillion: input.reasoningPerMillion ?? null, effectiveFrom })
   if (issues.length > 0) throw new DomainError(issues.join(" "), "AI_PRICING_INVALID", 422, { issues })
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(context.db, async (client) => {
     const open = await client.query<{ id: string; effective_from: Date }>(`select id, effective_from from ai_model_pricing where model_id = $1 and effective_to is null for update`, [modelId])
     const openRow = open.rows[0]
     if (openRow && effectiveFrom.getTime() <= new Date(openRow.effective_from).getTime()) {
@@ -303,13 +294,7 @@ export async function addPricing(context: AiAdminContext, actor: Actor, modelId:
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [actor.organizationId, modelId, input.currency, input.inputPerMillion, input.outputPerMillion, input.cachedInputPerMillion ?? null, input.reasoningPerMillion ?? null, effectiveFrom, input.note ?? null, actor.personId, context.now()],
     )
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   await auditAi(context.db, actor, "AI_PRICING_CREATED", "ai_model", modelId, { currency: input.currency, inputPerMillion: input.inputPerMillion, outputPerMillion: input.outputPerMillion, cachedInputPerMillion: input.cachedInputPerMillion ?? null, reasoningPerMillion: input.reasoningPerMillion ?? null, effectiveFrom: effectiveFrom.toISOString() })
   context.runtime.invalidate(actor.organizationId)
   return listPricing(context, actor.organizationId, modelId)

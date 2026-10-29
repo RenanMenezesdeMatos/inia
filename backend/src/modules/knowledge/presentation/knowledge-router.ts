@@ -4,6 +4,7 @@ import multer from "multer"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { extractTextFromFile, fileContentAccepted, resolveSourceType } from "../infrastructure/text-extractor.js"
 import { DocxPreviewTooLargeError, renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
@@ -324,9 +325,7 @@ export function createKnowledgeRouter(db: Database) {
       throw new DomainError("Não foi possível extrair texto do arquivo enviado.", "KNOWLEDGE_EXTRACTION_FAILED", 422)
     }
 
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const documentId = await inTransaction(db, async (client) => {
       const documentResult = await client.query<{ id: string }>(
         `insert into knowledge_documents(organization_id, title, document_type, source_type, original_filename, mime_type, file_size_bytes, created_by)
          values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
@@ -357,15 +356,9 @@ export function createKnowledgeRouter(db: Database) {
       }
 
       await replaceScopes(client, documentId, input.orgScopes, input.subjectScopes)
-
-      await client.query("commit")
-      response.status(201).json({ data: { id: documentId, title: input.title, documentType: input.documentType, sourceType } })
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
-    }
+      return documentId
+    })
+    response.status(201).json({ data: { id: documentId, title: input.title, documentType: input.documentType, sourceType } })
   })
 
   router.patch("/:id", async (request, response) => {
@@ -381,14 +374,10 @@ export function createKnowledgeRouter(db: Database) {
     if (input.orgScopes) input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (input.orgScopes && !canWriteDocument(scopes, toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
 
-    const client = await db.connect()
-    try {
-      await client.query("begin")
-
+    const outcome = await inTransaction(db, async (client) => {
       const existing = await client.query(`select id from knowledge_documents where id = $1 and organization_id = $2 and deleted_at is null`, [documentId, organizationId])
       if (!existing.rows[0]) {
-        await client.query("rollback")
-        return response.status(404).json({ error: { code: "KNOWLEDGE_NOT_FOUND", message: "Base de conhecimento não encontrada." } })
+        return "NOT_FOUND" as const
       }
 
       // Qualquer alteração (título, tipo, conteúdo, status ou alcance) conta como atualização.
@@ -423,14 +412,9 @@ export function createKnowledgeRouter(db: Database) {
       }
 
       await replaceScopes(client, documentId, input.orgScopes, input.subjectScopes)
-
-      await client.query("commit")
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
-    }
+      return "UPDATED" as const
+    })
+    if (outcome === "NOT_FOUND") return response.status(404).json({ error: { code: "KNOWLEDGE_NOT_FOUND", message: "Base de conhecimento não encontrada." } })
 
     // Checkpoint Registry: a publicação de uma versão dispara a extração + reconciliação (idempotente por versão). Nunca desfaz a
     // publicação: falha aqui fica no log e o administrador reprocessa em "Checkpoints da operação".

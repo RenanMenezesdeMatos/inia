@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { reactivateWaitingEnrollment } from "../../workflows/application/reactivate-enrollment.js"
 
 /**
@@ -59,9 +60,7 @@ export async function resolveLegacyHold(db: Database, input: { organizationId: s
   const reason = input.reason.trim()
   if (!reason) throw new Error("Informe o motivo do encerramento/reprocessamento.")
   const now = input.now ?? new Date()
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  return inTransaction(db, async (client) => {
     const superseded = await client.query<{ enrollment_id: string | null; node_id: string }>(
       `update reliable_feedback_artifacts set superseded_at = $3, superseded_reason = $4, updated_at = $3
         where organization_id = $1 and id = $2 and superseded_at is null and qa_resolved_at is null and disposition = 'HOLD_FOR_QA'
@@ -69,10 +68,7 @@ export async function resolveLegacyHold(db: Database, input: { organizationId: s
       [input.organizationId, input.artifactId, now, `${input.mode}: ${reason}`],
     )
     const row = superseded.rows[0]
-    if (!row) {
-      await client.query("rollback")
-      return { artifactId: input.artifactId, superseded: false, enrollment: "NONE" }
-    }
+    if (!row) return { artifactId: input.artifactId, superseded: false, enrollment: "NONE" }
     let enrollment: LegacyHoldResolution["enrollment"] = "NONE"
     if (row.enrollment_id) {
       if (input.mode === "REPROCESS") {
@@ -97,12 +93,6 @@ export async function resolveLegacyHold(db: Database, input: { organizationId: s
       `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, 'reliable_feedback_artifact', $4, $5)`,
       [input.organizationId, input.actorId ?? null, input.mode === "REPROCESS" ? "LEGACY_FEEDBACK_HOLD_REPROCESSED" : "LEGACY_FEEDBACK_HOLD_CLOSED", input.artifactId, JSON.stringify({ reason, enrollmentId: row.enrollment_id, enrollment })],
     )
-    await client.query("commit")
     return { artifactId: input.artifactId, superseded: true, enrollment }
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }

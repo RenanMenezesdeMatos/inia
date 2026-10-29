@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import {
   SEMANTIC_FIELD_LABELS,
   changedSemanticFields,
@@ -139,18 +140,10 @@ export async function deleteIndicatorDefinition(db: Database, organizationId: st
   if (dependencies.hasHistory) {
     throw new DomainError(`"${current.name}" tem histórico (${describeDependencies(dependencies)}) e não pode ser excluído. Desative-o em vez disso.`, "INDICATOR_HAS_DEPENDENTS", 409, { dependencies })
   }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(db, async (client) => {
     await client.query(`delete from indicator_calculation_rules where indicator_definition_id = $1 and organization_id = $2`, [id, organizationId])
     await client.query(`delete from indicator_glossary where indicator_definition_id = $1 and organization_id = $2`, [id, organizationId])
     await client.query(`delete from indicator_definitions where id = $1 and organization_id = $2`, [id, organizationId])
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   return dependencies
 }

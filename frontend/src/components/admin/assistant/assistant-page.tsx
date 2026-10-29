@@ -52,6 +52,7 @@ import { AGENT_TYPE_COLORS } from "@/schemas/admin/agent.schema"
 import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator } from "@/schemas/admin/assistant.schema"
 import { describeBusinessDomain } from "@/schemas/admin/business-domain.schema"
 import { ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy } from "@/schemas/admin/orchestrator-policy"
+import { cn } from "@/lib/utils"
 
 const groupLabel = formatScopeLabel
 const NEW_HREF = "/admin/assistant/new"
@@ -138,7 +139,7 @@ function OrchestratorCard({ orchestrator }: { orchestrator: Orchestrator }) {
   return (
     <EntityCard
       muted={!orchestrator.active}
-      icon={<EntityCardIcon icon={Waypoints} className={`${tone.iconBg} ${tone.icon}`} />}
+      icon={<EntityCardIcon icon={Waypoints} className={cn(tone.iconBg, tone.icon)} />}
       kicker={
         <>
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Orquestrador</span>
@@ -202,7 +203,12 @@ function OrchestratorsTable({ orchestrators }: { orchestrators: Orchestrator[] }
         <TableBody>
           {orchestrators.map((orchestrator) => (
             <TableRow key={orchestrator.id} className="cursor-pointer" onClick={() => router.push(`/admin/assistant/${orchestrator.id}`)}>
-              <TableCell className="font-medium whitespace-normal">{orchestrator.name}</TableCell>
+              <TableCell className="font-medium whitespace-normal">
+                {/* A linha abre pelo clique; o nome é o link para quem navega pelo teclado (como no card). */}
+                <Link href={`/admin/assistant/${orchestrator.id}`} className="hover:underline" onClick={(event) => event.stopPropagation()}>
+                  {orchestrator.name}
+                </Link>
+              </TableCell>
               <TableCell className="text-sm whitespace-normal text-muted-foreground">{orchestrator.orchestratorAgentName}</TableCell>
               <TableCell>
                 <Badge variant="outline">{orchestrator.specialists.length}</Badge>

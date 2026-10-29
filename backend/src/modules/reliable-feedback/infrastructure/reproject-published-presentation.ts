@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { instantOf, type Clock } from "../../../shared/domain/clock.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import type { ApplicabilityResolution } from "../domain/applicability-resolution.js"
 import { effectClaimsInContent } from "../domain/effect-claims.js"
 import { feedbackViewOf, isFeedbackView, type FeedbackView } from "../domain/feedback-view.js"
@@ -55,21 +56,13 @@ export async function reprojectPublishedFeedbackPresentation(db: Database, store
   const at = instantOf(input.clock).toISOString()
   const revisions = Array.isArray(reliable.presentationRevisions) ? reliable.presentationRevisions : []
   const snapshot = { ...row.context_snapshot, reliableFeedback: { ...reliable, feedbackView: view, presentationRevisions: [...revisions, { replacedAt: at, reason: input.reason.trim(), previous: before }] } }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(db, async (client) => {
     await client.query(`update feedbacks set context_snapshot = $2, recommendation = $3, updated_at = $4 where id = $1`, [row.id, JSON.stringify(snapshot), recommendation, at])
     await client.query(`update supervision_cases set summary = $2, updated_at = $3 where id = $1`, [row.case_id, view.card, at])
     await client.query(
       `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at) values ($1, $2, 'FEEDBACK_PRESENTATION_REPROJECTED', 'FEEDBACK', $3, $4, $5)`,
       [input.organizationId, input.actorId, row.id, JSON.stringify({ reason: input.reason.trim(), artifactId: record.id, revision: revisions.length + 1 }), at],
     )
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   return { feedbackId: row.id, changed, before, after }
 }

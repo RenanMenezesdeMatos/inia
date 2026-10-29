@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto"
 import { stripImageMetadata } from "../../../shared/infrastructure/image-metadata.js"
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
@@ -23,6 +22,7 @@ import {
   type ScenePeriod,
 } from "../domain/inia-scene.js"
 import { compareImagesBySlot, describeSlot, formatClock, nextImageChange, resolveImageAt, type TimeSlot } from "../domain/scene-time-slots.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Cenários da INIA por organização. Escrita = só o Administrador geral (o router exige `inia_experience.manage` na
@@ -114,33 +114,7 @@ const notFound = () => new DomainError("Cenário não encontrado.", "INIA_SCENE_
 type ImageModel = { id: string; isPrimary: boolean; slot: TimeSlot | null; row: ImageRow }
 type SceneModel = { id: string; name: string; period: ScenePeriod | null; updatedAt: Date; images: ImageModel[]; row: SceneRow }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  // Já dentro de uma transação (cliente dedicado das provas contra o banco de teste): savepoint no lugar de begin/commit.
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint inia_scenes")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint inia_scenes")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint inia_scenes").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("inia_scenes")
 
 async function loadModels(db: Queryable, organizationId: string): Promise<{ scenes: SceneModel[]; defaultSceneId: string | null }> {
   const [scenes, images, settings] = await Promise.all([

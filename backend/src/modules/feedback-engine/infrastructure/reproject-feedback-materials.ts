@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { Clock } from "../../../shared/domain/clock.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import type { FeedbackBrief } from "../domain/feedback-brief.js"
 import { viewMaterialsOf, type FeedbackView } from "../domain/feedback-view.js"
 import { COMPOSITION_VERSION } from "../domain/versions.js"
@@ -75,29 +76,22 @@ export async function reprojectFeedbackMaterials(db: Database, input: { organiza
     const at = input.clock.now()
     const revisions = Array.isArray(container.presentationRevisions) ? container.presentationRevisions : []
     const snapshot = { ...feedback.context_snapshot, feedbackEngine: { ...container, feedbackView: { ...view, materials: after }, presentationRevisions: [...revisions, { replacedAt: at.toISOString(), reason: `MATERIALS_REPROJECTED:${COMPOSITION_VERSION}`, previous: { materials: before } }] } }
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const written = await inTransaction(db, async (client) => {
       // Só grava se o snapshot ainda é o lido (outra escrita no meio = nada é sobrescrito; relatado).
       const updated = await client.query(`update feedbacks set context_snapshot = $2::jsonb, updated_at = $3 where id = $1 and organization_id = $4 and context_snapshot = $5::jsonb`, [feedback.id, JSON.stringify(snapshot), at, input.organizationId, JSON.stringify(feedback.context_snapshot)])
-      if (updated.rowCount !== 1) {
-        await client.query("rollback")
-        row.outcome = "SKIPPED_CHANGED_DURING_RUN"
-        continue
-      }
+      if (updated.rowCount !== 1) return false
       await client.query(`update feedback_engine_messages set message = jsonb_set(message, '{view,materials}', $3::jsonb) where id = $1 and organization_id = $2 and message #> '{view}' is not null`, [feedback.message_id, input.organizationId, JSON.stringify(after)])
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at) values ($1, $2, 'FEEDBACK_MATERIALS_REPROJECTED', 'FEEDBACK', $3, $4, $5)`,
         [input.organizationId, input.actorId, feedback.id, JSON.stringify({ version: COMPOSITION_VERSION, messageId: feedback.message_id, before, after, revision: revisions.length + 1 }), at],
       )
-      await client.query("commit")
-      applied += 1
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
+      return true
+    })
+    if (!written) {
+      row.outcome = "SKIPPED_CHANGED_DURING_RUN"
+      continue
     }
+    applied += 1
   }
 
   for (const message of pending.rows) {
@@ -113,32 +107,25 @@ export async function reprojectFeedbackMaterials(db: Database, input: { organiza
     }
     row.outcome = "UPDATED"
     if (!input.apply) continue
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const written = await inTransaction(db, async (client) => {
       // Só enquanto continua não entregue e com a mesma view (publicada no meio = a próxima rodada alinha o feedback).
       const updated = await client.query(
         `update feedback_engine_messages set message = jsonb_set(message, '{view,materials}', $3::jsonb)
           where id = $1 and organization_id = $2 and status = 'PUBLISHABLE' and delivered_at is null and message = $4::jsonb`,
         [message.id, input.organizationId, JSON.stringify(after), JSON.stringify(message.message)],
       )
-      if (updated.rowCount !== 1) {
-        await client.query("rollback")
-        row.outcome = "SKIPPED_CHANGED_DURING_RUN"
-        continue
-      }
+      if (updated.rowCount !== 1) return false
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at) values ($1, $2, 'FEEDBACK_MATERIALS_REPROJECTED', 'FEEDBACK_ENGINE_MESSAGE', $3, $4, $5)`,
         [input.organizationId, input.actorId, message.id, JSON.stringify({ version: COMPOSITION_VERSION, before, after }), input.clock.now()],
       )
-      await client.query("commit")
-      applied += 1
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
+      return true
+    })
+    if (!written) {
+      row.outcome = "SKIPPED_CHANGED_DURING_RUN"
+      continue
     }
+    applied += 1
   }
   return { version: COMPOSITION_VERSION, apply: input.apply, rows, changed: rows.filter((row) => row.outcome === "UPDATED").length, applied }
 }

@@ -14,6 +14,7 @@ import {
 import { CLARIFICATION_TOOL_NAME } from "../../knowledge-clarification/domain/clarification-state.js"
 import { loadConversationRatings, rateConversationMessage, type RateConversationMessageInput } from "./assistant-interaction-ratings.js"
 import type { AssistantRatingView } from "../domain/assistant-interaction-rating.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Persistência das CONVERSAS com a INIA (migration 094). Toda escrita resolve a conversa AQUI, no backend, sob um lock
@@ -71,36 +72,16 @@ async function close(db: Queryable, id: string, reason: "MANUAL" | "INACTIVITY",
   await db.query(`update assistant_conversations set status = 'CLOSED', closed_at = $2, close_reason = $3 where id = $1 and status = 'ACTIVE'`, [id, at, reason])
 }
 
+const inOwnerTransaction = transactionRunner("assistant_conversation_lock")
+
 async function withOwnerLock<T>(db: Database, scope: ConversationScope, work: (client: PoolClient) => Promise<T>): Promise<T> {
   const lockSql = "select pg_advisory_xact_lock(hashtext('assistant_conversation:' || $1::text))"
   const lockKey = `${scope.organizationId}:${scope.ownerPersonId}`
-  // Já dentro de uma transação (cliente dedicado, ex.: provas contra o banco de teste): savepoint no lugar de begin/commit.
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint assistant_conversation_lock")
-    try {
-      await client.query(lockSql, [lockKey])
-      const result = await work(client)
-      await client.query("release savepoint assistant_conversation_lock")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint assistant_conversation_lock").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  // Dentro de uma transação já aberta (cliente dedicado, ex.: provas contra o banco de teste), o helper usa savepoint.
+  return inOwnerTransaction(db, async (client) => {
     await client.query(lockSql, [lockKey])
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
+    return work(client)
+  })
 }
 
 export type ResolvedConversation = { conversationId: string; created: boolean; rotatedFrom: string | null; closed: boolean }

@@ -176,7 +176,12 @@ function EnrollmentRow({ workflowId, enrollment, graph }: { workflowId: string; 
   return (
     <>
       <TableRow className="cursor-pointer" onClick={() => setOpen((value) => !value)}>
-        <TableCell className="w-8">{open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</TableCell>
+        <TableCell className="w-8">
+          {/* A linha expande pelo clique; este botão é o mesmo acesso pelo teclado e diz o estado ao leitor de tela. */}
+          <button type="button" aria-expanded={open} aria-label={open ? "Ocultar eventos da execução" : "Mostrar eventos da execução"} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value) }}>
+            {open ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+          </button>
+        </TableCell>
         <TableCell>
           <Badge variant={STATUS_VARIANT[enrollment.status]}>{ENROLLMENT_STATUS_LABELS[enrollment.status]}</Badge>
         </TableCell>

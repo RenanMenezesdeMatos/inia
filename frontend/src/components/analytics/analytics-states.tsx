@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api/api-client"
+import { cn } from "@/lib/utils"
 
 // Estados compartilhados das áreas de Indicadores e Equipe: carregando (skeleton local, nunca
 // bloqueando a tela inteira), vazio (SEM DADOS é first-class) e erro (403 de escopo tem mensagem
@@ -14,7 +15,7 @@ import { ApiError } from "@/lib/api/api-client"
 
 export function AnalyticsCard({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <Card className={`border-0 bg-card shadow-none ring-0 ${className}`}>
+    <Card className={cn("border-0 bg-card shadow-none ring-0", className)}>
       <CardContent className="p-5 sm:p-6">{children}</CardContent>
     </Card>
   )
@@ -70,9 +71,9 @@ export function AnalyticsErrorState({ error, onRetry }: { error: unknown; onRetr
   const isForbidden = error instanceof ApiError && error.status === 403
   const message = error instanceof Error ? error.message : "Não foi possível carregar os dados."
   return (
-    <div role="alert" className={`flex flex-col items-center rounded-xl border p-8 text-center ${isForbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5"}`}>
+    <div role="alert" className={cn("flex flex-col items-center rounded-xl border p-8 text-center", isForbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5")}>
       {isForbidden ? <Lock className="size-8 text-muted-foreground/60" aria-hidden /> : null}
-      <p className={`mt-3 text-sm ${isForbidden ? "font-medium" : "text-destructive"}`}>{isForbidden ? "Sem acesso a esta estrutura" : message}</p>
+      <p className={cn("mt-3 text-sm", isForbidden ? "font-medium" : "text-destructive")}>{isForbidden ? "Sem acesso a esta estrutura" : message}</p>
       {isForbidden ? <p className="mt-1 max-w-md text-sm text-muted-foreground">Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela.</p> : null}
       {!isForbidden && onRetry ? (
         <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>

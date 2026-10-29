@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import type { SecretStore, SecretWriteOptions } from "../application/ports.js"
 import type { SecretPurpose } from "../domain/source-config.js"
 
@@ -141,17 +142,7 @@ export class PgAesSecretStore implements SecretStore {
     }
     // Dentro da transação de quem chama (troca de destino), ou numa própria.
     if (options.db) return replace(options.db)
-    const client = await this.db.connect()
-    try {
-      await client.query("begin")
-      await replace(client)
-      await client.query("commit")
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
-    }
+    await inTransaction(this.db, replace)
   }
 
   async get(input: { sourceId: string; purpose: SecretPurpose }): Promise<string | null> {

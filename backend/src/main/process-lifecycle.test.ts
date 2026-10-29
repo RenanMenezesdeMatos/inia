@@ -2,7 +2,8 @@ import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { EventEmitter } from "node:events"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { applyHttpTimeouts, createShutdown, HTTP_HEADERS_TIMEOUT_MS, HTTP_KEEP_ALIVE_TIMEOUT_MS, installProcessHandlers, processFaults } from "./process-lifecycle.js"
+import express from "express"
+import { applyHttpTimeouts, createShutdown, HTTP_HEADERS_TIMEOUT_MS, HTTP_KEEP_ALIVE_TIMEOUT_MS, installProcessHandlers, onHttpListen, processFaults } from "./process-lifecycle.js"
 import type { Database } from "../infrastructure/database/pool.js"
 import { createReadiness } from "./readiness.js"
 
@@ -102,5 +103,28 @@ describe("ciclo de vida do processo de API", () => {
     expect(shutdown).toHaveBeenCalledWith("SIGTERM")
     expect(errors.map((event) => event.event)).toEqual(["unhandled_rejection", "uncaught_exception"])
     expect(processFaults).toEqual({ unhandledRejections: before.unhandledRejections + 1, uncaughtExceptions: before.uncaughtExceptions + 1 })
+  })
+
+  it("porta ocupada no app.listen (Express 5 entrega o erro ao callback): nada de \"listening\" — log + desligamento com código 1", async () => {
+    const { url } = await listening((_request, response) => response.end())
+    const port = Number(new URL(url).port)
+    const listeningCalled = vi.fn()
+    const errors: Record<string, unknown>[] = []
+    const failed = new Promise<[string, number | undefined]>((resolve) => {
+      const second = express().listen(port, "127.0.0.1", onHttpListen({ listening: listeningCalled, shutdown: async (reason, exitCode) => resolve([reason, exitCode]), log: { info: () => {}, error: (event) => errors.push(event) } }))
+      servers.push(second)
+    })
+
+    expect(await failed).toEqual(["listen_failed", 1])
+    expect(listeningCalled).not.toHaveBeenCalled()
+    expect(errors).toMatchObject([{ event: "listen_failed", err: { message: expect.stringContaining("EADDRINUSE") } }])
+  })
+
+  it("listen sem erro: só o aviso de que está escutando", async () => {
+    const shutdown = vi.fn(async () => {})
+    await new Promise<void>((resolve) => {
+      servers.push(express().listen(0, "127.0.0.1", onHttpListen({ listening: resolve, shutdown, log: { info: () => {}, error: () => {} } })))
+    })
+    expect(shutdown).not.toHaveBeenCalled()
   })
 })

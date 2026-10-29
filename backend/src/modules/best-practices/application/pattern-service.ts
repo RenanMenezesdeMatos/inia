@@ -7,7 +7,7 @@ import { recordPersonalDataAccess } from "../../data-lifecycle/application/perso
 import { hasUnmaskedLongNumber } from "../domain/excerpt-privacy.js"
 import { redactEvidentPii } from "../../investigation/domain/peer-privacy-projection.js"
 import { nextReviewState, unavailabilityReasonsOf, type PatternState, type ReviewAction } from "../domain/pattern.js"
-import { inTransaction } from "../infrastructure/postgres-best-practice-store.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import type { AnalysisActor } from "./analysis-service.js"
 
 /**

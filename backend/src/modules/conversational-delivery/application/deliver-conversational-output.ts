@@ -1,7 +1,7 @@
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { SurfaceProjection } from "../domain/surface-projection.js"
 import { AVATAR_ALERT_KEY_PREFIX, CHAT_ALERT_KEY_PREFIX, recadoCoveredByFollowUpSql } from "./recado-follow-up-invite.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * ENTREGA de um nó Output nas superfícies CONVERSACIONAIS (V1): CHAT e AVATAR.
@@ -39,32 +39,7 @@ export type AvatarOfferResult = { outputId: string; reused: boolean }
 type Queryable = Pick<Database, "query">
 
 /** Transação própria, ou savepoint quando já estamos dentro de uma (provas contra o banco de teste). */
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint conversational_delivery")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint conversational_delivery")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint conversational_delivery").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("conversational_delivery")
 
 /** O conteúdo guardado na linha: proveniência segura + o contexto de origem (nunca o Execution Context cru). */
 const contentOf = (input: ConversationalDeliveryInput) => JSON.stringify({ sourceKind: input.sourceKind, artifactId: input.artifactId, projectionVersion: input.projection.version, contextText: input.projection.contextText, speechTruncated: input.projection.speechTruncated })

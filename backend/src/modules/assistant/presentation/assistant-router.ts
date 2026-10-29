@@ -2,6 +2,7 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { createOrchestratorSchema, updateOrchestratorSchema, toolNameForAgent } from "../domain/orchestrator-schema.js"
@@ -302,42 +303,39 @@ export function createAssistantRouter(db: Database) {
     const persisted = persistedPolicyColumns(routing, input.invocationMode)
     const structured = structuredOutputColumns(input)
 
-    const client = await db.connect()
     try {
-      await client.query("begin")
-      const created = await client.query<{ id: string }>(
-        `insert into assistant_orchestrators(organization_id, name, scope_type, team_id, subteam_id, orchestrator_agent_id, invocation_mode, output_instructions, output_schema, created_by, policy_kind, policy_domains, routing_policy, routing_domains, structured_output, recommend_support_materials)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
-        [
-          organizationId,
-          input.name,
-          newScope.scopeType,
-          newScope.teamId,
-          newScope.subteamId,
-          input.orchestratorAgentId,
-          input.invocationMode,
-          structured.outputInstructions ?? null,
-          structured.outputSchema ? JSON.stringify(structured.outputSchema) : null,
-          request.user?.personId ?? null,
-          persisted.legacy.kind,
-          persisted.legacyDomainCodes,
-          persisted.routingPolicy,
-          persisted.routingDomains,
-          structured.definition ? JSON.stringify(structured.definition) : null,
-          input.recommendSupportMaterials ?? false,
-        ],
-      )
-      const orchestratorId = created.rows[0]!.id
-      await syncOrchestratorBusinessDomains(client, orchestratorId, persisted.domainRefs)
-      await syncSpecialists(client, orchestratorId, input.specialistAgentIds)
-      await client.query("commit")
+      const orchestratorId = await inTransaction(db, async (client) => {
+        const created = await client.query<{ id: string }>(
+          `insert into assistant_orchestrators(organization_id, name, scope_type, team_id, subteam_id, orchestrator_agent_id, invocation_mode, output_instructions, output_schema, created_by, policy_kind, policy_domains, routing_policy, routing_domains, structured_output, recommend_support_materials)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) returning id`,
+          [
+            organizationId,
+            input.name,
+            newScope.scopeType,
+            newScope.teamId,
+            newScope.subteamId,
+            input.orchestratorAgentId,
+            input.invocationMode,
+            structured.outputInstructions ?? null,
+            structured.outputSchema ? JSON.stringify(structured.outputSchema) : null,
+            request.user?.personId ?? null,
+            persisted.legacy.kind,
+            persisted.legacyDomainCodes,
+            persisted.routingPolicy,
+            persisted.routingDomains,
+            structured.definition ? JSON.stringify(structured.definition) : null,
+            input.recommendSupportMaterials ?? false,
+          ],
+        )
+        const orchestratorId = created.rows[0]!.id
+        await syncOrchestratorBusinessDomains(client, orchestratorId, persisted.domainRefs)
+        await syncSpecialists(client, orchestratorId, input.specialistAgentIds)
+        return orchestratorId
+      })
       const result = await db.query(`${ORCHESTRATOR_SELECT} and o.id = $2`, [organizationId, orchestratorId])
       response.status(201).json({ data: decorateOrchestratorRow(result.rows[0]) })
     } catch (error) {
-      await client.query("rollback")
       rethrowFriendly(error)
-    } finally {
-      client.release()
     }
   })
 
@@ -395,68 +393,65 @@ export function createAssistantRouter(db: Database) {
       await assertStructuredOutputChangeAllowed(db, organizationId, request.params.id!, previous, structured.definition, input.acknowledgeStructuredOutputImpacts === true)
     }
 
-    const client = await db.connect()
     try {
-      await client.query("begin")
-      const updated = await client.query<{ id: string }>(
-        `update assistant_orchestrators set
-           name = coalesce($1, name),
-           scope_type = $2,
-           team_id = $3,
-           subteam_id = $4,
-           orchestrator_agent_id = coalesce($5, orchestrator_agent_id),
-           active = coalesce($6, active),
-           invocation_mode = coalesce($7, invocation_mode),
-           output_instructions = case when $8::boolean then $9 else output_instructions end,
-           output_schema = case when $10::boolean then $11::jsonb else output_schema end,
-           policy_kind = $14,
-           policy_domains = $15,
-           routing_policy = $16,
-           routing_domains = $17,
-           structured_output = case when $18::boolean then $19::jsonb else structured_output end,
-           recommend_support_materials = coalesce($20, recommend_support_materials),
-           updated_at = now()
-         where id = $12 and organization_id = $13
-         returning id`,
-        [
-          input.name ?? null,
-          nextScope.scopeType,
-          nextScope.teamId,
-          nextScope.subteamId,
-          input.orchestratorAgentId ?? null,
-          input.active ?? null,
-          input.invocationMode ?? null,
-          structured.outputInstructions !== undefined,
-          structured.outputInstructions ?? null,
-          structured.outputSchema !== undefined,
-          structured.outputSchema ? JSON.stringify(structured.outputSchema) : null,
-          request.params.id,
-          organizationId,
-          persisted.legacy.kind,
-          persisted.legacyDomainCodes,
-          persisted.routingPolicy,
-          persisted.routingDomains,
-          structured.touchesDefinition,
-          structured.definition ? JSON.stringify(structured.definition) : null,
-          input.recommendSupportMaterials ?? null,
-        ],
-      )
-      if (!updated.rows[0]) {
-        await client.query("rollback")
-        return response.status(404).json(NOT_FOUND)
-      }
-      await syncOrchestratorBusinessDomains(client, request.params.id!, persisted.domainRefs)
-      if (input.specialistAgentIds) {
-        await syncSpecialists(client, request.params.id!, input.specialistAgentIds)
-      }
-      await client.query("commit")
+      const outcome = await inTransaction(db, async (client) => {
+        const updated = await client.query<{ id: string }>(
+          `update assistant_orchestrators set
+             name = coalesce($1, name),
+             scope_type = $2,
+             team_id = $3,
+             subteam_id = $4,
+             orchestrator_agent_id = coalesce($5, orchestrator_agent_id),
+             active = coalesce($6, active),
+             invocation_mode = coalesce($7, invocation_mode),
+             output_instructions = case when $8::boolean then $9 else output_instructions end,
+             output_schema = case when $10::boolean then $11::jsonb else output_schema end,
+             policy_kind = $14,
+             policy_domains = $15,
+             routing_policy = $16,
+             routing_domains = $17,
+             structured_output = case when $18::boolean then $19::jsonb else structured_output end,
+             recommend_support_materials = coalesce($20, recommend_support_materials),
+             updated_at = now()
+           where id = $12 and organization_id = $13
+           returning id`,
+          [
+            input.name ?? null,
+            nextScope.scopeType,
+            nextScope.teamId,
+            nextScope.subteamId,
+            input.orchestratorAgentId ?? null,
+            input.active ?? null,
+            input.invocationMode ?? null,
+            structured.outputInstructions !== undefined,
+            structured.outputInstructions ?? null,
+            structured.outputSchema !== undefined,
+            structured.outputSchema ? JSON.stringify(structured.outputSchema) : null,
+            request.params.id,
+            organizationId,
+            persisted.legacy.kind,
+            persisted.legacyDomainCodes,
+            persisted.routingPolicy,
+            persisted.routingDomains,
+            structured.touchesDefinition,
+            structured.definition ? JSON.stringify(structured.definition) : null,
+            input.recommendSupportMaterials ?? null,
+          ],
+        )
+        if (!updated.rows[0]) {
+          return "NOT_FOUND" as const
+        }
+        await syncOrchestratorBusinessDomains(client, request.params.id!, persisted.domainRefs)
+        if (input.specialistAgentIds) {
+          await syncSpecialists(client, request.params.id!, input.specialistAgentIds)
+        }
+        return "UPDATED" as const
+      })
+      if (outcome === "NOT_FOUND") return response.status(404).json(NOT_FOUND)
       const result = await db.query(`${ORCHESTRATOR_SELECT} and o.id = $2`, [organizationId, request.params.id])
       response.json({ data: decorateOrchestratorRow(result.rows[0]) })
     } catch (error) {
-      await client.query("rollback")
       rethrowFriendly(error)
-    } finally {
-      client.release()
     }
   })
 

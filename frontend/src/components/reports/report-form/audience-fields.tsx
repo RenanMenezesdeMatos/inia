@@ -26,8 +26,21 @@ export function AudienceFields({ audience, onChange, catalog, canCreateForSelf }
 
   useEffect(() => {
     if (!catalog.audience || query.trim().length < 2) return
-    const handle = setTimeout(() => void searchAudiencePeople(query.trim()).then(setResults).catch(() => setResults([])), 250)
-    return () => clearTimeout(handle)
+    // Resposta de uma busca que já foi substituída (o texto mudou) é descartada: a mais lenta não sobrescreve a atual.
+    let ignore = false
+    const handle = setTimeout(() => {
+      void searchAudiencePeople(query.trim())
+        .then((people) => {
+          if (!ignore) setResults(people)
+        })
+        .catch(() => {
+          if (!ignore) setResults([])
+        })
+    }, 250)
+    return () => {
+      ignore = true
+      clearTimeout(handle)
+    }
   }, [query, catalog.audience])
 
   if (!catalog.audience) return <p className="text-sm text-muted-foreground">Este report é para você: ele chega no seu Acompanhamento, com os dados da sua estrutura atual.</p>

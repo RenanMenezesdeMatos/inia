@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { instantOf, type Clock } from "../../../shared/domain/clock.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * VISIBILIDADE NO ACOMPANHAMENTO (migration 095) — ocultação LÓGICA de um feedback publicado nas superfícies de leitura do
@@ -40,9 +41,7 @@ export async function hideFeedbacksFromFollowUp(db: Database, input: HideFromFol
   if (!/^[A-Z][A-Z0-9_]{2,79}$/.test(input.selectionRef)) throw new DomainError("Rótulo da seleção inválido.", "FOLLOW_UP_HIDE_INVALID_SELECTION", 422)
   const at = instantOf(input.clock).toISOString()
 
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  return inTransaction(db, async (client) => {
     const found = await client.query<{ id: string; operator_id: string }>(
       `select id, operator_id from feedbacks where organization_id = $1 and id = any($2::uuid[]) for update`,
       [input.organizationId, ids],
@@ -70,22 +69,14 @@ export async function hideFeedbacksFromFollowUp(db: Database, input: HideFromFol
         [input.organizationId, input.actorId, id, JSON.stringify({ hideId: inserted.rows[0].id, reasonCode: input.reasonCode, reason: input.reason.trim(), selectionRef: input.selectionRef }), at],
       )
     }
-    await client.query("commit")
     return { hidden, alreadyHidden }
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }
 
 export async function restoreFeedbackToFollowUp(db: Database, input: { organizationId: string; feedbackId: string; reason: string; actorId: string | null; clock: Clock | Date }): Promise<{ restored: boolean }> {
   if (!input.reason.trim()) throw new DomainError("Descreva o motivo da restauração.", "FOLLOW_UP_HIDE_INVALID_REASON", 422)
   const at = instantOf(input.clock).toISOString()
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  return inTransaction(db, async (client) => {
     const updated = await client.query<{ id: string }>(
       `update feedback_follow_up_hides set restored_at = $3, restored_by = $4, restore_reason = $5
        where organization_id = $1 and feedback_id = $2 and restored_at is null returning id`,
@@ -98,12 +89,6 @@ export async function restoreFeedbackToFollowUp(db: Database, input: { organizat
         [input.organizationId, input.actorId, input.feedbackId, JSON.stringify({ hideId: row.id, reason: input.reason.trim() }), at],
       )
     }
-    await client.query("commit")
     return { restored: Boolean(row) }
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }

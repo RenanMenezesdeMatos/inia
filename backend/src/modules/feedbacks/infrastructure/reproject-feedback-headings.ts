@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { Clock } from "../../../shared/domain/clock.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { FEEDBACK_HEADING_VERSION, legacyHeadingCorrectionOf, type InteractionHeading } from "../domain/feedback-heading.js"
@@ -78,28 +79,21 @@ export async function reprojectFeedbackHeadings(db: Database, input: { organizat
     const at = input.clock.now()
     const revisions = Array.isArray(container.presentationRevisions) ? container.presentationRevisions : []
     const snapshot = { ...feedback.context_snapshot, [path]: { ...container, feedbackView: { ...view, heading: correction.heading }, presentationRevisions: [...revisions, { replacedAt: at.toISOString(), reason: FEEDBACK_HEADING_VERSION, previous: { heading: before } }] } }
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const written = await inTransaction(db, async (client) => {
       // Só grava se o snapshot ainda é o lido (outra escrita no meio = nada é sobrescrito; relatado).
       const updated = await client.query(`update feedbacks set context_snapshot = $2::jsonb, updated_at = $3 where id = $1 and organization_id = $4 and context_snapshot = $5::jsonb`, [feedback.id, JSON.stringify(snapshot), at, input.organizationId, JSON.stringify(feedback.context_snapshot)])
-      if (updated.rowCount !== 1) {
-        await client.query("rollback")
-        row.outcome = "SKIPPED_CHANGED_DURING_RUN"
-        continue
-      }
+      if (updated.rowCount !== 1) return false
       await client.query(
         `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload, created_at) values ($1, $2, 'FEEDBACK_HEADING_REPROJECTED', 'FEEDBACK', $3, $4, $5)`,
         [input.organizationId, input.actorId, feedback.id, JSON.stringify({ version: FEEDBACK_HEADING_VERSION, interactionId, before, after: correction.heading, revision: revisions.length + 1 }), at],
       )
-      await client.query("commit")
-      applied += 1
-    } catch (error) {
-      await client.query("rollback").catch(() => undefined)
-      throw error
-    } finally {
-      client.release()
+      return true
+    })
+    if (!written) {
+      row.outcome = "SKIPPED_CHANGED_DURING_RUN"
+      continue
     }
+    applied += 1
   }
   return { version: FEEDBACK_HEADING_VERSION, apply: input.apply, rows, corrected: rows.filter((row) => row.outcome === "CORRECTED").length, applied, withoutViewModel }
 }

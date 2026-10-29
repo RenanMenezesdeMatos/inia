@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { isIP } from "node:net"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { DataRunError } from "../domain/error-codes.js"
 import { insecureCredentialTransportWarning, sourceConfigSchema, sourceInputSchema, sourceSecretsSchema, type SecretPurpose, type SourceConfig, type SourceInput, type SourceSecrets } from "../domain/source-config.js"
 import { z } from "zod"
@@ -135,9 +136,7 @@ export async function updateSource(ctx: DataHubContext, organizationId: string, 
   // Configuração, credenciais e auditoria num commit só (achado N01 da 4ª auditoria): com commits separados, o destino novo ficava
   // gravado enquanto a credencial antiga continuava ativa — um "Testar conexão" (ou uma carga) nesse meio-tempo mandava a credencial
   // guardada para o destino novo, e uma falha na troca deixava os dois assim, sem registro. Quem lê vê o par antigo ou o novo.
-  const client = await ctx.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(ctx.db, async (client) => {
     await client.query(`update data_sources set name = $2, description = $3, config = $4, updated_by = $5, updated_at = now(), connection_health = case when $6 then 'UNKNOWN' else connection_health end where id = $1`, [
       sourceId,
       input.name ?? current.name,
@@ -154,13 +153,7 @@ export async function updateSource(ctx: DataHubContext, organizationId: string, 
       }
     }
     await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_UPDATED", entityType: "data_source", entityId: sourceId, payload: { configChanged: Boolean(input.config), secretsRotated: stored, secretTargetChanged: targetChanged } })
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
   return describeSource(ctx, (await findSource(ctx.db, organizationId, sourceId))!)
 }
 
@@ -214,9 +207,7 @@ export async function setSourceStatus(ctx: DataHubContext, organizationId: strin
 export async function deleteSource(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string): Promise<void> {
   await requireSource(ctx.db, organizationId, sourceId)
   // Uma operação só: fonte removida nunca fica com feed agendado, token de push ou credencial ainda válidos.
-  const client = await ctx.db.connect()
-  try {
-    await client.query("begin")
+  await inTransaction(ctx.db, async (client) => {
     await client.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId])
     await client.query(`update data_sources set deleted_at = now(), status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
     await client.query(`update data_push_tokens set revoked_at = now() where source_id = $1 and revoked_at is null`, [sourceId])
@@ -225,13 +216,7 @@ export async function deleteSource(ctx: DataHubContext, organizationId: string, 
     // A credencial continua cifrada para auditoria, mas revogada: nenhuma leitura do SecretStore a devolve mais.
     const revoked = await client.query<{ purpose: SecretPurpose }>(`update data_secrets set revoked_at = now() where source_id = $1 and revoked_at is null returning purpose`, [sourceId])
     await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { secretsRevoked: revoked.rows.map((row) => row.purpose), ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }
 
 // ---------------------------------------------------------------------------------------------

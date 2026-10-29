@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     rules: {
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/incompatible-library": "warn",
+      // Erro interno do React Compiler (ex.: `[PruneHoistedContexts]`) tira o componente INTEIRO da análise das outras
+      // regras sem nenhum aviso; como erro, a volta do problema aparece no lint (docs/dev/refatoracao-progressiva.md §8).
+      "react-hooks/invariant": "error",
     },
   },
   // Override default ignores of eslint-config-next.

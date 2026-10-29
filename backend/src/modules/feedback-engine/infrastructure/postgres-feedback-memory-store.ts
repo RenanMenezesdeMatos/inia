@@ -12,6 +12,7 @@ import { segmentKeySql } from "./postgres-indicator-data.js"
 import { CRITERIA_EXTRACTION_VERSION } from "../domain/versions.js"
 import { LEGACY_REVIEW_UNAVAILABLE, stageResponsesOf, type StageResponses } from "../domain/analysis-recovery.js"
 import type { AnalysisClaim, AnalysisIdentity, AnalysisRunRecord, CallSnapshot, FeedbackMemoryStore, FeedbackMessageStore, MessageRecord, StoredCallAssessment } from "../application/ports.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * MEMÓRIA OPERACIONAL no Postgres (migration 102).
@@ -81,20 +82,6 @@ const toRun = (row: RunRow): AnalysisRunRecord => ({
   completedAt: row.completed_at ? new Date(row.completed_at) : null,
 })
 
-async function inTransaction<T>(db: Database, work: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 /**
  * PRÁTICA de uma linha de `call_criterion_assessments` (`PRACTICE_IDENTITY_V1`): a da PRIMEIRA linha da obrigação — âncora e, depois,

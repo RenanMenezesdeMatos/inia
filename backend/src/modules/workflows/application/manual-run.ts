@@ -4,6 +4,7 @@ import { loadEffectiveStrategy } from "../../indicator-diagnosis/application/dia
 import { flowGraphSchema } from "../domain/graph-schema.js"
 import { MANUAL_TRIGGER_CONTEXT_LABELS, triggerConfigSchema, type ManualTrigger, type ManualTriggerContext } from "../domain/trigger-config-schema.js"
 import { isOperatorEligibleForWorkflow, loadEligibleOperator, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * GATILHO MANUAL — "Executar agora" para UM colaborador escolhido explicitamente (nunca a população inteira).
@@ -451,37 +452,11 @@ export async function requestManualRun(db: Database, request: ManualRunRequest, 
   return { runId: concurrent.id, enrollmentId: await enrollmentOfRun(db, concurrent.id), created: false }
 }
 
-type Queryable = Pick<Database, "query">
-
 /**
  * Transação da escrita: com o POOL, uma conexão dedicada (begin/commit); com um CLIENT já dentro de uma transação (provas),
  * um savepoint — nunca um commit que vazaria a transação de fora (mesmo padrão da estratégia de diagnóstico).
  */
-async function inTransaction<T>(db: Database, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint workflow_manual_run_tx")
-    try {
-      const result = await fn(db)
-      await db.query("release savepoint workflow_manual_run_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint workflow_manual_run_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await fn(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("workflow_manual_run_tx")
 
 async function enrollmentOfRun(db: Pick<Database, "query">, runId: string): Promise<string> {
   const result = await db.query<{ id: string }>(`select id from workflow_enrollments where manual_run_id = $1`, [runId])

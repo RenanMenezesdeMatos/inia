@@ -8,6 +8,7 @@ import { listModelProfiles } from "../../../shared/application/model-routing/mod
 import { listModelPricing } from "../../../shared/application/model-routing/model-pricing.js"
 import { resolveRoute, type RoutePurpose } from "../../../shared/application/model-routing/route-policy.js"
 import { legacyProviderKey } from "../../../shared/application/model-routing/llm-gateway.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { AI_AUTO_STRATEGIES, AI_ROUTING_MODES, defaultFallbackOn, planRoute, validatePolicy, type ModelSnapshot, type PolicyIssue, type PolicySnapshot } from "../domain/ai-routing-policy.js"
 import { auditAi, type Actor, type AiAdminContext } from "./ai-admin-context.js"
 import { loadModelSnapshots, POLICY_SELECT, policyFromRow } from "./ai-runtime-store.js"
@@ -120,10 +121,7 @@ export async function saveDraft(context: AiAdminContext, actor: Actor, useCaseKe
   const owned = input.modelIds.length > 0 ? await context.db.query<{ id: string }>(`select id from ai_models where organization_id = $1 and id = any($2::uuid[])`, [actor.organizationId, input.modelIds]) : { rows: [] }
   // Modelo de outra organização nunca entra (nem por id adivinhado).
   if (owned.rows.length !== new Set(input.modelIds).size) throw new DomainError("Um ou mais modelos não existem nesta organização.", "AI_MODEL_NOT_FOUND", 404)
-  let draftId = ""
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  const draftId = await inTransaction(context.db, async (client) => {
     const existing = await client.query<{ id: string; version: number }>(`select id, version from ai_routing_policies where organization_id = $1 and use_case = $2 and status = 'DRAFT' for update`, [actor.organizationId, useCaseKey])
     const active = await client.query<{ version: number }>(`select version from ai_routing_policies where organization_id = $1 and use_case = $2 and status = 'ACTIVE'`, [actor.organizationId, useCaseKey])
     const values = [input.mode, input.mode === "AUTO" ? (input.strategy ?? null) : null, input.fallbackOn ?? defaultFallbackOn(), input.maxEstimatedCostPerRequest ?? null, input.maxEstimatedCostPerRequest ? (input.costCurrency ?? null) : null, actor.personId, context.now()]
@@ -141,14 +139,8 @@ export async function saveDraft(context: AiAdminContext, actor: Actor, useCaseKe
       policyId = inserted.rows[0]!.id
     }
     for (const [position, modelId] of input.modelIds.entries()) await client.query(`insert into ai_routing_policy_models (policy_id, position, model_id) values ($1, $2, $3)`, [policyId, position, modelId])
-    await client.query("commit")
-    draftId = policyId
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+    return policyId
+  })
   await auditAi(context.db, actor, "AI_ROUTING_DRAFT_SAVED", "ai_routing_policy", draftId, { useCase: useCaseKey, mode: input.mode, strategy: input.strategy ?? null, modelIds: input.modelIds, fallbackOn: input.fallbackOn ?? defaultFallbackOn() })
   return routingViewOf(context, actor.organizationId, useCaseKey)
 }
@@ -159,18 +151,11 @@ export async function activateDraft(context: AiAdminContext, actor: Actor, useCa
   const view = await routingViewOf(context, actor.organizationId, useCaseKey)
   if (!view.draft) throw new DomainError("Não há rascunho para ativar.", "AI_POLICY_DRAFT_NOT_FOUND", 404)
   if (!view.draft.valid) throw new DomainError(`A política não pode ser ativada: ${view.draft.issues.map((issue) => issue.message).join(" ")}`, "AI_POLICY_INVALID", 422, { issues: view.draft.issues })
-  const client = await context.db.connect()
-  try {
-    await client.query("begin")
+  const draftId = view.draft.id
+  await inTransaction(context.db, async (client) => {
     await client.query(`update ai_routing_policies set status = 'ARCHIVED', updated_at = $3, updated_by = $4 where organization_id = $1 and use_case = $2 and status = 'ACTIVE'`, [actor.organizationId, useCaseKey, context.now(), actor.personId])
-    await client.query(`update ai_routing_policies set status = 'ACTIVE', activated_at = $3, activated_by = $4, updated_at = $3 where organization_id = $1 and id = $2`, [actor.organizationId, view.draft.id, context.now(), actor.personId])
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+    await client.query(`update ai_routing_policies set status = 'ACTIVE', activated_at = $3, activated_by = $4, updated_at = $3 where organization_id = $1 and id = $2`, [actor.organizationId, draftId, context.now(), actor.personId])
+  })
   await auditAi(context.db, actor, "AI_ROUTING_ACTIVATED", "ai_routing_policy", view.draft.id, { useCase: useCaseKey, mode: view.draft.mode, strategy: view.draft.strategy, models: view.draft.models.map((model) => model.modelId), previousActiveId: view.active?.id ?? null })
   context.runtime.invalidate(actor.organizationId)
   return routingViewOf(context, actor.organizationId, useCaseKey)

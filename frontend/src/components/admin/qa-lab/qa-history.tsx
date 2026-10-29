@@ -122,7 +122,12 @@ export function QaRunsTable({ runs, onOpen }: { runs: QaRunSummary[]; onOpen: (i
             const context = contextText(run)
             return (
               <TableRow key={run.id} className="cursor-pointer" onClick={() => onOpen(run.id)}>
-                <TableCell className="whitespace-nowrap text-xs">{formatDateTime(run.createdAt)}</TableCell>
+                <TableCell className="whitespace-nowrap text-xs">
+                  {/* A linha abre pelo clique; este botão é o mesmo acesso pelo teclado. */}
+                  <button type="button" className="text-left hover:underline" aria-label={`Abrir a execução de ${run.resourceName} em ${formatDateTime(run.createdAt)}`} onClick={(event) => { event.stopPropagation(); onOpen(run.id) }}>
+                    {formatDateTime(run.createdAt)}
+                  </button>
+                </TableCell>
                 <TableCell className="text-sm">{run.executedByName ?? "—"}</TableCell>
                 <TableCell className="max-w-56 truncate text-sm" title={run.resourceName}>
                   {run.resourceName}

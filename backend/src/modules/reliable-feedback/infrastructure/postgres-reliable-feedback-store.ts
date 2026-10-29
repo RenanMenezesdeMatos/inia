@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { reactivateWaitingEnrollment } from "../../workflows/application/reactivate-enrollment.js"
 import type { ArtifactIdentity, ArtifactRecord, ReliableFeedbackStore, ReliableReviewRecord } from "../application/ports.js"
 
@@ -74,9 +75,7 @@ export function createPostgresReliableFeedbackStore(db: Database): ReliableFeedb
     },
 
     async complete(organizationId, artifactId, data, now) {
-      const client = await db.connect()
-      try {
-        await client.query("begin")
+      return inTransaction(db, async (client) => {
         const updated = await client.query<ArtifactRow>(
           `update reliable_feedback_artifacts
            set status = 'COMPLETED', disposition = $3, policy_version = $4, normalized_input = $5::jsonb, canonical_context = $6::jsonb, artifact = $7::jsonb,
@@ -120,14 +119,8 @@ export function createPostgresReliableFeedbackStore(db: Database): ReliableFeedb
             [organizationId, diagnosis.personId, diagnosis.referencePeriod, diagnosis.idempotencyKey, diagnosis.logicVersion, JSON.stringify(diagnosis.strategyVersions), JSON.stringify(diagnosis.closing), JSON.stringify(diagnosis.diagnosis), artifactId, diagnosis.enrollmentId, diagnosis.generatedAt, now, diagnosis.sourceKind ?? "PRV_CLOSING"],
           )
         }
-        await client.query("commit")
         return toArtifact(row)
-      } catch (error) {
-        await client.query("rollback")
-        throw error
-      } finally {
-        client.release()
-      }
+      })
     },
 
     async fail(organizationId, artifactId, error, now) {
@@ -147,9 +140,7 @@ export function createPostgresReliableFeedbackStore(db: Database): ReliableFeedb
     getReview: (organizationId, reviewId) => findReliableReview(db, organizationId, reviewId),
 
     async decideReview(organizationId, reviewId, decision, resolve) {
-      const client = await db.connect()
-      try {
-        await client.query("begin")
+      return inTransaction(db, async (client) => {
         const written = await client.query<{ artifact_id: string }>(
           `update reliable_feedback_item_reviews
            set review_status = $3, final_wording = $4::jsonb, reason_category = $5, reviewer_comment = $6, edit_warnings = $7, reviewed_by = $8, reviewed_at = $9
@@ -159,10 +150,7 @@ export function createPostgresReliableFeedbackStore(db: Database): ReliableFeedb
           [organizationId, reviewId, decision.status, decision.finalWording ? JSON.stringify(decision.finalWording) : null, decision.reasonCategory, decision.comment, decision.editWarnings, decision.reviewedBy, decision.reviewedAt],
         )
         const artifactId = written.rows[0]?.artifact_id
-        if (!artifactId) {
-          await client.query("rollback")
-          return { written: false }
-        }
+        if (!artifactId) return { written: false }
         // O artefato é travado: duas decisões concorrentes de itens diferentes fecham o QA exatamente uma vez.
         const artifact = (await client.query<ArtifactRow>(`select * from reliable_feedback_artifacts where organization_id = $1 and id = $2 for update`, [organizationId, artifactId])).rows[0]!
         const reviews = await loadReviews(client, organizationId, artifactId)
@@ -175,14 +163,8 @@ export function createPostgresReliableFeedbackStore(db: Database): ReliableFeedb
             : false
           resolution = { disposition, reactivated }
         }
-        await client.query("commit")
         return { written: true, resolution }
-      } catch (error) {
-        await client.query("rollback")
-        throw error
-      } finally {
-        client.release()
-      }
+      })
     },
   }
 }

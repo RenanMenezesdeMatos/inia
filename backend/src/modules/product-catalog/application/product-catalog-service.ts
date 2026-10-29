@@ -13,6 +13,7 @@ import {
   type ProductNodeRecord,
 } from "../domain/product-catalog.js"
 import { z } from "zod"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Contrato ÚNICO do cadastro de produtos (`PRODUCT_APPLICABILITY_V1`) — rota admin e prova de banco usam o mesmo serviço.
@@ -32,31 +33,7 @@ async function audit(db: Queryable, actor: ProductCatalogActor, entityType: stri
   await db.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, $4, $5, $6)`, [actor.organizationId, actor.personId, action, entityType, entityId, JSON.stringify(payload)])
 }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint product_catalog_tx")
-    try {
-      const result = await work(db)
-      await db.query("release savepoint product_catalog_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint product_catalog_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("product_catalog_tx")
 
 // ---------------------------------------------------------------------------------------------
 // Itens do catálogo

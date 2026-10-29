@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { acknowledgeFeedback } from "../../feedbacks/application/acknowledge-feedback.js"
@@ -18,6 +17,7 @@ import {
   type ReadConfirmationFailure,
 } from "../domain/read-confirmation.js"
 import { applicationSourceLockKey, completeApplication, findApplicationViewBySource, type ApplicationScope, type FeedbackApplicationView } from "./feedback-application-service.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * CONFIRMAÇÃO DE CIÊNCIA COM LOGIN E SENHA (ver domain/read-confirmation.ts) — `/api/v1/feedback-read-confirmations`.
@@ -129,20 +129,6 @@ async function recentCredentialFailures(db: Queryable, scope: ReadConfirmationSc
   return result.rows.map((row) => new Date(row.occurred_at))
 }
 
-async function inTransaction<T>(db: Database, work: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 /**
  * Confirma a ciência com o login e a senha da própria conta. Falha de credencial = evento FAILED + 422 (mensagem única, com as

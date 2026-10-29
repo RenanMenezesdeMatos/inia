@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto"
 import { productSessionContextOf } from "../domain/product-confirmation.js"
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { appendConversationMessage, loadConversationContextTurns } from "../../assistant/application/assistant-conversations.js"
@@ -42,6 +41,7 @@ import {
   type FeedbackHistoricalContext,
   type HistoricalIndicator,
 } from "../domain/historical-context.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Persistência e regras de execução da APLICAÇÃO DE FEEDBACK (migration 103). O destinatário vem SEMPRE da sessão; a fonte é
@@ -202,32 +202,7 @@ async function toDetail(db: Queryable, scope: ApplicationScope, row: Application
   }
 }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint feedback_application")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint feedback_application")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint feedback_application").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("feedback_application")
 
 const notFound = () => new DomainError("Feedback não encontrado.", "FEEDBACK_APPLICATION_SOURCE_NOT_FOUND", 404)
 const applicationNotFound = () => new DomainError("Aplicação de feedback não encontrada.", "FEEDBACK_APPLICATION_NOT_FOUND", 404)

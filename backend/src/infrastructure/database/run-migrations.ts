@@ -5,6 +5,15 @@ import type pg from "pg"
 
 export const MIGRATIONS_DIRECTORY = join(dirname(fileURLToPath(import.meta.url)), "../../../migrations")
 
+/** Migrations do diretório que o banco ainda não aplicou, em ordem (sem a tabela de controle, todas). Só lê. */
+export async function pendingMigrations(db: Pick<pg.ClientBase, "query">, directory = MIGRATIONS_DIRECTORY): Promise<string[]> {
+  const files = (await readdir(directory)).filter((file) => file.endsWith(".sql")).sort()
+  const control = await db.query<{ present: boolean }>(`select to_regclass('schema_migrations') is not null as present`)
+  if (!control.rows[0]?.present) return files
+  const applied = new Set((await db.query<{ name: string }>("select name from schema_migrations")).rows.map((row) => row.name))
+  return files.filter((file) => !applied.has(file))
+}
+
 /** Aplica as migrations pendentes (schema_migrations), em ordem, cada uma na própria transação. Erro propaga. */
 export async function runMigrations(client: pg.PoolClient, log: (message: string) => void, directory = MIGRATIONS_DIRECTORY): Promise<string[]> {
   await client.query(`

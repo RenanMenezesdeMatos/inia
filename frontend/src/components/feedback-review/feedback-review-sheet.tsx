@@ -19,6 +19,7 @@ import { formatDateTime } from "@/lib/format/date"
 import { feedbackReviewKeys } from "@/queries/feedback-review/feedback-review-query-keys"
 import { useCheckFeedbackReviewEditMutation, useDecideFeedbackReviewMutation, useFeedbackReviewQuery } from "@/queries/feedback-review/use-feedback-reviews"
 import { feedbackReviewDetailSchema, WORDING_FIELDS, type EditViolation, type FeedbackPreview, type FeedbackPreviewTechnical, type FeedbackReviewDetail, type ItemWording, type WordingFieldKey } from "@/schemas/feedback-review/feedback-review.schema"
+import { cn } from "@/lib/utils"
 import { useQueryClient } from "@tanstack/react-query"
 
 const COMMENT_MAX = 2000
@@ -253,7 +254,7 @@ function FeedbackPreviewView({ preview, onNavigate }: { preview: FeedbackPreview
                 {current ? <Badge className="bg-primary text-primary-foreground">Em avaliação agora</Badge> : null}
                 {items.map((item) => (
                   <span key={item.itemIndex} className="inline-flex items-center gap-1">
-                    <Badge variant="outline" className={`border-0 ${PREVIEW_STATUS_STYLES[item.status] ?? "bg-muted"}`}>{item.sectionLabel} · {item.statusLabel}</Badge>
+                    <Badge variant="outline" className={cn("border-0", PREVIEW_STATUS_STYLES[item.status] ?? "bg-muted")}>{item.sectionLabel} · {item.statusLabel}</Badge>
                     {!item.isCurrent && item.status === "PENDING_REVIEW" && item.reviewId && onNavigate ? (
                       <Button type="button" variant="link" size="sm" className="h-auto px-1 py-0 text-xs" onClick={() => onNavigate(item.reviewId!)}>
                         Avaliar este ponto

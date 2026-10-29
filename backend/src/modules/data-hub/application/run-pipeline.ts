@@ -16,7 +16,7 @@ import type { DataHubContext } from "./data-hub-context.js"
 import { findFeed, findSource, SELECT_RUN, toIsoRow, type DataFeedRow, type DataRunRow, type DataSourceRow } from "./records.js"
 import { emptyApply, mergeApply, type ApplyResult, type Rejection, type ValidRecord, type WriteContext } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
-import { useBatchStatementTimeout } from "../../../infrastructure/database/pool.js"
+import { useBatchStatementTimeout, type Database } from "../../../infrastructure/database/pool.js"
 
 /**
  * Pipeline de um Run: CONNECTING → FETCHING → PARSING → MAPPING → VALIDATING → APPLYING →
@@ -89,6 +89,53 @@ export async function persistLineage(client: pg.PoolClient, run: DataRunRow, ent
        from unnest($6::text[], $7::uuid[], $8::text[], $9::int[], $10::text[]) as t(entity_type, entity_id, source_record_key, record_number, action)`,
       [run.organizationId, run.id, run.feedId, run.sourceId, run.contractKey, chunk.map((e) => e.entityType), chunk.map((e) => e.entityId), chunk.map((e) => e.sourceRecordKey), chunk.map((e) => e.recordNumber), chunk.map((e) => e.action)],
     )
+  }
+}
+
+/**
+ * APPLYING: lotes de APPLY_BATCH registros, cada lote na própria transação — ou todos numa só quando `atomic` —, com as
+ * contagens gravadas no Run a cada lote. Qualquer falha com a transação aberta faz `rollback` ANTES de devolver o cliente ao
+ * pool: devolvido no meio de uma transação, ele seria o próximo a sair do pool e a requisição seguinte escreveria dentro da
+ * transação aberta (que um `commit` alheio confirmaria pela metade) ou receberia 25P02 em todo comando, se abortada. Se nem o
+ * `rollback` passar, o cliente é descartado (`release(erro)`) em vez de voltar ao pool.
+ */
+export async function applyInTransactions<T>(db: Database, runId: string, ready: T[], atomic: boolean, applyChunk: (client: pg.PoolClient, chunk: T[]) => Promise<ApplyResult>): Promise<ApplyResult> {
+  const total = emptyApply()
+  const client = await db.connect()
+  let open = false
+  let broken: Error | undefined
+  // Cada transação de aplicação roda com o limite de comando das cargas em lote, mesmo quando esta carga roda na API.
+  const begin = async () => {
+    await client.query("begin")
+    open = true
+    await useBatchStatementTimeout(client)
+  }
+  try {
+    if (atomic) await begin()
+    for (let index = 0; index < ready.length; index += APPLY_BATCH) {
+      const chunk = ready.slice(index, index + APPLY_BATCH)
+      if (!atomic) await begin()
+      mergeApply(total, await applyChunk(client, chunk))
+      if (!atomic) {
+        await client.query("commit")
+        open = false
+      }
+      await db.query(`update data_ingestion_runs set records_inserted = $2, records_updated = $3, records_unchanged = $4 where id = $1`, [runId, total.inserted, total.updated, total.unchanged])
+    }
+    if (atomic) {
+      await client.query("commit")
+      open = false
+    }
+    return total
+  } catch (error) {
+    if (open) {
+      await client.query("rollback").catch((rollbackError: unknown) => {
+        broken = rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError))
+      })
+    }
+    throw error
+  } finally {
+    client.release(broken)
   }
 }
 
@@ -319,35 +366,11 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
 
     // APPLYING — lotes em transação própria (ou uma única transação quando atômico).
     stages = await transition(ctx.db, run.id, "APPLYING", stages, `${prepared.ready.length} registro(s) em lotes de ${APPLY_BATCH}`)
-    const total = emptyApply()
-    const client = await ctx.db.connect()
-    try {
-      // Cada transação de aplicação roda com o limite de comando das cargas em lote, mesmo quando esta carga roda na API.
-      if (atomic) {
-        await client.query("begin")
-        await useBatchStatementTimeout(client)
-      }
-      for (let index = 0; index < prepared.ready.length; index += APPLY_BATCH) {
-        const chunk = prepared.ready.slice(index, index + APPLY_BATCH)
-        if (!atomic) {
-          await client.query("begin")
-          await useBatchStatementTimeout(client)
-        }
-        try {
-          const result = await writer.apply(writeContext, client, chunk)
-          await persistLineage(client, run, result.lineage)
-          mergeApply(total, result)
-          if (!atomic) await client.query("commit")
-        } catch (error) {
-          await client.query("rollback")
-          throw error
-        }
-        await ctx.db.query(`update data_ingestion_runs set records_inserted = $2, records_updated = $3, records_unchanged = $4 where id = $1`, [run.id, total.inserted, total.updated, total.unchanged])
-      }
-      if (atomic) await client.query("commit")
-    } finally {
-      client.release()
-    }
+    const total = await applyInTransactions(ctx.db, run.id, prepared.ready, atomic, async (client, chunk) => {
+      const result = await writer.apply(writeContext, client, chunk)
+      await persistLineage(client, run, result.lineage)
+      return result
+    })
     metrics.recordsInserted = total.inserted
     metrics.recordsUpdated = total.updated
     metrics.recordsUnchanged = total.unchanged

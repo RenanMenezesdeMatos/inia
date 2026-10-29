@@ -17,6 +17,7 @@ import { formatCivilDate } from "@/lib/format/date"
 import { useCalendarSettingsQuery, useCapitalsQuery, useCreateHolidayMutation, useDeleteHolidayMutation, useHolidayCatalogCoverageQuery, useHolidayCatalogQuery, useHolidaysQuery, useUpdateCalendarSettingsMutation, useUpdateHolidayMutation } from "@/queries/admin/use-operational-calendar-queries"
 import { CATALOG_SCOPE_LABELS, CATALOG_SCOPES, HOLIDAY_SCOPE_LABELS, HOLIDAY_SCOPES, VERIFICATION_LABELS, type CatalogScope, type HolidayScope } from "@/schemas/admin/operational-calendar.schema"
 import { HOLIDAY_FALLBACK_POLICIES, HOLIDAY_FALLBACK_POLICY_LABELS, type HolidayFallbackPolicy } from "@/schemas/people/employment-status.schema"
+import { cn } from "@/lib/utils"
 
 const ALL = "__all__"
 
@@ -290,7 +291,7 @@ function BaseCatalogCard() {
                         {holiday.sourceName} <ExternalLink className="size-3" aria-hidden />
                       </a>
                       {holiday.legalReference ? <span className="block">{holiday.legalReference}</span> : null}
-                      {holiday.verification ? <span className={`block ${holiday.verification === "SECONDARY" ? "text-amber-700 dark:text-amber-300" : ""}`}>{VERIFICATION_LABELS[holiday.verification]}</span> : null}
+                      {holiday.verification ? <span className={cn("block", holiday.verification === "SECONDARY" && "text-amber-700 dark:text-amber-300")}>{VERIFICATION_LABELS[holiday.verification]}</span> : null}
                     </TableCell>
                   </TableRow>
                 ))}

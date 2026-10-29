@@ -1,4 +1,3 @@
-import type pg from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { Queryable } from "../../people/application/schedule-exception-service.js"
@@ -6,6 +5,7 @@ import { competencyInputSchema, PATTERN_KEY, type CompetencyInput } from "../dom
 import { emptyInterventionTypeDefinition, interventionTypeDefinitionSchema, validateInterventionType, type ConfigIssue, type InterventionTypeDefinition } from "../domain/intervention-type.js"
 import { emptyPolicyDefinition, policyDefinitionSchema, validatePolicyDefinition, type PolicyDefinition } from "../domain/policy-definition.js"
 import { loadPolicyHeader, loadValidationCatalog, type PolicyHeader } from "./catalog.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * CONFIGURAÇÃO — tipos de intervenção, competências e políticas. Rascunho é editável e nunca executa; PUBLICAR valida a
@@ -14,20 +14,6 @@ import { loadPolicyHeader, loadValidationCatalog, type PolicyHeader } from "./ca
  */
 export type ConfigActor = { userAccountId: string; personId: string }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  const client: pg.PoolClient = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 async function audit(db: Queryable, organizationId: string, actor: ConfigActor, action: string, entityType: string, entityId: string, payload: Record<string, unknown> = {}) {
   await db.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, $4, $5, $6)`, [organizationId, actor.personId, action, entityType, entityId, JSON.stringify(payload)])

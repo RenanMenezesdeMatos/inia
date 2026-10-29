@@ -9,5 +9,7 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // Provas de banco (INIA_DB_PROOF=1) só rodam com o banco de teste em dia com as migrations; sem a variável, não faz nada.
+    globalSetup: ["./src/infrastructure/database/testing/proof-database-setup.ts"],
   },
 })

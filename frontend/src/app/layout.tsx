@@ -5,6 +5,7 @@ import { Atkinson_Hyperlegible, Atkinson_Hyperlegible_Next, IBM_Plex_Mono } from
 import { headers } from "next/headers"
 
 import { CSP_NONCE_HEADER } from "@/lib/security/content-security-policy"
+import { cn } from "@/lib/utils"
 import { Providers } from "./providers"
 import "./globals.css"
 
@@ -47,7 +48,7 @@ export default async function RootLayout({
   // dinâmicas, de propósito: página pré-renderizada no build não tem como levar o nonce e teria os próprios scripts bloqueados.
   const nonce = (await headers()).get(CSP_NONCE_HEADER) ?? undefined
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={`${atkinson.variable} ${atkinsonNext.variable} ${plexMono.variable}`}>
+    <html lang="pt-BR" suppressHydrationWarning className={cn(atkinson.variable, atkinsonNext.variable, plexMono.variable)}>
       <body className="font-sans" suppressHydrationWarning>
         {/* Todos os providers de cliente (tema, acessibilidade, query, tooltip, toaster) vivem em UM lugar: ./providers.tsx. */}
         <Providers nonce={nonce}>{children}</Providers>

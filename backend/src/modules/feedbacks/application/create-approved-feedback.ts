@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { PublishFeedback } from "./publish-feedback.js"
 import { persistSupportMaterialsWithSnapshot } from "./feedback-support-materials.js"
 import { persistInvestigationSnapshot, type FeedbackInvestigationFields } from "./feedback-investigation-trace.js"
@@ -38,10 +39,7 @@ export type ApprovedFeedbackRecord = {
  * rastro da investigação; depois do commit, publica. Os criadores só decidem os VALORES.
  */
 export async function createApprovedFeedback(db: Database, record: ApprovedFeedbackRecord): Promise<{ caseId: string; feedbackId: string }> {
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-
+  const { caseId, feedbackId } = await inTransaction(db, async (client) => {
     // Colaborador e grupo sempre da organização do registro: quem chama nunca publica em nome de pessoa/grupo de outra.
     const owned = await client.query(
       `select 1 as owned from people p join teams t on t.id = $3 and t.organization_id = $1 where p.id = $2 and p.organization_id = $1`,
@@ -116,15 +114,10 @@ export async function createApprovedFeedback(db: Database, record: ApprovedFeedb
     })
     await persistInvestigationSnapshot(client, feedbackId, { toolTrace: record.toolTrace, investigation: record.investigation })
 
-    await client.query("commit")
-
-    await new PublishFeedback(db).execute(feedbackId, { organizationId: record.organizationId })
-
     return { caseId, feedbackId }
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
+
+  await new PublishFeedback(db).execute(feedbackId, { organizationId: record.organizationId })
+
+  return { caseId, feedbackId }
 }

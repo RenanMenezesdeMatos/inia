@@ -1,9 +1,9 @@
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AVATAR_AUDIT_ACTIONS, transitionAvatarDelivery, type AvatarDeliveryEvent, type AvatarDeliveryStatus, type AvatarFailureReason } from "../domain/avatar-delivery-lifecycle.js"
 import { avatarAlertDedupeKey, chatAlertDedupeKey } from "./deliver-conversational-output.js"
 import { recadoCoveredByFollowUpSql } from "./recado-follow-up-invite.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * Leitura e ciclo de vida das entregas CONVERSACIONAIS do PRÓPRIO destinatário (a pessoa da sessão — nunca um id do corpo):
@@ -91,32 +91,7 @@ export async function loadRecipientInbox(db: Pick<Database, "query">, scope: Rec
   }
 }
 
-async function inTransaction<T>(db: Database, work: (client: Pick<Database, "query">) => Promise<T>): Promise<T> {
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint avatar_delivery_event")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint avatar_delivery_event")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint avatar_delivery_event").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("avatar_delivery_event")
 
 const REJECTION_MESSAGES = {
   ALREADY_DELIVERED: "Este recado já foi entregue.",

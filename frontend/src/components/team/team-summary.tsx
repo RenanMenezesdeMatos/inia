@@ -6,6 +6,7 @@ import { formatCount } from "@/lib/analytics/format"
 import type { MemberSituation, TeamSummaryCounts } from "@/schemas/analytics/analytics.schema"
 
 import { AnalyticsCard } from "@/components/analytics/analytics-states"
+import { cn } from "@/lib/utils"
 
 type SummaryTile = { key: string; icon: LucideIcon; label: string; value: number; hint: string; situation?: MemberSituation; pending?: boolean; href?: string }
 
@@ -58,7 +59,7 @@ export function TeamSummary({ title, subtitle, summary, onFilterSituation, onFil
                   title={tile.hint}
                   aria-pressed={active}
                   onClick={() => (tile.situation ? onFilterSituation?.(active ? null : tile.situation) : onFilterPending?.(!active))}
-                  className={`w-full rounded-xl p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${active ? "bg-primary/10 ring-1 ring-primary/40" : "bg-muted/50 hover:bg-muted"}`}
+                  className={cn("w-full rounded-xl p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50", active ? "bg-primary/10 ring-1 ring-primary/40" : "bg-muted/50 hover:bg-muted")}
                 >
                   {content}
                 </button>

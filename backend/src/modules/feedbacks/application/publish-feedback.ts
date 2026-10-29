@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { validatePublishableFeedback } from "../domain/feedback.js"
 
 type FeedbackRow = {
@@ -13,9 +14,7 @@ export class PublishFeedback {
 
   /** `organizationId` (pedido HTTP) restringe à organização da sessão; chamadas internas do motor já vêm da própria organização. */
   async execute(id: string, scope: { organizationId?: string } = {}) {
-    const client = await this.db.connect()
-    try {
-      await client.query("begin")
+    return inTransaction(this.db, async (client) => {
       const result = await client.query<FeedbackRow>("select * from feedbacks where id = $1 and ($2::uuid is null or organization_id = $2::uuid) for update", [id, scope.organizationId ?? null])
       const feedback = result.rows[0]
       if (!feedback) throw new DomainError("Feedback não encontrado.", "FEEDBACK_NOT_FOUND", 404)
@@ -35,13 +34,7 @@ export class PublishFeedback {
 
       await client.query("update feedbacks set status = 'PUBLISHED', published_at = now(), updated_at = now(), version = version + 1 where id = $1", [id])
       await client.query("insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'FEEDBACK_PUBLISHED', $3)", [feedback.organization_id, feedback.case_id, { feedbackId: id }])
-      await client.query("commit")
       return { id, status: "PUBLISHED" as const }
-    } catch (error) {
-      await client.query("rollback")
-      throw error
-    } finally {
-      client.release()
-    }
+    })
   }
 }

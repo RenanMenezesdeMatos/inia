@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto"
-import type pg from "pg"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -37,6 +36,7 @@ import { loadPublishedTypes, loadTypeVersion } from "./catalog.js"
 import { sensitiveDecisionHolders } from "./evaluate-policy.js"
 import { resolveResponsibleId, unresolvedResponsibleMessage } from "./responsible.js"
 import { relationFor, canOpenFor, canSeeInterventionsOf } from "./intervention-access.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * INTERVENÇÕES — a experiência de quem executa e de quem decide. Toda leitura confere a relação do viewer (404 fora dela) e
@@ -114,20 +114,6 @@ const SELECT = `
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 const notFound = () => new DomainError("Intervenção não encontrada.", "INTERVENTION_NOT_FOUND", 404)
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  const client: pg.PoolClient = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 async function today(db: Queryable | Database, organizationId: string, now: Date = new Date()): Promise<string> {
   return localDateOf(now, await resolveOrganizationTimezone(db as Database, organizationId))

@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { SqlParams } from "../../../shared/infrastructure/sql-params.js"
@@ -12,6 +11,7 @@ import {
   type ContestationReviewInput,
   type FeedbackDislikeReason,
 } from "../domain/feedback-rating.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * REVISÃO DAS CONTESTAÇÕES (migration 150): a fila das avaliações "não foi útil" dos colaboradores do ESCOPO de quem revisa
@@ -147,32 +147,7 @@ export async function getContestation(db: Queryable, reviewer: Reviewer, ratingI
   return { ...toItem(row), content }
 }
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint contestation_review")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint contestation_review")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint contestation_review").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("contestation_review")
 
 const preview = (text: string, size: number) => (text.length > size ? `${text.slice(0, size - 1).trimEnd()}…` : text)
 

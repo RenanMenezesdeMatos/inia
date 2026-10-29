@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { validatePublishableFeedback } from "../../feedbacks/domain/feedback.js"
 import { confirmedProductsOf, nodeOutputOf, renderPublishedNarrative, supportMaterialLineageOf, supportMaterialsOf, type EmittedItem } from "../domain/reliable-feedback-artifact.js"
 import { NATURAL_FEEDBACK_VERSION, presentationViolations } from "../domain/feedback-presentation.js"
@@ -114,9 +115,7 @@ export async function publishReliableFeedbackToFollowUp(db: Database, store: Rel
     recommendation: prv ? output.text : renderPublishedNarrative(output.items, output.limitations, { presentation: output.presentation ?? null, confirmedProducts }),
   })
 
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  const published = await inTransaction(db, async (client) => {
     const emission = await client.query<{ id: string }>(
       `insert into workflow_output_emissions (organization_id, enrollment_id, node_id, surface, recipient_id, artifact_id, created_at)
        values ($1,$2,$3,'FOLLOW_UP',$4,$5,now())
@@ -124,12 +123,7 @@ export async function publishReliableFeedbackToFollowUp(db: Database, store: Rel
        returning id`,
       [input.organizationId, input.enrollmentId, input.nodeId, input.recipientId, record.id],
     )
-    if (!emission.rows[0]) {
-      await client.query("rollback")
-      const existing = (await db.query<{ case_id: string | null; feedback_id: string | null }>(`select case_id, feedback_id from workflow_output_emissions where enrollment_id = $1 and node_id = $2 and surface = 'FOLLOW_UP' and recipient_id = $3`, [input.enrollmentId, input.nodeId, input.recipientId])).rows[0]
-      if (!existing?.case_id || !existing.feedback_id) throw new Error("Emissão deste Output já registrada sem feedback — estado inconsistente, nada publicado de novo.")
-      return { caseId: existing.case_id, feedbackId: existing.feedback_id, reused: true }
-    }
+    if (!emission.rows[0]) return null
     const origin = record.domain === "MONITORING"
       ? (await client.query<{ started_at: Date }>(`select started_at from interactions where id = $1 and organization_id = $2`, [record.interactionId, input.organizationId])).rows[0]?.started_at
       : prv ? null
@@ -193,14 +187,12 @@ export async function publishReliableFeedbackToFollowUp(db: Database, store: Rel
     await persistSupportMaterialsWithSnapshot(client, { organizationId: input.organizationId, feedbackId, operatorId: record.collaboratorId, supportMaterials: supportMaterialsOf(output.items) })
     await client.query(`insert into case_timeline_events (organization_id, case_id, event_type, payload) values ($1, $2, 'FEEDBACK_PUBLISHED', $3)`, [input.organizationId, caseId, { feedbackId }])
     await client.query(`update workflow_output_emissions set case_id = $2, feedback_id = $3 where id = $1`, [emission.rows[0].id, caseId, feedbackId])
-    await client.query("commit")
     return { caseId, feedbackId, reused: false }
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
+  })
+  if (published) return published
+  const existing = (await db.query<{ case_id: string | null; feedback_id: string | null }>(`select case_id, feedback_id from workflow_output_emissions where enrollment_id = $1 and node_id = $2 and surface = 'FOLLOW_UP' and recipient_id = $3`, [input.enrollmentId, input.nodeId, input.recipientId])).rows[0]
+  if (!existing?.case_id || !existing.feedback_id) throw new Error("Emissão deste Output já registrada sem feedback — estado inconsistente, nada publicado de novo.")
+  return { caseId: existing.case_id, feedbackId: existing.feedback_id, reused: true }
 }
 
 /** INDICATOR DIAGNOSIS V1 — as projeções do fechamento a partir dos itens que REALMENTE saem (narrativa conferida contra eles). */

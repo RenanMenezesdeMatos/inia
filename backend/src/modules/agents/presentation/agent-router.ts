@@ -3,6 +3,7 @@ import { z } from "zod"
 import { INVESTIGATION_CAPABILITY_LABELS, investigationCapabilitySchema, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { agentBusinessDomainJoin, agentBusinessDomainJson, assertBusinessDomainsSelectable, resolveBusinessDomainRefs } from "../../business-domains/application/business-domain-lookup.js"
@@ -433,186 +434,178 @@ export function createAgentRouter(db: Database) {
     const specialty = (await specialtyFromInput(db, organizationId, input)) ?? { kind: null, domain: null, capability: null, acceptsConsolidated: false }
     const actionLimits: AgentActionLimits = { enabled: input.actionLimitsEnabled, text: actionLimitsText(input.actionLimits) }
     assertActionLimits(actionLimits)
-    const client = await db.connect()
     try {
-      await client.query("begin")
-      const created = await client.query<{ id: string }>(
-        `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, specialty, specialty_kind, domain, capability, consolidated_input, business_domain_id, recommend_support_materials, investigation_capabilities, action_limits_enabled, action_limits)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
-        [
-          organizationId,
-          input.name,
-          input.agentType,
-          input.objective,
-          input.description,
-          input.contextPrompt,
-          scope.scopeType,
-          scope.teamId,
-          scope.subteamId,
-          request.user?.sub ?? null,
-          legacySpecialtyFor(specialty),
-          specialty.kind,
-          specialty.domain?.code ?? null,
-          specialty.capability,
-          specialty.acceptsConsolidated,
-          specialty.domain?.id ?? null,
-          input.recommendSupportMaterials ?? false,
-          normalizeCapabilities(input.investigationCapabilities),
-          actionLimits.enabled,
-          actionLimits.text,
-        ],
-      )
-      const agentId = created.rows[0]!.id
-      await syncKnowledgeDocuments(client, organizationId, agentId, input.knowledgeDocumentIds)
-      await recordAgentHistory(client, organizationId, {
-        agentId,
-        action: "CREATED",
-        changedByPersonId: request.user?.personId ?? null,
-        changedByName: request.user?.name ?? "Sistema",
-        changes: [],
+      const agentId = await inTransaction(db, async (client) => {
+        const created = await client.query<{ id: string }>(
+          `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, specialty, specialty_kind, domain, capability, consolidated_input, business_domain_id, recommend_support_materials, investigation_capabilities, action_limits_enabled, action_limits)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning id`,
+          [
+            organizationId,
+            input.name,
+            input.agentType,
+            input.objective,
+            input.description,
+            input.contextPrompt,
+            scope.scopeType,
+            scope.teamId,
+            scope.subteamId,
+            request.user?.sub ?? null,
+            legacySpecialtyFor(specialty),
+            specialty.kind,
+            specialty.domain?.code ?? null,
+            specialty.capability,
+            specialty.acceptsConsolidated,
+            specialty.domain?.id ?? null,
+            input.recommendSupportMaterials ?? false,
+            normalizeCapabilities(input.investigationCapabilities),
+            actionLimits.enabled,
+            actionLimits.text,
+          ],
+        )
+        const agentId = created.rows[0]!.id
+        await syncKnowledgeDocuments(client, organizationId, agentId, input.knowledgeDocumentIds)
+        await recordAgentHistory(client, organizationId, {
+          agentId,
+          action: "CREATED",
+          changedByPersonId: request.user?.personId ?? null,
+          changedByName: request.user?.name ?? "Sistema",
+          changes: [],
+        })
+        return agentId
       })
-      await client.query("commit")
       const result = await db.query(`${AGENT_SELECT} and a.id = $2`, [organizationId, agentId])
       response.status(201).json({ data: result.rows[0] })
     } catch (error) {
-      await client.query("rollback")
       if ((error as { code?: string }).code === "23505") {
         throw new DomainError("Já existe um agente com esse nome.", "AGENT_NAME_TAKEN", 409)
       }
       throw error
-    } finally {
-      client.release()
     }
   })
 
   router.patch("/:id", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = updateAgentSchema.parse(request.body)
-    const client = await db.connect()
     try {
-      await client.query("begin")
-      const before = await client.query<AgentRow>(
-        `select name, agent_type "agentType", objective, description, context_prompt "contextPrompt", active,
-                scope_type "scopeType", team_id "teamId", subteam_id "subteamId",
-                action_limits_enabled "actionLimitsEnabled", action_limits "actionLimits"
-         from agents where id = $1 and organization_id = $2`,
-        [request.params.id, organizationId],
-      )
-      if (!before.rows[0]) {
-        await client.query("rollback")
-        return response.status(404).json(NOT_FOUND)
-      }
+      const outcome = await inTransaction(db, async (client) => {
+        const before = await client.query<AgentRow>(
+          `select name, agent_type "agentType", objective, description, context_prompt "contextPrompt", active,
+                  scope_type "scopeType", team_id "teamId", subteam_id "subteamId",
+                  action_limits_enabled "actionLimitsEnabled", action_limits "actionLimits"
+           from agents where id = $1 and organization_id = $2`,
+          [request.params.id, organizationId],
+        )
+        if (!before.rows[0]) {
+          return "NOT_FOUND" as const
+        }
 
-      const scopes = await getManageableScopes(db, request.user!, "agents.manage")
-      if (!canManageScope(scopes, before.rows[0])) {
-        await client.query("rollback")
-        return response.status(404).json(NOT_FOUND)
-      }
-      const nextScope = input.scopeType !== undefined ? await normalizeScopedTarget(client, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
-      if (input.scopeType !== undefined && (!nextScope || !canManageScope(scopes, nextScope))) {
-        await client.query("rollback")
-        throw new DomainError("Você não tem permissão para mover o agente para esse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
-      }
+        const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+        if (!canManageScope(scopes, before.rows[0])) {
+          return "NOT_FOUND" as const
+        }
+        const nextScope = input.scopeType !== undefined ? await normalizeScopedTarget(client, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
+        if (input.scopeType !== undefined && (!nextScope || !canManageScope(scopes, nextScope))) {
+          throw new DomainError("Você não tem permissão para mover o agente para esse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
+        }
 
-      const knowledgeBefore = await client.query<{ knowledge_document_id: string }>(
-        `select knowledge_document_id from agent_knowledge_documents where agent_id = $1`,
-        [request.params.id],
-      )
-      // Estado final dos limites (PATCH parcial): o que não veio continua como está.
-      const nextActionLimits: AgentActionLimits = {
-        enabled: input.actionLimitsEnabled ?? before.rows[0].actionLimitsEnabled,
-        text: input.actionLimits !== undefined ? actionLimitsText(input.actionLimits) : before.rows[0].actionLimits,
-      }
-      assertActionLimits(nextActionLimits)
-      const currentSpecialtyRow = await client.query<{ specialty: string | null; specialty_kind: string | null; domain: string | null; capability: string | null; consolidated_input: boolean; business_domain_id: string | null; business_domain_code: string | null; business_domain_name: string | null; business_domain_active: boolean | null }>(
-        `select a.specialty, a.specialty_kind, a.domain, a.capability, a.consolidated_input, bd.id "business_domain_id", bd.code "business_domain_code", bd.name "business_domain_name", bd.active "business_domain_active"
-           from agents a ${agentBusinessDomainJoin("a", "bd")} where a.id = $1 and a.organization_id = $2`,
-        [request.params.id, organizationId],
-      )
-      const nextSpecialty = currentSpecialtyRow.rows[0] ? await specialtyFromInput(db, organizationId, input, resolveAgentSpecialty(currentSpecialtyRow.rows[0])) : undefined
-      const updated = await client.query(
-        `update agents set
-           name = coalesce($1, name),
-           agent_type = coalesce($2, agent_type),
-           objective = coalesce($3, objective),
-           description = coalesce($4, description),
-           context_prompt = coalesce($5, context_prompt),
-           active = coalesce($6, active),
-           scope_type = coalesce($7, scope_type),
-           team_id = case when $7 is not null then $8 else team_id end,
-           subteam_id = case when $7 is not null then $9 else subteam_id end,
-           specialty = case when $12::boolean then $13 else specialty end,
-           specialty_kind = case when $12::boolean then $14 else specialty_kind end,
-           domain = case when $12::boolean then $15 else domain end,
-           capability = case when $12::boolean then $16 else capability end,
-           consolidated_input = case when $12::boolean then $17::boolean else consolidated_input end,
-           business_domain_id = case when $12::boolean then $18::uuid else business_domain_id end,
-           recommend_support_materials = coalesce($19, recommend_support_materials),
-           investigation_capabilities = coalesce($20::text[], investigation_capabilities),
-           action_limits_enabled = $21,
-           action_limits = $22,
-           updated_at = now()
-         where id = $10 and organization_id = $11
-         returning id`,
-        [
-          input.name ?? null,
-          input.agentType ?? null,
-          input.objective ?? null,
-          input.description ?? null,
-          input.contextPrompt ?? null,
-          input.active ?? null,
-          nextScope?.scopeType ?? null,
-          nextScope?.teamId ?? null,
-          nextScope?.subteamId ?? null,
-          request.params.id,
-          organizationId,
-          nextSpecialty !== undefined,
-          nextSpecialty ? legacySpecialtyFor(nextSpecialty) : null,
-          nextSpecialty?.kind ?? null,
-          nextSpecialty?.domain?.code ?? null,
-          nextSpecialty?.capability ?? null,
-          nextSpecialty?.acceptsConsolidated ?? false,
-          nextSpecialty?.domain?.id ?? null,
-          input.recommendSupportMaterials ?? null,
-          input.investigationCapabilities ? normalizeCapabilities(input.investigationCapabilities) : null,
-          nextActionLimits.enabled,
-          nextActionLimits.text,
-        ],
-      )
-      if (!updated.rows[0]) {
-        await client.query("rollback")
-        return response.status(404).json({ error: { code: "AGENT_NOT_FOUND", message: "Agente não encontrado." } })
-      }
-      if (input.knowledgeDocumentIds) {
-        await syncKnowledgeDocuments(client, organizationId, request.params.id, input.knowledgeDocumentIds)
-      }
-      const changes = diffAgentFields(
-        before.rows[0]!,
-        input,
-        knowledgeBefore.rows.map((row) => row.knowledge_document_id),
-        input.knowledgeDocumentIds,
-        nextActionLimits,
-      )
-      if (changes.length > 0) {
-        await recordAgentHistory(client, organizationId, {
-          agentId: request.params.id!,
-          action: "UPDATED",
-          changedByPersonId: request.user?.personId ?? null,
-          changedByName: request.user?.name ?? "Sistema",
-          changes,
-        })
-      }
-      await client.query("commit")
+        const knowledgeBefore = await client.query<{ knowledge_document_id: string }>(
+          `select knowledge_document_id from agent_knowledge_documents where agent_id = $1`,
+          [request.params.id],
+        )
+        // Estado final dos limites (PATCH parcial): o que não veio continua como está.
+        const nextActionLimits: AgentActionLimits = {
+          enabled: input.actionLimitsEnabled ?? before.rows[0].actionLimitsEnabled,
+          text: input.actionLimits !== undefined ? actionLimitsText(input.actionLimits) : before.rows[0].actionLimits,
+        }
+        assertActionLimits(nextActionLimits)
+        const currentSpecialtyRow = await client.query<{ specialty: string | null; specialty_kind: string | null; domain: string | null; capability: string | null; consolidated_input: boolean; business_domain_id: string | null; business_domain_code: string | null; business_domain_name: string | null; business_domain_active: boolean | null }>(
+          `select a.specialty, a.specialty_kind, a.domain, a.capability, a.consolidated_input, bd.id "business_domain_id", bd.code "business_domain_code", bd.name "business_domain_name", bd.active "business_domain_active"
+             from agents a ${agentBusinessDomainJoin("a", "bd")} where a.id = $1 and a.organization_id = $2`,
+          [request.params.id, organizationId],
+        )
+        const nextSpecialty = currentSpecialtyRow.rows[0] ? await specialtyFromInput(db, organizationId, input, resolveAgentSpecialty(currentSpecialtyRow.rows[0])) : undefined
+        const updated = await client.query(
+          `update agents set
+             name = coalesce($1, name),
+             agent_type = coalesce($2, agent_type),
+             objective = coalesce($3, objective),
+             description = coalesce($4, description),
+             context_prompt = coalesce($5, context_prompt),
+             active = coalesce($6, active),
+             scope_type = coalesce($7, scope_type),
+             team_id = case when $7 is not null then $8 else team_id end,
+             subteam_id = case when $7 is not null then $9 else subteam_id end,
+             specialty = case when $12::boolean then $13 else specialty end,
+             specialty_kind = case when $12::boolean then $14 else specialty_kind end,
+             domain = case when $12::boolean then $15 else domain end,
+             capability = case when $12::boolean then $16 else capability end,
+             consolidated_input = case when $12::boolean then $17::boolean else consolidated_input end,
+             business_domain_id = case when $12::boolean then $18::uuid else business_domain_id end,
+             recommend_support_materials = coalesce($19, recommend_support_materials),
+             investigation_capabilities = coalesce($20::text[], investigation_capabilities),
+             action_limits_enabled = $21,
+             action_limits = $22,
+             updated_at = now()
+           where id = $10 and organization_id = $11
+           returning id`,
+          [
+            input.name ?? null,
+            input.agentType ?? null,
+            input.objective ?? null,
+            input.description ?? null,
+            input.contextPrompt ?? null,
+            input.active ?? null,
+            nextScope?.scopeType ?? null,
+            nextScope?.teamId ?? null,
+            nextScope?.subteamId ?? null,
+            request.params.id,
+            organizationId,
+            nextSpecialty !== undefined,
+            nextSpecialty ? legacySpecialtyFor(nextSpecialty) : null,
+            nextSpecialty?.kind ?? null,
+            nextSpecialty?.domain?.code ?? null,
+            nextSpecialty?.capability ?? null,
+            nextSpecialty?.acceptsConsolidated ?? false,
+            nextSpecialty?.domain?.id ?? null,
+            input.recommendSupportMaterials ?? null,
+            input.investigationCapabilities ? normalizeCapabilities(input.investigationCapabilities) : null,
+            nextActionLimits.enabled,
+            nextActionLimits.text,
+          ],
+        )
+        if (!updated.rows[0]) {
+          return "AGENT_NOT_FOUND" as const
+        }
+        if (input.knowledgeDocumentIds) {
+          await syncKnowledgeDocuments(client, organizationId, request.params.id, input.knowledgeDocumentIds)
+        }
+        const changes = diffAgentFields(
+          before.rows[0]!,
+          input,
+          knowledgeBefore.rows.map((row) => row.knowledge_document_id),
+          input.knowledgeDocumentIds,
+          nextActionLimits,
+        )
+        if (changes.length > 0) {
+          await recordAgentHistory(client, organizationId, {
+            agentId: request.params.id!,
+            action: "UPDATED",
+            changedByPersonId: request.user?.personId ?? null,
+            changedByName: request.user?.name ?? "Sistema",
+            changes,
+          })
+        }
+        return "UPDATED" as const
+      })
+      if (outcome === "NOT_FOUND") return response.status(404).json(NOT_FOUND)
+      if (outcome === "AGENT_NOT_FOUND") return response.status(404).json({ error: { code: "AGENT_NOT_FOUND", message: "Agente não encontrado." } })
       const result = await db.query(`${AGENT_SELECT} and a.id = $2`, [organizationId, request.params.id])
       return response.json({ data: result.rows[0] })
     } catch (error) {
-      await client.query("rollback")
       if ((error as { code?: string }).code === "23505") {
         throw new DomainError("Já existe um agente com esse nome.", "AGENT_NAME_TAKEN", 409)
       }
       throw error
-    } finally {
-      client.release()
     }
   })
 

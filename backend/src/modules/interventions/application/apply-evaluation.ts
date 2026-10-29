@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto"
-import type pg from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { Queryable } from "../../people/application/schedule-exception-service.js"
@@ -10,6 +9,7 @@ import { isSensitiveType } from "../domain/intervention-type.js"
 import type { InterventionPlan } from "../domain/intervention-plan.js"
 import { aggregateOutcome, INTERVENTION_POLICY_EVALUATOR_VERSION, referencesOf, type DecisionStatus, type PlannedDecision } from "../domain/policy-evaluation.js"
 import { serializeEvaluation, type PolicyEvaluation } from "./evaluate-policy.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * GRAVA uma avaliação e o que ela decidiu — numa transação só: caso (reaproveitado ou novo), intervenções, relatório de
@@ -46,20 +46,6 @@ const EVIDENCE_KIND_OF: Record<string, string | null> = { FEEDBACK: "FEEDBACK", 
 
 class EvaluationAlreadyRecorded extends Error {}
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  const client: pg.PoolClient = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 /** Avaliação já gravada com esta chave → o resultado de antes (sem reavaliar, sem tocar em nada). */
 export async function loadRecordedEvaluation(db: Queryable | Database, organizationId: string, idempotencyKey: string): Promise<ApplyEvaluationResult | null> {

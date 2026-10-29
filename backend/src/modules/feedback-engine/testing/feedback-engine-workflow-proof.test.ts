@@ -665,7 +665,8 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     expect(response.body.data.stats.occurrences).toMatchObject({ basis: "PARTIAL", deviations: 2, deviationRules: 4, undeterminedAssessedRules: legacyAssessed })
     expect(response.body.data.method).toMatch(/OCORRÊNCIAS de conduta/)
     const csv = await supertest(app).get(`/diagnostics/memory/export.csv?${query}&view=people&groupBy=PERSON`)
-    const lines = csv.text.replace(/^\uFEFF/, "").split("\r\n").filter((line) => !line.startsWith("#") && line.trim())
+    // Preâmbulo: cada linha é UMA célula escapada (achado C12) — a que tem `;` ou aspas (método, filtros) sai entre aspas, `"# …"`.
+    const lines = csv.text.replace(/^\uFEFF/, "").split("\r\n").filter((line) => !/^"?#/.test(line) && line.trim())
     const header = lines[0]!.split(";")
     const values = lines[1]!.split(";")
     expect(values[header.indexOf("Ocorrências de desvio (condutas distintas)")]).toBe("2")

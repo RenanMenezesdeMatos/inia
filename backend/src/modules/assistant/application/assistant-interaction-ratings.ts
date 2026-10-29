@@ -1,7 +1,7 @@
-import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ratingView, sameRating, type AssistantRatingValue, type AssistantRatingView } from "../domain/assistant-interaction-rating.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 type Queryable = Pick<Database, "query">
 type RatingScope = { organizationId: string; ownerPersonId: string }
@@ -10,33 +10,7 @@ export type RateConversationMessageInput = { conversationId: string; interaction
 
 const notRateable = () => new DomainError("Resposta não encontrada.", "ASSISTANT_MESSAGE_NOT_FOUND", 404)
 
-async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  // Já dentro de uma transação (prova/teste com cliente dedicado): savepoint em vez de begin.
-  if (typeof (db as Partial<PoolClient>).release === "function") {
-    const client = db as unknown as PoolClient
-    await client.query("savepoint assistant_interaction_rating")
-    try {
-      const result = await work(client)
-      await client.query("release savepoint assistant_interaction_rating")
-      return result
-    } catch (error) {
-      await client.query("rollback to savepoint assistant_interaction_rating").catch(() => {})
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("assistant_interaction_rating")
 
 /**
  * Grava o curtir/descurtir (ou a retirada, `NONE`) de uma resposta da INIA e devolve a vigente. Só a DONA da conversa avalia, só

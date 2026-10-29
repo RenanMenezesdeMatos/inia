@@ -75,6 +75,19 @@ export function createShutdown(options: ShutdownOptions): (reason: string, exitC
   }
 }
 
+/**
+ * Callback do `app.listen`. No Express 5 o erro do listen (porta ocupada, endereço inválido) chega AQUI em vez de virar exceção
+ * não capturada: sem tratar, o processo escrevia "listening" e seguia de pé sem HTTP — o serviço parecia rodando e o
+ * balanceador nunca o via pronto. Falhou: log e desligamento com código 1, como acontecia antes do Express 5.
+ */
+export function onHttpListen(options: { listening: () => void; shutdown: (reason: string, exitCode?: number) => Promise<void>; log: LifecycleLog }): (error?: Error) => void {
+  return (error) => {
+    if (!error) return options.listening()
+    options.log.error({ event: "listen_failed", err: describeError(error) })
+    void options.shutdown("listen_failed", 1)
+  }
+}
+
 function describeError(value: unknown): Record<string, unknown> {
   if (value instanceof Error) return { name: value.name, message: value.message, stack: value.stack }
   return { value: String(value) }

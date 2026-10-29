@@ -10,6 +10,7 @@ import {
   type StrategyIssue,
 } from "../domain/diagnostic-strategy.js"
 import { strategyActiveAt, versionInForceAt } from "../domain/strategy-at-birth.js"
+import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * V1.6.2 — SERVIÇO DA ESTRATÉGIA DE DIAGNÓSTICO (único ponto de escrita/leitura das tabelas da migration 086). Toda leitura e
@@ -124,31 +125,7 @@ async function audit(db: Queryable, organizationId: string, actorPersonId: strin
  * Transação da escrita: com o POOL, uma conexão dedicada (begin/commit); com um CLIENT já dentro de uma transação (provas,
  * QA), um savepoint — nunca um commit que vazaria a transação de fora.
  */
-async function inTransaction<T>(db: Database, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  if (typeof (db as unknown as { release?: unknown }).release === "function") {
-    await db.query("savepoint indicator_strategy_tx")
-    try {
-      const result = await fn(db)
-      await db.query("release savepoint indicator_strategy_tx")
-      return result
-    } catch (error) {
-      await db.query("rollback to savepoint indicator_strategy_tx").catch(() => undefined)
-      throw error
-    }
-  }
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await fn(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
+const inTransaction = transactionRunner("indicator_strategy_tx")
 
 export type StrategyActor = { userAccountId: string; personId: string }
 

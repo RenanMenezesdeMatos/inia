@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { runWithAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { env } from "../../../config/env.js"
 import { findNode, flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
 import { callsModelOnEachVisit } from "../domain/paid-node-cycles.js"
@@ -78,9 +79,7 @@ export type ClaimRequest = {
 export async function claimDueEnrollments(db: Database, request: ClaimRequest): Promise<ClaimedRow[]> {
   if (request.limit <= 0) return []
   const running = [...(request.runningByWorkflow ?? new Map<string, number>())]
-  const client = await db.connect()
-  try {
-    await client.query("begin")
+  return inTransaction(db, async (client) => {
     const due = await client.query<Omit<ClaimedRow, "claimed_until">>(
       `with running as (
          select * from unnest($3::uuid[], $4::int[]) as r(workflow_id, count)
@@ -134,14 +133,8 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
       const tokens = new Map(leased.rows.map((row) => [row.id, row.token]))
       claimed = due.rows.map((row) => ({ ...row, claimed_until: tokens.get(row.id)! }))
     }
-    await client.query("commit")
     return claimed
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+  })
 }
 
 /**

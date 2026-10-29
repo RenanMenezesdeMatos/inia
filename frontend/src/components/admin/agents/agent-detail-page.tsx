@@ -50,6 +50,7 @@ import {
   type AgentType,
 } from "@/schemas/admin/agent.schema"
 import type { KnowledgeDocument } from "@/schemas/admin/knowledge.schema"
+import { cn } from "@/lib/utils"
 
 const COMING_SOON_TABS = [
   { value: "capabilities", label: "Capacidades" },
@@ -231,7 +232,7 @@ function AgentRunsTimeline({ agentId }: { agentId: string }) {
     <div className="space-y-4">
       {runsQuery.data.map((run) => (
         <div key={run.id} className="flex gap-3 border-b border-border pb-4 last:border-0">
-          <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${run.status === "FAILED" ? "bg-destructive" : "bg-primary"}`} />
+          <div className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", run.status === "FAILED" ? "bg-destructive" : "bg-primary")} />
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-sm font-medium">
               {AGENT_RUN_SOURCE_LABELS[run.source]} · {run.status === "FAILED" ? "Falhou" : run.status === "PENDING" ? "Em execução" : "Concluído"}
@@ -723,7 +724,7 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
                 <Collapsible open={showTools} onOpenChange={setShowTools}>
                   <CollapsibleTrigger asChild>
                     <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" aria-expanded={showTools}>
-                      <ChevronDown className={`mr-1 h-3.5 w-3.5 transition-transform ${showTools ? "rotate-180" : ""}`} aria-hidden="true" />
+                      <ChevronDown className={cn("mr-1 h-3.5 w-3.5 transition-transform", showTools && "rotate-180")} aria-hidden="true" />
                       Ferramentas liberadas (avançado, somente leitura)
                     </Button>
                   </CollapsibleTrigger>

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import type { UsabilityMeta } from "@/schemas/admin/usability.schema"
+import { cn } from "@/lib/utils"
 
 import { formatInstant } from "./usability-format"
 import { CoverageBanner, usePanel } from "./usability-shared"
@@ -107,6 +108,6 @@ export function DeferredMount({ children, className = "h-56" }: { children: Reac
     const timeout = window.setTimeout(() => setReady(true), 150)
     return () => window.clearTimeout(timeout)
   }, [])
-  if (!ready) return <div className={`${className} w-full animate-pulse rounded-lg bg-muted/40`} aria-hidden />
+  if (!ready) return <div className={cn(className, "w-full animate-pulse rounded-lg bg-muted/40")} aria-hidden />
   return <>{children}</>
 }

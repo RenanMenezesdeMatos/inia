@@ -1,5 +1,6 @@
 import { formatCount } from "@/lib/analytics/format"
 import type { QuartileDistribution } from "@/schemas/analytics/analytics.schema"
+import { cn } from "@/lib/utils"
 
 const SEGMENTS: { key: keyof QuartileDistribution; label: string; className: string }[] = [
   { key: "Q1", label: "Q1", className: "bg-primary" },
@@ -26,7 +27,7 @@ export function QuartileDistributionBar({ distribution, title = "Distribuição 
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-5">
         {SEGMENTS.map((segment) => (
           <div key={segment.key} className="flex items-center gap-2">
-            <span className={`size-2.5 rounded-full ${segment.className}`} aria-hidden />
+            <span className={cn("size-2.5 rounded-full", segment.className)} aria-hidden />
             <dt className="text-muted-foreground">{segment.label}</dt>
             <dd className="font-medium">{distribution[segment.key]}</dd>
           </div>

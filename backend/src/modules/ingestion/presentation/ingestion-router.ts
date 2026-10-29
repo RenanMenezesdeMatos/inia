@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { evaluateAttainment, type IndicatorDirection } from "../../indicators/domain/evaluate-attainment.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { enrollFlagWorkflows } from "../../workflows/application/flag-enrollment.js"
 import { enrollIndicatorWorkflows } from "../../workflows/application/indicator-enrollment.js"
 
@@ -30,9 +31,7 @@ export function createIngestionRouter(db: Database) {
   router.post("/indicator-measurements/batch", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = z.array(measurementSchema).min(1).max(1000).parse(request.body)
-    const client = await db.connect()
-    try {
-      await client.query("begin")
+    const results = await inTransaction(db, async (client) => {
       const results = []
       for (const item of input) {
         const context = await client.query<{ indicator_id: string; direction: string; target: string | null }>(`
@@ -59,9 +58,9 @@ export function createIngestionRouter(db: Database) {
         // a condição e roda a ação é o motor de workflow (engine.ts), em ticks periódicos.
         await enrollIndicatorWorkflows(client, { organizationId, measurementId, operatorId: item.operatorId, indicatorCode: item.indicatorCode, value: item.value })
       }
-      await client.query("commit")
-      response.status(202).json({ data: results })
-    } catch (error) { await client.query("rollback"); throw error } finally { client.release() }
+      return results
+    })
+    response.status(202).json({ data: results })
   })
 
   router.post("/interactions", async (request, response) => {
@@ -75,12 +74,9 @@ export function createIngestionRouter(db: Database) {
     if (new Date(input.endedAt).getTime() > Date.now() + INGESTION_CLOCK_SKEW_MS) {
       return response.status(422).json({ error: { code: "INTERACTION_ENDS_IN_FUTURE", message: "O fim da chamada está no futuro. Confira o relógio e o fuso horário do sistema de origem." } })
     }
-    const client = await db.connect()
-    let id: string
-    try {
-      await client.query("begin")
+    const id = await inTransaction(db, async (client) => {
       const interaction = await client.query<{ id: string }>(`insert into interactions(organization_id,operator_id,reason,sub_reason,channel,started_at,ended_at,external_id) values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(organization_id,external_id) do update set reason=excluded.reason,sub_reason=coalesce(excluded.sub_reason,interactions.sub_reason) returning id`, [organizationId, input.operatorId, input.reason, input.subReason, input.channel, input.startedAt, input.endedAt, input.externalId])
-      id = interaction.rows[0]!.id
+      const id = interaction.rows[0]!.id
       await client.query(`insert into transcripts(organization_id,interaction_id,version,content,language,confidence) values($1,$2,1,$3,$4,$5) on conflict(interaction_id,version) do update set content=excluded.content,language=excluded.language,confidence=excluded.confidence`, [organizationId, id, input.transcript.content, input.transcript.language, input.transcript.confidence ?? null])
 
       const flagEntries = Object.entries(input.flags)
@@ -129,8 +125,8 @@ export function createIngestionRouter(db: Database) {
         }
       }
 
-      await client.query("commit")
-    } catch (error) { await client.query("rollback"); throw error } finally { client.release() }
+      return id
+    })
 
     response.status(202).json({ data: { interactionId: id, status: "RECEIVED" } })
   })

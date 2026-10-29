@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { env } from "../../../config/env.js"
 import { generateTemporaryPassword, temporaryPasswordExpiry } from "../../auth/domain/temporary-password.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
@@ -319,43 +320,40 @@ export function createUserAccountRouter(db: Database) {
       }
     }
     const temporaryPassword = generateTemporaryPassword()
-    const client = await db.connect()
     try {
-      await client.query("begin")
-      const person = await client.query<{ id: string }>(
-        `insert into people(organization_id, team_id, name, role, matricula) values ($1,$2,$3,$4,$5) returning id`,
-        [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null],
-      )
-      const personId = person.rows[0]!.id
-      const passwordHash = await hashPassword(temporaryPassword)
-      // Senha PROVISÓRIA gerada aqui (mesma da liberação de acesso): no primeiro login a pessoa é obrigada a criar a própria, e ela
-      // vence como qualquer senha temporária.
-      const issuedAt = new Date()
-      const expiresAt = temporaryPasswordExpiry(issuedAt, env.TEMPORARY_PASSWORD_TTL_HOURS)
-      const account = await client.query<{ id: string }>(
-        `insert into user_accounts(organization_id, person_id, email, password_hash, password_change_required, temporary_password_issued_at, temporary_password_expires_at)
-         values ($1,$2,$3,$4,true,$5,$6) returning id`,
-        [organizationId, personId, input.email.trim().toLowerCase(), passwordHash, issuedAt, expiresAt],
-      )
-      // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
-      await client.query(
-        `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
-        [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
-      )
-      await client.query("commit")
+      const { personId, account, expiresAt } = await inTransaction(db, async (client) => {
+        const person = await client.query<{ id: string }>(
+          `insert into people(organization_id, team_id, name, role, matricula) values ($1,$2,$3,$4,$5) returning id`,
+          [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null],
+        )
+        const personId = person.rows[0]!.id
+        const passwordHash = await hashPassword(temporaryPassword)
+        // Senha PROVISÓRIA gerada aqui (mesma da liberação de acesso): no primeiro login a pessoa é obrigada a criar a própria, e ela
+        // vence como qualquer senha temporária.
+        const issuedAt = new Date()
+        const expiresAt = temporaryPasswordExpiry(issuedAt, env.TEMPORARY_PASSWORD_TTL_HOURS)
+        const account = await client.query<{ id: string }>(
+          `insert into user_accounts(organization_id, person_id, email, password_hash, password_change_required, temporary_password_issued_at, temporary_password_expires_at)
+           values ($1,$2,$3,$4,true,$5,$6) returning id`,
+          [organizationId, personId, input.email.trim().toLowerCase(), passwordHash, issuedAt, expiresAt],
+        )
+        // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
+        await client.query(
+          `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
+          [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
+        )
+        return { personId, account, expiresAt }
+      })
       // A senha aparece só nesta resposta (a API nunca a guarda nem a mostra de novo; respostas da API não ficam em cache).
       const email = input.email.trim().toLowerCase()
       response.status(201).json({ data: { id: personId, name: input.name, role: input.role, email, issued: { personId, accountId: account.rows[0]!.id, name: input.name, email, temporaryPassword, expiresAt: expiresAt.toISOString() } } })
     } catch (error) {
-      await client.query("rollback")
       if (error instanceof Error && "code" in error && (error as { code?: string }).code === "23505") {
         // Matrícula gravada por outra pessoa/carga entre a checagem e o insert.
         if ((error as { constraint?: string }).constraint === "people_matricula_unique") throw await matriculaInUse(request, null)
         throw new DomainError("Já existe uma conta com este e-mail.", "EMAIL_ALREADY_IN_USE", 409)
       }
       throw error
-    } finally {
-      client.release()
     }
   })
 

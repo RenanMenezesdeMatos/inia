@@ -1,26 +1,10 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { BEST_PRACTICE_CODING_PROMPT_VERSION } from "../domain/versions.js"
 import { reuseKeyOf, type BestPracticeStore, type KnownPattern, type ModelMode, type PatternScope, type PatternWrite, type ReusableCoding } from "../application/ports.js"
-
-type Queryable = Pick<Database, "query">
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /** Codificação reaproveitável = leitura definitiva (presente conferido, ausente, não se aplica ou "não dá para decidir" do próprio modelo). */
 const REUSABLE_CODING_SQL = `(c.status in ('PRESENT', 'ABSENT', 'NOT_APPLICABLE') or c.unclear_reason = 'MODEL_UNCLEAR') and (c.status <> 'PRESENT' or c.quote_verified)`
-
-export async function inTransaction<T>(db: Database, work: (client: Queryable) => Promise<T>): Promise<T> {
-  const client = await db.connect()
-  try {
-    await client.query("begin")
-    const result = await work(client)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
-}
 
 /** Resumo por contexto sustentado (o que a lista, a recomendação e o feedback mostram sem abrir a versão). */
 export const supportedContextsOf = (write: Pick<PatternWrite, "contexts">) =>

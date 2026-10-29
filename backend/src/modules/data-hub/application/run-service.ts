@@ -1,4 +1,5 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { nextSyncAt } from "../domain/freshness.js"
 import { MAX_RUN_ATTEMPTS, RUN_ACTIVE_STATUSES, type RunTriggerKind } from "../domain/run-status.js"
@@ -133,10 +134,7 @@ export async function cancelOrphanRuns(db: Pick<DataHubContext["db"], "query">, 
 
 /** Reivindica Runs na fila (skip locked + lease) e executa em sequência. */
 export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT): Promise<{ processed: number }> {
-  const client = await ctx.db.connect()
-  let claimed: string[] = []
-  try {
-    await client.query("begin")
+  const claimed = await inTransaction(ctx.db, async (client) => {
     const due = await client.query<{ id: string }>(
       `select id from data_ingestion_runs
        where status = 'QUEUED' and next_attempt_at <= now() and (claimed_until is null or claimed_until < now())
@@ -146,14 +144,8 @@ export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT
     if (due.rows.length > 0) {
       await client.query(`update data_ingestion_runs set claimed_until = now() + make_interval(secs => $2) where id = any($1::uuid[])`, [due.rows.map((row) => row.id), LEASE_SECONDS])
     }
-    claimed = due.rows.map((row) => row.id)
-    await client.query("commit")
-  } catch (error) {
-    await client.query("rollback")
-    throw error
-  } finally {
-    client.release()
-  }
+    return due.rows.map((row) => row.id)
+  })
   let processed = 0
   for (const runId of claimed) {
     try {

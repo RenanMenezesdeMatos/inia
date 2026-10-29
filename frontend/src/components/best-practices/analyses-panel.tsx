@@ -53,7 +53,13 @@ export function AnalysesPanel({ meta }: { meta: BestPracticesMeta | undefined })
             <TableBody>
               {analyses.data.map((item) => (
                 <TableRow key={item.id} className="cursor-pointer" onClick={() => setOpenId(item.id)}>
-                  <TableCell className="text-sm">{formatShortDateTime(item.createdAt)}<span className="block text-xs text-muted-foreground">{item.requestedBy ?? "—"}</span></TableCell>
+                  <TableCell className="text-sm">
+                    {/* A linha abre pelo clique; este botão é o mesmo acesso pelo teclado. */}
+                    <button type="button" className="text-left hover:underline" aria-label={`Abrir a análise de ${item.indicatorName} de ${formatShortDateTime(item.createdAt)}`} onClick={(event) => { event.stopPropagation(); setOpenId(item.id) }}>
+                      {formatShortDateTime(item.createdAt)}
+                    </button>
+                    <span className="block text-xs text-muted-foreground">{item.requestedBy ?? "—"}</span>
+                  </TableCell>
                   <TableCell className="text-sm">{item.indicatorName}{item.channelFlagId ? <span className="text-xs text-muted-foreground"> · sinal da chamada</span> : null}<span className="block text-xs text-muted-foreground">{item.referencePeriods.join(", ")}</span></TableCell>
                   <TableCell className="text-sm">{item.dataOrigin === "SYNTHETIC" ? <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">{item.datasetLabel ?? "Sintético"}</Badge> : <>{item.teamName}{item.subteamName ? <span className="block text-xs text-muted-foreground">Subgrupo {item.subteamName}</span> : null}</>}{item.modelMode === "SIMULATED_ANSWER_KEY" ? <span className="block text-xs text-muted-foreground">modelo simulado</span> : null}</TableCell>
                   <TableCell className="text-sm"><Badge variant={item.status === "FAILED" ? "destructive" : item.status === "COMPLETED" ? "default" : "secondary"}>{ANALYSIS_STATUS_LABELS[item.status]}</Badge>{item.outcome ? <span className="block text-xs text-muted-foreground">{ANALYSIS_OUTCOME_LABELS[item.outcome] ?? item.outcome}</span> : null}</TableCell>

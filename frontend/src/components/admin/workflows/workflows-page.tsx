@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Activity, CalendarClock, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react"
 
@@ -286,7 +287,12 @@ function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
         <TableBody>
           {workflows.map((workflow) => (
             <TableRow key={workflow.id} className="cursor-pointer" onClick={() => router.push(`/admin/workflows/${workflow.id}`)}>
-              <TableCell className="font-medium">{workflow.name}</TableCell>
+              <TableCell className="font-medium">
+                {/* A linha abre pelo clique; o nome é o link para quem navega pelo teclado (como no card). */}
+                <Link href={`/admin/workflows/${workflow.id}`} className="hover:underline" onClick={(event) => event.stopPropagation()}>
+                  {workflow.name}
+                </Link>
+              </TableCell>
               <TableCell>
                 <Badge variant="outline">{triggerBadgeText(workflow.trigger)}</Badge>
               </TableCell>
