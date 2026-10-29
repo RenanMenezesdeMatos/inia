@@ -48,6 +48,9 @@ export const businessDomainDependenciesSchema = z.object({
   agents: z.array(dependencyItemSchema),
   orchestrators: z.array(dependencyItemSchema),
   total: z.number(),
+  /** Itens de Grupos que quem consulta não administra — só a contagem (o nome não vem do backend). */
+  agentsOutOfScope: z.number().catch(0),
+  orchestratorsOutOfScope: z.number().catch(0),
 })
 export type BusinessDomainDependencies = z.infer<typeof businessDomainDependenciesSchema>
 

@@ -146,7 +146,7 @@ describe("business-domain-router — CRUD administrativo do catálogo", () => {
     expect(activated.body.data.active).toBe(true)
     expect(audit.map((entry) => entry.action)).toEqual(["BUSINESS_DOMAIN_DEACTIVATED", "BUSINESS_DOMAIN_ACTIVATED"])
     const dependencies = await api.get(`/api/v1/admin/business-domains/${FATURAMENTO.id}/dependencies`)
-    expect(dependencies.body.data).toEqual({ agents: [{ id: "a1", name: "Especialista de Faturamento", active: true }], orchestrators: [{ id: "o1", name: "Orquestrador · Faturamento", active: true }], total: 2 })
+    expect(dependencies.body.data).toEqual({ agents: [{ id: "a1", name: "Especialista de Faturamento", active: true }], orchestrators: [{ id: "o1", name: "Orquestrador · Faturamento", active: true }], total: 2, agentsOutOfScope: 0, orchestratorsOutOfScope: 0 })
     const inUse = await api.delete(`/api/v1/admin/business-domains/${FATURAMENTO.id}`)
     expect(inUse.status).toBe(409)
     expect(inUse.body.error.code).toBe("BUSINESS_DOMAIN_IN_USE")

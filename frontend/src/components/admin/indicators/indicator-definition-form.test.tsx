@@ -38,8 +38,8 @@ function indicator(partial: Partial<IndicatorWithRules> = {}): IndicatorWithRule
   }
 }
 
-const NO_HISTORY: IndicatorDependencies = { measurements: 0, goals: 0, officialClosures: 0, workflows: [], hasHistory: false }
-const WITH_HISTORY: IndicatorDependencies = { measurements: 1200, goals: 3, officialClosures: 40, workflows: [{ id: "wf", name: "Modelo · 07" }], hasHistory: true }
+const NO_HISTORY: IndicatorDependencies = { measurements: 0, goals: 0, officialClosures: 0, workflows: [], workflowsOutOfScope: 0, hasHistory: false }
+const WITH_HISTORY: IndicatorDependencies = { measurements: 1200, goals: 3, officialClosures: 40, workflows: [{ id: "wf", name: "Modelo · 07" }], workflowsOutOfScope: 0, hasHistory: true }
 
 describe("Formulário de indicador — seções dirigidas pelo catálogo de comportamentos", () => {
   it("mostra as quatro seções, a ajuda contextual da estratégia e os componentes exigidos pela medição", () => {
@@ -119,6 +119,14 @@ describe("Formulário de indicador — seções dirigidas pelo catálogo de comp
     expect(screen.getByRole("switch", { name: /Medição operacional ativada/ })).toBeDisabled()
     expect(screen.getByLabelText("Nome")).toBeEnabled()
     expect(screen.getByLabelText("Amostra mínima (opcional)")).toBeEnabled()
+  })
+
+  it("Workflows de outros Grupos entram só pela contagem, nunca pelo nome (lote 2 da 4ª auditoria)", () => {
+    const { unmount } = render(<IndicatorDefinitionForm catalog={CATALOG} initial={indicator()} dependencies={{ ...WITH_HISTORY, workflowsOutOfScope: 2 }} pending={false} error={null} submitLabel="Salvar" onSubmit={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText(/3 Workflow\(s\): Modelo · 07 \+ 2 de outros Grupos/)).toBeInTheDocument()
+    unmount()
+    render(<IndicatorDefinitionForm catalog={CATALOG} initial={indicator()} dependencies={{ ...NO_HISTORY, workflowsOutOfScope: 1, hasHistory: true }} pending={false} error={null} submitLabel="Salvar" onSubmit={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText(/\(1 Workflow\(s\): 1 de outros Grupos\)/)).toBeInTheDocument()
   })
 
   it("sem histórico nada fica bloqueado; desligar a medição operacional esconde amostra/cobertura e exige ao menos uma capacidade", () => {

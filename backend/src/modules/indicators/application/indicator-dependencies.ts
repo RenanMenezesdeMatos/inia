@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 
 /**
  * O que já depende de um indicador — base da proteção de alteração semântica e da exclusão.
@@ -16,7 +17,7 @@ export type IndicatorDependencies = {
   hasHistory: boolean
 }
 
-export async function loadIndicatorDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<IndicatorDependencies> {
+async function queryDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<Omit<IndicatorDependencies, "workflows"> & { workflows: ({ id: string; name: string } & ScopedTarget)[] }> {
   const counts = await db.query<{ measurements: string; goals: string; official_closures: string }>(
     `select
        (select count(*) from indicator_measurements where indicator_definition_id = $1)::text measurements,
@@ -24,8 +25,8 @@ export async function loadIndicatorDependencies(db: Database, organizationId: st
        (select count(*) from employee_indicator_performance where indicator_definition_id = $1)::text official_closures`,
     [definition.id],
   )
-  const workflows = await db.query<{ id: string; name: string }>(
-    `select w.id, w.name from workflows w
+  const workflows = await db.query<{ id: string; name: string } & ScopedTarget>(
+    `select w.id, w.name, w.scope_type "scopeType", w.team_id "teamId", w.subteam_id "subteamId" from workflows w
       where w.organization_id = $1 and (
         jsonb_path_exists(w.draft_graph, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text))
         or (w.trigger_config is not null and jsonb_path_exists(w.trigger_config, '$.** ? (@.indicatorCode == $code)', jsonb_build_object('code', $2::text)))
@@ -40,6 +41,23 @@ export async function loadIndicatorDependencies(db: Database, organizationId: st
   const goals = Number(row.goals)
   const officialClosures = Number(row.official_closures)
   return { measurements, goals, officialClosures, workflows: workflows.rows, hasHistory: measurements > 0 || goals > 0 || officialClosures > 0 || workflows.rows.length > 0 }
+}
+
+/** Todas as dependências — trava semântica e exclusão (escritas que já exigem a organização inteira). */
+export async function loadIndicatorDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<IndicatorDependencies> {
+  const dependencies = await queryDependencies(db, organizationId, definition)
+  return { ...dependencies, workflows: dependencies.workflows.map(({ id, name }) => ({ id, name })) }
+}
+
+/**
+ * Dependências para quem CONSULTA a definição (lote 2 da 4ª auditoria): administrador de Grupo/Subgrupo vê pelo nome só os
+ * Workflows que abriria na lista dele (`workflows.manage` na Abrangência publicada, a mesma regra de `canManageWorkflow`);
+ * os outros entram só na contagem. `hasHistory` continua considerando todos — a trava vale para todo mundo.
+ */
+export async function loadVisibleIndicatorDependencies(db: Database, organizationId: string, definition: { id: string; code: string }, scopes: ManageableScopes): Promise<IndicatorDependencies & { workflowsOutOfScope: number }> {
+  const dependencies = await queryDependencies(db, organizationId, definition)
+  const visible = dependencies.workflows.filter((workflow) => canManageScope(scopes, workflow))
+  return { ...dependencies, workflows: visible.map(({ id, name }) => ({ id, name })), workflowsOutOfScope: dependencies.workflows.length - visible.length }
 }
 
 export function describeDependencies(dependencies: IndicatorDependencies): string {

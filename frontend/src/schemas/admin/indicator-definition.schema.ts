@@ -46,6 +46,8 @@ export const indicatorDependenciesSchema = z.object({
   goals: z.number(),
   officialClosures: z.number(),
   workflows: z.array(z.object({ id: z.string(), name: z.string() })),
+  /** Workflows de Grupos que quem consulta não administra — só a contagem (o nome não vem do backend). */
+  workflowsOutOfScope: z.number().catch(0),
   hasHistory: z.boolean(),
 })
 export type IndicatorDependencies = z.infer<typeof indicatorDependenciesSchema>

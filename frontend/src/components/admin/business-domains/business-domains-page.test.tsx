@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -84,7 +84,7 @@ describe("Domínios de negócio — catálogo administrável", () => {
 
   it("Editar: código travado quando há dependências, 'Utilizado por' lista Agents e Orchestrators, excluir fica bloqueado", async () => {
     service.fetchBusinessDomainsPage.mockResolvedValue({ items: [FATURAMENTO], total: 1, page: 1, pageSize: 10 })
-    service.fetchBusinessDomainDependencies.mockResolvedValue({ agents: [{ id: "a1", name: "Especialista de Faturamento", active: true }], orchestrators: [{ id: "o1", name: "Orquestrador · Faturamento", active: true }], total: 2 })
+    service.fetchBusinessDomainDependencies.mockResolvedValue({ agents: [{ id: "a1", name: "Especialista de Faturamento", active: true }], orchestrators: [{ id: "o1", name: "Orquestrador · Faturamento", active: true }], total: 2, agentsOutOfScope: 0, orchestratorsOutOfScope: 0 })
     renderWithQuery(<BusinessDomainsPage />)
     await screen.findByText("Faturamento")
     fireEvent.click(screen.getByRole("button", { name: "Editar Faturamento" }))
@@ -96,6 +96,20 @@ describe("Domínios de negócio — catálogo administrável", () => {
     service.updateBusinessDomain.mockResolvedValue({ ...FATURAMENTO, name: "Faturamento e Cobrança" })
     fireEvent.click(screen.getByRole("button", { name: "Salvar domínio" }))
     await waitFor(() => expect(service.updateBusinessDomain.mock.calls[0]?.[0]).toEqual({ id: "d1", name: "Faturamento e Cobrança", description: "Processos de fatura.", active: true }))
+  })
+
+  it("'Utilizado por' mostra pelo nome só o que a pessoa administra; o que é de outros Grupos aparece só na contagem (lote 2 da 4ª auditoria)", async () => {
+    service.fetchBusinessDomainsPage.mockResolvedValue({ items: [FATURAMENTO], total: 1, page: 1, pageSize: 10 })
+    service.fetchBusinessDomainDependencies.mockResolvedValue({ agents: [{ id: "a1", name: "Especialista de Faturamento", active: true }], orchestrators: [], total: 4, agentsOutOfScope: 2, orchestratorsOutOfScope: 1 })
+    renderWithQuery(<BusinessDomainsPage />)
+    await screen.findByText("Faturamento")
+    fireEvent.click(screen.getByRole("button", { name: "Editar Faturamento" }))
+    const dependencies = await screen.findByTestId("domain-dependencies")
+    expect(within(dependencies).getByText("Especialista de Faturamento")).toBeInTheDocument()
+    expect(within(dependencies).getByText("3")).toBeInTheDocument()
+    expect(within(dependencies).getByText("+ 2 em outros Grupos (fora do seu escopo)")).toBeInTheDocument()
+    expect(within(dependencies).getByText("+ 1 em outros Grupos (fora do seu escopo)")).toBeInTheDocument()
+    expect(within(dependencies).queryByText("Nenhum Orquestrador restrito a este domínio.")).not.toBeInTheDocument()
   })
 
   it("Excluir: bloqueado com dependências (o botão de confirmação fica desabilitado) e livre sem dependências", async () => {

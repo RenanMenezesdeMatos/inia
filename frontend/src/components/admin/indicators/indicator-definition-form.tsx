@@ -47,7 +47,12 @@ function describeDependencies(dependencies: IndicatorDependencies): string {
   if (dependencies.measurements > 0) parts.push(`${dependencies.measurements.toLocaleString("pt-BR")} medições`)
   if (dependencies.goals > 0) parts.push(`${dependencies.goals} metas`)
   if (dependencies.officialClosures > 0) parts.push(`${dependencies.officialClosures.toLocaleString("pt-BR")} fechamentos oficiais`)
-  if (dependencies.workflows.length > 0) parts.push(`${dependencies.workflows.length} Workflow(s): ${dependencies.workflows.map((workflow) => workflow.name).slice(0, 3).join(", ")}${dependencies.workflows.length > 3 ? "…" : ""}`)
+  const workflowCount = dependencies.workflows.length + dependencies.workflowsOutOfScope
+  if (workflowCount > 0) {
+    const names = dependencies.workflows.length > 0 ? `${dependencies.workflows.map((workflow) => workflow.name).slice(0, 3).join(", ")}${dependencies.workflows.length > 3 ? "…" : ""}` : ""
+    const others = dependencies.workflowsOutOfScope > 0 ? `${dependencies.workflowsOutOfScope} de outros Grupos` : ""
+    parts.push(`${workflowCount} Workflow(s): ${[names, others].filter(Boolean).join(" + ")}`)
+  }
   return parts.join(" · ")
 }
 

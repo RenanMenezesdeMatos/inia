@@ -2,12 +2,13 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import {
   BUSINESS_DOMAIN_LIST_SELECT,
   createBusinessDomain,
   deleteBusinessDomain,
   findBusinessDomain,
-  loadBusinessDomainDependencies,
+  loadVisibleBusinessDomainDependencies,
   setBusinessDomainActive,
   updateBusinessDomain,
   type BusinessDomainActor,
@@ -58,7 +59,8 @@ export function createBusinessDomainRouter(db: Database) {
     const organizationId = request.user!.organizationId
     const domain = await findBusinessDomain(db, organizationId, request.params.id!)
     if (!domain) return response.status(404).json(NOT_FOUND)
-    response.json({ data: await loadBusinessDomainDependencies(db, organizationId, domain) })
+    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    response.json({ data: await loadVisibleBusinessDomainDependencies(db, organizationId, domain, scopes) })
   })
 
   router.post("/", async (request, response) => {

@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { businessDomainInputSchema, businessDomainPatchSchema, type BusinessDomainInput, type BusinessDomainRecord } from "../domain/business-domain.js"
 
 /**
@@ -42,20 +43,51 @@ export type BusinessDomainDependencies = {
   total: number
 }
 
-export async function loadBusinessDomainDependencies(db: Queryable, organizationId: string, domain: { id: string; code: string }): Promise<BusinessDomainDependencies> {
-  const agents = await db.query<{ id: string; name: string; active: boolean }>(
-    `select id, name, active from agents where organization_id = $1 and (business_domain_id = $2 or (business_domain_id is null and domain = $3)) order by name`,
+/** O que a TELA mostra: só os Agents/Orquestradores que quem consulta administra; os outros entram apenas na contagem. */
+export type VisibleBusinessDomainDependencies = BusinessDomainDependencies & { agentsOutOfScope: number; orchestratorsOutOfScope: number }
+
+type DependencyRow = { id: string; name: string; active: boolean } & ScopedTarget
+
+async function queryDependencies(db: Queryable, organizationId: string, domain: { id: string; code: string }): Promise<{ agents: DependencyRow[]; orchestrators: DependencyRow[] }> {
+  const agents = await db.query<DependencyRow>(
+    `select id, name, active, scope_type "scopeType", team_id "teamId", subteam_id "subteamId" from agents where organization_id = $1 and (business_domain_id = $2 or (business_domain_id is null and domain = $3)) order by name`,
     [organizationId, domain.id, domain.code],
   )
-  const orchestrators = await db.query<{ id: string; name: string; active: boolean }>(
-    `select o.id, o.name, o.active from assistant_orchestrators o
+  const orchestrators = await db.query<DependencyRow>(
+    `select o.id, o.name, o.active, o.scope_type "scopeType", o.team_id "teamId", o.subteam_id "subteamId" from assistant_orchestrators o
       where o.organization_id = $1
         and (exists (select 1 from assistant_orchestrator_domains od where od.orchestrator_id = o.id and od.business_domain_id = $2)
              or $3 = any(o.routing_domains) or $3 = any(o.policy_domains))
       order by o.name`,
     [organizationId, domain.id, domain.code],
   )
-  return { agents: agents.rows, orchestrators: orchestrators.rows, total: agents.rows.length + orchestrators.rows.length }
+  return { agents: agents.rows, orchestrators: orchestrators.rows }
+}
+
+const itemOf = ({ id, name, active }: DependencyRow) => ({ id, name, active })
+
+/** Todas as dependências — trava de código e exclusão (escritas que já exigem a organização inteira). */
+export async function loadBusinessDomainDependencies(db: Queryable, organizationId: string, domain: { id: string; code: string }): Promise<BusinessDomainDependencies> {
+  const { agents, orchestrators } = await queryDependencies(db, organizationId, domain)
+  return { agents: agents.map(itemOf), orchestrators: orchestrators.map(itemOf), total: agents.length + orchestrators.length }
+}
+
+/**
+ * Dependências para quem CONSULTA o catálogo (lote 2 da 4ª auditoria): administrador de Grupo/Subgrupo vê pelo nome só o
+ * que abriria na lista de Agents/Orquestradores (`agents.manage` no escopo do item); o resto vira contagem, para saber que
+ * o domínio está em uso sem conhecer a configuração dos outros Grupos. Quem administra a organização inteira vê tudo.
+ */
+export async function loadVisibleBusinessDomainDependencies(db: Queryable, organizationId: string, domain: { id: string; code: string }, scopes: ManageableScopes): Promise<VisibleBusinessDomainDependencies> {
+  const { agents, orchestrators } = await queryDependencies(db, organizationId, domain)
+  const visibleAgents = agents.filter((row) => canManageScope(scopes, row))
+  const visibleOrchestrators = orchestrators.filter((row) => canManageScope(scopes, row))
+  return {
+    agents: visibleAgents.map(itemOf),
+    orchestrators: visibleOrchestrators.map(itemOf),
+    total: agents.length + orchestrators.length,
+    agentsOutOfScope: agents.length - visibleAgents.length,
+    orchestratorsOutOfScope: orchestrators.length - visibleOrchestrators.length,
+  }
 }
 
 export const BUSINESS_DOMAIN_IN_USE_MESSAGE = "Este código já é utilizado por Agents ou Orchestrators."

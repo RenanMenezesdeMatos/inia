@@ -11,7 +11,11 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   módulo.
 - **Catálogo que vale para a organização inteira** (domínios, flags, calendário operacional, governança, definições/glossário de
   indicadores, assuntos, Central de Dados): escrita só com escopo de organização (`writesRequireOrganization` ou
-  `coversOrganization`). Um recurso novo desse tipo nasce com essa regra.
+  `coversOrganization`). Um recurso novo desse tipo nasce com essa regra. A LEITURA fica aberta a quem tem a permissão em
+  qualquer escopo, então o que ela devolve sobre recursos de Grupo (Agents, Orquestradores, Workflows) segue o escopo de quem
+  consulta: as dependências de um domínio de negócio e de uma definição de indicador mostram pelo nome só o que a pessoa
+  administra (`agents.manage`/`workflows.manage` no escopo do item, a regra das listas) e contam o resto (`…OutOfScope`); a
+  trava de código/exclusão (escrita da organização inteira) continua vendo tudo (lote 2 da 4ª auditoria).
 - **Nível hierárquico (`people.role`)**: o guard de sessão relê o valor a cada request (o do JWT é só a foto do login). Definir ou
   mudar um nível de liderança exige `people.manage` de organização. Mudança de credencial (e-mail de login, inativar) passa pela
   custódia (`assertCredentialChangeAllowed`), que exige alcançar também a estrutura liderada pelo alvo.

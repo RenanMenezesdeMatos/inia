@@ -57,20 +57,26 @@ function inUse(domain: BusinessDomain): boolean {
   return domain.agentCount + domain.orchestratorCount > 0
 }
 
+/** Agents/Orquestradores de Grupos que a pessoa não administra: o backend manda só a contagem, nunca o nome. */
+function OutOfScopeNote({ count }: { count: number }) {
+  if (count === 0) return null
+  return <p className="text-xs text-muted-foreground">+ {count} em outros Grupos (fora do seu escopo)</p>
+}
+
 function DependenciesList({ domain }: { domain: BusinessDomain }) {
   const dependenciesQuery = useBusinessDomainDependenciesQuery(domain.id)
   if (dependenciesQuery.isPending) return <Skeleton className="h-16 w-full" />
   if (dependenciesQuery.isError) return <p className="text-sm text-destructive">Não foi possível carregar as dependências.</p>
-  const { agents, orchestrators } = dependenciesQuery.data
+  const { agents, orchestrators, agentsOutOfScope, orchestratorsOutOfScope } = dependenciesQuery.data
   return (
     <div className="grid gap-4 sm:grid-cols-2" data-testid="domain-dependencies">
       <div className="space-y-1.5">
         <p className="text-sm font-medium">
-          Agents <Badge variant="secondary">{agents.length}</Badge>
+          Agents <Badge variant="secondary">{agents.length + agentsOutOfScope}</Badge>
         </p>
-        {agents.length === 0 ? (
+        {agents.length + agentsOutOfScope === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum Agent usa este domínio.</p>
-        ) : (
+        ) : agents.length === 0 ? null : (
           <ul className="space-y-1 text-sm">
             {agents.map((agent) => (
               <li key={agent.id}>
@@ -82,14 +88,15 @@ function DependenciesList({ domain }: { domain: BusinessDomain }) {
             ))}
           </ul>
         )}
+        <OutOfScopeNote count={agentsOutOfScope} />
       </div>
       <div className="space-y-1.5">
         <p className="text-sm font-medium">
-          Orchestrators <Badge variant="secondary">{orchestrators.length}</Badge>
+          Orchestrators <Badge variant="secondary">{orchestrators.length + orchestratorsOutOfScope}</Badge>
         </p>
-        {orchestrators.length === 0 ? (
+        {orchestrators.length + orchestratorsOutOfScope === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum Orquestrador restrito a este domínio.</p>
-        ) : (
+        ) : orchestrators.length === 0 ? null : (
           <ul className="space-y-1 text-sm">
             {orchestrators.map((orchestrator) => (
               <li key={orchestrator.id}>
@@ -101,6 +108,7 @@ function DependenciesList({ domain }: { domain: BusinessDomain }) {
             ))}
           </ul>
         )}
+        <OutOfScopeNote count={orchestratorsOutOfScope} />
       </div>
     </div>
   )

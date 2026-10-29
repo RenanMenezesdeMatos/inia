@@ -193,7 +193,8 @@ export default function ConfiguracaoIndicadoresPage() {
         <p>
           Nome, glossário, amostra/cobertura padrão, ligar a medição operacional, fechamento oficial e status podem mudar sempre. Código, unidade, direção, estratégia e
           desligar a medição operacional ficam <strong className="font-medium text-foreground">bloqueados quando o indicador já tem histórico</strong> — medições, metas,
-          fechamentos oficiais ou Workflows que o referenciam. A tela mostra o que depende dele e o backend recusa a alteração com o mesmo motivo. Para uma semântica
+          fechamentos oficiais ou Workflows que o referenciam. A tela mostra o que depende dele (Workflows de Grupos que você não administra aparecem só na contagem,
+          &quot;+ 2 de outros Grupos&quot;) e o backend recusa a alteração com o mesmo motivo. Para uma semântica
           diferente, crie um novo indicador e desative este. Exclusão só existe sem histórico algum.
         </p>
       </WikiSection>

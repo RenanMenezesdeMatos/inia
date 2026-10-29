@@ -107,7 +107,8 @@ export default function BusinessDomainsWikiPage() {
         <p>
           A lista mostra Domínio, Código, quantos Agents e quantos Orchestrators usam cada um, Status e Ações (ativar/desativar, editar, excluir). Há busca por
           nome ou código e filtro Ativos / Inativos / Todos. &quot;Novo domínio&quot; pede Nome, Código (sugerido a partir do nome), Descrição e Status. Ao abrir
-          um domínio, &quot;Utilizado por&quot; lista os Agents e Orchestrators vinculados.
+          um domínio, &quot;Utilizado por&quot; lista os Agents e Orchestrators vinculados. Quem administra só um Grupo ou Subgrupo vê pelo nome os do
+          seu escopo; os de outros Grupos aparecem apenas como contagem (&quot;+ 2 em outros Grupos&quot;).
         </p>
         <WikiTable caption="Domínios que existem hoje no catálogo demo — exemplos, não um limite: a lista é administrável.">
           <Table>

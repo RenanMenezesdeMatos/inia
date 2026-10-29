@@ -14,7 +14,7 @@ import {
   describeAggregationStrategy,
 } from "../../indicators/domain/indicator-definition.js"
 import { OPERATIONAL_AGGREGATION_KINDS } from "../../indicators/domain/operational-aggregation.js"
-import { loadIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
+import { loadVisibleIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
 import { createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
 
 
@@ -150,7 +150,7 @@ export function createIndicatorRuleRouter(db: Database) {
     const organizationId = request.user!.organizationId
     const definition = await findIndicatorDefinition(db, organizationId, request.params.id)
     if (!definition) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
-    response.json({ data: await loadIndicatorDependencies(db, organizationId, definition) })
+    response.json({ data: await loadVisibleIndicatorDependencies(db, organizationId, definition, await getManageableScopes(db, request.user!, "workflows.manage")) })
   })
 
   router.post("/definitions", organizationOnly, async (request, response) => {
