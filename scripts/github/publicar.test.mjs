@@ -1,4 +1,4 @@
-// Testes do `npm run github:publish` (node --test scripts/github): montagem do snapshot com exclusões e exceções num
+// Testes do `npm run github:publish` (node --test "scripts/github/*.test.mjs"): montagem do snapshot com exclusões e exceções num
 // repositório git descartável e as conferências de segredo. As chaves "falsas" são montadas em tempo de execução para
 // que este arquivo não case com os próprios padrões quando for publicado.
 import assert from "node:assert/strict"

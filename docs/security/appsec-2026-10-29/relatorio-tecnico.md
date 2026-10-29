@@ -140,7 +140,7 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 **APPSEC-05 — AES-GCM aceitava tag de autenticação truncada — ENDURECIMENTO (exige escrita no banco) — CORRIGIDO E RETESTADO**
 - Onde: `backend/src/modules/data-hub/infrastructure/aes-secret-store.ts`. Achado do Semgrep (`gcm-no-tag-length`).
 - Evidência (teste): no código anterior, tags de 4 e 12 bytes decifravam. Com `authTagLength: 16`, são recusadas.
-- Nota: o arquivo foi alterado hoje pela sessão Cloudflare (N01, `1ea944cf`); a mudança desta rodada é pequena e está por cima, sem commit.
+- Nota: o arquivo foi alterado hoje pela sessão Cloudflare (N01, `1ea944cf`); a mudança desta rodada é pequena e está por cima (commitada em `291bd48c`).
 
 ### 4.2 Pendentes de validação
 
@@ -173,7 +173,7 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 5. Cofre de segredos no servidor da Vivo (DPAPI/Key Vault) para `JWT_SECRET` e `DATA_HUB_SECRET_KEY` (V13.3.1).
 6. Antivírus nos uploads (bases e Central de Dados) conforme o padrão da Vivo (V5.4.3).
 7. Prazos de correção de dependências por gravidade: **proposta em `../politica-de-dependencias.md`** (aprovação pendente). Implantação com `npm ci --omit=dev`.
-8. `encodeURIComponent` nos ids interpolados no frontend (A5); `BEGIN READ ONLY` real no "Testar diagnóstico" e mensagem de erro genérica (A7); `stripImageMetadata` recusar estrutura desconhecida em vez de devolver igual.
+8. `encodeURIComponent` nos ids interpolados no frontend (A5); ~~`BEGIN READ ONLY` real no "Testar diagnóstico"~~ — feito em `40b73a1a` pela sessão da auditoria Cloudflare (cada leitura numa transação `read only`, o PostgreSQL recusa escrita); falta a mensagem de erro genérica (A7); `stripImageMetadata` recusar estrutura desconhecida em vez de devolver igual.
 9. Revisão B3/B6/B7: destinatário/revisor fixo de Workflow conferido contra o escopo (não só a organização); dependências de domínio de negócio listam Agents de outros Grupos; leituras pesadas sem limite por conta (`/leadership/query`, export do diagnóstico).
 10. ~~String no formato de chave Google no teste de redação~~ — feito (montada em tempo de execução).
 
@@ -185,7 +185,11 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 - Reteste da interface depois do isolamento do R-07 (29/10, build de produção em cópia isolada, varredura passiva de login, recuperação de senha, wiki e 404): **sem** o alerta 10055 "CSP: style-src unsafe-inline". Controle: o mesmo plano com a política antiga (`INIA_CSP_STYLES=RELAXED`) o aponta (médio, 3 instâncias). Detalhe em `registro-de-testes.md` §4.
 - Limitação: corpos das escritas foram fuzzados a partir de um JSON genérico (`name`/`description`/`text`); campos específicos de cada rota só foram exercitados nos testes direcionados. Interface: varredura passiva (spider tradicional), sem spider AJAX.
 
-## 5. Mudanças no código (sem commit)
+## 5. Mudanças no código (todas commitadas em 29/10/2026)
+
+Commits: `291bd48c` (APPSEC-01/04/05), `1fe16219` (dependências), `564beaa8` (relatórios e `npm run security:scan`), `a9c204f0` e
+`6ba75a5e` (ajustes rápidos e política de dependências), `0bae3ab0` (R-39/R-40) e `57b52fa6` (isolamento do R-07). Todos
+publicados no repositório privado do GitHub — o último, o R-07, em `2a78c727` (junto do `40b73a1a`).
 
 | Arquivo | Mudança | Achado |
 |---|---|---|
