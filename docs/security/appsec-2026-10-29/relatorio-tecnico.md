@@ -62,6 +62,7 @@ foram lidos um a um:
 | `spawn-shell-true` (2), `unsafe-formatstring` (6), `unsafe-dynamic-method` (6) | rejeitado | scripts de instalação com argumentos fixos; logs; despacho por enum validado na publicação |
 | `dockerfile-source-not-pinned` (4) | endurecimento | imagens dos bancos de EXEMPLO (só avaliação local) sem digest |
 | `ai.generic.detect-*` (139) | inventário | localiza chamadas a provedores de IA (já mapeadas) |
+| `html-in-template-string` em `knowledge/infrastructure/docx-preview.ts:37` (novo, do lote 3 da outra sessão, `3933a556`) | rejeitado | concatena um aviso constante ao HTML do `mammoth`; esse HTML só é exibido depois do `sanitizeDocumentHtml` (allowlist) nas duas páginas que o usam — barrado pelo `security:scan` e triado em 29/10 |
 
 5 arquivos com parse parcial (sintaxe TS recente) — registrados em `raw/semgrep/semgrep.json`.
 
@@ -69,7 +70,7 @@ foram lidos um a um:
 
 | Onde | Resultado | Classificação |
 |---|---|---|
-| Arquivos (1.126 alertas) | 1.125 `generic-api-key` em JSONs de avaliação (`criterionKey`, `runKey`, `analysisKey`…: identificadores e hashes) e senhas de teste em testes/fixtures; 1 `gcp-api-key` | falsos positivos. O `gcp-api-key` é a entrada do teste de redação (`run-workflow-simulation.test.ts:762`), já liberada em `scripts/github/padroes-permitidos.txt`, e **não** é igual a nenhum valor dos `.env` locais (comparação por igualdade, sem imprimir). Não foi testada contra o Google (seria enviar o valor) — recomendação: montar a string no teste em tempo de execução |
+| Arquivos (1.126 alertas) | 1.125 `generic-api-key` em JSONs de avaliação (`criterionKey`, `runKey`, `analysisKey`…: identificadores e hashes) e senhas de teste em testes/fixtures; 1 `gcp-api-key` | falsos positivos. O `gcp-api-key` é a entrada do teste de redação (`run-workflow-simulation.test.ts:762`), já liberada em `scripts/github/padroes-permitidos.txt`, e **não** é igual a nenhum valor dos `.env` locais (comparação por igualdade, sem imprimir). Não foi testada contra o Google (seria enviar o valor). **Ajustado:** a string passa a ser montada em tempo de execução e a liberação foi retirada da lista. Exclusões documentadas em `.gitleaks.toml` (só a regra genérica, em artefatos de avaliação, testes e massa demo; 2 itens do histórico por commit): com elas o histórico fica sem alerta e iscas de teste (chave genérica em código de produção, chave AWS dentro de teste) continuam detectadas |
 | Só no histórico (5) | senhas antigas dos bancos de **exemplo** locais (`6959a93b`, `68af86cc`, 07/10/2026) | nenhum desses valores está em `.env` locais nem no código atual (comparação por igualdade). Hoje vêm de `INIA_EXAMPLES_*` aleatórios. A cópia publicada no GitHub é um snapshot sem histórico (`npm run github:publish`). Se algum ambiente usou os padrões antigos, trocar |
 
 ### 3.3 OSV-Scanner — dependências
@@ -98,7 +99,7 @@ Ver `registro-de-testes.md` §5 — typecheck, lint e 7.282 testes passaram na c
 
 ## 4. Revisão contextual e testes dinâmicos
 
-Revisão guiada pelo ASVS 5.0.0 (matriz em `matriz-asvs-5.0.0.md`: 118 verificados, 15 falharam, 69 não aplicáveis, 143 não
+Revisão guiada pelo ASVS 5.0.0 (matriz em `matriz-asvs-5.0.0.md`: 120 verificados, 13 falharam, 69 não aplicáveis, 143 não
 testados) e pelo WSTG 4.2 (ATHN, ATHZ, SESS, INPV, ERRH, CLNT, BUSL). Foco nas unidades que a auditoria Cloudflare deixou
 **adiadas** (8) ou **bloqueadas** (1) e no código novo não commitado, com três leitores independentes de código (só leitura) e
 validação própria de cada candidato. Os testes dinâmicos estão em `registro-de-testes.md`.
@@ -165,22 +166,22 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 
 ### 4.4 Recomendações de endurecimento (sem exploração demonstrada)
 
-1. **MFA ou SSO corporativo** (ASVS V6.3.3 — principal lacuna de autenticação para uma avaliação corporativa).
+1. **MFA ou SSO corporativo** (ASVS V6.3.3 — principal lacuna de autenticação). **Adiado por decisão da INIA** (29/10) para uma próxima etapa.
 2. JWT do cookie carrega nome, e-mail, cargo, foto e Grupo (SESS-02): reduzir a `sub`, `organizationId`, `sv`, `jti`, `exp`.
-3. HSTS também nas páginas (IIS), sem `includeSubDomains` até confirmar o domínio; CSP com `report-to`; R-07 (`style-src 'unsafe-inline'`).
+3. HSTS: **as páginas já enviam** quando a instalação é HTTPS (`next.config.ts`, `httpsDeployment` a partir do `NEXT_PUBLIC_INIA_API_URL`; conferido carregando a configuração com URL `https://` e `http://`) — no teste local em HTTP ele não aparece, como deve. Resta alinhar o `includeSubDomains` (a API o envia, as páginas não). CSP com `report-to`; R-07 (`style-src 'unsafe-inline'`).
 4. Lista de senhas vazadas local (top-10k) e mínimo maior para administradores (R-22); lista de sessões ativas com encerramento individual (V7.5.2).
 5. Cofre de segredos no servidor da Vivo (DPAPI/Key Vault) para `JWT_SECRET` e `DATA_HUB_SECRET_KEY` (V13.3.1).
 6. Antivírus nos uploads (bases e Central de Dados) conforme o padrão da Vivo (V5.4.3).
-7. Política de prazos de correção de dependências por gravidade (V15.1.1) e implantação com `npm ci --omit=dev`.
+7. Prazos de correção de dependências por gravidade: **proposta em `../politica-de-dependencias.md`** (aprovação pendente). Implantação com `npm ci --omit=dev`.
 8. `encodeURIComponent` nos ids interpolados no frontend (A5); `BEGIN READ ONLY` real no "Testar diagnóstico" e mensagem de erro genérica (A7); `stripImageMetadata` recusar estrutura desconhecida em vez de devolver igual.
 9. Revisão B3/B6/B7: destinatário/revisor fixo de Workflow conferido contra o escopo (não só a organização); dependências de domínio de negócio listam Agents de outros Grupos; leituras pesadas sem limite por conta (`/leadership/query`, export do diagnóstico).
-10. String no formato de chave Google no teste de redação: montar em tempo de execução.
+10. ~~String no formato de chave Google no teste de redação~~ — feito (montada em tempo de execução).
 
 ### 4.5 ZAP
 
 - 1ª passada: efetivamente **sem sessão** (ver `registro-de-testes.md` §4) — 528.930 requisições, 0 respostas 5xx, 0 alerta na API; 3 alertas na interface (CSP `style-src unsafe-inline` — R-07; `Big Redirect` baixo; informativo).
 - 2ª passada (autenticada, sessão válida do início ao fim): 532.737 requisições, 168.133 aceitas, 164 rotas atingidas. Alertas: "Spring4Shell" (alto, **falso positivo** — não há Java/Spring), "XSS persistente em resposta JSON" (baixo, rejeitado: JSON com `nosniff`, renderizado como texto). Nenhum alerta de injeção, XSS refletido, SSRF ou travessia de caminho.
-- 632 respostas 5xx, todas genéricas (sem stack), em três causas de **qualidade/robustez**: Q-01 nome repetido em `POST /admin/org-structure/subjects` vira 500 em vez de 409; Q-02 byte NUL em parâmetro chega ao PostgreSQL e vira 500 em vez de 400 (consulta parametrizada — não é injeção); Q-03 `POST /admin/knowledge` sem corpo esperado lê `request.body.title` antes da validação. Recomendação: no tratador de erros, mapear `23505` → 409 e `22021`/`22P02` → 400, e recusar `\u0000` na validação de entrada (o tratador fica em `backend/src/main/app.ts`, que tem mudanças não commitadas de outra frente — não alterado aqui).
+- 632 respostas 5xx, todas genéricas (sem stack), em três causas de **qualidade/robustez**: Q-01 nome repetido em `POST /admin/org-structure/subjects` vira 500 em vez de 409; Q-02 byte NUL em parâmetro chega ao PostgreSQL e vira 500 em vez de 400 (consulta parametrizada — não é injeção); Q-03 `POST /admin/knowledge` sem corpo esperado lê `request.body.title` antes da validação. **Corrigidos (ajustes rápidos):** `describeClientError` (`app.ts`) mapeia `22021`/`22P05` → 400 `INVALID_CHARACTER` e `23505` → 409 `DUPLICATE_RECORD` (rede de segurança); assunto e Subgrupo com nome repetido respondem 409 com mensagem própria (`org-structure-router.ts`); `POST /admin/knowledge` lê o corpo com segurança e devolve 400 de validação. Testes em `http-security.test.ts`.
 - Limitação: corpos das escritas foram fuzzados a partir de um JSON genérico (`name`/`description`/`text`); campos específicos de cada rota só foram exercitados nos testes direcionados. Interface: varredura passiva (spider tradicional), sem spider AJAX.
 
 ## 5. Mudanças no código (sem commit)
@@ -192,7 +193,8 @@ validação própria de cada candidato. Os testes dinâmicos estão em `registro
 | `backend/src/shared/infrastructure/image-metadata.ts` + `.test.ts` | marcadores sem tamanho no JPEG + caso de regressão | APPSEC-04 |
 | `backend/src/modules/data-hub/infrastructure/aes-secret-store.ts` + `.test.ts` | `authTagLength: 16` + caso de regressão | APPSEC-05 |
 | `backend/package.json` + lock (`body-parser 2.4.0`, `qs 6.16.1`, `zod 4.6.7`, `multer 2.5.0`), `frontend/package.json` + lock (`next`/`eslint-config-next ~16.4.1`) | atualizações de dependência pedidas depois da 1ª entrega; árvore real verificada (5.246 + 2.049 testes, tipos, lint, build, assinaturas); OSV: 80 → 73 itens | P-01…P-03 |
-| `scripts/security/varredura-appsec.mjs` (novo), `scripts/security/appsec-baseline.json` (novo), `package.json` (`security:scan`) | varredura reproduzível com linha de base (Semgrep 90, Gitleaks 1.964, OSV 73 depois das atualizações) | prevenção |
+| `scripts/security/varredura-appsec.mjs` (novo), `scripts/security/appsec-baseline.json` (novo), `package.json` (`security:scan`) | varredura reproduzível com linha de base (depois dos ajustes rápidos: Semgrep 91, Gitleaks 0 com o `.gitleaks.toml`, OSV 72) | prevenção |
+| Ajustes rápidos: `frontend/package.json` + lock (`zod` 4.6.7); `backend/src/main/app.ts` (só `describeClientError`); `org-structure-router.ts`; `knowledge-router.ts`; `http-security.test.ts`; `run-workflow-simulation.test.ts`; `scripts/github/padroes-permitidos.txt`; `.gitleaks.toml` (novo); `docs/security/politica-de-dependencias.md` (novo) | Q-01…Q-03 (409/400), chave de teste montada em tempo de execução, exclusões do Gitleaks, prazos de dependências, `zod` do frontend | Q-01…Q-03, V15.1.1, V15.2.1 |
 | `docs/security/appsec-2026-10-29/` (novo), uma linha em `docs/security/README.md`, um parágrafo em `docs/dev/memoria/seguranca.md` | estes relatórios, matriz, SBOM, anexos; índice e memória da área | entrega |
 
 Verificações: testes afetados, `tsc --noEmit` e `eslint` do backend OK (detalhe em `registro-de-testes.md` §5). Atenção: cada

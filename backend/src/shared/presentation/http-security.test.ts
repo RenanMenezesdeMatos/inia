@@ -3,7 +3,7 @@ import request from "supertest"
 import { beforeAll, describe, expect, it } from "vitest"
 import { env, envSchema, parseAllowedOrigins, productionOriginProblems, productionSecretProblems } from "../../config/env.js"
 import type { Database } from "../../infrastructure/database/pool.js"
-import { createApp, parseTrustProxy } from "../../main/app.js"
+import { createApp, describeClientError, parseTrustProxy } from "../../main/app.js"
 import { legacyAccessQuery } from "../../modules/access/testing/legacy-admin-fixture.js"
 import { hashPassword } from "../../modules/auth/infrastructure/password-hasher.js"
 import { createMemoryRateLimitStore } from "../application/rate-limit/rate-limit-store.js"
@@ -23,12 +23,14 @@ beforeAll(async () => {
 })
 
 /** Banco falso com a tabela de revogações em memória (o que o logout grava, o guard de sessão lê). */
-function fakeDatabase(person: { active?: boolean; role?: string } = {}) {
+function fakeDatabase(person: { active?: boolean; role?: string } = {}, failure?: (sql: string, params: unknown[]) => object | undefined) {
   const revoked = new Set<string>()
   const database = {
     query: async (sql: string, params: unknown[] = []) => {
       const access = legacyAccessQuery(sql, ACCOUNT.role, [])
       if (access) return access
+      const error = failure?.(sql, params)
+      if (error) throw Object.assign(new Error("erro do banco (simulado)"), error)
       if (sql.includes("insert into auth_revoked_sessions")) {
         revoked.add(String(params[0]))
         return { rows: [], rowCount: 1 }
@@ -390,5 +392,42 @@ describe("entrada inválida e cabeçalhos", () => {
       expect(productionOriginProblems({ NODE_ENV: "production", CORS_ORIGIN: invalid }), invalid).toHaveLength(1)
     }
     expect(envSchema.shape.SESSION_IDLE_TIMEOUT_MINUTES.parse(undefined)).toBe(30)
+  })
+})
+
+describe("erros do banco provocados pela entrada viram 4xx (ZAP, auditoria AppSec 29/10/2026)", () => {
+  // O PostgreSQL recusa byte nulo em texto (22021) — o fake reproduz isso para qualquer parâmetro.
+  const nulRejected = (_sql: string, params: unknown[]) => (params.some((value) => typeof value === "string" && value.includes("\u0000")) ? { severity: "ERROR", code: "22021" } : undefined)
+
+  it("byte nulo num parâmetro de caminho: 400 genérico, sem a mensagem do banco", async () => {
+    const app = createApp(fakeDatabase({}, nulRejected).database)
+    const cookie = await loggedInCookie(app)
+    const response = await request(app).get("/api/v1/admin/agents/x%00y").set("Cookie", cookie)
+    expect(response.status).toBe(400)
+    expect(response.body.error).toEqual({ code: "INVALID_CHARACTER", message: "Valor com caractere inválido." })
+  })
+
+  it("assunto com nome repetido: 409 com a mensagem do catálogo (antes 500)", async () => {
+    const duplicate = (sql: string) => (sql.includes("insert into subjects") ? { severity: "ERROR", code: "23505" } : undefined)
+    const app = createApp(fakeDatabase({}, duplicate).database)
+    const cookie = await loggedInCookie(app)
+    const response = await request(app).post("/api/v1/admin/org-structure/subjects").set("Cookie", cookie).set("Origin", ALLOWED_ORIGIN).send({ name: "Fatura" })
+    expect(response.status).toBe(409)
+    expect(response.body.error.code).toBe("SUBJECT_NAME_TAKEN")
+  })
+
+  it("nova base de conhecimento sem corpo multipart/JSON: 400 de validação (antes TypeError e 500)", async () => {
+    const app = createApp(fakeDatabase().database)
+    const cookie = await loggedInCookie(app)
+    const response = await request(app).post("/api/v1/admin/knowledge").set("Cookie", cookie).set("Origin", ALLOWED_ORIGIN).set("Content-Type", "text/plain").send("zap")
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe("VALIDATION_ERROR")
+  })
+
+  it("mapeamento: 22021/22P05 → 400, 23505 → 409; erro sem `severity` (não veio do PostgreSQL) continua 500", () => {
+    expect(describeClientError({ severity: "ERROR", code: "22021" })?.status).toBe(400)
+    expect(describeClientError({ severity: "ERROR", code: "22P05" })?.status).toBe(400)
+    expect(describeClientError({ severity: "ERROR", code: "23505" })).toEqual({ status: 409, code: "DUPLICATE_RECORD", message: "Já existe um registro com esses dados." })
+    expect(describeClientError({ code: "23505" })).toBeNull()
   })
 })

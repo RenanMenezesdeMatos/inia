@@ -17,8 +17,8 @@ homologação, quando houver alvo autorizado por escrito. Até lá, nada aqui de
 
 ## Testes previstos (na ordem)
 
-1. **Configuração e TLS (passivo):** cabeçalhos em `/`, `/auth/login` e `/api/v1/auth/me` (HSTS nas páginas — hoje ausente no
-   IIS, ver V3.4.1), versões de TLS e suítes aceitas, certificado, redirecionamento HTTP→HTTPS, `TRACE`, listagem de diretório
+1. **Configuração e TLS (passivo):** cabeçalhos em `/`, `/auth/login` e `/api/v1/auth/me` (HSTS nas páginas — vem do Next quando a URL pública é `https://`; conferir também o `includeSubDomains`, que hoje só a API manda —
+   ver V3.4.1), versões de TLS e suítes aceitas, certificado, redirecionamento HTTP→HTTPS, `TRACE`, listagem de diretório
    no IIS, `X-Powered-By`/`Server`.
 2. **Sessão e autenticação:** `anexos/session.mjs` apontado para o alvo (exige trocar a trava de alvo de `lib.mjs` por uma
    variável com a URL autorizada); bloqueio após 4 erros só na conta de teste própria; inatividade (30 min) e validade (12 h).

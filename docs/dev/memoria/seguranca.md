@@ -102,7 +102,9 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   4ª rodada: custódia pendente (migration 163) em `4859d40f` e, para a Estrutura como 1ª carga, `77c5adcd` — a prova independente
   (`anexos/`) passa 3/3; C-N3 (revalidar em toda promoção) descartado pelo usuário. N03 (backup) em `a36909d9`. Atualizações
   `next 16.4.1`, `body-parser 2.4.0`, `zod 4.6.7`, `multer 2.5.0` aplicadas em 29/10 (árvore verificada). Aberto: APPSEC-03
-  (treino); recomendado: `zod` do frontend (4.4.3). `npm run security:scan` = Semgrep/Gitleaks/OSV/Syft
+  (treino); MFA/SSO adiado (decisão da INIA). Ajustes rápidos: `zod` do frontend 4.6.7; `describeClientError` com
+  `22021`/`22P05` → 400 e `23505` → 409; nome repetido de assunto/Subgrupo → 409; `.gitleaks.toml` (exclusões só da regra genérica);
+  prazos de dependências em `docs/security/politica-de-dependencias.md`; HSTS das páginas já vinha do `next.config.ts` em HTTPS. `npm run security:scan` = Semgrep/Gitleaks/OSV/Syft
   em contêiner fixado por digest, barrando só achado novo em relação a `scripts/security/appsec-baseline.json`.
 - Pendências principais: organização fixa em ~30 arquivos (R-01), voz Live sem `setup` travado (R-04), CSP com estilos inline
   (R-07; os scripts já usam nonce), limitador por processo (R-02), manuais 003/004 desatualizados sobre HTTP (R-11).

@@ -705,6 +705,15 @@ lê o arquivo inteiro para mostrar 20 linhas (CSV de 44 MB → 1,1 GB de pico; s
 consultas pesadas da liderança não têm limite por conta (PRV por pessoa, 6 meses, do diretor: 0,5 s; 10 ao mesmo tempo, 4,2 s) —
 os dois ficam em R-38. A ferramenta de contexto mostra à IA o tipo de afastamento do operador investigado, dentro da decisão do N02.
 
+Telas e provas (29/10/2026), com servidores próprios em 127.0.0.1 sobre o banco descartável com a massa demo: o card da
+gerente no organograma mostra INSS 2, Maternidade 2 e "Afastamento (motivo protegido)" 1 (o supervisor afastado), com o aviso, e o
+rótulo cabe também na largura de celular (C14); a leitora só de agregados não vê os filtros de cargo, papel e situação, vê o aviso
+e, com um Subgrupo de 3 pessoas, recebe "Recorte pequeno demais" (API 422) (C18); a prévia do DOCX com 40 MB de imagens mostra só
+o texto e o aviso, sem imagem, com "Baixar original" (lote 3). Provas: `ai-providers-proof` passa a esperar
+`AI_USAGE_RANKING_READ` no administrador de Grupo (papel ADMINISTRADOR desde 5cb9c104, no escopo dele); `usability-proof`
+declara que as tabelas das fontes oficiais já existiam no período da massa (num banco novo as migrations são de hoje) e devolve
+as datas no fim; `investigation-tools-proof` e o teste de volume do `data-hub-proof` só precisam da massa demo (`db:seed:demo`).
+
 N03 (29/10/2026): `node --test "scripts/install/*.test.mjs"` 6 de 6; cópia real com `pg_dump` 17.11 no banco descartável
 (pasta nova, pasta já aberta com cópia antiga, `pg_dump` direto sobre o arquivo pré-criado e pasta sem permissão) com as
 permissões acima. Sem Windows aqui: o caminho do `icacls` foi testado por simulação.

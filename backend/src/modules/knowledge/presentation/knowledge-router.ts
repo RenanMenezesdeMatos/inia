@@ -298,12 +298,14 @@ export function createKnowledgeRouter(db: Database) {
 
   router.post("/", upload.single("file"), async (request, response) => {
     const organizationId = request.user!.organizationId
+    // Sem corpo multipart/JSON o Express deixa `request.body` indefinido: vira erro de validação (400), não TypeError (500).
+    const body = (request.body ?? {}) as Record<string, unknown>
     const input = createKnowledgeSchema.parse({
-      title: request.body.title,
-      documentType: request.body.documentType,
-      content: request.body.content,
-      orgScopes: parseJsonField(request.body.orgScopes),
-      subjectScopes: parseJsonField(request.body.subjectScopes),
+      title: body.title,
+      documentType: body.documentType,
+      content: body.content,
+      orgScopes: parseJsonField(body.orgScopes),
+      subjectScopes: parseJsonField(body.subjectScopes),
     })
 
     const file = request.file

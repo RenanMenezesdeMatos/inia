@@ -11,8 +11,8 @@ estão em `registro-de-testes.md` e `relatorio-tecnico.md`.
 
 | Status | Requisitos |
 |---|---|
-| verificado | 118 |
-| falhou | 15 |
+| verificado | 120 |
+| falhou | 13 |
 | não aplicável | 69 |
 | não testado | 143 |
 | **total** | **345** |
@@ -83,7 +83,7 @@ estão em `registro-de-testes.md` e `relatorio-tecnico.md`.
 | **V3.3.3** — Verify that cookies have the '__Host-' prefix for the cookie name unless they are explicitly designed to be shared with other hosts. | L2 | verificado | D: SESS-01/SESS-09 — prefixo `__Host-`; o mesmo token sem o prefixo é recusado (401). |
 | **V3.3.4** — Verify that if the value of a cookie is not meant to be accessible to client-side scripts (such as a session token), the cookie must have the 'Http… | L2 | verificado | D: SESS-01 — `HttpOnly` (sessão e `inia_device`). |
 | **V3.3.5** — Verify that when the application writes a cookie, the cookie name and value length combined are not over 4096 bytes. Overly large cookies will not … | L3 | verificado | D: cookie de sessão ≈ 650 bytes. |
-| **V3.4.1** — Verify that a Strict-Transport-Security header field is included on all responses to enforce an HTTP Strict Transport Security (HSTS) policy. A max… | L1 | falhou | D: a API envia HSTS (helmet); as páginas da interface (Next) não enviam e o `deploy/windows/iis/web.config` não acrescenta. Em produção o navegador recebe HSTS pelas respostas `/api` do mesmo host — mitigado, mas o requisito pede todas as respostas. Recomendação: HSTS no IIS (validar em homologação com TLS). |
+| **V3.4.1** — Verify that a Strict-Transport-Security header field is included on all responses to enforce an HTTP Strict Transport Security (HSTS) policy. A max… | L1 | verificado | C+T: a API envia HSTS (helmet) e as páginas também quando a instalação é HTTPS (`next.config.ts`, `httpsDeployment`; conferido carregando a configuração com URL `https://` e `http://`). Em HTTP local não aparece, como deve. Ressalva: `includeSubDomains` só na API. Confirmar com TLS na homologação. |
 | **V3.4.2** — Verify that the Cross-Origin Resource Sharing (CORS) Access-Control-Allow-Origin header field is a fixed value by the application, or if the Origin… | L1 | verificado | D: CORS-01..03 — origem fixa da interface; `null` e outras origens sem ACAO. |
 | **V3.4.3** — Verify that HTTP responses include a Content-Security-Policy response header field which defines directives to ensure the browser only loads and ex… | L2 | verificado | D: CSP na API e na interface (nonce por requisição). Ressalva R-07: `style-src 'unsafe-inline'` (ZAP 10055). |
 | **V3.4.4** — Verify that all HTTP responses contain an 'X-Content-Type-Options: nosniff' header field. This instructs browsers not to use content sniffing and M… | L2 | verificado | D: `nosniff` em todas as respostas observadas. |
@@ -166,7 +166,7 @@ estão em `registro-de-testes.md` e `relatorio-tecnico.md`.
 | **V6.2.12** — Verify that passwords submitted during account registration or password changes are checked against a set of breached passwords. | L2 | falhou | C: sem verificação contra senhas vazadas (R-22) — recomendação (lista local, sem serviço externo). |
 | **V6.3.1** — Verify that controls to prevent attacks such as credential stuffing and password brute force are implemented according to the application's securit… | L1 | verificado | D: ATHN-02; C: reserva antes do bcrypt, teto por IP e por e-mail, fila do bcrypt limitada. |
 | **V6.3.2** — Verify that default user accounts (e.g., "root", "admin", or "sa") are not present in the application or are disabled. | L1 | verificado | C: massa demo recusada em produção; administrador criado por `admin:create` com senha forte. |
-| **V6.3.3** — Verify that either a multi-factor authentication mechanism or a combination of single-factor authentication mechanisms, must be used in order to ac… | L2 | falhou | C: sem MFA nem SSO corporativo (L2). Decisão de produto/integração com o IdP da Vivo — principal lacuna de autenticação. |
+| **V6.3.3** — Verify that either a multi-factor authentication mechanism or a combination of single-factor authentication mechanisms, must be used in order to ac… | L2 | falhou | C: sem MFA nem SSO corporativo (L2) — principal lacuna de autenticação. Adiado por decisão da INIA (29/10/2026) para uma próxima etapa. |
 | **V6.3.4** — Verify that, if the application includes multiple authentication pathways, there are no undocumented pathways and that security controls and authen… | L2 | verificado | C+D: nenhuma rota de autenticação além das documentadas (inventário de 475 rotas). |
 | **V6.3.5** — Verify that users are notified of suspicious authentication attempts (successful or unsuccessful). This may include authentication attempts from an… | L3 | não testado | Fora do recorte desta passada. |
 | **V6.3.6** — Verify that email is not used as either a single-factor or multi-factor authentication mechanism. | L3 | não testado | Fora do recorte desta passada. |
@@ -350,12 +350,12 @@ Capítulo inteiro **não aplicável** (36 requisitos): Sem OAuth/OIDC (autentica
 
 | Requisito | Nível | Status | Evidência / limitação |
 |---|---|---|---|
-| **V15.1.1** — Verify that application documentation defines risk based remediation time frames for 3rd party component versions with vulnerabilities and for upda… | L1 | falhou | C: não há prazo de correção por gravidade documentado para dependências — recomendação no relatório. |
+| **V15.1.1** — Verify that application documentation defines risk based remediation time frames for 3rd party component versions with vulnerabilities and for upda… | L1 | verificado | C: prazos de correção por gravidade, escopo e alcance em `docs/security/politica-de-dependencias.md` (proposta de 29/10/2026; aprovação formal pendente). |
 | **V15.1.2** — Verify that an inventory catalog, such as software bill of materials (SBOM), is maintained of all third-party libraries in use, including verifying… | L2 | verificado | S: SBOM CycloneDX/SPDX gerado nesta rodada (Syft), anexado. |
 | **V15.1.3** — Verify that the application documentation identifies functionality which is time-consuming or resource-demanding. This must include how to prevent … | L2 | não testado | Fora do recorte desta passada. |
 | **V15.1.4** — Verify that application documentation highlights third-party libraries which are considered to be "risky components". | L3 | não testado | Fora do recorte desta passada. |
 | **V15.1.5** — Verify that application documentation highlights parts of the application where "dangerous functionality" is being used. | L3 | não testado | Fora do recorte desta passada. |
-| **V15.2.1** — Verify that the application only contains components which have not breached the documented update and remediation time frames. | L1 | falhou | S: em produção havia `next@16.3.8` (2 avisos críticos, 1 alto), `body-parser@2.3.0`, `zod@4.5.4`, `multer@2.4.0` — ATUALIZADOS em 29/10 (16.4.1, 2.4.0, 4.6.7, 2.5.0) e verificados. Restam avisos sem caminho alcançável (`@azure/msal-node`, `uuid`) e `zod@4.4.3` no frontend; sem prazos de correção documentados (V15.1.1). |
+| **V15.2.1** — Verify that the application only contains components which have not breached the documented update and remediation time frames. | L1 | falhou | S: em produção havia `next@16.3.8` (2 avisos críticos, 1 alto), `body-parser@2.3.0`, `zod@4.5.4`, `multer@2.4.0` — ATUALIZADOS em 29/10 (16.4.1, 2.4.0, 4.6.7, 2.5.0) e verificados. O `zod` do frontend também foi para 4.6.7. Restam avisos sem caminho alcançável (`@azure/msal-node`, `uuid`). |
 | **V15.2.2** — Verify that the application has implemented defenses against loss of availability due to functionality which is time-consuming or resource-demandin… | L2 | não testado | Fora do recorte desta passada. |
 | **V15.2.3** — Verify that the production environment only includes functionality that is required for the application to function, and does not expose extraneous… | L2 | não testado | Fora do recorte desta passada. |
 | **V15.2.4** — Verify that third-party components and all of their transitive dependencies are included from the expected repository, whether internally owned or … | L3 | não testado | Fora do recorte desta passada. |
@@ -389,7 +389,7 @@ Capítulo inteiro **não aplicável** (36 requisitos): Sem OAuth/OIDC (autentica
 | **V16.4.1** — Verify that all logging components appropriately encode data to prevent log injection. | L2 | não testado | Fora do recorte desta passada. |
 | **V16.4.2** — Verify that logs are protected from unauthorized access and cannot be modified. | L2 | não testado | Fora do recorte desta passada. |
 | **V16.4.3** — Verify that logs are securely transmitted to a logically separate system for analysis, detection, alerting, and escalation. The aim is to ensure th… | L2 | não testado | Fora do recorte desta passada. |
-| **V16.5.1** — Verify that a generic message is returned to the consumer when an unexpected or security-sensitive error occurs, ensuring no exposure of sensitive … | L2 | verificado | D: ERRH-01..04. |
+| **V16.5.1** — Verify that a generic message is returned to the consumer when an unexpected or security-sensitive error occurs, ensuring no exposure of sensitive … | L2 | verificado | D: ERRH-01..04; os 632 erros 500 genéricos do ZAP (nome repetido, byte NUL, corpo ausente) passaram a 409/400 (testes em `http-security.test.ts`). |
 | **V16.5.2** — Verify that the application continues to operate securely when external resource access fails, for example, by using patterns such as circuit break… | L2 | não testado | Fora do recorte desta passada. |
 | **V16.5.3** — Verify that the application fails gracefully and securely, including when an exception occurs, preventing fail-open conditions such as processing a… | L2 | verificado | C: exceção não capturada encerra o processo (fail-closed) e o serviço reinicia. |
 | **V16.5.4** — Verify that a "last resort" error handler is defined which will catch all unhandled exceptions. This is both to avoid losing error details that mus… | L3 | verificado | C: tratador final em `app.ts` + `process-lifecycle.ts`. |

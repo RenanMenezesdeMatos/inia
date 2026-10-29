@@ -1,0 +1,50 @@
+# Exclusões do Gitleaks para a INIA — auditoria AppSec 29/10/2026 (docs/security/appsec-2026-10-29/relatorio-tecnico.md §3.2).
+#
+# O Gitleaks lê este arquivo sozinho quando varre o repositório (`gitleaks dir .` / `gitleaks git .`); o `npm run security:scan`
+# também. As regras padrão valem inteiras ([extend] useDefault). Cada exclusão abaixo vale SÓ para a regra genérica
+# `generic-api-key` (qualquer "chave = valor longo") nos lugares onde ela acusa identificadores ou dados de teste; as regras
+# específicas (Google, AWS, GitHub, chave privada, JWT…) continuam valendo em todos os arquivos. Nenhum valor dos .env entra aqui.
+# Antes de acrescentar uma exclusão, confira o achado e escreva o motivo — segredo de verdade se troca, não se exclui.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Artefatos de avaliação congelados (JSON/JSONL dos benchmarks e rodadas de feedback): criterionKey, runKey, analysisKey e hashes de requisição são identificadores, não segredos"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)backend/scripts/(feedback-engine/evaluation|poc-tools)/.+\.jsonl?$''']
+
+[[allowlists]]
+description = "Testes, provas, massa demonstrativa e scripts dos testes da auditoria: senhas e chaves inventadas para fixtures (contas sintéticas, provedores de IA falsos, senha errada de propósito)"
+targetRules = ["generic-api-key"]
+paths = [
+  '''\.test\.(ts|tsx|mjs)$''',
+  '''(^|/)testing/[^/]+\.(ts|tsx|json)$''',
+  '''(^|/)backend/(seeds/demo|src/infrastructure/database/demo-mass)/''',
+  '''(^|/)backend/scripts/dev/fake-ai-provider\.ts$''',
+  '''(^|/)docs/security/appsec-[^/]+/anexos/[^/]+\.(mjs|mts)$''',
+]
+
+[[allowlists]]
+description = "Identificadores com nome de chave no código (chave de execução e de prática) e a variável do sqlcmd do banco de exemplo"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = [
+  '''\brunKey\b''',
+  '''\bpractice_key\b''',
+  '''\$\(READER_PASSWORD\)''',
+]
+
+[[allowlists]]
+description = "Histórico: senha do banco de EXEMPLO local (dados fictícios) escrita no init.sql antes de virar variável; nunca usada fora do contêiner de avaliação"
+targetRules = ["generic-api-key"]
+condition = "AND"
+commits = ["6959a93b06ca3b075d5d1f9bbc5a116b9a3d0578"]
+paths = ['''(^|/)docker/external-examples/sqlserver/init\.sql$''']
+
+[[allowlists]]
+description = "Histórico: chave inventada (formato do Google) do teste de redação, hoje montada em tempo de execução"
+targetRules = ["gcp-api-key"]
+condition = "AND"
+commits = ["de5cf2884b03648253e1642726528f1c6413f51a"]
+paths = ['''(^|/)backend/src/modules/qa-lab/application/run-workflow-simulation\.test\.ts$''']

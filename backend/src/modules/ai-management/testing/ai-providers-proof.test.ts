@@ -303,7 +303,8 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     await pool.query(`insert into access_role_assignments (organization_id, user_account_id, role_code, scope_type, team_id, granted_at) values ($1, $2, 'ADMINISTRADOR', 'GROUP', $3, now())`, [ORG, account.rows[0]!.id, team.rows[0]!.id])
     const scoped = request.agent(createApp(pool))
     expect((await scoped.post("/api/v1/auth/login").send(SCOPED)).status).toBe(200)
-    expect((await scoped.get("/api/v1/admin/ai/me")).body.data.permissions).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ"])
+    // Só leitura: configuração e uso; o ranking "Quem mais usa" vem do papel ADMINISTRADOR (`ai.usage_ranking.view`, 5cb9c104), no escopo dele.
+    expect((await scoped.get("/api/v1/admin/ai/me")).body.data.permissions).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ", "AI_USAGE_RANKING_READ"])
     expect((await scoped.get("/api/v1/admin/ai/connections")).status).toBe(200)
     expect((await scoped.post("/api/v1/admin/ai/connections").send({ providerKey: "OPENAI", name: `${PREFIX}x`, apiKey: "sk-qa-1234567890" })).status).toBe(403)
     expect((await scoped.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: "sk-qa-1234567890" })).status).toBe(403)

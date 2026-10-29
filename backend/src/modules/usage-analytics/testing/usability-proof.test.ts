@@ -23,7 +23,7 @@ import { peopleQuery } from "../application/query/people-query.js"
 import { qualityQuery } from "../application/query/quality-query.js"
 import { personDetailQuery } from "../application/query/person-query.js"
 import { screensQuery } from "../application/query/screens-query.js"
-import { assertAggregateCohort, buildUsabilityContext } from "../application/query/usability-context.js"
+import { assertAggregateCohort, buildUsabilityContext, OFFICIAL_SOURCE_MIGRATIONS } from "../application/query/usability-context.js"
 import { buildUsabilityExport } from "../application/query/usability-export.js"
 import type { UsabilityTab } from "../application/query/usability-filters.js"
 import { workflowsQuery } from "../application/query/workflows-query.js"
@@ -48,11 +48,21 @@ async function project() {
   }
 }
 
+/**
+ * Cada FONTE OFICIAL conta a partir da migration que criou a tabela (`schema_migrations.applied_at`). Num banco de teste recém-criado
+ * as migrations são de hoje e o período da massa (outubro/2026) ficaria sem cobertura — "sem dados", como deve ser em produção. A
+ * prova declara que as tabelas já existiam antes da coleta e devolve as datas originais no fim.
+ */
+let backdatedMigrations: { name: string; applied_at: Date }[] = []
+
 describe.skipIf(!ENABLED)("Monitoria de usabilidade — prova Postgres", () => {
   let firstBatch: Awaited<ReturnType<typeof seedFixtureEvents>>
 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL, max: 8 })
+    const before = new Date(COLLECTION_START.getTime() - 86_400_000)
+    backdatedMigrations = (await pool.query<{ name: string; applied_at: Date }>(`select name, applied_at from schema_migrations where name = any($1::text[]) and applied_at > $2`, [Object.values(OFFICIAL_SOURCE_MIGRATIONS), before])).rows
+    if (backdatedMigrations.length > 0) await pool.query(`update schema_migrations set applied_at = $2 where name = any($1::text[])`, [backdatedMigrations.map((row) => row.name), before])
     await cleanupLeftovers(pool)
     ids = await seedFixtureBase(pool)
     invalidateUsageSettings()
@@ -64,6 +74,7 @@ describe.skipIf(!ENABLED)("Monitoria de usabilidade — prova Postgres", () => {
   afterAll(async () => {
     if (!pool) return
     if (ids) await cleanupFixture(pool, ids)
+    for (const row of backdatedMigrations) await pool.query(`update schema_migrations set applied_at = $2 where name = $1`, [row.name, row.applied_at])
     await pool.end()
   })
 

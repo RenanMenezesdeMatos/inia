@@ -13,6 +13,7 @@ risco que sobra.
 | [configuracao-segura.md](configuracao-segura.md) | Variáveis de ambiente, IIS, bancos externos, papéis, atualização, reversão e rotação |
 | [pendencias-e-riscos.md](pendencias-e-riscos.md) | Riscos residuais e validações não executadas, com a ação que resolve |
 | [plano-de-resposta-a-incidentes.md](plano-de-resposta-a-incidentes.md) | Parte da INIA na resposta a incidentes (20/10/2026): o que conta, prazos da LGPD, contenção, onde está a evidência, relatório para a Vivo |
+| [politica-de-dependencias.md](politica-de-dependencias.md) | Prazos de correção de vulnerabilidades em dependências por gravidade, escopo e alcance; como atualizar com segurança (proposta de 29/10/2026, aprovação pendente) |
 | [appsec-2026-10-29/](appsec-2026-10-29/README.md) | Preparação para a avaliação AppSec do Conviso (29/10/2026): Semgrep, Gitleaks, OSV, Syft (SBOM), ZAP e pentest local; matriz ASVS 5.0.0; achados APPSEC-01…05 (APPSEC-02 = h19 da 4ª rodada, corrigido em `4859d40f` + `77c5adcd` e retestado); `npm run security:scan` com linha de base. Commits da 4ª rodada no mesmo dia: N01/N04 em `1ea944cf`, h19 em `4859d40f` + `77c5adcd`, N03 (pasta e arquivo do backup restritos) em `a36909d9` |
 | [anexos/](anexos/) | Matrizes rota a rota produzidas em cada rodada (estado anterior às correções); a 2ª rodada em `anexos/rodada-2026-10-17/` |
 

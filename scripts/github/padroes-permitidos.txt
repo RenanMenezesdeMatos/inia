@@ -6,7 +6,6 @@
 # Esta lista nunca libera os valores dos .env locais nem arquivos de segredo pelo nome.
 
 # Testes de redação de segredos: chaves inventadas ("AIzaSyA123…", "sk-abcdef…") que precisam virar [REDIGIDO].
-backend/src/modules/qa-lab/application/run-workflow-simulation.test.ts sha256:5e8a6a8b9d10a937
 backend/src/modules/ai-management/domain/ai-routing-policy.test.ts sha256:6c2b82b5db2d55c4
 
 # Testes e provas dos provedores de IA: chaves falsas ("sk-test-…", "sk-qa-…") que nunca podem aparecer em resposta,

@@ -427,12 +427,16 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
  * Erros de ENTRADA levantados antes do router (corpo JSON malformado ou grande demais, upload acima do limite): respondem como
  * erro do cliente (4xx) — antes caíam no 500 genérico, escondendo do usuário o que corrigir e poluindo o alarme de erro interno.
  */
-function describeClientError(error: unknown): { status: number; code: string; message: string } | null {
+export function describeClientError(error: unknown): { status: number; code: string; message: string } | null {
   if (typeof error !== "object" || error === null) return null
   const candidate = error as { type?: unknown; status?: unknown; statusCode?: unknown; code?: unknown; name?: unknown; severity?: unknown }
   // PostgreSQL recusou o FORMATO de um valor vindo da requisição (ex.: id que não é uuid em `/:id`): erro do cliente, sem
   // ecoar a mensagem do banco (achado A-F14 — antes virava 500 em dezenas de rotas).
   if (typeof candidate.severity === "string" && (candidate.code === "22P02" || candidate.code === "22007" || candidate.code === "22008")) return { status: 400, code: "INVALID_IDENTIFIER", message: "Identificador ou valor em formato inválido." }
+  // Byte nulo ou caractere que o banco não aceita (ex.: `%00` num parâmetro) e registro duplicado que a rota não tratou: também
+  // são do cliente — o ZAP provocou centenas de 500 com eles (auditoria AppSec 29/10/2026). Mensagem genérica, sem a do banco.
+  if (typeof candidate.severity === "string" && (candidate.code === "22021" || candidate.code === "22P05")) return { status: 400, code: "INVALID_CHARACTER", message: "Valor com caractere inválido." }
+  if (typeof candidate.severity === "string" && candidate.code === "23505") return { status: 409, code: "DUPLICATE_RECORD", message: "Já existe um registro com esses dados." }
   if (candidate.type === "entity.parse.failed") return { status: 400, code: "INVALID_JSON", message: "Corpo da requisição não é um JSON válido." }
   if (candidate.type === "entity.too.large") return { status: 413, code: "PAYLOAD_TOO_LARGE", message: "Corpo da requisição grande demais." }
   if (candidate.name === "MulterError") {

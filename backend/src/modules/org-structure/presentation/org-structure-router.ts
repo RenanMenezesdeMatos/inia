@@ -63,7 +63,7 @@ export function createOrgStructureRouter(db: Database) {
     const result = await db.query(
       `insert into subteams(organization_id, team_id, name) values ($1,$2,$3) returning id, team_id "teamId", name`,
       [organizationId, request.params.teamId, input.name],
-    )
+    ).catch(duplicateAs("Esse Grupo já tem um Subgrupo com esse nome.", "SUBTEAM_NAME_TAKEN"))
     response.status(201).json({ data: result.rows[0] })
   })
 
@@ -85,9 +85,17 @@ export function createOrgStructureRouter(db: Database) {
     const result = await db.query(
       `insert into subjects(organization_id, name, description) values ($1,$2,$3) returning id, name, description, active`,
       [organizationId, input.name, input.description ?? null],
-    )
+    ).catch(duplicateAs("Já existe um assunto com esse nome.", "SUBJECT_NAME_TAKEN"))
     response.status(201).json({ data: result.rows[0] })
   })
 
   return router
+}
+
+/** Nome repetido (restrição única do banco) é erro de quem cadastra — 409 com a mensagem certa, nunca 500 (ZAP, AppSec 29/10). */
+function duplicateAs(message: string, code: string) {
+  return (error: unknown): never => {
+    if ((error as { code?: string }).code === "23505") throw new DomainError(message, code, 409)
+    throw error
+  }
 }

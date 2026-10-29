@@ -758,8 +758,11 @@ describe("QA Lab — UMA interação real como massa de teste (Trigger por Flag)
   })
 
   it("prompts/entradas exibidos no QA Lab passam por redação de segredos técnicos", async () => {
+    // Chave inventada montada em tempo de execução: o formato literal de uma chave do Google no código acionaria qualquer
+    // scanner de segredos (Gitleaks/Conviso) — auditoria AppSec 29/10/2026.
+    const FAKE_GOOGLE_KEY = ["AIza", "SyA123", "x".repeat(29)].join("")
     const { redactSecrets } = await import("./run-workflow-simulation.js")
-    expect(redactSecrets("chave AIzaSyA1234567890abcdefghijklmnopqrstuv no prompt")).toBe("chave [REDIGIDO] no prompt")
+    expect(redactSecrets(`chave ${FAKE_GOOGLE_KEY} no prompt`)).toBe("chave [REDIGIDO] no prompt")
     expect(redactSecrets("Authorization: Bearer abcdefghijklmnopqrstuvwxyz")).toBe("Authorization: [REDIGIDO]")
     expect(redactSecrets("Operador: bom dia, protocolo 123456789012")).toBe("Operador: bom dia, protocolo 123456789012")
   })
