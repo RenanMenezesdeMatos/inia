@@ -34,7 +34,7 @@ export async function resolveHierarchicalTargetIds(
 ): Promise<string[]> {
   if (target.type === "SPECIFIC_USER") return [target.userId]
   if (target.type === "ROLE_OF_OPERATOR") {
-    return (await resolveByRoleChain(context.db, operatorId, [target.role])).map((recipient) => recipient.id)
+    return (await resolveByRoleChain(context.db, operatorId, [target.role], { ancestorsOnly: true })).map((recipient) => recipient.id)
   }
   // ROLE_OF_PREVIOUS_REVIEWER — o revisor anterior grava `reviewerId` em
   // node_outputs[previousReviewNodeId] na rota de decisão (workflow-router.ts). Sem esse
@@ -57,12 +57,16 @@ export async function notifyHumanReviewPending(config: HumanReviewNodeConfig, co
   const operatorId = await resolveEnrollmentOperatorId(context)
   if (!operatorId) throw new Error("Não foi possível identificar o operador para a revisão humana.")
 
-  const [reviewerIds, caseId, operatorRow] = await Promise.all([
+  const [resolvedIds, caseId, operatorRow] = await Promise.all([
     resolveHierarchicalTargetIds(context, operatorId, config.reviewTarget),
     context.effects.findRecentCaseId(context.db, context.enrollmentId),
     context.db.query<{ name: string }>(`select name from people where id = $1`, [operatorId]),
   ])
   const operatorName = operatorRow.rows[0]?.name ?? "um operador"
+  // O próprio colaborador nunca revisa o resultado sobre ele (nem como "Pessoa específica"): sem outro revisor, o nó falha com o
+  // motivo registrado em vez de esperar uma decisão que só ele poderia tomar (achado C16 da 4ª auditoria).
+  const reviewerIds = resolvedIds.filter((id) => id !== operatorId)
+  if (resolvedIds.length > 0 && reviewerIds.length === 0) throw new Error("A revisão humana não tem revisor além do próprio colaborador desta execução — ajuste o revisor do nó.")
 
   const contentValue = config.contentSource ? resolveSource(context.nodeOutputs, config.contentSource) : undefined
   // V1.5.12: feedback confiável = o texto legível do que seria emitido (nunca o JSON do artefato).

@@ -135,10 +135,11 @@ export default function MyStructurePage() {
           </Table>
         </WikiTable>
         <WarningCallout title="Privacidade em estruturas pequenas" kind="tip">
-          INSS, maternidade e paternidade podem identificar alguém. Esses três motivos aparecem apenas somados como “Afastamentos”, com o aviso
-          “Detalhamento de afastamentos indisponível para estruturas pequenas”, quando a estrutura tem menos de 5 pessoas ou quando a contagem
-          apontaria alguém — um caso isolado de um tipo, ou um tipo só (a lista de quem está afastado diria o motivo de cada um). Nenhum card mostra a
-          situação individual de uma pessoa — a seção é sempre agregada.
+          INSS, maternidade e paternidade podem identificar alguém. O motivo só aparece separado para operadores: esses três motivos aparecem
+          apenas somados como “Afastamento (motivo protegido)”, com o aviso “Detalhamento de afastamentos indisponível para estruturas pequenas”,
+          quando a estrutura tem menos de 5 operadores ou quando a contagem apontaria alguém — um caso isolado de um tipo, ou um tipo só (a lista de
+          quem está afastado diria o motivo de cada um). O afastamento de um líder nunca aparece pelo motivo: entra sempre nessa linha somada. Nenhum
+          card mostra a situação individual de uma pessoa — a seção é sempre agregada.
         </WarningCallout>
       </WikiSection>
 

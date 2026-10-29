@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvatarConversationState } from "@/lib/avatar/animation/types"
 import type { FarewellSpeech } from "@/lib/avatar/avatar-driver"
-import { fetchEphemeralSession, GeminiRealtimeTransport, recordVoiceTurn, type RealtimeCallState, type VoiceConversationResult } from "@/lib/realtime/gemini-realtime-transport"
+import { fetchEphemeralSession, fetchVoiceReading, GeminiRealtimeTransport, recordVoiceTurn, type RealtimeCallState, type VoiceConversationResult } from "@/lib/realtime/gemini-realtime-transport"
 import { ApiError } from "@/lib/api/api-client"
 import { startUsageAction, trackUsage } from "@/lib/usage/usage-provider"
 import { ConversationClosedError, FeedbackConversationChangedError, fetchConversationMessages, fetchCurrentConversation, fetchTextReply, saveMessageRating, startNewConversation, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
@@ -1025,8 +1025,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     const turnId = turnIdRef.current
     const userSpokenAt = userSpokenAtRef.current ?? undefined
     // Escolha do formulário clicada com a voz aberta que nenhuma consulta da voz levou neste turno (o modelo não acionou a
-    // ferramenta): segue pelo caminho de TEXTO, estruturada — a pergunta seguinte ou a resposta aparece escrita. A mensagem da
-    // pessoa é gravada por lá, com a escolha (não aqui, para não duplicar).
+    // ferramenta): segue pelo caminho de TEXTO, estruturada, e a resposta que chegar é LIDA em voz alta (`speak`) — com a voz ligada
+    // ela fala toda resposta. A mensagem da pessoa é gravada por lá, com a escolha (não aqui, para não duplicar).
     const pendingChoice = voiceClarificationRef.current?.turnId === turnId ? voiceClarificationRef.current : null
     voiceClarificationRef.current = null
     const localIds = turnMessageIdsRef.current.filter((id) => id !== pendingChoice?.bubbleId)
@@ -1048,7 +1048,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     const userChannel = typedVoiceTurnRef.current ? "chat" : "voice"
     typedVoiceTurnRef.current = false
     // Depois de fechar este turno (o que a INIA falou é gravado antes da resposta escrita), pela versão ATUAL do envio.
-    if (pendingChoice) setTimeout(() => void sendForTextReplyRef.current?.(pendingChoice.text, { existingBubbleId: pendingChoice.bubbleId, clarification: pendingChoice.answer }), 0)
+    if (pendingChoice) setTimeout(() => void sendForTextReplyRef.current?.(pendingChoice.text, { existingBubbleId: pendingChoice.bubbleId, clarification: pendingChoice.answer, speak: true }), 0)
     const recordedUserText = pendingChoice ? "" : userText
     if (!recordedUserText && !replyText) return
     const generation = viewGenerationRef.current
@@ -1338,25 +1338,60 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   }
 
   /**
-   * Escolha (ou correção) de uma etapa do esclarecimento pelas bases. Na VOZ (chamada ativa, voz ligada) a escolha clicada vira a
-   * resposta da pessoa na sessão — como se tivesse falado — e a INIA continua a conversa falando; a escolha ESTRUTURADA vai junto da
-   * consulta que a voz faz em seguida (`getToolCallContext`) e o backend a aplica exatamente (nunca pela reescrita do modelo de voz);
-   * se a voz não fizer a consulta, a escolha segue pelo texto no fim do turno. Sem voz, ou numa correção ("Alterar", que precisa refazer as etapas seguintes), vai pelo caminho de TEXTO com a escolha
-   * estruturada; a forma legível vira a mensagem de quem pergunta.
+   * Escolha (ou correção) de uma etapa do esclarecimento pelas bases. Na VOZ (chamada ativa, voz ligada) a escolha clicada — também
+   * a correção pelo "Alterar" — vira a resposta da pessoa na sessão, como se tivesse falado, e a INIA continua a conversa falando; a
+   * escolha ESTRUTURADA vai junto da consulta que a voz faz em seguida (`getToolCallContext`) e o backend a aplica exatamente, a
+   * correção inclusive (nunca pela reescrita do modelo de voz); se a voz não fizer a consulta, a escolha segue pelo texto no fim do
+   * turno. Sem voz (mudo ou avatar encerrado) vai pelo caminho de TEXTO com a escolha estruturada; a forma legível vira a mensagem de
+   * quem pergunta.
    */
   const answerClarification = (answer: ClarificationAnswer, displayText: string) => {
     if (readOnlyConversation || loadState !== "ready" || textReplyPending) return
     setStageGreeting(false)
     presentationRef.current?.stop()
-    if (!answer.revise && callActive && !voiceMuted && sendTypedByVoice(displayText, false, answer)) return
+    if (callActive && !voiceMuted && sendTypedByVoice(displayText, false, answer)) return
     void sendForTextReply(displayText, { clarification: answer })
   }
 
-  /** Resposta POR ESCRITO (INIA no mudo, avatar encerrado ou voz indisponível) — o caminho de texto de sempre. */
-  const sendForTextReply = async (text: string, options: { fromComposer?: boolean; existingBubbleId?: number; clarification?: ClarificationAnswer } = {}) => {
+  /**
+   * Com a voz ligada ela FALA toda resposta: a resposta gravada pelo caminho de texto é lida em voz alta pela sessão de voz — o
+   * backend devolve o conteúdo com a mesma instrução de fala da ferramenta (`fetchVoiceReading`) e o transporte não deixa a leitura
+   * consultar nada de novo (`readAloud`). Nada é gravado de novo: a mensagem já está na conversa, a fala não ganha legenda paralela
+   * e, no palco, pousa nela. Não lê se a pessoa já seguiu adiante (outro turno, microfone aberto, apresentação ou recado tocando), se
+   * a voz foi para o mudo ou caiu, ou se a leitura não vier.
+   */
+  const speakReply = async (messageId: number, interactionId: string, conversationId: string, since: { generation: number; turnId: string }) => {
+    const { generation, turnId } = since
+    const stillDue = () =>
+      generation === viewGenerationRef.current && turnId === turnIdRef.current && turnMessageIdsRef.current.length === 0 &&
+      conversationStateRef.current !== "listening" && !voiceMutedRef.current && !presentationRef.current && !recadoPlaybackRef.current &&
+      Boolean(transportRef.current?.isConnected)
+    if (!stillDue()) return
+    let text: string
+    try {
+      text = await fetchVoiceReading({ conversationId, interactionId, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null })
+    } catch (error) {
+      console.warn("[realtime] voice reading unavailable", error)
+      return
+    }
+    const transport = transportRef.current
+    if (!stillDue() || !transport) return
+    // A mensagem já é a resposta deste turno: a fala não ganha legenda paralela nem é gravada de novo.
+    specialistAnsweredThisTurnRef.current = true
+    if (stageOpen()) landSpecialistOnStage(messageId)
+    transport.readAloud(text)
+  }
+
+  /**
+   * Resposta POR ESCRITO (INIA no mudo, avatar encerrado ou voz indisponível) — o caminho de texto de sempre. `speak`: a escolha do
+   * formulário que a voz não levou (ver `flushAssistantTranscript`): a resposta também é LIDA em voz alta (`speakReply`).
+   */
+  const sendForTextReply = async (text: string, options: { fromComposer?: boolean; existingBubbleId?: number; clarification?: ClarificationAnswer; speak?: boolean } = {}) => {
     const feedbackApplicationId = feedbackSessionRef.current?.application.id ?? null
     const inFeedback = feedbackApplicationId !== null
     const generation = viewGenerationRef.current
+    // Leitura em voz alta só se, quando a resposta chegar, ninguém tiver seguido adiante desde AGORA (ver `speakReply`).
+    const speakSince = { generation, turnId: turnIdRef.current }
     const requestedConversationId = conversationIdRef.current
     const userBubbleId = options.existingBubbleId ?? nextMessageId()
     setConversationNotice("")
@@ -1391,8 +1426,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       firstTextAt = performance.now()
       trackUsage("latency.measured", { metric: "CHAT_FIRST_TEXT", ms: outcome === "OK" ? Math.round(firstTextAt - usageStartedAt) : null, outcome }, { correlationId: usageAction.correlationId })
     }
-    // No palco a resposta escrita também passa pelo balão (sem voz: ritmo de leitura, sem ela mexer a boca) e pousa na conversa.
-    const onStage = stageOpen()
+    // No palco a resposta escrita também passa pelo balão (sem voz: ritmo de leitura, sem ela mexer a boca) e pousa na conversa —
+    // menos a que vai ser LIDA: essa entra no balão pela voz.
+    const onStage = stageOpen() && !options.speak
     let stageKey: number | null = null
     let reading: ReturnType<typeof createReadingClock> | null = null
     const stageWords = () => {
@@ -1450,6 +1486,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...(reply.persisted && reply.interactionId ? { interactionId: reply.interactionId } : {}), ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
       // "Sim" à oferta de report: abre a configuração já preenchida (o backend decidiu o destino).
       if (reply.navigate) routerRef.current.push(reply.navigate.href)
+      if (options.speak && reply.persisted && reply.interactionId) void speakReply(replyId, reply.interactionId, reply.conversationId, speakSince)
       const shownIn = reading as ReturnType<typeof createReadingClock> | null
       if (stageKey !== null && shownIn) {
         // A resposta fica no balão até terminar de aparecer; depois pousa nela.

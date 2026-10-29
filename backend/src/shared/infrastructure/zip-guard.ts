@@ -8,6 +8,11 @@ import { inflateRawSync } from "node:zlib"
  * entrada é descompactada de verdade com o teto do próprio tamanho declarado — entrada que passa dele (ou tem tamanho real
  * diferente) recusa o pacote (achado DATA-1 da auditoria de 17/10/2026: o JSZip dos parsers só compara no fim, depois de ter
  * descompactado tudo). A memória dessa conferência é a de UMA entrada por vez, dentro do teto total.
+ * E o pacote precisa ser LIDO DO MESMO JEITO pela guarda e pelo JSZip dos parsers (achado N04 da 4ª auditoria): o JSZip continua
+ * lendo registros além da contagem do fim do diretório, troca para ZIP64 com um campo de disco 0xFFFF e reposiciona tudo quando
+ * há um vão antes do fim — entradas que a guarda nunca via eram descompactadas sem teto. Por isso o fim do diretório precisa ser
+ * coerente (volume único, contagens iguais, diretório terminando exatamente nele, fim do arquivo depois do comentário), o
+ * diretório não pode ter registro a mais e nome repetido não entra. Documento do Office sempre atende a isso.
  */
 export type ZipLimits = { maxEntries: number; maxTotalUncompressedBytes: number; maxEntryRatio: number }
 
@@ -18,6 +23,7 @@ export type ZipInspection = { ok: true; entries: number; totalUncompressedBytes:
 const EOCD_SIGNATURE = 0x06054b50
 const CENTRAL_SIGNATURE = 0x02014b50
 const LOCAL_SIGNATURE = 0x04034b50
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50
 const ZIP64_MARKER = 0xffffffff
 const STORED = 0
 const DEFLATED = 8
@@ -58,13 +64,21 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
   const centralSize = data.readUInt32LE(eocd + 12)
   const centralOffset = data.readUInt32LE(eocd + 16)
   if (entries === 0xffff || centralSize === ZIP64_MARKER || centralOffset === ZIP64_MARKER) return { ok: false, reason: "pacote ZIP64 (grande demais para um documento)" }
+  if (eocd >= 20 && data.readUInt32LE(eocd - 20) === ZIP64_LOCATOR_SIGNATURE) return { ok: false, reason: "pacote ZIP64 (grande demais para um documento)" }
+  if (data.readUInt16LE(eocd + 4) !== 0 || data.readUInt16LE(eocd + 6) !== 0 || data.readUInt16LE(eocd + 8) !== entries) return { ok: false, reason: "pacote em vários volumes ou com contagem inconsistente" }
+  if (eocd + 22 + data.readUInt16LE(eocd + 20) !== data.length) return { ok: false, reason: "fim do pacote inconsistente" }
   if (entries > limits.maxEntries) return { ok: false, reason: `entradas demais (${entries})` }
   if (centralOffset + centralSize > data.length) return { ok: false, reason: "diretório central fora do arquivo" }
+  if (centralOffset + centralSize !== eocd) return { ok: false, reason: "diretório central fora do lugar" }
 
   let cursor = centralOffset
   let total = 0
+  const names = new Set<string>()
   for (let index = 0; index < entries; index += 1) {
     if (cursor + 46 > data.length || data.readUInt32LE(cursor) !== CENTRAL_SIGNATURE) return { ok: false, reason: "diretório central corrompido" }
+    const name = data.toString("latin1", cursor + 46, cursor + 46 + data.readUInt16LE(cursor + 28))
+    if (names.has(name)) return { ok: false, reason: "entrada com nome repetido" }
+    names.add(name)
     const compressed = data.readUInt32LE(cursor + 20)
     const uncompressed = data.readUInt32LE(cursor + 24)
     if (compressed === ZIP64_MARKER || uncompressed === ZIP64_MARKER) return { ok: false, reason: "entrada ZIP64 (grande demais para um documento)" }
@@ -75,6 +89,8 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
     if (mismatch) return { ok: false, reason: mismatch }
     cursor += 46 + data.readUInt16LE(cursor + 28) + data.readUInt16LE(cursor + 30) + data.readUInt16LE(cursor + 32)
   }
+  // Registro além da contagem (o JSZip leria e descompactaria sem esta conferência).
+  if (cursor !== centralOffset + centralSize) return { ok: false, reason: "diretório central com registros não contados" }
   return { ok: true, entries, totalUncompressedBytes: total }
 }
 

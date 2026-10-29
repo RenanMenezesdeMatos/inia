@@ -80,9 +80,11 @@ describe.skipIf(!ENABLED)("Checkpoint Registry — prova Postgres (publicação,
     // Idempotente: reprocessar a mesma versão não duplica nada.
     expect((await admin.post(`${base}/documents/${documentId}/extract`)).body.data).toMatchObject({ status: "ALREADY_SYNCED" })
 
-    // Permissões: sem papel = 403; administrador escopado lê, mas não governa.
+    // Permissões: sem papel = 403; administrador escopado nem lê nem governa (o checkpoint carrega o literal da base — achado C03).
     expect((await nobody.get(`${base}/documents`)).status).toBe(403)
-    expect((await scopedAdmin.get(`${base}/documents/${documentId}`)).status).toBe(200)
+    expect((await scopedAdmin.get(`${base}/documents`)).status).toBe(403)
+    expect((await scopedAdmin.get(`${base}/documents/${documentId}`)).status).toBe(403)
+    expect((await scopedAdmin.get(`${base}/definitions/${v1.checkpoints[0].definitionId}`)).status).toBe(403)
     expect((await scopedAdmin.post(`${base}/change-sets/${v1.changeSets[0].id}/approve-proposed`)).status).toBe(403)
 
     // 2) Governança: aprovar o conjunto inicial, rejeitar um candidato com motivo, ligar a governança do documento.

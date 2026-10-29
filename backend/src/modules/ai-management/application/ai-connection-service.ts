@@ -224,12 +224,6 @@ export async function updateConnection(context: AiAdminContext, actor: Actor, id
   if (input.enabled !== undefined) add("enabled", input.enabled)
   if (sets.length === 0) return current
   add("updated_at", context.now())
-  try {
-    await context.db.query(`update ai_connections set ${sets.join(", ")} where organization_id = $1 and id = $2`, values)
-  } catch (error) {
-    if (uniqueViolation(error)) throw new DomainError("Já existe uma conexão com esse nome.", "AI_CONNECTION_NAME_TAKEN", 409)
-    throw error
-  }
   // A chave (e os cabeçalhos com credencial) pertencem ao ENDPOINT em que foram cadastrados (achado A-F12): trocar o host
   // revoga as credenciais guardadas — senão bastaria apontar a conexão para um servidor próprio e clicar em "Testar" para
   // receber a chave. Quem administra cadastra a chave de novo para o endpoint novo.
@@ -241,13 +235,27 @@ export async function updateConnection(context: AiAdminContext, actor: Actor, id
     }
   }
   const endpointChanged = input.baseUrl !== undefined && originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) !== originOf(current.effectiveBaseUrl)
-  if (endpointChanged && (current.credential.configured || current.customHeaderNames.length > 0)) {
-    await context.db.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
-    await auditAi(context.db, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(current.effectiveBaseUrl), toHost: originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) })
-  }
   const changed = Object.keys(input).filter((key) => key !== "enabled")
-  if (changed.length > 0) await auditAi(context.db, actor, "AI_CONNECTION_UPDATED", "ai_connection", id, { fields: changed })
-  if (input.enabled !== undefined && input.enabled !== current.enabled) await auditAi(context.db, actor, input.enabled ? "AI_CONNECTION_ENABLED" : "AI_CONNECTION_DISABLED", "ai_connection", id, { activePolicyUseCases: current.activePolicyUseCases })
+  // Endpoint novo e revogação da chave num commit só (achado N01 da 4ª auditoria): com o endpoint já gravado e a chave ainda
+  // ativa, um "Testar" no meio-tempo mandava a chave antiga para o endpoint novo.
+  const client = await context.db.connect()
+  try {
+    await client.query("begin")
+    await client.query(`update ai_connections set ${sets.join(", ")} where organization_id = $1 and id = $2`, values)
+    if (endpointChanged && (current.credential.configured || current.customHeaderNames.length > 0)) {
+      await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
+      await auditAi(client, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(current.effectiveBaseUrl), toHost: originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) })
+    }
+    if (changed.length > 0) await auditAi(client, actor, "AI_CONNECTION_UPDATED", "ai_connection", id, { fields: changed })
+    if (input.enabled !== undefined && input.enabled !== current.enabled) await auditAi(client, actor, input.enabled ? "AI_CONNECTION_ENABLED" : "AI_CONNECTION_DISABLED", "ai_connection", id, { activePolicyUseCases: current.activePolicyUseCases })
+    await client.query("commit")
+  } catch (error) {
+    await client.query("rollback")
+    if (uniqueViolation(error)) throw new DomainError("Já existe uma conexão com esse nome.", "AI_CONNECTION_NAME_TAKEN", 409)
+    throw error
+  } finally {
+    client.release()
+  }
   context.runtime.invalidate(actor.organizationId)
   return getConnection(context, actor.organizationId, id)
 }

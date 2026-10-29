@@ -41,7 +41,8 @@ export async function executeEscalation(config: EscalateActionConfig, context: E
   const operatorId = await resolveEnrollmentOperatorId(context)
   if (!operatorId) throw new Error("Não foi possível identificar o operador para escalonar.")
 
-  const recipientIds = await resolveHierarchicalTargetIds(context, operatorId, config.target)
+  // O escalonamento é sobre o colaborador: ele nunca é o destinatário (achado C16 da 4ª auditoria).
+  const recipientIds = (await resolveHierarchicalTargetIds(context, operatorId, config.target)).filter((id) => id !== operatorId)
   // Nunca falha silenciosamente (Parte 25 do pedido) — o ESCALATE antigo retornava sem efeito
   // quando ninguém era encontrado na cadeia; agora lança erro controlado, que o motor já sabe
   // tratar (retry com backoff, depois `dead`, com o motivo registrado em

@@ -1,7 +1,5 @@
 import Link from "next/link"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useQueryClient } from "@tanstack/react-query"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,12 +8,10 @@ import { Separator } from "@/components/ui/separator"
 
 import { AuthFeedback } from "@/components/auth/auth-feedback"
 import { PasswordInput } from "@/components/auth/password-input"
-import { currentUserKeys } from "@/queries/auth/use-current-user"
+import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { CREATE_PASSWORD_ROUTE, fetchCurrentUser, landingRouteFor, login } from "@/services/auth/auth-service"
 
 export function LoginFields() {
-  const router = useRouter()
-  const queryClient = useQueryClient()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -35,11 +31,9 @@ export function LoginFields() {
       setFeedback({ type: "success", message: user.passwordChangeRequired ? "Senha temporária aceita. Agora crie a sua senha." : `Bem-vindo(a), ${user.name}.` })
       // Destino decidido pelo ACESSO da conta (/auth/me), nunca só pelo nível hierárquico (V1.5.8).
       const current = await fetchCurrentUser()
-      // Sessão nova no cache (o shell não mostra a da conta anterior).
-      queryClient.clear()
-      queryClient.setQueryData(currentUserKeys.me, current)
+      // Documento novo (lib/auth/session-navigation.ts): nada que uma conta anterior abriu nesta aba sobrevive na sessão nova.
       // Primeiro acesso (senha temporária): a única tela possível é a de criar a senha.
-      router.push(current ? landingRouteFor(current) : user.passwordChangeRequired ? CREATE_PASSWORD_ROUTE : "/supervisor")
+      loadSessionDocument(current ? landingRouteFor(current) : user.passwordChangeRequired ? CREATE_PASSWORD_ROUTE : "/supervisor")
     } catch (error) {
       setFeedback({
         type: "error",

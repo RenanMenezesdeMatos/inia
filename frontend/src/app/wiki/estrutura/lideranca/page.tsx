@@ -124,7 +124,7 @@ export default function LeadershipPage() {
               </TableRow>
               <TableRow>
                 <TableCell className="font-medium">Situação funcional</TableCell>
-                <TableCell>A situação canônica de cada pessoa na data pedida (padrão: hoje). Afastamentos de natureza sensível nunca aparecem pelo motivo ao lado de um nome e, em grupos com menos de 5 pessoas, aparecem só somados.</TableCell>
+                <TableCell>A situação canônica de cada pessoa na data pedida (padrão: hoje). Afastamentos de natureza sensível nunca aparecem pelo motivo ao lado de um nome. O motivo só se separa para operadores, em grupos com ao menos 5 operadores e quando a contagem não aponta ninguém; o afastamento de um líder aparece sempre somado, como “Afastamento (motivo protegido)”.</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell className="font-medium">Competência</TableCell>

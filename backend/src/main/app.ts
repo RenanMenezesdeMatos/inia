@@ -279,8 +279,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/feedbacks", requireAuth, createFeedbackRouter(database))
   app.use("/api/v1/admin/access", requireAuth, createAccessRouter(database))
   app.use("/api/v1/admin/knowledge", can("knowledge.manage"), createKnowledgeRouter(database))
-  // Checkpoint Registry — checkpoints derivados da Base de Conhecimento, governados pelo administrador (regra oficial read-only).
-  app.use("/api/v1/admin/checkpoints", can("knowledge.manage"), createCheckpointRegistryRouter(database))
+  // Checkpoint Registry — checkpoints derivados da Base de Conhecimento (carregam o literal da base). LER também exige a
+  // organização inteira: a rota de Bases só mostra uma base a quem alcança o Grupo dela (SEC-03) e a tela "Checkpoints da
+  // operação" saiu em 07/10 — nenhum fluxo precisa da leitura escopada (achado C03 da 4ª auditoria).
+  app.use("/api/v1/admin/checkpoints", can("knowledge.manage", { organizationWide: true }), createCheckpointRegistryRouter(database))
   // Leitor de material para qualquer usuário autenticado — acesso pelo alcance da base (backend é a autoridade).
   app.use("/api/v1/knowledge-materials", requireAuth, createKnowledgeMaterialRouter(database))
   app.use("/api/v1/admin/agents", can("agents.manage"), costly(/^\/[^/]+\/test$/), createAgentRouter(database))

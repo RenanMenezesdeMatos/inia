@@ -177,14 +177,13 @@ describe.skipIf(!ENABLED)("Escopo organizacional — ciclos, auto-referência, c
 
     const manager = await buildPersonOrganizationStructure(deps, user(id(1), "MANAGER"), id(1))
     const managerQueries = queries.length
-    // Abaixo do Gerente 1: 2, 3, 4, 5, 8 ativos (6 e 7 inativos ficam fora; 8 é alcançado ATRAVÉS do 7 inativo).
-    expect(manager.subject.managementMetrics).toMatchObject({ structuralPopulation: 5, directSpan: 1, operatorReach: 3, privacy: { sensitiveBreakdownSuppressed: false } })
+    // Abaixo do Gerente 1: 2, 3, 4, 5, 8 ativos (6 e 7 inativos ficam fora; 8 é alcançado ATRAVÉS do 7 inativo). Só 3 são
+    // operadores — o tipo de afastamento só se separa com 5+ OPERADORES (C14), então os afastamentos ficam somados.
+    expect(manager.subject.managementMetrics).toMatchObject({ structuralPopulation: 5, directSpan: 1, operatorReach: 3, privacy: { sensitiveBreakdownSuppressed: true } })
     expect(manager.subject.managementMetrics?.statusDistribution).toEqual([
       { bucket: "EM_PRODUCAO", count: 3, percent: 60 },
       { bucket: "FERIAS", count: 2, percent: 40 },
-      { bucket: "INSS", count: 0, percent: 0 },
-      { bucket: "MATERNIDADE", count: 0, percent: 0 },
-      { bucket: "PATERNIDADE", count: 0, percent: 0 },
+      { bucket: "SENSITIVE_LEAVE", count: 0, percent: 0 },
     ])
     expect(manager.subject.managementMetrics?.layerMetrics).toEqual([
       { managerRole: "COORDINATOR", reportRole: "SUPERVISOR", managers: 1, reports: 1, average: 1 },

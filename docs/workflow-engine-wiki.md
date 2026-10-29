@@ -20,7 +20,7 @@ O motor roda como um **worker contínuo** (`workflow-worker.ts`, iniciado em `se
 - **Sem espera entre nós:** quando um nó termina, a vaga é reaproveitada na hora; o próximo nó do fluxo roda em seguida. Sem trabalho, o worker varre a fila a cada 2 s.
 - **Posse da matrícula:** quem reivindica uma matrícula (`skip locked`) a mantém com um heartbeat enquanto o nó roda (lease de 120 s renovada a cada 40 s, por compare-and-swap). Um nó nunca roda duas vezes em paralelo; se o processo morrer, a posse vence e outro worker retoma a matrícula.
 - **Várias instâncias** do servidor podem rodar o worker no mesmo banco: cada matrícula vencida vai para exatamente um worker.
-- **Proteções:** ciclo entre nós sem Espera não vira laço quente (> 30 nós da mesma matrícula em 60 s → 60 s de pausa); falha técnica de uma matrícula não derruba as outras; ao desligar, o worker espera até 10 s pelas execuções em andamento e o resto é retomado quando a posse vencer.
+- **Proteções:** a publicação recusa um caminho que volta a um nó que chama a IA ("Chamar agente", "Gerar feedback", Orquestrador) sem passar por uma Espera (`WORKFLOW_PAID_CYCLE_WITHOUT_WAIT`; a Revisão humana reaproveita a decisão gravada e não segura a volta); o mesmo nó que chama a IA roda no máximo `WORKFLOW_MAX_PAID_NODE_RUNS` vezes (padrão 5) por execução — contado no banco, e no limite a execução é encerrada com `WORKFLOW_PAID_NODE_RUN_LIMIT` sem nova chamada (achado C06 da 4ª auditoria); ciclo entre nós sem Espera não vira laço quente (> 30 nós da mesma matrícula em 60 s → 60 s de pausa); falha técnica de uma matrícula não derruba as outras; ao desligar, o worker espera até 10 s pelas execuções em andamento e o resto é retomado quando a posse vencer.
 
 ### Tipos de nó
 
@@ -128,7 +128,7 @@ Essa política já existia implicitamente na implementação original (era só n
 ### Publicar, editar e desativar
 
 - **Editar/republicar a Agenda** tem efeito imediato — o checador sempre lê `trigger_config` direto da linha vigente do Workflow (nunca uma cópia congelada), então não existe risco de "duas agendas ativas ao mesmo tempo": ao salvar um novo horário, o horário antigo simplesmente deixa de existir.
-- **Desativar** (`active = false`) ou **despublicar** um Workflow tira ele da lista de elegíveis do checador imediatamente — a query já filtra `w.active and w.active_version_id is not null`.
+- **Desativar** (`active = false`) ou **despublicar** um Workflow tira ele da lista de elegíveis do checador imediatamente — a query já filtra `w.active and w.active_version_id is not null`. Desativar também PARA as execuções em andamento: o motor não reivindica matrícula de Workflow desativado; elas ficam no nó em que estavam e seguem quando ele for reativado (C06).
 - **Excluir** um Workflow remove em cascata todas as suas matrículas (FK `on delete cascade`).
 - **Testar antes de publicar:** Workflows podem ser testados em rascunho no QA Lab (`/admin/simulate`, exclusivo do administrador global) antes da publicação — o QA Lab executa o rascunho atual (ou, explicitamente, a versão publicada) com a mesma engine, congelando um snapshot da configuração testada em cada execução. Execuções QA não ativam o checador de agenda, não criam matrícula em `workflow_enrollments` nem geram efeitos operacionais (alertas, feedbacks, outputs, `agent_runs`): publicar continua sendo a única forma de colocar um Workflow em operação.
 

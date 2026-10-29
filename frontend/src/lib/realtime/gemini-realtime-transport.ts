@@ -53,6 +53,8 @@ export const TOOL_FAILURE_SPEECH = "Não consegui fazer essa consulta agora. Ten
  * na base ou com a sua equipe").
  */
 export const TOOL_FAILURE_RESULT = `[Falha na consulta: nenhum conteúdo foi obtido. Fale exatamente esta frase, e nada mais: "${TOOL_FAILURE_SPEECH}" Não dê orientação, procedimento, número nem sugestão de onde procurar.]`
+/** Ferramenta pedida durante uma LEITURA (`readAloud`): a resposta já está gravada e na tela — consultar de novo a duplicaria. */
+export const READING_TOOL_RESULT = "[Nada a consultar: a resposta já está na tela. Fale-a agora, seguindo a instrução que veio com ela.]"
 
 /** Estado da conversa visto pelo avatar e pelo chat (o mesmo tipo, sem tradução). */
 export type RealtimeCallState = AvatarConversationState
@@ -147,6 +149,19 @@ export async function recordVoiceTurn(input: { conversationId: string | null; tu
     // Falha em persistir não trava a conversa por voz (o operador já ouviu a resposta) — o chamador marca a mensagem como não salva.
     return null
   }
+}
+
+/**
+ * LEITURA na voz de uma resposta já gravada (`readAloud`): o conteúdo + a mesma instrução de fala que a ferramenta da voz mandaria,
+ * montados no backend. `feedbackApplicationId`: a sessão de voz é a de uma aplicação de feedback (a escolha fica na tela).
+ */
+export async function fetchVoiceReading(input: { conversationId: string; interactionId: string; feedbackApplicationId?: string | null }): Promise<string> {
+  const query = input.feedbackApplicationId ? `?feedbackApplicationId=${encodeURIComponent(input.feedbackApplicationId)}` : ""
+  const response = await fetch(`${API_URL}/api/v1/realtime/conversations/${encodeURIComponent(input.conversationId)}/messages/${encodeURIComponent(input.interactionId)}/voice-reading${query}`, { credentials: "include" })
+  if (!response.ok) throw new Error(`voice-reading ${response.status}`)
+  const payload = (await response.json()) as { data?: { text?: unknown } }
+  if (typeof payload.data?.text !== "string" || !payload.data.text.trim()) throw new Error("voice-reading sem texto")
+  return payload.data.text
 }
 
 /** O que o navegador diz ao pedir uma sessão de voz: só de qual conversa ela continua (`null` = conversa nova, sem histórico). */
@@ -249,6 +264,8 @@ export class GeminiRealtimeTransport {
   private turnCompletePending = false
   /** Descartando a geração antiga depois de uma interrupção local, até o `turnComplete` dela. */
   private discardingOldGeneration = false
+  /** O turno aberto é uma LEITURA (`readAloud`): nenhuma ferramenta pedida nele consulta o backend. */
+  private reading = false
   private discardValve: ReturnType<typeof setTimeout> | null = null
 
   private chunksSent = 0
@@ -457,6 +474,7 @@ export class GeminiRealtimeTransport {
     this.serverTurnOpen = false
     this.turnCompletePending = false
     this.discardingOldGeneration = false
+    this.reading = false
     this.clearDiscardValve()
     this.hasSpokenThisTurn = false
     this.silenceStartedAt = null
@@ -546,29 +564,56 @@ export class GeminiRealtimeTransport {
     if (!this.capturing) this.setState("idle")
   }
 
-  /** Turno de texto (laboratório/testes): mesma resposta falada que um turno de voz. */
+  /**
+   * Turno de TEXTO (pergunta digitada, escolha no formulário, sinal da apresentação, laboratório): mesma resposta falada que um
+   * turno de voz. Vai como uma atividade do usuário — `activityStart` → `text` → `activityEnd` —, como o microfone: só o
+   * `activityStart` faz o servidor cortar a resposta em curso (`interrupted` + `turnComplete` em ~0,2 s). Um `clientContent` NÃO
+   * corta: o servidor termina a fala antiga no ritmo do tempo real (até dezenas de segundos) e só então responde; a válvula do
+   * descarte abria antes e o `turnComplete` atrasado da resposta antiga encerrava o turno NOVO — a escolha clicada no formulário
+   * caía no caminho de texto, sem voz (27/10/2026). Verificado contra a API real em 27/10/2026, também pelo token efêmero: com a
+   * fala no meio e logo depois do `generationComplete`, `interrupted` + `turnComplete` em 0,16–0,19 s e a ferramenta do turno
+   * novo em seguida.
+   */
   sendText(text: string): void {
+    this.sendTextTurn(text)
+  }
+
+  /**
+   * LEITURA: a INIA fala uma resposta que já foi gravada e já está na tela (o texto vem do backend com a instrução de fala — ver
+   * `backend/src/modules/realtime/domain/voice-reading.ts`). Um turno de texto como o `sendText`; ferramenta pedida nele recebe
+   * `READING_TOOL_RESULT` sem consultar nada (consultar de novo gravaria e mostraria a resposta duas vezes).
+   */
+  readAloud(text: string): void {
+    if (this.sendTextTurn(text)) this.reading = true
+  }
+
+  private sendTextTurn(text: string): boolean {
     const clean = text.trim()
-    if (!clean) return
+    if (!clean) return false
     if (!this.isConnected) {
       this.events.onError?.("A voz em tempo real não está conectada.")
-      return
+      return false
     }
     if (this.capturing) {
       console.warn("[realtime] sendText ignored while the microphone is open")
-      return
+      return false
     }
     if (this.generation || this.serverTurnOpen) this.interruptLocally()
     // Mesmo contrato do endTurn: descarta a geração cortada até o fechamento dela (com válvula).
     this.armDiscardValve()
-    this.send({ clientContent: { turns: [{ role: "user", parts: [{ text: clean }] }], turnComplete: true } })
+    this.send({ realtimeInput: { activityStart: {} } })
+    this.send({ realtimeInput: { text: clean } })
+    this.send({ realtimeInput: { activityEnd: {} } })
     this.usage.turnSent()
     this.serverTurnOpen = true
     this.turnCompletePending = true
     this.setState("thinking")
+    return true
   }
 
   private interruptLocally(): void {
+    // Qualquer turno novo (ou interrupção) encerra a leitura.
+    this.reading = false
     const generation = this.generation
     const stoppedAt = this.playback.interrupt()
     if (generation) this.usage.playbackEnded("INTERRUPTED")
@@ -672,6 +717,11 @@ export class GeminiRealtimeTransport {
         return
       }
       const generation = this.ensureGeneration()
+      if (this.reading) {
+        const functionResponses = (message.toolCall.functionCalls ?? []).map((call) => ({ id: call.id, name: call.name, response: { result: READING_TOOL_RESULT } }))
+        if (functionResponses.length > 0) this.send({ toolResponse: { functionResponses } })
+        return
+      }
       this.runToolCalls(message.toolCall, session, generation)
       return
     }
@@ -770,6 +820,7 @@ export class GeminiRealtimeTransport {
 
   private handleServerTurnComplete(): void {
     this.serverTurnOpen = false
+    this.reading = false
     const generation = this.generation
     if (generation) {
       this.completeText()

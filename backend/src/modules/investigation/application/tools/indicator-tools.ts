@@ -1,5 +1,5 @@
 import { resolveOfficialClosure } from "../../../indicators/application/official-closure.js"
-import { resolveOperationalDailySeries, resolveOperationalWindow, type OperationalWindowResult, type WindowDefinitionParam } from "../../../indicators/application/operational-measurement-resolver.js"
+import { resolveOperationalDailySeries, resolveOperationalWindow, resolveOperationalWindowBySubject, type OperationalWindowResult, type WindowDefinitionParam } from "../../../indicators/application/operational-measurement-resolver.js"
 import { combineWindowComponents, defaultMeasurementAggregation, mergeRawComponents } from "../../../indicators/domain/operational-aggregation.js"
 import { formatIndicatorValue } from "../../../indicators/domain/indicator-definition.js"
 import { localDateOf } from "../../../workflows/application/time-window.js"
@@ -402,6 +402,13 @@ export async function comparePopulation(context: ToolContext, args: { indicatorC
     return { data: { reference: args.reference, status: "POPULATION_TOO_SMALL", populationSize: population.ids.length, minimum: MINIMUM_COMPARISON_POPULATION }, quality: notSupported(`população de referência com ${population.ids.length} pessoa(s) — mínimo ${MINIMUM_COMPARISON_POPULATION} (privacidade)`), provenance: { ...provenanceBase, population: population.label, dataSource: "STRUCTURE" } }
   }
   if (!indicator.dailySupported) return { data: { reference: args.reference, status: "NOT_SUPPORTED" }, quality: notSupported("sem medição operacional diária"), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
+  // O mínimo de privacidade vale para quem TEM medição na janela, não para a lista de ativos: numa janela em que só um colega
+  // trabalhou, a "referência" seria o valor dele (achado C13 da 4ª auditoria). Zero lógico de falta injustificada não conta.
+  const peers = await resolveOperationalWindowBySubject(context.db, { indicatorCode: indicator.code, subjectIds: population.ids, window: period, aggregation: defaultMeasurementAggregation(indicator.kind), expectedDays: 0, timeZone: context.timeZone, now: context.now, workdayCache: context.workdayCache }, definitionParam(indicator))
+  const contributors = [...peers.values()].filter((entry) => entry.daysWithData > 0).length
+  if (contributors < MINIMUM_COMPARISON_POPULATION) {
+    return { data: { reference: args.reference, status: "POPULATION_TOO_SMALL", minimum: MINIMUM_COMPARISON_POPULATION }, quality: notSupported(`menos de ${MINIMUM_COMPARISON_POPULATION} colegas com medição na janela — mínimo ${MINIMUM_COMPARISON_POPULATION} (privacidade)`), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
+  }
   const [target, reference] = await Promise.all([operationalWindowFor(context, indicator, period), operationalWindowFor(context, indicator, period, population.ids)])
   const targetQuality = assessWindowQuality(target, indicator)
   const both = target.value !== null && reference.value !== null

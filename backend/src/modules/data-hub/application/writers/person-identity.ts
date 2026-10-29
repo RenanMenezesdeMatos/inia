@@ -54,6 +54,25 @@ export async function linkByAccountEmail<T extends IdentityRow>(context: WriteCo
 }
 
 /**
+ * Pessoa cadastrada à mão JÁ COM matrícula (o cadastro de Usuários aceita a matrícula) e com conta de login ativa, que nenhuma carga
+ * de pessoas aplicou ainda (sem linhagem `people` — a mesma noção de "a base já aplicou a pessoa" do controle por campo): o upsert
+ * por matrícula passa a mandar nela agora, como no vínculo pelo e-mail, e o lugar manual de antes vai para a mesma regra de custódia
+ * (achado C09 da 4ª auditoria: este segundo caminho do AUTH-13 não passava por ela). Quem o vínculo pelo e-mail já ligou fica fora.
+ */
+export async function preRegisteredByMatricula<T extends IdentityRow>(context: WriteContext, client: pg.PoolClient, batch: readonly T[], alreadyLinked: ReadonlySet<string>): Promise<{ personId: string; row: T; prior: ManualPlacement }[]> {
+  if (batch.length === 0) return []
+  const result = await client.query<{ id: string; matricula: string; team_id: string | null; role: string | null }>(
+    `select p.id, p.matricula, p.team_id, p.role from people p
+      where p.organization_id = $1 and p.matricula = any($2::text[])
+        and exists (select 1 from user_accounts ua where ua.organization_id = $1 and ua.person_id = p.id and ua.active)
+        and not exists (select 1 from data_lineage l where l.organization_id = $1 and l.entity_type = 'people' and l.entity_id = p.id)`,
+    [context.organizationId, batch.map((row) => row.matricula)],
+  )
+  const byMatricula = new Map(batch.map((row) => [row.matricula, row]))
+  return result.rows.filter((row) => !alreadyLinked.has(row.id)).map((row) => ({ personId: row.id, row: byMatricula.get(row.matricula)!, prior: { teamId: row.team_id, role: row.role } }))
+}
+
+/**
  * A base pôs a pessoa ligada num lugar que quem a cadastrou à mão não definiu — outro Grupo, ou um nível de liderança — e
  * quem a cadastrou tinha escopo de Grupo (a pessoa tinha Grupo). A credencial dessa conta foi entregue por quem não tem custódia
  * do lugar novo (achado AUTH-13 da auditoria de 17/10/2026: um administrador do Grupo A pré-cadastrava o e-mail de quem ia
@@ -110,7 +129,12 @@ export function linkedWarnings(linked: readonly { personId: string; row: Identit
       field: "email",
       message: `Matrícula ${row.matricula} ligada à pessoa ${personId}, já cadastrada na INIA sem matrícula e com a conta de login deste e-mail — nenhuma pessoa nova foi criada. A base passa a mandar nos dados dela; login e papéis continuam.`,
     },
-  }, ...(accessDisabled.has(personId) ? [{
+  }, ...accessDisabledWarnings([{ personId, row }], accessDisabled)])
+}
+
+/** Aviso de quarentena para cada pessoa cadastrada à mão cujo acesso a carga desabilitou por custódia (lugar novo). */
+export function accessDisabledWarnings(entries: readonly { personId: string; row: IdentityRow }[], accessDisabled: ReadonlySet<string>): ApplyWarning[] {
+  return entries.filter(({ personId }) => accessDisabled.has(personId)).map(({ personId, row }) => ({
     recordNumber: row.recordNumber,
     sourceRecordKey: row.sourceRecordKey,
     error: {
@@ -118,7 +142,126 @@ export function linkedWarnings(linked: readonly { personId: string; row: Identit
       field: "email",
       message: `A base pôs a pessoa ${personId} (matrícula ${row.matricula}) em outro Grupo ou num nível de liderança que o cadastro manual não tinha: o acesso dela foi desabilitado e as sessões caíram. Quem administra o lugar novo libera de novo em Usuários e acessos (Habilitar acesso), com uma senha temporária nova.`,
     },
-  }] : [])])
+  }))
+}
+
+/** Lugar de cada pessoa da carga ANTES de a carga escrever (Grupo, nível e gestor), por id da pessoa. */
+export type PlacementBefore = ReadonlyMap<string, { teamId: string | null; role: string; reportsToId: string | null; active: boolean }>
+
+export async function placementBefore(context: WriteContext, client: pg.PoolClient, matriculas: readonly string[]): Promise<PlacementBefore> {
+  const result = await client.query<{ id: string; team_id: string | null; role: string; reports_to_id: string | null; active: boolean }>(
+    `select id, team_id, role, reports_to_id, active from people where organization_id = $1 and matricula = any($2::text[])`,
+    [context.organizationId, matriculas],
+  )
+  return new Map(result.rows.map((row) => [row.id, { teamId: row.team_id, role: row.role, reportsToId: row.reports_to_id, active: row.active }]))
+}
+
+/**
+ * PRIMEIRA APLICAÇÃO DA BASE a uma pessoa cadastrada à mão (com Grupo e conta ativa; sem linhagem de `people`): a custódia da
+ * credencial fica PENDENTE, com o lugar do cadastro manual guardado, até a carga que definir o lugar (`enforceSourceCustody`).
+ * Vale para quem a carga liga ou assume E para quem ela só cita como gestor — de Colaboradores ou de Estrutura (h19 da 4ª
+ * auditoria; a Estrutura como primeira carga ficava de fora — retestado pela preparação AppSec). Chamar ANTES de a carga escrever:
+ * o lugar guardado é o de antes. Pendência que já existe não é trocada. Sem Grupo, quem cadastrou tinha a organização inteira.
+ */
+export async function markFirstApplicationCustody(context: WriteContext, client: pg.PoolClient, matriculas: readonly string[]): Promise<void> {
+  if (matriculas.length === 0) return
+  await client.query(
+    `update people p set pending_custody_team_id = p.team_id, pending_custody_role = p.role
+      where p.organization_id = $1 and p.matricula = any($2::text[]) and p.team_id is not null and p.pending_custody_team_id is null
+        and exists (select 1 from user_accounts ua where ua.organization_id = $1 and ua.person_id = p.id and ua.active)
+        and not exists (select 1 from data_lineage l where l.organization_id = $1 and l.entity_type = 'people' and l.entity_id = p.id)`,
+    [context.organizationId, [...new Set(matriculas)]],
+  )
+}
+
+const becomesLeader = (role: string, previous: string | null) => role !== "OPERATOR" && role !== previous
+
+/**
+ * CUSTÓDIA DEPOIS DE UMA CARGA QUE MEXE NO LUGAR DAS PESSOAS (Colaboradores e Estrutura organizacional; item h19 da 4ª auditoria).
+ * A regra do AUTH-13 valia só no registro que ligava a pessoa, e só na carga de Colaboradores — Grupo é opcional nela, e a Estrutura
+ * muda Grupo e gestor sem conferir nada. Depois que a carga escreveu:
+ *  1. CUSTÓDIA PENDENTE (`markFirstApplicationCustody`): outro Grupo que o do cadastro manual, nível de liderança ou subordinado de outro
+ *     Grupo = acesso desabilitado (como no AUTH-13) até quem administra o lugar novo liberar; a carga que define o MESMO Grupo
+ *     confirma a custódia. Nos dois casos a pendência acaba.
+ *  2. SENHA TEMPORÁRIA AINDA NÃO USADA, de qualquer pessoa: quem a gerou a conhece e a custódia dele era a do lugar antigo. Mudou de
+ *     Grupo, virou liderança ou ganhou subordinado de outro Grupo = a senha temporária expira na hora e as sessões caem; quem
+ *     administra o lugar novo gera outra. Transferência de quem já usa a própria senha não muda nada.
+ */
+export type SourceCustodyOutcome = { accessDisabled: Set<string>; temporaryRevoked: Set<string>; /** pessoa → matrícula do registro que mudou o lugar */ causes: Map<string, string> }
+
+export async function enforceSourceCustody(context: WriteContext, client: pg.PoolClient, input: { matriculas: readonly string[]; groupDefined: ReadonlySet<string>; before: PlacementBefore }): Promise<SourceCustodyOutcome> {
+  const org = context.organizationId
+  const after = await client.query<{ id: string; matricula: string; team_id: string | null; role: string; reports_to_id: string | null; pending_custody_team_id: string | null; pending_custody_role: string | null }>(
+    `select id, matricula, team_id, role, reports_to_id, pending_custody_team_id, pending_custody_role from people where organization_id = $1 and matricula = any($2::text[])`,
+    [org, input.matriculas],
+  )
+  const managerIds = [...new Set(after.rows.flatMap((row) => (row.reports_to_id ? [row.reports_to_id] : [])))]
+  const managers = managerIds.length > 0
+    ? (await client.query<{ id: string; team_id: string | null; pending_custody_team_id: string | null }>(`select id, team_id, pending_custody_team_id from people where organization_id = $1 and id = any($2::uuid[])`, [org, managerIds])).rows
+    : []
+  const managerById = new Map(managers.map((manager) => [manager.id, manager]))
+
+  const custody = new Set<string>()
+  const confirmed = new Set<string>()
+  const moved = new Set<string>()
+  const causes = new Map<string, string>()
+  const flag = (target: Set<string>, personId: string, matricula: string) => {
+    target.add(personId)
+    if (!causes.has(personId)) causes.set(personId, matricula)
+  }
+  for (const person of after.rows) {
+    const manager = person.reports_to_id ? managerById.get(person.reports_to_id) : undefined
+    const fromOtherGroup = (teamId: string | null) => Boolean(person.team_id && person.team_id !== teamId)
+    if (person.pending_custody_team_id) {
+      if (person.team_id !== person.pending_custody_team_id || becomesLeader(person.role, person.pending_custody_role)) flag(custody, person.id, person.matricula)
+      else if (input.groupDefined.has(person.matricula)) confirmed.add(person.id)
+    }
+    if (manager?.pending_custody_team_id && fromOtherGroup(manager.pending_custody_team_id)) flag(custody, manager.id, person.matricula)
+    const before = input.before.get(person.id)
+    if (before && (before.teamId !== person.team_id || becomesLeader(person.role, before.role))) flag(moved, person.id, person.matricula)
+    if (manager && (before?.reportsToId ?? null) !== person.reports_to_id && fromOtherGroup(manager.team_id)) flag(moved, manager.id, person.matricula)
+  }
+
+  const accessDisabled = new Set((await disableAccountsFromSource(context, client, [...custody], "LINKED_BY_SOURCE_NEW_PLACEMENT")).filter((entry) => entry.disabled).map((entry) => entry.personId))
+  const settled = [...custody, ...confirmed]
+  if (settled.length > 0) await client.query(`update people set pending_custody_team_id = null, pending_custody_role = null where organization_id = $1 and id = any($2::uuid[])`, [org, settled])
+
+  const toRevoke = [...moved].filter((id) => !custody.has(id))
+  const revoked = toRevoke.length > 0
+    ? await client.query<{ person_id: string }>(
+        `with revoked as (
+           update user_accounts set temporary_password_expires_at = now(), session_version = session_version + 1, updated_at = now()
+            where organization_id = $1 and person_id = any($2::uuid[]) and active and password_change_required and temporary_password_expires_at > now()
+           returning id, person_id
+         ), audited as (
+           insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload)
+           select $1, null, 'ACCESS_TEMPORARY_PASSWORD_REVOKED', 'user_account', id,
+                  jsonb_build_object('personId', person_id, 'reason', 'PLACEMENT_CHANGED_BY_SOURCE', 'sessionsRevoked', true, 'runId', $3::text, 'feedId', $4::text)
+             from revoked
+         )
+         select person_id from revoked`,
+        [org, toRevoke, context.runId, context.feed.id],
+      )
+    : { rows: [] }
+  return { accessDisabled, temporaryRevoked: new Set(revoked.rows.map((row) => row.person_id)), causes }
+}
+
+/** Aviso de quarentena, no registro que mudou o lugar, para cada pessoa cujo acesso a custódia pendente desabilitou. */
+export function pendingCustodyWarnings(batch: readonly (ValidRecord & { matricula: string })[], outcome: SourceCustodyOutcome): ApplyWarning[] {
+  const byMatricula = new Map(batch.map((row) => [row.matricula, row]))
+  return [...outcome.accessDisabled].flatMap((personId) => {
+    const row = byMatricula.get(outcome.causes.get(personId) ?? "")
+    if (!row) return []
+    return [{
+      recordNumber: row.recordNumber,
+      sourceRecordKey: row.sourceRecordKey,
+      error: {
+        code: "DATA_PERSON_LINK_ACCESS_DISABLED" as const,
+        field: "groupExternalCode",
+        message: `A base definiu para a pessoa ${personId}, cadastrada à mão, um lugar que o cadastro dela não tinha — outro Grupo, um nível de liderança ou subordinados de outro Grupo (registro da matrícula ${row.matricula}): o acesso dela foi desabilitado e as sessões caíram. Quem administra o lugar novo libera de novo em Usuários.`,
+      },
+    }]
+  })
 }
 
 /** Depois do upsert: pessoa recém-criada com o mesmo nome de uma pessoa ativa sem matrícula vira AVISO (nunca junção). */

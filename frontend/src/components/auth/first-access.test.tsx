@@ -11,6 +11,9 @@ import { NO_ACCESS_CAPABILITIES } from "@/schemas/auth/auth.schema"
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }))
+// Fronteira de sessão = documento novo (achado C08 da 4ª auditoria): entrar e criar a senha nunca usam o roteador do Next.
+const documentLoad = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/auth/session-navigation", () => ({ loadSessionDocument: documentLoad }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 const auth = vi.hoisted(() => ({ login: vi.fn(), fetchCurrentUser: vi.fn(), defineFirstPassword: vi.fn(), logout: vi.fn() }))
 vi.mock("@/services/auth/auth-service", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/services/auth/auth-service")>()), ...auth }))
@@ -57,7 +60,8 @@ describe("login", () => {
     auth.fetchCurrentUser.mockResolvedValue({ ...ME, passwordChangeRequired: true })
     renderWithQuery(<LoginFields />)
     submit("larissa@inia.local", "Kq7m-Pz4x-Wn9r")
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/auth/create-password"))
+    await waitFor(() => expect(documentLoad).toHaveBeenCalledWith("/auth/create-password"))
+    expect(navigation.push).not.toHaveBeenCalled()
     expect(screen.getByText("Senha temporária aceita. Agora crie a sua senha.")).toBeInTheDocument()
   })
   it("mostra o motivo da recusa: trava, acesso desabilitado, temporária vencida, credencial inválida", async () => {
@@ -68,6 +72,7 @@ describe("login", () => {
       expect(await screen.findByText(error.message)).toBeInTheDocument()
     }
     expect(navigation.push).not.toHaveBeenCalled()
+    expect(documentLoad).not.toHaveBeenCalled()
   })
 })
 
@@ -96,7 +101,8 @@ describe("tela de criar senha", () => {
     fill("Cajueiro2026", "Cajueiro2026")
     fireEvent.click(screen.getByRole("button", { name: "Criar senha e entrar" }))
     await waitFor(() => expect(auth.defineFirstPassword).toHaveBeenCalledWith({ newPassword: "Cajueiro2026", confirmPassword: "Cajueiro2026" }))
-    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/operator"))
+    await waitFor(() => expect(documentLoad).toHaveBeenCalledWith("/operator", { replace: true }))
+    expect(navigation.replace).not.toHaveBeenCalled()
   })
   it("recusa do backend (igual à temporária / política) e sessão encerrada (temporária vencida) com caminho de volta", async () => {
     renderWithQuery(<CreatePasswordForm name="Larissa" email="larissa@inia.local" temporaryPasswordExpiresAt={null} />)
@@ -116,6 +122,7 @@ describe("tela de criar senha", () => {
     renderWithQuery(<CreatePasswordForm name="Larissa" email="larissa@inia.local" temporaryPasswordExpiresAt={null} />)
     fireEvent.click(screen.getByRole("button", { name: "Sair" }))
     await waitFor(() => expect(auth.logout).toHaveBeenCalled())
-    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/auth/login"))
+    await waitFor(() => expect(documentLoad).toHaveBeenCalledWith("/auth/login", { replace: true }))
+    expect(navigation.replace).not.toHaveBeenCalled()
   })
 })

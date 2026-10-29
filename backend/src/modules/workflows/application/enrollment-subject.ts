@@ -35,11 +35,17 @@ export async function resolveEnrollmentOperatorId(context: EnrollmentSubjectCont
  * precisar de uma tabela de "responsável por time" separada. Compartilhado entre a ação
  * ESCALATE e o node Output — única lógica de navegação de hierarquia do sistema. Uma guarda
  * contra ciclo (`visited`) é só defensiva — a cadeia é sempre linear na prática. */
-export async function resolveByRoleChain(db: Database, operatorId: string, roles: EscalationRole[]): Promise<{ id: string; role: EscalationRole }[]> {
+export async function resolveByRoleChain(db: Database, operatorId: string, roles: EscalationRole[], options: { ancestorsOnly?: boolean } = {}): Promise<{ id: string; role: EscalationRole }[]> {
   const recipients: { id: string; role: EscalationRole }[] = []
   const remainingRoles = new Set(roles)
   const visited = new Set<string>()
   let currentId: string | null = operatorId
+  // `ancestorsOnly` (Workflows): começa no gestor de quem é o ponto de partida — o colaborador de uma execução nunca é o
+  // destinatário do cargo, nem quando passou a ter aquele cargo depois de a execução começar (achado C16 da 4ª auditoria).
+  if (options.ancestorsOnly) {
+    visited.add(operatorId)
+    currentId = (await db.query<{ id: string; role: string; reports_to_id: string | null }>(`select id, role, reports_to_id from people where id = $1`, [operatorId])).rows[0]?.reports_to_id ?? null
+  }
 
   while (currentId && remainingRoles.size > 0) {
     if (visited.has(currentId)) break

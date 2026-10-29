@@ -42,6 +42,21 @@ export function canManageScope(scopes: ManageableScopes, target: ScopedTarget): 
   return false
 }
 
+/**
+ * Escopo-alvo de uma ESCRITA, normalizado antes de `canManageScope`: Subgrupo sempre com o Grupo-pai REAL (na organização
+ * da sessão), TEAM sem Subgrupo, ALL_TEAMS sem ids. `null` = Subgrupo inexistente ou `teamId` enviado que não é o pai — sem
+ * isso `canManageScope` autoriza pelo Subgrupo e o `team_id` de outro Grupo gravado passa a decidir o Grupo do recurso.
+ */
+export async function normalizeScopedTarget(db: Pick<Database, "query">, organizationId: string, target: ScopedTarget): Promise<ScopedTarget | null> {
+  if (target.scopeType === "ALL_TEAMS") return { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }
+  if (target.scopeType === "TEAM") return { scopeType: "TEAM", teamId: target.teamId, subteamId: null }
+  if (target.scopeType !== "SUBTEAM" || !target.subteamId) return null
+  const parent = await db.query<{ team_id: string }>(`select team_id from subteams where id = $1 and organization_id = $2`, [target.subteamId, organizationId])
+  const teamId = parent.rows[0]?.team_id
+  if (!teamId || (target.teamId !== null && target.teamId !== teamId)) return null
+  return { scopeType: "SUBTEAM", teamId, subteamId: target.subteamId }
+}
+
 async function effectiveTeamId(db: Database, target: ScopedTarget): Promise<string | null> {
   if (target.scopeType === "TEAM") return target.teamId
   if (target.scopeType === "SUBTEAM") {

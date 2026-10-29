@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { canManageScope, scopesAreCompatible, type ManageableScopes } from "./manageable-scopes.js"
+import { canManageScope, normalizeScopedTarget, scopesAreCompatible, type ManageableScopes } from "./manageable-scopes.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 
 const TEAM_A = "11111111-1111-4111-8111-111111111111"
@@ -105,5 +105,32 @@ describe("scopesAreCompatible", () => {
     const workflowTeamA = { scopeType: "TEAM", teamId: TEAM_A, subteamId: null }
     expect(await scopesAreCompatible(db, { scopeType: "TEAM", teamId: TEAM_A, subteamId: null }, workflowTeamA)).toBe(true)
     expect(await scopesAreCompatible(db, { scopeType: "TEAM", teamId: TEAM_B, subteamId: null }, workflowTeamA)).toBe(false)
+  })
+})
+
+describe("normalizeScopedTarget", () => {
+  // Subgrupo da organização da sessão: só o A1 (do Grupo A) existe em "org-1".
+  const db = {
+    query: async (sql: string, params?: unknown[]) => {
+      if (sql.includes("from subteams where id = $1 and organization_id = $2")) return params?.[0] === SUBTEAM_A1 && params?.[1] === "org-1" ? { rows: [{ team_id: TEAM_A }] } : { rows: [] }
+      throw new Error(`unexpected query: ${sql}`)
+    },
+  } as unknown as Database
+
+  it("Subgrupo grava sempre o Grupo-pai real — mesmo sem teamId enviado", async () => {
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: SUBTEAM_A1 })).toEqual({ scopeType: "SUBTEAM", teamId: TEAM_A, subteamId: SUBTEAM_A1 })
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "SUBTEAM", teamId: TEAM_A, subteamId: SUBTEAM_A1 })).toEqual({ scopeType: "SUBTEAM", teamId: TEAM_A, subteamId: SUBTEAM_A1 })
+  })
+
+  it("recusa Subgrupo com o teamId de outro Grupo, de outra organização ou inexistente (achado C02 da 4ª auditoria)", async () => {
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "SUBTEAM", teamId: TEAM_B, subteamId: SUBTEAM_A1 })).toBeNull()
+    expect(await normalizeScopedTarget(db, "org-2", { scopeType: "SUBTEAM", teamId: null, subteamId: SUBTEAM_A1 })).toBeNull()
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: SUBTEAM_B1 })).toBeNull()
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "SUBTEAM", teamId: TEAM_A, subteamId: null })).toBeNull()
+  })
+
+  it("TEAM sem Subgrupo e ALL_TEAMS sem ids, sem consultar o banco", async () => {
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "TEAM", teamId: TEAM_B, subteamId: SUBTEAM_A1 })).toEqual({ scopeType: "TEAM", teamId: TEAM_B, subteamId: null })
+    expect(await normalizeScopedTarget(db, "org-1", { scopeType: "ALL_TEAMS", teamId: TEAM_A, subteamId: SUBTEAM_A1 })).toEqual({ scopeType: "ALL_TEAMS", teamId: null, subteamId: null })
   })
 })

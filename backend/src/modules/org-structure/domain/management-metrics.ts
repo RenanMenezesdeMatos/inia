@@ -30,26 +30,42 @@ import { HIERARCHY_ROLES } from "../../performance-analytics/domain/hierarchy-le
  *    posterior à última carga, o mesmo critério de `statusConfidence` da elegibilidade. FRESH e
  *    UNKNOWN (sem feed = legado/manual) nunca degradam, como no resto da plataforma.
  *  - PRIVACIDADE: INSS, maternidade e paternidade são potencialmente identificáveis em estruturas
- *    pequenas; abaixo de `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` eles são publicados só somados
- *    ("Afastamentos"), nunca um a um. Os buckets SEMPRE explicam o total.
+ *    pequenas; abaixo de `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` operadores eles são publicados só
+ *    somados ("Afastamentos (motivo protegido)"), nunca um a um; o afastamento de um LÍDER fica
+ *    sempre nesse bucket. Os buckets SEMPRE explicam o total.
  */
 export const MINIMUM_SENSITIVE_AGGREGATE_POPULATION = 5
 
 export const SENSITIVE_LEAVE_STATUSES = ["INSS", "MATERNIDADE", "PATERNIDADE"] as const satisfies readonly EmploymentStatus[]
+export const isSensitiveLeave = (status: string | null): status is (typeof SENSITIVE_LEAVE_STATUSES)[number] => status !== null && (SENSITIVE_LEAVE_STATUSES as readonly string[]).includes(status)
 
 /**
  * Os tipos sensíveis aparecem separados só quando a contagem não identifica ninguém (achado AI-04 da auditoria de 17/10/2026):
- * recorte com ao menos `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` pessoas E, entre os afastados sensíveis, ou nenhum, ou ao
+ * recorte com ao menos `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` operadores E, entre os afastados sensíveis, ou nenhum, ou ao
  * menos dois tipos com 2+ pessoas cada. Com um tipo só (ou um caso isolado), a lista nominal "Afastamento (motivo protegido)"
  * do mesmo recorte entregaria o motivo de cada pessoa.
+ * Alcance: o organograma e a consulta de força de trabalho. Não é garantia de que a liderança desconhece o tipo — o perfil ›
+ * Indicadores, o Calendário da equipe e o aviso de conciliação mostram o tipo exato à liderança da cadeia por decisão de produto
+ * (29/10/2026, R-37 em docs/security/pendencias-e-riscos.md).
  */
 export function sensitiveBreakdownAllowed(population: number, statuses: readonly (string | null)[]): boolean {
   if (population < MINIMUM_SENSITIVE_AGGREGATE_POPULATION) return false
   const byType = new Map<string, number>()
-  for (const status of statuses) if (status !== null && (SENSITIVE_LEAVE_STATUSES as readonly string[]).includes(status)) byType.set(status, (byType.get(status) ?? 0) + 1)
+  for (const status of statuses) if (isSensitiveLeave(status)) byType.set(status, (byType.get(status) ?? 0) + 1)
   if (byType.size === 0) return true
   return byType.size >= 2 && [...byType.values()].every((count) => count >= 2)
 }
+
+/**
+ * O tipo só se separa para OPERADORES (achado C14 da 4ª auditoria, decisão de 29/10/2026): a regra acima olha só os operadores
+ * do recorte, e o afastamento sensível de um LÍDER aparece sempre somado, como motivo protegido. Assim, subtrair recortes,
+ * populações (com e sem líderes) ou datas nunca revela o tipo de um líder. Para operadores essa subtração continua possível e é
+ * aceita: a liderança da cadeia já vê o tipo exato deles (N02 / R-37).
+ */
+export function leaveTypeVisible(person: { role: string }): boolean {
+  return person.role === "OPERATOR"
+}
+
 export const DETAILED_STATUS_BUCKETS = ["EM_PRODUCAO", "FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE"] as const satisfies readonly EmploymentStatus[]
 
 export type StructureStatusBucket = (typeof DETAILED_STATUS_BUCKETS)[number] | "SENSITIVE_LEAVE" | "OTHER" | "UNCONFIRMED"
@@ -135,7 +151,8 @@ export function isUnconfirmedStatus(member: Pick<StructureMemberRow, "confirmed"
 export function computeManagementMetrics(input: ManagementMetricsInput): ManagementMetrics {
   const { root, members, statusFreshness, today } = input
   const population = members.length
-  const suppressed = !sensitiveBreakdownAllowed(population, members.filter((member) => !isUnconfirmedStatus(member, statusFreshness, today)).map((member) => member.status))
+  const operators = members.filter(leaveTypeVisible)
+  const suppressed = !sensitiveBreakdownAllowed(operators.length, operators.filter((member) => !isUnconfirmedStatus(member, statusFreshness, today)).map((member) => member.status))
 
   // Distribuição de situação — cada pessoa cai em exatamente UM bucket.
   const counts = new Map<StructureStatusBucket, number>()
@@ -145,14 +162,16 @@ export function computeManagementMetrics(input: ManagementMetricsInput): Managem
     if (isUnconfirmedStatus(member, statusFreshness, today)) {
       unconfirmed += 1
       add("UNCONFIRMED")
-    } else if (member.status !== null && (SENSITIVE_LEAVE_STATUSES as readonly string[]).includes(member.status)) add(suppressed ? "SENSITIVE_LEAVE" : (member.status as StructureStatusBucket))
+    } else if (isSensitiveLeave(member.status)) add(suppressed || !leaveTypeVisible(member) ? "SENSITIVE_LEAVE" : member.status)
     else if (member.status !== null && (DETAILED_STATUS_BUCKETS as readonly string[]).includes(member.status)) add(member.status as StructureStatusBucket)
     else add("OTHER")
   }
-  const order: StructureStatusBucket[] = suppressed ? ["EM_PRODUCAO", "FERIAS", "SENSITIVE_LEAVE", "OTHER", "UNCONFIRMED"] : ["EM_PRODUCAO", "FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE", "OTHER", "UNCONFIRMED"]
-  // Os cinco nomeados (ou "Afastamentos") aparecem sempre, mesmo com zero; Outras/Não confirmado só quando existem.
+  const order: StructureStatusBucket[] = suppressed ? ["EM_PRODUCAO", "FERIAS", "SENSITIVE_LEAVE", "OTHER", "UNCONFIRMED"] : ["EM_PRODUCAO", "FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE", "SENSITIVE_LEAVE", "OTHER", "UNCONFIRMED"]
+  // Os cinco nomeados (ou "Afastamentos") aparecem sempre, mesmo com zero; Outras/Não confirmado — e, ao lado dos tipos, o
+  // afastamento de líderes — só quando existem.
+  const optional = (bucket: StructureStatusBucket) => bucket === "OTHER" || bucket === "UNCONFIRMED" || (bucket === "SENSITIVE_LEAVE" && !suppressed)
   const statusDistribution = order
-    .filter((bucket) => (bucket === "OTHER" || bucket === "UNCONFIRMED" ? (counts.get(bucket) ?? 0) > 0 : true))
+    .filter((bucket) => !optional(bucket) || (counts.get(bucket) ?? 0) > 0)
     .map<StructureStatusShare>((bucket) => {
       const count = counts.get(bucket) ?? 0
       return { bucket, count, percent: population === 0 ? 0 : roundOne((count / population) * 100) }

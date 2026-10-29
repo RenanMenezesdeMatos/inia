@@ -62,6 +62,7 @@ export const orchestrator = (id = "orq", config: Record<string, unknown> = {}) =
 /** Output para a gestão (nunca "O próprio operador": esse caminho tem regras próprias de feedback oficial). */
 export const output = (id = "out", source = "nodeOutputs.agent", config: Record<string, unknown> = {}) =>
   node(id, "output", "Output", { target: { type: "SUPERVISOR_OF_OPERATOR" }, surfaces: ["FOLLOW_UP"], source, ...config })
+export const waitNode = (id = "wait", durationMs = 3_600_000) => node(id, "wait", "Espera", { durationMs })
 export const condition = (id: string, config: Record<string, unknown>) => node(id, "condition", "Condição", { comparator: "GT", ...config })
 export const humanReview = (id: string, config: Record<string, unknown> = {}) => node(id, "human_review", "Revisão", { reviewTarget: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" }, ...config })
 export const escalate = (id: string, config: Record<string, unknown> = {}) => node(id, "action", "Escalonar", { actionType: "ESCALATE", target: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" }, surfaces: ["FOLLOW_UP"], ...config })
@@ -87,6 +88,13 @@ export function chain(...nodes: Node[]) {
     for (const branch of nodeBranches(current as unknown as FlowNode)) edges.push(edge(current.id, branch.id, next.id))
   })
   return { nodes, edges }
+}
+
+/** Agente → Revisão: "Aprovado" publica, "Reprovado" volta ao agente (com ou sem Espera no caminho de volta), "Escalar" encerra. */
+function reviewLoop(withWait: boolean) {
+  const nodes = [triggerNode(), agent(), humanReview("review", { contentSource: "nodeOutputs.agent" }), output("out", "nodeOutputs.agent"), endNode(), ...(withWait ? [waitNode()] : [])]
+  const back = withWait ? [edge("review", "rejected", "wait"), edge("wait", "always", "agent")] : [edge("review", "rejected", "agent")]
+  return { nodes, edges: [edge("trigger", "always", "agent"), edge("agent", "always", "review"), edge("review", "approved", "out"), edge("review", "escalated", "end"), edge("out", "always", "end"), ...back] }
 }
 
 /** O mesmo grafo sem UMA saída de um nó (para os casos de saída desligada). */
@@ -163,6 +171,8 @@ export const MIRRORED: MirroredCase[] = [
   // ---- trigger-context: gatilho e contexto ------------------------------------------------------------------
   { family: "trigger-context", name: "dois nós Gatilho", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), triggerNode("trigger-2"), endNode())), code: "WORKFLOW_INVALID_GRAPH", nodeId: "trigger" },
   { family: "trigger-context", name: "sem nó Fim", setup: setup(FLAG_BOOLEAN, chain(triggerNode())), code: "WORKFLOW_INVALID_GRAPH", nodeId: "" },
+  // C06 (4ª auditoria): "Reprovado → refazer" voltando ao agente sem Espera repetia a chamada paga sem pausa.
+  { family: "trigger-context", name: "ciclo Revisão 'Reprovado' → agente sem Espera", setup: setup(FLAG_BOOLEAN, reviewLoop(false)), code: "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT", nodeId: "agent" },
   // D5 (validação funcional de 20/10/2026): Condição sem a saída "Não" publicava e a execução morria quando a resposta era não.
   { family: "trigger-context", name: "Condição sem a saída 'Não'", setup: setup(FLAG_BOOLEAN, withoutBranch(chain(triggerNode(), condition("cond", { comparator: "EQUALS", thresholdBoolean: true }), endNode()), "cond", "false")), code: "WORKFLOW_MISSING_BRANCH_EDGE", nodeId: "cond" },
   { family: "trigger-context", name: "Revisão humana sem a saída 'Escalar'", setup: setup(FLAG_BOOLEAN, withoutBranch(chain(triggerNode(), humanReview("review", { contentSource: "nodeOutputs.trigger" }), endNode()), "review", "escalated")), code: "WORKFLOW_MISSING_BRANCH_EDGE", nodeId: "review" },
@@ -442,6 +452,8 @@ export const ACCEPTED: AcceptedCase[] = [
   // D7 (decisão de 08/10/2026: o editor segue o backend) — "está vazio"/"não está vazio" não comparam com um quartil.
   { name: "D7 · quartil de performance com 'está vazio' sem quartil de referência", setup: conditionCase({ comparator: "IS_EMPTY", performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_QUARTILE" } }) },
   { name: "D7 · quartil de performance com 'não está vazio' sem quartil de referência", setup: conditionCase({ comparator: "NOT_EMPTY", performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_QUARTILE" } }) },
+  // C06: com uma Espera no caminho de volta o ciclo publica (o motor ainda limita as execuções do nó pago por execução).
+  { name: "C06 · ciclo Revisão 'Reprovado' → Espera → agente", setup: setup(FLAG_BOOLEAN, reviewLoop(true)) },
   // D5: só nó alcançável a partir do Gatilho precisa de todas as saídas — um nó solto no canvas nunca roda.
   { name: "D5 · Condição solta no canvas, sem ligação nenhuma", setup: setup(FLAG_BOOLEAN, { nodes: [triggerNode(), endNode(), condition("loose", { comparator: "EQUALS", thresholdBoolean: true })], edges: [edge("trigger", "always", "end")] }) },
 ]

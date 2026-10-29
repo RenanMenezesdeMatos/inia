@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { PlaybackTurnEvent, SpeechPlayback, SpeechPlaybackListener } from "@/lib/avatar/audio/types"
 import type { ScheduledAudioChunk, SpeechLipsyncEngine, TranscriptFragment } from "@/lib/avatar/lipsync/types"
-import { GeminiRealtimeTransport, TOOL_FAILURE_RESULT, TOOL_FAILURE_SPEECH, type RealtimeTransportEvents, type WebSocketLike } from "./gemini-realtime-transport"
+import { GeminiRealtimeTransport, READING_TOOL_RESULT, TOOL_FAILURE_RESULT, TOOL_FAILURE_SPEECH, type RealtimeTransportEvents, type WebSocketLike } from "./gemini-realtime-transport"
 import type { MicCaptureHandlers } from "./mic-capture"
 import { FakeLiveSocket as FakeSocket } from "./testing/fake-live-socket"
 
@@ -377,10 +377,10 @@ describe("GeminiRealtimeTransport — resposta", () => {
     expect(states.at(-1)).toBe("idle")
   })
 
-  it("sendText manda um turno de texto e segue o mesmo caminho da resposta", async () => {
+  it("sendText manda o turno como atividade do usuário (activityStart → text → activityEnd) e segue o mesmo caminho da resposta", async () => {
     const { transport, socket } = await connectedTransport()
     transport.sendText("  Como estou hoje?  ")
-    expect(socket.sent.at(-1)).toEqual({ clientContent: { turns: [{ role: "user", parts: [{ text: "Como estou hoje?" }] }], turnComplete: true } })
+    expect(socket.sent.slice(-3)).toEqual([{ realtimeInput: { activityStart: {} } }, { realtimeInput: { text: "Como estou hoje?" } }, { realtimeInput: { activityEnd: {} } }])
     expect(states.at(-1)).toBe("thinking")
     await replyArrives(socket)
     expect(states.at(-1)).toBe("speaking")
@@ -476,6 +476,72 @@ describe("GeminiRealtimeTransport — interrupção", () => {
     expect(vi.mocked(events.onResponseInterrupted).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(events.onTurnComplete).mock.invocationCallOrder[0])
     resolveMic()
     await pending
+  })
+
+  it("turno de texto com a INIA ainda falando (escolha no formulário): a consulta do turno novo vai ao backend e ele só termina no turnComplete dele", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { text: "Para abrir o reparo de SIP…", modelText: "Para abrir o reparo de SIP… [Instrução para a resposta falada: …]", conversationId: "33333333-3333-4333-8333-333333333333", created: false, closed: false, activeConversationId: null } }) }))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { transport, socket } = await connectedTransport()
+      await transport.startTurn()
+      transport.endTurn()
+      // A pergunta do esclarecimento já foi toda gerada; o áudio ainda toca e o servidor segura o turnComplete no ritmo da fala.
+      await replyArrives(socket, "Para qual produto? Banda Larga, Linha Móvel, SIP ou TV.")
+      socket.receive({ serverContent: { generationComplete: true } })
+      await tick()
+
+      transport.sendText("SIP")
+      expect(events.onTurnComplete).toHaveBeenCalledTimes(1)
+      expect(socket.sent.slice(-3)).toEqual([{ realtimeInput: { activityStart: {} } }, { realtimeInput: { text: "SIP" } }, { realtimeInput: { activityEnd: {} } }])
+
+      // Medido ao vivo (27/10/2026): o activityStart fecha a resposta antiga em ~0,2 s; depois vem a ferramenta do turno novo.
+      socket.receive({ serverContent: { interrupted: true } })
+      socket.receive({ serverContent: { turnComplete: true } })
+      await tick()
+      expect(events.onTurnComplete).toHaveBeenCalledTimes(1)
+      socket.receive({ toolCall: { functionCalls: [{ id: "c2", name: "self_ask", args: { query: "Abrir chamado de reparo SIP" } }] } })
+      await tick()
+      await tick()
+      await tick()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(socket.sent.at(-1)).toEqual({ toolResponse: { functionResponses: [{ id: "c2", name: "self_ask", response: { result: "Para abrir o reparo de SIP… [Instrução para a resposta falada: …]" } }] } })
+
+      socket.receive(audio())
+      socket.receive({ serverContent: { generationComplete: true } })
+      socket.receive({ serverContent: { turnComplete: true } })
+      await tick()
+      expect(events.onTurnComplete).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("leitura (readAloud): turno de texto em que a ferramenta pedida não consulta nada; o turno seguinte volta a consultar", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { text: "Resposta nova", modelText: "Resposta nova", conversationId: "33333333-3333-4333-8333-333333333333", created: false, closed: false, activeConversationId: null } }) }))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { transport, socket } = await connectedTransport()
+      transport.readAloud("[Leitura: …]\n\nPara abrir o reparo de SIP…")
+      expect(socket.sent.slice(-3)).toEqual([{ realtimeInput: { activityStart: {} } }, { realtimeInput: { text: "[Leitura: …]\n\nPara abrir o reparo de SIP…" } }, { realtimeInput: { activityEnd: {} } }])
+      socket.receive({ toolCall: { functionCalls: [{ id: "r1", name: "self_ask", args: { query: "reparo SIP" } }] } })
+      await tick()
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(socket.sent.at(-1)).toEqual({ toolResponse: { functionResponses: [{ id: "r1", name: "self_ask", response: { result: READING_TOOL_RESULT } }] } })
+      socket.receive(audio())
+      socket.receive({ serverContent: { generationComplete: true } })
+      socket.receive({ serverContent: { turnComplete: true } })
+      await tick()
+      playback.drain()
+      // Fim da leitura: a próxima pergunta consulta normalmente.
+      transport.sendText("E para Banda Larga?")
+      socket.receive({ toolCall: { functionCalls: [{ id: "c3", name: "self_ask", args: { query: "reparo Banda Larga" } }] } })
+      await tick()
+      await tick()
+      await tick()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it("tool da geração descartada recebe cancelamento (o servidor não fica esperando)", async () => {

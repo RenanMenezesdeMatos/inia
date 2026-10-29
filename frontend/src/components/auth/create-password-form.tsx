@@ -2,7 +2,6 @@
 
 import { useMemo, useState, type FormEvent } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check, Circle, LogOut } from "lucide-react"
 import { toast } from "sonner"
@@ -15,7 +14,7 @@ import { AuthFeedback } from "@/components/auth/auth-feedback"
 import { PasswordInput } from "@/components/auth/password-input"
 import { formatDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
-import { currentUserKeys } from "@/queries/auth/use-current-user"
+import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { passwordRules } from "@/schemas/auth/password-policy"
 import { DefinePasswordError, defineFirstPassword, fetchCurrentUser, landingRouteFor, logout } from "@/services/auth/auth-service"
 
@@ -24,7 +23,6 @@ import { DefinePasswordError, defineFirstPassword, fetchCurrentUser, landingRout
  * sair). O checklist ao vivo espelha a política; quem decide é o backend (que também recusa repetir a temporária).
  */
 export function CreatePasswordForm({ name, email, temporaryPasswordExpiresAt }: { name: string; email: string; temporaryPasswordExpiresAt: string | null }) {
-  const router = useRouter()
   const queryClient = useQueryClient()
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -50,10 +48,9 @@ export function CreatePasswordForm({ name, email, temporaryPasswordExpiresAt }: 
     try {
       await defineFirstPassword({ newPassword, confirmPassword })
       const current = await fetchCurrentUser()
-      queryClient.clear()
-      queryClient.setQueryData(currentUserKeys.me, current)
       toast.success("Senha criada. Seu acesso está liberado.")
-      router.replace(current ? landingRouteFor(current) : "/auth/login")
+      // Documento novo (lib/auth/session-navigation.ts): a plataforma abre do zero com a sessão já liberada.
+      loadSessionDocument(current ? landingRouteFor(current) : "/auth/login", { replace: true })
     } catch (failure) {
       if (failure instanceof DefinePasswordError) {
         setError({ message: failure.message, details: failure.violations.map((violation) => violation.message), sessionEnded: failure.status === 401 })
@@ -68,7 +65,7 @@ export function CreatePasswordForm({ name, email, temporaryPasswordExpiresAt }: 
     setSigningOut(true)
     queryClient.clear()
     await logout().catch(() => undefined)
-    router.replace("/auth/login")
+    loadSessionDocument("/auth/login", { replace: true })
   }
 
   return (

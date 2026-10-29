@@ -96,6 +96,37 @@ describe("força de trabalho — quantos, %, quem; afastamento sensível protegi
   })
 })
 
+describe("força de trabalho — afastamento de líder só como motivo protegido (4ª auditoria, C14)", () => {
+  const leave = new Map<string, string | null>([[operatorsOf(1)[0]!, "INSS"], [operatorsOf(1)[1]!, "INSS"], [operatorsOf(2)[0]!, "MATERNIDADE"], [operatorsOf(2)[1]!, "MATERNIDADE"], [L.sara, "MATERNIDADE"]])
+  const loadStatuses = async (ids: string[]) => new Map(ids.map((id) => [id, leave.get(id) ?? null]))
+  const count = (cell: string | undefined) => Number((cell ?? "0").split(" ")[0])
+
+  it("com e sem líderes, as colunas por tipo são as mesmas; a supervisora afastada entra só no total e no motivo protegido", async () => {
+    const deps = await depsFor(L.gabriel, "MANAGER", orgWithPrv(), { loadStatuses })
+    const operatorsOnly = (await run(deps, "leadership_workforce", {})).rows[0]!.cells
+    const withLeaders = await run(deps, "leadership_workforce", { incluir_lideres: true })
+    const cellsWithLeaders = withLeaders.rows[0]!.cells
+    for (const key of ["INSS", "MATERNIDADE"]) expect(count(cellsWithLeaders[key]), key).toBe(count(operatorsOnly[key]))
+    expect(count(operatorsOnly.MATERNIDADE)).toBe(2)
+    expect(count(operatorsOnly.AFASTAMENTO)).toBe(4)
+    expect(count(operatorsOnly.AFASTAMENTO_PROTEGIDO)).toBe(0)
+    expect(count(cellsWithLeaders.AFASTAMENTO)).toBe(5)
+    expect(count(cellsWithLeaders.AFASTAMENTO_PROTEGIDO)).toBe(1)
+    expect(withLeaders.columns.find((column) => column.key === "AFASTAMENTO_PROTEGIDO")?.label).toBe("Afastamento (motivo protegido)")
+  })
+
+  it("o status do líder não destrava o detalhamento dos operadores", async () => {
+    leave.set(operatorsOf(2)[1]!, null)
+    try {
+      const card = await run(await depsFor(L.gabriel, "MANAGER", orgWithPrv(), { loadStatuses }), "leadership_workforce", { incluir_lideres: true })
+      expect(card.columns.map((column) => column.key)).not.toContain("MATERNIDADE")
+      expect(count(card.rows[0]!.cells.AFASTAMENTO)).toBe(4)
+    } finally {
+      leave.set(operatorsOf(2)[1]!, "MATERNIDADE")
+    }
+  })
+})
+
 describe("diagnóstico do indicador — piores × melhores nas interações", () => {
   // Piores em TMA (Sara 4 + Saulo 1) gastam mais em "Fatura › Contestação"; melhores, menos.
   const worst = [...operatorsOf(1).slice(0, 4), operatorsOf(2)[4]!]

@@ -3,7 +3,7 @@ import type { QueryTableCard } from "../../leadership-analytics/domain/view-mode
 import { reportAnalysisSchema, reportDefinitionSchema, reportScheduleSchema, reportVisualizationSchema, type ReportAudience } from "../domain/report-definition.js"
 import { createFakeRuntime, createMemoryReportStore, testStructure, type FakePerson } from "../testing/memory-report-store.js"
 import { analyzeDelivery } from "./report-analysis.js"
-import { executeReportRun } from "./report-executor.js"
+import { executeReportRun, scopeKeyOf } from "./report-executor.js"
 import { processRun } from "./report-scheduler.js"
 import type { ReportStore } from "./report-store.js"
 
@@ -145,6 +145,28 @@ describe("execução — papel Report (distribuição)", () => {
     const { result } = await run()
     expect(memory.recipients.map((row) => row.personId).sort()).toEqual(["p-rh2", "p-sara"])
     expect(result.outcome.denied).toEqual([{ personId: "p-saulo", name: "Saulo", reason: "ACCESS_DENIED" }])
+  })
+
+  it("estrutura fixa: quem enxerga mais gente abaixo da âncora (líderes) nunca divide a entrega com quem enxerga menos (C15, 4ª auditoria)", async () => {
+    const fixedId = "00000000-0000-4000-8000-000000000778"
+    const shared = testStructure(fixedId, "Gerência do Marcos", ["op1", "op2"])
+    // Mesmos operadores; a Coordenadora também alcança uma supervisora sem operadores ativos (só ela vê essa pessoa).
+    const people = [reporter(), person("ana", "Ana Coordenadora", { reachable: { [fixedId]: shared }, visibleBelow: ["p-sup-sem-equipe"] }), person("sara", "Sara", { own: SARA, reachable: { [fixedId]: shared } })]
+    people[0]!.reachable = { [fixedId]: shared }
+    const { memory, run } = await setup({ people, owner: "rh", structure: { mode: "FIXED", subjectKind: "SUPERVISOR_TEAM", subjectId: fixedId, label: "Gerência do Marcos" }, audience: { mode: "DISTRIBUTION", everyone: false, levels: ["SUPERVISOR"], jobTitles: [], teamIds: [], subteamIds: [], personIds: [] } })
+    await run()
+    const deliveries = memory.deliveries.filter((item) => item.kind === "DELIVERY")
+    expect(deliveries).toHaveLength(2)
+    const byDelivery = new Map<string, string[]>()
+    for (const row of memory.recipients) byDelivery.set(row.deliveryId, [...(byDelivery.get(row.deliveryId) ?? []), row.personId])
+    expect([...byDelivery.values()].map((ids) => ids.sort()).sort()).toEqual([["p-ana"], ["p-sara"]])
+  })
+
+  it("chave de escopo: sem ninguém além dos operadores, é a mesma de antes (o histórico das entregas não muda)", () => {
+    const structure = testStructure("00000000-0000-4000-8000-000000000779", "Equipe", ["op1", "op2"])
+    const operators = structure.resolved.members.map((member) => member.id)
+    expect(scopeKeyOf(structure, operators)).toBe(scopeKeyOf(structure))
+    expect(scopeKeyOf(structure, [...operators, "lider"])).not.toBe(scopeKeyOf(structure))
   })
 
   it("seleções combinadas (todos + pessoa específica) não geram entrega duplicada para a mesma pessoa", async () => {

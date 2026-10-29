@@ -180,4 +180,14 @@ describe("Diagnóstico — memória do motor de feedback (agregados, drill-down 
     expect(response.text).toContain("Grupo/Pessoa;Chamadas;Avaliadas")
     expect(queries[0]!.params[1]).not.toContain(OP_OTHER)
   })
+
+  it("CSV: filtro livre da URL com ';' e '=' nunca vira célula que a planilha leia como fórmula (C12, 4ª auditoria)", async () => {
+    const { app } = memoryApp(user(SUP, "SUPERVISOR"))
+    const response = await request(app).get(`/diagnostics/memory/export.csv?view=people&groupBy=TEAM&from=2026-09-01&to=2026-09-30&subject=${encodeURIComponent('x;=HYPERLINK("http://a.b";"c");y')}&status=${encodeURIComponent("+1")}&practiceKey=${encodeURIComponent("@SOMA(1)")}`)
+    expect(response.status).toBe(200)
+    // Separa as células como a planilha (";" fora de aspas) e confere que nenhuma começa com = + - @ TAB CR sem estar entre aspas.
+    const cells = response.text.split(/\r\n/).flatMap((line) => line.match(/("([^"]|"")*"|[^;]*)(;|$)/g) ?? []).map((cell) => cell.replace(/;$/, ""))
+    expect(cells.filter((cell) => /^[=+\-@\t\r]/.test(cell))).toEqual([])
+    expect(response.text).toContain('"# Filtros:')
+  })
 })

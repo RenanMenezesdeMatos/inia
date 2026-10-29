@@ -24,10 +24,11 @@ export function spokenAlternatives(labels: readonly string[]): string {
 
 /**
  * Instrução anexada ao resultado da ferramenta na VOZ (o modelo de voz recebe o conteúdo + esta instrução; a tela, o conteúdo e o
- * estado). `tool` = a ferramenta que encaminha a pergunta (a resposta falada volta por ela). `withLead` = o conteúdo tem, antes do
- * esclarecimento, um texto de outra parte da resposta (ex.: os números de quem lidera).
+ * estado). `tool` = a ferramenta que encaminha a pergunta (a resposta falada volta por ela); `null` = a sessão de voz não tem como
+ * encaminhar (ex.: aplicação de feedback): a resposta é só pela tela. `withLead` = o conteúdo tem, antes do esclarecimento, um texto
+ * de outra parte da resposta (ex.: os números de quem lidera).
  */
-export function renderClarificationVoiceInstruction(state: ClarificationState, options: { tool: string; withLead?: boolean }): string {
+export function renderClarificationVoiceInstruction(state: ClarificationState, options: { tool: string | null; withLead?: boolean }): string {
   const lead = options.withLead ? "Comece por um resumo de uma frase do que vem antes do esclarecimento (o detalhe está na tela). " : ""
   const open = openStepOf(state)
   if (open) {
@@ -36,7 +37,10 @@ export function renderClarificationVoiceInstruction(state: ClarificationState, o
       labels.length <= MAX_SPOKEN_OPTIONS
         ? `diga as opções de forma breve, só os rótulos: ${spokenAlternatives(labels)}`
         : `diga que há ${labels.length} opções na tela e leia só as ${MAX_SPOKEN_OPTIONS - 1} primeiras, de forma breve (${labels.slice(0, MAX_SPOKEN_OPTIONS - 1).map((label) => inline(label, 80)).join(", ")})`
-    return `\n\n[Instrução para a resposta falada: para responder pelas bases de conhecimento é preciso saber qual cenário se aplica; a pergunta e as opções já estão na tela, num formulário. ${lead}Faça a pergunta em uma frase curta e ${read}. Não leia fontes, descrições nem símbolos, não acrescente opções e não responda o procedimento ainda. Diga que a pessoa pode responder falando ou escolher na tela. Quando ela responder falando, acione ${options.tool} de novo com a pergunta original ("${inline(state.originalQuestion, 300)}") junto da resposta dela, nas palavras dela.]`
+    const reply = options.tool
+      ? `Diga que a pessoa pode responder falando ou escolher na tela. Quando ela responder falando, acione ${options.tool} de novo com a pergunta original ("${inline(state.originalQuestion, 300)}") junto da resposta dela, nas palavras dela.`
+      : "Diga que a pessoa pode escolher a opção na tela."
+    return `\n\n[Instrução para a resposta falada: para responder pelas bases de conhecimento é preciso saber qual cenário se aplica; a pergunta e as opções já estão na tela, num formulário. ${lead}Faça a pergunta em uma frase curta e ${read}. Não leia fontes, descrições nem símbolos, não acrescente opções e não responda o procedimento ainda. ${reply}]`
   }
   if (state.status === "ANSWERED") {
     return `\n\n[Instrução para a resposta falada: a resposta acima vem das bases de conhecimento e já está completa na tela, com as fontes. ${lead}Fale esse mesmo conteúdo em voz natural e fiel: não acrescente, não omita nem altere documentos, passos, prazos ou condições. Não leia os marcadores de fonte ([1], [2]…), títulos nem símbolos de formatação, não fale de fontes e não diga "tópico" ou "lista": listas viram frases em sequência.]`

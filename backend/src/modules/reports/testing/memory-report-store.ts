@@ -120,6 +120,8 @@ export type FakePerson = AccountInfo & {
   own: ResolvedStructure | null
   /** Estruturas fixas que o escopo dela alcança, por id do sujeito. */
   reachable: Record<string, ResolvedStructure>
+  /** Pessoas além dos operadores que o escopo dela alcança abaixo da âncora (líderes) — padrão: nenhuma. */
+  visibleBelow?: string[]
   distribution?: DistributionScope | null
   level?: string
 }
@@ -141,6 +143,7 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
         account: person,
         ownStructure: person.own,
         resolveFixed: (_kind, id) => person.reachable[id] ?? null,
+        visibleBelow: (structure) => [...structure.resolved.members.map((member) => member.id), ...(person.visibleBelow ?? [])],
         runTool: async (name, args) => {
           calls.push({ account: accountId, name, args })
           const fixedId = typeof args.subject_id === "string" ? args.subject_id : null

@@ -202,6 +202,30 @@ describe.skipIf(!ENABLED)("Identidade — cadastro manual × carga de Colaborado
       expect(await accountOf(gil.accountId)).toEqual(before)
     })
 
+    it("pré-cadastrada à mão JÁ COM a matrícula no Grupo A e posta pela base como Supervisora do Grupo B: o acesso cai (C09, 4ª auditoria)", async () => {
+      const lia = await inTeam("Lia Campos", teamA, `lia@${DOMAIN}`)
+      await db.query(`update people set matricula = 'PIL-20' where id = $1`, [lia.personId])
+      const before = await accountOf(lia.accountId)
+      const result = await placementRun([["PIL-20", "Lia Campos", "SUPERVISOR", "", "PIL-GB", "true"]], "pil-lugar-6.csv")
+      expect(result.status).toBe("COMPLETED")
+      expect((await db.query<{ team_id: string; role: string }>(`select team_id, role from people where id = $1`, [lia.personId])).rows[0]).toEqual({ team_id: teamB, role: "SUPERVISOR" })
+      expect(await accountOf(lia.accountId)).toEqual({ active: false, session_version: before.session_version + 1 })
+      const codes = (await db.query<{ error_code: string }>(`select error_code from data_ingestion_rejections where run_id = $1`, [result.id])).rows.map((row) => row.error_code)
+      expect(codes).toEqual(["DATA_PERSON_LINK_ACCESS_DISABLED"])
+      const audit = await db.query<{ payload: { reason: string } }>(`select payload from audit_logs where organization_id = $1 and action = 'ACCESS_DISABLED' and entity_id = $2`, [ORG, lia.accountId])
+      expect(audit.rows.map((row) => row.payload.reason)).toEqual(["LINKED_BY_SOURCE_NEW_PLACEMENT"])
+    })
+
+    it("matrícula pré-cadastrada no MESMO Grupo e nível: o acesso continua e a carga registra que assumiu a pessoa (mesmo sem mudar dado)", async () => {
+      const max = await inTeam("Max Prado", teamA, `max@${DOMAIN}`)
+      await db.query(`update people set matricula = 'PIL-21', name = 'Max Prado' where id = $1`, [max.personId])
+      const before = await accountOf(max.accountId)
+      const result = await placementRun([["PIL-21", "Max Prado", "OPERATOR", "", "PIL-GA", "true"]], "pil-lugar-7.csv")
+      expect(result.status).toBe("COMPLETED")
+      expect(await accountOf(max.accountId)).toEqual(before)
+      expect((await db.query(`select 1 from data_lineage where organization_id = $1 and entity_type = 'people' and entity_id = $2 and run_id = $3`, [ORG, max.personId, result.id])).rowCount).toBe(1)
+    })
+
     it("desligada pela base: a conta é desabilitada (reativar não devolve a senha nem os tokens); Administrador geral só perde as sessões", async () => {
       const hugo = await inTeam("Hugo Reis", teamA, `hugo@${DOMAIN}`)
       const iris = await inTeam("Iris Melo", teamA, `iris@${DOMAIN}`)

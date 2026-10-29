@@ -47,7 +47,7 @@ export class FixtureStore {
     return fixture ? toScript(id, fixture, timing) : null
   }
 
-  /** Texto do pedido original da captura (vai no `clientContent`, como um turno de texto real). */
+  /** Texto do pedido original da captura (vai pelo `sendText`, como um turno de texto real). */
   prompt(id: LabFixtureId): string | null {
     return this.loaded.get(id)?.json.prompt ?? null
   }

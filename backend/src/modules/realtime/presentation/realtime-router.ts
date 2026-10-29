@@ -17,6 +17,7 @@ import { runSpecialistTool } from "../../assistant/application/run-specialist-to
 import { buildOperatorIdentity } from "../../assistant/application/build-operator-context.js"
 import { renderAskingPersonProfile } from "../../assistant/domain/asking-person-profile.js"
 import type { EphemeralRealtimeSession } from "../infrastructure/gemini-realtime-client.js"
+import { renderVoiceReading } from "../domain/voice-reading.js"
 import { INIA_VOICE_PERSONA, renderVoiceHistoryRecap, type VoiceSessionConfig } from "../domain/voice-session.js"
 import { loadAddressingContext } from "../../profile-preferences/application/addressing-context.js"
 import { loadWorkflowConversationContext } from "../../conversational-delivery/application/workflow-conversation-context.js"
@@ -55,7 +56,10 @@ const historyTurnSchema = z.object({
 
 const conversationIdSchema = z.string().uuid().nullable()
 /** Chave idempotente do cliente (uuid ou "turno:parte"): retentativas na mesma conversa nunca duplicam mensagens. */
-const clientKeySchema = z.string().trim().min(8).max(120).regex(/^[A-Za-z0-9:_-]+$/)
+// Chaves que só o SERVIDOR grava (recado de Workflow, apresentação da aplicação de feedback): o navegador nunca as usa — a origem
+// da mensagem na monitoria vem delas (achado C11 da 4ª auditoria).
+const RESERVED_KEY_PREFIXES = ["workflow-output:", "feedback-application:"]
+const clientKeySchema = z.string().trim().min(8).max(120).regex(/^[A-Za-z0-9:_-]+$/).refine((value) => !RESERVED_KEY_PREFIXES.some((prefix) => value.toLowerCase().startsWith(prefix)), "Chave reservada.")
 
 /** Escrita SOBRE uma aplicação de feedback: o backend decide a conversa (a da aplicação ou a complementar) — ver
  * `resolveApplicationConversation`. O navegador só diz de qual aplicação está falando. */
@@ -998,6 +1002,25 @@ export function createRealtimeRouter(
         hasMore: page.hasMore,
       },
     })
+  })
+
+  // LEITURA na voz de uma resposta já gravada (`voice-reading.ts`): o conteúdo + a MESMA instrução de fala que a ferramenta da voz
+  // mandaria. A ferramenta citada numa pergunta em aberto é a que a sessão de voz da pessoa tem (a mesma escolha do `/sessions`); numa
+  // aplicação de feedback não há como encaminhar pela fala e a escolha fica na tela. Só as respostas recentes da própria conversa.
+  router.get("/conversations/:conversationId/messages/:interactionId/voice-reading", async (request, response) => {
+    const scope = scopeOf(request)
+    const conversationId = idParam.parse(request.params.conversationId)
+    const interactionId = idParam.parse(request.params.interactionId)
+    const { feedbackApplicationId } = z.object({ feedbackApplicationId: feedbackApplicationIdSchema }).parse(request.query)
+    await conversations.requireOwned(scope, conversationId)
+    const recent = await conversations.loadMessages({ organizationId: scope.organizationId, conversationId, limit: 10 })
+    const message = recent.messages.find((item) => item.id === interactionId && item.role === "assistant")
+    if (!message) throw new DomainError("Resposta não encontrada nesta conversa.", "ASSISTANT_MESSAGE_NOT_FOUND", 404)
+    const leadership = feedbackApplicationId ? null : await leadershipContextOf(request.user!)
+    const self = feedbackApplicationId || leadership ? null : await selfContextOf(request.user!)
+    const state = parseClarificationState(message.clarification)
+    const instruction = state ? renderClarificationVoiceInstruction(state, { tool: leadership ? LEADERSHIP_ASK_TOOL : self ? SELF_ASK_TOOL : null }) : leadership ? LEADERSHIP_VOICE_INSTRUCTION : SELF_VOICE_INSTRUCTION
+    response.json({ data: { text: renderVoiceReading(message.content, instruction) } })
   })
 
   // Curtir/descurtir de uma resposta da INIA pela PRÓPRIA dona da conversa (migration 158): grava o valor (`NONE` = retirou) e

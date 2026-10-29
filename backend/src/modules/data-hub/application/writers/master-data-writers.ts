@@ -8,7 +8,7 @@ import { normalizeScheduleType, type ScheduleType } from "../../../people/domain
 import { recordAudit } from "../records.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
 import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResult, type ApplyWarning, type DomainWriter, type LineageEntry, type Rejection, type ValidRecord, type WriteContext } from "./domain-writer.js"
-import { credentialNeedsNewCustody, disableAccountsFromSource, linkByAccountEmail, linkedWarnings, possibleDuplicateWarnings } from "./person-identity.js"
+import { accessDisabledWarnings, credentialNeedsNewCustody, disableAccountsFromSource, enforceSourceCustody, linkByAccountEmail, linkedWarnings, markFirstApplicationCustody, pendingCustodyWarnings, placementBefore, possibleDuplicateWarnings, preRegisteredByMatricula } from "./person-identity.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -195,8 +195,13 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // Passo 0: identidade — matrícula nova com o e-mail da conta de uma pessoa cadastrada à mão (sem matrícula) é gravada nela,
     // e o upsert abaixo passa a ATUALIZAR essa pessoa em vez de criar outra (ver person-identity.ts).
     const linked = await linkByAccountEmail(context, client, batch)
-    // Quem estava ATIVO antes desta carga (para saber quem ela desativa — passo 1b).
-    const activeBefore = new Set((await client.query<{ id: string }>(`select id from people where organization_id = $1 and matricula = any($2::text[]) and active`, [org, batch.map((row) => row.matricula)])).rows.map((row) => row.id))
+    // Pessoa cadastrada à mão já com a matrícula (e conta) que a base assume agora pela primeira vez: mesma custódia do vínculo acima.
+    const preRegistered = await preRegisteredByMatricula(context, client, batch, new Set(linked.map((entry) => entry.personId)))
+    // Lugar de cada pessoa ANTES desta carga: quem estava ativo (para saber quem ela desativa — passo 1b) e Grupo/nível/gestor (custódia, passo 2b).
+    const before = await placementBefore(context, client, batch.map((row) => row.matricula))
+    // Primeira aplicação da base a quem foi cadastrado à mão (ligado agora, pré-cadastrado ou citado como gestor): custódia pendente (h19).
+    await markFirstApplicationCustody(context, client, [...batch.map((row) => row.matricula), ...batch.flatMap((row) => (row.reportsTo ? [row.reportsTo] : []))])
+    const activeBefore = new Set([...before].filter(([, placement]) => placement.active).map(([id]) => id))
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
@@ -226,12 +231,12 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
       [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode)],
     )
     // Passo 1b: credencial. Desligada pela base = conta desabilitada (reativar não devolve a senha nem os tokens antigos — achado
-    // AUTH-7); pessoa ligada pelo e-mail que a base pôs em outro Grupo/nível de liderança = conta desabilitada até quem tem
-    // custódia do lugar novo liberar (AUTH-13).
+    // AUTH-7); pessoa cadastrada à mão (ligada pelo e-mail ou pré-cadastrada com a matrícula) que a base pôs em outro Grupo/nível
+    // de liderança = conta desabilitada até quem tem custódia do lugar novo liberar (AUTH-13; C09 da 4ª auditoria).
     const incoming = new Map(batch.map((row) => [row.matricula, row]))
     const deactivatedNow = upsert.rows.filter((row) => !row.inserted && activeBefore.has(row.id) && incoming.get(row.matricula)?.active === false).map((row) => row.id)
     await disableAccountsFromSource(context, client, deactivatedNow, "PERSON_DEACTIVATED_BY_SOURCE")
-    const needsCustody = linked.filter((entry) => !deactivatedNow.includes(entry.personId) && credentialNeedsNewCustody(entry.prior, { teamId: entry.row.teamId, role: entry.row.role })).map((entry) => entry.personId)
+    const needsCustody = [...linked, ...preRegistered].filter((entry) => !deactivatedNow.includes(entry.personId) && credentialNeedsNewCustody(entry.prior, { teamId: entry.row.teamId, role: entry.row.role })).map((entry) => entry.personId)
     const linkAccessDisabled = new Set((await disableAccountsFromSource(context, client, needsCustody, "LINKED_BY_SOURCE_NEW_PLACEMENT")).filter((entry) => entry.disabled).map((entry) => entry.personId))
     // Passo 2: gestor direto (matrícula → id), só quando informado e diferente do atual.
     const withManager = batch.filter((row) => row.reportsTo)
@@ -245,6 +250,8 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
           [org, withManager.map((r) => r.matricula), withManager.map((r) => r.reportsTo)],
         )
       : { rows: [] as { id: string; matricula: string }[] }
+    // Passo 2b: custódia depois de mexer no lugar (Grupo, nível, gestor) — pendente do cadastro manual e senha temporária ainda não usada.
+    const custody = await enforceSourceCustody(context, client, { matriculas: batch.map((row) => row.matricula), groupDefined: new Set(batch.filter((row) => row.teamId).map((row) => row.matricula)), before })
     // Passo 3: e-mail da conta, só se a conta já existe (a Central nunca cria senha).
     const withEmail = batch.filter((row) => row.email)
     if (withEmail.length) {
@@ -259,8 +266,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     }
     const touched = new Map(upsert.rows.map((row) => [row.matricula, { id: row.id, inserted: row.inserted }]))
     for (const row of managerUpdates.rows) if (!touched.has(row.matricula)) touched.set(row.matricula, { id: row.id, inserted: false })
-    // Pessoa ligada pela conta foi aplicada por esta carga mesmo que os dados já batessem: linhagem de alteração.
-    for (const { personId, row } of linked) if (!touched.has(row.matricula)) touched.set(row.matricula, { id: personId, inserted: false })
+    // Pessoa ligada pela conta (ou pré-cadastrada com a matrícula) foi assumida por esta carga mesmo que os dados já batessem:
+    // linhagem de alteração — daqui em diante a base já aplicou a pessoa.
+    for (const { personId, row } of [...linked, ...preRegistered]) if (!touched.has(row.matricula)) touched.set(row.matricula, { id: personId, inserted: false })
     const byMatricula = new Map(batch.map((row) => [row.matricula, row]))
     const duplicateWarnings = await possibleDuplicateWarnings(context, client, upsert.rows.filter((row) => row.inserted).map((row) => ({ personId: row.id, row: byMatricula.get(row.matricula)! })))
     // Passo 4: situação funcional — SEMPRE pelo serviço canônico (único que escreve em
@@ -268,7 +276,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // é evidência "a partir de uma data": uma ausência explícita e limitada já registrada vence
     // (CONFLICT), e o conflito vai para a quarentena como AVISO rastreável — nunca em silêncio.
     const statusLineage: LineageEntry[] = []
-    const warnings: ApplyWarning[] = [...linkedWarnings(linked, linkAccessDisabled), ...duplicateWarnings]
+    const warnings: ApplyWarning[] = [...linkedWarnings(linked, linkAccessDisabled), ...accessDisabledWarnings(preRegistered, linkAccessDisabled), ...pendingCustodyWarnings(batch, custody), ...duplicateWarnings]
     const withStatus = batch.filter((row) => row.employmentStatus)
     if (withStatus.length > 0) {
       const ids = await client.query<{ id: string; matricula: string }>(`select id, matricula from people where organization_id = $1 and matricula = any($2::text[])`, [org, withStatus.map((row) => row.matricula)])
@@ -488,6 +496,9 @@ export const organizationalStructureWriter: DomainWriter<PreparedStructure> = {
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
     const org = context.organizationId
+    const before = await placementBefore(context, client, batch.map((row) => row.matricula))
+    // A Estrutura também pode ser a PRIMEIRA carga sobre quem foi cadastrado à mão (h19): custódia pendente antes de escrever.
+    await markFirstApplicationCustody(context, client, [...batch.map((row) => row.matricula), ...batch.flatMap((row) => (row.reportsTo ? [row.reportsTo] : []))])
     const result = await client.query<{ id: string; matricula: string }>(
       `update people p set
          reports_to_id = m.id,
@@ -501,7 +512,11 @@ export const organizationalStructureWriter: DomainWriter<PreparedStructure> = {
        returning p.id, p.matricula`,
       [org, batch.map((r) => r.matricula), batch.map((r) => r.reportsTo), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hasGroupInfo)],
     )
-    return withLineage("people", batch, (row) => row.matricula, result.rows.map((row) => ({ key: row.matricula, id: row.id, inserted: false })))
+    // A Estrutura também define o lugar: mesma custódia da carga de Colaboradores (h19 da 4ª auditoria).
+    const custody = await enforceSourceCustody(context, client, { matriculas: batch.map((row) => row.matricula), groupDefined: new Set(batch.filter((row) => row.hasGroupInfo).map((row) => row.matricula)), before })
+    const applied = withLineage("people", batch, (row) => row.matricula, result.rows.map((row) => ({ key: row.matricula, id: row.id, inserted: false })))
+    applied.warnings.push(...pendingCustodyWarnings(batch, custody))
+    return applied
   },
 }
 

@@ -43,7 +43,7 @@ function fakeRepository() {
   return { repository, listCalls }
 }
 
-const supervisorVisibility: CaseVisibility = { organizationId: ORG_A, operatorIds: ["op-visible"], organizationWide: false, teamIds: [], subteamIds: [] }
+const supervisorVisibility: CaseVisibility = { organizationId: ORG_A, viewerPersonId: "viewer", operatorIds: ["op-visible"], organizationWide: false, teamIds: [], subteamIds: [] }
 
 function appWith(visibility: CaseVisibility) {
   const { repository, listCalls } = fakeRepository()
@@ -74,10 +74,10 @@ describe("casos de supervisão — recorte pela sessão", () => {
   })
 
   it("administrador de Agents vê os casos do Grupo do escopo dele; organização inteira vê todos da própria organização", async () => {
-    const teamAdmin = appWith({ organizationId: ORG_A, operatorIds: [], organizationWide: false, teamIds: ["team-3"], subteamIds: [] }).app
+    const teamAdmin = appWith({ organizationId: ORG_A, viewerPersonId: "viewer", operatorIds: [], organizationWide: false, teamIds: ["team-3"], subteamIds: [] }).app
     expect((await request(teamAdmin).get(`/${TEAM_CASE}`)).status).toBe(200)
     expect((await request(teamAdmin).get(`/${IN_SCOPE_CASE}`)).status).toBe(404)
-    const orgAdmin = appWith({ organizationId: ORG_A, operatorIds: [], organizationWide: true, teamIds: [], subteamIds: [] }).app
+    const orgAdmin = appWith({ organizationId: ORG_A, viewerPersonId: "viewer", operatorIds: [], organizationWide: true, teamIds: [], subteamIds: [] }).app
     expect((await request(orgAdmin).get(`/${OUT_OF_SCOPE_CASE}`)).status).toBe(200)
     expect((await request(orgAdmin).get(`/${OTHER_ORG_CASE}`)).status).toBe(404)
   })
@@ -88,8 +88,22 @@ describe("casos de supervisão — recorte pela sessão", () => {
     expect(listCalls).toEqual([{ visibility: supervisorVisibility, limit: CASE_LIST_LIMIT }])
   })
 
+  it("o próprio colaborador nunca abre o caso dele — nem administrando Agents no Grupo dele ou na organização (C17, 4ª auditoria)", async () => {
+    const own = owners[TEAM_CASE]!.owner
+    for (const visibility of [
+      { organizationId: ORG_A, viewerPersonId: own.operatorId, operatorIds: [own.operatorId], organizationWide: false, teamIds: [], subteamIds: [] },
+      { organizationId: ORG_A, viewerPersonId: own.operatorId, operatorIds: [], organizationWide: false, teamIds: [own.teamId!], subteamIds: [] },
+      { organizationId: ORG_A, viewerPersonId: own.operatorId, operatorIds: [], organizationWide: true, teamIds: [], subteamIds: [] },
+    ] satisfies CaseVisibility[]) {
+      expect(caseVisibleTo(visibility, own)).toBe(false)
+      const response = await request(appWith(visibility).app).get(`/${TEAM_CASE}`)
+      expect(response.status).toBe(404)
+      expect(response.body.error.code).toBe("CASE_NOT_FOUND")
+    }
+  })
+
   it("sem escopo nenhum (ex.: operador sem liderados), nada é visível", () => {
-    const none: CaseVisibility = { organizationId: ORG_A, operatorIds: [], organizationWide: false, teamIds: [], subteamIds: [] }
+    const none: CaseVisibility = { organizationId: ORG_A, viewerPersonId: "viewer", operatorIds: [], organizationWide: false, teamIds: [], subteamIds: [] }
     expect(caseVisibleTo(none, owners[IN_SCOPE_CASE]!.owner)).toBe(false)
     expect(caseVisibleTo({ ...none, subteamIds: ["sub-1"] }, { operatorId: "x", teamId: "t", subteamId: "sub-1" })).toBe(true)
   })

@@ -2,7 +2,7 @@
 // endereço do banco (backend/.env), conexão para as ferramentas do PostgreSQL (pg_dump/pg_restore) e onde achá-las.
 // A senha nunca vai na linha de comando (qualquer usuário da máquina veria na lista de processos): vai por PGPASSWORD.
 import { spawnSync } from "node:child_process"
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 export const DEFAULT_DATABASE_URL = "postgresql://localhost:5432/inia"
@@ -110,3 +110,48 @@ export function listBackups(dir) {
   if (!existsSync(dir)) return []
   return readdirSync(dir).filter((entry) => BACKUP_FILE_PATTERN.test(entry)).sort().reverse().map((entry) => join(dir, entry))
 }
+
+/** SIDs fixos (valem no Windows em português): Administradores e SYSTEM — os mesmos do agendar-backup.ps1. */
+const WINDOWS_BACKUP_SIDS = ["S-1-5-32-544", "S-1-5-18"]
+const PARTIAL_FILE_PATTERN = /^inia-\d{4}-\d{2}-\d{2}_\d{6}\.dump\.partial$/
+
+/** Argumentos do icacls que deixam o caminho só para Administradores, SYSTEM e quem roda a cópia, sem herdar da pasta-mãe. */
+export function windowsRestrictArgs(path, { directory, userSid }) {
+  const inherit = directory ? "(OI)(CI)" : ""
+  return [path, "/inheritance:r", "/grant:r", ...[...new Set([...WINDOWS_BACKUP_SIDS, userSid])].map((sid) => `*${sid}:${inherit}(F)`)]
+}
+
+function currentUserSid(run) {
+  const result = run("whoami", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" })
+  const sid = result.status === 0 ? /"(S-1-[\d-]+)"/.exec(result.stdout ?? "")?.[1] : undefined
+  if (!sid) throw new Error("não identificou a conta que roda a cópia (whoami /user).")
+  return sid
+}
+
+/**
+ * ACESSO RESTRITO às cópias (item N03 da 4ª auditoria). Antes, a pasta nascia com a permissão herdada (no Windows, a do C:\ —
+ * leitura para todos os usuários da máquina) e o arquivo só era fechado depois de pronto, com um chmod que no Windows não faz nada.
+ * Agora, ANTES de qualquer escrita, a pasta fica só para o dono (POSIX 0700) ou só para Administradores, SYSTEM e quem roda a
+ * cópia (Windows, sem herança) — e também as cópias e o registro da INIA que já estavam nela. Nada mais da pasta é tocado.
+ * Não conseguiu restringir = erro: a cópia não é feita numa pasta aberta.
+ */
+export function restrictBackupDir(dir, { platform = process.platform, run = spawnSync } = {}) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const own = readdirSync(dir).filter((entry) => BACKUP_FILE_PATTERN.test(entry) || PARTIAL_FILE_PATTERN.test(entry) || entry === "backup.log").map((entry) => join(dir, entry))
+  if (platform !== "win32") {
+    chmodSync(dir, 0o700)
+    for (const file of own) chmodSync(file, 0o600)
+    return
+  }
+  const userSid = currentUserSid(run)
+  for (const [path, directory] of [[dir, true], ...own.map((file) => [file, false])]) {
+    const result = run("icacls", windowsRestrictArgs(path, { directory, userSid }), { encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`icacls não restringiu ${path}: ${(result.stderr || result.stdout || result.error?.message || "").trim().slice(0, 300)}`)
+  }
+}
+
+/** Arquivo novo já fechado para o dono (0600): o pg_dump escreve nele sem que ele fique legível por outros nem por um instante. */
+export function createPrivateFile(path) {
+  closeSync(openSync(path, "wx", 0o600))
+}
+

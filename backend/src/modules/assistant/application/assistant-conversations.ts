@@ -237,12 +237,15 @@ export function clarificationPayloadOf(toolCalls: unknown): unknown | null {
 export function clarificationScopeOf(toolCalls: unknown): unknown | null {
   return clarificationEntryOf(toolCalls)?.scope ?? null
 }
-/** Mesma chave gravada pela entrega de Chat (conversational-delivery/application/deliver-conversational-output.ts). */
-const WORKFLOW_MESSAGE_KEY_PREFIX = "workflow-output:"
+/** A chave EXATA gravada pela entrega de Chat — `workflow-output:<id da entrega>` (conversational-delivery/application/
+ * deliver-conversational-output.ts). Só a forma exata: toda chave vinda do navegador ganha um sufixo, então um prefixo escolhido por
+ * ele nunca vira "Recado enviado por um fluxo" (achado C11 da 4ª auditoria). */
+export const WORKFLOW_MESSAGE_KEY_PATTERN = "^workflow-output:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+const WORKFLOW_MESSAGE_KEY = new RegExp(WORKFLOW_MESSAGE_KEY_PATTERN, "i")
 /** Mesma chave da apresentação gravada pela aplicação de feedback (feedback-application-service.ts). */
 const FEEDBACK_PRESENTATION_KEY = "feedback-application:presentation"
 export const messageOriginOf = (role: "user" | "assistant", clientMessageId: string | null | undefined): ConversationMessage["origin"] =>
-  role !== "assistant" ? null : clientMessageId?.startsWith(WORKFLOW_MESSAGE_KEY_PREFIX) ? "WORKFLOW" : clientMessageId === FEEDBACK_PRESENTATION_KEY ? "FEEDBACK" : null
+  role !== "assistant" ? null : clientMessageId && WORKFLOW_MESSAGE_KEY.test(clientMessageId) ? "WORKFLOW" : clientMessageId === FEEDBACK_PRESENTATION_KEY ? "FEEDBACK" : null
 const toMessage = (row: MessageRow): ConversationMessage => {
   const occurredAt = new Date(row.occurred_at).toISOString()
   const origin = messageOriginOf(row.role, row.client_message_id)

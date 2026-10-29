@@ -82,10 +82,12 @@ vi.mock("@/lib/realtime/gemini-realtime-transport", () => {
       doubles.transports.push(this)
     }
     primeAudioPlayback() { this.calls.push("prime") }
+    isConnected = false
     async connect(request?: unknown) {
       this.calls.push("connect")
       this.connectRequests.push(request)
       if (doubles.connectError) throw doubles.connectError
+      this.isConnected = true
       this.events.onConnectionChange?.(true)
     }
     sendText(text: string) {
@@ -106,13 +108,18 @@ vi.mock("@/lib/realtime/gemini-realtime-transport", () => {
       this.events.onStateChange?.("listening")
     }
     interruptResponse() { this.calls.push("interruptResponse") }
+    readAloud(text: string) {
+      this.calls.push(`readAloud:${text}`)
+      this.events.onStateChange?.("thinking")
+    }
     disconnect() {
+      this.isConnected = false
       this.calls.push("disconnect")
       this.events.onConnectionChange?.(false)
       this.events.onStateChange?.("idle")
     }
   }
-  return { GeminiRealtimeTransport, recordVoiceTurn: vi.fn(async () => null) }
+  return { GeminiRealtimeTransport, recordVoiceTurn: vi.fn(async () => null), fetchVoiceReading: vi.fn(async () => "[Leitura]\n\nResposta lida") }
 })
 
 vi.mock("@/lib/realtime/gemini-text-client", () => {
@@ -519,6 +526,32 @@ describe("OperatorIniaChat — conversas", () => {
     expect(vi.mocked(textClient.fetchTextReply).mock.calls.at(-1)![0]).toMatchObject({ conversationId: CONV, text: "Empresa", clarification: { clarificationId: asked.id, stepId: "step_1_aaaaaaaa", optionIds: ["opt_000000000a"] } })
   })
 
+  it("voz: a correção pelo \"Alterar\" também segue pela VOZ (a INIA fala a nova resposta), com a escolha estruturada de correção", async () => {
+    const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
+    const answered = {
+      version: "KNOWLEDGE_CLARIFICATION_V1", id: "33333333-3333-4333-8333-333333333333", originalQuestion: "Quais documentos para a troca?", status: "ANSWERED" as const,
+      steps: [{ id: "step_1_cccccccc", dimension: "Tipo de cliente", question: "Para qual tipo de cliente é a troca?", selectionMode: "SINGLE" as const, options: [{ id: "opt_000000000e", label: "Empresa", description: null, group: null, evidence: [source] }, { id: "opt_000000000f", label: "Residencial", description: null, group: null, evidence: [source] }], answer: { optionIds: ["opt_000000000e"], freeText: null, noneMatched: false, via: "FORM" as const, answeredAt: new Date().toISOString() } }],
+      questionFacts: [], coverage: { consideredDocuments: 2, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true }, sources: [source], conflicts: [], notice: null, updatedAt: new Date().toISOString(),
+      scenario: [{ dimension: "Tipo de cliente", value: "Empresa", origin: "SELECTION" as const, stepId: "step_1_cccccccc" }],
+    }
+    setVoiceMuted(false)
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("quais documentos para a troca?"))
+    act(() => transport.events.onStateChange?.("thinking"))
+    act(() => transport.events.onSpecialistResult?.("Contrato social [1].", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }, undefined, { clarification: answered }))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    act(() => transport.events.onStateChange?.("idle"))
+    const textCalls = vi.mocked(textClient.fetchTextReply).mock.calls.length
+    const scenario = await screen.findByTestId("clarification-scenario")
+    fireEvent.click(within(scenario).getByRole("button", { name: "Tipo de cliente: Empresa (você escolheu)" }))
+    fireEvent.click(screen.getByRole("button", { name: "Alterar Tipo de cliente" }))
+    fireEvent.click(screen.getByRole("radio", { name: /Residencial/ }))
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Refazer a partir daqui" })) })
+    await waitFor(() => expect(transport.calls).toContain("sendText:Residencial"))
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.length).toBe(textCalls)
+    expect(transport.events.getToolCallContext?.()).toMatchObject({ utterance: "Residencial", clarification: { clarificationId: answered.id, stepId: "step_1_cccccccc", optionIds: ["opt_000000000f"], noneMatched: false, revise: true } })
+  })
+
   it("voz: escolha clicada que nenhuma consulta da voz levou (o modelo não acionou a ferramenta) segue pelo TEXTO no fim do turno, estruturada e gravada uma vez", async () => {
     const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
     const asked = {
@@ -552,6 +585,45 @@ describe("OperatorIniaChat — conversas", () => {
     // A mensagem da pessoa é gravada pelo caminho de texto (com a escolha); a voz grava só o que a INIA falou.
     expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ userText: undefined, assistantText: "Certo, empresa." }))
     expect(await screen.findByText("Qual é a situação da troca entre empresas?")).toBeInTheDocument()
+    // Com a voz ligada ela FALA toda resposta: a resposta que veio pelo texto é LIDA em voz alta pela sessão de voz (o backend monta o
+    // texto da leitura com a instrução de fala) — sem gravar nada de novo e sem legenda paralela.
+    await waitFor(() => expect(transportModule.fetchVoiceReading).toHaveBeenCalledWith({ conversationId: CONV, interactionId: "i3", feedbackApplicationId: null }))
+    await waitFor(() => expect(transport.calls).toContain("readAloud:[Leitura]\n\nResposta lida"))
+    vi.mocked(transportModule.recordVoiceTurn).mockClear()
+    act(() => transport.events.onOutputTranscript?.("Qual é a situação da troca entre empresas?"))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    expect(transportModule.recordVoiceTurn).not.toHaveBeenCalled()
+    expect(screen.getAllByText("Qual é a situação da troca entre empresas?")).toHaveLength(1)
+  })
+
+  it("voz: a leitura em voz alta da escolha que seguiu pelo texto não acontece se a INIA foi para o mudo enquanto a resposta chegava", async () => {
+    const source = { documentId: "kb-a", documentTitle: "Base A (fictícia)", versionId: "kb-a-v1", heading: "2. Documentos", chunkIndex: 1, available: true }
+    const asked = {
+      version: "KNOWLEDGE_CLARIFICATION_V1", id: "44444444-4444-4444-8444-444444444444", originalQuestion: "Quais documentos para a troca?", status: "OPEN" as const,
+      steps: [{ id: "step_1_dddddddd", dimension: "Tipo de cliente", question: "Para qual tipo de cliente é a troca?", selectionMode: "SINGLE" as const, options: [{ id: "opt_00000000aa", label: "Empresa", description: null, group: null, evidence: [source] }, { id: "opt_00000000ab", label: "Residencial", description: null, group: null, evidence: [source] }], answer: null }],
+      questionFacts: [], coverage: { consideredDocuments: 2, matchedDocuments: 2, presentedDocuments: 2, omittedDocuments: 0, complete: true }, sources: [], conflicts: [], notice: null, updatedAt: new Date().toISOString(), scenario: [],
+    }
+    let answer: (value: Awaited<ReturnType<typeof textClient.fetchTextReply>>) => void = () => {}
+    vi.mocked(textClient.fetchTextReply).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve }))
+    setVoiceMuted(false)
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("quais documentos para a troca?"))
+    act(() => transport.events.onStateChange?.("thinking"))
+    act(() => transport.events.onSpecialistResult?.("Para qual tipo de cliente é a troca?", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }, undefined, { clarification: asked }))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    act(() => transport.events.onStateChange?.("idle"))
+    const form = await screen.findByTestId("clarification-form")
+    fireEvent.click(within(form).getByRole("radio", { name: /Empresa/ }))
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Continuar" })) })
+    await waitFor(() => expect(transport.calls).toContain("sendText:Empresa"))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    await waitFor(() => expect(vi.mocked(textClient.fetchTextReply).mock.calls.at(-1)?.[0]).toMatchObject({ text: "Empresa", clarification: { clarificationId: asked.id } }))
+    vi.mocked(transportModule.fetchVoiceReading).mockClear()
+    act(() => setVoiceMuted(true))
+    await act(async () => { answer({ text: "Contrato social.", supportMaterials: [], interactionId: "i4", conversationId: CONV, persisted: true }) })
+    expect(await screen.findByText("Contrato social.")).toBeInTheDocument()
+    expect(transportModule.fetchVoiceReading).not.toHaveBeenCalled()
+    expect(transport.calls.some((call) => call.startsWith("readAloud"))).toBe(false)
   })
 
   it("voz: a sessão continua a conversa ATUAL — só o id dela vai ao backend, que recapitula o que está gravado e monta a instrução", async () => {

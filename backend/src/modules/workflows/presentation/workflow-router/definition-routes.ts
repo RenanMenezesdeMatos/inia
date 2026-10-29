@@ -2,7 +2,7 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { canManageScope, getManageableScopes, scopesAreCompatible } from "../../../auth/application/manageable-scopes.js"
+import { canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible } from "../../../auth/application/manageable-scopes.js"
 import type { FlowGraph } from "../../domain/graph-schema.js"
 import { normalizeManualTrigger, validateManualTrigger, validateScheduleTrigger } from "../../application/validate-workflow-for-publish.js"
 import { triggerConfigSchema, type TriggerConfig } from "../../domain/trigger-config-schema.js"
@@ -89,7 +89,8 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     const input = createWorkflowSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
-    if (!canManageScope(scopes, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })) {
+    const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
+    if (!scope || !canManageScope(scopes, scope)) {
       throw new DomainError("Você não tem permissão para criar workflows nesse escopo.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
     }
 
@@ -106,9 +107,9 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
         organizationId,
         input.name,
         input.description ?? null,
-        input.scopeType,
-        input.teamId ?? null,
-        input.subteamId ?? null,
+        scope.scopeType,
+        scope.teamId,
+        scope.subteamId,
         JSON.stringify(withScheduleAnchor(trigger)),
         JSON.stringify(starterGraph()),
         request.user?.personId ?? null,
@@ -205,12 +206,13 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
-    const nextScopeType = input.scopeType ?? current.scopeType
-    const nextTeamId = input.scopeType !== undefined ? (input.teamId ?? null) : current.teamId
-    const nextSubteamId = input.scopeType !== undefined ? (input.subteamId ?? null) : current.subteamId
-    if (input.scopeType !== undefined && !canManageScope(scopes, { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId })) {
+    const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
+    if (input.scopeType !== undefined && (!movedScope || !canManageScope(scopes, movedScope))) {
       throw new DomainError("Você não tem permissão para mover o workflow para esse escopo.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
     }
+    const nextScopeType = movedScope?.scopeType ?? current.scopeType
+    const nextTeamId = movedScope ? movedScope.teamId : current.teamId
+    const nextSubteamId = movedScope ? movedScope.subteamId : current.subteamId
 
     // Trocar a Abrangência não pode deixar uma referência cross-group inválida silenciosamente
     // pra trás (Parte 9 do pedido) — reavalia todo Orchestrator já referenciado no RASCUNHO contra o

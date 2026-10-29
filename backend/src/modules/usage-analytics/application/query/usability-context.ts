@@ -11,6 +11,7 @@ import { ADMIN_AREAS } from "../../domain/usage-screens.js"
 import { comparisonPeriodOf, describePeriod, PeriodError, resolvePeriod, type ComparisonPeriod, type ResolvedPeriod } from "../../domain/usage-time.js"
 import { loadUsageSettings, type UsageSettings } from "../usage-settings.js"
 import { describeAppliedFilters, parseUsabilityFilters, type UsabilityFilters, type UsabilityTab } from "./usability-filters.js"
+import { MINIMUM_SENSITIVE_AGGREGATE_POPULATION } from "../../../org-structure/domain/management-metrics.js"
 
 /**
  * CONTEXTO de uma consulta da monitoria: quem pergunta (permissões efetivas lidas a cada request), o recorte temporal
@@ -60,6 +61,9 @@ export async function buildUsabilityContext(db: Queryable, input: { access: Acce
   if (!can.view) throw new DomainError("Você não tem permissão para este recurso.", "FORBIDDEN", 403)
   // Filtrar por uma pessoa (ou liderança) revelaria dado individual: só para quem pode ver pessoas identificadas.
   if ((filters.personId || filters.leaderId) && !can.people) throw new DomainError("Filtrar por pessoa exige permissão para ver pessoas identificadas.", "USABILITY_PEOPLE_FORBIDDEN", 403)
+  // Cargo, papel de acesso e situação da pessoa/conta isolam pessoas tanto quanto o nome (um cargo único é uma pessoa): para quem só
+  // vê agregados, ficam reservados a quem pode ver pessoas identificadas (achado C18 da 4ª auditoria).
+  if ((filters.jobTitle || filters.accessRole || filters.personStatus || filters.accountStatus) && !can.people) throw new DomainError("Filtrar por cargo, papel de acesso ou situação exige permissão para ver pessoas identificadas.", "USABILITY_PEOPLE_FORBIDDEN", 403)
   const settings = await loadUsageSettings(db, access.organizationId, now)
   let period: ResolvedPeriod
   try {
@@ -68,7 +72,23 @@ export async function buildUsabilityContext(db: Queryable, input: { access: Acce
     if (error instanceof PeriodError) throw new DomainError(error.message, "USABILITY_PERIOD_INVALID", 400)
     throw error
   }
-  return { tab: input.tab, organizationId: access.organizationId, viewerPersonId: input.personId, viewerAccountId: access.accountId, can, settings, now, period, comparison: filters.compare ? comparisonPeriodOf(period) : null, filters }
+  // Quem só vê agregados lê pela estrutura ATUAL: o recorte contado no mínimo de pessoas (`assertAggregateCohort`) é o mesmo que
+  // os números usam.
+  const effectiveFilters = can.people ? filters : { ...filters, structureMode: "CURRENT" as const }
+  return { tab: input.tab, organizationId: access.organizationId, viewerPersonId: input.personId, viewerAccountId: access.accountId, can, settings, now, period, comparison: effectiveFilters.compare ? comparisonPeriodOf(period) : null, filters: effectiveFilters }
+}
+
+/**
+ * Leitor só de agregados (sem `usability.users.view`): um recorte com menos de `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` pessoas
+ * no alcance dele não devolve número nenhum — um escopo de 1–4 pessoas aponta alguém como um nome (achado C18 da 4ª auditoria).
+ * Vale para toda consulta de números e para a exportação; as opções de filtro (`/context`) continuam.
+ */
+export async function assertAggregateCohort(db: Queryable, ctx: UsabilityContext): Promise<void> {
+  if (ctx.can.people) return
+  const p = new SqlParams()
+  const result = await db.query<{ n: number }>(`select count(*)::int n from (${scopePeopleSql(p, ctx, { currentStructure: true })}) cohort`, p.values)
+  if (Number(result.rows[0]?.n ?? 0) >= MINIMUM_SENSITIVE_AGGREGATE_POPULATION) return
+  throw new DomainError(`O recorte escolhido tem menos de ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas. Para não identificar ninguém, a monitoria só mostra números de grupos com ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas ou mais — amplie o recorte.`, "USABILITY_SMALL_COHORT", 422, { minimum: MINIMUM_SENSITIVE_AGGREGATE_POPULATION })
 }
 
 /** Classificações EXCLUÍDAS (padrão: todas; o leitor inclui explicitamente). */

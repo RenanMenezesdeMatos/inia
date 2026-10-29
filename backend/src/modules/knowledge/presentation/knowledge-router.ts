@@ -9,7 +9,7 @@ import { extractTextFromFile, fileContentAccepted, resolveSourceType } from "../
 import { renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { knowledgeFileContentType, sendKnowledgeFile } from "./knowledge-file-response.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
-import { canManageScope, getManageableScopes, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { syncCheckpointRegistry } from "../../checkpoint-registry/application/checkpoint-registry-service.js"
 
@@ -186,6 +186,17 @@ const SCOPE_FORBIDDEN = () => new DomainError("Você só pode cadastrar bases no
 const toTargets = (scopes: readonly { scopeType: string; teamId?: string | null | undefined; subteamId?: string | null | undefined }[]): ScopedTarget[] =>
   scopes.map((scope) => ({ scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: scope.subteamId ?? null }))
 
+/** Alcances novos com o Grupo-pai REAL de cada Subgrupo (normalizeScopedTarget) — `teamId` de outro Grupo é recusado. */
+async function normalizeOrgScopes(db: Pick<Database, "query">, organizationId: string, orgScopes: z.infer<typeof orgScopeSchema>[]): Promise<z.infer<typeof orgScopeSchema>[]> {
+  const normalized: z.infer<typeof orgScopeSchema>[] = []
+  for (const scope of toTargets(orgScopes)) {
+    const target = await normalizeScopedTarget(db, organizationId, scope)
+    if (!target) throw new DomainError("O Subgrupo informado não existe neste Grupo.", "KNOWLEDGE_SCOPE_INVALID", 422)
+    normalized.push({ scopeType: target.scopeType as z.infer<typeof orgScopeSchema>["scopeType"], ...(target.teamId ? { teamId: target.teamId } : {}), ...(target.subteamId ? { subteamId: target.subteamId } : {}) })
+  }
+  return normalized
+}
+
 export function createKnowledgeRouter(db: Database) {
   const router = Router()
   const scopesOf = (request: { user?: { organizationId: string; sub: string } }) => getManageableScopes(db, request.user!, "knowledge.manage")
@@ -298,6 +309,7 @@ export function createKnowledgeRouter(db: Database) {
     if (!file && !input.content) {
       throw new DomainError("Informe um texto ou envie um arquivo.", "KNOWLEDGE_SOURCE_REQUIRED", 400)
     }
+    input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (!canWriteDocument(await scopesOf(request), toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
 
     const sourceType = file ? resolveSourceType(file.mimetype, file.originalname) : "TEXT"
@@ -363,6 +375,7 @@ export function createKnowledgeRouter(db: Database) {
     if (!canWriteDocument(scopes, toTargets(currentScopes))) {
       return (await canReadDocument(db, scopes, currentScopes)) ? response.status(403).json({ error: { code: "KNOWLEDGE_SCOPE_FORBIDDEN", message: "Esta base vale para Grupos fora do seu escopo: só quem administra todos eles pode alterá-la." } }) : response.status(404).json(NOT_FOUND)
     }
+    if (input.orgScopes) input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (input.orgScopes && !canWriteDocument(scopes, toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
 
     const client = await db.connect()

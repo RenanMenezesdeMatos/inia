@@ -7,10 +7,10 @@ import { acknowledgeRemovedCheckpoint, approveCheckpointVersion, approveProposed
 import { listRegistryDocuments, loadCheckpointDefinition, loadDocumentRegistry, loadScopeOptions } from "../application/checkpoint-registry-queries.js"
 
 /**
- * /api/v1/admin/checkpoints — "Checkpoints da operação" (montado com `knowledge.manage`: checkpoint é representação operacional
- * da Base de Conhecimento). Organização SEMPRE da sessão. Ler exige a permissão em algum escopo; GOVERNAR (extrair, aprovar,
- * rejeitar, vincular, configurar, escopo, governança do documento) exige a permissão na organização inteira. Nenhuma rota edita a
- * regra oficial — ela é da base.
+ * /api/v1/admin/checkpoints — "Checkpoints da operação" (montado com `knowledge.manage` NA ORGANIZAÇÃO INTEIRA: checkpoint é
+ * representação operacional da Base de Conhecimento e carrega o literal dela, que a rota de Bases só mostra a quem alcança o Grupo
+ * da base). Organização SEMPRE da sessão. Ler e GOVERNAR (extrair, aprovar, rejeitar, vincular, configurar, escopo, governança do
+ * documento) exigem a permissão na organização inteira. Nenhuma rota edita a regra oficial — ela é da base.
  */
 const noteSchema = z.object({ note: z.string().trim().max(1000).nullable().optional() }).strict()
 const rejectSchema = z.object({ note: z.string().trim().min(3).max(1000) }).strict()

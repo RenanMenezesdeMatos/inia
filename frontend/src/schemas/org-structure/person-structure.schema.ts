@@ -30,7 +30,7 @@ export const STRUCTURE_STATUS_BUCKET_LABELS: Record<StructureStatusBucket, strin
   INSS: "INSS",
   MATERNIDADE: "Maternidade",
   PATERNIDADE: "Paternidade",
-  SENSITIVE_LEAVE: "Afastamentos",
+  SENSITIVE_LEAVE: "Afastamento (motivo protegido)",
   OTHER: "Outras situações",
   UNCONFIRMED: "Não confirmado",
 }

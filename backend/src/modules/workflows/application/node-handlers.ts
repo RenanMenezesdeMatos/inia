@@ -570,6 +570,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         // (contexto STRUCTURE/CONSOLIDATED_RESULT): o destinatário de gestão vem da ESTRUTURA.
         // Um filho de fan-out (parent_enrollment_id) é o caminho individual — cadeia do operador.
         structure: context.enrollment.parent_enrollment_id ? null : (context.workflow.consolidatedStructure ?? null),
+        agentNodeIds: new Set(context.graph.nodes.filter((candidate) => candidate.type === "action" && candidate.config.actionType === "CALL_AGENT").map((candidate) => candidate.id)),
       })
       const edge = requireEdge(context.graph, node.id, "always")
       if ("fail" in edge) return edge.fail

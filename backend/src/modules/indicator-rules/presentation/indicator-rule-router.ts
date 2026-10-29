@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express"
-import { canManageScope, coversOrganization, getManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, coversOrganization, getManageableScopes, normalizeScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { strategyDraftPendingSql, strategyStatusSql } from "../../indicator-diagnosis/application/diagnostic-strategy-service.js"
 import { z } from "zod"
@@ -175,7 +175,8 @@ export function createIndicatorRuleRouter(db: Database) {
   router.post("/", async (request, response) => {
     const organizationId = request.user!.organizationId
     const input = ruleSchema.parse(request.body)
-    if (!canManageScope(await scopesOf(request), { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })) throw RULE_SCOPE_FORBIDDEN()
+    const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
+    if (!scope || !canManageScope(await scopesOf(request), scope)) throw RULE_SCOPE_FORBIDDEN()
     const result = await db.query<{ id: string }>(
       `insert into indicator_calculation_rules
          (organization_id, indicator_definition_id, scope_type, team_id, subteam_id, calculation_period, calculation_method, attainment_rule)
@@ -192,9 +193,9 @@ export function createIndicatorRuleRouter(db: Database) {
       [
         organizationId,
         input.indicatorDefinitionId,
-        input.scopeType,
-        input.teamId ?? null,
-        input.subteamId ?? null,
+        scope.scopeType,
+        scope.teamId,
+        scope.subteamId,
         input.calculationPeriod,
         input.calculationMethod,
         input.attainmentRule ?? null,

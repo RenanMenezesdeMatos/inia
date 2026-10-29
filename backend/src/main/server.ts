@@ -156,7 +156,7 @@ function startProcessing() {
 const processing = parts.processing ? startProcessing() : null
 const health =
   parts.workerHealth && processing && env.WORKER_HEALTH_PORT > 0
-    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, jobs: processing.jobs.status(), ...metrics.snapshot() }) })
+    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, token: env.INIA_METRICS_TOKEN, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, jobs: processing.jobs.status(), ...metrics.snapshot() }) })
     : null
 if (role === "worker") process.stdout.write("INIA processamento (worker) iniciado — motor de Workflow e tarefas periódicas, sem HTTP público.\n")
 

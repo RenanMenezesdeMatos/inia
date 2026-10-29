@@ -110,7 +110,7 @@ export async function seedFixtureBase(pool: pg.Pool): Promise<FixtureIds> {
   await message(conversations.c1, people.ana, "assistant", "voice", at("2026-10-05T12:25:04Z"))
   await message(conversations.c2, people.ana, "user", "voice", at("2026-10-06T17:01:30Z"))
   await message(conversations.c2, people.ana, "assistant", "voice", at("2026-10-06T17:01:40Z"))
-  await message(conversations.c3, people.bruno, "assistant", "chat", at("2026-10-05T10:00:00Z"), `workflow-output:${tag}`)
+  await message(conversations.c3, people.bruno, "assistant", "chat", at("2026-10-05T10:00:00Z"), `workflow-output:${randomUUID()}`)
   const application = (await one(`insert into feedback_applications (organization_id, recipient_person_id, source_kind, feedback_id, status, conversation_id, context, context_version, presentation, presentation_version, started_at, created_at, updated_at) values ($1,$2,'PUBLISHED_FEEDBACK',$3,'IN_PROGRESS',$4,'{}'::jsonb,'PROVA','{}'::jsonb,'PROVA',$5,$5,$5) returning id`, [org, people.ana, feedbacks.f2, conversations.c2, at("2026-10-06T17:01:00Z")])).id
 
   // Avaliação de F1: UP → DOWN → NONE (histórico; uma vigente).

@@ -3,7 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { applyManageableScopeFilter, canManageScope, getManageableScopes, scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { createOrchestratorSchema, updateOrchestratorSchema, toolNameForAgent } from "../domain/orchestrator-schema.js"
 import { checkSpecialistAgainstRouting, describeRoutingProblem, legacyPolicyFor, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy, type OrchestratorPolicy, type RoutingPolicy } from "../domain/orchestrator-policy.js"
 import { resolveAgentSpecialty } from "../../agents/domain/agent-specialty.js"
@@ -290,11 +290,11 @@ export function createAssistantRouter(db: Database) {
     const input = createOrchestratorSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, request.user!, "agents.manage")
-    if (!canManageScope(scopes, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })) {
+    const newScope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
+    if (!newScope || !canManageScope(scopes, newScope)) {
       throw new DomainError("Você não tem permissão para criar um orquestrador nesse escopo.", "ORCHESTRATOR_SCOPE_FORBIDDEN", 403)
     }
     await validateOrchestratorAgent(db, organizationId, input.orchestratorAgentId)
-    const newScope: ScopedTarget = { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }
     await validateAgentsCompatibleWithScope(db, newScope, [input.orchestratorAgentId, ...input.specialistAgentIds])
     const routing = await routingFromInput(db, organizationId, input)
     // Criação sempre nasce ativa (a coluna `active` tem default true) — logo sempre exige política.
@@ -311,9 +311,9 @@ export function createAssistantRouter(db: Database) {
         [
           organizationId,
           input.name,
-          input.scopeType,
-          input.teamId ?? null,
-          input.subteamId ?? null,
+          newScope.scopeType,
+          newScope.teamId,
+          newScope.subteamId,
           input.orchestratorAgentId,
           input.invocationMode,
           structured.outputInstructions ?? null,
@@ -350,14 +350,12 @@ export function createAssistantRouter(db: Database) {
     const scopes = await getManageableScopes(db, request.user!, "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
-    const nextScopeType = input.scopeType ?? current.scopeType
-    const nextTeamId = input.scopeType !== undefined ? (input.teamId ?? null) : current.teamId
-    const nextSubteamId = input.scopeType !== undefined ? (input.subteamId ?? null) : current.subteamId
-    if (input.scopeType !== undefined && !canManageScope(scopes, { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId })) {
+    const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
+    if (input.scopeType !== undefined && (!movedScope || !canManageScope(scopes, movedScope))) {
       throw new DomainError("Você não tem permissão para mover o orquestrador para esse escopo.", "ORCHESTRATOR_SCOPE_FORBIDDEN", 403)
     }
     if (input.orchestratorAgentId) await validateOrchestratorAgent(db, organizationId, input.orchestratorAgentId)
-    const nextScope: ScopedTarget = { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId }
+    const nextScope: ScopedTarget = movedScope ?? { scopeType: current.scopeType, teamId: current.teamId, subteamId: current.subteamId }
     const agentIdsToValidate = [...(input.orchestratorAgentId ? [input.orchestratorAgentId] : []), ...(input.specialistAgentIds ?? [])]
     await validateAgentsCompatibleWithScope(db, nextScope, agentIdsToValidate)
     // Se só o escopo mudou (sem mexer nos especialistas), os já vinculados também precisam
@@ -422,9 +420,9 @@ export function createAssistantRouter(db: Database) {
          returning id`,
         [
           input.name ?? null,
-          nextScopeType,
-          nextTeamId,
-          nextSubteamId,
+          nextScope.scopeType,
+          nextScope.teamId,
+          nextScope.subteamId,
           input.orchestratorAgentId ?? null,
           input.active ?? null,
           input.invocationMode ?? null,

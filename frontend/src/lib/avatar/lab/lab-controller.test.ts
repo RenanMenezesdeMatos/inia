@@ -57,7 +57,7 @@ describe("AvatarLabController", () => {
     await advance(1500)
     expect(controller.getSnapshot().state).toBe("speaking")
     expect(controller.getSnapshot().assistantText.length).toBeGreaterThan(0)
-    expect(logText().some((text) => text.includes("reproduzindo frase-05-labiais (clientContent)"))).toBe(true)
+    expect(logText().some((text) => text.includes("reproduzindo frase-05-labiais (texto)"))).toBe(true)
     // O driver do avatar (proxy) lê a fala no instante ouvido.
     let opened = 0
     for (let i = 0; i < 40; i++) {
@@ -88,7 +88,7 @@ describe("AvatarLabController", () => {
     expect(snapshot.sequenceRunning).toBe(false)
     expect(snapshot.state).toBe("idle")
     const sent = controller.rig.socket?.sent.map((message) => Object.keys((message.realtimeInput as object | undefined) ?? message)[0])
-    expect(sent).toEqual(["setup", "clientContent", "activityStart", "activityEnd"])
+    expect(sent).toEqual(["setup", "activityStart", "text", "activityEnd", "activityStart", "activityEnd"])
     controller.dispose()
   })
 

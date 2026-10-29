@@ -28,11 +28,11 @@ export class PgCaseRepository implements CaseRepository {
   async list(visibility: CaseVisibility, limit: number): Promise<CaseListItem[]> {
     const result = await this.db.query<CaseRow>(
       `${baseQuery}
-       where c.organization_id = $1
+       where c.organization_id = $1 and c.operator_id <> $7::uuid
          and ($2::boolean or c.operator_id = any($3::uuid[]) or c.team_id = any($4::uuid[]) or p.subteam_id = any($5::uuid[]))
        order by c.priority, c.updated_at desc
        limit $6`,
-      [visibility.organizationId, visibility.organizationWide, visibility.operatorIds, visibility.teamIds, visibility.subteamIds, limit],
+      [visibility.organizationId, visibility.organizationWide, visibility.operatorIds, visibility.teamIds, visibility.subteamIds, limit, visibility.viewerPersonId],
     )
     return result.rows.map(mapCase)
   }

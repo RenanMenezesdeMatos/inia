@@ -14,7 +14,7 @@ import { personDetailQuery, personTimelineQuery } from "../application/query/per
 import { qualityQuery } from "../application/query/quality-query.js"
 import { retentionQuery } from "../application/query/retention-query.js"
 import { screensQuery } from "../application/query/screens-query.js"
-import { buildUsabilityContext, type UsabilityContext } from "../application/query/usability-context.js"
+import { assertAggregateCohort, buildUsabilityContext, type UsabilityContext } from "../application/query/usability-context.js"
 import type { UsabilityTab } from "../application/query/usability-filters.js"
 import { buildUsabilityExport, EXPORT_TABLES, type ExportTab } from "../application/query/usability-export.js"
 import { workflowsQuery } from "../application/query/workflows-query.js"
@@ -36,15 +36,21 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
   const now = () => options.now?.() ?? new Date()
   const contextOf = (request: Request, tab: UsabilityTab, query: Record<string, unknown> = request.query as Record<string, unknown>) =>
     buildUsabilityContext(db, { access: request.access!, personId: request.user!.personId, tab, query, now: now() })
+  // Números (e a exportação deles): para quem só vê agregados, só com o recorte de 5 pessoas ou mais (achado C18 da 4ª auditoria).
+  const metricsOf = async (request: Request, tab: UsabilityTab, query?: Record<string, unknown>) => {
+    const ctx = await contextOf(request, tab, query)
+    await assertAggregateCohort(db, ctx)
+    return ctx
+  }
   const manageActor = (request: Request, ctx: UsabilityContext) => {
     if (!ctx.can.manage) throw new DomainError("Configurar a monitoria exige permissão de gestão na organização inteira.", "FORBIDDEN", 403)
     return { organizationId: ctx.organizationId, personId: request.user!.personId, accountId: request.user!.sub }
   }
 
   router.get("/context", async (request, response) => response.json({ data: await contextQuery(db, await contextOf(request, "overview")) }))
-  router.get("/overview", async (request, response) => response.json({ data: await overviewQuery(db, await contextOf(request, "overview")) }))
+  router.get("/overview", async (request, response) => response.json({ data: await overviewQuery(db, await metricsOf(request, "overview")) }))
   router.get("/users", async (request, response) => {
-    const ctx = await contextOf(request, "people")
+    const ctx = await metricsOf(request, "people")
     const [people, retention] = await Promise.all([peopleQuery(db, ctx), retentionQuery(db, ctx)])
     response.json({ data: { ...people, retention } })
   })
@@ -59,17 +65,17 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
   router.get("/users/:personId/timeline", async (request, response) => {
     response.json({ data: await personTimelineQuery(db, await contextOf(request, "person"), idParam.parse(request.params.personId)) })
   })
-  router.get("/screens", async (request, response) => response.json({ data: await screensQuery(db, await contextOf(request, "screens")) }))
-  router.get("/feedbacks", async (request, response) => response.json({ data: await feedbacksQuery(db, await contextOf(request, "feedbacks")) }))
-  router.get("/conversations", async (request, response) => response.json({ data: await conversationsQuery(db, await contextOf(request, "conversations")) }))
-  router.get("/workflows", async (request, response) => response.json({ data: await workflowsQuery(db, await contextOf(request, "workflows")) }))
-  router.get("/journeys", async (request, response) => response.json({ data: await journeysQuery(db, await contextOf(request, "journeys")) }))
+  router.get("/screens", async (request, response) => response.json({ data: await screensQuery(db, await metricsOf(request, "screens")) }))
+  router.get("/feedbacks", async (request, response) => response.json({ data: await feedbacksQuery(db, await metricsOf(request, "feedbacks")) }))
+  router.get("/conversations", async (request, response) => response.json({ data: await conversationsQuery(db, await metricsOf(request, "conversations")) }))
+  router.get("/workflows", async (request, response) => response.json({ data: await workflowsQuery(db, await metricsOf(request, "workflows")) }))
+  router.get("/journeys", async (request, response) => response.json({ data: await journeysQuery(db, await metricsOf(request, "journeys")) }))
   router.get("/data-quality", async (request, response) => response.json({ data: await qualityQuery(db, await contextOf(request, "quality")) }))
 
   router.get("/export.csv", async (request, response) => {
     const { tab, table, ...query } = request.query as Record<string, unknown>
     const exportTab = z.enum(Object.keys(EXPORT_TABLES) as [ExportTab, ...ExportTab[]]).parse(tab)
-    const ctx = await contextOf(request, exportTab === "quality" ? "quality" : exportTab, query)
+    const ctx = exportTab === "quality" ? await contextOf(request, "quality", query) : await metricsOf(request, exportTab, query)
     if (!ctx.can.export) throw new DomainError("Você não tem permissão para exportar.", "USABILITY_EXPORT_FORBIDDEN", 403)
     try {
       const result = await buildUsabilityExport(db, ctx, exportTab, z.string().max(40).parse(table))

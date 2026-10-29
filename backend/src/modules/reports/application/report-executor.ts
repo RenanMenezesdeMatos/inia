@@ -30,9 +30,17 @@ export type RunResult = { status: RunStatus; outcome: Record<string, unknown> }
 const MAX_RECIPIENTS = 2_000
 const MAX_DENIED_LISTED = 50
 
-export function scopeKeyOf(structure: ResolvedStructure): string {
+/**
+ * Destinatários com a MESMA chave recebem a mesma entrega (calculada uma vez, no contexto do primeiro). A chave cobre a estrutura,
+ * os operadores e — quando o escopo da pessoa alcança mais gente abaixo da âncora (líderes) — essas pessoas também: quem enxerga
+ * menos nunca recebe a entrega calculada para quem enxerga mais (achado C15 da 4ª auditoria). Sem ninguém além dos operadores, a
+ * chave é a de sempre (o histórico de entregas continua o mesmo).
+ */
+export function scopeKeyOf(structure: ResolvedStructure, visibleBelow: readonly string[] = []): string {
   const members = structure.resolved.members.map((member) => member.id).sort()
-  return createHash("sha256").update(JSON.stringify({ subject: structure.subject, members })).digest("hex").slice(0, 32)
+  const memberIds = new Set(members)
+  const beyondMembers = [...new Set(visibleBelow)].filter((id) => !memberIds.has(id)).sort()
+  return createHash("sha256").update(JSON.stringify({ subject: structure.subject, members, ...(beyondMembers.length > 0 ? { visibleBelow: beyondMembers } : {}) })).digest("hex").slice(0, 32)
 }
 
 function shiftMonths(period: string, months: number): string {
@@ -140,7 +148,7 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
       denied.push({ personId: recipient.personId, name: recipient.name, reason: definition.structure.mode === "RECIPIENT" ? "NO_STRUCTURE" : "ACCESS_DENIED" })
       continue
     }
-    const key = scopeKeyOf(structure)
+    const key = scopeKeyOf(structure, context.visibleBelow(structure))
     const group = groups.get(key) ?? { key, structure, context, recipients: [] }
     group.recipients.push({ personId: recipient.personId, accountId: recipient.accountId })
     groups.set(key, group)

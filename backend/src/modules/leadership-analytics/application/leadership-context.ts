@@ -42,8 +42,10 @@ export type LeadershipChatContext = {
 /** Voz de quem lidera: o modelo de voz só encaminha; quem consulta os dados e escreve a resposta é a orquestração do chat. */
 export const LEADERSHIP_VOICE_RULES = [
   "Como conduzir a voz com quem lidera pessoas (essa pessoa NÃO realiza atendimentos):",
-  `- Para QUALQUER pergunta sobre a equipe/estrutura, indicadores, metas, pessoas, comparações, evolução, pendências, prioridades, como melhorar um indicador ou processos para orientar a equipe, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
-  "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, nomes ou metas que não vieram da ferramenta.",
+  `- Para QUALQUER pergunta sobre a equipe/estrutura, indicadores, metas, pessoas, comparações, evolução, pendências, prioridades, como melhorar um indicador, processos para orientar a equipe, regras e políticas da empresa, benefícios, valores ou prazos, acione ${LEADERSHIP_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador, equipe e mês já falados).`,
+  `- Continuação também é uma pergunta nova e vai à ferramenta ("e nesse caso…", "e se…", "então não precisa…, né?", "vale para…?"): acione ${LEADERSHIP_ASK_TOOL} de novo com a pergunta e o contexto. Nunca deduza, complete nem confirme um número, uma regra, um valor ou um prazo a partir do que já foi dito — o que ainda não foi respondido, só a ferramenta responde. Sem acionar, só repita quando a pessoa pedir para repetir, e exatamente o que a ferramenta trouxe.`,
+  "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, nomes, metas, valores, prazos, regras ou procedimentos que não vieram da ferramenta.",
+  "- Nunca diga que não tem acesso, que não sabe, que as bases não cobrem o assunto ou que vai consultar sem ter acionado a ferramenta neste turno: acione e responda com o que ela trouxer.",
   "- Quando a resposta chegar, ela já está completa na tela: fale um resumo curto e fiel e diga que o detalhe está na tela.",
   `- Se a resposta anterior ofereceu criar um report recorrente e a pessoa aceitar ou recusar ("sim", "pode criar", "não precisa"), acione ${LEADERSHIP_ASK_TOOL} com a resposta dela, sem falar antes — quem abre a configuração é o sistema.`,
 ].join("\n")

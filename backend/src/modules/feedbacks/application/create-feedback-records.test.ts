@@ -42,6 +42,7 @@ function recordingDb(): { db: Database; rows: Row[]; statements: string[] } {
       const row = rowOf(sql, params)
       if (row) rows.push(row)
       else statements.push(sql.trim().split(/\s+/).slice(0, 3).join(" "))
+      if (sql.includes("as owned")) return { rows: [{ owned: 1 }] }
       if (sql.includes("insert into supervision_cases")) return { rows: [{ id: "case-1" }] }
       if (sql.includes("insert into feedbacks")) return { rows: [{ id: "feedback-1" }] }
       return { rows: [] }

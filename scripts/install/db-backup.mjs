@@ -6,14 +6,14 @@
 //   npm run db:backup -- --dir D:\backup\inia --keep-days 14
 // Opções: --dir (padrão: backups/ na pasta da INIA) · --keep-days (padrão 14; 0 = não apaga nada) · --pg-bin (pasta do pg_dump)
 //
-// A cópia tem TODOS os dados da INIA, inclusive dados pessoais: guarde a pasta com acesso restrito e uma cópia fora deste
-// servidor. Código de saída 0 = cópia feita e conferida; 1 = falhou (o Agendador de Tarefas mostra "último resultado" ≠ 0).
+// A cópia tem TODOS os dados da INIA, inclusive dados pessoais: a pasta é restringida antes de qualquer escrita (só o dono no
+// Linux/macOS; só Administradores, SYSTEM e quem roda a cópia no Windows) — guarde também uma cópia fora deste servidor. Código de saída 0 = cópia feita e conferida; 1 = falhou (o Agendador de Tarefas mostra "último resultado" ≠ 0).
 import { spawnSync } from "node:child_process"
-import { appendFileSync, chmodSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs"
+import { appendFileSync, chmodSync, renameSync, rmSync, statSync } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
-import { backupStamp, databaseUrlFrom, describeTarget, findPgTool, libpqEnvironment, listBackups, serverMajor } from "./backup-tools.mjs"
+import { backupStamp, createPrivateFile, databaseUrlFrom, describeTarget, findPgTool, libpqEnvironment, listBackups, restrictBackupDir, serverMajor } from "./backup-tools.mjs"
 import { loadPg } from "./internal-database.mjs"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -26,7 +26,7 @@ function log(event) {
   const line = JSON.stringify({ at: new Date().toISOString(), ...event })
   console.log(line)
   try {
-    appendFileSync(join(dir, "backup.log"), `${line}\n`)
+    appendFileSync(join(dir, "backup.log"), `${line}\n`, { mode: 0o600 })
   } catch {
     // pasta ainda não existe ou sem escrita: a saída do processo continua tendo o registro
   }
@@ -39,7 +39,11 @@ function fail(reason, extra = {}) {
 }
 
 if (!Number.isInteger(keepDays) || keepDays < 0) fail("--keep-days precisa ser um número inteiro de dias (0 = não apagar nada).")
-mkdirSync(dir, { recursive: true })
+try {
+  restrictBackupDir(dir)
+} catch (error) {
+  fail(`não foi possível restringir o acesso à pasta ${dir} (a cópia teria todos os dados da INIA): ${error.message}`)
+}
 
 const url = databaseUrlFrom(root)
 const target = describeTarget(url)
@@ -57,6 +61,8 @@ const finalFile = join(dir, `inia-${backupStamp()}.dump`)
 const partialFile = `${finalFile}.partial`
 const env = { ...process.env, ...libpqEnvironment(url) }
 
+// O arquivo nasce fechado para o dono e o pg_dump só escreve nele (no Windows ele herda a pasta já restrita).
+createPrivateFile(partialFile)
 const dump = spawnSync(pgDump.path, ["--format=custom", "--no-password", "--file", partialFile], { env, encoding: "utf8" })
 if (dump.status !== 0) {
   rmSync(partialFile, { force: true })
@@ -74,7 +80,7 @@ renameSync(partialFile, finalFile)
 try {
   chmodSync(finalFile, 0o600)
 } catch {
-  // Windows: vale a permissão da pasta (o agendar-backup.ps1 restringe)
+  // Windows: vale a permissão da pasta, restringida no início (restrictBackupDir)
 }
 
 // Retenção: só cópias deste formato, mais velhas que o prazo — e nunca a que acabou de ser feita.

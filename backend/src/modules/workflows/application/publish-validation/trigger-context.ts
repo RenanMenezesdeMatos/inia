@@ -3,6 +3,7 @@ import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { nodeBranches, resolveNodeContexts, type FlowGraph } from "../../domain/graph-schema.js"
 import type { TriggerConfig } from "../../domain/trigger-config-schema.js"
 import type { PublishGraphContext, PublishTriggerContext } from "./context.js"
+import { findPaidCycleWithoutWait } from "../../domain/paid-node-cycles.js"
 
 // Família GATILHO E CONTEXTO: forma do grafo, gatilhos Agenda/Manual e o que a origem de dados de cada gatilho permite
 // (fonte de dados do "Chamar agente", transcrição, interação do gatilho). Espelho no editor: workflow-validation/trigger-context.ts.
@@ -110,6 +111,17 @@ export function validateGraphShape(context: PublishGraphContext): void {
   if (!graph.nodes.some((node) => node.type === "end")) {
     throw new DomainError("O workflow precisa ter ao menos um nó Fim.", "WORKFLOW_INVALID_GRAPH", 422)
   }
+}
+
+/**
+ * Caminho que volta a um nó que chama IA sem passar por uma Espera roda sem pausa, e cada volta é uma nova chamada paga — a
+ * Revisão humana reaproveita a decisão gravada e não segura a volta (achado C06 da 4ª auditoria). Com a Espera, o motor ainda
+ * limita quantas vezes o mesmo nó pago roda numa execução (`WORKFLOW_MAX_PAID_NODE_RUNS`).
+ */
+export function validatePaidCycles(graph: FlowGraph): void {
+  const paid = findPaidCycleWithoutWait(graph)
+  if (!paid) return
+  throw new DomainError(`O nó "${paid.label}" chama a IA e faz parte de um caminho que volta para ele sem passar por uma Espera: cada volta faria uma nova chamada paga, sem pausa. Inclua uma Espera no caminho de volta ou desfaça o ciclo antes de publicar.`, "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT", 422, { nodeId: paid.id })
 }
 
 /**

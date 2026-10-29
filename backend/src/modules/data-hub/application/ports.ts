@@ -1,6 +1,7 @@
 import type { DatabaseEngine, ResolvedDatabaseConnection } from "../domain/database/database-engine.js"
 import type { SqlStatement } from "../domain/database/sql-dialect.js"
 import type { SecretPurpose } from "../domain/source-config.js"
+import type { Database } from "../../../infrastructure/database/pool.js"
 
 /**
  * Ports da Central de Dados — o domínio/aplicação só conhece estas interfaces. Implementações em
@@ -9,10 +10,13 @@ import type { SecretPurpose } from "../domain/source-config.js"
  */
 
 /** Segredos cifrados em repouso; o valor em claro nunca sai por API, log ou trace. */
+/** `db` = a transação de quem chama: a troca do destino e a da credencial entram no MESMO commit (achado N01 da 4ª auditoria). */
+export type SecretWriteOptions = { db?: Pick<Database, "query"> }
+
 export interface SecretStore {
-  put(input: { organizationId: string; sourceId: string; purpose: SecretPurpose; value: string; actorId: string | null }): Promise<void>
+  put(input: { organizationId: string; sourceId: string; purpose: SecretPurpose; value: string; actorId: string | null }, options?: SecretWriteOptions): Promise<void>
   get(input: { sourceId: string; purpose: SecretPurpose }): Promise<string | null>
-  revoke(input: { sourceId: string; purpose: SecretPurpose }): Promise<void>
+  revoke(input: { sourceId: string; purpose: SecretPurpose }, options?: SecretWriteOptions): Promise<void>
   /** Só metadados (para a UI mostrar "configurado em…", nunca o valor). */
   describe(sourceId: string): Promise<{ purpose: SecretPurpose; createdAt: string; rotatedAt: string | null }[]>
 }

@@ -493,7 +493,9 @@ const csvCell = (value: unknown) => {
   const text = typeof value === "string" && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
   return /[";\n\r]/.test(text) || text !== raw ? `"${text.replaceAll('"', '""')}"` : text
 }
+/** Cada linha do cabeçalho (período, filtros vindos da URL, método) é UMA célula escapada como as demais: um `;` num filtro nunca
+ * abre célula nova que a planilha leria como fórmula (achado C12 da 4ª auditoria). */
 export function toCsv(header: string[], rows: unknown[][], preamble: string[]): string {
-  return `\uFEFF${[...preamble.map((line) => `# ${line}`), header.map(csvCell).join(";"), ...rows.map((row) => row.map(csvCell).join(";"))].join("\r\n")}\r\n`
+  return `\uFEFF${[...preamble.map((line) => csvCell(`# ${line}`)), header.map(csvCell).join(";"), ...rows.map((row) => row.map(csvCell).join(";"))].join("\r\n")}\r\n`
 }
 export const METHOD_NOTE = "Método: contagem da projeção vigente (uma linha por chamada × critério; numa regra composta, uma linha por parte). Contagens POR REGRA. Denominador = avaliadas (cumpridas + não cumpridas + parciais, só confirmadas); taxa de desvio por regra = (não cumpridas + parciais) / avaliadas. Inconclusivas (não observável/não avaliada — inclusive o que acontece em sistemas, fora da conversa) e não aplicáveis ficam fora do denominador. OCORRÊNCIAS de conduta: quando a revisão ligou duas regras à mesma conduta no mesmo momento da mesma chamada, elas contam uma vez; taxa por ocorrência = condutas distintas em desvio / condutas distintas avaliadas, só entre as regras com ligação determinável — análises antigas, sem essa ligação, ficam fora dela e aparecem como \"sem ligação determinável\". Estrutura = a vigente no momento da análise de cada chamada."

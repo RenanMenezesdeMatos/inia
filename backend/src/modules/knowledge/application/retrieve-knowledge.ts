@@ -171,7 +171,7 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
        and (a.scope_type = 'ALL_TEAMS' or exists (
          select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
           where os.knowledge_document_id = kd.id
-            and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = coalesce(a.team_id, (select ast.team_id from subteams ast where ast.id = a.subteam_id)))))
+            and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = case when a.scope_type = 'SUBTEAM' then (select ast.team_id from subteams ast where ast.id = a.subteam_id) else a.team_id end)))
      order by kd.title`,
     [agentId],
   )

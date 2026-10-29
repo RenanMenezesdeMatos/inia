@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { runWithAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
+import { env } from "../../../config/env.js"
 import { findNode, flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
+import { callsModelOnEachVisit } from "../domain/paid-node-cycles.js"
 import type { ConsolidatedStructure } from "../domain/consolidated-structure-schema.js"
 import { buildEmployeeFanInOutput, countFanOutChildren, loadFanOutChildren } from "./consolidate-results-executor.js"
 import { productionEffects } from "./effect-sink.js"
@@ -88,6 +90,9 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
                 row_number() over (partition by we.workflow_id order by we.next_eval_at, we.id) as position,
                 coalesce(r.count, 0) as running
          from workflow_enrollments we
+         -- Workflow desativado não roda: as execuções em andamento ficam paradas onde estão até ele ser reativado (achado C06 da
+         -- 4ª auditoria — antes, desativar só parava os disparos novos e um ciclo continuava gastando IA).
+         join workflows active_workflow on active_workflow.id = we.workflow_id and active_workflow.active
          left join running r on r.workflow_id = we.workflow_id
          where we.next_eval_at <= now() and we.status in ('active', 'waiting')
            and (we.claimed_until is null or we.claimed_until < now())
@@ -104,7 +109,7 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
               w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter
        from workflow_enrollments we
        join workflows w on w.id = we.workflow_id
-       where we.id in (select id from picked)
+       where we.id in (select id from picked) and w.active
          and we.next_eval_at <= now() and we.status in ('active', 'waiting')
          and (we.claimed_until is null or we.claimed_until < now())
        order by we.next_eval_at
@@ -257,6 +262,17 @@ async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): P
     if (!node) {
       await markFailed(db, row, { category: "APPLICATION_INVARIANT_VIOLATION", code: "WORKFLOW_NODE_INVARIANT", message: `Nó "${row.current_node_id}" não existe mais na versão pinada deste workflow.` }, null)
       return
+    }
+    // Teto de execuções do MESMO nó que chama a IA nesta execução (achado C06 da 4ª auditoria): um ciclo nunca gasta IA sem limite.
+    // Conta só as vezes em que o nó RODOU E SEGUIU (`action_executed`/`orchestrator_executed`) — as várias chamadas de IA dentro de
+    // uma execução do nó, as tentativas que falharam e as esperas não entram. Contado nos eventos gravados, não na memória do
+    // processo: vale com vários workers e depois de reiniciar. Fluxo sem ciclo roda cada nó uma vez por execução.
+    if (callsModelOnEachVisit(node)) {
+      const runs = (await db.query<{ n: number }>(`select count(*)::int n from workflow_enrollment_events where enrollment_id = $1 and node_id = $2 and event_type in ('action_executed', 'orchestrator_executed')`, [row.id, node.id])).rows[0]?.n ?? 0
+      if (runs >= env.WORKFLOW_MAX_PAID_NODE_RUNS) {
+        await markFailed(db, row, { category: "APPLICATION_INVARIANT_VIOLATION", code: "WORKFLOW_PAID_NODE_RUN_LIMIT", message: `O nó "${node.label}" chama a IA e já rodou ${runs} vezes nesta execução (limite: ${env.WORKFLOW_MAX_PAID_NODE_RUNS}). A execução foi encerrada para não repetir o gasto de IA.` }, null)
+        return
+      }
     }
 
     let inputContext = ""

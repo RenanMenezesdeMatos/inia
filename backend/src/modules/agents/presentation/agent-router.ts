@@ -4,7 +4,7 @@ import { INVESTIGATION_CAPABILITY_LABELS, investigationCapabilitySchema, normali
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
-import { applyManageableScopeFilter, canManageScope, getManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { agentBusinessDomainJoin, agentBusinessDomainJson, assertBusinessDomainsSelectable, resolveBusinessDomainRefs } from "../../business-domains/application/business-domain-lookup.js"
 import { businessDomainCodeSchema } from "../../business-domains/domain/business-domain.js"
 import { agentTextSchema } from "../domain/agent-field-limits.js"
@@ -287,7 +287,7 @@ async function assertKnowledgeDocumentsCompatible(client: { query: Database["que
   if (uniqueIds.length === 0) return
   const compatible = await client.query<{ id: string }>(
     `with agent as (
-       select a.scope_type, coalesce(a.team_id, (select st.team_id from subteams st where st.id = a.subteam_id)) team_id from agents a where a.id = $3 and a.organization_id = $2
+       select a.scope_type, case when a.scope_type = 'SUBTEAM' then (select st.team_id from subteams st where st.id = a.subteam_id) else a.team_id end team_id from agents a where a.id = $3 and a.organization_id = $2
      )
      select d.id from knowledge_documents d, agent
       where d.id = any($1::uuid[]) and d.organization_id = $2 and d.deleted_at is null
@@ -425,7 +425,8 @@ export function createAgentRouter(db: Database) {
     const input = agentSchema.parse(request.body)
 
     const scopes = await getManageableScopes(db, request.user!, "agents.manage")
-    if (!canManageScope(scopes, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })) {
+    const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
+    if (!scope || !canManageScope(scopes, scope)) {
       throw new DomainError("Você não tem permissão para criar agentes nesse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
     }
 
@@ -445,9 +446,9 @@ export function createAgentRouter(db: Database) {
           input.objective,
           input.description,
           input.contextPrompt,
-          input.scopeType,
-          input.teamId ?? null,
-          input.subteamId ?? null,
+          scope.scopeType,
+          scope.teamId,
+          scope.subteamId,
           request.user?.sub ?? null,
           legacySpecialtyFor(specialty),
           specialty.kind,
@@ -507,10 +508,8 @@ export function createAgentRouter(db: Database) {
         await client.query("rollback")
         return response.status(404).json(NOT_FOUND)
       }
-      const nextScopeType = input.scopeType ?? before.rows[0].scopeType
-      const nextTeamId = input.scopeType !== undefined ? (input.teamId ?? null) : before.rows[0].teamId
-      const nextSubteamId = input.scopeType !== undefined ? (input.subteamId ?? null) : before.rows[0].subteamId
-      if (input.scopeType !== undefined && !canManageScope(scopes, { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId })) {
+      const nextScope = input.scopeType !== undefined ? await normalizeScopedTarget(client, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
+      if (input.scopeType !== undefined && (!nextScope || !canManageScope(scopes, nextScope))) {
         await client.query("rollback")
         throw new DomainError("Você não tem permissão para mover o agente para esse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
       }
@@ -562,9 +561,9 @@ export function createAgentRouter(db: Database) {
           input.description ?? null,
           input.contextPrompt ?? null,
           input.active ?? null,
-          input.scopeType ?? null,
-          input.teamId ?? null,
-          input.subteamId ?? null,
+          nextScope?.scopeType ?? null,
+          nextScope?.teamId ?? null,
+          nextScope?.subteamId ?? null,
           request.params.id,
           organizationId,
           nextSpecialty !== undefined,

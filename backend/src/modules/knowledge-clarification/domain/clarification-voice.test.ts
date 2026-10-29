@@ -34,6 +34,14 @@ describe("esclarecimento na voz", () => {
     expect(text).toContain("não responda o procedimento ainda")
   })
 
+  it("sessão de voz sem ferramenta para encaminhar (aplicação de feedback): a escolha é só pela tela — nunca \"responda falando\"", () => {
+    const text = renderClarificationVoiceInstruction(state("OPEN", [step(["Cenário A", "Cenário B"])]), { tool: null })
+    expect(text).toContain("só os rótulos: Cenário A ou Cenário B")
+    expect(text).toContain("Diga que a pessoa pode escolher a opção na tela.")
+    expect(text).not.toContain("responder falando")
+    expect(text).not.toContain("acione")
+  })
+
   it("muitas opções: diz quantas há na tela e lê só as primeiras", () => {
     const labels = Array.from({ length: 9 }, (_, index) => `Cenário ${index + 1}`)
     const text = renderClarificationVoiceInstruction(state("OPEN", [step(labels)]), { tool: "leadership_ask" })

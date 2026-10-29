@@ -223,12 +223,13 @@ function FiltersPanel({ context, values, supported, canViewPeople, activeCount, 
             {select("subteamId", "Subgrupo", subteams.map((subteam) => ({ value: subteam.id, label: subteam.name })))}
             {canViewPeople && options.leaders ? select("leaderId", "Liderança (estrutura abaixo)", options.leaders.map((leader) => ({ value: leader.id, label: leader.name }))) : null}
             {canViewPeople ? <PersonFilter value={values.personId} disabledReason={reason("personId")} onChange={(value) => onChange("personId", value)} /> : null}
-            {select("accessRole", "Papel de acesso", options.accessRoles.map((role) => ({ value: role.code, label: role.name })))}
-            {select("jobTitle", "Cargo", options.jobTitles.map((title) => ({ value: title, label: title })))}
-            {select("personStatus", "Situação da pessoa", Object.entries(PERSON_STATUS_LABELS).map(([value, label]) => ({ value, label })), "Todas")}
-            {select("accountStatus", "Conta de acesso", Object.entries(ACCOUNT_STATUS_LABELS).map(([value, label]) => ({ value, label })), "Todas")}
+            {/* Cargo, papel e situação isolam pessoas como o nome: só para quem vê pessoas identificadas (achado C18 da 4ª auditoria). */}
+            {canViewPeople ? select("accessRole", "Papel de acesso", options.accessRoles.map((role) => ({ value: role.code, label: role.name }))) : null}
+            {canViewPeople ? select("jobTitle", "Cargo", options.jobTitles.map((title) => ({ value: title, label: title }))) : null}
+            {canViewPeople ? select("personStatus", "Situação da pessoa", Object.entries(PERSON_STATUS_LABELS).map(([value, label]) => ({ value, label })), "Todas") : null}
+            {canViewPeople ? select("accountStatus", "Conta de acesso", Object.entries(ACCOUNT_STATUS_LABELS).map(([value, label]) => ({ value, label })), "Todas") : null}
           </FilterGroup>
-          {!canViewPeople ? <p className="text-xs text-muted-foreground">Filtrar por pessoa ou liderança exige a permissão de ver pessoas identificadas.</p> : null}
+          {!canViewPeople ? <p className="text-xs text-muted-foreground">Filtrar por pessoa, liderança, cargo, papel de acesso ou situação exige a permissão de ver pessoas identificadas. Os números só aparecem para recortes com 5 pessoas ou mais.</p> : null}
 
           <FilterGroup title="Uso do produto">
             <FilterSelectGrouped

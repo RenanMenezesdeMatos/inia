@@ -29,6 +29,8 @@ export type CaseOwnership = { operatorId: string; teamId: string | null; subteam
  */
 export type CaseVisibility = {
   organizationId: string
+  /** Pessoa da sessão: o caso dela mesma nunca é visível, por nenhum dos ramos (ver case-visibility.ts). */
+  viewerPersonId: string
   operatorIds: readonly string[]
   organizationWide: boolean
   teamIds: readonly string[]

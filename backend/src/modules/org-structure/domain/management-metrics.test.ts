@@ -173,6 +173,29 @@ describe("Métricas gerenciais — privacidade dos agregados e referência do Gr
     expect(sensitiveBreakdownAllowed(30, ["FERIAS"])).toBe(true)
   })
 
+  it("afastamento de LÍDER nunca aparece pelo tipo: fica no motivo protegido e não decide se os operadores se separam — 4ª auditoria, C14", () => {
+    const operators = (statuses: StructureMemberRow["status"][]) => Array.from({ length: 30 }, (_, index) => member(`op-${index}`, "OPERATOR", index < 15 ? "sara" : "saulo", statuses[index] ?? "EM_PRODUCAO"))
+    const carla = (saraStatus: StructureMemberRow["status"], operatorStatuses: StructureMemberRow["status"][]) =>
+      computeManagementMetrics(input({ root: { id: "carla", role: "COORDINATOR" }, members: [member("sara", "SUPERVISOR", "carla", saraStatus), member("saulo", "SUPERVISOR", "carla"), ...operators(operatorStatuses)] }))
+    const typesOf = (metrics: ReturnType<typeof carla>) => metrics.statusDistribution.filter((share) => ["INSS", "MATERNIDADE", "PATERNIDADE"].includes(share.bucket))
+    // Tipos dos operadores liberados; a supervisora em licença-maternidade entra só no motivo protegido.
+    const onLeave = carla("MATERNIDADE", ["INSS", "INSS", "MATERNIDADE", "MATERNIDADE"])
+    expect(onLeave.privacy.sensitiveBreakdownSuppressed).toBe(false)
+    expect(onLeave.statusDistribution.map((share) => share.bucket)).toEqual(["EM_PRODUCAO", "FERIAS", "INSS", "MATERNIDADE", "PATERNIDADE", "SENSITIVE_LEAVE"])
+    expect(onLeave.statusDistribution.find((share) => share.bucket === "MATERNIDADE")?.count).toBe(2)
+    expect(onLeave.statusDistribution.find((share) => share.bucket === "SENSITIVE_LEAVE")).toEqual({ bucket: "SENSITIVE_LEAVE", count: 1, percent: 3.1 })
+    expect(onLeave.statusDistribution.reduce((sum, share) => sum + share.count, 0)).toBe(32)
+    // Sem o afastamento dela, os tipos não mudam: subtrair as duas datas mostra que alguém se afastou, nunca o motivo.
+    const working = carla("EM_PRODUCAO", ["INSS", "INSS", "MATERNIDADE", "MATERNIDADE"])
+    expect(typesOf(working)).toEqual(typesOf(onLeave))
+    expect(working.statusDistribution.map((share) => share.bucket)).not.toContain("SENSITIVE_LEAVE")
+    // O status do líder não destrava o detalhamento: com um só caso de maternidade entre os operadores, tudo continua somado.
+    const single = carla("MATERNIDADE", ["INSS", "INSS", "MATERNIDADE"])
+    expect(single.privacy.sensitiveBreakdownSuppressed).toBe(true)
+    expect(JSON.stringify(single.statusDistribution)).not.toMatch(/INSS|MATERNIDADE/)
+    expect(single.statusDistribution.find((share) => share.bucket === "SENSITIVE_LEAVE")?.count).toBe(4)
+  })
+
   it("referência do Grupo é passada adiante como veio (mesmo cargo + mesmo Grupo é responsabilidade do carregador); sem Grupo → null", () => {
     const benchmark = { groupId: "g1", groupName: "Atendimento B2B", peerRole: "SUPERVISOR", peerCount: 18, averageDirectSpan: 25.4 }
     expect(computeManagementMetrics(input({ root: { id: "v", role: "SUPERVISOR" }, members: vanessaTeam(), groupBenchmark: benchmark })).groupBenchmark).toEqual(benchmark)

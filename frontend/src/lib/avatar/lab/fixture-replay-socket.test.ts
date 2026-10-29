@@ -118,6 +118,17 @@ describe("FixtureReplaySocket — reprodução", () => {
     expect(events).toContainEqual({ type: "replay-started", scriptId: "b", trigger: "activityEnd" })
   })
 
+  it("turno de texto do transporte (activityStart → text → activityEnd) dispara a resposta como texto", async () => {
+    const { socket, received, events } = harness([SCRIPT_B])
+    await openAndSetUp(socket, received)
+    socket.send(ACTIVITY_START)
+    socket.send(JSON.stringify({ realtimeInput: { text: "oi" } }))
+    socket.send(ACTIVITY_END)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(received.map((entry) => label(entry.message))).toEqual(["audio:b1", "generationComplete", "turnComplete"])
+    expect(events).toContainEqual({ type: "replay-started", scriptId: "b", trigger: "text" })
+  })
+
   it("sem script: fecha o turno com turnComplete (o transporte não fica preso em 'pensando')", async () => {
     const { socket, received, events } = harness([])
     await openAndSetUp(socket, received)

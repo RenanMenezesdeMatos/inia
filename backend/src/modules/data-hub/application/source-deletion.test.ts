@@ -37,7 +37,11 @@ describe("remover fonte", () => {
     await deleteSource(createDataHubContext(db), "org-1", "actor-1", SOURCE_ID)
 
     const inTransaction = statements.filter((entry) => entry.via === "client").map((entry) => entry.sql.trim().split(/\s+/).slice(0, 2).join(" "))
-    expect(inTransaction).toEqual(["begin", "update data_feeds", "update data_sources", "update data_push_tokens", "update data_secrets", "insert into", "commit"])
+    expect(inTransaction).toEqual(["begin", "update data_feeds", "update data_sources", "update data_push_tokens", "update data_ingestion_runs", "update data_secrets", "insert into", "commit"])
+    // Cargas ainda na fila da fonte terminam na mesma transação (achado C07 da 4ª auditoria).
+    const orphans = statements.find((entry) => entry.sql.includes("update data_ingestion_runs"))!
+    expect(orphans.sql).toMatch(/status = 'CANCELLED'.*error_code = 'DATA_FEED_INACTIVE'.*where organization_id = \$1 and source_id = \$2 and status = 'QUEUED'/s)
+    expect(orphans.params).toEqual(["org-1", SOURCE_ID])
     const secrets = statements.find((entry) => entry.sql.includes("update data_secrets"))!
     expect(secrets.sql).toMatch(/set revoked_at = now\(\) where source_id = \$1 and revoked_at is null/)
     expect(secrets.params).toEqual([SOURCE_ID])

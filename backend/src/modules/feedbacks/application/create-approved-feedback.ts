@@ -42,6 +42,13 @@ export async function createApprovedFeedback(db: Database, record: ApprovedFeedb
   try {
     await client.query("begin")
 
+    // Colaborador e grupo sempre da organização do registro: quem chama nunca publica em nome de pessoa/grupo de outra.
+    const owned = await client.query(
+      `select 1 as owned from people p join teams t on t.id = $3 and t.organization_id = $1 where p.id = $2 and p.organization_id = $1`,
+      [record.organizationId, record.operatorId, record.teamId],
+    )
+    if (owned.rows.length !== 1) throw new Error("O colaborador ou o grupo do feedback não pertence a esta organização.")
+
     const createdCase = await client.query<{ id: string }>(
       `insert into supervision_cases(
          organization_id, operator_id, team_id, title, summary, status, priority,
@@ -111,7 +118,7 @@ export async function createApprovedFeedback(db: Database, record: ApprovedFeedb
 
     await client.query("commit")
 
-    await new PublishFeedback(db).execute(feedbackId)
+    await new PublishFeedback(db).execute(feedbackId, { organizationId: record.organizationId })
 
     return { caseId, feedbackId }
   } catch (error) {

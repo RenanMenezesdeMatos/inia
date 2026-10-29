@@ -11,6 +11,7 @@ import { loadAnalyticsVersion } from "../../performance-analytics/infrastructure
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import type { SourceState } from "../domain/delivery-decision.js"
 import { requiredSources, type ReportAudience, type ReportDefinition, type ReportSource } from "../domain/report-definition.js"
+import { peopleBelow } from "../../leadership-analytics/application/workforce.js"
 
 /**
  * O que a execução de um report precisa do resto do sistema — sempre em nome de UMA conta (o responsável ou um destinatário),
@@ -29,6 +30,9 @@ export type RecipientContext = {
   /** Fração das pessoas da estrutura com dado no período para o que a definição pede (null = não se aplica). */
   coverage(structure: ResolvedStructure, definition: ReportDefinition, period: string | null): Promise<number | null>
   sources(structure: ResolvedStructure, definition: ReportDefinition): Promise<SourceState[]>
+  /** Pessoas ativas abaixo da âncora da estrutura que o escopo DESTA pessoa alcança (líderes inclusive) — o que as ferramentas
+   * leem além dos operadores; entra na chave que junta destinatários numa entrega (achado C15 da 4ª auditoria). */
+  visibleBelow(structure: ResolvedStructure): string[]
   indicatorDirection(code: string | null): Promise<"HIGHER" | "LOWER" | "TARGET" | null>
   /** Competência fechada mais recente (para o rótulo do período). */
   lastClosedPeriod: string
@@ -168,6 +172,7 @@ export function createPostgresReportRuntime(db: Database, clock: () => Date = ()
         runTool: (name, args) => executeLeadershipTool(deps, name, args),
         coverage: (structure, definition, period) => coverage(session, structure, definition, period),
         sources: (structure, definition) => sourceStates(session, structure, definition),
+        visibleBelow: (structure) => peopleBelow(session.scope, structure).map((person) => person.id),
         indicatorDirection: async (code) => {
           if (!code) return null
           const definition = (await session.repository.loadIndicatorDefinitions(organizationId)).find((item) => item.code === code)

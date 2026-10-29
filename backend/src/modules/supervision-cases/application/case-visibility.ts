@@ -13,7 +13,8 @@ import type { CaseOwnership, CaseVisibility } from "./case-repository.js"
  *      `indicators.view`) — o líder dele e quem tem a visão ampliada;
  *   2. administra Agents (`agents.manage`) num escopo que cobre o Grupo/Subgrupo do colaborador — o detalhe da execução de
  *      um Agent leva ao caso que ela gerou.
- * O próprio colaborador não abre o caso (recebe o feedback publicado no Acompanhamento). Organização = a da sessão.
+ * O próprio colaborador não abre o caso (recebe o feedback publicado no Acompanhamento) — nem quando também administra Agents
+ * no Grupo dele ou na organização (achado C17 da 4ª auditoria). Organização = a da sessão.
  */
 export async function loadCaseVisibility(db: Database, user: AuthTokenPayload): Promise<CaseVisibility> {
   // Conta sem pessoa no cadastro: nenhuma estrutura visível (falha fechada — lista vazia, detalhe 404), nunca um erro.
@@ -25,6 +26,7 @@ export async function loadCaseVisibility(db: Database, user: AuthTokenPayload): 
   const organizationWide = agentScopes.unrestricted || agentScopes.allTeams
   return {
     organizationId: user.organizationId,
+    viewerPersonId: user.personId,
     operatorIds: scope ? [...scope.nodes.keys()] : [],
     organizationWide,
     teamIds: agentScopes.unrestricted ? [] : [...agentScopes.teamIds],
@@ -33,6 +35,7 @@ export async function loadCaseVisibility(db: Database, user: AuthTokenPayload): 
 }
 
 export function caseVisibleTo(visibility: CaseVisibility, owner: CaseOwnership): boolean {
+  if (owner.operatorId === visibility.viewerPersonId) return false
   if (visibility.organizationWide) return true
   if (visibility.operatorIds.includes(owner.operatorId)) return true
   if (owner.teamId !== null && visibility.teamIds.includes(owner.teamId)) return true

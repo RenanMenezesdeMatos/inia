@@ -529,7 +529,7 @@ export class AvatarLabController {
   }
 
   private logReplay(event: FixtureReplayEvent): void {
-    if (event.type === "replay-started") this.log("fixture", `servidor falso: reproduzindo ${event.scriptId} (${event.trigger === "text" ? "clientContent" : "activityEnd"})`)
+    if (event.type === "replay-started") this.log("fixture", `servidor falso: reproduzindo ${event.scriptId} (${event.trigger === "text" ? "texto" : "activityEnd"})`)
     else if (event.type === "replay-finished") this.log("fixture", `servidor falso: ${event.scriptId} entregue por inteiro`)
     else if (event.type === "no-script") this.log("fixture", "servidor falso: nenhuma captura carregada — só turnComplete", "warn")
     else if (event.type === "barge-in" && event.serverInterrupt)

@@ -22,11 +22,14 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
 - **Saída para a rede**: todo transporte que conecta a um destino configurado na tela usa a política de destinos
   (`outbound-destination-policy.ts`): Central de Dados (HTTP, SFTP, bancos) e `guardedFetch` dos adapters de IA. Redes privadas
   ficam liberadas (requisito); metadados, link-local, banco interno e, em produção, loopback não. Um conector novo usa a mesma
-  política. Credencial guardada é vinculada ao destino (`secretTargetOf`): mudou o destino, pede a senha de novo.
+  política. Credencial guardada é vinculada ao destino (`secretTargetOf`): mudou o destino, pede a senha de novo — e a troca do
+  destino, a da credencial e a auditoria vão num commit só (`updateSource` e `updateConnection` da IA; `SecretStore.put/revoke` com
+  `{ db }` gravam na transação de quem chama — N01 da 4ª auditoria, provas `source-rebind-proof` e `ai-providers-proof`).
 - **Persona e instruções de IA são do servidor**: o navegador manda no máximo dado de contexto delimitado (`contextHint`). Saída de
   modelo nunca vira HTML cru, SQL ou ação privilegiada.
 - **Arquivos**: tipo decidido pelo servidor, download sempre `attachment` com `sandbox`; ZIP (XLSX/DOCX) passa pela
-  `zip-guard.ts` antes do parser; CSV exportado neutraliza fórmula.
+  `zip-guard.ts` antes do parser — que também exige o pacote lido do MESMO jeito pelo JSZip dos parsers (fim do diretório coerente,
+  sem registro a mais, sem vão nem ZIP64, sem nome repetido; N04 da 4ª auditoria); CSV exportado neutraliza fórmula.
 - **CSP da interface com nonce**: `frontend/src/proxy.ts` monta a política a cada requisição em TODAS as páginas
   (`lib/security/content-security-policy.ts` — origem nova de API/provedor entra lá) e o `RootLayout` lê `x-nonce`, o que deixa
   todas as rotas dinâmicas: nunca reintroduzir página estática nem `export const dynamic = "force-static"`. Script inline novo só
@@ -52,7 +55,10 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   célula de tabela Markdown com dado de integração escapa `[ ] \` * _ < >`.
 - **Leitura de dados de outra pessoa** (2ª rodada): monitorar conversas não amplia acesso a DADOS (cartões revalidados pelo escopo
   de quem lê); simular política sem ver as intervenções da pessoa = histórico oculto; caso de supervisão não repete tipo/motivo da
-  intervenção; tipo de afastamento sensível só separado quando não aponta ninguém (`sensitiveBreakdownAllowed`); Agent só usa base
+  intervenção; tipo de afastamento sensível só separado para OPERADORES e quando não aponta ninguém (`sensitiveBreakdownAllowed` sobre os
+  operadores do recorte; o de líder sempre somado como motivo protegido — `leaveTypeVisible`, C14 da 4ª auditoria —, no organograma, na consulta de
+  força de trabalho e nos reports dela — as telas por pessoa da liderança da cadeia mostram o tipo exato de operadores por decisão de produto de
+  29/10/2026, R-37); Agent só usa base
   compatível com o alcance a CADA busca.
 - **Imagens**: tudo que a organização inteira vê (foto/capa do perfil, cenário) passa por `stripImageMetadata` antes de gravar.
 - **Sessão — 3ª rodada (20/10)**: inatividade pelo SERVIDOR (`auth_session_activity`, migration 149; `SESSION_IDLE_TIMEOUT_MINUTES`,

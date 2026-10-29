@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { WORKFLOW_MESSAGE_KEY_PATTERN } from "./assistant-conversations.js"
 
 /**
  * LEITOR ANALÍTICO das conversas com a INIA (Monitoria de usabilidade). Fonte OFICIAL: conversas e mensagens persistidas.
@@ -6,7 +7,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
  *   - mensagem HUMANA = role 'user'; canal de ENTRADA = `channel` ('chat' = digitada, 'voice' = turno de voz concluído — a
  *     pergunta digitada dentro da sessão de voz é gravada como 'chat');
  *   - mensagem da INIA = role 'assistant'; canal de SAÍDA = `channel` ('chat' = texto, 'voice' = resposta falada);
- *   - mensagem PROATIVA da INIA (recado de Workflow: client_message_id 'workflow-output:…'; apresentação da aplicação:
+ *   - mensagem PROATIVA da INIA (recado de Workflow: client_message_id exatamente 'workflow-output:<uuid>'; apresentação da aplicação:
  *     'feedback-application:presentation') nunca é participação humana;
  *   - `LEGACY_HISTORY` não tem fronteira de conversa: suas mensagens contam onde a métrica é por mensagem, nunca como conversa;
  *   - chunks de streaming e transcrições parciais NÃO são gravados (só o texto final de cada turno) — não há o que deduplicar.
@@ -22,7 +23,7 @@ export async function ownersOfConversations(db: Queryable, organizationId: strin
   return new Map(result.rows.map((row) => [row.id, row.owner_person_id]))
 }
 
-export const PROACTIVE_MESSAGE_SQL = (alias: string) => `(${alias}.role = 'assistant' and coalesce(${alias}.client_message_id like 'workflow-output:%' or ${alias}.client_message_id = 'feedback-application:presentation', false))`
+export const PROACTIVE_MESSAGE_SQL = (alias: string) => `(${alias}.role = 'assistant' and coalesce(${alias}.client_message_id ~* '${WORKFLOW_MESSAGE_KEY_PATTERN}' or ${alias}.client_message_id = 'feedback-application:presentation', false))`
 
 export function conversationMessagesSql(organizationParam: string): string {
   return `select i.id message_id, i.conversation_id, c.owner_person_id, i.role, i.channel, i.occurred_at, c.origin, c.kind,

@@ -328,6 +328,33 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     expect(audit.rowCount).toBe(1)
   })
 
+  it("trocar o endereço e revogar a chave é um commit só: quem lê nunca vê o host novo com a chave antiga ativa (achado N01 da 4ª auditoria)", async () => {
+    const created = await api.post("/api/v1/admin/ai/connections").send({ providerKey: "OPENAI_COMPATIBLE", name: `${PREFIX}Endpoint atômico`, baseUrl: fake.url, apiKey: SECRET, isLocal: false })
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const id = created.body.data.id as string
+    const NEW_HOST = "https://outro-servidor-atomico.example/v1"
+    // Lê como a execução: primeiro a conexão, depois a chave ativa.
+    const read = async () => {
+      const connection = await pool.query<{ base_url: string }>(`select base_url from ai_connections where id = $1`, [id])
+      const secret = await pool.query(`select 1 from ai_connection_secrets where connection_id = $1 and revoked_at is null`, [id])
+      return connection.rows[0]!.base_url === NEW_HOST && (secret.rowCount ?? 0) > 0
+    }
+    let mixed = 0
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      expect((await api.patch(`/api/v1/admin/ai/connections/${id}`).send({ baseUrl: fake.url })).status).toBe(200)
+      expect((await api.put(`/api/v1/admin/ai/connections/${id}/secret`).send({ apiKey: SECRET })).status).toBe(200)
+      // Lê sem parar enquanto a troca está em andamento (duas leitoras, como requisições simultâneas).
+      let done = false
+      const move = api.patch(`/api/v1/admin/ai/connections/${id}`).send({ baseUrl: NEW_HOST }).then((response) => ((done = true), response))
+      const reader = async () => {
+        while (!done) if (await read()) mixed += 1
+      }
+      const [moved] = await Promise.all([move, reader(), reader()])
+      expect(moved.status).toBe(200)
+    }
+    expect(mixed).toBe(0)
+  }, 60_000)
+
   it("o segredo não apareceu em nenhum evento de uso nem em auditoria gravados pela prova", async () => {
     const events = await pool.query(`select * from ai_usage_events where organization_id = $1 and occurred_at >= $2`, [ORG, startedAt])
     const audit = await pool.query(`select * from audit_logs where entity_type like 'ai_%' and created_at >= $1`, [startedAt])

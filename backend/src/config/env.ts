@@ -28,6 +28,12 @@ export const envSchema = z.object({
    */
   WORKFLOW_WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(8),
   /**
+   * Quantas vezes o MESMO nó que chama a IA ("Chamar agente", "Gerar feedback", Orquestrador…) roda numa execução de Workflow.
+   * Passou disso (um ciclo que volta ao nó), a execução é encerrada sem nova chamada paga. Contado no banco: vale com vários
+   * workers e sobrevive a reinício (achado C06 da 4ª auditoria). Fluxo sem ciclo roda cada nó uma vez.
+   */
+  WORKFLOW_MAX_PAID_NODE_RUNS: z.coerce.number().int().min(1).max(50).default(5),
+  /**
    * Papel do processo (main/server.ts): `all` (padrão) = API + processamento num processo só, como sempre; `api` = só HTTP;
    * `worker` = só o processamento (motor de Workflow + tarefas periódicas), com um /health mínimo. Também por `--role=`.
    */

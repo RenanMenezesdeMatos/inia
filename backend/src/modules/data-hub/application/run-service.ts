@@ -118,6 +118,19 @@ export async function enqueueDueFeeds(ctx: DataHubContext, now: Date = ctx.clock
   return enqueued
 }
 
+const ORPHAN_RUN_MESSAGE = "O feed ou a fonte desta carga foi removido antes do processamento."
+
+/** Encerra (CANCELLED, `DATA_FEED_INACTIVE`) as cargas ainda NA FILA de uma carga, de um feed ou de uma fonte removidos. */
+export async function cancelOrphanRuns(db: Pick<DataHubContext["db"], "query">, target: { runId: string } | { organizationId: string; feedId: string } | { organizationId: string; sourceId: string }): Promise<number> {
+  const [column, params] = "runId" in target ? ["id = $1", [target.runId]] : "feedId" in target ? ["organization_id = $1 and feed_id = $2", [target.organizationId, target.feedId]] : ["organization_id = $1 and source_id = $2", [target.organizationId, target.sourceId]]
+  const result = await db.query(
+    `update data_ingestion_runs set status = 'CANCELLED', finished_at = now(), claimed_until = null, error_code = 'DATA_FEED_INACTIVE', error_message = '${ORPHAN_RUN_MESSAGE}'
+     where ${column} and status = 'QUEUED'`,
+    params,
+  )
+  return result.rowCount ?? 0
+}
+
 /** Reivindica Runs na fila (skip locked + lease) e executa em sequência. */
 export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT): Promise<{ processed: number }> {
   const client = await ctx.db.connect()
@@ -146,6 +159,9 @@ export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT
     try {
       const finished = await executeRun(ctx, runId)
       if (finished) await enqueueContinuation(ctx, finished)
+      // Feed ou fonte removidos depois de a carga entrar na fila: status final na hora — senão ela volta a ocupar, a cada ciclo, as
+      // vagas da fila que TODAS as organizações dividem (achado C07 da 4ª auditoria).
+      else await cancelOrphanRuns(ctx.db, { runId })
     } catch (error) {
       // Falha de infraestrutura fora do pipeline (que já captura erros de dado/fonte): marca o Run e segue.
       ctx.logger.error({ runId, err: error instanceof Error ? { name: error.name, message: error.message } : String(error) }, "data-hub run execution crashed")

@@ -293,7 +293,7 @@ function StructureSection({ person, metrics }: { person: StructurePerson; metric
       <dl className="space-y-0.5" aria-label="Situação atual da estrutura">
         {metrics.statusDistribution.map((share) => (
           <div key={share.bucket} className="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-3" data-bucket={share.bucket}>
-            <dt className={cn("truncate", share.count === 0 ? "text-muted-foreground" : "")}>{STRUCTURE_STATUS_BUCKET_LABELS[share.bucket]}</dt>
+            <dt className={cn("min-w-0", share.count === 0 ? "text-muted-foreground" : "")}>{STRUCTURE_STATUS_BUCKET_LABELS[share.bucket]}</dt>
             <dd className={cn("tabular-nums", share.count === 0 ? "text-muted-foreground" : "font-medium")}>{share.count}</dd>
             <dd className="w-12 text-right tabular-nums text-muted-foreground">{formatDecimal(share.percent)}%</dd>
           </div>
@@ -301,7 +301,11 @@ function StructureSection({ person, metrics }: { person: StructurePerson; metric
       </dl>
       {metrics.privacy.sensitiveBreakdownSuppressed ? (
         <p className="flex items-start gap-1 text-[11px] text-muted-foreground" data-testid="privacy-note">
-          <ShieldAlert className="mt-0.5 size-3 shrink-0" aria-hidden /> Detalhamento de afastamentos indisponível para estruturas pequenas (menos de {metrics.privacy.minimumPopulation} pessoas) ou com poucos casos — a contagem por motivo identificaria alguém.
+          <ShieldAlert className="mt-0.5 size-3 shrink-0" aria-hidden /> Detalhamento de afastamentos indisponível para estruturas pequenas (menos de {metrics.privacy.minimumPopulation} operadores) ou com poucos casos — a contagem por motivo identificaria alguém.
+        </p>
+      ) : metrics.statusDistribution.some((share) => share.bucket === "SENSITIVE_LEAVE") ? (
+        <p className="flex items-start gap-1 text-[11px] text-muted-foreground" data-testid="privacy-note">
+          <ShieldAlert className="mt-0.5 size-3 shrink-0" aria-hidden /> O motivo aparece só para operadores; afastamentos de líderes ficam somados, sem o motivo.
         </p>
       ) : null}
       {metrics.confidence.unconfirmed > 0 ? (

@@ -41,6 +41,9 @@ export type OutputExecutionContext = EnrollmentSubjectContext & {
   structure?: StructureAnchor | null
   /** Só pra testes — Postgres por padrão. */
   hierarchy?: OrganizationalHierarchyReader
+  /** Ids dos nós "Chamar agente" do grafo desta versão: só a saída RAIZ de um deles é publicada como resultado de Agent
+   * (é onde run-agent.ts conferiu a evidência literal). Ausente = nenhum (fail-closed). */
+  agentNodeIds?: ReadonlySet<string>
 }
 
 export type OutputRecipient = { id: string; name: string; role: string }
@@ -108,7 +111,7 @@ async function resolveRecipients(context: OutputExecutionContext, operatorId: st
     const person: OrganizationalPerson = await requireStructureRecipient(context.hierarchy ?? postgresHierarchyReader(context.db), context.structure, role, context.nodeId)
     return [{ id: person.id, name: person.name, role: person.role }]
   }
-  const chain = await resolveByRoleChain(context.db, operatorId, [role])
+  const chain = await resolveByRoleChain(context.db, operatorId, [role], { ancestorsOnly: true })
   if (chain.length === 0) {
     throw new DomainError(`Não foi possível determinar um ${ROLE_LABELS[role]} na cadeia de gestão deste operador.`, "WORKFLOW_OUTPUT_RECIPIENT_NOT_FOUND", 422, { nodeId: context.nodeId })
   }
@@ -294,7 +297,17 @@ export async function executeOutput(config: OutputNodeConfig, context: OutputExe
         ...investigation,
       }
       if (isAgentWorkflowResult(content)) {
-        const created = await context.effects.publishFeedback(context.db, { kind: content.kind, input: { ...content.input, ...materialFields } } as FeedbackPublication)
+        // Só a raiz de um nó "Chamar agente", e sempre para a organização e o colaborador DESTA matrícula — nunca para quem o
+        // objeto disser (um campo de outro nó com o mesmo formato publicaria em nome de outra organização/pessoa).
+        const segments = config.source.split(".")
+        const sourceNodeId = segments.length === 2 && segments[0] === "nodeOutputs" ? segments[1]! : null
+        if (!sourceNodeId || !context.agentNodeIds?.has(sourceNodeId)) throw new Error(`Output(FOLLOW_UP, CURRENT_OPERATOR): "${config.source}" não é o resultado de um nó "Chamar agente".`)
+        const embedded = content.input as { organizationId?: unknown; operatorId?: unknown }
+        if (embedded.organizationId !== context.organizationId || embedded.operatorId !== operatorId) throw new Error("Output: o resultado do agente não pertence a esta execução (organização ou colaborador divergente).")
+        const teamRow = await context.db.query<{ team_id: string | null }>(`select team_id from people where id = $1 and organization_id = $2`, [operatorId, context.organizationId])
+        const teamId = teamRow.rows[0]?.team_id
+        if (!teamId) throw new Error("O operador desta execução não está associado a um grupo — não é possível publicar o feedback.")
+        const created = await context.effects.publishFeedback(context.db, { kind: content.kind, input: { ...content.input, organizationId: context.organizationId, operatorId, teamId, ...materialFields } } as FeedbackPublication)
         caseId = created.caseId
         feedbackId = created.feedbackId
       } else if (isOrchestratorNodeOutput(content)) {
@@ -302,7 +315,7 @@ export async function executeOutput(config: OutputNodeConfig, context: OutputExe
         // não passa pela checagem verbatim de evidência que run-agent.ts aplica ao caminho
         // channel_flag. Trade-off documentado (não um bug escondido): ver o relatório de
         // validação do motor de workflow.
-        const teamRow = await context.db.query<{ team_id: string | null }>(`select team_id from people where id = $1`, [operatorId])
+        const teamRow = await context.db.query<{ team_id: string | null }>(`select team_id from people where id = $1 and organization_id = $2`, [operatorId, context.organizationId])
         const teamId = teamRow.rows[0]?.team_id
         if (!teamId) throw new Error("O operador desta execução não está associado a um grupo — não é possível publicar o feedback.")
         const evidenceSource = await resolveEnrollmentEvidenceSource(context.db, context.enrollment)

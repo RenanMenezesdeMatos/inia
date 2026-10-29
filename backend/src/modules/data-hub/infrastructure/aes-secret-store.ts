@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto"
 import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import type { SecretStore } from "../application/ports.js"
+import type { SecretStore, SecretWriteOptions } from "../application/ports.js"
 import type { SecretPurpose } from "../domain/source-config.js"
 
 /**
@@ -124,18 +124,23 @@ export class PgAesSecretStore implements SecretStore {
     this.keys = { current: key, previous }
   }
 
-  async put(input: { organizationId: string; sourceId: string; purpose: SecretPurpose; value: string; actorId: string | null }): Promise<void> {
+  async put(input: { organizationId: string; sourceId: string; purpose: SecretPurpose; value: string; actorId: string | null }, options: SecretWriteOptions = {}): Promise<void> {
     const encrypted = encryptBoundSecret(input.value, { store: "data_secrets", organizationId: input.organizationId, ownerId: input.sourceId, purpose: input.purpose }, this.keys.current)
-    const client = await this.db.connect()
-    try {
-      await client.query("begin")
-      const existing = await client.query(`select 1 from data_secrets where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
-      await client.query(`update data_secrets set revoked_at = now() where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
-      await client.query(
+    const replace = async (db: Pick<Database, "query">) => {
+      const existing = await db.query(`select 1 from data_secrets where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
+      await db.query(`update data_secrets set revoked_at = now() where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
+      await db.query(
         `insert into data_secrets (organization_id, source_id, purpose, key_version, ciphertext, iv, auth_tag, created_by, rotated_at)
          values ($1, $2, $3, $9, $4, $5, $6, $7, $8)`,
         [input.organizationId, input.sourceId, input.purpose, encrypted.ciphertext, encrypted.iv, encrypted.authTag, input.actorId, existing.rowCount ? new Date() : null, encrypted.keyVersion],
       )
+    }
+    // Dentro da transação de quem chama (troca de destino), ou numa própria.
+    if (options.db) return replace(options.db)
+    const client = await this.db.connect()
+    try {
+      await client.query("begin")
+      await replace(client)
       await client.query("commit")
     } catch (error) {
       await client.query("rollback")
@@ -155,8 +160,8 @@ export class PgAesSecretStore implements SecretStore {
     return decryptStoredSecret({ ciphertext: row.ciphertext, iv: row.iv, authTag: row.auth_tag, keyVersion: row.key_version }, { store: "data_secrets", organizationId: row.organization_id, ownerId: input.sourceId, purpose: input.purpose }, this.keys)
   }
 
-  async revoke(input: { sourceId: string; purpose: SecretPurpose }): Promise<void> {
-    await this.db.query(`update data_secrets set revoked_at = now() where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
+  async revoke(input: { sourceId: string; purpose: SecretPurpose }, options: SecretWriteOptions = {}): Promise<void> {
+    await (options.db ?? this.db).query(`update data_secrets set revoked_at = now() where source_id = $1 and purpose = $2 and revoked_at is null`, [input.sourceId, input.purpose])
   }
 
   async describe(sourceId: string): Promise<{ purpose: SecretPurpose; createdAt: string; rotatedAt: string | null }[]> {

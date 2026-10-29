@@ -12,6 +12,7 @@ import { ELEMENT_BY_KEY } from "../../domain/usage-elements.js"
 import { EVENT_BY_NAME, USAGE_ACTION_LABELS } from "../../domain/usage-events.js"
 import { SCREEN_BY_KEY } from "../../domain/usage-screens.js"
 import { DOMAIN_ACTION_LABELS, domainActionsSql } from "./domain-actions.js"
+import { usabilityEmploymentStatus } from "./people-query.js"
 import { familyCoverage, loadCoverageState, loadFreshness, metaOf, type UsabilityContext } from "./usability-context.js"
 
 /**
@@ -109,7 +110,7 @@ export async function personDetailQuery(db: Queryable, ctx: UsabilityContext, pe
       teamName: person.team_name,
       subteamName: person.subteam_name,
       personActive: person.person_active,
-      employmentStatus: person.employment_status,
+      employmentStatus: usabilityEmploymentStatus(String(person.employment_status)),
       accountStatus: person.account_id === null ? "NONE" : person.account_active ? "ENABLED" : "DISABLED",
       roles: person.role_codes,
       lastLoginAt: person.last_login_at instanceof Date ? person.last_login_at.toISOString() : null,

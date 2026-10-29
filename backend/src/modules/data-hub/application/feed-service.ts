@@ -13,6 +13,7 @@ import { fetchDatabaseSample, validateDatabaseFeed, type DatabaseObjectDescripti
 import type { DataHubContext } from "./data-hub-context.js"
 import { findFeed, recordAudit, requireFeed, requireSource, type DataFeedRow, type DataSourceRow } from "./records.js"
 import { mapAll } from "./run-pipeline.js"
+import { cancelOrphanRuns } from "./run-service.js"
 import type { Rejection } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
 
@@ -139,7 +140,9 @@ export async function setFeedStatus(ctx: DataHubContext, organizationId: string,
 export async function deleteFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, feedId: string): Promise<void> {
   await requireFeed(ctx.db, organizationId, feedId)
   await ctx.db.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null, updated_by = $2, updated_at = now() where id = $1`, [feedId, actorId])
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_DELETED", entityType: "data_feed", entityId: feedId })
+  // Cargas que ainda estavam na fila (API Push aceita várias) não ficam órfãs ocupando a fila de todas as organizações.
+  const cancelledRuns = await cancelOrphanRuns(ctx.db, { organizationId, feedId })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_DELETED", entityType: "data_feed", entityId: feedId, ...(cancelledRuns > 0 ? { payload: { cancelledQueuedRuns: cancelledRuns } } : {}) })
 }
 
 // ---------------------------------------------------------------------------------------------

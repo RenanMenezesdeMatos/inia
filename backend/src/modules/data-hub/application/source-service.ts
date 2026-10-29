@@ -9,7 +9,9 @@ import { testApiConnection } from "./connectors/api-pull-connector.js"
 import { databaseConfigOf, describeTestDetail, resolveSourceConnection, testDatabaseConnection, type DatabaseConnectionReport } from "./connectors/database-connector.js"
 import { testSftpConnection } from "./connectors/sftp-connector.js"
 import type { DataHubContext } from "./data-hub-context.js"
+import type { SecretWriteOptions } from "./ports.js"
 import { findSource, recordAudit, requireSource, type DataSourceRow } from "./records.js"
+import { cancelOrphanRuns } from "./run-service.js"
 
 /**
  * Fontes: CRUD, teste de conexão, pausar/retomar, rotação de credencial e tokens de push.
@@ -77,12 +79,12 @@ function safeOrigin(value: string): string {
   }
 }
 
-async function storeSecrets(ctx: DataHubContext, source: { id: string; organizationId: string }, config: SourceConfig, secrets: SourceSecrets | undefined, actorId: string | null, requireAll: boolean): Promise<string[]> {
+async function storeSecrets(ctx: DataHubContext, source: { id: string; organizationId: string }, config: SourceConfig, secrets: SourceSecrets | undefined, actorId: string | null, requireAll: boolean, options: SecretWriteOptions = {}): Promise<string[]> {
   const stored: string[] = []
   for (const entry of requiredSecretPurposes(config)) {
     const value = secrets?.[entry.field]
     if (value) {
-      await ctx.secrets.put({ organizationId: source.organizationId, sourceId: source.id, purpose: entry.purpose, value, actorId })
+      await ctx.secrets.put({ organizationId: source.organizationId, sourceId: source.id, purpose: entry.purpose, value, actorId }, options)
       stored.push(entry.purpose)
     } else if (entry.required && requireAll) {
       const existing = await ctx.secrets.get({ sourceId: source.id, purpose: entry.purpose })
@@ -130,22 +132,35 @@ export async function updateSource(ctx: DataHubContext, organizationId: string, 
       throw new DomainError("O servidor, o usuário ou a forma de autenticação mudou: informe a credencial de novo (a guardada vale só para o destino original).", "DATA_SOURCE_SECRET_REENTRY_REQUIRED", 422, { fields: missing.map((entry) => entry.field) })
     }
   }
-  await ctx.db.query(`update data_sources set name = $2, description = $3, config = $4, updated_by = $5, updated_at = now(), connection_health = case when $6 then 'UNKNOWN' else connection_health end where id = $1`, [
-    sourceId,
-    input.name ?? current.name,
-    input.description ?? current.description,
-    JSON.stringify(config),
-    actorId,
-    Boolean(input.config),
-  ])
-  const stored = await storeSecrets(ctx, current, config, input.secrets, actorId, false)
-  if (targetChanged) {
-    // Segredos opcionais que não vieram de novo (ex.: passphrase) não acompanham a fonte para o destino novo.
-    for (const entry of requiredSecretPurposes(current.config as SourceConfig)) {
-      if (!stored.includes(entry.purpose)) await ctx.secrets.revoke({ sourceId, purpose: entry.purpose })
+  // Configuração, credenciais e auditoria num commit só (achado N01 da 4ª auditoria): com commits separados, o destino novo ficava
+  // gravado enquanto a credencial antiga continuava ativa — um "Testar conexão" (ou uma carga) nesse meio-tempo mandava a credencial
+  // guardada para o destino novo, e uma falha na troca deixava os dois assim, sem registro. Quem lê vê o par antigo ou o novo.
+  const client = await ctx.db.connect()
+  try {
+    await client.query("begin")
+    await client.query(`update data_sources set name = $2, description = $3, config = $4, updated_by = $5, updated_at = now(), connection_health = case when $6 then 'UNKNOWN' else connection_health end where id = $1`, [
+      sourceId,
+      input.name ?? current.name,
+      input.description ?? current.description,
+      JSON.stringify(config),
+      actorId,
+      Boolean(input.config),
+    ])
+    const stored = await storeSecrets(ctx, current, config, input.secrets, actorId, false, { db: client })
+    if (targetChanged) {
+      // Segredos opcionais que não vieram de novo (ex.: passphrase) não acompanham a fonte para o destino novo.
+      for (const entry of requiredSecretPurposes(current.config as SourceConfig)) {
+        if (!stored.includes(entry.purpose)) await ctx.secrets.revoke({ sourceId, purpose: entry.purpose }, { db: client })
+      }
     }
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_UPDATED", entityType: "data_source", entityId: sourceId, payload: { configChanged: Boolean(input.config), secretsRotated: stored, secretTargetChanged: targetChanged } })
+    await client.query("commit")
+  } catch (error) {
+    await client.query("rollback")
+    throw error
+  } finally {
+    client.release()
   }
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SOURCE_UPDATED", entityType: "data_source", entityId: sourceId, payload: { configChanged: Boolean(input.config), secretsRotated: stored, secretTargetChanged: targetChanged } })
   return describeSource(ctx, (await findSource(ctx.db, organizationId, sourceId))!)
 }
 
@@ -205,9 +220,11 @@ export async function deleteSource(ctx: DataHubContext, organizationId: string, 
     await client.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId])
     await client.query(`update data_sources set deleted_at = now(), status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
     await client.query(`update data_push_tokens set revoked_at = now() where source_id = $1 and revoked_at is null`, [sourceId])
+    // Cargas ainda na fila de qualquer feed da fonte terminam aqui (nunca ficam órfãs ocupando a fila de todas as organizações).
+    const cancelledRuns = await cancelOrphanRuns(client, { organizationId, sourceId })
     // A credencial continua cifrada para auditoria, mas revogada: nenhuma leitura do SecretStore a devolve mais.
     const revoked = await client.query<{ purpose: SecretPurpose }>(`update data_secrets set revoked_at = now() where source_id = $1 and revoked_at is null returning purpose`, [sourceId])
-    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { secretsRevoked: revoked.rows.map((row) => row.purpose) } })
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { secretsRevoked: revoked.rows.map((row) => row.purpose), ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
     await client.query("commit")
   } catch (error) {
     await client.query("rollback")

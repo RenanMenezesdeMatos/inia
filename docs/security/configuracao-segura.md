@@ -263,6 +263,10 @@ vazamento, troque também as credenciais na origem — quem tinha a chave antiga
 
 - `npm run db:backup` — cópia do banco interno (`pg_dump` no formato custom), conferida pelo `pg_restore` antes de valer, com
   retenção (`--keep-days`, padrão 14; nunca apaga a mais nova). Pasta padrão `backups/` (fora do Git); use `--dir` para outra.
+  Antes de qualquer escrita, a pasta fica restrita — Linux/macOS: só o dono (pasta 0700, cópias e registro 0600); Windows: só
+  Administradores, SYSTEM e a conta que roda a cópia, sem herdar da pasta-mãe (`icacls`) — e também as cópias e o registro que
+  já estavam nela; o arquivo nasce fechado antes de o `pg_dump` escrever. Sem conseguir restringir, a cópia não é feita (N03 da
+  4ª rodada). Nada além das cópias e do `backup.log` da pasta é tocado.
 - `npm run db:restore-check` — restaura a cópia mais nova num banco **temporário** do mesmo servidor, confere as tabelas e mede o
   tempo (é o tempo real de volta do banco). Não toca no banco da INIA. Sem permissão de criar banco: `--target-db` com um banco
   vazio cedido pela equipe do banco.

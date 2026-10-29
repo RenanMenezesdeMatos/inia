@@ -137,6 +137,35 @@ describe("voz de quem atende — esclarecimento pelas bases", () => {
     expect(response.text).toContain('"status":"ANSWERED"')
   })
 
+  it("LEITURA na voz da resposta que seguiu pelo texto (o modelo de voz não consultou): o conteúdo gravado + a mesma instrução de fala da ferramenta", async () => {
+    const { app, speak, memory } = setup((call, index) => (index === 0 ? clarify(call) : answerFor(call)))
+    const first = await speak("quais documentos para troca de titularidade?", "Quais documentos preciso para troca de titularidade?", null)
+    const conversationId = first.body.data.conversationId as string
+    const view = first.body.data.clarification as { id: string; steps: { id: string; options: { id: string }[] }[] }
+    // A pergunta em aberto (gravada pela consulta da voz): lida com as opções e a volta pela ferramenta da sessão da pessoa.
+    const asked = memory.messages.find((message) => message.role === "assistant")!
+    const open = await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages/${asked.id}/voice-reading`)
+    expect(open.status).toBe(200)
+    expect(open.body.data.text).toMatch(/^\[Leitura: a resposta abaixo acabou de ser buscada nas bases e já está na tela\. .*Não acione nenhuma ferramenta/)
+    expect(open.body.data.text).toContain("Para qual tipo de cliente é a troca de titularidade?")
+    expect(open.body.data.text).toContain('acione self_ask de novo com a pergunta original ("Quais documentos preciso para troca de titularidade?")')
+    // Numa aplicação de feedback a voz não tem como encaminhar a resposta falada: a escolha fica na tela.
+    const inFeedback = await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages/${asked.id}/voice-reading`).query({ feedbackApplicationId: "aaaaaaaa-0000-4000-8000-0000000000aa" })
+    expect(inFeedback.body.data.text).toContain("Diga que a pessoa pode escolher a opção na tela.")
+    expect(inFeedback.body.data.text).not.toContain("self_ask")
+    expect(inFeedback.body.data.text).not.toContain("responder falando")
+    // A escolha seguiu pelo caminho de texto; a resposta das bases é lida fiel, sem os marcadores de fonte.
+    await request(app).post("/api/v1/realtime/messages").send({ conversationId, text: "Empresa", clientMessageId: "aaaaaaaa-0000-4000-8000-0000000000f2", clarification: { clarificationId: view.id, stepId: view.steps[0]!.id, optionIds: [view.steps[0]!.options[0]!.id] } })
+    const answered = memory.messages.filter((message) => message.role === "assistant").at(-1)!
+    const reading = await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages/${answered.id}/voice-reading`)
+    expect(reading.body.data.text).toContain("Contrato social das duas empresas e identificação dos representantes. [1]")
+    expect(reading.body.data.text).toContain("Não leia os marcadores de fonte")
+    // Só respostas da INIA desta conversa: a mensagem da pessoa (ou um id desconhecido) = 404.
+    const userMessage = memory.messages.find((message) => message.role === "user")!
+    expect((await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages/${userMessage.id}/voice-reading`)).status).toBe(404)
+    expect((await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages/bbbbbbbb-0000-4000-8000-0000000000bb/voice-reading`)).status).toBe(404)
+  })
+
   it("o esclarecimento parte das palavras da PESSOA (`utterance`), nunca da `query` que o modelo de voz monta com contexto do perfil", async () => {
     const { app, clarification, orchestratedReply, proceeded } = setup((call) => clarify(call))
     // Visto no QA de 20/10: a pessoa disse "Troca de titularidade." e o modelo de voz mandou o perfil junto ("atendimento B2C"); o

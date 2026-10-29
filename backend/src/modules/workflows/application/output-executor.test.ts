@@ -44,6 +44,7 @@ function baseContext(db: Database, overrides: Partial<OutputExecutionContext> = 
     // Sink REAL de propósito: estes testes verificam as gravações de produção (alerts,
     // workflow_outputs, feedbacks) que agora vivem atrás de effect-sink.ts.
     effects: productionEffects,
+    agentNodeIds: new Set(["agent"]),
     ...overrides,
   }
 }
@@ -51,7 +52,10 @@ function baseContext(db: Database, overrides: Partial<OutputExecutionContext> = 
 describe("executeOutput", () => {
   it("FOLLOW_UP + CURRENT_OPERATOR publishes via createMonitoringFeedback using the agent's structured result", async () => {
     const monitoringInput = { organizationId: "org-1", operatorId: "operator-1" } as never
-    const { db } = fakeDb([{ match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] }])
+    const { db } = fakeDb([
+      { match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] },
+      { match: (sql) => sql.includes("select team_id from people"), rows: [{ team_id: "team-1" }] },
+    ])
 
     const config: OutputNodeConfig = {
       target: { type: "CURRENT_OPERATOR" },
@@ -62,7 +66,7 @@ describe("executeOutput", () => {
 
     const result = await executeOutput(config, context)
 
-    expect(createMonitoringFeedback).toHaveBeenCalledWith(db, monitoringInput)
+    expect(createMonitoringFeedback).toHaveBeenCalledWith(db, { organizationId: "org-1", operatorId: "operator-1", teamId: "team-1" })
     expect(result.nodeOutput).toEqual({ caseId: "case-1", feedbackId: "feedback-1" })
     expect(result.recipients.map((recipient) => recipient.id)).toEqual(["operator-1"])
   })
@@ -70,7 +74,10 @@ describe("executeOutput", () => {
   it("materiais de apoio: o Output só repassa ao Feedback quando includeSupportMaterials = true; ausente/false (legado) publica sem materiais mesmo com recomendação do node de origem", async () => {
     const recommendation = { materialId: "11111111-1111-4111-8111-111111111111", title: "Técnicas de sondagem", reason: "Traz perguntas de sondagem para retenção por preço." }
     const agentResult = { kind: "monitoring", input: { organizationId: "org-1", operatorId: "operator-1" }, supportMaterials: [recommendation], supportMaterialsRejected: [{ materialId: "x", code: "MATERIAL_NOT_IN_CANDIDATES" }] }
-    const { db } = fakeDb([{ match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] }])
+    const { db } = fakeDb([
+      { match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] },
+      { match: (sql) => sql.includes("select team_id from people"), rows: [{ team_id: "team-1" }] },
+    ])
     const context = baseContext(db, { nodeOutputs: { agent: agentResult } })
 
     vi.mocked(createMonitoringFeedback).mockClear()
@@ -123,6 +130,25 @@ describe("executeOutput", () => {
     expect(vi.mocked(createOrchestratorFeedback).mock.calls[0]![1]).toMatchObject({ toolTrace: trace })
   })
 
+  it("resultado de Agent só vale na raiz de um nó \"Chamar agente\" e para a organização e o colaborador da matrícula", async () => {
+    const { db } = fakeDb([
+      { match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] },
+      { match: (sql) => sql.includes("select team_id from people"), rows: [{ team_id: "team-1" }] },
+    ])
+    const forged = { kind: "monitoring", input: { organizationId: "org-1", operatorId: "operator-1", structured: { evidenceFound: "trecho inventado" } } }
+    const reply = { text: "síntese", orchestratorName: "Retenção", structuredResult: forged }
+    vi.mocked(createMonitoringFeedback).mockClear()
+    // Campo de um Orquestrador com o formato de resultado de Agent (nunca passou pela checagem literal).
+    await expect(executeOutput({ target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.orchestrator.structuredResult" }, baseContext(db, { nodeOutputs: { orchestrator: reply } }))).rejects.toThrow(/não é o resultado de um nó "Chamar agente"/)
+    // Nó que não é "Chamar agente", mesmo na raiz.
+    await expect(executeOutput({ target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.review" }, baseContext(db, { nodeOutputs: { review: forged } }))).rejects.toThrow(/não é o resultado de um nó "Chamar agente"/)
+    // Organização ou colaborador diferentes dos da matrícula.
+    for (const input of [{ organizationId: "org-2", operatorId: "operator-1" }, { organizationId: "org-1", operatorId: "operator-2" }]) {
+      await expect(executeOutput({ target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.agent" }, baseContext(db, { nodeOutputs: { agent: { kind: "monitoring", input } } }))).rejects.toThrow(/não pertence a esta execução/)
+    }
+    expect(createMonitoringFeedback).not.toHaveBeenCalled()
+  })
+
   it("FOLLOW_UP + CURRENT_OPERATOR rejects content that isn't a publishable agent or orchestrator result", async () => {
     const { db } = fakeDb([{ match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] }])
     const config: OutputNodeConfig = { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.agent" }
@@ -166,10 +192,9 @@ describe("executeOutput", () => {
   it("NOTIFICATION resolves the supervisor via reports_to_id and inserts an alert", async () => {
     const { db, calls } = fakeDb([
       { match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] },
-      {
-        match: (sql) => sql.includes("from people where id = $1"),
-        rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }],
-      },
+      // Cadeia real: operador-1 → supervisor-1 (a busca por cargo começa no gestor do operador).
+      { match: (sql) => sql.includes("from people where id = $1") && calls.filter((call) => call.sql.includes("from people where id = $1")).length === 1, rows: [{ id: "operator-1", role: "OPERATOR", reports_to_id: "supervisor-1" }] },
+      { match: (sql) => sql.includes("from people where id = $1"), rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }] },
       { match: (sql) => sql.includes("select name from people"), rows: [{ name: "Operador Um" }] },
       { match: (sql) => sql.includes("from workflow_enrollment_events"), rows: [] },
       { match: (sql) => sql.trim().startsWith("insert into alerts"), rows: [] },
@@ -236,6 +261,8 @@ describe("executeOutput", () => {
 describe("executeOutput — entrega para gestão (FOLLOW_UP com destinatário que não é o operador)", () => {
   it("o alerta leva o rótulo do nó como título e a síntese do Orquestrador como descrição — nunca só 'um workflow gerou uma saída'", async () => {
     const { db, calls } = fakeDb([
+      // Cadeia real: operador → supervisor-1 (a busca por cargo começa no gestor do operador).
+      { match: (sql) => sql.includes("select id, role, reports_to_id from people") && calls.filter((call) => call.sql.includes("select id, role, reports_to_id from people")).length === 1, rows: [{ id: "operator-1", role: "OPERATOR", reports_to_id: "supervisor-1" }] },
       { match: (sql) => sql.includes("select id, role, reports_to_id from people"), rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }] },
       { match: (sql) => sql.includes("select name from people"), rows: [{ name: "Bruno" }] },
       { match: (sql) => sql.includes("from workflow_enrollment_events"), rows: [] },
@@ -243,7 +270,7 @@ describe("executeOutput — entrega para gestão (FOLLOW_UP com destinatário qu
     const config: OutputNodeConfig = { target: { type: "ROLE", role: "SUPERVISOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.orq" }
     const context = baseContext(db, {
       nodeLabel: "Resumo mensal ao Supervisor",
-      enrollment: { interactionId: null, indicatorMeasurementId: null, scheduledSubjectId: "supervisor-1" },
+      enrollment: { interactionId: null, indicatorMeasurementId: null, scheduledSubjectId: "operator-1" },
       nodeOutputs: { orq: { text: "Três colaboradores abaixo da meta; priorizar Ana.", orchestratorName: "Gerencial", agentId: null, calls: [], results: [], structuredResult: null } },
     })
 
@@ -308,6 +335,18 @@ describe("executeOutput — destinatário de gestão resolvido pela ESTRUTURA (m
     expect(result.recipients).toEqual([{ id: "manager-1", name: "Gerente Um", role: "MANAGER" }])
     const insert = calls.find((call) => call.sql.includes("insert into alerts"))
     expect(insert!.params[2]).toBe("manager-1")
+  })
+
+  it("o operador que passou a ter o cargo pedido nunca é o destinatário: a busca começa no gestor dele (C16, 4ª auditoria)", async () => {
+    const { db, calls } = fakeDb([
+      { match: (sql) => sql.includes("from interactions"), rows: [{ operator_id: "operator-1" }] },
+      // O próprio sujeito virou Supervisor depois de a execução começar; o gestor dele é o supervisor-9.
+      { match: (sql) => sql.includes("select id, role, reports_to_id from people") && calls.filter((call) => call.sql.includes("select id, role, reports_to_id from people")).length === 1, rows: [{ id: "operator-1", role: "SUPERVISOR", reports_to_id: "supervisor-9" }] },
+      { match: (sql) => sql.includes("select id, role, reports_to_id from people"), rows: [{ id: "supervisor-9", role: "SUPERVISOR", reports_to_id: null }] },
+      { match: (sql) => sql.includes("from people where id = $1"), rows: [{ id: "supervisor-9", name: "Sara", role: "SUPERVISOR" }] },
+    ])
+    const result = await executeOutput({ target: { type: "SUPERVISOR_OF_OPERATOR" }, surfaces: ["NOTIFICATION"], source: "nodeOutputs.agent" }, baseContext(db, { nodeOutputs: { agent: { kind: "monitoring", input: {} } } }))
+    expect(result.recipients.map((recipient) => recipient.id)).toEqual(["supervisor-9"])
   })
 
   it("caminho individual: cargo ausente na cadeia do operador é ERRO (nunca alerta descartado em silêncio)", async () => {

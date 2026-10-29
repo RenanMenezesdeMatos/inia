@@ -83,3 +83,86 @@ describe("guarda de ZIP — tamanho REAL de cada entrada (auditoria 17/10/2026, 
     expect(inspectZip(buildZip([{ name: "[Content_Types].xml", content: Buffer.from("<Types/>") }, { name: "xl/worksheets/sheet1.xml", content: sheet }]))).toMatchObject({ ok: true, entries: 2 })
   })
 })
+
+/** Partes de uma entrada (registro local + registro central apontando para `offset`), para montar layouts fora do padrão. */
+function entryParts(entry: { name: string; content: Buffer; declaredSize?: number }, offset: number): { local: Buffer; central: Buffer } {
+  const zip = buildZip([entry])
+  const localLength = 30 + entry.name.length + zip.readUInt32LE(18)
+  const central = Buffer.from(zip.subarray(localLength, zip.length - 22))
+  central.writeUInt32LE(offset, 42)
+  return { local: zip.subarray(0, localLength), central }
+}
+
+function endRecord(fields: { disk?: number; onDisk: number; total: number; size: number; offset: number; commentLength?: number }): Buffer {
+  const end = Buffer.alloc(22)
+  end.writeUInt32LE(0x06054b50, 0)
+  end.writeUInt16LE(fields.disk ?? 0, 4)
+  end.writeUInt16LE(fields.onDisk, 8)
+  end.writeUInt16LE(fields.total, 10)
+  end.writeUInt32LE(fields.size, 12)
+  end.writeUInt32LE(fields.offset, 16)
+  end.writeUInt16LE(fields.commentLength ?? 0, 20)
+  return end
+}
+
+describe("guarda de ZIP — lê o MESMO diretório que o JSZip dos parsers (achado N04 da 4ª auditoria)", () => {
+  // Entrada que declara 16 bytes e descompacta 16 KiB: recusada quando a guarda a enxerga.
+  const lying = { name: "xl/sharedStrings.xml", content: Buffer.alloc(16 * 1024, 0x30), declaredSize: 16 }
+  const types = { name: "[Content_Types].xml", content: Buffer.from("<Types/>") }
+
+  it("registro além da contagem do fim do diretório (o JSZip continuaria lendo) é recusado", () => {
+    const a = entryParts(types, 0)
+    const b = entryParts(lying, a.local.length)
+    const directory = Buffer.concat([a.central, b.central])
+    const zip = Buffer.concat([a.local, b.local, directory, endRecord({ onDisk: 1, total: 1, size: directory.length, offset: a.local.length + b.local.length })])
+    expect(inspectZip(zip)).toEqual({ ok: false, reason: "diretório central com registros não contados" })
+  })
+
+  it("campo de disco 0xFFFF (o JSZip troca para ZIP64 e lê outro diretório) e registro ZIP64 antes do fim são recusados", () => {
+    const plain = buildZip([types])
+    const multiVolume = Buffer.from(plain)
+    multiVolume.writeUInt16LE(0xffff, plain.length - 22 + 4)
+    expect(inspectZip(multiVolume)).toEqual({ ok: false, reason: "pacote em vários volumes ou com contagem inconsistente" })
+    const a = entryParts(types, 0)
+    const b = entryParts(lying, a.local.length)
+    const z64Offset = a.local.length + b.local.length + a.central.length + b.central.length
+    const z64 = Buffer.alloc(56)
+    z64.writeUInt32LE(0x06064b50, 0)
+    z64.writeBigUInt64LE(44n, 4)
+    z64.writeBigUInt64LE(1n, 24)
+    z64.writeBigUInt64LE(1n, 32)
+    z64.writeBigUInt64LE(BigInt(b.central.length), 40)
+    z64.writeBigUInt64LE(BigInt(a.local.length + b.local.length + a.central.length), 48)
+    const locator = Buffer.alloc(20)
+    locator.writeUInt32LE(0x07064b50, 0)
+    locator.writeBigUInt64LE(BigInt(z64Offset), 8)
+    locator.writeUInt32LE(1, 16)
+    const zip64 = Buffer.concat([a.local, b.local, a.central, b.central, z64, locator, endRecord({ disk: 0xffff, onDisk: 1, total: 1, size: a.central.length, offset: a.local.length + b.local.length })])
+    expect(inspectZip(zip64)).toEqual({ ok: false, reason: "pacote ZIP64 (grande demais para um documento)" })
+  })
+
+  it("vão entre o diretório e o fim (o JSZip reposiciona tudo e lê outro diretório) é recusado", () => {
+    const a = entryParts({ name: "docProps/app.xml", content: Buffer.from("<Properties/>".repeat(20)) }, 0)
+    const b = entryParts(lying, a.local.length + a.central.length)
+    const zip = Buffer.concat([a.local, a.central, b.local, b.central, endRecord({ onDisk: 1, total: 1, size: b.central.length, offset: a.local.length })])
+    expect(inspectZip(zip)).toEqual({ ok: false, reason: "diretório central fora do lugar" })
+  })
+
+  it("fim do arquivo incoerente com o comentário e nome repetido são recusados; comentário de verdade continua aceito", () => {
+    const plain = buildZip([types])
+    expect(inspectZip(Buffer.concat([plain, Buffer.from("lixo depois do fim")]))).toEqual({ ok: false, reason: "fim do pacote inconsistente" })
+    const commented = Buffer.from(plain)
+    commented.writeUInt16LE(11, plain.length - 22 + 20)
+    expect(inspectZip(Buffer.concat([commented, Buffer.from("comentário")]))).toMatchObject({ ok: true, entries: 1 })
+    expect(inspectZip(buildZip([types, { name: "xl/workbook.xml", content: Buffer.from("<a/>") }, { name: "xl/workbook.xml", content: Buffer.from("<b/>") }]))).toEqual({ ok: false, reason: "entrada com nome repetido" })
+  })
+
+  it("planilha de verdade (exceljs, o mesmo JSZip) continua aceita", async () => {
+    const { default: ExcelJS } = await import("exceljs")
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet("Dados")
+    sheet.addRow(["matrícula", "nome", "valor"])
+    for (let row = 0; row < 500; row += 1) sheet.addRow([`M${row}`, `Pessoa ${row}`, row * 1.5])
+    expect(inspectZip(Buffer.from(await workbook.xlsx.writeBuffer()))).toMatchObject({ ok: true })
+  })
+})

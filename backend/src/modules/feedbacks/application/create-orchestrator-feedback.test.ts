@@ -23,6 +23,7 @@ function fakeDb(): { db: Database; calls: Call[] } {
   const client = {
     query: async (sql: string, params: unknown[] = []) => {
       calls.push({ sql, params })
+      if (sql.includes("as owned")) return { rows: [{ owned: 1 }] }
       if (sql.includes("insert into supervision_cases")) return { rows: [{ id: "case-1" }] }
       if (sql.includes("insert into feedbacks")) return { rows: [{ id: "feedback-1" }] }
       return { rows: [] }

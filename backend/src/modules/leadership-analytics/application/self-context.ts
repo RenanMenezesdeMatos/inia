@@ -59,8 +59,10 @@ export const SELF_ASK_DECLARATION: FunctionDeclaration = {
 /** Voz do operador: o modelo de voz só encaminha; quem consulta os números e escreve a resposta é a orquestração do chat. */
 export const SELF_VOICE_RULES = [
   "Como conduzir a voz:",
-  `- Para QUALQUER pergunta sobre os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), como melhorar, processos, procedimentos ou regras do atendimento, acione ${SELF_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador e mês já falados).`,
-  "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, metas ou procedimentos que não vieram da ferramenta.",
+  `- Para QUALQUER pergunta sobre os próprios resultados (PRV, quartil, indicadores, metas, pior ou melhor indicador, evolução, este mês), como melhorar, processos, procedimentos ou regras do atendimento, regras e políticas da empresa, benefícios, valores ou prazos, acione ${SELF_ASK_TOOL} com a pergunta completa e o contexto da conversa (indicador e mês já falados).`,
+  `- Continuação também é uma pergunta nova e vai à ferramenta ("e nesse caso…", "e se…", "então não precisa…, né?", "vale para…?"): acione ${SELF_ASK_TOOL} de novo com a pergunta e o contexto. Nunca deduza, complete nem confirme uma regra, um passo, um valor ou um prazo a partir do que já foi dito — o que ainda não foi respondido, só a ferramenta responde. Sem acionar, só repita quando a pessoa pedir para repetir, e exatamente o que a ferramenta trouxe.`,
+  "- Acione a ferramenta IMEDIATAMENTE, na mesma resposta, SEM falar nada antes (nem \"vou consultar\"): uma frase sem a chamada encerra o turno e a pessoa fica sem resposta. Nunca fale números, metas, valores, prazos, regras ou procedimentos que não vieram da ferramenta.",
+  "- Nunca diga que não tem acesso, que não sabe, que as bases não cobrem o assunto ou que vai consultar sem ter acionado a ferramenta neste turno: acione e responda com o que ela trouxer.",
   "- Quando a resposta chegar, ela já está completa na tela: fale um resumo curto e fiel e diga que o detalhe está na tela.",
 ].join("\n")
 

@@ -48,10 +48,34 @@ const FROM = `from assistant_conversations c
   left join subteams st on st.id = owner.subteam_id
   ${ORGANIZATION_TIMEZONE}`
 
-/** Prévia (última mensagem) de quem monitora: resposta com cartão de dados nunca aparece na lista — só aberta, com o filtro do leitor. */
+/**
+ * RECADO de Workflow (conversa de origem WORKFLOW, `c`): fala do SUJEITO da matrícula que o entregou — operador da interação, pessoa
+ * da medição ou sujeito agendado (a mesma regra de `resolveEnrollmentOperatorId`) —, não do dono da conversa (quem recebeu). O leitor
+ * só vê as respostas da INIA nessa conversa quando o sujeito é o próprio dono ou está no alcance dele (achado C01 da 4ª auditoria).
+ * Matrícula raiz de um Workflow Consolidado fala de uma estrutura inteira e matrícula apagada não diz de quem fala: sem sujeito,
+ * só quem lê a organização inteira vê (falha fechada).
+ */
+const RECADO_SUBJECT = `(select case when e.parent_enrollment_id is null and w.consolidated_structure is not null then null
+      else coalesce(i.operator_id, case when im.subject_type = 'PERSON' then im.subject_id end, e.scheduled_subject_id) end
+    from workflow_outputs wo
+    join workflow_enrollments e on e.id = wo.enrollment_id
+    join workflows w on w.id = e.workflow_id
+    left join interactions i on i.id = e.interaction_id
+    left join indicator_measurements im on im.id = e.indicator_measurement_id
+   where wo.conversation_id = c.id and wo.organization_id = c.organization_id and wo.surface = 'CHAT'
+   order by wo.created_at limit 1)`
+const RECADO_VISIBLE = `(c.origin <> 'WORKFLOW' or exists (select 1 from grants g where g.scope_type = 'ORGANIZATION') or exists (
+    select 1 from people subject where subject.id = ${RECADO_SUBJECT} and subject.organization_id = c.organization_id and (
+      subject.id = owner.id
+      or exists (select 1 from grants g where g.scope_type = 'GROUP' and g.team_id = subject.team_id)
+      or exists (select 1 from grants g where g.scope_type = 'SUBGROUP' and g.subteam_id = subject.subteam_id)
+      or subject.id in (select id from subordinates))))`
+
+/** Prévia (última mensagem) de quem monitora: resposta com cartão de dados — ou recado sobre alguém fora do alcance do leitor — nunca
+ * aparece na lista; só aberta, com o filtro do leitor. */
 export const MONITORING_DATA_PREVIEW = "Resposta com dados de pessoas — abra a conversa para ver o que está no seu escopo."
 const MONITORING_LAST_MESSAGE_JOIN = `left join lateral (
-    select m.role, case when m.role = 'assistant' and jsonb_typeof(m.tool_calls) = 'array' and jsonb_path_exists(m.tool_calls, '$[*].analytics') then '${MONITORING_DATA_PREVIEW}' else m.content end content, m.channel
+    select m.role, case when m.role = 'assistant' and ((jsonb_typeof(m.tool_calls) = 'array' and jsonb_path_exists(m.tool_calls, '$[*].analytics')) or not ${RECADO_VISIBLE}) then '${MONITORING_DATA_PREVIEW}' else m.content end content, m.channel
     from assistant_interactions m where m.conversation_id = c.id order by m.occurred_at desc, m.seq desc limit 1
   ) last_message on true`
 
@@ -172,6 +196,19 @@ export async function requireMonitoredConversation(db: Queryable, viewer: Monito
 
 /** Texto no lugar de uma resposta com dados de pessoas que o LEITOR não alcança. */
 export const OUT_OF_READER_SCOPE_NOTICE = "Resposta com dados de pessoas fora do seu escopo de leitura (a estrutura de quem perguntou é maior que a sua). O conteúdo não é exibido aqui."
+/** Texto no lugar das respostas de um recado de Workflow sobre alguém que o LEITOR não alcança. */
+export const OUT_OF_READER_SCOPE_RECADO_NOTICE = "Recado sobre um colaborador fora do seu escopo de leitura. O conteúdo não é exibido aqui."
+
+/** O recado desta conversa fala de alguém no alcance do leitor (ou a conversa não é um recado)? Ver RECADO_VISIBLE. */
+async function recadoVisibleToReader(db: Queryable, viewer: MonitoringViewer, conversationId: string): Promise<boolean> {
+  const result = await db.query<{ visible: boolean }>(
+    `${SCOPE_CTE} select ${RECADO_VISIBLE} visible from assistant_conversations c
+       join people owner on owner.id = c.owner_person_id and owner.organization_id = c.organization_id
+      where c.organization_id = $1 and c.id = $4::uuid`,
+    [...baseParams(viewer), conversationId],
+  )
+  return result.rows[0]?.visible === true
+}
 
 /**
  * Cartões que o LEITOR pode ver: os que falam do próprio dono da conversa ou de estruturas que o escopo de dados do leitor
@@ -192,6 +229,8 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
   const withCards = result.messages.filter((message) => message.analytics.length > 0)
   // Sem filtro informado, nenhuma resposta com cartão de dados aparece (falha fechada).
   const visible = new Set(withCards.length > 0 && readerCards ? await readerCards({ ownerPersonId: conversation.owner.personId, cards: withCards.flatMap((message) => message.analytics) }) : [])
+  // Recado de Workflow sobre alguém fora do alcance do leitor: nenhuma resposta da INIA na conversa (as seguintes nascem do recado).
+  const recadoHidden = conversation.origin === "WORKFLOW" && !(await recadoVisibleToReader(db, viewer, conversationId))
   // ESCLARECIMENTO PELAS BASES — a trilha de auditoria (opções com a fonte de cada uma, fontes da resposta), com as bases resolvidas
   // pelo acesso do LEITOR: base que quem lê não pode abrir aparece sem título (a referência gravada não concede acesso).
   const clarifications = result.messages.flatMap((message) => {
@@ -212,8 +251,9 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
     // confirmação feita na sessão de feedback (`PRODUCT_APPLICABILITY_V1`): o que a pessoa respondeu ali não é evidência da gravação.
     messages: result.messages.map(({ clarificationScope, ...message }) => {
       const confirmedInChat = parseFeedbackSessionClarificationScope(clarificationScope)?.provenance === "CHAT_CONFIRMATION"
-      const hidden = message.analytics.some((card) => !visible.has(card))
-      return { ...message, ...(hidden ? { content: OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
+      const recado = recadoHidden && message.role === "assistant"
+      const hidden = recado || message.analytics.some((card) => !visible.has(card))
+      return { ...message, ...(hidden ? { content: recado ? OUT_OF_READER_SCOPE_RECADO_NOTICE : OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
     }),
     hasMore: result.hasMore,
   }

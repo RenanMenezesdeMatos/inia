@@ -110,7 +110,7 @@ async function argumentAudienceOf(db: Database, organizationId: string, agentId:
     if (person) return { teamId: person.team_id, subteamId: person.subteam_id }
   }
   const agent = (await db.query<{ team_id: string | null; subteam_id: string | null }>(
-    `select coalesce(a.team_id, st.team_id) team_id, a.subteam_id from agents a left join subteams st on st.id = a.subteam_id where a.id = $1 and a.organization_id = $2`,
+    `select case when a.scope_type = 'SUBTEAM' then st.team_id else a.team_id end team_id, a.subteam_id from agents a left join subteams st on st.id = a.subteam_id where a.id = $1 and a.organization_id = $2`,
     [agentId, organizationId],
   )).rows[0]
   return { teamId: agent?.team_id ?? null, subteamId: agent?.subteam_id ?? null }

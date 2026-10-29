@@ -43,6 +43,16 @@ export function TabSkeleton() {
 }
 
 export function TabError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  // Recorte com menos de 5 pessoas para quem só vê agregados: não é falha — o filtro precisa ser ampliado (achado C18).
+  if (error instanceof AdminApiError && error.code === "USABILITY_SMALL_COHORT") {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-10 text-center" role="status">
+        <Lock className="size-6 text-muted-foreground" aria-hidden />
+        <p className="font-medium">Recorte pequeno demais</p>
+        <p className="max-w-md text-sm text-muted-foreground">{error.message}</p>
+      </div>
+    )
+  }
   if (error instanceof AdminApiError && (error.code === "FORBIDDEN" || error.code === "USABILITY_PEOPLE_FORBIDDEN" || error.code === "USABILITY_EXPORT_FORBIDDEN")) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border px-4 py-10 text-center" role="alert">

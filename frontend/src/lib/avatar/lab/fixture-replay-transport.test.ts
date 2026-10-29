@@ -100,7 +100,7 @@ describe("laboratório: transporte de produção + servidor falso com capturas r
     const { transport, sockets, lipsync, states, advance } = await labHarness([script])
     expect(transport.isConnected).toBe(true)
     transport.sendText("Diga a frase 1")
-    expect(sockets[0].sent.some((message) => "clientContent" in message)).toBe(true)
+    expect(sockets[0].sent.some((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.text === "Diga a frase 1")).toBe(true)
     await advance(9000)
     const audioSteps = script.steps.filter((step) => step.kind === "audio")
     expect(lipsync.chunks).toHaveLength(audioSteps.length)
@@ -121,7 +121,8 @@ describe("laboratório: transporte de produção + servidor falso com capturas r
     expect(sockets[0].replaying).toBe("resposta-longa")
 
     await transport.bargeIn()
-    expect(sockets[0].sent.some((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.activityStart)).toBe(true)
+    // O do turno de texto e o do barge-in.
+    expect(sockets[0].sent.filter((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.activityStart)).toHaveLength(2)
     expect(lipsync.interrupts).toHaveLength(1)
     await advance(1000)
     // As 2 mensagens em voo chegaram, mas nenhum áudio da geração antiga foi agendado.

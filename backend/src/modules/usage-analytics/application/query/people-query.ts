@@ -2,6 +2,7 @@ import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { SqlParams } from "../../../../shared/infrastructure/sql-params.js"
 import { activeAccountRolesSql } from "../../../access/application/scope-people-reader.js"
+import { SENSITIVE_LEAVE_STATUSES } from "../../../org-structure/domain/management-metrics.js"
 import { populationSql } from "../../../people/application/usage-analytics-reader.js"
 import { addDays } from "../../domain/usage-time.js"
 import { domainActionsSql } from "./domain-actions.js"
@@ -157,6 +158,11 @@ type BaseRow = {
   active_days: number; sessions: number; active_seconds: string | number; sessions_per_active_day: string | null; is_active: boolean; is_engaged: boolean
 }
 
+/** Situação que a monitoria de uso mostra: afastamento sensível (INSS, maternidade, paternidade) sai como `AFASTAMENTO_PROTEGIDO` na
+ * lista, no detalhe e no CSV — o painel só precisa saber que a pessoa está afastada; o tipo exato fica na tela de situação funcional
+ * (`people.manage`). O código bruto continua só nos filtros internos (achado C04 da 4ª auditoria). */
+export const usabilityEmploymentStatus = (status: string): string => ((SENSITIVE_LEAVE_STATUSES as readonly string[]).includes(status) ? "AFASTAMENTO_PROTEGIDO" : status)
+
 export const toPeopleRow = (row: BaseRow): PeopleRow => ({
   personId: row.person_id,
   name: row.name,
@@ -166,7 +172,7 @@ export const toPeopleRow = (row: BaseRow): PeopleRow => ({
   teamName: row.team_name,
   subteamName: row.subteam_name,
   personActive: row.person_active,
-  employmentStatus: row.employment_status,
+  employmentStatus: usabilityEmploymentStatus(row.employment_status),
   accountStatus: row.account_id === null ? "NONE" : row.account_active ? "ENABLED" : "DISABLED",
   roles: row.role_codes,
   eligibleNow: row.eligible_from !== null,

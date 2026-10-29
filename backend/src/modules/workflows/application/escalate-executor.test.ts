@@ -24,6 +24,11 @@ function baseContext(db: Database, overrides: Partial<Parameters<typeof executeE
   }
 }
 
+/** Cadeia de gestão real: operador-1 → supervisor-1 (a busca por cargo começa no GESTOR do operador). */
+function chainRow(params?: unknown[]) {
+  return params?.[0] === "operator-1" ? { rows: [{ id: "operator-1", role: "OPERATOR", reports_to_id: "supervisor-1" }], rowCount: 1 } : { rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }], rowCount: 1 }
+}
+
 function fakeDb(overrides: (sql: string, params?: unknown[]) => { rows: unknown[]; rowCount: number } | undefined): Database {
   return {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
@@ -100,10 +105,8 @@ describe("executeEscalation — Target (reaproveita o mesmo resolvedor hierárqu
 describe("executeEscalation — Conteúdo e Motivo", () => {
   it("resolve o conteúdo via contentSource (mesmo resolveSource do Output) e inclui o Motivo na descrição do alerta", async () => {
     dispatchAlert.mockClear()
-    const db = fakeDb((sql) => {
-      if (sql.includes("select id, role, reports_to_id from people where id")) {
-        return { rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }], rowCount: 1 }
-      }
+    const db = fakeDb((sql, params) => {
+      if (sql.includes("select id, role, reports_to_id from people where id")) return chainRow(params)
       return undefined
     })
     const config: EscalateActionConfig = {
@@ -121,10 +124,8 @@ describe("executeEscalation — múltiplas Surfaces, sem duplicar domínio", () 
   it("uma Surface de alerta (NOTIFICATION) e uma de registro genérico (INBOX) despacham cada uma pelo seu próprio mecanismo, sem duplicar", async () => {
     dispatchAlert.mockClear()
     dispatchWorkflowOutputRows.mockClear()
-    const db = fakeDb((sql) => {
-      if (sql.includes("select id, role, reports_to_id from people where id")) {
-        return { rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }], rowCount: 1 }
-      }
+    const db = fakeDb((sql, params) => {
+      if (sql.includes("select id, role, reports_to_id from people where id")) return chainRow(params)
       return undefined
     })
     const config: EscalateActionConfig = { ...baseConfig, surfaces: ["NOTIFICATION", "INBOX"] }
@@ -135,10 +136,8 @@ describe("executeEscalation — múltiplas Surfaces, sem duplicar domínio", () 
   })
 
   it("o nodeOutput devolvido carrega target/surfaces/motivo pra auditoria — sem tabela nova (reaproveita o mesmo padrão do SET_VARIABLE)", async () => {
-    const db = fakeDb((sql) => {
-      if (sql.includes("select id, role, reports_to_id from people where id")) {
-        return { rows: [{ id: "supervisor-1", role: "SUPERVISOR", reports_to_id: null }], rowCount: 1 }
-      }
+    const db = fakeDb((sql, params) => {
+      if (sql.includes("select id, role, reports_to_id from people where id")) return chainRow(params)
       return undefined
     })
     const config: EscalateActionConfig = { ...baseConfig, reason: "Conduta confirmada" }

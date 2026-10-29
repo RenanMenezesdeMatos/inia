@@ -12,6 +12,7 @@ import { useProfileEditor } from "@/components/profile/edit-profile/profile-edit
 import { ROLE_LABELS, sessionDisplayName } from "@/schemas/auth/auth.schema"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { CREATE_PASSWORD_ROUTE, logout, logoutEverywhere, myProfileHrefFor } from "@/services/auth/auth-service"
+import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { shutdownUsageForLogout, UsageAnalyticsProvider } from "@/lib/usage/usage-provider"
 
 type AuthenticatedAppShellProps = {
@@ -33,9 +34,18 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
   const passwordChangePending = user?.passwordChangeRequired === true
 
   useEffect(() => {
-    if (unauthenticated) router.replace("/auth/login")
+    if (unauthenticated) loadSessionDocument("/auth/login", { replace: true })
     else if (passwordChangePending) router.replace(CREATE_PASSWORD_ROUTE)
   }, [router, unauthenticated, passwordChangePending])
+
+  // Saída = documento novo (lib/auth/session-navigation.ts), DEPOIS de a sessão cair no servidor: a página de login já abre sem ela.
+  // A fila de uso desta conta é enviada (melhor esforço) e descartada antes do logout — nunca vai para a próxima conta.
+  const leaveSession = useCallback((url: string) => {
+    queryClient.clear()
+    void shutdownUsageForLogout()
+      .finally(() => logout().catch(() => undefined))
+      .finally(() => loadSessionDocument(url, { replace: true }))
+  }, [queryClient])
 
   const shell: ShellState | null = user
     ? {
@@ -51,11 +61,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
     : null
 
   function handleSignOut() {
-    // A sessão (e tudo que dependia dela) sai do cache: a próxima conta nunca vê menus nem perfil da anterior. A fila de uso
-    // desta conta é enviada (melhor esforço) e descartada ANTES do logout — nunca vai para a próxima conta.
-    queryClient.clear()
-    void shutdownUsageForLogout().finally(() => void logout())
-    router.push("/auth/login")
+    leaveSession("/auth/login")
   }
 
   async function handleSignOutEverywhere() {
@@ -66,16 +72,11 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
       return
     }
     queryClient.clear()
-    void shutdownUsageForLogout()
-    router.push("/auth/login?motivo=todos-os-aparelhos")
+    void shutdownUsageForLogout().finally(() => loadSessionDocument("/auth/login?motivo=todos-os-aparelhos", { replace: true }))
   }
 
   // Parada além do limite: a sessão já caiu (ou cai agora) no servidor; a tela limpa o que era da conta e leva ao login.
-  const handleIdleExpired = useCallback(() => {
-    queryClient.clear()
-    void shutdownUsageForLogout().finally(() => void logout())
-    router.replace("/auth/login?motivo=inatividade")
-  }, [queryClient, router])
+  const handleIdleExpired = useCallback(() => leaveSession("/auth/login?motivo=inatividade"), [leaveSession])
 
   if (passwordChangePending) return null
 

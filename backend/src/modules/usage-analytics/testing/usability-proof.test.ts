@@ -23,7 +23,7 @@ import { peopleQuery } from "../application/query/people-query.js"
 import { qualityQuery } from "../application/query/quality-query.js"
 import { personDetailQuery } from "../application/query/person-query.js"
 import { screensQuery } from "../application/query/screens-query.js"
-import { buildUsabilityContext } from "../application/query/usability-context.js"
+import { assertAggregateCohort, buildUsabilityContext } from "../application/query/usability-context.js"
 import { buildUsabilityExport } from "../application/query/usability-export.js"
 import type { UsabilityTab } from "../application/query/usability-filters.js"
 import { workflowsQuery } from "../application/query/workflows-query.js"
@@ -224,6 +224,41 @@ describe.skipIf(!ENABLED)("Monitoria de usabilidade — prova Postgres", () => {
     await expect(personDetailQuery(db(), await ctxFor("lia", "person"), ids.people.ana)).rejects.toMatchObject({ statusCode: 403 })
     expect((await ctxFor("lia", "people")).can.export).toBe(false)
     await expect(ctxFor("lia", "people", { personId: ids.people.ana })).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  it("leitora só de agregados: recorte com menos de 5 pessoas não mostra números; cargo e situação ficam reservados (C18, 4ª auditoria)", async () => {
+    // Organização inteira: recorte grande, segue normal.
+    await expect(assertAggregateCohort(db(), await ctxFor("lia", "overview"))).resolves.toBeUndefined()
+    // Grupo B (poucas pessoas): recusado com o motivo, sem número nenhum.
+    await expect(assertAggregateCohort(db(), await ctxFor("lia", "overview", { teamId: ids.teamB }))).rejects.toMatchObject({ code: "USABILITY_SMALL_COHORT", statusCode: 422 })
+    // Filtros que isolam pessoas (cargo único, papel, situação) são da permissão de pessoas identificadas.
+    for (const query of [{ jobTitle: "Gestão" }, { accessRole: "ANALISTA_DE_USABILIDADE" }, { personStatus: "AWAY" }, { accountStatus: "DISABLED" }]) {
+      await expect(ctxFor("lia", "overview", query)).rejects.toMatchObject({ code: "USABILITY_PEOPLE_FORBIDDEN" })
+    }
+    // A leitora lê pela estrutura atual (o recorte contado é o mesmo dos números).
+    expect((await ctxFor("lia", "overview", { structureMode: "AT_FACT" })).filters.structureMode).toBe("CURRENT")
+    // Quem vê pessoas identificadas não muda: o mesmo Grupo B passa, e os filtros continuam.
+    await expect(assertAggregateCohort(db(), await ctxFor("vera", "overview", { teamId: ids.teamB }))).resolves.toBeUndefined()
+    expect((await ctxFor("vera", "overview", { jobTitle: "Gestão" })).filters.jobTitle).toBe("Gestão")
+  })
+
+  it("afastamento sensível sai como AFASTAMENTO_PROTEGIDO na lista, no detalhe e no CSV; o filtro de afastados continua valendo (C04, 4ª auditoria)", async () => {
+    await pool.query(`update people set current_employment_status = 'INSS' where id = $1`, [ids.people.diego])
+    try {
+      const ctx = await ctxFor("vera", "people", { segment: "AWAY" })
+      const away = await peopleQuery(db(), ctx)
+      expect(away.items!.map((row) => [row.name, row.employmentStatus])).toEqual([["Diego Prova", "AFASTAMENTO_PROTEGIDO"]])
+      const detail = await personDetailQuery(db(), await ctxFor("vera", "person"), ids.people.diego)
+      expect(detail.person.employmentStatus).toBe("AFASTAMENTO_PROTEGIDO")
+      const csv = await buildUsabilityExport(db(), ctx, "people", "people")
+      expect(csv.csv).toContain("AFASTAMENTO_PROTEGIDO")
+      expect(csv.csv).not.toMatch(/INSS|MATERNIDADE|PATERNIDADE/)
+      // Situação que não é sensível continua como veio.
+      await pool.query(`update people set current_employment_status = 'FERIAS' where id = $1`, [ids.people.diego])
+      expect((await peopleQuery(db(), ctx)).items!.map((row) => row.employmentStatus)).toEqual(["FERIAS"])
+    } finally {
+      await pool.query(`update people set current_employment_status = 'FERIAS' where id = $1`, [ids.people.diego])
+    }
   })
 
   it("detalhe individual é auditado e não traz conteúdo", async () => {

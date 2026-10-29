@@ -9,8 +9,9 @@ import type { CaptureStep } from "./capture-steps"
  *
  * Protocolo simulado (o subconjunto que o transporte manda):
  * - `setup` → `setupComplete`;
- * - fim do turno do usuário — `clientContent` (texto, `sendText`) ou `realtimeInput.activityEnd`
- *   (voz) → reproduz o próximo script (`nextScript()`, escolhido pelo laboratório);
+ * - fim do turno do usuário — `realtimeInput.activityEnd` (voz, ou texto: o `sendText` manda
+ *   `activityStart` → `text` → `activityEnd`) ou `clientContent` → reproduz o próximo script
+ *   (`nextScript()`, escolhido pelo laboratório);
  * - `realtimeInput.activityStart` no meio de uma resposta (barge-in) → como medido ao vivo em
  *   2026-09-24: ainda chegam 1–2 mensagens da geração ANTIGA (já estavam em voo), e ~190 ms
  *   depois vêm `interrupted` + `turnComplete`. O resto da captura é descartado;
@@ -87,6 +88,8 @@ export class FixtureReplaySocket extends EventTarget {
   private active: ActiveReplay | null = null
   private pendingBargeIn: PendingBargeIn | null = null
   private readonly timers = new Set<unknown>()
+  /** A atividade do usuário em aberto trouxe texto (`sendText`), não áudio. */
+  private textInActivity = false
 
   constructor(
     readonly url: string,
@@ -133,8 +136,15 @@ export class FixtureReplaySocket extends EventTarget {
       this.startReplay("text")
       return
     }
-    if (input?.activityStart) this.bargeIn()
-    else if (input?.activityEnd) this.startReplay("activityEnd")
+    if (input?.activityStart) {
+      this.textInActivity = false
+      this.bargeIn()
+    } else if (typeof input?.text === "string") this.textInActivity = true
+    else if (input?.activityEnd) {
+      const trigger = this.textInActivity ? "text" : "activityEnd"
+      this.textInActivity = false
+      this.startReplay(trigger)
+    }
   }
 
   close(): void {
