@@ -30,10 +30,11 @@ function isReadOnlySql(sql: string): boolean {
  * matrícula/alerta/feedback/medição real — e, por consequência, nunca acorda outro Workflow.
  * `connect()` também é bloqueado: quem abre transação é porque vai escrever.
  */
-export function createReadOnlyDatabase(db: Database): Database {
+export function createReadOnlyDatabase(db: Database, options: { enforcedByDatabase?: boolean } = {}): Database {
   const query = ((sql: unknown, ...rest: unknown[]) => {
     const text = typeof sql === "string" ? sql : ((sql as { text?: string })?.text ?? "")
     if (!isReadOnlySql(text)) return Promise.reject(new QaWriteBlockedError(text))
+    if (options.enforcedByDatabase) return queryInReadOnlyTransaction(db, sql, rest)
     return (db.query as (...args: unknown[]) => unknown)(sql, ...rest)
   }) as Database["query"]
 
@@ -41,6 +42,30 @@ export function createReadOnlyDatabase(db: Database): Database {
     Promise.reject(new QaWriteBlockedError("connect() — transação"))) as unknown as Database["connect"]
 
   return { query, connect }
+}
+
+/**
+ * O banco como SEGUNDA trava (`enforcedByDatabase`): a lista de palavras acima olha só o começo do comando, então um `select` que
+ * grava por dentro (função que escreve, `nextval`) passaria. Cada leitura roda numa transação `read only` própria — o PostgreSQL
+ * recusa qualquer escrita — e curta: nada fica aberto entre uma consulta e outra (nem durante uma chamada de IA, que o
+ * `idle_in_transaction_session_timeout` derrubaria), e consultas em paralelo continuam em paralelo, cada uma na sua conexão.
+ */
+async function queryInReadOnlyTransaction(db: Database, sql: unknown, rest: unknown[]): Promise<unknown> {
+  const client = await db.connect()
+  let discard = false
+  try {
+    await client.query("begin transaction read only")
+    const result = await (client.query as (...args: unknown[]) => Promise<unknown>)(sql, ...rest)
+    await client.query("commit")
+    return result
+  } catch (error) {
+    await client.query("rollback").catch(() => {
+      discard = true
+    })
+    throw error
+  } finally {
+    client.release(discard)
+  }
 }
 
 export { isReadOnlySql }

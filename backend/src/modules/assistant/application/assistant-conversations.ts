@@ -240,7 +240,7 @@ const toMessage = (row: MessageRow): ConversationMessage => {
  */
 export async function loadConversationMessages(
   db: Queryable,
-  input: { organizationId: string; conversationId: string; limit: number; before?: MessageCursor | null; after?: MessageCursor | null },
+  input: { organizationId: string; conversationId: string; limit: number; before?: MessageCursor | null; after?: MessageCursor | null; ownerPersonId?: string },
 ): Promise<{ messages: ConversationMessage[]; hasMore: boolean }> {
   const params: unknown[] = [input.organizationId, input.conversationId, input.limit + 1]
   let where = ""
@@ -252,6 +252,11 @@ export async function loadConversationMessages(
   } else if (input.before) {
     params.push(input.before.occurredAt, input.before.seq)
     where = "and (occurred_at, seq) < ($4::timestamptz, $5::bigint)"
+  }
+  // Com `ownerPersonId`, conversa de outra pessoa não devolve nada (na mesma consulta, sem ida a mais ao banco).
+  if (input.ownerPersonId) {
+    params.push(input.ownerPersonId)
+    where += ` and exists (select 1 from assistant_conversations c where c.id = $2 and c.organization_id = $1 and c.owner_person_id = $${params.length})`
   }
   const result = await db.query<MessageRow>(
     `select id, channel, role, content, agent_id, occurred_at, seq::text seq, client_message_id, tool_calls from assistant_interactions
@@ -373,7 +378,8 @@ export type ConversationStore = {
   loadCurrent(scope: ConversationScope, now: Date): Promise<ConversationRecord | null>
   append(input: MessageInput): Promise<{ id: string; duplicate: boolean }>
   findByClientMessageId(conversationId: string, clientMessageId: string): Promise<{ id: string; content: string } | null>
-  loadMessages(input: { organizationId: string; conversationId: string; limit: number; before?: MessageCursor | null; after?: MessageCursor | null }): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>
+  /** `ownerPersonId` = só se a conversa for dessa pessoa (vazio se não for). */
+  loadMessages(input: { organizationId: string; conversationId: string; limit: number; before?: MessageCursor | null; after?: MessageCursor | null; ownerPersonId?: string }): Promise<{ messages: ConversationMessage[]; hasMore: boolean }>
   contextTurns(input: { organizationId: string; conversationId: string }): Promise<{ role: "user" | "model"; text: string }[]>
   listOwn(scope: ConversationScope, page: number, pageSize: number): Promise<{ items: ConversationSummary[]; total: number }>
   ownSummary(scope: ConversationScope, id: string): Promise<ConversationSummary | null>

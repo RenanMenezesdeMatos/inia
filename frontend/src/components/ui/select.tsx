@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 
+import { useCspNonce } from "@/lib/security/csp-nonce"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
@@ -64,6 +65,8 @@ function SelectContent({
   align = "center",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  // O Viewport do Radix escreve um <style> (esconde a barra nativa): a CSP só o aceita com o nonce da página (R-07).
+  const nonce = useCspNonce()
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -77,6 +80,7 @@ function SelectContent({
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           data-position={position}
+          nonce={nonce}
           className={cn(
             "data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
             position === "popper" && ""

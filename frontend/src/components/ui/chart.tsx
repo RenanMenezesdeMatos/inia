@@ -4,6 +4,7 @@ import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
 
+import { useCspNonce } from "@/lib/security/csp-nonce"
 import { cn } from "@/lib/utils"
 
 // Format: { THEME_NAME: CSS_SELECTOR }
@@ -87,6 +88,8 @@ const SAFE_CSS_KEY = /^[A-Za-z0-9_-]+$/
 const SAFE_CSS_COLOR = /^[A-Za-z0-9#(),.%\s-]+$/
 
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
+  // A CSP só aceita <style> com o nonce da página (R-07).
+  const nonce = useCspNonce()
   const colorConfig = Object.entries(config).filter(
     ([key, config]) => SAFE_CSS_KEY.test(key) && (config.theme ?? config.color)
   )
@@ -97,6 +100,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
+      nonce={nonce}
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(

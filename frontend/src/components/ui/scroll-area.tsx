@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
+import { useCspNonce } from "@/lib/security/csp-nonce"
 import { cn } from "@/lib/utils"
 
 /**
@@ -10,7 +11,9 @@ import { cn } from "@/lib/utils"
  * excesso fica escondido). Como bloco, o conteúdo tem a largura do viewport e quem é largo rola dentro de si (`overflow-x-auto`).
  */
 function ScrollArea({ className, children, ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
-  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" className="size-full rounded-[inherit] outline-none [&>div]:block!">{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
+  // O Viewport do Radix escreve um <style> (esconde a barra nativa): a CSP só o aceita com o nonce da página (R-07).
+  const nonce = useCspNonce()
+  return <ScrollAreaPrimitive.Root data-slot="scroll-area" className={cn("inia-scroll-fade relative", className)} {...props}><ScrollAreaPrimitive.Viewport data-slot="scroll-area-viewport" nonce={nonce} className="size-full rounded-[inherit] outline-none [&>div]:block!">{children}</ScrollAreaPrimitive.Viewport><ScrollBar/><ScrollAreaPrimitive.Corner/></ScrollAreaPrimitive.Root>
 }
 
 function ScrollBar({ className, orientation = "vertical", ...props }: React.ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {

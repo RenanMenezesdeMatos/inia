@@ -115,6 +115,21 @@ Causas dos 5xx (616 erros registrados no log da API):
 
 Nenhum alerta de injeção (SQL, NoSQL, comando, caminho), XSS refletido, SSRF ou inclusão de arquivo nas 466 operações.
 
+**Reteste do R-07 (29/10, depois do isolamento dos estilos).** Build de produção do frontend em cópia isolada
+(`output/appsec-csp-2026-10-29/`, fora do Git) com a API isolada e banco descartável; ZAP 2.17.0 só passivo (`requestor` em
+`/auth/login`, `/auth/forgot-password`, `/wiki` e uma rota inexistente → 404), sem sessão, 2 CPUs/3 GB.
+
+| Política de estilos | Alertas |
+|---|---|
+| `STRICT` (nova: `style-src`/`style-src-elem` com nonce e hashes, `style-src-attr 'unsafe-inline'`) | só 10109 "Modern Web Application" (informativo) |
+| `RELAXED` (antiga, controle negativo: `style-src 'self' 'unsafe-inline'`) | **10055 "CSP: style-src unsafe-inline"** (médio, 3 instâncias) + 10109 |
+
+No navegador (mesmo build, `STRICT`), tela a tela: nenhum `<style>` sem folha aplicada (`.sheet` nulo = bloqueado) nem com
+nonce diferente do documento — lista das telas em `../configuracao-segura.md` §2. Antes da correção final, duas falhas reais
+apareceram e foram corrigidas: (1) depois de salvar o perfil, o `router.refresh()` entregava ao cliente o nonce NOVO da requisição
+e os `ScrollArea` montados em seguida eram bloqueados (o nonce do documento passou a ficar fixo no navegador); (2) o `Select` do
+Radix e a 404 padrão do Next escreviam `<style>` sem nonce (nonce no viewport do `Select`; hash do CSS fixo da 404).
+
 ## 5. Verificações nativas
 
 | Verificação | Resultado |

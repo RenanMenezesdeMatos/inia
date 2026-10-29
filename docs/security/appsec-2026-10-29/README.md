@@ -47,8 +47,9 @@ OSV, Syft e ZAP, logs, cópias isoladas do código e o arquivo de segredos aleat
 
 1. Atualizações de `next`, `body-parser`, `zod` (backend e frontend) e `multer` aplicadas em 29/10. Prazos de correção de
    dependências propostos em [../politica-de-dependencias.md](../politica-de-dependencias.md) — falta a aprovação formal.
-2. Riscos aceitos registrados em `../pendencias-e-riscos.md`: C-N3 como **R-39**, MFA/SSO adiado como **R-40** e nota de 29/10 no
-   **R-07** (CSP `style-src 'unsafe-inline'`, que o ZAP marca como médio).
+2. Riscos aceitos registrados em `../pendencias-e-riscos.md`: C-N3 como **R-39** e MFA/SSO adiado como **R-40**. O **R-07** (CSP
+   `style-src 'unsafe-inline'`, que o ZAP marcava como médio) foi isolado em 29/10: `<style>` só com nonce ou hash e
+   `'unsafe-inline'` só em `style-src-attr` — o ZAP deixou de apontar a regra 10055; sobra o residual baixo descrito no R-07.
 3. Cofre de segredos e antivírus nos uploads — dependem do padrão da Vivo. MFA/SSO adiado para uma próxima etapa (decisão da INIA).
 4. Testes dinâmicos na homologação só com alvo e contas autorizados (ver plano).
 5. Informar ao Conviso os riscos aceitos já documentados (R-01…R-38 em `../pendencias-e-riscos.md`).

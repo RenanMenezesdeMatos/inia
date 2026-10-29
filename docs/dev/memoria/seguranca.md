@@ -41,10 +41,25 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   `'unsafe-eval'`: biblioteca que use `eval`/`new Function` quebra ou gera violação (o Zod roda `jitless` por isso,
   `lib/security/zod-without-eval.ts`). Para conferir no navegador, o console não mostra violação de `eval` — use um `report-uri`
   de teste (ver `docs/security/configuracao-segura.md` §2).
+  Estilos (R-07 isolado em 29/10/2026): `<style>` só com o nonce ou por hash; `'unsafe-inline'` só em `style-src-attr`. Componente
+  que escreve `<style>` lê o nonce por `useCspNonce()` (`lib/security/csp-nonce.tsx`; Radix pelo `get-nonce`); CSS fixo de
+  biblioteca que não aceita nonce entra por hash em `content-security-policy.ts` com teste que recalcula do pacote instalado
+  (`sonner`, 404 do Next). No navegador vale o nonce do DOCUMENTO (`pinDocumentNonce`): `router.refresh()` traz um nonce novo que a
+  página não conhece. Conferir tela nova no build de produção (`next dev` fica RELAXED): `<style>` sem `.sheet` = bloqueado; o
+  console diz "The action has been blocked", não "Refused". `INIA_CSP_STYLES` = STRICT | REPORT_ONLY | RELAXED, lida na subida.
 - **Limites**: `rate-limit.ts` (loja do PostgreSQL no servidor real, memória nos testes). Ação nova que chama IA ou conecta a
   destino externo entra no `costly(...)` ou no teto por conta de `app.ts`. Matcher por caminho SEMPRE com `routePath(request)`
   (minúsculas, sem barra final) — o Express casa `/x/TEST` e `/x/test/` na rota de `/x/test`. Regra "só falhas" reserva a vaga e
   devolve no sucesso (`release`).
+  Leitura pesada sem IA no meio (consulta flexível e ferramentas da liderança fora do chat, exportação do diagnóstico) divide o
+  balde `heavyReads` por conta (20/min); o chat já passa pelo teto da IA. Prévia de arquivo monta só as linhas que mostra
+  (`scanCsv` com `keep`; no XLSX, largura e total contados linha a linha) — o total continua exato (4ª auditoria).
+- **Simulação só leitura**: `createReadOnlyDatabase` barra pela lista de comandos (só o começo do SQL); quem roda com permissão em
+  qualquer escopo (o "Testar diagnóstico") usa também `enforcedByDatabase` — cada leitura numa transação `read only` curta, o
+  PostgreSQL recusa função que grava ou `nextval`. Nunca abrir uma transação longa em volta da simulação (chamadas de IA no meio
+  esbarram no `idle_in_transaction_session_timeout`). O QA Lab (só organização inteira) segue só com a lista.
+- **Leitura de conversa pela dona**: quem lê mensagens para decidir algo (esclarecimento pelas bases) passa `ownerPersonId` ao
+  `loadMessages` — conversa de outra pessoa volta vazia na mesma consulta, sem ida a mais ao banco.
 - **Login** (2ª rodada): tentativa reservada como falha ANTES do bcrypt (`reserveAttempt/resolveAttempt`) — nunca voltar a
   "conferir → bcrypt → gravar"; fila do bcrypt com teto (`PASSWORD_QUEUE_LIMIT`, 503 `AUTH_BUSY`); cookie `inia_device` (dispositivo
   conhecido) passa pela trava do e-mail com trava própria; senha previsível recusada (`COMMON_PASSWORD`, lista espelhada no
@@ -110,5 +125,5 @@ configuração segura e pendências (R-01…18). Aqui ficam só as decisões que
   `22021`/`22P05` → 400 e `23505` → 409; nome repetido de assunto/Subgrupo → 409; `.gitleaks.toml` (exclusões só da regra genérica);
   prazos de dependências em `docs/security/politica-de-dependencias.md`; HSTS das páginas já vinha do `next.config.ts` em HTTPS. `npm run security:scan` = Semgrep/Gitleaks/OSV/Syft
   em contêiner fixado por digest, barrando só achado novo em relação a `scripts/security/appsec-baseline.json`.
-- Pendências principais: organização fixa em ~30 arquivos (R-01), voz Live sem `setup` travado (R-04), CSP com estilos inline
-  (R-07; os scripts já usam nonce), limitador por processo (R-02), manuais 003/004 desatualizados sobre HTTP (R-11).
+- Pendências principais: organização fixa em ~30 arquivos (R-01), voz Live sem `setup` travado (R-04), CSP com `style`
+  em atributo (R-07, isolado em 29/10), limitador por processo (R-02), manuais 003/004 desatualizados sobre HTTP (R-11).

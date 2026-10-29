@@ -394,7 +394,7 @@ export function createRealtimeRouter(
     const clarify = async (resolved: ResolvedOrchestrator, scope: ProcessClarificationScope, question: string): Promise<ClarificationReply | null> => {
       if (!input.clarification || !knowledgeClarification || clarifying) return null
       clarifying = true
-      latest ??= latestClarificationOf(input.organizationId, input.clarification.conversationId)
+      latest ??= latestClarificationOf({ organizationId: input.organizationId, ownerPersonId: input.personId }, input.clarification.conversationId)
       let outcome: ClarificationOutcome
       try {
         const stored = await latest
@@ -463,7 +463,7 @@ export function createRealtimeRouter(
    */
   const continueProcessClarification = async (input: { organizationId: string; personId: string; leadership: LeadershipChatContext; conversationId: string; answer: ClarificationAnswerRequest; text: string; recentTurns: { role: "user" | "model"; text: string }[] }): Promise<ProcessClarification> => {
     const unavailable = () => new DomainError("Este esclarecimento não está mais disponível. Faça a pergunta de novo.", "KNOWLEDGE_CLARIFICATION_UNAVAILABLE", 409)
-    const stored = await latestClarificationOf(input.organizationId, input.conversationId)
+    const stored = await latestClarificationOf({ organizationId: input.organizationId, ownerPersonId: input.personId }, input.conversationId)
     const scope = stored?.scope
     if (!stored || !scope || !input.leadership.processScope || !knowledgeClarification) throw unavailable()
     const reachable = reachableProcessOrchestrators(input.leadership.processScope, await processOrchestrators(input.organizationId))
@@ -585,8 +585,9 @@ export function createRealtimeRouter(
 
   /** O esclarecimento mais recente desta conversa (lido do BANCO, nunca do navegador), se ele é a última resposta da INIA e onde
    * foi feito (`scope`: a consulta de processo de quem lidera, com o Orquestrador do Grupo; null = o chat/voz de quem atende). */
-  const latestClarificationOf = async (organizationId: string, conversationId: string): Promise<StoredClarification | null> => {
-    const page = await conversations.loadMessages({ organizationId, conversationId, limit: 40 })
+  // Só na conversa de quem pergunta (`scope`): os chamadores já resolvem a conversa pela dona, e a leitura confere de novo.
+  const latestClarificationOf = async (scope: ConversationScope, conversationId: string): Promise<StoredClarification | null> => {
+    const page = await conversations.loadMessages({ organizationId: scope.organizationId, ownerPersonId: scope.ownerPersonId, conversationId, limit: 40 })
     const answers = page.messages.filter((message) => message.role === "assistant")
     for (let index = answers.length - 1; index >= 0; index -= 1) {
       const state = parseClarificationState(answers[index]!.clarification)
@@ -596,8 +597,8 @@ export function createRealtimeRouter(
   }
 
   /** O estado gravado com UMA resposta já salva (retentativa da mesma mensagem ou da mesma chamada da voz). */
-  const storedClarificationOf = async (organizationId: string, conversationId: string, interactionId: string) => {
-    const recent = await conversations.loadMessages({ organizationId, conversationId, limit: 10 })
+  const storedClarificationOf = async (scope: ConversationScope, conversationId: string, interactionId: string) => {
+    const recent = await conversations.loadMessages({ organizationId: scope.organizationId, ownerPersonId: scope.ownerPersonId, conversationId, limit: 10 })
     return parseClarificationState(recent.messages.find((message) => message.id === interactionId)?.clarification)
   }
 
@@ -687,7 +688,7 @@ export function createRealtimeRouter(
     const existing = await conversations.findByClientMessageId(writable.conversationId, clientMessageId)
     if (existing) {
       // Retentativa da mesma chamada: a resposta gravada vale — com o esclarecimento dela, quando houver (o formulário volta à tela).
-      const stored = await storedClarificationOf(scope.organizationId, writable.conversationId, existing.id)
+      const stored = await storedClarificationOf(scope, writable.conversationId, existing.id)
       const voiceInstruction = stored ? renderClarificationVoiceInstruction(stored, { tool: input.toolName }) : ask.voiceInstruction
       return { text: existing.content, modelText: `${existing.content}${voiceInstruction}`, supportMaterials: [], analytics: [], interactionId: existing.id, ...(stored ? { clarification: (await clarificationViewsFor(scope.organizationId, personId, [stored]))[0] } : {}), ...(await conversationPayload(request, writable)) }
     }
@@ -718,7 +719,7 @@ export function createRealtimeRouter(
     if (!ask.leadership && askOrchestrator && clarifies) {
       // Quem atende, pela voz: a pergunta encaminhada passa pelo esclarecimento antes da orquestração (as bases do Orquestrador dela).
       // Pergunta NOVA: o roteamento corre ao mesmo tempo e só roda ferramentas se o esclarecimento passar (como no chat de texto).
-      const stored = await latestClarificationOf(scope.organizationId, writable.conversationId)
+      const stored = await latestClarificationOf(scope, writable.conversationId)
       const previous = stored && !stored.scope && !stored.feedbackScope ? { state: stored.state, isLatestAssistantMessage: stored.isLatestAssistantMessage } : null
       const continuing = Boolean(input.clarification) || Boolean(previous?.isLatestAssistantMessage && openStepOf(previous.state))
       const speculation = continuing ? null : createSpeculation({ text: () => {}, retract: () => {}, progress: () => {} })
@@ -1178,7 +1179,7 @@ export function createRealtimeRouter(
           const materials = stored.get(previous.id) ?? []
           if (materials.length > 0) send("support_materials", { interactionId: previous.id, supportMaterials: materials })
           // A resposta gravada era de um esclarecimento: o formulário/fontes voltam junto (estado relido do banco).
-          const storedState = await storedClarificationOf(scope.organizationId, resolved.conversationId, previous.id)
+          const storedState = await storedClarificationOf(scope, resolved.conversationId, previous.id)
           if (storedState) send("knowledge_clarification", { interactionId: previous.id, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [storedState]))[0] })
           send("done", {})
           return
@@ -1258,7 +1259,7 @@ export function createRealtimeRouter(
           // procedência `CHAT_CONFIRMATION` (nunca evidência da gravação; nada volta para a análise). Sem produto pendente, nada muda.
           const productContext = application.productContext
           if (productContext && sessionOrchestrator && knowledgeClarification && knowledgeClarificationEnabled() && input.text !== FEEDBACK_PRESENTATION_CUE) {
-            const stored = await latestClarificationOf(scope.organizationId, resolved.conversationId)
+            const stored = await latestClarificationOf(scope, resolved.conversationId)
             const feedbackScope: FeedbackSessionClarificationScope = { kind: "FEEDBACK_SESSION", applicationId: application.applicationId, provenance: "CHAT_CONFIRMATION" }
             const outcome = await trace.span("clarification", () => knowledgeClarification.handle({
               organizationId: scope.organizationId,
@@ -1412,7 +1413,7 @@ export function createRealtimeRouter(
           return
         }
 
-        const stored = await latestClarificationOf(scope.organizationId, resolved.conversationId)
+        const stored = await latestClarificationOf(scope, resolved.conversationId)
         const clarificationRequest: ClarificationRequest = {
           organizationId: scope.organizationId,
           personId: operatorId,

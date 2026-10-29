@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { detectDelimiter, parseCsv, splitCsv } from "./csv-parser.js"
+import { detectDelimiter, parseCsv, scanCsv, splitCsv } from "./csv-parser.js"
 
 describe("csv-parser", () => {
   it("autodetecta ; , tab e |", () => {
@@ -59,6 +59,34 @@ describe("csv-parser", () => {
     expect(table.columns).toEqual(["a", "coluna_2", "c"])
     expect(table.rows).toHaveLength(2)
     expect(table.totalRows).toBe(3)
+  })
+
+  it("prévia (lote 3 da 4ª auditoria): só as linhas mostradas viram células, e o resultado é o mesmo da leitura completa — aspas, quebra dentro de aspas, CRLF, linhas em branco e só com espaço", () => {
+    const text = [
+      "id;texto;obs",
+      '1;"vírgula, ponto; e ""aspas""";a',
+      "",
+      "   ;  ;  ",
+      '2;"quebra\r\ndentro";b',
+      '3;"";"   "',
+      '"";"";" x "',
+      "4;sem fim",
+    ].join("\r\n")
+    const bytes = new TextEncoder().encode(text)
+    for (const options of [{ hasHeader: true, skipRows: 0 }, { hasHeader: false, skipRows: 0 }, { hasHeader: true, skipRows: 2 }]) {
+      const csv = { encoding: "utf-8" as const, delimiter: ";" as const, ...options }
+      const full = parseCsv(bytes, csv)
+      for (const limit of [0, 1, 2, 3, 10]) {
+        const preview = parseCsv(bytes, csv, limit)
+        expect(preview.columns).toEqual(full.columns)
+        expect(preview.rows).toEqual(full.rows.slice(0, limit))
+        expect(preview.totalRows).toBe(full.totalRows)
+      }
+    }
+    const all = splitCsv(text, ";")
+    expect(all).toHaveLength(6)
+    expect(all[1]).toEqual(["1", 'vírgula, ponto; e "aspas"', "a"])
+    expect(scanCsv(text, ";", 2)).toEqual({ rows: all.slice(0, 2), total: 6 })
   })
 
   it("arquivo vazio é DATA_FILE_INVALID", () => {

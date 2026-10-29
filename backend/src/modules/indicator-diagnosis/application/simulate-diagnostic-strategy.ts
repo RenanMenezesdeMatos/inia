@@ -42,7 +42,8 @@ export type DiagnosisSimulationResult = {
 const sum = (values: (number | null)[]) => (values.some((value) => value === null) || values.length === 0 ? (values.length === 0 ? 0 : null) : values.reduce<number>((total, value) => total + (value ?? 0), 0))
 
 export async function simulateDiagnosticStrategy(db: Database, organizationId: string, input: DiagnosisSimulationInput, options: { model?: EngineModelPort; now?: Date } = {}): Promise<DiagnosisSimulationResult> {
-  const readDb = createReadOnlyDatabase(db)
+  // Quem tem `configuration.manage` em qualquer escopo roda o teste: além da lista de comandos, o banco recusa qualquer escrita.
+  const readDb = createReadOnlyDatabase(db, { enforcedByDatabase: true })
   const version = (await readDb.query<{ id: string; version: number; status: "DRAFT" | "PUBLISHED"; config: unknown }>(
     `select v.id, v.version, v.status, v.config from indicator_diagnostic_strategy_versions v join indicator_diagnostic_strategies s on s.id = v.strategy_id
      where s.organization_id = $1 and s.indicator_definition_id = $2 and v.status = $3`,

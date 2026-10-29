@@ -734,3 +734,17 @@ descartável. Tela, com servidores próprios em 127.0.0.1: o administrador do Gr
 Grupo A e "+ 1 em outros Grupos (fora do seu escopo)", e "Orchestrators 1" só com a contagem. A lista de dependências do
 indicador só aparece no formulário de edição, exclusivo de quem administra a organização inteira (que vê tudo); para o
 administrador de Grupo ela só chegava pela API.
+
+Endurecimentos do R-38 (29/10/2026), sem falha explorável por trás, medidos no banco descartável com a massa demo:
+(1) prévia do upload da Central de Dados — o CSV monta só as linhas mostradas e conta o resto (`scanCsv`), o XLSX conta largura e
+total linha a linha sem uma segunda cópia da aba: CSV de 44 MB com 436 mil linhas, de 846 MB e 644 ms para 249 MB e 193 ms; XLSX
+de 10 MB com 300 mil linhas, de ~1,72 GB para ~1,49 GB (o resto é o exceljs carregando a planilha, como na importação); mesma
+saída (colunas, primeiras linhas, total); (2) teto por conta `heavyReadsPerAccount` (20/min, um balde) na consulta flexível e
+nas ferramentas da liderança chamadas fora do chat e na exportação do diagnóstico; (3) "Testar diagnóstico" com o banco como
+segunda trava (`createReadOnlyDatabase(db, { enforcedByDatabase: true })`: cada leitura numa transação `read only` curta) —
+função que grava, `nextval` e CTE com função que grava, que a lista de comandos deixava passar, agora dão 25006 e nada é
+gravado; o teste (parar antes da IA) dá o mesmo resultado, de 13 para 30 ms; (4) a leitura do esclarecimento pelas bases
+confere a dona da conversa (`loadMessages` com `ownerPersonId`, na mesma consulta). Typecheck e lint sem erro; suíte do
+backend 486 arquivos e **5.282 testes passando**, 0 falhas; provas `read-only-database-proof` (nova),
+`assistant-conversations-proof` (caso novo), `data-hub-proof`, `source-custody-proof` e `person-identity-proof` passam no
+banco descartável.

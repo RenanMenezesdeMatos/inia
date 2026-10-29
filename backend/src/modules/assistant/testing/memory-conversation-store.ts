@@ -105,7 +105,8 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
       const found = messages.find((m) => m.conversationId === conversationId && m.clientMessageId === clientMessageId)
       return found ? { id: found.id, content: found.content } : null
     },
-    async loadMessages({ conversationId, limit, before, after }) {
+    async loadMessages({ organizationId, conversationId, limit, before, after, ownerPersonId }) {
+      if (ownerPersonId && !owned({ organizationId, ownerPersonId }, conversationId)) return { messages: [], hasMore: false }
       let list = ordered(conversationId)
       if (after) list = list.filter((m) => compare(m, after) > 0).slice(0, limit + 1)
       else {

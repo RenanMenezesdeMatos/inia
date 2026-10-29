@@ -143,6 +143,12 @@ export type RateLimitSettings = {
   profileWritesPerAccount: number
   /** Prévias de documento (DOCX → HTML) por conta, por minuto: cada uma descompacta e converte o arquivo (lote 3 da 4ª auditoria). */
   knowledgePreviewsPerAccount: number
+  /**
+   * Leituras pesadas sem IA no meio, por conta, por minuto: consulta flexível e ferramentas da liderança chamadas fora do chat e a
+   * exportação do diagnóstico — cada uma varre meses de medições do escopo de quem pede (lote 3 da 4ª auditoria). O chat já tem
+   * o teto da IA.
+   */
+  heavyReadsPerAccount: number
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
@@ -159,6 +165,7 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   adminCostlyActionsPerAccount: 30,
   profileWritesPerAccount: 20,
   knowledgePreviewsPerAccount: 30,
+  heavyReadsPerAccount: 20,
 }
 
 const httpLog = createLogger("http")
@@ -242,6 +249,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Prévia de documento: qualquer leitor do material pode pedir, e cada uma descompacta e converte o arquivo — teto por conta.
   const previewPerAccount = limit({ name: "knowledge-preview-account", windowMs: 60_000, max: "knowledgePreviewsPerAccount", key: accountKey, message: "Muitas prévias de documento em pouco tempo. Aguarde um instante." })
   const previews: express.RequestHandler = (request, response, next) => (request.method === "GET" && /^\/[^/]+\/preview$/.test(routePath(request)) ? previewPerAccount(request, response, next) : next())
+  // Leituras pesadas fora do chat (liderança, exportação do diagnóstico): um balde só por conta.
+  const heavyReadPerAccount = limit({ name: "heavy-read-account", windowMs: 60_000, max: "heavyReadsPerAccount", key: accountKey, message: "Muitas consultas pesadas em pouco tempo. Aguarde um instante." })
+  const heavyReads = (method: "GET" | "POST", pattern: RegExp): express.RequestHandler => (request, response, next) => (request.method === method && pattern.test(routePath(request)) ? heavyReadPerAccount(request, response, next) : next())
   const readConfirmationFailures = limit({ name: "read-confirmation-account", windowMs: 15 * 60_000, max: "readConfirmationFailuresPerAccount", key: accountKey, countOnlyFailures: true, message: "Muitas tentativas de confirmação. Aguarde alguns minutos e tente novamente." })
   // Monitoria de usabilidade: fatos de servidor observados na RESPOSTA 2xx das rotas existentes (login, voz, aplicação,
   // notificação) — montados antes delas e só com a coleta ligada; nunca alteram a resposta.
@@ -343,7 +353,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // guard dela não interceptar as outras rotas /admin/*.
   app.use("/api/v1/admin", can("configuration.manage"), orgWideWrites, createGovernanceRouter(database))
   app.use("/api/v1/data-ingestion", createDataIngestionRouter(database, dataHubOverrides))
-  app.use("/api/v1/diagnostics", requireAuth, createDiagnosticsRouter(database))
+  app.use("/api/v1/diagnostics", requireAuth, heavyReads("GET", /^\/memory\/export\.csv$/), createDiagnosticsRouter(database))
   // Base de boas práticas: leitura pelo público do Diagnóstico; pedir análise (IA) e revisar com `configuration.manage` no escopo.
   app.use("/api/v1/best-practices", requireAuth, costly(/^\/analyses$/), createBestPracticesRouter(database))
   app.use("/api/v1/ingestion", can("data_hub.manage", { organizationWide: true }), createIngestionRouter(database))
@@ -374,7 +384,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Indicadores e Equipe/Estrutura — escopo por papel resolvido no backend a cada request.
   app.use("/api/v1/analytics", requireAuth, createAnalyticsRouter(database))
   // Leituras determinísticas da liderança (as mesmas das ferramentas do chat) — escopo da sessão, sem IA.
-  app.use("/api/v1/leadership", requireAuth, createLeadershipRouter(database))
+  app.use("/api/v1/leadership", requireAuth, heavyReads("POST", /^\/(query|tools\/[^/]+)$/), createLeadershipRouter(database))
   // Reports recorrentes: permissões (líder × papel Report) e escopo de cada destinatário decididos no serviço, a cada pedido.
   // Prévia (roda a consulta), "Executar agora" e nova tentativa da análise (IA) entram no teto das ações caras (achado SCOPE-04).
   app.use("/api/v1/reports", requireAuth, costly(/^\/(preview|[^/]+\/run|deliveries\/[^/]+\/analysis\/retry)$/), createReportsRouter(database))

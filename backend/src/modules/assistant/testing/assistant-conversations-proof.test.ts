@@ -63,6 +63,10 @@ describe.skipIf(!ENABLED)("Conversas com a INIA — prova Postgres", () => {
     expect(page.hasMore).toBe(true)
     const older = await store.loadMessages({ organizationId: org.id, conversationId: first.conversationId, limit: 2, before: { occurredAt: page.messages[0]!.occurredAt, seq: Buffer.from(page.messages[0]!.cursor, "base64url").toString().split("|")[1]! } })
     expect(older.messages.map((m) => m.content)).toEqual(["Como faço a mudança de endereço?"])
+    // Com a dona pedida (leitura do esclarecimento — 4ª auditoria): conversa de outra pessoa não devolve nada, nem com cursor.
+    expect((await store.loadMessages({ organizationId: org.id, ownerPersonId: larissa.id, conversationId: first.conversationId, limit: 2 })).messages).toHaveLength(2)
+    expect(await store.loadMessages({ organizationId: org.id, ownerPersonId: bruno.id, conversationId: first.conversationId, limit: 40 })).toEqual({ messages: [], hasMore: false })
+    expect((await store.loadMessages({ organizationId: org.id, ownerPersonId: bruno.id, conversationId: first.conversationId, limit: 2, before: { occurredAt: page.messages[0]!.occurredAt, seq: "999999999" } })).messages).toEqual([])
     expect(await store.contextTurns({ organizationId: org.id, conversationId: first.conversationId })).toHaveLength(3)
 
     // Inatividade: a próxima mensagem abre outra; a antiga fica encerrada com as mensagens.

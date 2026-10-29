@@ -42,29 +42,30 @@ async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
   return workbook
 }
 
-/** Largura da planilha (a linha mais larga). Linha a linha: `Math.max(...linhas)` estoura a pilha a partir de ~100 mil linhas. */
-export function widestRow(rows: readonly (readonly unknown[])[]): number {
-  let width = 0
-  for (const row of rows) if (row.length > width) width = row.length
-  return width
-}
-
 export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit?: number): Promise<ParsedTable & { sheets: string[] }> {
   const workbook = await loadWorkbook(bytes)
   const sheets = workbook.worksheets.map((sheet) => sheet.name)
   const sheet = options.sheet ? workbook.getWorksheet(options.sheet) : workbook.worksheets[0]
   if (!sheet) throw new DataRunError("DATA_FILE_INVALID", `Aba "${options.sheet}" não existe. Abas: ${sheets.join(", ")}.`)
 
+  // Com `limit` (prévia), só as linhas puladas, o cabeçalho e as `limit` primeiras viram valores; das outras, só a largura e a
+  // contagem (antes, uma segunda cópia da aba inteira — lote 3 da 4ª auditoria). Largura linha a linha: `Math.max(...linhas)`
+  // estourava a pilha a partir de ~100 mil linhas.
+  const keep = limit === undefined ? Number.POSITIVE_INFINITY : options.skipRows + Math.max((options.hasHeader ? 1 : 0) + limit, 1)
   const matrix: (string | number | boolean | null)[][] = []
+  let seen = 0
+  let width = 0
   sheet.eachRow({ includeEmpty: false }, (row) => {
-    const values: (string | number | boolean | null)[] = []
     const cells = row.values as ExcelJS.CellValue[]
+    seen += 1
+    if (seen > options.skipRows && cells.length - 1 > width) width = cells.length - 1
+    if (matrix.length >= keep) return
+    const values: (string | number | boolean | null)[] = []
     for (let index = 1; index < cells.length; index += 1) values[index - 1] = cellToValue(cells[index] ?? null)
     matrix.push(values)
   })
   const all = matrix.slice(options.skipRows)
   if (all.length === 0) throw new DataRunError("DATA_FILE_INVALID", "A aba selecionada está vazia.")
-  const width = widestRow(all)
   const columns = Array.from({ length: width }, (_, index) => {
     const header = options.hasHeader ? all[0]![index] : null
     const text = header === null || header === undefined ? "" : String(header).trim()
@@ -73,5 +74,5 @@ export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit
   const body = options.hasHeader ? all.slice(1) : all
   const selected = limit === undefined ? body : body.slice(0, limit)
   const rows = selected.map((cells) => Object.fromEntries(columns.map((column, index) => [column, cells[index] ?? null])))
-  return { columns, rows, delimiter: "", totalRows: body.length, sheets }
+  return { columns, rows, delimiter: "", totalRows: seen - options.skipRows - (options.hasHeader ? 1 : 0), sheets }
 }

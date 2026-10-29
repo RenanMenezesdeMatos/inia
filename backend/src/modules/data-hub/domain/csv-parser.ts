@@ -87,39 +87,60 @@ function countDelimitersPerRow(text: string, delimiter: string): number[] {
 
 /** Divide o texto em linhas de células, respeitando aspas (quebra de linha dentro de aspas é preservada). */
 export function splitCsv(text: string, delimiter: string): string[][] {
+  return scanCsv(text, delimiter).rows
+}
+
+/**
+ * Mesma leitura do `splitCsv`, montando só as `keep` primeiras linhas não vazias; as demais só são CONTADAS (`total`). A prévia de
+ * 20 linhas de um upload deixa de montar as células do arquivo inteiro (CSV de 44 MB: ~850 MB de memória só para a prévia — lote 3
+ * da 4ª auditoria). Linha vazia = nenhuma célula com algo além de espaço, como antes.
+ */
+export function scanCsv(text: string, delimiter: string, keep = Number.POSITIVE_INFINITY): { rows: string[][]; total: number } {
   const rows: string[][] = []
+  let total = 0
   let row: string[] = []
   let cell = ""
+  let hasContent = false
   let inQuotes = false
+  const add = (char: string) => {
+    if (!hasContent && char.trim().length > 0) hasContent = true
+    if (rows.length < keep) cell += char
+  }
+  const endRow = () => {
+    if (hasContent) {
+      total += 1
+      if (rows.length < keep) {
+        row.push(cell)
+        rows.push(row)
+      }
+    }
+    row = []
+    cell = ""
+    hasContent = false
+  }
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index]!
     if (inQuotes) {
       if (char === '"') {
         if (text[index + 1] === '"') {
-          cell += '"'
+          add('"')
           index += 1
         } else inQuotes = false
-      } else cell += char
+      } else add(char)
       continue
     }
     if (char === '"') {
       inQuotes = true
     } else if (char === delimiter) {
-      row.push(cell)
+      if (rows.length < keep) row.push(cell)
       cell = ""
     } else if (char === "\n" || char === "\r") {
       if (char === "\r" && text[index + 1] === "\n") index += 1
-      row.push(cell)
-      rows.push(row)
-      row = []
-      cell = ""
-    } else cell += char
+      endRow()
+    } else add(char)
   }
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell)
-    rows.push(row)
-  }
-  return rows.filter((cells) => cells.some((value) => value.trim().length > 0))
+  endRow()
+  return { rows, total }
 }
 
 export function parseCsv(bytes: Uint8Array, options: CsvOptions, limit?: number): ParsedTable {
@@ -130,11 +151,15 @@ export function parseCsv(bytes: Uint8Array, options: CsvOptions, limit?: number)
     throw new DataRunError("DATA_FILE_INVALID", `Não foi possível decodificar o arquivo como ${options.encoding}.`)
   }
   const delimiter = options.delimiter === "auto" ? detectDelimiter(text) : options.delimiter
-  const all = splitCsv(text, delimiter).slice(options.skipRows)
+  const header = options.hasHeader ? 1 : 0
+  // Com `limit` (prévia), só as linhas puladas, o cabeçalho e as `limit` primeiras viram células (ao menos uma: dela saem as
+  // colunas); o total continua exato.
+  const scanned = scanCsv(text, delimiter, limit === undefined ? Number.POSITIVE_INFINITY : options.skipRows + Math.max(header + limit, 1))
+  const all = scanned.rows.slice(options.skipRows)
   if (all.length === 0) throw new DataRunError("DATA_FILE_INVALID", "O arquivo está vazio.")
   const columns = options.hasHeader ? all[0]!.map((name, index) => (name.trim().length ? name.trim() : `coluna_${index + 1}`)) : all[0]!.map((_, index) => `coluna_${index + 1}`)
   const body = options.hasHeader ? all.slice(1) : all
   const selected = limit === undefined ? body : body.slice(0, limit)
   const rows = selected.map((cells) => Object.fromEntries(columns.map((column, index) => [column, cells[index] ?? ""])))
-  return { columns, rows, delimiter, totalRows: body.length }
+  return { columns, rows, delimiter, totalRows: scanned.total - options.skipRows - header }
 }

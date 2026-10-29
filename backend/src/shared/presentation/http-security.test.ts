@@ -261,6 +261,18 @@ describe("limites de requisições", () => {
     expect((await request(app).get(`/api/v1/knowledge-materials/${id}`).set("Cookie", cookie)).status).not.toBe(429)
   })
 
+  it("leituras pesadas fora do chat (liderança e exportação do diagnóstico): um teto por conta para as duas, e o resto da área não conta", async () => {
+    const app = createApp(fakeDatabase().database, { rateLimits: { heavyReadsPerAccount: 3 } })
+    const cookie = await loggedInCookie(app)
+    expect((await request(app).post("/api/v1/leadership/query").set("Cookie", cookie).send({})).status).not.toBe(429)
+    expect((await request(app).post("/api/v1/LEADERSHIP/tools/leadership_people/").set("Cookie", cookie).send({})).status).not.toBe(429)
+    expect((await request(app).get("/api/v1/diagnostics/memory/export.csv").set("Cookie", cookie)).status).not.toBe(429)
+    expect((await request(app).get("/api/v1/diagnostics/memory/export.csv").set("Cookie", cookie)).status).toBe(429)
+    expect((await request(app).post("/api/v1/leadership/query").set("Cookie", cookie).send({})).status).toBe(429)
+    expect((await request(app).get("/api/v1/leadership/home").set("Cookie", cookie)).status).not.toBe(429)
+    expect((await request(app).get("/api/v1/diagnostics/memory/summary").set("Cookie", cookie)).status).not.toBe(429)
+  })
+
   it("limites por caminho não se contornam com maiúsculas nem barra final (o Express casa a mesma rota)", async () => {
     const app = createApp(fakeDatabase().database, { rateLimits: { adminCostlyActionsPerAccount: 1, voiceSessionsPerAccount: 1, aiInteractivePerAccount: 1000 } })
     const cookie = await loggedInCookie(app)

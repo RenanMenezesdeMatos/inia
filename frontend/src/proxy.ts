@@ -3,13 +3,15 @@ import type { NextRequest } from "next/server"
 
 import { readSessionCookie } from "@/lib/auth/session-cookie"
 import { passwordChangePendingIn } from "@/lib/auth/session-hint"
-import { buildContentSecurityPolicy, createCspNonce, CSP_NONCE_HEADER, originOf } from "@/lib/security/content-security-policy"
+import { buildContentSecurityPolicy, buildStyleReportOnlyPolicy, createCspNonce, CSP_NONCE_HEADER, originOf, resolveStyleMode } from "@/lib/security/content-security-policy"
 
 const CREATE_PASSWORD_ROUTE = "/auth/create-password"
 // Áreas que exigem sessão. As demais páginas (login, wiki, raiz) passam pelo proxy só para receber a CSP.
 const AUTHENTICATED_PREFIXES = ["/admin", "/operator", "/supervisor", "/diagnostics", "/best-practices", "/perfil", "/qa-lab", "/materiais"]
 const IS_DEVELOPMENT = process.env.NODE_ENV !== "production"
 const API_ORIGIN = originOf(process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333")
+// Estilos da CSP (R-07): STRICT em produção; INIA_CSP_STYLES=REPORT_ONLY ou RELAXED muda sem novo build (lido na subida).
+const STYLE_MODE = resolveStyleMode(process.env.INIA_CSP_STYLES, IS_DEVELOPMENT)
 
 function requiresSession(pathname: string): boolean {
   return AUTHENTICATED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -26,7 +28,7 @@ export function proxy(request: NextRequest) {
   // CSP com nonce novo a cada requisição: no cabeçalho da requisição o Next encontra o nonce e o aplica aos próprios scripts;
   // `x-nonce` leva o mesmo valor ao RootLayout (script de tema). Ver lib/security/content-security-policy.ts.
   const nonce = createCspNonce()
-  const contentSecurityPolicy = buildContentSecurityPolicy({ nonce, isDevelopment: IS_DEVELOPMENT, apiOrigin: API_ORIGIN })
+  const contentSecurityPolicy = buildContentSecurityPolicy({ nonce, isDevelopment: IS_DEVELOPMENT, apiOrigin: API_ORIGIN, styleMode: STYLE_MODE })
   const headers = new Headers(request.headers)
   headers.set(CSP_NONCE_HEADER, nonce)
   headers.set("Content-Security-Policy", contentSecurityPolicy)
@@ -34,6 +36,7 @@ export function proxy(request: NextRequest) {
   headers.set("x-inia-pathname", pathname)
   const response = NextResponse.next({ request: { headers } })
   response.headers.set("Content-Security-Policy", contentSecurityPolicy)
+  if (STYLE_MODE === "REPORT_ONLY") response.headers.set("Content-Security-Policy-Report-Only", buildStyleReportOnlyPolicy(nonce))
   return response
 }
 

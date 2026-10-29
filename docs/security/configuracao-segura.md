@@ -25,7 +25,7 @@ produção, a própria máquina (loopback). Redes privadas (10/8, 172.16/12, 192
 `NEXT_PUBLIC_INIA_API_URL` entra no build e define a origem da API na CSP (`img-src`/`connect-src`) e se o HSTS é enviado
 (só quando é `https://`). Mudou o endereço: `npm run build` de novo.
 
-### Content-Security-Policy com nonce (R-07, 08/10/2026)
+### Content-Security-Policy com nonce (R-07, 08/10/2026; estilos isolados em 29/10/2026)
 
 - **Como funciona**: `frontend/src/proxy.ts` monta a CSP a cada requisição (`src/lib/security/content-security-policy.ts`) com um
   nonce aleatório de 128 bits. `script-src 'self' 'nonce-…' 'strict-dynamic'`, **sem `'unsafe-inline'` e sem `'unsafe-eval'` em
@@ -59,13 +59,37 @@ produção, a própria máquina (loopback). Redes privadas (10/8, 172.16/12, 192
   Organograma, perfil, Diagnóstico, editor de Workflow (React Flow), prévias PDF (worker do pdf.js) e DOCX da base e outras nove
   telas da Administração; o worklet do microfone e workers `blob:` carregam. Controles negativos bloqueados: `<script>` inline do
   HTML, atributo `on*`, URL `javascript:` e `eval`. `next dev` também sem violação.
+- **Estilos isolados (29/10/2026)**: `style-src` e `style-src-elem` = `'self' 'nonce-…'` + hashes de CSS fixo; `style-src-attr
+  'unsafe-inline'` (só atributos `style=""`, exigidos pelo HTML do servidor e pelas posições do React Flow, Radix, motion e
+  recharts). Como cada `<style>` recebe o nonce: o Next nos próprios; o next-themes (script de tema e o `<style>` da troca de tema)
+  pelo `RootLayout`; o Radix — trava de rolagem pelo `get-nonce`, viewports do `ScrollArea` e do `Select` pelo `useCspNonce` —, e o
+  `ChartStyle` dos gráficos também pelo `useCspNonce` (`src/lib/security/csp-nonce.tsx`, ligado em `src/app/providers.tsx`). Por
+  hash, com teste que recalcula o texto a partir do pacote instalado (atualizar a biblioteca falha o teste até trocar o hash): o
+  CSS do `sonner` (mais o `<style>` vazio que ele insere antes do texto) e o da página 404 padrão do Next. **No navegador vale o
+  nonce do documento**: o `router.refresh()` (salvar o perfil, mudar acessos) traz o nonce novo daquela requisição, que a página não
+  conhece — o primeiro visto fica fixo (`pinDocumentNonce`). Folhas criadas por `CSSStyleSheet`/`adoptedStyleSheets` (painéis
+  redimensionáveis) não passam pela CSP.
+- **Interruptor `INIA_CSP_STYLES`** (variável do servidor do Next, lida na subida — basta reiniciar, sem novo build): `STRICT`
+  (padrão em produção), `REPORT_ONLY` (vale a política antiga e a nova vai no `Content-Security-Policy-Report-Only`, relatando no
+  console do navegador — para conferir telas antes de atualizar bibliotecas de interface), `RELAXED` (política antiga; padrão do
+  `next dev`, que injeta estilos de recarregamento sem nonce). `RELAXED` em produção reabre o R-07 — só para voltar atrás.
+- **Verificado em 29/10/2026** (build de produção em cópia isolada, `STRICT`): login, recuperação de senha, 404, Wiki, 29 rotas
+  da Administração (listas, formulários, `Select` aberto, editor de Workflow, Agente, base de conhecimento, fonte da Central de
+  Dados), Diagnóstico, Boas práticas, Reports, Supervisão (seis abas, organograma, ficha da pessoa com gráfico), perfil do
+  operador com avatar e chat, troca de tema, diálogo com trava de rolagem e toasts — nenhum `<style>` sem folha aplicada nem com
+  nonce diferente do documento, inclusive depois de salvar o perfil (`router.refresh()`). Não abertas: detalhe de Orquestrador,
+  de política de acompanhamento, de feed/execução da Central de Dados e de pessoa na usabilidade. ZAP 2.17.0 passivo nas páginas públicas:
+  sem o alerta 10055 "CSP: style-src unsafe-inline"; o mesmo plano com `INIA_CSP_STYLES=RELAXED` o aponta (médio, 3 instâncias).
+  Prévias da base não exercitadas no navegador nesta rodada (a massa local não tem base em arquivo), conferidas no código: o
+  PDF.js põe as fontes numa folha `adoptedStyleSheets` (ou, sem ela, num `<style>` vazio — liberado — preenchido por CSSOM); a
+  prévia DOCX é HTML gerado no backend (mammoth) e passa pela allowlist de `sanitize-document-html.ts`, que não deixa `<style>`.
 - **IIS**: não ligar cache de saída (output caching) para as páginas — o nonce precisa ser único por resposta (o Next já manda
   `Cache-Control: private, no-cache, no-store` nelas); não acrescentar outra `Content-Security-Policy` no `web.config` (seria uma
   segunda política somada a esta).
-- **Residual** (ver R-07 em `pendencias-e-riscos.md`): `style-src` mantém `'unsafe-inline'`; com `'strict-dynamic'`, o Chromium
-  deixa rodar um `<script>` inline criado via DOM por código já confiável.
-- **Reversão**: voltar `frontend/src/proxy.ts`, `src/app/layout.tsx`, `src/app/providers.tsx` e `next.config.ts` (a CSP estática
-  volta ao `headers()`) e `npm run build`.
+- **Residual** (ver R-07 em `pendencias-e-riscos.md`): `style-src-attr` mantém `'unsafe-inline'` (CSS num atributo, sem
+  seletores); com `'strict-dynamic'`, o Chromium deixa rodar um `<script>` inline criado via DOM por código já confiável.
+- **Reversão**: dos estilos, `INIA_CSP_STYLES=RELAXED` e reiniciar a interface. Da CSP inteira, voltar `frontend/src/proxy.ts`,
+  `src/app/layout.tsx`, `src/app/providers.tsx` e `next.config.ts` (a CSP estática volta ao `headers()`) e `npm run build`.
 
 ## 3. IIS / proxy
 
