@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -41,6 +43,7 @@ function StructuredFieldConditionForm({
   const decoded = decodeSourcePath(rule.sourcePath ?? "")
   const currentFieldPath = decoded?.kind === "node" && decoded.nodeId === nodeId ? decodeStructuredFieldPath(decoded.field) : null
   const selectedField = fields.find((field) => field.path === currentFieldPath)
+  const fieldId = useId()
 
   function selectField(fieldPath: string) {
     const field = fields.find((candidate) => candidate.path === fieldPath)
@@ -57,9 +60,9 @@ function StructuredFieldConditionForm({
   return (
     <>
       <div className="space-y-1.5">
-        <Label>Campo</Label>
+        <Label htmlFor={`${fieldId}-field`}>Campo</Label>
         <Select value={selectedField?.path ?? ""} onValueChange={selectField}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-field`} className="w-full">
             <SelectValue placeholder="Selecione o campo" />
           </SelectTrigger>
           <SelectContent>
@@ -74,12 +77,13 @@ function StructuredFieldConditionForm({
       {selectedField ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Operador</Label>
-            <TypedComparatorSelect kind={selectedField.type} value={rule.comparator} onChange={(comparator) => onChange({ ...rule, comparator })} />
+            <Label htmlFor={`${fieldId}-comparator`}>Operador</Label>
+            <TypedComparatorSelect id={`${fieldId}-comparator`} kind={selectedField.type} value={rule.comparator} onChange={(comparator) => onChange({ ...rule, comparator })} />
           </div>
           <div className="space-y-1.5">
-            <Label>Valor</Label>
+            <Label htmlFor={`${fieldId}-value`}>Valor</Label>
             <TypedValueInput
+              id={`${fieldId}-value`}
               kind={selectedField.type}
               comparator={rule.comparator}
               enumValues={selectedField.enumValues}
@@ -115,11 +119,13 @@ function LegacyNodeResultConditionForm({ rule, onChange }: { rule: ConditionRule
     rule.thresholdBoolean !== undefined && rule.thresholdBoolean !== null
       ? String(rule.thresholdBoolean)
       : (rule.thresholdText ?? (rule.thresholdNumeric !== undefined && rule.thresholdNumeric !== null ? String(rule.thresholdNumeric) : ""))
+  const fieldId = useId()
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">Campo (opcional)</Label>
+      <Label htmlFor={`${fieldId}-field`} className="text-xs text-muted-foreground">Campo (opcional)</Label>
       <Input
+        id={`${fieldId}-field`}
         value={decodeSourcePath(rule.sourcePath ?? "")?.kind === "node" ? (decodeSourcePath(rule.sourcePath ?? "") as { field: string }).field : ""}
         onChange={(event) => {
           const decoded = decodeSourcePath(rule.sourcePath ?? "")
@@ -130,9 +136,9 @@ function LegacyNodeResultConditionForm({ rule, onChange }: { rule: ConditionRule
       />
       <div className="grid grid-cols-2 gap-2 pt-1.5">
         <div className="space-y-1.5">
-          <Label>Operador</Label>
+          <Label htmlFor={`${fieldId}-comparator`}>Operador</Label>
           <Select value={rule.comparator} onValueChange={(comparator) => onChange({ ...rule, comparator: comparator as Comparator })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-comparator`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -145,8 +151,8 @@ function LegacyNodeResultConditionForm({ rule, onChange }: { rule: ConditionRule
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Valor</Label>
-          <Input value={currentValueText} onChange={(event) => setValueFromText(event.target.value)} placeholder="ex.: true, CRITICAL, 3" />
+          <Label htmlFor={`${fieldId}-value`}>Valor</Label>
+          <Input id={`${fieldId}-value`} value={currentValueText} onChange={(event) => setValueFromText(event.target.value)} placeholder="ex.: true, CRITICAL, 3" />
         </div>
       </div>
     </div>
@@ -177,6 +183,7 @@ export function NodeResultConditionForm({
   const nodeId = decoded?.kind === "node" ? decoded.nodeId : ""
   const policies = usePolicyResultCatalog(graph)
   const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById, policies) : undefined
+  const originId = useId()
 
   function selectOrigin(nextNodeId: string) {
     // Trocar a origem invalida completamente campo/comparador/valor anteriores — nunca deixa um
@@ -187,14 +194,14 @@ export function NodeResultConditionForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Origem</Label>
+        <Label htmlFor={originId}>Origem</Label>
         {contentSources.length === 0 ? (
           <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
             Nenhum resultado disponível ainda — conecte este nó depois de um Agente, Orquestrador ou Avaliar política de acompanhamento.
           </p>
         ) : (
           <Select value={nodeId} onValueChange={selectOrigin}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={originId} className="w-full">
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
@@ -233,6 +240,7 @@ export function WorkflowVariableConditionForm({
   const variableId = decoded?.kind === "variable" ? decoded.variableId : ""
   const variable = variablesQuery.data?.find((candidate) => candidate.id === variableId)
   const fieldType: TypedFieldKind | undefined = variable ? (variable.type === "NUMERIC" ? "NUMBER" : variable.type === "TEXT" ? "STRING" : "BOOLEAN") : undefined
+  const fieldId = useId()
 
   function selectVariable(next: WorkflowVariable) {
     const nextType: TypedFieldKind = next.type === "NUMERIC" ? "NUMBER" : next.type === "TEXT" ? "STRING" : "BOOLEAN"
@@ -248,18 +256,19 @@ export function WorkflowVariableConditionForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Variável</Label>
-        <WorkflowVariablePicker workflowId={workflowId} value={variableId} onChange={selectVariable} />
+        <Label htmlFor={`${fieldId}-variable`}>Variável</Label>
+        <WorkflowVariablePicker id={`${fieldId}-variable`} workflowId={workflowId} value={variableId} onChange={selectVariable} />
       </div>
       {variable && fieldType ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Operador</Label>
-            <TypedComparatorSelect kind={fieldType} value={rule.comparator} onChange={(comparator) => onChange({ ...rule, comparator })} />
+            <Label htmlFor={`${fieldId}-comparator`}>Operador</Label>
+            <TypedComparatorSelect id={`${fieldId}-comparator`} kind={fieldType} value={rule.comparator} onChange={(comparator) => onChange({ ...rule, comparator })} />
           </div>
           <div className="space-y-1.5">
-            <Label>Valor</Label>
+            <Label htmlFor={`${fieldId}-value`}>Valor</Label>
             <TypedValueInput
+              id={`${fieldId}-value`}
               kind={fieldType}
               comparator={rule.comparator}
               value={currentTypedValue(rule)}

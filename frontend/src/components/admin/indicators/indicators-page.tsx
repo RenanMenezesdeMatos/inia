@@ -438,9 +438,9 @@ export function IndicatorManager({ indicator }: { indicator: IndicatorWithRules 
             {teamsQuery.data ? <OrgScopeSelect teams={teamsQuery.data} value={orgScope} onChange={setOrgScope} /> : <Skeleton className="h-10 w-full" />}
 
             <div className="space-y-1.5">
-              <Label>Periodicidade de apuração</Label>
+              <Label htmlFor={`calculation-period-${indicator.id}`}>Periodicidade de apuração</Label>
               <Select value={calculationPeriod} onValueChange={(value) => setCalculationPeriod(value as CalculationPeriod)}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`calculation-period-${indicator.id}`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

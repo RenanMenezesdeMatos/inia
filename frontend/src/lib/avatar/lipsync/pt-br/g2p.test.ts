@@ -32,7 +32,7 @@ function transcribeText(text: string): string[] {
 function single(text: string): string {
   const words = transcribeText(text)
   expect(words).toHaveLength(1)
-  return words[0]
+  return words[0]!
 }
 
 function phonesOf(text: string): PhoneSymbol[] {
@@ -197,8 +197,8 @@ describe("phonemizeText — palavras", () => {
   it("clíticos são átonos e reduzem a vogal", () => {
     for (const [word, expected] of [["de", "dZ i"], ["o", "u"], ["e", "i"], ["que", "k i"], ["a", "6"], ["um", "u~"], ["com", "k o~"], ["da", "d 6"]] as const) {
       const [g2p] = phonemizeText(word)
-      expect(transcribe(g2p), word).toBe(expected)
-      expect(g2p.phones.every((token) => !token.stressed), word).toBe(true)
+      expect(transcribe(g2p!), word).toBe(expected)
+      expect(g2p!.phones.every((token) => !token.stressed), word).toBe(true)
     }
   })
 
@@ -206,29 +206,29 @@ describe("phonemizeText — palavras", () => {
     for (const [text] of WORDS) {
       if (text === "de") continue // clítico: átono por definição
       const [word] = phonemizeText(text)
-      const stressedSyllables = new Set(word.phones.filter((token) => token.stressed).map((token) => token.syllableIndex))
+      const stressedSyllables = new Set(word!.phones.filter((token) => token.stressed).map((token) => token.syllableIndex))
       expect(stressedSyllables.size, text).toBe(1)
-      const nuclei = word.phones.filter((token) => token.stressed && token.nucleus)
+      const nuclei = word!.phones.filter((token) => token.stressed && token.nucleus)
       expect(nuclei, text).toHaveLength(1)
-      expect(PHONES[nuclei[0].phone].class, text).toBe("vowel")
+      expect(PHONES[nuclei[0]!.phone].class, text).toBe("vowel")
     }
   })
 
   it("uma palavra escrita pode virar várias faladas (normalização)", () => {
     const [time] = phonemizeText("8h30")
-    expect(time.text).toBe("8h30")
-    expect(time.spoken).toBe("oito e trinta")
-    expect(transcribe(time)).toBe("'o j . t u . i . 't r i~ . t 6")
+    expect(time!.text).toBe("8h30")
+    expect(time!.spoken).toBe("oito e trinta")
+    expect(transcribe(time!)).toBe("'o j . t u . i . 't r i~ . t 6")
     const [tma] = phonemizeText("TMA")
-    expect(tma.spoken).toBe("tê eme á")
+    expect(tma!.spoken).toBe("tê eme á")
     // Nome da letra "eme" nasaliza a tônica antes de m, como "tema": [ˈẽmi].
-    expect(transcribe(tma)).toBe("'t e . 'e~ . m i . 'a")
+    expect(transcribe(tma!)).toBe("'t e . 'e~ . m i . 'a")
   })
 
   it("palavra sem vogal (interjeição) não gera fones nem palavra", () => {
     const words = phonemizeText("Hmm, certo.")
     expect(words.map((word) => word.text)).toEqual(["certo"])
-    expect(words[0].pauseAfter).toBe("long")
+    expect(words[0]!.pauseAfter).toBe("long")
   })
 })
 
@@ -253,28 +253,28 @@ describe("phonemizeText — frase", () => {
 
   it("índices de palavra e sílaba são monotônicos e respeitam os índices iniciais", () => {
     const words = phonemizeText("Minha proposta é bem simples", { startWordIndex: 10, startSyllableIndex: 40 })
-    expect(words.map((word) => word.phones[0].wordIndex)).toEqual([10, 11, 12, 13, 14])
-    expect(words[0].phones[0].syllableIndex).toBe(40)
+    expect(words.map((word) => word.phones[0]!.wordIndex)).toEqual([10, 11, 12, 13, 14])
+    expect(words[0]!.phones[0]!.syllableIndex).toBe(40)
     const flat = words.flatMap((word) => word.phones)
     for (let index = 1; index < flat.length; index++) {
-      expect(flat[index].syllableIndex - flat[index - 1].syllableIndex).toBeGreaterThanOrEqual(0)
-      expect(flat[index].syllableIndex - flat[index - 1].syllableIndex).toBeLessThanOrEqual(1)
+      expect(flat[index]!.syllableIndex - flat[index - 1]!.syllableIndex).toBeGreaterThanOrEqual(0)
+      expect(flat[index]!.syllableIndex - flat[index - 1]!.syllableIndex).toBeLessThanOrEqual(1)
     }
     // mi~.J6 + pro.pos.t6 + E + be~j~ + si~.plis = 9 sílabas.
-    expect(flat[flat.length - 1].syllableIndex).toBe(48)
+    expect(flat[flat.length - 1]!.syllableIndex).toBe(48)
   })
 
   it("priori de duração: tônica alonga, átona final encurta, pré-pausa alonga", () => {
     const [mentora] = phonemizeText("mentora")
-    const stressed = mentora.phones.find((token) => token.stressed && token.nucleus)
+    const stressed = mentora!.phones.find((token) => token.stressed && token.nucleus)
     expect(stressed?.phone).toBe("o")
     expect(stressed?.durationPriorMs).toBeCloseTo(PHONES.o.baseDurationMs * 1.45, 0)
-    const final = mentora.phones[mentora.phones.length - 1]
+    const final = mentora!.phones[mentora!.phones.length - 1]!
     expect(final.phone).toBe("6")
     expect(final.durationPriorMs).toBeCloseTo(PHONES["6"].baseDurationMs * 0.6, 0)
 
     const [beforePause] = phonemizeText("mentora.")
-    const finalBeforePause = beforePause.phones[beforePause.phones.length - 1]
+    const finalBeforePause = beforePause!.phones[beforePause!.phones.length - 1]!
     expect(finalBeforePause.durationPriorMs).toBeCloseTo(PHONES["6"].baseDurationMs * 0.6 * 1.3, 0)
 
     for (const token of phonemizeText("Vamos revisar os próximos passos com calma.").flatMap((word) => word.phones)) {
@@ -316,7 +316,7 @@ describe("createTranscriptPhonemizer", () => {
     expect(phonemizer.push("tora")).toEqual([])
     const rest = phonemizer.push(" de")
     expect(rest.map((word) => word.text)).toEqual(["mentora"])
-    expect(transcribe(rest[0])).toBe("m e~ . 't o . r 6")
+    expect(transcribe(rest[0]!)).toBe("m e~ . 't o . r 6")
     expect(phonemizer.flush().map((word) => word.text)).toEqual(["de"])
     expect(phonemizer.flush()).toEqual([])
   })
@@ -344,19 +344,19 @@ describe("createTranscriptPhonemizer", () => {
     expect(phonemizer.push("às 2")).toEqual([])
     const middle = phonemizer.push(" horas e 2 metas")
     expect(middle.map((word) => word.spoken)).toEqual(["às", "duas", "horas", "e"])
-    expect(transcribe(middle[0])).toBe("a z")
+    expect(transcribe(middle[0]!)).toBe("a z")
     expect(phonemizer.flush().map((word) => word.spoken)).toEqual(["duas", "metas"])
   })
 
   it("índices continuam monotônicos entre fragmentos e voltam a zero no reset", () => {
     const phonemizer = createTranscriptPhonemizer()
     const words = [...phonemizer.push("Minha proposta"), ...phonemizer.push(" é bem"), ...phonemizer.push(" simples"), ...phonemizer.flush()]
-    expect(words.map((word) => word.phones[0].wordIndex)).toEqual([0, 1, 2, 3, 4])
-    expect(words[4].phones[0].syllableIndex).toBe(7)
+    expect(words.map((word) => word.phones[0]!.wordIndex)).toEqual([0, 1, 2, 3, 4])
+    expect(words[4]!.phones[0]!.syllableIndex).toBe(7)
     phonemizer.reset()
     const [again] = [...phonemizer.push("Olá"), ...phonemizer.flush()]
-    expect(again.phones[0].wordIndex).toBe(0)
-    expect(again.phones[0].syllableIndex).toBe(0)
+    expect(again!.phones[0]!.wordIndex).toBe(0)
+    expect(again!.phones[0]!.syllableIndex).toBe(0)
   })
 
   it("reset descarta a palavra pendente", () => {
@@ -378,7 +378,7 @@ describe("createTranscriptPhonemizer", () => {
     let prefix = ""
     fragments.forEach((fragment, index) => {
       prefix += fragment
-      emitted += perPush[index].length
+      emitted += perPush[index]!.length
       expect(phonemizeText(prefix).length - emitted, JSON.stringify(prefix.slice(-30))).toBeLessThanOrEqual(1)
     })
     expect(flushed.length).toBeLessThanOrEqual(1)
@@ -428,7 +428,7 @@ describe("fixtures do Gemini Live", () => {
       const stressedSyllables = new Set(word.phones.filter((token) => token.stressed).map((token) => token.syllableIndex))
       expect(stressedSyllables.size, word.text).toBeLessThanOrEqual(word.spoken.split(" ").length)
     }
-    expect(words[words.length - 1].pauseAfter).toBe("long")
+    expect(words[words.length - 1]!.pauseAfter).toBe("long")
   })
 
   it("frase-01: transcrição completa", () => {
@@ -445,7 +445,7 @@ describe("fixtures do Gemini Live", () => {
       "a . p r e~ . 'd e r",
       "'Z u~ . t u s",
     ])
-    expect(words[words.length - 1].questionEnd).toBe(true)
+    expect(words[words.length - 1]!.questionEnd).toBe(true)
   })
 
   it("frase-05 (labiais): cada p/b/m escrito em ataque vira fechamento; coda m não", () => {

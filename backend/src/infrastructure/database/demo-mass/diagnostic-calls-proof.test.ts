@@ -17,6 +17,7 @@ import { loadSubject, type ToolContext, defaultInvestigationToolState } from "..
 import { buildTranscriptAnalysisInput, loadTranscripts, projectPeerTranscripts } from "../../../modules/investigation/application/tools/interaction-tools.js"
 import { countTechnicalIds } from "../../../modules/investigation/domain/handle-registry.js"
 import { identifyingNameVariants, sourceHashOf } from "../../../modules/investigation/domain/peer-privacy-projection.js"
+import { transcriptForModel } from "../../../modules/workflows/application/transcript.js"
 import type { Database } from "../pool.js"
 
 const TZ = "America/Fortaleza"
@@ -373,9 +374,12 @@ describe.skipIf(!ENABLED)("chamadas de diagnóstico — prova no banco demo", ()
     const ctx = await toolContext(icaro, { start: "2026-04-01T03:00:00Z", end: "2026-09-18T03:00:00Z", label: "abril a setembro" })
     const own = await runTool(ctx, "get_interaction_context", { interactionId: target.rows[0]!.id })
     expect((own.data as { subject: string; hasTranscript: boolean }).subject).toBe(target.rows[0]!.subject)
-    // A transcrição do ALVO não passa pela projeção: analyze_interactions continua verificando contra o bruto.
+    // A transcrição do ALVO não passa pela projeção dos pares; desde R-31 (transcript.ts) só a PII evidente é mascarada antes de
+    // chegar ao modelo, e a citação é conferida contra esse texto. O bruto continua intacto no banco (AUDIT).
     const ownTranscripts = await loadTranscripts(ctx, [target.rows[0]!.id], [icaro])
-    expect(ownTranscripts[0]!.content).toBe(target.rows[0]!.content)
+    expect(ownTranscripts[0]!.content).toBe(transcriptForModel(target.rows[0]!.content))
+    const stored = await client.query<{ content: string }>(`select content from transcripts where interaction_id = $1 order by version desc limit 1`, [target.rows[0]!.id])
+    expect(stored.rows[0]!.content).toBe(target.rows[0]!.content)
     const comparable = await runTool(ctx, "find_comparable_interactions", { subject: target.rows[0]!.subject, reference: "SUBGROUP" })
     expect(["SUFFICIENT", "INSUFFICIENT_SAMPLE", "NO_DATA"]).toContain(comparable.quality.status)
     expect(JSON.stringify(comparable.data)).not.toContain(ctx.subject.operatorName!)

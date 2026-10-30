@@ -23,6 +23,7 @@ export function TypedComparatorSelect({
   onChange,
   options: optionsOverride,
   labels: labelsOverride,
+  id,
 }: {
   kind: TypedFieldKind
   value: Comparator
@@ -33,11 +34,13 @@ export function TypedComparatorSelect({
   // Rótulo específico do contexto ("Está em"/"Não está em" pra quartil) em vez do genérico
   // COMPARATOR_LABELS — só sobrescreve o que for passado, o resto usa o padrão.
   labels?: Partial<Record<Comparator, string>>
+  /** Id do controle, para o `<Label htmlFor>` de quem usa o seletor. */
+  id?: string
 }) {
   const options = optionsOverride ?? COMPARATORS_BY_FIELD_TYPE[kind]
   return (
     <Select value={value} onValueChange={(next) => onChange(next as Comparator)}>
-      <SelectTrigger className="w-full">
+      <SelectTrigger id={id} className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -67,6 +70,7 @@ export function TypedValueInput({
   fieldType,
   value,
   onChange,
+  id,
 }: {
   kind: TypedFieldKind
   comparator: Comparator
@@ -79,6 +83,8 @@ export function TypedValueInput({
   fieldType?: "STRING" | "NUMBER" | "BOOLEAN" | "ENUM" | "ARRAY"
   value: TypedValue | undefined
   onChange: (value: TypedValue) => void
+  /** Id do controle, para o `<Label htmlFor>` de quem usa o campo. */
+  id?: string
 }) {
   if (NO_VALUE_COMPARATORS.includes(comparator)) return null
 
@@ -86,7 +92,7 @@ export function TypedValueInput({
     const yesNo = fieldType === "BOOLEAN"
     return (
       <Select value={value === true ? "true" : "false"} onValueChange={(next) => onChange(next === "true")}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger id={id} className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -100,6 +106,7 @@ export function TypedValueInput({
   if (kind === "NUMBER") {
     return (
       <Input
+        id={id}
         type="number"
         value={typeof value === "number" ? value : ""}
         onChange={(event) => onChange(Number(event.target.value) || 0)}
@@ -113,7 +120,7 @@ export function TypedValueInput({
   if (options.length > 0) {
     return (
       <Select value={typeof value === "string" ? value : ""} onValueChange={onChange}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger id={id} className="w-full">
           <SelectValue placeholder="Selecione" />
         </SelectTrigger>
         <SelectContent>
@@ -127,7 +134,7 @@ export function TypedValueInput({
     )
   }
 
-  return <Input value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} />
+  return <Input id={id} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(event.target.value)} />
 }
 
 export const TYPED_FIELD_KIND_LABELS: Record<TypedFieldKind, string> = {

@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -50,6 +52,7 @@ export function OutputForm({
   // vira o Feedback publicado) — travar a escolha aqui evita configurar algo que falharia na
   // execução (ver output-executor.ts).
   const requiresWholeObject = config.surfaces.includes("FOLLOW_UP") && config.target.type === "CURRENT_OPERATOR"
+  const fieldId = useId()
 
   function updateTargetType(type: OutputTargetType) {
     if (type === "ROLE") onChange({ ...node, config: { ...config, target: { type: "ROLE", role: "SUPERVISOR" } } })
@@ -60,9 +63,9 @@ export function OutputForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Destinatário</Label>
+        <Label htmlFor={`${fieldId}-target`}>Destinatário</Label>
         <Select value={config.target.type} onValueChange={(value) => updateTargetType(value as OutputTargetType)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-target`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -79,12 +82,12 @@ export function OutputForm({
 
       {config.target.type === "ROLE" ? (
         <div className="space-y-1.5">
-          <Label>Cargo</Label>
+          <Label htmlFor={`${fieldId}-role`}>Cargo</Label>
           <Select
             value={config.target.role}
             onValueChange={(role) => onChange({ ...node, config: { ...config, target: { type: "ROLE", role: role as EscalationRole } } })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-role`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -100,8 +103,9 @@ export function OutputForm({
 
       {config.target.type === "USER" ? (
         <div className="space-y-1.5">
-          <Label>Id da pessoa</Label>
+          <Label htmlFor={`${fieldId}-user`}>Id da pessoa</Label>
           <Input
+            id={`${fieldId}-user`}
             value={config.target.userId}
             onChange={(event) => onChange({ ...node, config: { ...config, target: { type: "USER", userId: event.target.value } } })}
           />
@@ -133,12 +137,12 @@ export function OutputForm({
 
       {hasAvatarOrChat ? (
         <div className="space-y-1.5">
-          <Label>Modo de interação com o avatar</Label>
+          <Label htmlFor={`${fieldId}-interaction-mode`}>Modo de interação com o avatar</Label>
           <Select
             value={config.interactionMode ?? "PROMPT"}
             onValueChange={(value) => onChange({ ...node, config: { ...config, interactionMode: value as AvatarInteractionMode } })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-interaction-mode`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

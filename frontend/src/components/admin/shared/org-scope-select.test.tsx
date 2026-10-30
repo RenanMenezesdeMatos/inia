@@ -40,3 +40,16 @@ describe("OrgScopeSelect com allowAllTeams=false", () => {
     expect(options).toEqual(["Um grupo específico", "Um subgrupo específico"])
   })
 })
+
+// Cada rótulo visível nomeia o seu seletor: o leitor de tela anuncia "Alcance por grupo", "Grupo" e "Subgrupo", não um combobox sem nome.
+describe("OrgScopeSelect — rótulos associados aos seletores", () => {
+  it("cada rótulo encontra o seu combobox", () => {
+    const teams: Team[] = [{ id: "team-a", name: "FATURAS", operationId: "op-1", subteams: [{ id: "sub-1", teamId: "team-a", name: "Turno A" }] }]
+    render(<OrgScopeSelect teams={teams} value={{ scopeType: "SUBTEAM", teamId: "team-a", subteamId: "sub-1" }} onChange={() => {}} />)
+    const comboboxes = screen.getAllByRole("combobox")
+    expect(screen.getByLabelText("Alcance por grupo")).toBe(comboboxes[0])
+    expect(screen.getByLabelText("Grupo")).toBe(comboboxes[1])
+    expect(screen.getByLabelText("Subgrupo")).toBe(comboboxes[2])
+    expect(screen.getByRole("combobox", { name: "Subgrupo" })).toHaveTextContent("Turno A")
+  })
+})

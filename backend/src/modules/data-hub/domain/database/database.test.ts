@@ -161,6 +161,8 @@ describe("erros dos drivers viram códigos estáveis, sem a senha", () => {
     expect(code({ code: "28P01", message: "password authentication failed for user \"leitura\"" })).toBe("DATA_SOURCE_AUTH_FAILED")
     expect(code({ code: "ELOGIN", message: "Login failed for user 'leitura'." }, { engine: "SQLSERVER" })).toBe("DATA_SOURCE_AUTH_FAILED")
     expect(code({ code: "ELOGIN", message: "Cannot open database \"rh\" requested by the login." }, { engine: "SQLSERVER" })).toBe("DATA_SOURCE_NOT_FOUND")
+    // Sequência real do SQL Server 2022 com banco inexistente (a sessão junta os dois erros do login): o 4060 vence o 18456.
+    expect(code({ code: "ELOGIN", number: 4060, message: "Cannot open database \"rh\" requested by the login. The login failed. · Login failed for user 'leitura'.", cause: { code: "ELOGIN", message: "Login failed for user 'leitura'." } }, { engine: "SQLSERVER" })).toBe("DATA_SOURCE_NOT_FOUND")
     expect(code({ errno: 1045, code: "ER_ACCESS_DENIED_ERROR", message: "Access denied for user 'leitura'@'x' (using password: YES)" }, { engine: "MYSQL" })).toBe("DATA_SOURCE_AUTH_FAILED")
     expect(code({ errno: 1044, code: "ER_DBACCESS_DENIED_ERROR", message: "Access denied for user 'leitura'@'%' to database 'rh'" }, { engine: "MARIADB" })).toBe("DATA_SOURCE_NOT_FOUND")
     expect(code({ code: "ECONNREFUSED", message: "connect ECONNREFUSED 10.0.0.1:5432" })).toBe("DATA_SOURCE_UNREACHABLE")

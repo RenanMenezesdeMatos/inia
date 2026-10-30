@@ -79,12 +79,12 @@ function withAnchor(kind: StructureAnchor["kind"], personId: string): StructureA
   }
 }
 
-function WorkflowSelect({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+function WorkflowSelect({ value, onChange, id }: { value: string; onChange: (id: string) => void; id?: string }) {
   const workflowsQuery = useWorkflowsQuery()
   if (workflowsQuery.isLoading) return <Skeleton className="h-10 w-full" />
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-full">
+      <SelectTrigger id={id} className="w-full">
         <SelectValue placeholder="Selecione o workflow" />
       </SelectTrigger>
       <SelectContent>
@@ -209,14 +209,14 @@ export function WorkflowLab() {
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="space-y-1.5">
-          <Label>Workflow</Label>
-          <WorkflowSelect value={workflowId} onChange={handleWorkflowChange} />
+          <Label htmlFor="qa-workflow-select">Workflow</Label>
+          <WorkflowSelect id="qa-workflow-select" value={workflowId} onChange={handleWorkflowChange} />
         </div>
         {workflow ? (
           <div className="space-y-1.5">
-            <Label>Configuração a testar</Label>
+            <Label htmlFor="qa-workflow-graph-source">Configuração a testar</Label>
             <Select value={graphSource} onValueChange={(next) => setGraphSourceChoice(next as "PUBLISHED" | "DRAFT")}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="qa-workflow-graph-source" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -454,9 +454,9 @@ export function WorkflowLab() {
               </div>
             ) : null}
             <div className="space-y-1.5">
-              <Label>Modo de execução</Label>
+              <Label htmlFor="qa-workflow-run-mode">Modo de execução</Label>
               <Select value={mode} onValueChange={(next) => setMode(next as WorkflowRunMode)}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="qa-workflow-run-mode" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

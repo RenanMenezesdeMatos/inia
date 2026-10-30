@@ -36,6 +36,23 @@ describe("inTransaction — transação única do backend", () => {
     expect(client.release).toHaveBeenCalledWith()
   })
 
+  it("pool: isolamento e somente leitura entram no begin; num cliente já em transação valem os de quem a abriu", async () => {
+    const pooled = fakePool()
+    await inTransaction(pooled.db, async () => "ok", { isolation: "repeatable read", readOnly: true })
+    expect(pooled.commands).toEqual(["begin isolation level repeatable read read only", "commit"])
+    const inside = fakeClient()
+    await inTransaction(inside.asClient, async () => "ok", { isolation: "serializable" })
+    expect(inside.commands).toEqual(["savepoint inia_tx", "release savepoint inia_tx"])
+  })
+
+  it("somente leitura dentro de uma transação já aberta: savepoint só-leitura, desfeito no fim, e a transação de fora volta a gravar", async () => {
+    const { asClient, commands } = fakeClient()
+    await inTransaction(asClient, async (tx) => {
+      await tx.query("select 1")
+    }, { readOnly: true, savepoint: "read_only_query" })
+    expect(commands).toEqual(["savepoint read_only_query", "set local transaction_read_only = on", "select 1", "rollback to savepoint read_only_query", "release savepoint read_only_query"])
+  })
+
   it("pool: erro no trabalho → rollback e o erro original sobe", async () => {
     const { db, commands, client } = fakePool()
     await expect(inTransaction(db, async () => {

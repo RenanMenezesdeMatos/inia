@@ -17,10 +17,10 @@ function frameAt(frames: AudioFeatureFrame[], t: number): AudioFeatureFrame {
   let hi = frames.length - 1
   while (lo < hi) {
     const mid = (lo + hi) >>> 1
-    if (frames[mid].time < t) lo = mid + 1
+    if (frames[mid]!.time < t) lo = mid + 1
     else hi = mid
   }
-  return frames[lo]
+  return frames[lo]!
 }
 
 function metrics(engine: SpeechLipsyncEngine, speechEnd: number) {

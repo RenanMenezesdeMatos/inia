@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -31,10 +33,11 @@ export function OrchestratorForm({
   const workflowOrchestrators = orchestrators.filter(
     (orchestrator) => orchestrator.invocationMode !== "INTERACTIVE" && (!scope || scopesAreCompatible(teams, scope, orchestrator)),
   )
+  const fieldId = useId()
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Orquestrador</Label>
+        <Label htmlFor={`${fieldId}-orchestrator`}>Orquestrador</Label>
         {workflowOrchestrators.length === 0 ? (
           <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
             Nenhum orquestrador habilitado para workflow — crie ou libere um em Orquestradores.
@@ -44,7 +47,7 @@ export function OrchestratorForm({
             value={node.config.orchestratorId}
             onValueChange={(orchestratorId) => onChange({ ...node, config: { ...node.config, orchestratorId } })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-orchestrator`} className="w-full">
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
@@ -58,8 +61,9 @@ export function OrchestratorForm({
         )}
       </div>
       <div className="space-y-1.5">
-        <Label>Instrução</Label>
+        <Label htmlFor={`${fieldId}-instruction`}>Instrução</Label>
         <Input
+          id={`${fieldId}-instruction`}
           value={node.config.instruction}
           onChange={(event) => onChange({ ...node, config: { ...node.config, instruction: event.target.value } })}
           placeholder="ex.: Analise esta ocorrência, identifique a causa e gere recomendações."

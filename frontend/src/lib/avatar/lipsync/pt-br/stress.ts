@@ -25,12 +25,12 @@ export function stressedSyllableIndex(word: string, syllables: readonly OrthoSyl
   })
   if (real.length === 0) return -1
   for (let k = real.length - 1; k >= 0; k--) {
-    const syllable = syllables[real[k]]
-    if (ACUTE_OR_CIRCUMFLEX.test(syllable.vowel) || (syllable.glide !== null && ACUTE_OR_CIRCUMFLEX.test(syllable.glide))) return real[k]
+    const syllable = syllables[real[k]!]!
+    if (ACUTE_OR_CIRCUMFLEX.test(syllable.vowel) || (syllable.glide !== null && ACUTE_OR_CIRCUMFLEX.test(syllable.glide))) return real[k]!
   }
   for (let k = real.length - 1; k >= 0; k--) {
-    if (TILDE.test(syllables[real[k]].vowel)) return real[k]
+    if (TILDE.test(syllables[real[k]!]!.vowel)) return real[k]!
   }
-  if (real.length === 1) return real[0]
-  return PAROXYTONE_ENDING.test(word) ? real[real.length - 2] : real[real.length - 1]
+  if (real.length === 1) return real[0]!
+  return PAROXYTONE_ENDING.test(word) ? real[real.length - 2]! : real[real.length - 1]!
 }

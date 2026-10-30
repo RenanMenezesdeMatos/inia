@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -52,6 +54,7 @@ export function ConditionForm({
   onChange: (next: FlowNode) => void
 }) {
   const mode = conditionModeOf(node.config)
+  const fieldId = useId()
 
   function setMode(next: ConditionMode) {
     if (next === "indicator") {
@@ -75,9 +78,9 @@ export function ConditionForm({
 
   const modeSelector = (
     <div className="space-y-1.5">
-      <Label>Baseado em</Label>
+      <Label htmlFor={`${fieldId}-mode`}>Baseado em</Label>
       <Select value={mode} onValueChange={(value) => setMode(value as ConditionMode)}>
-        <SelectTrigger className="w-full">
+        <SelectTrigger id={`${fieldId}-mode`} className="w-full">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -164,14 +167,14 @@ export function ConditionForm({
       <div className="space-y-3">
         {modeSelector}
         <div className="space-y-1.5">
-          <Label>Quando a flag vier</Label>
+          <Label htmlFor={`${fieldId}-flag-value`}>Quando a flag vier</Label>
           <Select
             value={node.config.thresholdBoolean ? "true" : "false"}
             onValueChange={(value) =>
               onChange({ ...node, config: { comparator: "EQUALS", thresholdBoolean: value === "true", thresholdNumeric: null } })
             }
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-flag-value`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -189,12 +192,12 @@ export function ConditionForm({
       {modeSelector}
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
-          <Label>Condição</Label>
+          <Label htmlFor={`${fieldId}-comparator`}>Condição</Label>
           <Select
             value={node.config.comparator}
             onValueChange={(value) => onChange({ ...node, config: { ...node.config, comparator: value as Comparator, thresholdBoolean: null } })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-comparator`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -207,8 +210,9 @@ export function ConditionForm({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Valor</Label>
+          <Label htmlFor={`${fieldId}-threshold`}>Valor</Label>
           <Input
+            id={`${fieldId}-threshold`}
             type="number"
             value={node.config.thresholdNumeric ?? ""}
             onChange={(event) => onChange({ ...node, config: { ...node.config, thresholdNumeric: Number(event.target.value), thresholdBoolean: null } })}

@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -33,6 +35,7 @@ export function PerformanceConditionForm({
   const isQuartile = query.metric === "INDICATOR_QUARTILE" || query.metric === "PRV_QUARTILE"
   const fieldType: TypedFieldKind = isQuartile ? "STRING" : "NUMBER"
   const recurrence = query.recurrence
+  const fieldId = useId()
 
   function setMetric(metric: PerformanceMetric) {
     const nextIsPrv = metric === "PRV_ACHIEVEMENT" || metric === "PRV_QUARTILE"
@@ -82,9 +85,9 @@ export function PerformanceConditionForm({
         <>
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Mais recente (formato anterior)</p>
           <div className="space-y-1.5">
-            <Label>Métrica</Label>
+            <Label htmlFor={`${fieldId}-metric`}>Métrica</Label>
             <Select value={query.metric} onValueChange={(value) => setMetric(value as PerformanceMetric)}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-metric`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -111,9 +114,9 @@ export function PerformanceConditionForm({
 
       {isQuartile ? (
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Quando?</Label>
+          <Label htmlFor={`${fieldId}-when`} className="text-xs text-muted-foreground">Quando?</Label>
           <Select value={recurrence ? "RECURRENCE" : "LATEST"} onValueChange={(value) => setRecurrenceEnabled(value === "RECURRENCE")}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-when`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -128,8 +131,9 @@ export function PerformanceConditionForm({
         <>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label>Quantos fechamentos</Label>
+              <Label htmlFor={`${fieldId}-periods`}>Quantos fechamentos</Label>
               <Input
+                id={`${fieldId}-periods`}
                 type="number"
                 min={2}
                 max={24}
@@ -138,9 +142,9 @@ export function PerformanceConditionForm({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Quartil-alvo</Label>
+              <Label htmlFor={`${fieldId}-match-quartile`}>Quartil-alvo</Label>
               <Select value={recurrence.matchQuartile} onValueChange={(value) => updateRecurrence({ matchQuartile: value as PerformanceRecurrence["matchQuartile"] })}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-match-quartile`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -155,12 +159,13 @@ export function PerformanceConditionForm({
           </div>
           <div className="grid grid-cols-2 gap-2 border-t pt-3">
             <div className="space-y-1.5">
-              <Label>Quantidade de fechamentos em {recurrence.matchQuartile}</Label>
-              <TypedComparatorSelect kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
+              <Label htmlFor={`${fieldId}-recurrence-comparator`}>Quantidade de fechamentos em {recurrence.matchQuartile}</Label>
+              <TypedComparatorSelect id={`${fieldId}-recurrence-comparator`} kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Número</Label>
+              <Label htmlFor={`${fieldId}-recurrence-threshold`}>Número</Label>
               <Input
+                id={`${fieldId}-recurrence-threshold`}
                 type="number"
                 min={0}
                 value={node.config.thresholdNumeric ?? ""}
@@ -172,9 +177,10 @@ export function PerformanceConditionForm({
       ) : (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Operador</Label>
+            <Label htmlFor={`${fieldId}-comparator`}>Operador</Label>
             {isQuartile ? (
               <TypedComparatorSelect
+                id={`${fieldId}-comparator`}
                 kind={fieldType}
                 value={node.config.comparator}
                 onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })}
@@ -182,12 +188,13 @@ export function PerformanceConditionForm({
                 labels={QUARTILE_COMPARATOR_LABELS}
               />
             ) : (
-              <TypedComparatorSelect kind={fieldType} value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
+              <TypedComparatorSelect id={`${fieldId}-comparator`} kind={fieldType} value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
             )}
           </div>
           <div className="space-y-1.5">
-            <Label>Valor</Label>
+            <Label htmlFor={`${fieldId}-value`}>Valor</Label>
             <TypedValueInput
+              id={`${fieldId}-value`}
               kind={fieldType}
               comparator={node.config.comparator}
               enumValues={isQuartile ? QUARTILE_VALUES : undefined}

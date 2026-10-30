@@ -89,7 +89,7 @@ describe("tokenizeForSpeech", () => {
     const text = "Custa R$ 10,50, ok?"
     const { tokens } = tokenizeForSpeech(text)
     expect(tokens.map((token) => text.slice(token.start, token.end))).toEqual(["Custa", "R$ 10,50,", "ok?"])
-    expect(tokens[1].words).toEqual(["dez", "reais", "e", "cinquenta", "centavos"])
+    expect(tokens[1]!.words).toEqual(["dez", "reais", "e", "cinquenta", "centavos"])
   })
 
   it("modo incremental: devolve só o que está completo e diz até onde consumiu", () => {

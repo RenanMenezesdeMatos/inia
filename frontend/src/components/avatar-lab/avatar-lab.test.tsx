@@ -55,7 +55,7 @@ describe("AvatarLab", () => {
   it("vista, qualidade, ajustes e sobreposição de estado nunca trocam o driver nem o modelo", async () => {
     render(<AvatarLab />)
     await act(async () => {})
-    const driver = avatarProps[0].driver
+    const driver = avatarProps[0]!.driver
     fireEvent.change(screen.getByLabelText("Vista"), { target: { value: "profile" } })
     fireEvent.change(screen.getByLabelText("Qualidade"), { target: { value: "low" } })
     fireEvent.change(screen.getByLabelText("Sorriso"), { target: { value: "1.5" } })

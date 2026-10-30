@@ -54,12 +54,12 @@ export function OrchestratorLab() {
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Orchestrator</Label>
+            <Label htmlFor="qa-orch-select">Orchestrator</Label>
             {orchestratorsQuery.isLoading ? (
               <Skeleton className="h-10 w-full" />
             ) : (
               <Select value={orchestratorId} onValueChange={setOrchestratorId}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="qa-orch-select" className="w-full">
                   <SelectValue placeholder="Selecione o orquestrador" />
                 </SelectTrigger>
                 <SelectContent>
@@ -86,9 +86,9 @@ export function OrchestratorLab() {
             </div>
           ) : null}
           <div className="space-y-1.5">
-            <Label>Contexto de invocação</Label>
+            <Label htmlFor="qa-orch-invocation">Contexto de invocação</Label>
             <Select value={invocationContext} onValueChange={(next) => setInvocationContext(next as "INTERACTIVE" | "WORKFLOW")}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="qa-orch-invocation" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -283,6 +283,8 @@ describe("V1.6.2 — aba Diagnóstico com IA", () => {
     expect(within(report).getByText("Contestação")).toBeInTheDocument()
     expect(within(report).getByText("Nenhuma chamada de modelo.")).toBeInTheDocument()
     expect(screen.getByRole("switch", { name: "Executar a IA" })).not.toBeChecked()
+    // O nome do campo é o rótulo visível (WCAG 2.5.3).
+    expect(screen.getByRole("combobox", { name: "Agent que avalia os atendimentos" })).toBeInTheDocument()
   })
 })
 

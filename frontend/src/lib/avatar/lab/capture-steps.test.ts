@@ -72,7 +72,7 @@ describe("buildCaptureSteps com as capturas reais", () => {
     expect(audioSteps.reduce((sum, step) => sum + (step.samples ?? 0), 0) * 2).toBe(pcm.length)
     expect(steps.at(-1)?.kind).toBe("turnComplete")
     // Mensagens com as formas exatas do Live.
-    const first = audioSteps[0].message.serverContent?.modelTurn?.parts?.[0]?.inlineData
+    const first = audioSteps[0]!.message.serverContent?.modelTurn?.parts?.[0]?.inlineData
     expect(first?.mimeType).toMatch(/^audio\/pcm/)
     const decoded = Uint8Array.from(atob(first?.data ?? ""), (char) => char.charCodeAt(0))
     expect([...decoded.subarray(0, 16)]).toEqual([...pcm.subarray(0, 16)])

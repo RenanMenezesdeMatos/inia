@@ -183,9 +183,9 @@ export class AvatarRig {
     for (const morph of this.morphs) {
       const { influences, indices } = morph
       for (let position = 0; position < indices.length; position++) {
-        const index = indices[position]
+        const index = indices[position]!
         if (index < 0) continue
-        const value = weights[ARKIT_BLENDSHAPES[position]]
+        const value = weights[ARKIT_BLENDSHAPES[position]!]
         influences[index] = value === undefined || !Number.isFinite(value) ? 0 : value
       }
     }

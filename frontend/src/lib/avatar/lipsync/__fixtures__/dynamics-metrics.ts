@@ -133,13 +133,13 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
   const track = createTrack(schedule.audioStart, Math.floor((schedule.audioEnd + 0.3 - schedule.audioStart) / DYNAMICS_STEP_SECONDS) + 1)
   let s = 0
   for (let t = schedule.audioStart; t <= schedule.audioEnd + 0.3; t += DYNAMICS_STEP_SECONDS) {
-    while (s < steps.length && steps[s].at <= t) deliver(steps[s++])
+    while (s < steps.length && steps[s]!.at <= t) deliver(steps[s++]!)
     engine.sample(t, frame)
     shown.push({ t, jaw: frame.mouth.jaw, lip: frame.mouth.lipClose, speaking: frame.speaking, source: frame.debugSource, emphasis: frame.emphasis, accentDirection: frame.accentDirection, accentNuclear: frame.accentNuclear })
     recordFrame(track, shown.length - 1, frame)
   }
   track.count = Math.min(track.count, shown.length)
-  while (s < steps.length) deliver(steps[s++])
+  while (s < steps.length) deliver(steps[s++]!)
 
   // Reescrita visível: a linha do tempo final nos mesmos instantes.
   let maxJawDelta = 0
@@ -180,10 +180,10 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
   const peakDepths: number[] = []
   let lastTrough = jaw[0] ?? 0
   for (let i = 1; i < jaw.length - 1; i++) {
-    if (jaw[i] < jaw[i - 1] && jaw[i] <= jaw[i + 1]) lastTrough = jaw[i]
-    if (jaw[i] > jaw[i - 1] && jaw[i] >= jaw[i + 1] && jaw[i] > 0.08) {
+    if (jaw[i]! < jaw[i - 1]! && jaw[i]! <= jaw[i + 1]!) lastTrough = jaw[i]!
+    if (jaw[i]! > jaw[i - 1]! && jaw[i]! >= jaw[i + 1]! && jaw[i]! > 0.08) {
       peaks++
-      peakDepths.push(jaw[i] - lastTrough)
+      peakDepths.push(jaw[i]! - lastTrough)
     }
   }
   peakDepths.sort((a, b) => a - b)
@@ -192,15 +192,15 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
   const depths: number[] = []
   const idealDepths: number[] = []
   for (let k = 1; k < nuclei.length; k++) {
-    const previous = nuclei[k - 1]
-    const nucleus = nuclei[k]
+    const previous = nuclei[k - 1]!
+    const nucleus = nuclei[k]!
     let idealValley = Math.min(jawTargetOf(previous), jawTargetOf(nucleus))
     for (const phone of phones) if (phone.start >= previous.end && phone.end <= nucleus.start) idealValley = Math.min(idealValley, jawTargetOf(phone))
     idealDepths.push(jawTargetOf(nucleus) - idealValley)
     let peak = 0
-    for (let i = Math.max(0, shownAt(nucleus.start)); i <= shownAt(nucleus.end) && i < shown.length; i++) peak = Math.max(peak, shown[i].jaw)
+    for (let i = Math.max(0, shownAt(nucleus.start)); i <= shownAt(nucleus.end) && i < shown.length; i++) peak = Math.max(peak, shown[i]!.jaw)
     let valley = Number.POSITIVE_INFINITY
-    for (let i = Math.max(0, shownAt(center(previous))); i <= shownAt(center(nucleus)) && i < shown.length; i++) valley = Math.min(valley, shown[i].jaw)
+    for (let i = Math.max(0, shownAt(center(previous))); i <= shownAt(center(nucleus)) && i < shown.length; i++) valley = Math.min(valley, shown[i]!.jaw)
     if (Number.isFinite(valley)) depths.push(Math.max(0, peak - valley))
   }
   depths.sort((a, b) => a - b)
@@ -208,12 +208,12 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
 
   // Velocidade e saltos (20 ms ≈ 1 quadro a 50–60 Hz).
   let maxVelocity = 0
-  for (let i = 1; i < shown.length; i++) maxVelocity = Math.max(maxVelocity, Math.abs(shown[i].jaw - shown[i - 1].jaw) / DYNAMICS_STEP_SECONDS)
+  for (let i = 1; i < shown.length; i++) maxVelocity = Math.max(maxVelocity, Math.abs(shown[i]!.jaw - shown[i - 1]!.jaw) / DYNAMICS_STEP_SECONDS)
   let pops = 0
   let maxStep20ms = 0
   const hop = Math.round(0.02 / DYNAMICS_STEP_SECONDS)
-  for (let i = hop; i < shown.length; i++) maxStep20ms = Math.max(maxStep20ms, Math.abs(shown[i].jaw - shown[i - hop].jaw))
-  for (let i = hop; i < shown.length; i += hop) if (Math.abs(shown[i].jaw - shown[i - hop].jaw) > 0.2) pops++
+  for (let i = hop; i < shown.length; i++) maxStep20ms = Math.max(maxStep20ms, Math.abs(shown[i]!.jaw - shown[i - hop]!.jaw))
+  for (let i = hop; i < shown.length; i += hop) if (Math.abs(shown[i]!.jaw - shown[i - hop]!.jaw) > 0.2) pops++
 
   // Selo bilabial.
   const bilabials = phones.filter((p) => p.source === "aligned" && isBilabial(p.phone))
@@ -239,8 +239,8 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
   // Pulsos de ênfase, com o tipo do acento no pico.
   const accents: AccentPeak[] = []
   for (let i = 1; i < speech.length - 1; i++) {
-    const point = speech[i]
-    if (point.emphasis > speech[i - 1].emphasis && point.emphasis >= speech[i + 1].emphasis && point.emphasis > 0.3) {
+    const point = speech[i]!
+    if (point.emphasis > speech[i - 1]!.emphasis && point.emphasis >= speech[i + 1]!.emphasis && point.emphasis > 0.3) {
       accents.push({ t: point.t, shape: accentShapeOf(point.accentDirection), direction: point.accentDirection, nuclear: point.accentNuclear, pulse: point.emphasis })
     }
   }
@@ -266,7 +266,7 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
     if (!group && !unrounded) continue
     engine.sample(center(phone) - anticipation, frame)
     const rounding = Math.max(frame.mouth.round, frame.mouth.pucker)
-    if (group) contrast[group].push({ jaw: frame.mouth.jaw, target: ARTICULATION[phone.phone].target.jaw ?? 0, rounding, durationMs: (phone.end - phone.start) * 1000 })
+    if (group) contrast[group]!.push({ jaw: frame.mouth.jaw, target: ARTICULATION[phone.phone].target.jaw ?? 0, rounding, durationMs: (phone.end - phone.start) * 1000 })
     if (unrounded) unroundedRounding.push(rounding)
   }
 
@@ -394,17 +394,17 @@ export function measureBehavior(metrics: readonly DynamicsMetrics[], options: Be
         let headBase = 0
         let browBase = 0
         for (let f = baseFrom; f <= baseTo; f++) {
-          headBase += head[f]
-          browBase += brow[f]
+          headBase += head[f]!
+          browBase += brow[f]!
         }
         headBase /= baseTo - baseFrom + 1
         browBase /= baseTo - baseFrom + 1
         let headExtreme = 0
         let browPeak = 0
         for (let f = indexOf(accent.t - 0.05); f <= indexOf(accent.t + 0.35); f++) {
-          const delta = head[f] - headBase
+          const delta = head[f]! - headBase
           if (Math.abs(delta) > Math.abs(headExtreme)) headExtreme = delta
-          browPeak = Math.max(browPeak, brow[f] - browBase)
+          browPeak = Math.max(browPeak, brow[f]! - browBase)
         }
         // "nuclear" = o nuclear que acena para baixo (não ascendente); o ascendente fica em "subida".
         for (const key of accent.nuclear && accent.shape !== "rise" ? [accent.shape, "nuclear" as const] : [accent.shape]) {
@@ -424,7 +424,7 @@ export function measureBehavior(metrics: readonly DynamicsMetrics[], options: Be
         offsets.push(at - nearest)
         if (at >= nearest - BLINK_BOUNDARY_BEFORE_SECONDS && at <= nearest + BLINK_BOUNDARY_AFTER_SECONDS) near++
         const index = Math.round((at - track.start) / track.step)
-        if (index >= 0 && index < track.count && track.emphasis[index] > 0.5) duringAccent++
+        if (index >= 0 && index < track.count && track.emphasis[index]! > 0.5) duringAccent++
       }
     }
   }
@@ -468,13 +468,13 @@ class TrackDriver implements AvatarDriver {
       return
     }
     out.speaking = track.speaking[index] === 1
-    out.energy = track.energy[index]
-    out.emphasis = track.emphasis[index]
-    out.accentDirection = track.accentDirection[index]
+    out.energy = track.energy[index]!
+    out.emphasis = track.emphasis[index]!
+    out.accentDirection = track.accentDirection[index]!
     out.accentNuclear = track.accentNuclear[index] === 1
-    out.phraseTime = track.phraseTime[index]
+    out.phraseTime = track.phraseTime[index]!
     out.question = track.question[index] === 1
-    for (let c = 0; c < MOUTH_CHANNEL_KEYS.length; c++) out.mouth[MOUTH_CHANNEL_KEYS[c]] = track.mouth[index * MOUTH_CHANNEL_KEYS.length + c]
+    for (let c = 0; c < MOUTH_CHANNEL_KEYS.length; c++) out.mouth[MOUTH_CHANNEL_KEYS[c]!] = track.mouth[index * MOUTH_CHANNEL_KEYS.length + c]!
   }
 
   drainCues(): ConversationCue[] {
@@ -507,7 +507,7 @@ function recordFrame(track: SpeechTrack, index: number, frame: SpeechFrame): voi
   track.accentNuclear[index] = frame.accentNuclear ? 1 : 0
   track.phraseTime[index] = frame.phraseTime
   track.question[index] = frame.question ? 1 : 0
-  for (let c = 0; c < MOUTH_CHANNEL_KEYS.length; c++) track.mouth[index * MOUTH_CHANNEL_KEYS.length + c] = frame.mouth[MOUTH_CHANNEL_KEYS[c]]
+  for (let c = 0; c < MOUTH_CHANNEL_KEYS.length; c++) track.mouth[index * MOUTH_CHANNEL_KEYS.length + c] = frame.mouth[MOUTH_CHANNEL_KEYS[c]!]
 }
 
 function firstIndex(values: Uint8Array): number {
@@ -521,7 +521,7 @@ function lastIndex(values: Uint8Array): number {
 }
 
 function nearestBoundary(boundaries: readonly number[], t: number): number {
-  let best = boundaries[0]
+  let best = boundaries[0]!
   for (const boundary of boundaries) if (Math.abs(boundary - t) < Math.abs(best - t)) best = boundary
   return best
 }
@@ -595,14 +595,14 @@ export function measureAudioOnlyMouth(schedule: ReplaySchedule): AudioOnlyCompar
   const audioOnly = finalJaw(schedule.steps.filter((step) => step.kind !== "transcript"))
   const n = Math.min(text.jaw.length, audioOnly.jaw.length)
   let error = 0
-  for (let i = 0; i < n; i++) error += Math.abs(text.jaw[i] - audioOnly.jaw[i])
+  for (let i = 0; i < n; i++) error += Math.abs(text.jaw[i]! - audioOnly.jaw[i]!)
   return { id: schedule.fixture.id, textJaw: mean(text.jaw), audioOnlyJaw: mean(audioOnly.jaw), r: pearson(text.jaw, audioOnly.jaw), meanAbsError: error / Math.max(1, n), pops: audioOnly.pops }
 }
 
 /** Junta o contraste de várias capturas: média da mandíbula mostrada × média do alvo, por grupo. */
 export function summarizeContrast(all: readonly DynamicsMetrics[]): Array<{ group: string; n: number; jaw: number; target: number; ratio: number; rounding: number; durationMs: number }> {
   return Object.keys(CONTRAST_GROUPS).map((group) => {
-    const samples = all.flatMap((m) => m.contrast[group])
+    const samples = all.flatMap((m) => m.contrast[group]!)
     const jaw = mean(samples.map((x) => x.jaw))
     const target = mean(samples.map((x) => x.target))
     return { group, n: samples.length, jaw, target, ratio: target > 0 ? jaw / target : Number.NaN, rounding: mean(samples.map((x) => x.rounding)), durationMs: mean(samples.map((x) => x.durationMs)) }
@@ -614,7 +614,7 @@ export function mean(values: readonly number[]): number {
 }
 
 export function percentile(sorted: readonly number[], q: number): number {
-  return sorted.length === 0 ? Number.NaN : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]
+  return sorted.length === 0 ? Number.NaN : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!
 }
 
 /** Alvo de mandíbula que a linha do tempo usa para o fone (vogal escala com loudness/tônica). */
@@ -648,7 +648,7 @@ function jawTargetOf(phone: AlignedPhone): number {
 }
 
 function groupOf(phone: PhoneSymbol): string | undefined {
-  return Object.keys(CONTRAST_GROUPS).find((group) => CONTRAST_GROUPS[group].includes(phone))
+  return Object.keys(CONTRAST_GROUPS).find((group) => CONTRAST_GROUPS[group]!.includes(phone))
 }
 
 function center(phone: AlignedPhone): number {
@@ -660,8 +660,8 @@ function pearson(a: readonly number[], b: readonly number[]): number {
   let ma = 0
   let mb = 0
   for (let i = 0; i < n; i++) {
-    ma += a[i]
-    mb += b[i]
+    ma += a[i]!
+    mb += b[i]!
   }
   ma /= n
   mb /= n
@@ -669,8 +669,8 @@ function pearson(a: readonly number[], b: readonly number[]): number {
   let da = 0
   let db = 0
   for (let i = 0; i < n; i++) {
-    const x = a[i] - ma
-    const y = b[i] - mb
+    const x = a[i]! - ma
+    const y = b[i]! - mb
     num += x * y
     da += x * x
     db += y * y

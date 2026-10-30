@@ -86,13 +86,13 @@ export class ProsodyTracker {
       this.semitones = grown
     }
     for (let i = this.count; i < store.count; i++) {
-      const hz = store.f0Hz[i]
+      const hz = store.f0Hz[i]!
       if (hz > 0) {
         const value = 12 * Math.log2(hz / SEMITONE_REFERENCE_HZ)
         this.semitones[i] = value
         const bin = Math.floor(value * HISTOGRAM_BINS_PER_SEMITONE)
         if (bin >= 0 && bin < this.histogram.length) {
-          this.histogram[bin]++
+          this.histogram[bin]!++
           this.histogramTotal++
         }
       } else this.semitones[i] = Number.NaN
@@ -106,7 +106,7 @@ export class ProsodyTracker {
     const half = this.histogramTotal / 2
     let acc = 0
     for (let bin = 0; bin < this.histogram.length; bin++) {
-      acc += this.histogram[bin]
+      acc += this.histogram[bin]!
       if (acc >= half) return (bin + 0.5) / HISTOGRAM_BINS_PER_SEMITONE
     }
     return PRIOR_REFERENCE_SEMITONES
@@ -115,7 +115,7 @@ export class ProsodyTracker {
   /** Semitons no quadro `index` relativos à mediana da voz (NaN fora da faixa confiável). */
   relativeAt(index: number): number {
     if (index < 0 || index >= this.count) return Number.NaN
-    const value = this.semitones[index] - this.reference
+    const value = this.semitones[index]! - this.reference
     return Math.abs(value) <= MAX_DEVIATION_SEMITONES ? value : Number.NaN
   }
 
@@ -129,22 +129,22 @@ export class ProsodyTracker {
     const reference = this.reference
     const scratch = this.scratch
     let n = 0
-    for (let f = store.lowerBound(start - PROMINENCE_BEFORE_SECONDS); f < this.count && store.time[f] <= end + PROMINENCE_AFTER_SECONDS && n < scratch.length; f++) {
-      const value = this.semitones[f] - reference
+    for (let f = store.lowerBound(start - PROMINENCE_BEFORE_SECONDS); f < this.count && store.time[f]! <= end + PROMINENCE_AFTER_SECONDS && n < scratch.length; f++) {
+      const value = this.semitones[f]! - reference
       if (Math.abs(value) <= MAX_DEVIATION_SEMITONES) scratch[n++] = value
     }
     if (n < 3) return 0
     const local = scratch.subarray(0, n).sort()
-    const high = local[Math.min(n - 1, Math.floor(n * 0.9))]
-    const low = local[Math.floor(n * 0.1)]
+    const high = local[Math.min(n - 1, Math.floor(n * 0.9))]!
+    const low = local[Math.floor(n * 0.1)]!
     let m = 0
-    for (let f = store.lowerBound(start - BASELINE_HALF_WINDOW_SECONDS); f < this.count && store.time[f] <= end + BASELINE_HALF_WINDOW_SECONDS && n + m < scratch.length; f++) {
-      const value = this.semitones[f] - reference
+    for (let f = store.lowerBound(start - BASELINE_HALF_WINDOW_SECONDS); f < this.count && store.time[f]! <= end + BASELINE_HALF_WINDOW_SECONDS && n + m < scratch.length; f++) {
+      const value = this.semitones[f]! - reference
       if (Math.abs(value) <= MAX_DEVIATION_SEMITONES) scratch[n + m++] = value
     }
     if (m < 5) return 0
     const around = scratch.subarray(n, n + m).sort()
-    const median = around[Math.floor(m / 2)]
+    const median = around[Math.floor(m / 2)]!
     const excursion = Math.max(high - median, median - low, 0.8 * (high - low))
     return Math.min(MAX_PROMINENCE_SEMITONES, Math.max(0, excursion))
   }
@@ -165,11 +165,11 @@ export class ProsodyTracker {
     let n = 0
     // Um quadro de folga de cada lado para a mediana das bordas.
     for (let f = Math.max(0, store.lowerBound(from) - 1); f < this.count && n < raw.length; f++) {
-      const value = this.semitones[f] - reference
+      const value = this.semitones[f]! - reference
       raw[n] = Math.abs(value) <= MAX_DEVIATION_SEMITONES ? value : Number.NaN
-      times[n] = store.time[f]
+      times[n] = store.time[f]!
       n++
-      if (store.time[f] > to) break
+      if (store.time[f]! > to) break
     }
     const onset = this.onset
     let onsetCount = 0
@@ -184,11 +184,11 @@ export class ProsodyTracker {
     let last1 = 0
     let last2 = 0
     for (let k = 1; k < n - 1; k++) {
-      const t = times[k]
-      const center = raw[k]
+      const t = times[k]!
+      const center = raw[k]!
       // Quadro vozeado isolado (vizinhos sem F0) não conta: costuma ser ruído na borda da consoante.
       if (t < from || t > to || Number.isNaN(center) || (Number.isNaN(raw[k - 1]) && Number.isNaN(raw[k + 1]))) continue
-      const value = median3(raw[k - 1], center, raw[k + 1])
+      const value = median3(raw[k - 1]!, center, raw[k + 1]!)
       if (value > max) max = value
       if (value < min) min = value
       if (points === 0) first0 = value
@@ -221,13 +221,13 @@ function median3(a: number, b: number, c: number): number {
 /** Mediana dos `count` primeiros valores (ordena no lugar; `count` pequeno). */
 function medianInPlace(values: Float64Array, count: number): number {
   for (let i = 1; i < count; i++) {
-    const value = values[i]
+    const value = values[i]!
     let j = i - 1
-    while (j >= 0 && values[j] > value) {
-      values[j + 1] = values[j]
+    while (j >= 0 && values[j]! > value) {
+      values[j + 1] = values[j]!
       j--
     }
     values[j + 1] = value
   }
-  return values[count >> 1]
+  return values[count >> 1]!
 }

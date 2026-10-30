@@ -322,6 +322,8 @@ describe("IA / Modelos — Roteamento", () => {
     expect(screen.getByTestId("draft-issues")).toHaveTextContent("Modelo B não declara Saída estruturada (JSON).")
     expect(screen.getByRole("button", { name: "Ativar" })).toBeDisabled()
     expect(screen.getByTestId("legacy-route")).toHaveTextContent("gemini-3.8-flash")
+    // O nome do campo é o rótulo visível (WCAG 2.5.3).
+    expect(screen.getByRole("textbox", { name: "Limite de custo estimado por requisição (opcional)" })).toBeInTheDocument()
 
     // PINNED aceita 1 modelo: mesmo o compatível só entra depois de remover o incompatível.
     expect(within(screen.getByTestId("available-model-m1")).getByRole("button", { name: "Adicionar Modelo A" })).toBeDisabled()

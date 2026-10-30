@@ -118,6 +118,8 @@ describe("IA / Modelos — Quem mais usa", () => {
   it("filtro de Grupo manda só o id opaco; sem uso no período mostra o estado vazio", async () => {
     renderWithQuery(<UsageRankingTab />)
     await screen.findByTestId("ranking-row-1")
+    // O nome do campo é o rótulo visível (WCAG 2.5.3).
+    expect(screen.getByRole("combobox", { name: "Ordenar por" })).toBeInTheDocument()
     ranking.fetchAiUsageRanking.mockResolvedValue(rankingPage({ items: [], total: 0, totals: METRICS, unlinked: { ...METRICS, reasons: [] } }))
     fireEvent.click(screen.getByRole("combobox", { name: "Filtrar por grupo" }))
     fireEvent.click(await screen.findByRole("option", { name: "Norte › N1" }))

@@ -43,7 +43,7 @@ export function parseLabFixtureFile(name: string): { id: LabFixtureId; kind: Lab
   const match = /^([a-z0-9-]+)\.(json|wav)$/.exec(name)
   if (!match) return null
   const [, id, kind] = match
-  if (!isLabFixtureId(id)) return null
+  if (!isLabFixtureId(id!)) return null
   return { id, kind: kind as LabFixtureFileKind }
 }
 

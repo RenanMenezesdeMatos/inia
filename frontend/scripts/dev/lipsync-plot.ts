@@ -39,7 +39,7 @@ const flag = (name: string): string | undefined => {
   const index = args.indexOf(name)
   return index >= 0 ? args[index + 1] : undefined
 }
-const positional = args.filter((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1].startsWith("--")))
+const positional = args.filter((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1]!.startsWith("--")))
 const target = positional[0] ?? "all"
 const from = Number(flag("--from") ?? "0")
 const toArg = flag("--to")
@@ -65,9 +65,9 @@ class Canvas {
     y = Math.round(y)
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return
     const i = (y * this.width + x) * 3
-    this.data[i] = Math.round(this.data[i] * (1 - alpha) + r * alpha)
-    this.data[i + 1] = Math.round(this.data[i + 1] * (1 - alpha) + g * alpha)
-    this.data[i + 2] = Math.round(this.data[i + 2] * (1 - alpha) + b * alpha)
+    this.data[i] = Math.round(this.data[i]! * (1 - alpha) + r * alpha)
+    this.data[i + 1] = Math.round(this.data[i + 1]! * (1 - alpha) + g * alpha)
+    this.data[i + 2] = Math.round(this.data[i + 2]! * (1 - alpha) + b * alpha)
   }
   rect(x0: number, y0: number, x1: number, y1: number, color: Color, alpha = 1): void {
     for (let y = Math.max(0, Math.floor(y0)); y < Math.min(this.height, Math.ceil(y1)); y++) {
@@ -81,7 +81,7 @@ class Canvas {
   text(x: number, y: number, value: string, color: Color, scale = 2): void {
     let cursor = x
     for (const char of value) {
-      const glyph = GLYPHS[char] ?? GLYPHS[char.toLowerCase()] ?? GLYPHS["?"]
+      const glyph = GLYPHS[char] ?? GLYPHS[char.toLowerCase()] ?? GLYPHS["?"]!
       const rows = glyph.split("/")
       rows.forEach((row, ry) => {
         for (let rx = 0; rx < row.length; rx++) if (row[rx] === "#") this.rect(cursor + rx * scale, y + ry * scale, cursor + (rx + 1) * scale, y + (ry + 1) * scale, color)
@@ -116,7 +116,7 @@ const CRC_TABLE = (() => {
 
 function crc32(buffer: Buffer): number {
   let c = 0xffffffff
-  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8)
+  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8)
   return (c ^ 0xffffffff) >>> 0
 }
 
@@ -240,10 +240,10 @@ for (const id of ids) {
     const store = extractor.store
     let previous: [number, number, number] | null = null
     for (let f = 0; f < store.count; f++) {
-      const t = store.time[f]
+      const t = store.time[f]!
       if (!inRow(t)) continue
-      const env = f < landmarks.envCount ? landmarks.env[f] : store.vowelBandDb[f]
-      const point: [number, number, number] = [x(t), dbY(store.energyDb[f]), dbY(env)]
+      const env = f < landmarks.envCount ? landmarks.env[f]! : store.vowelBandDb[f]!
+      const point: [number, number, number] = [x(t), dbY(store.energyDb[f]!), dbY(env)]
       if (previous) {
         canvas.line(previous[0], previous[1], point[0], point[1], GRAY)
         canvas.line(previous[0], previous[2], point[0], point[2], GREEN)
@@ -261,9 +261,9 @@ for (const id of ids) {
     // Painel 2: vozeamento e alta frequência.
     let prevVoicing: [number, number, number] | null = null
     for (let f = 0; f < store.count; f++) {
-      const t = store.time[f]
+      const t = store.time[f]!
       if (!inRow(t)) continue
-      const point: [number, number, number] = [x(t), unitY(store.voicing[f], voicingTop, PANEL_VOICING), unitY(store.highBandRatio[f], voicingTop, PANEL_VOICING)]
+      const point: [number, number, number] = [x(t), unitY(store.voicing[f]!, voicingTop, PANEL_VOICING), unitY(store.highBandRatio[f]!, voicingTop, PANEL_VOICING)]
       if (prevVoicing) {
         canvas.line(prevVoicing[0], prevVoicing[1], point[0], point[1], PURPLE)
         canvas.line(prevVoicing[0], prevVoicing[2], point[0], point[2], ORANGE)
@@ -311,11 +311,11 @@ for (const id of ids) {
     }
 
     // Painel 4: boca.
-    let prevMouth: number[] | null = null
+    let prevMouth: [number, number, number, number, number, number] | null = null
     for (let t = origin + rowStart; t <= origin + rowEnd; t += 0.005) {
       engine.sample(t, frame)
       const m = frame.mouth
-      const point = [x(t), unitY(m.jaw / 0.7, mouthTop, PANEL_MOUTH), unitY(m.lipClose, mouthTop, PANEL_MOUTH), unitY(m.lowerLipTuck, mouthTop, PANEL_MOUTH), unitY(Math.max(m.round, m.pucker), mouthTop, PANEL_MOUTH), unitY(m.spread, mouthTop, PANEL_MOUTH)]
+      const point: [number, number, number, number, number, number] = [x(t), unitY(m.jaw / 0.7, mouthTop, PANEL_MOUTH), unitY(m.lipClose, mouthTop, PANEL_MOUTH), unitY(m.lowerLipTuck, mouthTop, PANEL_MOUTH), unitY(Math.max(m.round, m.pucker), mouthTop, PANEL_MOUTH), unitY(m.spread, mouthTop, PANEL_MOUTH)]
       if (prevMouth) {
         canvas.line(prevMouth[0], prevMouth[4], point[0], point[4], GREEN, 0.7)
         canvas.line(prevMouth[0], prevMouth[5], point[0], point[5], BLUE, 0.6)

@@ -92,7 +92,7 @@ function resolveX(w: string): string {
 export function graphemeUnits(w: string, word: string = w): GraphemeUnit[] {
   const units: GraphemeUnit[] = []
   for (let i = 0; i < w.length; i++) {
-    const char = w[i]
+    const char = w[i]!
     if (isVowelChar(char)) {
       units.push({ g: char === "ü" ? "u" : char, kind: "V", withGlide: false })
       continue
@@ -159,8 +159,8 @@ function epentheticSyllable(onset: GraphemeUnit[], coda: GraphemeUnit[] = []): O
 /** Ataque inicial ilegal (pneu, psicologia, status): consoantes soltas ganham [i]. */
 function initialOnset(cluster: GraphemeUnit[], out: OrthoSyllable[]): GraphemeUnit[] {
   let rest = cluster
-  while (rest.length > 1 && !(rest.length === 2 && isLegalOnsetCluster(rest[0], rest[1]))) {
-    const first = rest[0]
+  while (rest.length > 1 && !(rest.length === 2 && isLegalOnsetCluster(rest[0]!, rest[1]!))) {
+    const first = rest[0]!
     out.push(first.g === "s" ? epentheticSyllable([], [first]) : epentheticSyllable([first]))
     rest = rest.slice(1)
   }
@@ -189,14 +189,14 @@ export function syllabifyOrthography(w: string, word: string = w): OrthoSyllable
   const nuclei: Nucleus[] = []
   let current: Nucleus | null = null
   for (let i = 0; i < units.length; i++) {
-    const unit = units[i]
+    const unit = units[i]!
     if (unit.kind === "C") {
       if (current) {
         nuclei.push(current)
         current = null
         clusters.push([])
       }
-      clusters[clusters.length - 1].push(unit)
+      clusters[clusters.length - 1]!.push(unit)
       continue
     }
     if (current && joinsAsGlide(current, unit.g, units[i + 1], units[i + 2])) {
@@ -217,9 +217,9 @@ export function syllabifyOrthography(w: string, word: string = w): OrthoSyllable
 
   // clusters[j] = consoantes antes do núcleo j; clusters[nuclei.length] = consoantes finais.
   const out: OrthoSyllable[] = []
-  let onset = initialOnset(clusters[0], out)
+  let onset = initialOnset(clusters[0]!, out)
   for (let j = 0; j < nuclei.length; j++) {
-    const syllable: OrthoSyllable = { onset, vowel: nuclei[j].vowel, glide: nuclei[j].glide, coda: [], epenthetic: false }
+    const syllable: OrthoSyllable = { onset, vowel: nuclei[j]!.vowel, glide: nuclei[j]!.glide, coda: [], epenthetic: false }
     out.push(syllable)
     const cluster = clusters[j + 1] ?? []
     if (j === nuclei.length - 1) {
@@ -230,7 +230,7 @@ export function syllabifyOrthography(w: string, word: string = w): OrthoSyllable
     if (cluster.length <= 1) {
       coda = []
       onset = cluster
-    } else if (isLegalOnsetCluster(cluster[cluster.length - 2], cluster[cluster.length - 1])) {
+    } else if (isLegalOnsetCluster(cluster[cluster.length - 2]!, cluster[cluster.length - 1]!)) {
       coda = cluster.slice(0, -2)
       onset = cluster.slice(-2)
     } else {

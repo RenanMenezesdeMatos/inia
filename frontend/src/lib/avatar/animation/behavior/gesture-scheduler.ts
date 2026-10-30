@@ -92,7 +92,7 @@ export class GestureScheduler {
   private pick(ctx: BehaviorContext): GestureId | null {
     const { time, rng } = ctx
     for (let index = 0; index < SPEAKING_GESTURES.length; index++) {
-      const id = SPEAKING_GESTURES[index]
+      const id = SPEAKING_GESTURES[index]!
       let weight = BASE_WEIGHTS[id]
       if (id === "welcome" && time < this.greetingUntil) weight = 5
       if (id === "aboutMe" && time < this.aboutMeUntil) weight = 5
@@ -100,7 +100,7 @@ export class GestureScheduler {
       this.weights[index] = weight
     }
     const index = pickWeighted(rng, this.weights)
-    return index < 0 ? null : SPEAKING_GESTURES[index]
+    return index < 0 ? null : SPEAKING_GESTURES[index]!
   }
 
   private play(id: GestureId, time: number, gapAfter: number, intensity: number): GestureCommand {

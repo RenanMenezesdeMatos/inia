@@ -57,7 +57,7 @@ describe("números por extenso", () => {
   })
 
   it("dinheiro", () => {
-    const real = CURRENCIES["R$"]
+    const real = CURRENCIES["R$"]!
     expect(say(currencyWords(real, parseNumber("10,50")!, null))).toBe("dez reais e cinquenta centavos")
     expect(say(currencyWords(real, parseNumber("1,00")!, null))).toBe("um real")
     expect(say(currencyWords(real, parseNumber("0,01")!, null))).toBe("um centavo")

@@ -10,7 +10,13 @@ export default defineConfig({
   // Contrato frontend × backend: as provas validam respostas reais com os schemas zod da tela, carregados do código-fonte do
   // frontend (src/shared/presentation/testing/frontend-schema.ts), e eles importam uns aos outros por `@/`. O backend não usa
   // esse alias em lugar nenhum.
-  resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("../frontend/src/", import.meta.url)) }] },
+  // `supertest` → mesmo supertest, com o servidor do teste preso a 127.0.0.1 (motivo em src/shared/presentation/testing/supertest-loopback.ts).
+  resolve: {
+    alias: [
+      { find: /^@\//, replacement: fileURLToPath(new URL("../frontend/src/", import.meta.url)) },
+      { find: /^supertest$/, replacement: fileURLToPath(new URL("./src/shared/presentation/testing/supertest-loopback.ts", import.meta.url)) },
+    ],
+  },
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,

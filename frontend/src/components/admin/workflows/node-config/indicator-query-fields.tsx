@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -39,11 +41,12 @@ export function HistoricalPeriodPicker({
   // vale pra um indicador SEM medição operacional (capacidade do catálogo, nunca lista de códigos).
   const operationalWindows = closuresSource === "MEASUREMENT" && operationalEnabled !== false
   const calendarUnits = operationalWindows ? CALENDAR_UNITS : CALENDAR_UNITS.filter((unit) => unit !== "DAY" && unit !== "WEEK")
+  const fieldId = useId()
   return (
     <div className="space-y-1.5">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
-          <Label>Período</Label>
+          <Label htmlFor={`${fieldId}-kind`}>Período</Label>
           <Select
             value={uiKind}
             onValueChange={(value) => {
@@ -52,7 +55,7 @@ export function HistoricalPeriodPicker({
               else onChange({ kind: "CALENDAR", unit: value as CalendarUnit, phase })
             }}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-kind`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -68,8 +71,9 @@ export function HistoricalPeriodPicker({
         </div>
         {period.kind === "ROLLING_DAYS" ? (
           <div className="space-y-1.5">
-            <Label>Quantidade de dias</Label>
+            <Label htmlFor={`${fieldId}-days`}>Quantidade de dias</Label>
             <Input
+              id={`${fieldId}-days`}
               type="number"
               min={1}
               max={186}
@@ -79,8 +83,9 @@ export function HistoricalPeriodPicker({
           </div>
         ) : period.kind === "CLOSURES" ? (
           <div className="space-y-1.5">
-            <Label>Quantidade</Label>
+            <Label htmlFor={`${fieldId}-count`}>Quantidade</Label>
             <Input
+              id={`${fieldId}-count`}
               type="number"
               min={2}
               max={24}
@@ -90,9 +95,9 @@ export function HistoricalPeriodPicker({
           </div>
         ) : (
           <div className="space-y-1.5">
-            <Label>Fase</Label>
+            <Label htmlFor={`${fieldId}-phase`}>Fase</Label>
             <Select value={phase} onValueChange={(value) => onChange({ kind: "CALENDAR", unit: period.unit, phase: value as CalendarPhase })}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-phase`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -144,10 +149,12 @@ export function aggregationsFor(source: HistoricalSource | undefined, indicatorK
  * como percentual (70). Abaixo do mínimo = "Sem dados" — nunca 0, nunca Q4.
  */
 export function MinimumCoverageField({ value, onChange }: { value: number | undefined; onChange: (next: number | undefined) => void }) {
+  const inputId = useId()
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">Cobertura mínima de dias (%, opcional)</Label>
+      <Label htmlFor={inputId} className="text-xs text-muted-foreground">Cobertura mínima de dias (%, opcional)</Label>
       <Input
+        id={inputId}
         type="number"
         min={1}
         max={100}

@@ -123,7 +123,7 @@ describe("BehaviorController", () => {
     expect(starts.length).toBeGreaterThan(180 / 6)
     expect(starts.length).toBeLessThan(180 / 1.5)
     for (let index = 1; index < starts.length; index++) {
-      const gap = starts[index] - starts[index - 1]
+      const gap = starts[index]! - starts[index - 1]!
       expect(gap).toBeGreaterThan(BLINK_SECONDS + 0.07)
       expect(gap).toBeLessThanOrEqual(BLINK_SECONDS + BLINK_INTERVAL_MAX + 2 * DT)
     }
@@ -152,8 +152,8 @@ describe("BehaviorController", () => {
     })
     expect(plays.length).toBeGreaterThan(8)
     for (let index = 1; index < plays.length; index++) {
-      const previous = plays[index - 1]
-      const current = plays[index]
+      const previous = plays[index - 1]!
+      const current = plays[index]!
       expect(GESTURES[current.id].kind, `${previous.id} → ${current.id}`).not.toBe(GESTURES[previous.id].kind)
       expect(current.at - previous.at).toBeGreaterThanOrEqual(GESTURES[previous.id].seconds + 6 - 1e-6)
     }
@@ -274,8 +274,8 @@ describe("BehaviorController", () => {
     const none = record(null)
     const fall = record(-1)
     const rise = record(1)
-    const delta = (a: number[]) => a.map((value, index) => value - none.pitch[index])
-    const browDelta = (a: number[]) => a.map((value, index) => value - none.brow[index])
+    const delta = (a: number[]) => a.map((value, index) => value - none.pitch[index]!)
+    const browDelta = (a: number[]) => a.map((value, index) => value - none.brow[index]!)
     // + = para baixo. Aceno de 2,8° × pulso, subida de 1,6° × pulso (a mola não chega ao alvo de um pulso curto).
     expect(Math.max(...delta(fall.pitch))).toBeGreaterThan(1.5)
     expect(Math.min(...delta(fall.pitch))).toBeGreaterThan(-0.6)

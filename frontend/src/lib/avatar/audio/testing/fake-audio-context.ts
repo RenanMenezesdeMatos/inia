@@ -72,7 +72,7 @@ export function fakeContextFactory() {
     contexts.push(context)
     return context as unknown as AudioContext
   })
-  return { contexts, createContext, current: () => contexts[contexts.length - 1] }
+  return { contexts, createContext, current: () => contexts[contexts.length - 1]! }
 }
 
 /** Avança o relógio e termina (onended) toda fonte cujo fim já passou — o que o navegador faria. */

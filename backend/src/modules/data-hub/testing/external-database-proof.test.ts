@@ -171,7 +171,8 @@ async function seedExternal(target: ProofTarget, prefix: string) {
   if (target.engine === "POSTGRESQL") await adminExec(target, `revoke select on ${table(target, "segredo_rh")} from ${target.readerUser}`)
   else if (target.engine === "SQLSERVER") await adminExec(target, `deny select on ${table(target, "segredo_rh")} to [${target.readerUser}]`)
   else await adminExec(target, `revoke select on \`${target.database}\`.* from '${target.readerUser}'@'%'; grant select on \`${target.database}\`.colaboradores to '${target.readerUser}'@'%'; grant select on \`${target.database}\`.medicoes to '${target.readerUser}'@'%'; grant select on \`${target.database}\`.eventos_sem_chave to '${target.readerUser}'@'%'; flush privileges`)
-  const admin = await (await import("./external-database-admin.js")).openAdmin(target)
+  // Sempre no banco da prova: no SQL Server o administrador entra no `master` por padrão e não acharia as tabelas.
+  const admin = await (await import("./external-database-admin.js")).openAdmin(target, target.database)
   try {
     // Gestor vem DEPOIS dos liderados na tabela: a carga única de colaboradores resolve o gestor na mesma carga.
     const people: (string | null)[][] = Array.from({ length: OPERATORS }, (_, index) => [`${prefix}-${String(index + 1).padStart(4, "0")}`, `Operador ${index + 1} ${prefix}`, "OPERATOR", `${prefix}-SUP`, micros(index)])
@@ -228,7 +229,9 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
   describe.each(ENGINES)("%s", (engine) => {
     const target = adminTargets()[engine]
     const prefix = PREFIX[engine]
-    const baseConfig = () => ({ engine, host: target.host, port: target.port, database: target.database, username: target.readerUser, connectTimeoutMs: 5_000, queryTimeoutMs: 60_000 })
+    // Criptografia sempre escolhida, como na tela: fonte nova sem `tls` nasce em VERIFY_FULL (DATA-5), e os contêineres de exemplo
+    // não têm certificado válido — "Usar quando o servidor oferecer" (SQL Server: "Obrigatória", certificado próprio).
+    const baseConfig = () => ({ engine, host: target.host, port: target.port, database: target.database, username: target.readerUser, tls: { mode: engine === "SQLSERVER" ? ("REQUIRED" as const) : ("PREFERRED" as const) }, connectTimeoutMs: 5_000, queryTimeoutMs: 60_000 })
     let sourceId: string
     let employeesFeedId: string
     let measurementsFeedId: string
@@ -278,7 +281,7 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
       expect(JSON.stringify(created.body)).not.toContain(target.readerPassword)
 
       const tested = await request(app).post(api(`/sources/${sourceId}/test-connection`))
-      expect(tested.body.data.health).toBe("HEALTHY")
+      expect(tested.body.data.health, JSON.stringify(tested.body)).toBe("HEALTHY")
 
       const objects = await request(app).get(api(`/sources/${sourceId}/database/objects`))
       expect(objects.status).toBe(200)
@@ -376,7 +379,7 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
     }, 120_000)
 
     it("queda de rede no meio: retentativa retoma do último checkpoint confirmado (nada duplicado, nada perdido)", async () => {
-      const admin = await (await import("./external-database-admin.js")).openAdmin(target)
+      const admin = await (await import("./external-database-admin.js")).openAdmin(target, target.database)
       const rows: (string | number | null)[][] = []
       for (let index = 1; index <= 400; index += 1) rows.push([10_000 + index, `${prefix}-${String((index % OPERATORS) + 1).padStart(4, "0")}`, SUM_INDICATOR, dayText(200 + Math.floor(index / OPERATORS)), 1, laterInstant("2026-12-02", index)])
       await insertRows(admin, target, "medicoes", ["id", "matricula", "indicador", "data_referencia", "valor", "atualizado_em"], rows)
@@ -405,7 +408,7 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
     it("falha ao aplicar uma página: a página inteira é desfeita, o checkpoint NÃO avança e a próxima carga continua dela", async () => {
       await db.query(`create or replace function txdb_fail_apply() returns trigger language plpgsql as $$ begin if new.value = 777777 then raise exception 'falha simulada ao aplicar (prova)'; end if; return new; end $$`)
       await db.query(`create trigger txdb_fail_apply before insert or update on indicator_measurements for each row execute function txdb_fail_apply()`)
-      const admin = await (await import("./external-database-admin.js")).openAdmin(target)
+      const admin = await (await import("./external-database-admin.js")).openAdmin(target, target.database)
       const rows: (string | number | null)[][] = []
       for (let index = 1; index <= 300; index += 1) rows.push([20_000 + index, `${prefix}-${String((index % OPERATORS) + 1).padStart(4, "0")}`, SUM_INDICATOR, dayText(400 + Math.floor(index / OPERATORS)), index === 150 ? 777777 : 1, laterInstant("2026-12-03", index)])
       await insertRows(admin, target, "medicoes", ["id", "matricula", "indicador", "data_referencia", "valor", "atualizado_em"], rows)

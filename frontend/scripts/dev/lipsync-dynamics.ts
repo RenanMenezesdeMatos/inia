@@ -24,7 +24,7 @@ const option = (name: string) => {
 const transcriptDelay = Number(option("--transcript-delay") ?? 0)
 const jsonPath = option("--json")
 const seeds = Number(option("--seeds") ?? 40)
-const target = args.find((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1].startsWith("--"))) ?? "all"
+const target = args.find((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1]!.startsWith("--"))) ?? "all"
 const ids = target === "all" ? listFixtureIds() : [target]
 
 const results: DynamicsMetrics[] = []

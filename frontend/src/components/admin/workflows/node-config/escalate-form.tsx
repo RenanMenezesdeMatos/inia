@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -37,6 +39,7 @@ export function EscalateForm({
   onChange: (next: ActionConfig) => void
 }) {
   const hasAvatarOrChat = config.surfaces.includes("AVATAR") || config.surfaces.includes("CHAT")
+  const fieldId = useId()
 
   return (
     <div className="space-y-3">
@@ -81,9 +84,9 @@ export function EscalateForm({
 
       {hasAvatarOrChat ? (
         <div className="space-y-1.5">
-          <Label>Modo de interação com o avatar</Label>
+          <Label htmlFor={`${fieldId}-interaction-mode`}>Modo de interação com o avatar</Label>
           <Select value={config.interactionMode ?? "PROMPT"} onValueChange={(value) => onChange({ ...config, interactionMode: value as AvatarInteractionMode })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-interaction-mode`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -98,8 +101,9 @@ export function EscalateForm({
       ) : null}
 
       <div className="space-y-1.5">
-        <Label>Motivo (opcional)</Label>
+        <Label htmlFor={`${fieldId}-reason`}>Motivo (opcional)</Label>
         <Input
+          id={`${fieldId}-reason`}
           value={config.reason ?? ""}
           onChange={(event) => onChange({ ...config, reason: event.target.value || undefined })}
           placeholder="ex.: Reincidência crítica de qualidade"
@@ -107,12 +111,12 @@ export function EscalateForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label>Após escalonar</Label>
+        <Label htmlFor={`${fieldId}-continuation`}>Após escalonar</Label>
         <Select
           value={config.continuation ?? "CONTINUE"}
           onValueChange={(value) => onChange({ ...config, continuation: value === "END_BRANCH" ? "END_BRANCH" : undefined })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-continuation`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

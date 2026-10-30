@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,7 @@ export function WorkflowVariablePicker({
   value,
   onChange,
   suggestedType,
+  id,
 }: {
   workflowId: string
   value: string
@@ -32,12 +33,15 @@ export function WorkflowVariablePicker({
    * travado (nunca deixa criar com um tipo que já se sabe incompatível). Omitido = comportamento
    * de sempre (abre em Verdadeiro/Falso, editável). */
   suggestedType?: WorkflowVariableType
+  /** Id do select de variáveis, para o `<Label htmlFor>` de quem usa o seletor. */
+  id?: string
 }) {
   const variablesQuery = useWorkflowVariablesQuery(workflowId)
   const createMutation = useCreateWorkflowVariableMutation(workflowId)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState("")
   const [newType, setNewType] = useState<WorkflowVariableType>(suggestedType ?? "BOOLEAN")
+  const createId = useId()
 
   async function handleCreate() {
     const name = newName.trim()
@@ -53,13 +57,13 @@ export function WorkflowVariablePicker({
     return (
       <div className="space-y-2 rounded-md border p-2">
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Nome</Label>
-          <Input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="ex.: URA baixa" autoFocus />
+          <Label htmlFor={`${createId}-name`} className="text-xs text-muted-foreground">Nome</Label>
+          <Input id={`${createId}-name`} value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="ex.: URA baixa" autoFocus />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Tipo</Label>
+          <Label htmlFor={`${createId}-type`} className="text-xs text-muted-foreground">Tipo</Label>
           <Select value={newType} onValueChange={(next) => setNewType(next as WorkflowVariableType)} disabled={Boolean(suggestedType)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${createId}-type`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -96,7 +100,7 @@ export function WorkflowVariablePicker({
         if (variable) onChange(variable)
       }}
     >
-      <SelectTrigger className="w-full">
+      <SelectTrigger id={id} className="w-full">
         <SelectValue placeholder="Selecione uma variável" />
       </SelectTrigger>
       <SelectContent>

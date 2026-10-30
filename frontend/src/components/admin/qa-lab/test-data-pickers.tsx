@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import { Check, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -119,6 +119,7 @@ export function MeasurementPicker({
   const [comparator, setComparator] = useState<Comparator>(hint?.comparator ?? "LT")
   const [threshold, setThreshold] = useState<string>(hint?.thresholdNumeric !== undefined && hint?.thresholdNumeric !== null ? String(hint.thresholdNumeric) : "")
   const [days, setDays] = useState("90")
+  const fieldId = useId()
   const params = useMemo(
     () => ({
       indicatorCode,
@@ -145,9 +146,9 @@ export function MeasurementPicker({
         {scenario !== "ALL" ? (
           <>
             <div className="space-y-1.5">
-              <Label>{indicatorName}</Label>
+              <Label htmlFor={`${fieldId}-comparator`}>{indicatorName}</Label>
               <Select value={comparator} onValueChange={(next) => setComparator(next as Comparator)}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger id={`${fieldId}-comparator`} className="w-44">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -160,15 +161,15 @@ export function MeasurementPicker({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Valor</Label>
-              <Input type="number" className="w-28" value={threshold} onChange={(event) => setThreshold(event.target.value)} />
+              <Label htmlFor={`${fieldId}-threshold`}>Valor</Label>
+              <Input id={`${fieldId}-threshold`} type="number" className="w-28" value={threshold} onChange={(event) => setThreshold(event.target.value)} />
             </div>
           </>
         ) : null}
         <div className="space-y-1.5">
-          <Label>Período</Label>
+          <Label htmlFor={`${fieldId}-period`}>Período</Label>
           <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger id={`${fieldId}-period`} className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -233,6 +234,7 @@ export function ConditionPreviewPicker({
 }) {
   const [nodeId, setNodeId] = useState<string>(conditionNodes[0]?.id ?? "")
   const [branch, setBranch] = useState<ConditionPreviewRow["branch"] | "ALL">("ALL")
+  const nodeSelectId = useId()
   const query = useQaConditionPreviewQuery(nodeId ? { workflowId, nodeId, graphSource, simulatedNow, consolidatedStructure } : null)
   const counts = useMemo(() => {
     const totals = { true: 0, false: 0, no_data: 0 }
@@ -245,9 +247,9 @@ export function ConditionPreviewPicker({
     <div className="space-y-2 rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1.5">
-          <Label>Prévia por Condition</Label>
+          <Label htmlFor={nodeSelectId}>Prévia por Condition</Label>
           <Select value={nodeId} onValueChange={setNodeId}>
-            <SelectTrigger className="w-64">
+            <SelectTrigger id={nodeSelectId} className="w-64">
               <SelectValue placeholder="Escolha a condição" />
             </SelectTrigger>
             <SelectContent>

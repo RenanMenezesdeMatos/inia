@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useId, useState, type ReactNode } from "react"
 import { KeyRound, LogIn, Pencil, Plus, UserRound, Users, UsersRound } from "lucide-react"
 
 import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
@@ -70,6 +70,7 @@ function ShiftSection({ userId }: { userId: string }) {
 
   const [startTime, setStartTime] = useState("08:00")
   const [hours, setHours] = useState(8)
+  const fieldId = useId()
 
   // Turno carregado (ou recarregado): o formulário recomeça dele — ajuste na renderização, sem render extra.
   const [loadedShift, setLoadedShift] = useState<typeof shiftQuery.data>(undefined)
@@ -101,12 +102,12 @@ function ShiftSection({ userId }: { userId: string }) {
           {!shiftQuery.data ? <p className="text-xs text-muted-foreground">Jornada não configurada.</p> : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Horário de entrada</Label>
-              <Input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+              <Label htmlFor={`${fieldId}-start`}>Horário de entrada</Label>
+              <Input id={`${fieldId}-start`} type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Carga horária (horas)</Label>
-              <Input type="number" min={0.5} max={24} step={0.5} value={hours} onChange={(event) => setHours(Math.max(0.5, Number(event.target.value) || 0.5))} />
+              <Label htmlFor={`${fieldId}-hours`}>Carga horária (horas)</Label>
+              <Input id={`${fieldId}-hours`} type="number" min={0.5} max={24} step={0.5} value={hours} onChange={(event) => setHours(Math.max(0.5, Number(event.target.value) || 0.5))} />
             </div>
           </div>
           <div className="flex justify-end">
@@ -167,6 +168,7 @@ function EmploymentStatusSection({ userId, capitalManagedBy }: { userId: string;
   const [status, setStatus] = useState<EmploymentStatus>("FERIAS")
   const [effectiveFrom, setEffectiveFrom] = useState("")
   const [effectiveTo, setEffectiveTo] = useState("")
+  const fieldId = useId()
 
   async function handleApply() {
     await applyMutation.mutateAsync({ personId: userId, status, effectiveFrom: effectiveFrom || undefined, effectiveTo: effectiveTo || null })
@@ -241,12 +243,12 @@ function EmploymentStatusSection({ userId, capitalManagedBy }: { userId: string;
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Início (opcional)</Label>
-              <Input type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} />
+              <Label htmlFor={`${fieldId}-from`}>Início (opcional)</Label>
+              <Input id={`${fieldId}-from`} type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Fim (opcional)</Label>
-              <Input type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} />
+              <Label htmlFor={`${fieldId}-to`}>Fim (opcional)</Label>
+              <Input id={`${fieldId}-to`} type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} />
             </div>
           </div>
           <div className="flex justify-end">

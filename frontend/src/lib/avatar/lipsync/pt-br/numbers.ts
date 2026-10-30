@@ -28,14 +28,14 @@ function below1000(n: number, feminine: boolean): string[] {
   const words: string[] = []
   const hundreds = Math.floor(n / 100)
   const rest = n % 100
-  if (hundreds > 0) words.push((feminine ? HUNDREDS_F : HUNDREDS_M)[hundreds])
+  if (hundreds > 0) words.push((feminine ? HUNDREDS_F : HUNDREDS_M)[hundreds]!)
   if (rest > 0) {
     if (hundreds > 0) words.push("e")
-    if (rest < 10) words.push((feminine ? UNITS_F : UNITS_M)[rest])
-    else if (rest < 20) words.push(TEENS[rest - 10])
+    if (rest < 10) words.push((feminine ? UNITS_F : UNITS_M)[rest]!)
+    else if (rest < 20) words.push(TEENS[rest - 10]!)
     else {
-      words.push(TENS[Math.floor(rest / 10)])
-      if (rest % 10 > 0) words.push("e", (feminine ? UNITS_F : UNITS_M)[rest % 10])
+      words.push(TENS[Math.floor(rest / 10)]!)
+      if (rest % 10 > 0) words.push("e", (feminine ? UNITS_F : UNITS_M)[rest % 10]!)
     }
   }
   return words
@@ -73,9 +73,9 @@ export function ordinalWords(n: number, feminine = false): string[] {
   const hundreds = Math.floor(n / 100)
   const tens = Math.floor((n % 100) / 10)
   const units = n % 10
-  if (hundreds > 0) words.push(ORDINAL_HUNDREDS[hundreds])
-  if (tens > 0) words.push(ORDINAL_TENS[tens])
-  if (units > 0) words.push(ORDINAL_UNITS[units])
+  if (hundreds > 0) words.push(ORDINAL_HUNDREDS[hundreds]!)
+  if (tens > 0) words.push(ORDINAL_TENS[tens]!)
+  if (units > 0) words.push(ORDINAL_UNITS[units]!)
   return feminine ? words.map((word) => word.replace(/o$/, "a")) : words
 }
 
@@ -86,7 +86,7 @@ export function digitWords(digits: string): string[] {
   const words: string[] = []
   for (const char of digits) {
     const digit = char.charCodeAt(0) - 48
-    if (digit >= 0 && digit <= 9) words.push(DIGIT_NAMES[digit])
+    if (digit >= 0 && digit <= 9) words.push(DIGIT_NAMES[digit]!)
   }
   return words
 }
@@ -117,11 +117,11 @@ export function parseNumber(text: string): ParsedNumber | null {
   if (body.length === 0) return null
   let match = THOUSANDS_DOT.exec(body)
   if (match) {
-    return { integer: Number(match[1] + match[2].replace(/\./g, "")), fraction: match[3] ?? null, decimalMark: match[3] ? "," : null, negative, digitString: null }
+    return { integer: Number(match[1] + match[2]!.replace(/\./g, "")), fraction: match[3] ?? null, decimalMark: match[3] ? "," : null, negative, digitString: null }
   }
   match = PLAIN_COMMA.exec(body)
   if (match) {
-    const integerText = match[1]
+    const integerText = match[1]!
     // Sequências longas ou com zero à esquerda (protocolo, 0800) são lidas dígito a dígito.
     if (!match[2] && (integerText.length > 12 || (integerText.length > 1 && integerText.startsWith("0")))) {
       return { integer: 0, fraction: null, decimalMark: null, negative, digitString: integerText }
@@ -129,7 +129,7 @@ export function parseNumber(text: string): ParsedNumber | null {
     return { integer: Number(integerText), fraction: match[2] ?? null, decimalMark: match[2] ? "," : null, negative, digitString: null }
   }
   match = DOT_DECIMAL.exec(body)
-  if (match) return { integer: Number(match[1]), fraction: match[2], decimalMark: ".", negative, digitString: null }
+  if (match) return { integer: Number(match[1]), fraction: match[2]!, decimalMark: ".", negative, digitString: null }
   return null
 }
 
@@ -229,7 +229,7 @@ export function dateWords(text: string): string[] | null {
   const month = Number(match[2])
   if (day < 1 || day > 31 || month < 1 || month > 12) return null
   const words = day === 1 ? ["primeiro"] : cardinalWords(day)
-  words.push("de", MONTHS[month])
+  words.push("de", MONTHS[month]!)
   if (match[3] !== undefined) {
     const year = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3])
     words.push("de", ...cardinalWords(year))

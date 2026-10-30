@@ -71,9 +71,10 @@ jobs:
       - name: Build
         run: npx next build
 
-  # Provas contra PostgreSQL: só sob demanda (Actions › CI › Run workflow › "provas"). Banco novo com migrations, dados de referência
-  # e massa demo — o mesmo ambiente do inia_test. Em 29/10/2026, num banco assim, 5 casos antigos ainda falhavam (3 por tempo, 1
-  # texto, 1 erro 500; ver docs/dev/validacao-boas-praticas-2026-10-29.md) — por isso este job não bloqueia a publicação.
+  # Provas contra PostgreSQL: só sob demanda (Actions › CI › Run workflow › "provas"), porque levam ~10 min. Banco novo com
+  # migrations, dados de referência e massa demo — o mesmo ambiente do inia_test. Em 30/10/2026, num banco assim, todas passaram
+  # (78 arquivos, 379 casos; docs/dev/validacao-boas-praticas-2026-10-29.md, §12). As de bancos externos pedem os contêineres de
+  # exemplo e ficam de fora daqui.
   provas:
     if: github.event_name == 'workflow_dispatch' && inputs.provas
     runs-on: ubuntu-latest

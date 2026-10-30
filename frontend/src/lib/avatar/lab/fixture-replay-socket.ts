@@ -194,8 +194,8 @@ export class FixtureReplaySocket extends EventTarget {
     if (this.active !== replay) return
     const steps = replay.script.steps
     const now = this.clock.now()
-    while (replay.index < steps.length && replay.startedAt + steps[replay.index].t <= now + 0.5) {
-      const step = steps[replay.index++]
+    while (replay.index < steps.length && replay.startedAt + steps[replay.index]!.t <= now + 0.5) {
+      const step = steps[replay.index++]!
       if (step.kind === "turnComplete") replay.turnCompleteSent = true
       this.deliver(step.message)
       if (this.active !== replay) return
@@ -217,7 +217,7 @@ export class FixtureReplaySocket extends EventTarget {
     // Em voo = o que o servidor já tinha gerado: só conteúdo (áudio/texto) antes do fim da geração.
     const inFlight: CaptureStep[] = []
     for (let i = replay.index; i < replay.script.steps.length && inFlight.length < limit; i++) {
-      const step = replay.script.steps[i]
+      const step = replay.script.steps[i]!
       if (step.kind !== "audio" && step.kind !== "transcript") break
       inFlight.push(step)
     }

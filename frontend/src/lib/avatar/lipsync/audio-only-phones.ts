@@ -57,7 +57,7 @@ export function segmentLoudness(store: FeatureFrameStore, levelDb: number, start
   let acc = 0
   let n = 0
   for (let f = first; f < last && f < store.count; f++) {
-    acc += store.energyDb[f]
+    acc += store.energyDb[f]!
     n++
   }
   if (n === 0) return 0
@@ -68,10 +68,10 @@ export function segmentLoudness(store: FeatureFrameStore, levelDb: number, start
 export function valleyBetween(store: FeatureFrameStore, a: number, b: number): number {
   let best = (a + b) / 2
   let bestValue = Number.POSITIVE_INFINITY
-  for (let f = store.lowerBound(a); f < store.count && store.time[f] <= b; f++) {
-    if (store.vowelBandDb[f] < bestValue) {
-      bestValue = store.vowelBandDb[f]
-      best = store.time[f]
+  for (let f = store.lowerBound(a); f < store.count && store.time[f]! <= b; f++) {
+    if (store.vowelBandDb[f]! < bestValue) {
+      bestValue = store.vowelBandDb[f]!
+      best = store.time[f]!
     }
   }
   return best
@@ -88,18 +88,18 @@ export function valleyBetween(store: FeatureFrameStore, a: number, b: number): n
  * frase-04 com o texto 1,5 s atrasado.)
  */
 export function audioOnlyEnd(store: FeatureFrameStore, landmarks: SpeechLandmarks, from: number, until: number): number {
-  const frontier = store.count > 0 ? store.time[store.count - 1] + HOP_SECONDS / 2 : from
+  const frontier = store.count > 0 ? store.time[store.count - 1]! + HOP_SECONDS / 2 : from
   let to = Math.min(until, frontier)
   const nuclei = landmarks.nuclei
   let n = lowerBoundBy(nuclei, from)
   let last: Nucleus | null = null
-  for (; n < nuclei.length && nuclei[n].time <= to; n++) last = nuclei[n]
+  for (; n < nuclei.length && nuclei[n]!.time <= to; n++) last = nuclei[n]!
   if (!last && n < nuclei.length) {
-    if (nuclei[n].time - to <= NEAREST_NUCLEUS_REACH_SECONDS) return from
+    if (nuclei[n]!.time - to <= NEAREST_NUCLEUS_REACH_SECONDS) return from
     // Fim de frase: o resto da sílaba que se apaga e a pausa vão de uma vez até perto da próxima sílaba
     // (em pedaços de ~10 ms viravam dezenas de fones minúsculos que o limite de velocidade, que olha
     // ±3 fones, não conseguia suavizar — a boca fechava 0,5 em 20 ms).
-    return Math.max(to, Math.min(frontier, nuclei[n].time - NEAREST_NUCLEUS_REACH_SECONDS))
+    return Math.max(to, Math.min(frontier, nuclei[n]!.time - NEAREST_NUCLEUS_REACH_SECONDS))
   }
   if (last) {
     const next = nuclei[n]
@@ -117,7 +117,7 @@ export function estimateOpening(store: FeatureFrameStore, landmarks: SpeechLandm
   let ratio = 0
   let n = 0
   for (let f = Math.max(0, nucleus.frame - OPENING_RADIUS_FRAMES); f <= nucleus.frame + OPENING_RADIUS_FRAMES && f < store.count; f++) {
-    ratio += store.midBandDb[f] - store.vowelBandDb[f]
+    ratio += store.midBandDb[f]! - store.vowelBandDb[f]!
     n++
   }
   const opening = OPENING_INTERCEPT + OPENING_PER_LOUDNESS_DB * (nucleus.envDb - landmarks.speechLevelDb) + OPENING_PER_F2_RATIO_DB * (n > 0 ? ratio / n : 0)
@@ -140,14 +140,14 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
     out.push(aligned)
   }
   /** Envelope de vogais suavizado (o dos núcleos); além do calculado, a banda crua. */
-  const envAt = (f: number) => (f < landmarks.envCount ? landmarks.env[f] : store.vowelBandDb[f])
+  const envAt = (f: number) => (f < landmarks.envCount ? landmarks.env[f]! : store.vowelBandDb[f]!)
   /** Consoante entre `a` e `b` (núcleos ou bordas): fricção, oclusão/coronal, ou pausa se o silêncio for longo. */
   const consonantOf = (start: number, end: number): PhoneSymbol => {
     let silent = 0
     let frication = 0
-    for (let f = store.lowerBound(start); f < store.count && store.time[f] < end; f++) {
-      if (store.energyDb[f] < silence) silent += HOP_SECONDS
-      else if (store.highBandRatio[f] > frication) frication = store.highBandRatio[f]
+    for (let f = store.lowerBound(start); f < store.count && store.time[f]! < end; f++) {
+      if (store.energyDb[f]! < silence) silent += HOP_SECONDS
+      else if (store.highBandRatio[f]! > frication) frication = store.highBandRatio[f]!
     }
     if (silent >= PAUSE_SILENCE_SECONDS) return "_"
     return frication >= FRICATION_RATIO ? FRICATIVE : GENERIC_CONSONANT
@@ -162,7 +162,7 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
     let c = -1
     if (center === undefined) {
       let lowest = Number.POSITIVE_INFINITY
-      for (let f = store.lowerBound(lo); f < store.count && store.time[f] <= hi; f++) {
+      for (let f = store.lowerBound(lo); f < store.count && store.time[f]! <= hi; f++) {
         if (envAt(f) < lowest) {
           lowest = envAt(f)
           c = f
@@ -173,10 +173,10 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
     }
     if (c < 0 || envAt(c) >= threshold) return null
     let left = c
-    while (left > 0 && store.time[left - 1] >= lo && envAt(left - 1) < threshold) left--
+    while (left > 0 && store.time[left - 1]! >= lo && envAt(left - 1) < threshold) left--
     let right = c
-    while (right + 1 < store.count && store.time[right + 1] <= hi && envAt(right + 1) < threshold) right++
-    return [Math.max(lo, store.time[left] - HOP_SECONDS / 2), Math.min(hi, store.time[right] + HOP_SECONDS / 2)]
+    while (right + 1 < store.count && store.time[right + 1]! <= hi && envAt(right + 1) < threshold) right++
+    return [Math.max(lo, store.time[left]! - HOP_SECONDS / 2), Math.min(hi, store.time[right]! + HOP_SECONDS / 2)]
   }
 
   /** Nenhuma sílaba logo depois de `t`: a fala termina (ou pausa) ali. */
@@ -186,7 +186,7 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
   }
 
   const nuclei: Nucleus[] = []
-  for (let n = lowerBoundBy(landmarks.nuclei, from); n < landmarks.nuclei.length && landmarks.nuclei[n].time <= to; n++) nuclei.push(landmarks.nuclei[n])
+  for (let n = lowerBoundBy(landmarks.nuclei, from); n < landmarks.nuclei.length && landmarks.nuclei[n]!.time <= to; n++) nuclei.push(landmarks.nuclei[n]!)
   if (nuclei.length === 0) {
     // Fala sem núcleo no trecho (o instante ouvido anda ~40 ms entre dois pedaços de áudio, menos que
     // uma sílaba): classifica quadro a quadro; a parte vozeada abre como o núcleo mais próximo.
@@ -199,12 +199,12 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
     const close = (end: number) => {
       if (segmentPhone) push(segmentPhone, segmentStart, end, false, segmentPhone === GENERIC_VOWEL ? opening : undefined)
     }
-    for (let f = store.lowerBound(from); f < store.count && store.time[f] <= to; f++) {
+    for (let f = store.lowerBound(from); f < store.count && store.time[f]! <= to; f++) {
       const phone = classifyFrame(store, f, level, silence)
       if (phone !== segmentPhone) {
-        close(Math.max(segmentStart, store.time[f] - HOP_SECONDS / 2))
+        close(Math.max(segmentStart, store.time[f]! - HOP_SECONDS / 2))
         segmentPhone = phone
-        segmentStart = Math.max(from, store.time[f] - HOP_SECONDS / 2)
+        segmentStart = Math.max(from, store.time[f]! - HOP_SECONDS / 2)
       }
     }
     close(to)
@@ -244,9 +244,9 @@ export function audioOnlyPhones(store: FeatureFrameStore, landmarks: SpeechLandm
 }
 
 function classifyFrame(store: FeatureFrameStore, f: number, level: number, silence: number): PhoneSymbol {
-  const energy = store.energyDb[f]
+  const energy = store.energyDb[f]!
   if (energy < silence) return "_"
-  if (store.highBandRatio[f] >= FRICATION_RATIO) return FRICATIVE
+  if (store.highBandRatio[f]! >= FRICATION_RATIO) return FRICATIVE
   if (energy < level - 18) return GENERIC_CONSONANT
-  return store.voicing[f] > 0.5 ? GENERIC_VOWEL : GENERIC_CONSONANT
+  return store.voicing[f]! > 0.5 ? GENERIC_VOWEL : GENERIC_CONSONANT
 }

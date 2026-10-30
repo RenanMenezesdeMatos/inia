@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -37,6 +39,7 @@ export function HierarchicalTargetPicker({
   onChange: (next: HierarchicalTarget) => void
 }) {
   const kind = hierarchicalTargetKindOf(target)
+  const fieldId = useId()
   const previousReviewers = resolveHumanReviewAncestors(graph, fromNodeId)
   const currentRole = target.type !== "SPECIFIC_USER" ? target.role : "SUPERVISOR"
   const currentPreviousNodeId = target.type === "ROLE_OF_PREVIOUS_REVIEWER" ? target.previousReviewNodeId : (previousReviewers[0]?.nodeId ?? "")
@@ -55,9 +58,9 @@ export function HierarchicalTargetPicker({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>{label}</Label>
+        <Label htmlFor={`${fieldId}-kind`}>{label}</Label>
         <Select value={kind} onValueChange={(value) => setKind(value as HierarchicalTargetKind)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-kind`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -70,8 +73,9 @@ export function HierarchicalTargetPicker({
 
       {kind === "specific" ? (
         <div className="space-y-1.5">
-          <Label>Id da pessoa</Label>
+          <Label htmlFor={`${fieldId}-user`}>Id da pessoa</Label>
           <Input
+            id={`${fieldId}-user`}
             value={target.type === "SPECIFIC_USER" ? target.userId : ""}
             onChange={(event) => onChange({ type: "SPECIFIC_USER", userId: event.target.value })}
           />
@@ -80,12 +84,12 @@ export function HierarchicalTargetPicker({
         <div className="grid grid-cols-2 gap-2">
           {kind === "previous" ? (
             <div className="space-y-1.5">
-              <Label>Revisão anterior</Label>
+              <Label htmlFor={`${fieldId}-previous`}>Revisão anterior</Label>
               <Select
                 value={currentPreviousNodeId}
                 onValueChange={(previousReviewNodeId) => onChange({ type: "ROLE_OF_PREVIOUS_REVIEWER", role: currentRole, previousReviewNodeId })}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-previous`} className="w-full">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -99,9 +103,9 @@ export function HierarchicalTargetPicker({
             </div>
           ) : null}
           <div className="space-y-1.5">
-            <Label>Cargo</Label>
+            <Label htmlFor={`${fieldId}-role`}>Cargo</Label>
             <Select value={currentRole} onValueChange={(role) => setRole(role as EscalationRole)}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-role`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

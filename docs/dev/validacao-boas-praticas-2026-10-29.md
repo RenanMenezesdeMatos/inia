@@ -639,3 +639,126 @@ outra sessão.
 | `64cb184b` | Vitest — fim do timeout de RPC; custo/alocação do lip-sync estáveis |
 | (este) | relatório |
 
+
+## 12. Quarta rodada (30/10/2026): o que estava em aberto, menos medidas de desempenho
+
+**Decisão do usuário:** corrigir todos os itens de §11.2 menos as medidas de desempenho; Meu turno, Treino e chat da INIA continuam
+intocados (os arquivos dessas frentes não foram abertos para edição).
+
+### 12.1 Provas num banco novo — as 5 falhas
+
+| Prova | Causa | Correção |
+|---|---|---|
+| `diagnostic-strategy-proof` (500) | Regressão de `40b73a1a` (endurecimento R-38): a consulta só-leitura do QA Lab passou a abrir `begin read only` com `db.connect()`; nas provas o `db` já é um cliente dentro de uma transação, e `connect()` num cliente lança | `queryInReadOnlyTransaction` (`qa-lab/application/read-only-database.ts`) usa o helper de transação com `readOnly`: com o pool, `begin read only` numa conexão própria (como antes); com um cliente em transação, um savepoint só-leitura, desfeito no fim |
+| `diagnostic-calls-proof` ("regressão Ícaro") | Teste desatualizado desde R-31 (`f4de5272`): a transcrição do próprio operador também chega ao modelo com a PII evidente mascarada; o teste ainda esperava o texto bruto | A prova confere o texto mascarado (`transcriptForModel`) e que o bruto continua intacto no banco |
+| `analytics-read-model-proof` (2 estouros de tempo) e `diagnostic-calls-proof` (1) | Não se repetiram: 11/11 sozinha (249 s) e 13/13, e nenhuma falha na rodada completa num banco recriado do zero. Sem causa no código | — |
+
+Rodada completa num banco **recriado do zero** (migrations + dados de referência + massa demo, 60 s), como o job `provas` do CI:
+**78 arquivos ok, 6 pulados (dependem de bancos externos ou de variáveis próprias); 379 casos ok, 0 falhas** (511 s, sem
+paralelismo entre arquivos). O banco descartável foi apagado no fim. O job `provas` continua sob demanda (leva ~10 min);
+o comentário dele no `ci.yml` foi atualizado.
+
+### 12.2 Prova de bancos externos e SQL Server
+
+- **Causa da falha nos 3 motores:** o achado DATA-5 da auditoria de 17/10 fez toda fonte nova sem criptografia escolhida nascer
+  em "Obrigatória e validando o certificado" (`NEW_SOURCE_TLS_MODE`). A prova criava a fonte sem escolher; os contêineres de
+  exemplo não têm certificado, o teste da conexão salva dava `TLS_FAILED` e os 27 casos seguintes caíam em cascata. **Não é
+  defeito do produto** (a tela sempre manda o modo escolhido). A prova agora escolhe, como a tela: "Usar quando o servidor
+  oferecer" (SQL Server: "Obrigatória") — e a asserção mostra o corpo da resposta quando falha.
+- **SQL Server (emulação amd64 pelo Rosetta do colima):**
+  - erro da prova: o administrador entrava no `master` (padrão do driver) para semear as tabelas — corrigido nos 3 pontos;
+  - **defeito real do produto:** com banco inexistente, a tela dizia "usuário ou senha recusados". O SQL Server 2022 manda dois
+    erros no login — 4060 ("Cannot open database …") e 18456 ("Login failed …") — e o tedious 20 guarda só o último. A sessão
+    (`sqlserver-session.ts`) agora guarda todos os erros do login pelo gancho público `beforeConnect` do `mssql`, e o
+    classificador (`database-errors.ts`) dá precedência ao 4060. Teste novo com a sequência real (falharia no código anterior).
+    Senha errada continua "credenciais" (o servidor só manda o 18456).
+- **Resultado:** `external-database-proof` **40/40** — PostgreSQL, MariaDB, MySQL e SQL Server 2022. Senhas aleatórias num arquivo
+  temporário fora do repositório (o `.env` da raiz não foi criado); contêineres removidos no fim.
+
+### 12.3 `Parse Error: Expected HTTP/` do supertest — causa e correção
+
+- **Mecanismo, reproduzido:** o supertest abre o servidor do teste com `listen(0)` em todas as interfaces e conecta em
+  `127.0.0.1`. No macOS, outro programa que abra `127.0.0.1` **na mesma porta, com número fixo**, consegue o bind com o servidor
+  do teste ativo e passa a atender `127.0.0.1`: o cliente recebe bytes que não são HTTP — exatamente `Parse Error: Expected HTTP/,
+  RTSP/ or ICE/`. Com o supertest original, esse bind é ACEITO.
+- O kernel nunca entrega a mesma porta a dois `listen(0)` (0 colisões em 3.000 × 3.000 servidores, em todas as combinações de
+  endereço); quem "rouba" é um programa com porta fixa na faixa efêmera — por exemplo, os encaminhadores do colima/ssh dos
+  bancos de exemplo (`127.0.0.1:51433`, `53306`, `53307`, `55432`), que estiveram ativos em parte desta sessão. Não dá para
+  apontar qual programa estava na porta em cada uma das duas ocorrências.
+- **No Linux o kernel recusa esse bind** (`EADDRINUSE`): o CI nunca esteve exposto.
+- **Correção:** o alias `supertest` do `backend/vitest.config.ts` aponta para `src/shared/presentation/testing/supertest-loopback.ts`
+  — o mesmo supertest, que logo depois do `listen(0)` reserva também `127.0.0.1` na mesma porta e repassa as conexões ao mesmo
+  app. Os 81 arquivos de teste continuam com `import request from "supertest"`. 3 testes (inclusive `request.agent` com cookies);
+  com a reserva, o bind do outro programa recebe `EADDRINUSE`.
+
+### 12.4 Acessibilidade — os 216 avisos de `Label`
+
+Triagem por subagente, revisada aqui (amostra dos diffs, testes e lint):
+
+- **131 reais, corrigidos:** `htmlFor` no `Label` e `id` no controle (no `Select`, no `SelectTrigger`), com `useId()`; 6 grupos de
+  rádio com `aria-labelledby`; prop `id` opcional em 6 componentes compartilhados (`TypedComparatorSelect`, `TypedValueInput`,
+  `WorkflowVariablePicker`, `TimeListEditor`, `WorkflowSelect`, `AgentPicker`); 8 rótulos com texto em expressão, que a regra
+  não vê. Sem mudança visual nem de texto; clicar no rótulo agora foca o campo.
+- **85 falsos positivos:** 61 controles que já têm nome, 16 rótulos de grupo cujos controles têm nome próprio, 8 rótulos sem
+  controle (texto de leitura).
+- Avisos da regra: **216 → 91** (os 85 falsos positivos + os 6 grupos de rádio, que a regra não reconhece por `aria-labelledby`).
+  4 testes novos (falham no código anterior). 46 arquivos, nenhum das frentes do usuário.
+- Além dos 216, **4 nomes acessíveis diferentes do texto visível** (WCAG 2.5.3), corrigidos aqui com `htmlFor`/`id` no lugar do
+  `aria-label`: "Limite de custo estimado por requisição" (roteamento de IA), "Como consolidar este indicador em um período?"
+  (indicadores), "Agent que avalia os atendimentos" (Testar diagnóstico) e "Ordenar por" (ranking de uso de IA). Um teste por
+  campo, buscando pelo rótulo visível (falham no código anterior).
+
+### 12.5 Tipagem estrita (`noUncheckedIndexedAccess`) fora das frentes
+
+- Código do avatar (lip-sync, animação, laboratório e scripts de diagnóstico): **996 → 3 erros**, com 733 `!` e duas anotações de
+  tupla, por subagente. **Prova de equivalência refeita aqui:** `ts.transpileModule` antes (`HEAD`) e depois nos 54 arquivos —
+  JavaScript gerado idêntico em todos.
+- Base da catraca: **1.208 erros em 58 arquivos → 215 em 7**. Os 212 restantes estão no chat da INIA, no transporte de tempo
+  real e na monitoria das conversas (frentes do usuário).
+- **Os 3 que ficaram são possíveis defeitos em fixtures de teste do lip-sync** — não silenciados de propósito:
+  - `lipsync/__fixtures__/dynamics-metrics.ts:159` — `envelopeAt` com o store sem quadros lê o índice −1 e o cálculo vira `NaN`;
+  - `lipsync/__fixtures__/load-fixture.ts:483–484` — uma última palavra sem fone (ex.: o token "10h" vira "h", que o fonemizador
+    de teste ignora) faz `phones[0]` ser `undefined` e o `emit` quebrar com `TypeError`.
+
+### 12.6 Transação com nível de isolamento
+
+`inTransaction` (`shared/infrastructure/database/transaction.ts`) ganhou `isolation` (`"repeatable read" | "serializable"`) e
+`readOnly`:
+- com o pool, os dois entram no `begin` (`begin isolation level repeatable read read only`);
+- dentro de uma transação já aberta, o isolamento é o de quem a abriu (o PostgreSQL não muda no meio), e o `readOnly` vira um
+  savepoint só-leitura, desfeito no fim — a transação de fora volta a aceitar escrita.
+
+Usuários: a leitura das janelas da Estrutura (`operational-read-model.ts`, já `repeatable read read only`, agora pelo helper) e a
+consulta só-leitura do QA Lab (§12.1). 2 testes novos do helper (11 no total).
+
+### 12.7 Verificações da quarta rodada
+
+| Verificação | Resultado |
+|---|---|
+| Provas num banco recriado do zero | 78 arquivos ok / 6 pulados; **379 casos ok, 0 falhas** |
+| `external-database-proof` (4 motores) | **40/40** |
+| Suíte do backend com o supertest novo | 489 arquivos ok / 86 pulados; **5.295 testes ok**, 0 falhas |
+| `npm run verificar` (antes dos 4 nomes acessíveis) | **tudo verde**: backend — tipos, tipos dos scripts, lint, 489 arquivos / **5.295 testes ok**; frontend — tipos, catraca ("nenhum arquivo piorou", base 215 em 7), lint (1 aviso, o mesmo de antes), 184 arquivos / **2.069 testes ok** / 1 pulado, build |
+| Os 4 nomes acessíveis | tipos e lint limpos; os 4 arquivos de teste dos componentes, 45/45 |
+
+### 12.8 O que continua em aberto
+
+- Arquivos das frentes do usuário (Meu turno, Treino, chat da INIA, monitoria de usabilidade): os itens de §11.2 que estão neles, os 212 erros de tipagem estrita.
+- Os 3 possíveis defeitos das fixtures do lip-sync (§12.5).
+- Acessibilidade fora dos 216: os `ToggleGroup` de múltipla escolha sem nome de grupo ("Superfícies", "Dias da semana") e os
+  botões de "Cenário" e "Tipo de gatilho" sem `aria-pressed` (não dizem qual opção está escolhida).
+- Medidas de desempenho (tamanho de bundle, renderização): fora desta rodada, por decisão do usuário.
+
+### 12.9 Commits da quarta rodada
+
+Branch `admin-list-standardization`, com o mesmo índice temporário da terceira rodada.
+
+| Commit | Conteúdo |
+|---|---|
+| `c38ff6aa` | Transação com isolamento e somente leitura; consulta só-leitura do QA Lab dentro de transação aberta (regressão de `40b73a1a`) |
+| `8a9270e4` | SQL Server: banco inexistente não vira "senha recusada"; prova de bancos externos em dia (TLS escolhido, banco da prova) |
+| `a07b2a28` | Prova "regressão Ícaro" confere a transcrição mascarada (R-31) |
+| `dc3d6bab` | Supertest com `127.0.0.1` reservado — fim do `Parse Error: Expected HTTP/` |
+| `512a997d` | Acessibilidade — 131 rótulos associados (triagem dos 216) e 4 nomes iguais ao texto visível |
+| `9e47941b` | Tipagem estrita do avatar (só `!`, JavaScript idêntico) e base da catraca 215/7 |
+| (este) | relatório e comentário do job de provas |

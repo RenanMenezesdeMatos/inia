@@ -191,7 +191,7 @@ export class SpeechAligner {
     let count = 0
     let lastWord = -1
     for (let k = this.nextElement; k < this.elements.length; k++) {
-      const word = this.elements[k].wordIndex
+      const word = this.elements[k]!.wordIndex
       if (word >= 0 && word !== lastWord) {
         count++
         lastWord = word
@@ -230,12 +230,12 @@ export class SpeechAligner {
     let count = 0
     const open = this.pendingTextOpen && this.pendingFillerFrom >= 0
     const lastText = open ? lastSpokenSegment(pending, this.elements) : -1
-    while (count < pending.length && pending[count].start < heardFrame) {
-      if (open && holdsTextBoundary(pending[count], count, lastText, heardFrame)) break
+    while (count < pending.length && pending[count]!.start < heardFrame) {
+      if (open && holdsTextBoundary(pending[count]!, count, lastText, heardFrame)) break
       count++
     }
     if (count === 0) return false
-    const shift = pending[count - 1].end
+    const shift = pending[count - 1]!.end
     const fillerFrom = this.pendingFillerFrom
     this.commitSegments(pending, count)
     this.setPending(pending.slice(count), shift, fillerFrom, this.pendingTextOpen)
@@ -318,15 +318,15 @@ export class SpeechAligner {
       this.clearPending()
       return this.commitAudioOnlyUntilHeard()
     }
-    const best = this.viterbi.backtrack(ends[0])
-    const closed = audioClosed && this.textFinal && textExhausted && ends[0].kind === "complete"
+    const best = this.viterbi.backtrack(ends[0]!)
+    const closed = audioClosed && this.textFinal && textExhausted && ends[0]!.kind === "complete"
     if (closed) {
       this.commitSegments(best, best.length)
       this.clearPending()
       this.done = true
       return true
     }
-    if (audioClosed && this.textFinal && textExhausted && ends[0].kind === "filler") {
+    if (audioClosed && this.textFinal && textExhausted && ends[0]!.kind === "filler") {
       // Texto todo dito antes do fim do áudio: consolida e o resto (próximo passo) vira só-áudio.
       this.commitSegments(best, best.length)
       this.clearPending()
@@ -340,9 +340,9 @@ export class SpeechAligner {
     const textOpen = textExhausted && !this.textFinal
     const count = this.committablePrefix(ends, best, W, textOpen)
     const committedSomething = count > 0
-    const shift = committedSomething ? best[count - 1].end : 0
+    const shift = committedSomething ? best[count - 1]!.end : 0
     if (committedSomething) this.commitSegments(best, count)
-    this.setPending(best.slice(count), shift, ends[0].kind === "filler" ? ends[0].from : -1, textOpen)
+    this.setPending(best.slice(count), shift, ends[0]!.kind === "filler" ? ends[0]!.from : -1, textOpen)
     const fillerFrom = this.pendingFillerFrom
     let changed = committedSomething
     // Texto atrasado: o que vai tocar além da cobertura do texto vira só-áudio. A pausa (pulada)
@@ -394,7 +394,7 @@ export class SpeechAligner {
     let reach = 0
     const limit = W * 2.2 + 30
     while (k < elements.length && k - this.nextElement < MAX_WINDOW_ELEMENTS) {
-      const element = elements[k]
+      const element = elements[k]!
       if (!element.optional) reach += (element.expectedMs * this.rate) / 10
       if (reach > limit) break
       k++
@@ -440,7 +440,7 @@ export class SpeechAligner {
       fillerMargin: FILLER_MARGIN,
     })
     if (ends.length === 0) return null
-    const path = this.viterbi.backtrack(ends[0])
+    const path = this.viterbi.backtrack(ends[0]!)
     let resumeAt = -1
     for (const segment of path) {
       if (segment.skipped || segment.end <= boundary) continue
@@ -449,7 +449,7 @@ export class SpeechAligner {
       break
     }
     if (resumeAt < 0) {
-      if (ends[0].kind !== "filler" || ends[0].from > boundary) return null
+      if (ends[0]!.kind !== "filler" || ends[0]!.from > boundary) return null
       // Todo o texto conhecido já foi dito. Texto encerrado: nada mais vai chegar — consome tudo e o
       // resto do áudio vira só-áudio (`commitUntranscribedTail`).
       if (this.textFinal) {
@@ -465,7 +465,7 @@ export class SpeechAligner {
       let last = -1
       let lastEnd = 0
       for (const segment of path) {
-        if (segment.skipped || this.elements[segment.element].phone === "_" || segment.end > boundary - RESUME_CONSUME_MARGIN_FRAMES) continue
+        if (segment.skipped || this.elements[segment.element]!.phone === "_" || segment.end > boundary - RESUME_CONSUME_MARGIN_FRAMES) continue
         last = segment.element
         lastEnd = segment.end
       }
@@ -488,7 +488,7 @@ export class SpeechAligner {
   private audioOnlySpeechSince(time: number): number {
     let speech = 0
     for (let k = this.committed.length - 1; k >= 0; k--) {
-      const phone = this.committed[k]
+      const phone = this.committed[k]!
       if (phone.end <= time || phone.source !== "audio-only") break
       if (phone.phone !== "_") speech += phone.end - Math.max(phone.start, time)
     }
@@ -505,7 +505,7 @@ export class SpeechAligner {
     const debt = this.textDebt
     let skipped = 0
     for (let s = 0; s <= Math.min(K - 1, RESUME_MAX_SKIP); s++) {
-      const element = this.elements[this.nextElement + s]
+      const element = this.elements[this.nextElement + s]!
       const ratio = (skipped + 0.08) / (debt + 0.08)
       const midWord = element.phone !== "_" && !element.wordStart ? 1.5 : 0
       costs[s] = RESUME_WEIGHT * Math.abs(Math.log(ratio)) + midWord
@@ -520,17 +520,17 @@ export class SpeechAligner {
    */
   private committablePrefix(ends: HsmmEnd[], best: HsmmSegment[], W: number, textOpen: boolean): number {
     let agreed = best.length
-    const top = ends[0].score
+    const top = ends[0]!.score
     for (let e = 1; e < ends.length && e < CONVERGE_ENDS; e++) {
-      if (ends[e].score < top - CONVERGE_BEAM) break
-      const other = this.viterbi.backtrack(ends[e])
+      if (ends[e]!.score < top - CONVERGE_BEAM) break
+      const other = this.viterbi.backtrack(ends[e]!)
       let k = 0
-      while (k < agreed && k < other.length && sameSegment(best[k], other[k])) k++
+      while (k < agreed && k < other.length && sameSegment(best[k]!, other[k]!)) k++
       agreed = k
     }
     // Com o texto esgotado (enchimento no fim), o fim do texto conhecido ainda pode mudar quando o
     // próximo fragmento chegar: a consolidação para `TEXT_TAIL_FRAMES` antes do enchimento.
-    const limit = ends[0].kind === "filler" ? Math.min(W - this.minLagFrames, ends[0].from - TEXT_TAIL_FRAMES) : W - this.minLagFrames
+    const limit = ends[0]!.kind === "filler" ? Math.min(W - this.minLagFrames, ends[0]!.from - TEXT_TAIL_FRAMES) : W - this.minLagFrames
     // Texto aberto: as duas últimas palavras conhecidas ficam provisórias (são as que o melhor
     // caminho estica para cobrir fala cujo texto ainda não chegou). A pausa ENTRE palavras pertence à
     // palavra seguinte: consolidar a pausa antes de uma palavra provisória fixaria o começo dela (era
@@ -544,17 +544,17 @@ export class SpeechAligner {
     const nearHeard = this.frameTime(this.nextFrame + W) - this.heardUntil < TEXT_OPEN_NEAR_HEARD_SECONDS
     const protectedWord = textOpen ? Math.min(lastWord - 1, nearHeard ? this.protectedTailWord() : Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY
     let count = 0
-    while (count < agreed && !best[count].partial && best[count].end <= limit && this.wordOfElement(best[count].element) < protectedWord) count++
+    while (count < agreed && !best[count]!.partial && best[count]!.end <= limit && this.wordOfElement(best[count]!.element) < protectedWord) count++
     // Nunca termina a consolidação num elemento pulado seguido de nada: tudo bem, é só índice.
     const heardFrame = this.store.lowerBound(this.heardUntil + HEARD_GUARD_SECONDS) - this.nextFrame
-    const open = textOpen && ends[0].kind === "filler"
+    const open = textOpen && ends[0]!.kind === "filler"
     const lastText = open ? lastSpokenSegment(best, this.elements) : -1
-    while (count < best.length && best[count].start < heardFrame) {
+    while (count < best.length && best[count]!.start < heardFrame) {
       // O último fone do texto conhecido, ainda soando, logo antes do enchimento: o COMEÇO dele já
       // está fixo (é o início da janela), mas o FIM depende do texto que vai chegar — consolidar
       // agora cravaria o fim que o enchimento escolheu e empurraria a palavra seguinte para trás
       // ("às" 200 ms antes da hora, com o texto atrasado e em rajadas).
-      if (open && holdsTextBoundary(best[count], count, lastText, heardFrame)) break
+      if (open && holdsTextBoundary(best[count]!, count, lastText, heardFrame)) break
       count++
     }
     return count
@@ -564,7 +564,7 @@ export class SpeechAligner {
   private protectedTailWord(): number {
     let speech = 0
     for (let k = this.elements.length - 1; k >= this.nextElement; k--) {
-      const element = this.elements[k]
+      const element = this.elements[k]!
       if (element.phone === "_") continue
       speech += (element.expectedMs * this.rate) / 1000
       if (speech >= TEXT_OPEN_PROTECTED_SECONDS) return element.wordIndex
@@ -574,12 +574,12 @@ export class SpeechAligner {
 
   /** Palavra do elemento; pausa conta como da palavra SEGUINTE (∞ se ainda não chegou). */
   private wordOfElement(index: number): number {
-    for (let k = index; k < this.elements.length; k++) if (this.elements[k].wordIndex >= 0) return this.elements[k].wordIndex
+    for (let k = index; k < this.elements.length; k++) if (this.elements[k]!.wordIndex >= 0) return this.elements[k]!.wordIndex
     return Number.POSITIVE_INFINITY
   }
 
   private lastKnownWord(): number {
-    for (let k = this.elements.length - 1; k >= 0; k--) if (this.elements[k].wordIndex >= 0) return this.elements[k].wordIndex
+    for (let k = this.elements.length - 1; k >= 0; k--) if (this.elements[k]!.wordIndex >= 0) return this.elements[k]!.wordIndex
     return Number.POSITIVE_INFINITY
   }
 
@@ -588,8 +588,8 @@ export class SpeechAligner {
     let lastElement = this.nextElement - 1
     let lastEnd = 0
     for (let k = 0; k < count; k++) {
-      lastElement = segments[k].element
-      lastEnd = segments[k].end
+      lastElement = segments[k]!.element
+      lastEnd = segments[k]!.end
     }
     this.updateRate(segments, count)
     this.committed.push(...phones)
@@ -610,7 +610,7 @@ export class SpeechAligner {
     for (const segment of segments) {
       if (segment.skipped || segment.end <= segment.start) continue
       if (fillerFrom >= 0 && segment.start >= fillerFrom) break
-      const element = this.elements[segment.element]
+      const element = this.elements[segment.element]!
       const start = this.frameTime(this.nextFrame + segment.start)
       const end = this.frameTime(this.nextFrame + segment.end)
       out.push({
@@ -630,16 +630,16 @@ export class SpeechAligner {
   /** Fronteira antes do quadro `f` (quadros centrados: meio salto antes do centro). */
   private frameTime(f: number): number {
     const store = this.store
-    if (f < store.count) return store.time[f] - HOP_SECONDS / 2
-    return store.time[store.count - 1] + HOP_SECONDS / 2 + (f - store.count) * HOP_SECONDS
+    if (f < store.count) return store.time[f]! - HOP_SECONDS / 2
+    return store.time[store.count - 1]! + HOP_SECONDS / 2 + (f - store.count) * HOP_SECONDS
   }
 
   private updateRate(segments: HsmmSegment[], count: number): void {
     let actual = 0
     let prior = 0
     for (let k = 0; k < count; k++) {
-      const segment = segments[k]
-      const element = this.elements[segment.element]
+      const segment = segments[k]!
+      const element = this.elements[segment.element]!
       if (segment.skipped || element.phone === "_") continue
       actual += (segment.end - segment.start) * HOP_SECONDS
       prior += element.expectedMs / 1000
@@ -694,14 +694,14 @@ export class SpeechAligner {
     const end = this.frameTime(store.count)
     // Fala = há núcleo silábico depois do último fone; respiração e ruído no fim do turno não abrem a boca.
     const nuclei = this.landmarks.nuclei
-    const lastNucleus = nuclei.length > 0 ? nuclei[nuclei.length - 1].time : Number.NEGATIVE_INFINITY
+    const lastNucleus = nuclei.length > 0 ? nuclei[nuclei.length - 1]!.time : Number.NEGATIVE_INFINITY
     // O fim da fala é onde a energia cai bem abaixo do nível de fala (não o piso de ruído): a boca
     // começa a fechar junto com o som, não 100 ms depois.
     const speechFloor = this.landmarks.speechLevelDb - TAIL_SPEECH_FLOOR_DB
     let lastSpeech = -1
     if (lastNucleus >= from) {
       for (let f = store.count - 1; f >= this.nextFrame; f--) {
-        if (store.energyDb[f] >= speechFloor && store.time[f] <= lastNucleus + MAX_RELEASE_AFTER_NUCLEUS_SECONDS) {
+        if (store.energyDb[f]! >= speechFloor && store.time[f]! <= lastNucleus + MAX_RELEASE_AFTER_NUCLEUS_SECONDS) {
           lastSpeech = f
           break
         }
@@ -710,7 +710,7 @@ export class SpeechAligner {
     this.clearPending()
     const speechEnd = lastSpeech < 0 ? from : Math.min(end, this.frameTime(lastSpeech + 1) + TAIL_RELEASE_SECONDS)
     const phones = speechEnd > from ? audioOnlyPhones(store, this.landmarks, from, speechEnd) : []
-    const tailStart = phones.length > 0 ? phones[phones.length - 1].end : from
+    const tailStart = phones.length > 0 ? phones[phones.length - 1]!.end : from
     if (end > tailStart) phones.push({ phone: "_", start: tailStart, end, stressed: false, nucleus: false, wordIndex: -1, source: phones.length > 0 ? "audio-only" : "aligned", loudness: 0 })
     this.committed.push(...phones)
     this.nextFrame = store.count
@@ -742,7 +742,7 @@ function holdsTextBoundary(segment: HsmmSegment, index: number, lastText: number
 
 /** Índice do último segmento que é fone de verdade (nem pulado, nem pausa); −1 se não há. */
 function lastSpokenSegment(segments: readonly HsmmSegment[], elements: readonly AlignmentElement[]): number {
-  for (let k = segments.length - 1; k >= 0; k--) if (!segments[k].skipped && elements[segments[k].element].phone !== "_") return k
+  for (let k = segments.length - 1; k >= 0; k--) if (!segments[k]!.skipped && elements[segments[k]!.element]!.phone !== "_") return k
   return -1
 }
 

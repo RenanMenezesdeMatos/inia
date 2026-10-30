@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { Play } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,7 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
   const [level, setLevel] = useState<CreateAnalysisInput["contextLevel"]>("SUB_REASON")
   const [comparison, setComparison] = useState(meta.comparisonModes[0]?.mode ?? "TOP_QUARTILE_VS_REST")
   const [modelMode, setModelMode] = useState<CreateAnalysisInput["modelMode"]>("SIMULATED_ANSWER_KEY")
+  const fieldId = useId()
   const synthetic = origin === "SYNTHETIC"
   const dataset = meta.datasets.find((item) => item.id === datasetId)
   const team = meta.manageableTeams.find((item) => item.id === teamId)
@@ -73,8 +74,8 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
         <div className="space-y-4">
           {meta.capabilities.canRunSynthetic ? (
             <div className="space-y-1">
-              <Label>Dados</Label>
-              <RadioGroup value={origin} onValueChange={(value) => chooseOrigin(value as DataOrigin)} className="flex gap-4">
+              <Label id={`${fieldId}-origin`}>Dados</Label>
+              <RadioGroup aria-labelledby={`${fieldId}-origin`} value={origin} onValueChange={(value) => chooseOrigin(value as DataOrigin)} className="flex gap-4">
                 <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="REAL" disabled={meta.manageableTeams.length === 0} /> Reais</label>
                 <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="SYNTHETIC" disabled={meta.datasets.length === 0} /> Sintéticos (teste)</label>
               </RadioGroup>
@@ -106,8 +107,8 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
             </div>
           )}
           <div className="space-y-1">
-            <Label>Medir por</Label>
-            <RadioGroup value={outcomeSource} onValueChange={(value) => setOutcomeSource(value as "INDICATOR" | "CALL_SIGNAL")} className="flex flex-wrap gap-4">
+            <Label id={`${fieldId}-outcome`}>Medir por</Label>
+            <RadioGroup aria-labelledby={`${fieldId}-outcome`} value={outcomeSource} onValueChange={(value) => setOutcomeSource(value as "INDICATOR" | "CALL_SIGNAL")} className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="INDICATOR" /> Indicador (operadores do 1º quartil)</label>
               <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="CALL_SIGNAL" disabled={meta.signals.length === 0} /> Sinal da chamada (chamadas boas × ruins)</label>
             </RadioGroup>
@@ -150,8 +151,8 @@ export function NewAnalysisDialog({ meta }: { meta: BestPracticesMeta }) {
           </div>
           {synthetic ? (
             <div className="space-y-1">
-              <Label>Modelo</Label>
-              <RadioGroup value={modelMode} onValueChange={(value) => setModelMode(value as CreateAnalysisInput["modelMode"])} className="space-y-1">
+              <Label id={`${fieldId}-model`}>Modelo</Label>
+              <RadioGroup aria-labelledby={`${fieldId}-model`} value={modelMode} onValueChange={(value) => setModelMode(value as CreateAnalysisInput["modelMode"])} className="space-y-1">
                 <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="SIMULATED_ANSWER_KEY" disabled={!dataset?.hasAnswerKey} /> Simulado pelo gabarito (zero IA, sem custo)</label>
                 <label className="flex items-center gap-2 text-sm"><RadioGroupItem value="REAL" /> IA real (custo registrado no uso de IA)</label>
               </RadioGroup>

@@ -73,11 +73,12 @@ export function classifyDatabaseError(error: unknown, context: DatabaseErrorCont
   }
 
   // --- Autenticação ------------------------------------------------------------------------------
-  const databaseAccessDenied = numbers.has(1044) || codes.has("ER_DBACCESS_DENIED_ERROR") || /access denied for user .* to database/.test(lower)
+  // SQL Server com banco inexistente manda 4060 ("Cannot open database …") E 18456 ("Login failed …"): vale o primeiro.
+  const databaseAccessDenied = numbers.has(1044) || codes.has("ER_DBACCESS_DENIED_ERROR") || /access denied for user .* to database/.test(lower) || numbers.has(4060) || /cannot open database|cannot open the database/.test(lower)
   const authFailed =
     !databaseAccessDenied &&
     (codes.has("28P01") || codes.has("28000") || numbers.has(1045) || codes.has("ER_ACCESS_DENIED_ERROR") || numbers.has(18456) ||
-      (codes.has("ELOGIN") && !/cannot open database|cannot open the database/.test(lower)) || /password authentication failed|login failed for user|access denied for user/.test(lower))
+      codes.has("ELOGIN") || /password authentication failed|login failed for user|access denied for user/.test(lower))
   if (authFailed && !/no pg_hba\.conf entry/.test(lower)) {
     return make("DATA_SOURCE_AUTH_FAILED", `O ${engine} recusou o usuário "${context.username}" ou a senha. Confira as credenciais${context.engine === "SQLSERVER" ? " e se o servidor aceita login por usuário e senha (autenticação do SQL Server)" : ""}.`)
   }

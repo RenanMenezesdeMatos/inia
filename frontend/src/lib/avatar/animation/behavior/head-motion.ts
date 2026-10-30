@@ -93,7 +93,7 @@ export class HeadMotionLayer {
     }
     let pulseTarget = 0
     for (let index = this.pulses.length - 1; index >= 0; index--) {
-      const pulse = this.pulses[index]
+      const pulse = this.pulses[index]!
       const t = (time - pulse.at) / pulse.seconds
       if (t >= 1) {
         this.pulses.splice(index, 1)

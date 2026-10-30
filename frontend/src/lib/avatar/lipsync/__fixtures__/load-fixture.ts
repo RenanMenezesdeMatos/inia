@@ -228,7 +228,7 @@ function speechBounds(pcm: Float32Array, sampleRate: number): { first: number; l
   const run = Math.round(sampleRate * 0.005)
   let first = 0
   for (let i = 0, count = 0; i < pcm.length; i++) {
-    count = Math.abs(pcm[i]) > threshold ? count + 1 : Math.max(0, count - 1)
+    count = Math.abs(pcm[i]!) > threshold ? count + 1 : Math.max(0, count - 1)
     if (count >= run / 4) {
       first = Math.max(0, i - run)
       break
@@ -236,7 +236,7 @@ function speechBounds(pcm: Float32Array, sampleRate: number): { first: number; l
   }
   let last = pcm.length
   for (let i = pcm.length - 1, count = 0; i >= 0; i--) {
-    count = Math.abs(pcm[i]) > threshold ? count + 1 : Math.max(0, count - 1)
+    count = Math.abs(pcm[i]!) > threshold ? count + 1 : Math.max(0, count - 1)
     if (count >= run / 4) {
       last = Math.min(pcm.length, i + run)
       break
@@ -280,12 +280,12 @@ function syllabify(word: string): string[] {
   const syllables: string[] = []
   let cursor = 0
   for (let n = 0; n < nuclei.length; n++) {
-    const [, end] = nuclei[n]
+    const [, end] = nuclei[n]!
     if (n === nuclei.length - 1) {
       syllables.push(chars.slice(cursor).join(""))
       break
     }
-    const nextStart = nuclei[n + 1][0]
+    const nextStart = nuclei[n + 1]![0]
     const between = chars.slice(end, nextStart).join("")
     let split = end
     if (between.length === 0) split = end
@@ -304,10 +304,10 @@ function syllabify(word: string): string[] {
 function stressedSyllable(word: string, syllables: string[]): number {
   if (FUNCTION_WORDS.has(word)) return -1
   for (let s = 0; s < syllables.length; s++) {
-    if ([...syllables[s]].some((c) => ACCENTED.includes(c) && c !== "ã" && c !== "õ")) return s
+    if ([...syllables[s]!].some((c) => ACCENTED.includes(c) && c !== "ã" && c !== "õ")) return s
   }
   for (let s = 0; s < syllables.length; s++) {
-    if (syllables[s].includes("ã") || syllables[s].includes("õ")) return s
+    if (syllables[s]!.includes("ã") || syllables[s]!.includes("õ")) return s
   }
   if (syllables.length === 1) return 0
   if (/(a|e|o|as|es|os|am|em|ens)$/.test(word)) return syllables.length - 2
@@ -345,7 +345,7 @@ function syllablePhones(syl: string, next: string | undefined, stressed: boolean
   let nucleusDone = false
   const nasalCoda = /[mn]$/.test(syl) || (/[mn]s$/.test(syl)) || (next !== undefined && /^[mn]/.test(next) && /[aâeêoô]$/.test(syl) && stressed)
   for (let i = 0; i < chars.length; i++) {
-    const c = chars[i]
+    const c = chars[i]!
     const n1 = chars[i + 1]
     const n2 = chars[i + 2]
     if (isVowelChar(c)) {
@@ -442,8 +442,8 @@ export function testPhonemizeText(text: string, startWordIndex = 0, startSyllabl
   const tokens = text.match(/[^\s]+/g) ?? []
   for (const token of tokens) {
     const match = token.match(/^([^A-Za-zÀ-ÿ0-9]*)([A-Za-zÀ-ÿ0-9-]+)([^A-Za-zÀ-ÿ0-9]*)$/)
-    const core = (match ? match[2] : token).toLocaleLowerCase("pt-BR").replace(/[^a-zà-ÿ]/g, "")
-    const punctuation = match ? match[3] : ""
+    const core = (match ? match[2]! : token).toLocaleLowerCase("pt-BR").replace(/[^a-zà-ÿ]/g, "")
+    const punctuation = match ? match[3]! : ""
     if (!core) continue
     const syllables = syllabify(core)
     const stress = stressedSyllable(core, syllables)
@@ -480,8 +480,8 @@ export function createTestPhonemizer(): TranscriptPhonemizer {
   const emit = (text: string): G2PWord[] => {
     const words = testPhonemizeText(text, wordIndex, syllableIndex)
     if (words.length > 0) {
-      wordIndex = words[words.length - 1].phones[0].wordIndex + 1
-      syllableIndex = words[words.length - 1].phones[words[words.length - 1].phones.length - 1].syllableIndex + 1
+      wordIndex = words[words.length - 1]!.phones[0].wordIndex + 1
+      syllableIndex = words[words.length - 1]!.phones[words[words.length - 1]!.phones.length - 1].syllableIndex + 1
     }
     return words
   }

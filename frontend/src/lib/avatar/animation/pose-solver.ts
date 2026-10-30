@@ -159,7 +159,7 @@ export class PoseSolver {
         if (!direction || direction.lengthSq() < 1e-12) continue
         const axis = new Vector3().crossVectors(direction.normalize(), palm)
         if (axis.lengthSq() < 1e-8) continue
-        this.rotateInCharacterSpace(bone, new Quaternion().setFromAxisAngle(axis.normalize(), angles[joint - 1] * DEG))
+        this.rotateInCharacterSpace(bone, new Quaternion().setFromAxisAngle(axis.normalize(), angles[joint - 1]! * DEG))
       }
     }
   }

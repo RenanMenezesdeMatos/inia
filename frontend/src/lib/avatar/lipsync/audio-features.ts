@@ -91,7 +91,7 @@ export class FeatureFrameStore {
     let hi = this.count
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if (this.time[mid] < t) lo = mid + 1
+      if (this.time[mid]! < t) lo = mid + 1
       else hi = mid
     }
     return lo
@@ -99,12 +99,12 @@ export class FeatureFrameStore {
 
   frame(index: number): AudioFeatureFrame {
     return {
-      time: this.time[index],
-      energyDb: this.energyDb[index],
-      vowelBandDb: this.vowelBandDb[index],
-      highBandRatio: this.highBandRatio[index],
-      zeroCrossingRate: this.zeroCrossingRate[index],
-      voicing: this.voicing[index],
+      time: this.time[index]!,
+      energyDb: this.energyDb[index]!,
+      vowelBandDb: this.vowelBandDb[index]!,
+      highBandRatio: this.highBandRatio[index]!,
+      zeroCrossingRate: this.zeroCrossingRate[index]!,
+      voicing: this.voicing[index]!,
     }
   }
 
@@ -240,7 +240,7 @@ export class AudioFeatureExtractor {
 
   /** Fim do áudio já analisado (relógio do contexto): até onde existem quadros completos. */
   get analyzedUntil(): number {
-    return this.store.count > 0 ? this.store.time[this.store.count - 1] + (SUB_BLOCK_MS / 1000) * SUB_BLOCKS_PER_HOP / 2 : this.expectedNext === -Infinity ? 0 : this.streamStart
+    return this.store.count > 0 ? this.store.time[this.store.count - 1]! + (SUB_BLOCK_MS / 1000) * SUB_BLOCKS_PER_HOP / 2 : this.expectedNext === -Infinity ? 0 : this.streamStart
   }
 
   /** Fim do áudio recebido (relógio do contexto). */
@@ -380,7 +380,7 @@ export class AudioFeatureExtractor {
     const decimation = this.decimation
 
     for (let n = 0; n < length; n++) {
-      const x = pcm === null ? 0 : pcm[n]
+      const x = pcm === null ? 0 : pcm[n]!
       accFull += x * x
       if (x > 0) {
         if (lastSign < 0) accZc++
@@ -479,11 +479,11 @@ export class AudioFeatureExtractor {
     let zc = 0
     let mid = 0
     for (let k = 0; k < SUB_BLOCKS_PER_FRAME; k++) {
-      mid += this.ringMid[k]
-      full += this.ringFull[k]
-      vowel += this.ringVowel[k]
-      high += this.ringHigh[k]
-      zc += this.ringZc[k]
+      mid += this.ringMid[k]!
+      full += this.ringFull[k]!
+      vowel += this.ringVowel[k]!
+      high += this.ringHigh[k]!
+      zc += this.ringZc[k]!
     }
     const n = this.subBlockSize * SUB_BLOCKS_PER_FRAME
     const centerSample = firstSub * this.subBlockSize + n / 2
@@ -518,10 +518,10 @@ export class AudioFeatureExtractor {
     const prefix = this.prefix
     prefix[0] = 0
     for (let n = 0; n < size; n++) {
-      const v = x[offset + n]
-      prefix[n + 1] = prefix[n] + v * v
+      const v = x[offset + n]!
+      prefix[n + 1] = prefix[n]! + v * v
     }
-    const total = prefix[size]
+    const total = prefix[size]!
     if (total <= ENERGY_EPSILON) return 0
     let best = 0
     const maxLag = Math.min(this.maxLag, size - 8)
@@ -529,11 +529,11 @@ export class AudioFeatureExtractor {
     for (let lag = this.minLag; lag <= maxLag; lag++) {
       let acc = 0
       const end = offset + size - lag
-      for (let n = offset; n < end; n++) acc += x[n] * x[n + lag]
+      for (let n = offset; n < end; n++) acc += x[n]! * x[n + lag]!
       let r = 0
       if (acc > 0) {
-        const e1 = prefix[size - lag]
-        const e2 = total - prefix[lag]
+        const e1 = prefix[size - lag]!
+        const e2 = total - prefix[lag]!
         r = acc / Math.sqrt(e1 * e2 + ENERGY_EPSILON)
       }
       correlation[lag] = r
@@ -547,15 +547,15 @@ export class AudioFeatureExtractor {
     const minLag = this.minLag
     let bestPeak = 0
     for (let lag = minLag; lag < maxLag; lag++) {
-      const r = correlation[lag]
-      const before = lag > minLag ? correlation[lag - 1] : r
-      if (r < before || r < correlation[lag + 1]) continue
-      bestPeak = Math.max(bestPeak, interpolatedPeak(before, r, correlation[lag + 1]))
+      const r = correlation[lag]!
+      const before = lag > minLag ? correlation[lag - 1]! : r
+      if (r < before || r < correlation[lag + 1]!) continue
+      bestPeak = Math.max(bestPeak, interpolatedPeak(before, r, correlation[lag + 1]!))
     }
     for (let lag = minLag; lag < maxLag; lag++) {
-      const r = correlation[lag]
-      const before = lag > minLag ? correlation[lag - 1] : r
-      const after = correlation[lag + 1]
+      const r = correlation[lag]!
+      const before = lag > minLag ? correlation[lag - 1]! : r
+      const after = correlation[lag + 1]!
       if (r < before || r < after) continue
       if (interpolatedPeak(before, r, after) < F0_OCTAVE_TOLERANCE * bestPeak) continue
       const curvature = before - 2 * r + after

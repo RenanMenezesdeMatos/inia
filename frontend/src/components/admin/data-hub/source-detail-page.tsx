@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, ArrowLeft, Copy, FileDown, KeyRound, Pause, Play, Plug, Plus, RefreshCw, Trash2 } from "lucide-react"
@@ -107,6 +107,7 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
   const [networks, setNetworks] = useState("")
   const [revealed, setRevealed] = useState<{ id: string; token: string } | null>(null)
   const [downloadingSpec, setDownloadingSpec] = useState(false)
+  const revealedTokenId = useId()
   const endpointBase = `${API_URL}/api/v1/data-ingestion/${source.publicId}`
 
   async function downloadSpec() {
@@ -142,9 +143,9 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
       <CardContent className="space-y-3">
         {revealed ? (
           <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
-            <Label>Novo token — copie agora, não será exibido de novo</Label>
+            <Label htmlFor={revealedTokenId}>Novo token — copie agora, não será exibido de novo</Label>
             <div className="flex gap-2">
-              <Input readOnly value={revealed.token} className="font-mono text-xs" />
+              <Input id={revealedTokenId} readOnly value={revealed.token} className="font-mono text-xs" />
               <Button variant="outline" size="icon" aria-label="Copiar token" onClick={() => navigator.clipboard.writeText(revealed.token).then(() => toast.success("Token copiado."))}>
                 <Copy />
               </Button>

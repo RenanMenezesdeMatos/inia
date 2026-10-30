@@ -86,6 +86,7 @@ export function AgentPicker({
   value,
   onChange,
   disabledReason,
+  id,
 }: {
   agents: Agent[]
   value: string
@@ -93,6 +94,8 @@ export function AgentPicker({
   /** Agente que não pode ser escolhido aqui (ex.: especialista de outro domínio numa política de
    * Orquestrador) fica visível, desabilitado, com o motivo no lugar da linha de criação. */
   disabledReason?: (agent: Agent) => string | null
+  /** Id da busca, para o `<Label htmlFor>` de quem usa o seletor. Não vai no botão do agente escolhido: lá o nome é o próprio agente. */
+  id?: string
 }) {
   const [search, setSearch] = useState("")
   const [showList, setShowList] = useState(!value)
@@ -127,6 +130,7 @@ export function AgentPicker({
         <div className="relative">
           <Search className="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
+            id={id}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {

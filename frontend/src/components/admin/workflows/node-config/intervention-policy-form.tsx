@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query"
 import { ExternalLink, FlaskConical, Info } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useId, useState } from "react"
 
 import { PolicySimulationView } from "@/components/interventions/policy-simulation-view"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +35,7 @@ export function InterventionPolicyForm({ node, graph, onChange }: { node: Policy
   const selected = policies.find((policy) => policy.id === node.config.policyId) ?? null
   const ancestors = [...findAncestorNodeIds(graph, node.id)].map((id) => graph.nodes.find((candidate) => candidate.id === id)).filter((candidate): candidate is FlowNode => Boolean(candidate) && candidate!.type !== "trigger")
   const set = (config: Partial<PolicyNode["config"]>) => onChange({ ...node, config: { ...node.config, ...config } })
+  const modeLabelId = useId()
 
   return (
     <div className="space-y-4">
@@ -108,8 +109,8 @@ export function InterventionPolicyForm({ node, graph, onChange }: { node: Policy
       ) : null}
 
       <div className="space-y-1.5">
-        <Label>Modo</Label>
-        <RadioGroup value={node.config.mode} onValueChange={(mode) => set({ mode: mode as PolicyNode["config"]["mode"] })} className="space-y-1">
+        <Label id={modeLabelId}>Modo</Label>
+        <RadioGroup aria-labelledby={modeLabelId} value={node.config.mode} onValueChange={(mode) => set({ mode: mode as PolicyNode["config"]["mode"] })} className="space-y-1">
           {(["RECOMMEND_ONLY", "APPLY_POLICY"] as const).map((mode) => (
             <label key={mode} className="flex items-start gap-2 text-sm">
               <RadioGroupItem value={mode} className="mt-0.5" />

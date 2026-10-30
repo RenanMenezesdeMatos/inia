@@ -21,7 +21,7 @@ const option = (name: string, fallback: number) => {
 const transcriptDelay = option("--transcript-delay", 0)
 const transcriptJitter = option("--transcript-jitter", 0)
 const jitterSeed = option("--seed", 1)
-const target = args.find((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1].startsWith("--"))) ?? "all"
+const target = args.find((arg, index) => !arg.startsWith("--") && !(index > 0 && args[index - 1]!.startsWith("--"))) ?? "all"
 const ids = target === "all" ? listFixtureIds() : [target]
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`.padStart(4)
 
@@ -46,7 +46,7 @@ for (const id of ids) {
     const words = phonemizeText(schedule.fixture.transcript)
     const span = (list: typeof phones, w: number) => {
       const own = list.filter((p) => p.wordIndex === w && p.source === "aligned")
-      return own.length > 0 ? `${(own[0].start - schedule.audioStart).toFixed(2)}–${(own[own.length - 1].end - schedule.audioStart).toFixed(2)}` : "só-áudio "
+      return own.length > 0 ? `${(own[0]!.start - schedule.audioStart).toFixed(2)}–${(own[own.length - 1]!.end - schedule.audioStart).toFixed(2)}` : "só-áudio "
     }
     words.forEach((word, w) => console.log(`  ${String(w).padStart(3)} ${word.text.padEnd(18)} em dia ${span(reference, w)}  aqui ${span(phones, w)}`))
     const comparison = compareWordTimings(reference, phones)

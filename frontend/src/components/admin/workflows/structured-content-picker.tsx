@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useId } from "react"
 
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -113,11 +113,12 @@ export function StructuredContentPicker({
 
   const originValue = variableId ? `${VARIABLE_ORIGIN_PREFIX}${variableId}` : nodeId
   const originLabel = variableId ? variableOptions.find((option) => option.value === originValue)?.label : sources.find((source) => source.nodeId === nodeId)?.label
+  const fieldId = useId()
 
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Label>{label}</Label>
+        <Label htmlFor={`${fieldId}-origin`}>{label}</Label>
         {sources.length === 0 && variableOptions.length === 0 ? (
           <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
             {sourceMode === "FEEDBACK_ONLY"
@@ -126,7 +127,7 @@ export function StructuredContentPicker({
           </p>
         ) : (
           <Select value={originValue} onValueChange={selectOrigin}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-origin`} className="w-full">
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
@@ -158,9 +159,9 @@ export function StructuredContentPicker({
 
       {nodeId && !requireWholeObject && structuredFields && structuredFields.length > 0 ? (
         <div className="space-y-1.5">
-          <Label>Informação a publicar</Label>
+          <Label htmlFor={`${fieldId}-field`}>Informação a publicar</Label>
           <Select value={currentFieldPath ?? WHOLE_OBJECT_VALUE} onValueChange={selectField}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-field`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useIndicatorsWithRulesQuery } from "@/queries/admin/use-indicator-rule-queries"
@@ -25,6 +27,7 @@ function OperationalQuartileConditionForm({ node, onChange }: { node: Extract<Fl
   const aggregation: HistoricalAggregation = query.aggregation ?? "WEIGHTED_AVERAGE"
   const aggregationUnsupported = aggregation === "COUNT" || !availableAggregations.includes(aggregation)
   const period: HistoricalPeriod = query.period ?? { kind: "ROLLING_DAYS", days: 7 }
+  const fieldId = useId()
 
   function updateQuery(patch: Partial<HistoricalQuery>) {
     onChange({ ...node, config: { ...node.config, historicalQuery: { ...query, ...patch } } })
@@ -52,9 +55,9 @@ function OperationalQuartileConditionForm({ node, onChange }: { node: Extract<Fl
         ) : null}
       </div>
       <div className="space-y-1.5">
-        <Label>Valor de cada colaborador na janela</Label>
+        <Label htmlFor={`${fieldId}-aggregation`}>Valor de cada colaborador na janela</Label>
         <Select value={aggregation} onValueChange={(value) => updateQuery({ aggregation: value as HistoricalAggregation })}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-aggregation`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -71,9 +74,9 @@ function OperationalQuartileConditionForm({ node, onChange }: { node: Extract<Fl
       <MinimumCoverageField value={query.minimumCoverage} onChange={(minimumCoverage) => updateQuery({ minimumCoverage })} />
       <div className="grid grid-cols-2 gap-2 border-t pt-3">
         <div className="space-y-1.5">
-          <Label>Quartil operacional</Label>
+          <Label htmlFor={`${fieldId}-comparator`}>Quartil operacional</Label>
           <Select value={node.config.comparator === "NOT_EQUALS" ? "NOT_EQUALS" : "EQUALS"} onValueChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator: comparator as Comparator } })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-comparator`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -83,9 +86,9 @@ function OperationalQuartileConditionForm({ node, onChange }: { node: Extract<Fl
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label>Quartil</Label>
+          <Label htmlFor={`${fieldId}-quartile`}>Quartil</Label>
           <Select value={node.config.thresholdText ?? "Q4"} onValueChange={(thresholdText) => onChange({ ...node, config: { ...node.config, thresholdText, thresholdNumeric: null, thresholdBoolean: null } })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-quartile`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -115,6 +118,7 @@ export function IndicatorConditionForm({
   onChange: (next: FlowNode) => void
 }) {
   const kind = indicatorAnalysisKindOf(node.config)
+  const kindId = useId()
   // Quartil (recorrente ou não) é performanceQuery, individual-only — nunca oferecido como
   // destino em modo Consolidado (mesma regra já aplicada em Performance do colaborador antes
   // desta reorganização, ver workflow-router.ts/workflow-validation.ts).
@@ -127,9 +131,9 @@ export function IndicatorConditionForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>O que deseja analisar?</Label>
+        <Label htmlFor={kindId}>O que deseja analisar?</Label>
         <Select value={kind} onValueChange={(value) => onChange({ ...node, config: buildIndicatorAnalysisConfig(value as IndicatorAnalysisKind, node.config) })}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={kindId} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

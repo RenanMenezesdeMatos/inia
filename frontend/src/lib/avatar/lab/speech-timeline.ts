@@ -25,7 +25,7 @@ export function energyLevel(energyDb: number): number {
 /** Fone que cobre `time` (a lista vem ordenada por início: consolidados e depois provisórios). */
 export function alignedPhoneAt(phones: readonly AlignedPhone[], time: number): AlignedPhone | null {
   for (let i = phones.length - 1; i >= 0; i--) {
-    const phone = phones[i]
+    const phone = phones[i]!
     if (phone.start <= time) return time < phone.end ? phone : null
   }
   return null
@@ -37,7 +37,7 @@ export function alignedPhoneAt(phones: readonly AlignedPhone[], time: number): A
  */
 export function isMidWord(phones: readonly AlignedPhone[], time: number): boolean {
   for (let i = phones.length - 1; i >= 0; i--) {
-    const phone = phones[i]
+    const phone = phones[i]!
     if (phone.start > time) continue
     if (time >= phone.end || phone.phone === "_") return false
     const before = phones[i - 1]
@@ -49,16 +49,16 @@ export function isMidWord(phones: readonly AlignedPhone[], time: number): boolea
 
 /** Energia no instante (quadro de análise mais próximo, sem interpolar). `null` fora do analisado. */
 export function energyAt(frames: readonly AudioFeatureFrame[], time: number): number | null {
-  if (frames.length === 0 || time < frames[0].time || time > frames[frames.length - 1].time) return null
+  if (frames.length === 0 || time < frames[0]!.time || time > frames[frames.length - 1]!.time) return null
   let low = 0
   let high = frames.length - 1
   while (low < high) {
     const mid = (low + high) >> 1
-    if (frames[mid].time < time) low = mid + 1
+    if (frames[mid]!.time < time) low = mid + 1
     else high = mid
   }
-  const previous = frames[Math.max(0, low - 1)]
-  const chosen = Math.abs(previous.time - time) < Math.abs(frames[low].time - time) ? previous : frames[low]
+  const previous = frames[Math.max(0, low - 1)]!
+  const chosen = Math.abs(previous.time - time) < Math.abs(frames[low]!.time - time) ? previous : frames[low]!
   return energyLevel(chosen.energyDb)
 }
 

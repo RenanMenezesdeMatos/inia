@@ -67,17 +67,17 @@ function frameAt(frames: AudioFeatureFrame[], t: number): AudioFeatureFrame {
   let hi = frames.length - 1
   while (lo < hi) {
     const mid = (lo + hi) >>> 1
-    if (frames[mid].time < t) lo = mid + 1
+    if (frames[mid]!.time < t) lo = mid + 1
     else hi = mid
   }
-  if (lo > 0 && Math.abs(frames[lo - 1].time - t) < Math.abs(frames[lo].time - t)) lo--
-  return frames[lo]
+  if (lo > 0 && Math.abs(frames[lo - 1]!.time - t) < Math.abs(frames[lo]!.time - t)) lo--
+  return frames[lo]!
 }
 
 /** Nível de fala (percentil 85 da energia dos quadros com som), calculado à parte do motor. */
 function speechLevel(frames: AudioFeatureFrame[]): number {
   const energies = frames.map((f) => f.energyDb).filter((db) => db > -70).sort((a, b) => a - b)
-  return energies[Math.floor(energies.length * 0.85)]
+  return energies[Math.floor(energies.length * 0.85)]!
 }
 
 const isNucleusVowel = (phone: AlignedPhone) => phone.nucleus && PHONES[phone.phone].class === "vowel"
@@ -135,11 +135,11 @@ describe.each(PHONEMIZERS)("motor de lip-sync nas capturas reais (%s)", (_label,
     const snapshot = engine.debugSnapshot()
     const phones = snapshot.phones
     for (let k = 0; k < phones.length; k++) {
-      expect(phones[k].end).toBeGreaterThanOrEqual(phones[k].start)
-      if (k > 0) expect(phones[k].start).toBeGreaterThanOrEqual(phones[k - 1].end - 1e-6)
+      expect(phones[k]!.end).toBeGreaterThanOrEqual(phones[k]!.start)
+      if (k > 0) expect(phones[k]!.start).toBeGreaterThanOrEqual(phones[k - 1]!.end - 1e-6)
     }
     const words = phones.filter((p) => p.wordIndex >= 0).map((p) => p.wordIndex)
-    for (let k = 1; k < words.length; k++) expect(words[k]).toBeGreaterThanOrEqual(words[k - 1])
+    for (let k = 1; k < words.length; k++) expect(words[k]).toBeGreaterThanOrEqual(words[k - 1]!)
     expect(snapshot.pendingWords).toBe(0)
     expect(phones.every((p) => p.source === "aligned")).toBe(true)
     const lastWord = Math.max(...words)
@@ -186,7 +186,7 @@ describe.runIf(realG2PAvailable)("motor de lip-sync com a transcrição incomple
   it.each(INCOMPLETE_TEXT_FIXTURES)("%s: a boca acompanha a fala sem texto e descansa depois dela", (id) => {
     const { engine, schedule } = run(id, {})
     const { phones, frames } = engine.debugSnapshot()
-    for (let k = 1; k < phones.length; k++) expect(phones[k].start).toBeGreaterThanOrEqual(phones[k - 1].end - 1e-6)
+    for (let k = 1; k < phones.length; k++) expect(phones[k]!.start).toBeGreaterThanOrEqual(phones[k - 1]!.end - 1e-6)
     const level = speechLevel(frames)
     const frame = createSpeechFrame()
     let checked = 0
@@ -274,16 +274,16 @@ describe.runIf(realG2PAvailable)("motor de lip-sync com o texto atrasado (G2P PT
         },
       })
       const phones = engine.debugSnapshot({ frames: false }).phones
-      for (let k = 1; k < phones.length; k++) expect(phones[k].start).toBeGreaterThanOrEqual(phones[k - 1].end - 1e-6)
+      for (let k = 1; k < phones.length; k++) expect(phones[k]!.start).toBeGreaterThanOrEqual(phones[k - 1]!.end - 1e-6)
       for (const entry of heard) {
         entry.phones.forEach((phone, index) => {
-          const now = phones[index]
+          const now = phones[index]!
           expect({ phone: now.phone, start: now.start, wordIndex: now.wordIndex, source: now.source }).toEqual({ phone: phone.phone, start: phone.start, wordIndex: phone.wordIndex, source: phone.source })
           if (phone.end <= entry.at - GRACE_SECONDS) expect(now.end).toBe(phone.end)
         })
       }
 
-      const words = compareWithReference(schedule, phones, reference[id])
+      const words = compareWithReference(schedule, phones, reference[id]!)
       const lateText = delay + jitter >= 1 && KNOWN_LATE_TEXT.has(id)
       if (!lateText) {
         expect(words.medianAbsMs, `${id}: ${JSON.stringify(words.worst)}`).toBeLessThanOrEqual(400)
@@ -418,7 +418,7 @@ describe("motor de lip-sync: turnos, interrupção e streaming", () => {
     expect(aligned.length).toBeGreaterThan(10)
     // Depois que o último fragmento chega (+ folga), tudo é texto alinhado.
     expect(phones.filter((p) => p.start >= lastFragment + 0.6 && p.phone !== "_").every((p) => p.source === "aligned")).toBe(true)
-    for (let k = 1; k < phones.length; k++) expect(phones[k].start).toBeGreaterThanOrEqual(phones[k - 1].end - 1e-6)
+    for (let k = 1; k < phones.length; k++) expect(phones[k]!.start).toBeGreaterThanOrEqual(phones[k - 1]!.end - 1e-6)
     const lastEnd = Math.max(...aligned.map((p) => p.end))
     expect(Math.abs(lastEnd - schedule.speechEnd)).toBeLessThanOrEqual(0.3)
     // Com o texto atrasado o tempo todo, a última palavra pode chegar depois de o seu áudio já ter
@@ -432,8 +432,8 @@ describe("motor de lip-sync: turnos, interrupção e streaming", () => {
     // Orçamento ABSOLUTO de CPU: com a máquina saturada (mais processos prontos que núcleos) o tempo de CPU
     // do próprio processo também infla — no Apple Silicon ele vai para os núcleos de eficiência — e a medida
     // deixa de dizer algo sobre o motor. Nesse caso o teste é pulado e diz por quê; em máquina normal e no CI vale.
-    if (os.loadavg()[0] > os.availableParallelism()) {
-      console.warn(`[lip-sync] custo de CPU não medido: máquina saturada (carga ${os.loadavg()[0].toFixed(1)} em ${os.availableParallelism()} núcleos)`)
+    if (os.loadavg()[0]! > os.availableParallelism()) {
+      console.warn(`[lip-sync] custo de CPU não medido: máquina saturada (carga ${os.loadavg()[0]!.toFixed(1)} em ${os.availableParallelism()} núcleos)`)
       ctx.skip()
     }
     // Runner compartilhado do CI (vCPU lenta e disputada, sem relação com a máquina de quem usa a INIA): pela mesma regra acima,

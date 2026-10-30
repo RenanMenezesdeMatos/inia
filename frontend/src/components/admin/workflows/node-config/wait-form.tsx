@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,6 +21,7 @@ function inferUnit(durationMs: number): DurationUnit {
 export function WaitForm({ node, onChange }: { node: Extract<FlowNode, { type: "wait" }>; onChange: (next: FlowNode) => void }) {
   const unit = inferUnit(node.config.durationMs)
   const amount = Math.max(1, Math.round(node.config.durationMs / DURATION_UNIT_MS[unit]))
+  const fieldId = useId()
 
   function update(nextAmount: number, nextUnit: DurationUnit) {
     onChange({ ...node, config: { durationMs: Math.max(1, nextAmount) * DURATION_UNIT_MS[nextUnit] } })
@@ -27,13 +30,13 @@ export function WaitForm({ node, onChange }: { node: Extract<FlowNode, { type: "
   return (
     <div className="grid grid-cols-2 gap-2">
       <div className="space-y-1.5">
-        <Label>Duração</Label>
-        <Input type="number" min={1} value={amount} onChange={(event) => update(Number(event.target.value) || 1, unit)} />
+        <Label htmlFor={`${fieldId}-amount`}>Duração</Label>
+        <Input id={`${fieldId}-amount`} type="number" min={1} value={amount} onChange={(event) => update(Number(event.target.value) || 1, unit)} />
       </div>
       <div className="space-y-1.5">
-        <Label>Unidade</Label>
+        <Label htmlFor={`${fieldId}-unit`}>Unidade</Label>
         <Select value={unit} onValueChange={(value) => update(amount, value as DurationUnit)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-unit`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

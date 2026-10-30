@@ -263,18 +263,18 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
             <div className="space-y-3 rounded-lg border border-border p-4">
               <p className="text-sm font-medium">Integração API Push</p>
               <div className="space-y-1">
-                <Label>Endpoint</Label>
+                <Label htmlFor="push-endpoint">Endpoint</Label>
                 <div className="flex gap-2">
-                  <Input readOnly value={`POST ${endpoint}`} className="font-mono text-xs" />
+                  <Input id="push-endpoint" readOnly value={`POST ${endpoint}`} className="font-mono text-xs" />
                   <Button variant="outline" size="icon" aria-label="Copiar endpoint" onClick={() => navigator.clipboard.writeText(endpoint).then(() => toast.success("Endpoint copiado."))}>
                     <Copy />
                   </Button>
                 </div>
               </div>
               <div className="space-y-1">
-                <Label>Token (exibido só agora — guarde com segurança)</Label>
+                <Label htmlFor="push-token">Token (exibido só agora — guarde com segurança)</Label>
                 <div className="flex gap-2">
-                  <Input readOnly value={result.token ?? ""} className="font-mono text-xs" />
+                  <Input id="push-token" readOnly value={result.token ?? ""} className="font-mono text-xs" />
                   <Button variant="outline" size="icon" aria-label="Copiar token" onClick={() => navigator.clipboard.writeText(result.token ?? "").then(() => toast.success("Token copiado."))}>
                     <Copy />
                   </Button>

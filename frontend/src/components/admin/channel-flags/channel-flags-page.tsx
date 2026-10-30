@@ -149,9 +149,9 @@ function ChannelFlagForm({ flag, onDone }: { flag?: ChannelFlag; onDone: () => v
         </div>
       </div>
       <div className="space-y-1.5">
-        <Label>Tipo de valor</Label>
+        <Label htmlFor="flag-value-type">Tipo de valor</Label>
         <Select value={valueType} onValueChange={(value) => setValueType(value as FlagValueType)} disabled={Boolean(flag)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id="flag-value-type" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

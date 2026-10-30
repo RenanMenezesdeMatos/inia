@@ -207,7 +207,7 @@ function nucleusPhones(context: SyllableContext): PhoneSymbol[] {
       context.index === context.firstRealIndex &&
       syllable.glide === null &&
       syllable.coda[0]?.g === "s" &&
-      (syllable.onset.length === 0 || (syllable.onset.length === 1 && syllable.onset[0].g === "d"))
+      (syllable.onset.length === 0 || (syllable.onset.length === 1 && syllable.onset[0]!.g === "d"))
     ) {
       vowel = "i"
     } else vowel = "e"
@@ -233,7 +233,7 @@ function nucleusPhones(context: SyllableContext): PhoneSymbol[] {
     // ou → [o] sempre (pouco, ouvir, sou); ei → [e] antes de r/ʃ/ʒ (primeiro, beijo, peixe).
     if (base === "o" && syllable.glide === "u") return [vowel]
     if (base === "e" && syllable.glide === "i" && next && next.onset.length > 0) {
-      const onset = next.onset[0]
+      const onset = next.onset[0]!
       if (onset.g === "r" || onset.g === "ch" || onset.g === "j" || (onset.g === "g" && isFrontVowelChar(next.vowel))) return [vowel]
     }
     return [vowel, glidePhone(syllable.glide, false)]
@@ -370,14 +370,14 @@ function mergePosttonicGlides(syllables: PhoneSyllable[], ortho: readonly OrthoS
   const last = syllables.length - 1
   const candidate = last - 1
   if (candidate <= stressIndex) return
-  const first = ortho[candidate]
-  const second = ortho[last]
+  const first = ortho[candidate]!
+  const second = ortho[last]!
   if (first.epenthetic || second.epenthetic || second.onset.length > 0) return
   if (first.coda.length > 0 || first.glide !== null || (first.vowel !== "i" && first.vowel !== "u")) return
-  const merged = syllables[candidate]
+  const merged = syllables[candidate]!
   const nucleusPhone = merged.phones[merged.nucleus]
   if (nucleusPhone !== "i" && nucleusPhone !== "u") return
-  const tail = syllables[last]
+  const tail = syllables[last]!
   const phones = [...merged.phones.slice(0, merged.nucleus), nucleusPhone === "i" ? ("j" as const) : ("w" as const), ...tail.phones]
   syllables.splice(candidate, 2, { phones, nucleus: merged.nucleus + 1 + tail.nucleus, role: tail.role })
 }
@@ -417,7 +417,7 @@ function ruleSyllables(lower: string): PhoneSyllable[] {
 
   const result: PhoneSyllable[] = ortho.map((syllable, index) => {
     const next = ortho[index + 1]
-    const role = roles[index]
+    const role = roles[index]!
     // -el/-ol tônicos finais são abertos: papel, anel, sol, futebol.
     const openByCoda = role === "stressed" && index === lastReal && syllable.coda.some((unit) => unit.g === "l")
     const nucleus = nucleusPhones({
@@ -430,16 +430,16 @@ function ruleSyllables(lower: string): PhoneSyllable[] {
       firstRealIndex: firstReal,
       open: open || openByCoda,
     })
-    const onset = onsetPhones(syllable, index, ortho[index - 1], nucleus[0])
+    const onset = onsetPhones(syllable, index, ortho[index - 1], nucleus[0]!)
     const coda = codaPhones(syllable, next)
     return { phones: [...onset, ...nucleus, ...coda], nucleus: onset.length, role }
   })
 
   // Sonorização do s de coda dentro da palavra (mesmo [ˈmezmu], desde).
   for (let index = 0; index < result.length - 1; index++) {
-    const phones = result[index].phones
+    const phones = result[index]!.phones
     const lastPhone = phones[phones.length - 1]
-    if (lastPhone === "s" && voicesSibilant(result[index + 1].phones[0])) phones[phones.length - 1] = "z"
+    if (lastPhone === "s" && voicesSibilant(result[index + 1]!.phones[0])) phones[phones.length - 1] = "z"
   }
   mergePosttonicGlides(result, ortho, stressIndex)
   return result

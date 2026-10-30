@@ -39,7 +39,7 @@ const PRE_PAUSE_ONSET_FACTOR = 1.1
 type Counters = { wordIndex: number; syllableIndex: number }
 
 function durationPrior(syllable: PhoneSyllable, position: number, prePause: boolean): number {
-  const info = PHONES[syllable.phones[position]]
+  const info = PHONES[syllable.phones[position]!]
   let factor = 1
   if (position === syllable.nucleus) factor = NUCLEUS_FACTOR[syllable.role]
   else if (info.class === "glide" || info.class === "vowel") {
@@ -54,7 +54,7 @@ function durationPrior(syllable: PhoneSyllable, position: number, prePause: bool
 function tokenSyllables(token: SpeechToken): PhoneSyllable[] {
   const syllables: PhoneSyllable[] = []
   token.words.forEach((word, index) => {
-    const nextInitial = index < token.words.length - 1 ? (token.words[index + 1][0] ?? null) : token.nextInitial
+    const nextInitial = index < token.words.length - 1 ? (token.words[index + 1]![0] ?? null) : token.nextInitial
     syllables.push(...phonemizeWord(word, { nextInitial }))
   })
   return syllables

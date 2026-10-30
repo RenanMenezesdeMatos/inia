@@ -1,5 +1,6 @@
 "use client"
 
+import { useId } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { BarChart3 } from "lucide-react"
 
@@ -65,6 +66,7 @@ function isLevel(value: string | null): value is AiUsageRankingLevel {
 }
 
 export function UsageRankingTab() {
+  const sortFieldId = useId()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -153,9 +155,9 @@ export function UsageRankingTab() {
         <ListSelectFilter value={filters.modelId} onChange={(value) => list.setFilter("modelId", value)} options={(modelsQuery.data ?? []).map((model) => ({ value: model.id, label: `${model.displayName} · ${model.connectionName}` }))} allLabel="Qualquer modelo" ariaLabel="Filtrar por modelo" />
         <ListSelectFilter value={filters.useCase} onChange={(value) => list.setFilter("useCase", value)} options={(useCasesQuery.data ?? []).map((item) => ({ value: item.key, label: item.label }))} allLabel="Qualquer uso" ariaLabel="Filtrar por uso da INIA (Use Case)" />
         <div className="flex w-full items-center gap-2 sm:w-auto">
-          <Label className="shrink-0 whitespace-nowrap text-xs font-normal text-muted-foreground">Ordenar por</Label>
+          <Label htmlFor={sortFieldId} className="shrink-0 whitespace-nowrap text-xs font-normal text-muted-foreground">Ordenar por</Label>
           <Select value={sort} onValueChange={(value) => setUrlParam("sort", value, "REQUESTS")}>
-            <SelectTrigger className="w-full sm:w-auto sm:min-w-40" aria-label="Ordenar ranking por">
+            <SelectTrigger id={sortFieldId} className="w-full sm:w-auto sm:min-w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

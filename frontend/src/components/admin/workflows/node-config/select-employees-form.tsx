@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Label } from "@/components/ui/label"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { FlowNode, EmployeeSelectionCriterion } from "@/schemas/admin/workflow-graph.schema"
@@ -34,6 +36,7 @@ export function SelectEmployeesForm({
   onChange: (next: FlowNode) => void
 }) {
   const mode = node.config.selectionMode === "RANKING" ? "RANKING" : "CONDITION"
+  const modeLabelId = useId()
 
   function setMode(next: "CONDITION" | "RANKING") {
     if (next === mode) return
@@ -46,8 +49,8 @@ export function SelectEmployeesForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Modo de seleção</Label>
-        <ToggleGroup type="single" value={mode} onValueChange={(value) => value && setMode(value as "CONDITION" | "RANKING")} className="justify-start">
+        <Label id={modeLabelId}>Modo de seleção</Label>
+        <ToggleGroup aria-labelledby={modeLabelId} type="single" value={mode} onValueChange={(value) => value && setMode(value as "CONDITION" | "RANKING")} className="justify-start">
           <ToggleGroupItem value="CONDITION">Por critério</ToggleGroupItem>
           <ToggleGroupItem value="RANKING">Por ranking</ToggleGroupItem>
         </ToggleGroup>

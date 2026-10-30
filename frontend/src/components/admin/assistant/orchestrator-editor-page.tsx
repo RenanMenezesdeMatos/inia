@@ -316,7 +316,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
                 <Input id="orchestrator-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: INIA — Time de Contas" />
               </div>
               <div className="space-y-1.5">
-                <Label>Agente orquestrador</Label>
+                <Label htmlFor="orchestrator-agent">Agente orquestrador</Label>
                 {/* Sem os grupos administráveis a compatibilidade de escopo ainda não é conhecida: espera, em vez de dizer "nenhum agente". */}
                 {!agentsQuery.data || !manageableTeamsQuery.data ? (
                   <Skeleton className="h-10 w-full" />
@@ -329,7 +329,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
                     — é ele quem identifica o pedido do operador e decide quais especialistas acionar.
                   </p>
                 ) : (
-                  <AgentPicker agents={orchestratorAgents} value={orchestratorAgentId} onChange={setOrchestratorAgentId} />
+                  <AgentPicker id="orchestrator-agent" agents={orchestratorAgents} value={orchestratorAgentId} onChange={setOrchestratorAgentId} />
                 )}
               </div>
               <div className="space-y-1.5">

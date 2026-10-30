@@ -11,6 +11,9 @@ import type { ExternalDatabaseSession } from "../../application/ports.js"
  */
 export async function openSqlServerSession(connection: ResolvedDatabaseConnection): Promise<ExternalDatabaseSession> {
   const encrypt = connection.tlsMode !== "DISABLED"
+  // O tedious devolve só o ÚLTIMO erro do login (18456 "Login failed"); o motivo costuma vir antes (4060 "Cannot open
+  // database" = banco inexistente). Guardados aqui, todos chegam à classificação do erro.
+  const loginErrors: { number: number; message: string }[] = []
   const pool = new sql.ConnectionPool({
     server: connection.host,
     ...(connection.port ? { port: connection.port } : {}),
@@ -20,6 +23,9 @@ export async function openSqlServerSession(connection: ResolvedDatabaseConnectio
     connectionTimeout: connection.connectTimeoutMs,
     requestTimeout: connection.queryTimeoutMs,
     pool: { max: 1, min: 0, idleTimeoutMillis: 30_000 },
+    beforeConnect: (tedious) => {
+      tedious.on("errorMessage", (token) => loginErrors.push({ number: token.number, message: token.message }))
+    },
     options: {
       encrypt,
       trustServerCertificate: connection.tlsMode !== "VERIFY_FULL",
@@ -38,7 +44,9 @@ export async function openSqlServerSession(connection: ResolvedDatabaseConnectio
     await pool.connect()
   } catch (error) {
     await pool.close().catch(() => {})
-    throw error
+    const [first] = loginErrors
+    if (!first) throw error
+    throw Object.assign(new Error(loginErrors.map((entry) => entry.message).join(" · ")), { code: "ELOGIN", number: first.number, cause: error })
   }
   const run = async (statement: SqlStatement, timeoutMs?: number) => {
     const request = pool.request()

@@ -45,13 +45,13 @@ export function pickWeighted(rng: Rng, weights: readonly number[]): number {
   if (total <= 0) return -1
   let roll = rng.next() * total
   for (let index = 0; index < weights.length; index++) {
-    const weight = weights[index]
+    const weight = weights[index]!
     if (weight <= 0) continue
     roll -= weight
     if (roll < 0) return index
   }
   // Arredondamento: devolve o último com peso positivo.
-  for (let index = weights.length - 1; index >= 0; index--) if (weights[index] > 0) return index
+  for (let index = weights.length - 1; index >= 0; index--) if (weights[index]! > 0) return index
   return -1
 }
 
@@ -96,7 +96,7 @@ export class SmoothNoise {
   sample(timeSeconds: number): number {
     let sum = 0
     for (let octave = 0; octave < this.frequencies.length; octave++) {
-      sum += this.amplitudes[octave] * this.valueAt(timeSeconds * this.frequencies[octave] + this.offsets[octave])
+      sum += this.amplitudes[octave]! * this.valueAt(timeSeconds * this.frequencies[octave]! + this.offsets[octave]!)
     }
     return sum / this.norm
   }
@@ -105,8 +105,8 @@ export class SmoothNoise {
     const floor = Math.floor(x)
     const fraction = x - floor
     const index = ((floor % LATTICE_SIZE) + LATTICE_SIZE) % LATTICE_SIZE
-    const a = this.lattice[index]
-    const b = this.lattice[(index + 1) % LATTICE_SIZE]
+    const a = this.lattice[index]!
+    const b = this.lattice[(index + 1) % LATTICE_SIZE]!
     const smooth = fraction * fraction * fraction * (fraction * (fraction * 6 - 15) + 10)
     return a + (b - a) * smooth
   }

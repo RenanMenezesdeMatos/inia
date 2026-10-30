@@ -252,11 +252,11 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
                 <p className="text-xs text-muted-foreground">Hoje a ingestão e o motor suportam medição diária. Outras granularidades entram quando existirem de fato.</p>
               </div>
               <div className="space-y-1.5">
-                <Label className="flex items-center gap-2">
+                <Label htmlFor="indicator-aggregation" className="flex items-center gap-2">
                   Como consolidar este indicador em um período? <LockedHint locked={semanticLocked} />
                 </Label>
                 <Select value={operationalAggregation} disabled={semanticLocked} onValueChange={(value) => setOperationalAggregation(value as OperationalAggregationKind)}>
-                  <SelectTrigger className="w-full" aria-label="Estratégia de consolidação">
+                  <SelectTrigger id="indicator-aggregation" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

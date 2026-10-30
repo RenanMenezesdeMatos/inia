@@ -73,7 +73,7 @@ export function leadingPause(): AlignmentElement {
 export function buildElements(words: readonly G2PWord[], out: AlignmentElement[] = []): AlignmentElement[] {
   for (const word of words) {
     const phones = word.phones.filter((token) => token.phone !== "_")
-    const lastSyllable = phones.length > 0 ? phones[phones.length - 1].syllableIndex : -1
+    const lastSyllable = phones.length > 0 ? phones[phones.length - 1]!.syllableIndex : -1
     phones.forEach((token, index) => {
       const info = PHONES[token.phone]
       const isLast = index === phones.length - 1

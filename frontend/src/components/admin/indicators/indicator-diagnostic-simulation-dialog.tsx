@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -85,6 +85,7 @@ export function IndicatorDiagnosticSimulationDialog({ indicatorId, hasDraft, has
   const [collaboratorId, setCollaboratorId] = useState("")
   const [measurementId, setMeasurementId] = useState("")
   const [agentId, setAgentId] = useState("")
+  const agentFieldId = useId()
   const [runAi, setRunAi] = useState(false)
   const [selectedCollaborator, setSelectedCollaborator] = useState<{ id: string; name: string; measurements: { id: string; periodLabel: string; interactions?: number }[] } | null>(null)
   const collaborators = useMemo(() => {
@@ -142,9 +143,9 @@ export function IndicatorDiagnosticSimulationDialog({ indicatorId, hasDraft, has
               </Select>
             </div>
             <div className="space-y-1 sm:col-span-2">
-              <Label>Agent que avalia os atendimentos</Label>
+              <Label htmlFor={agentFieldId}>Agent que avalia os atendimentos</Label>
               <Select value={agentId} onValueChange={setAgentId}>
-                <SelectTrigger className="w-full" aria-label="Agent"><SelectValue placeholder="Escolha" /></SelectTrigger>
+                <SelectTrigger id={agentFieldId} className="w-full"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>{(optionsQuery.data?.agents ?? []).map((entry) => <SelectItem key={entry.id} value={entry.id}>{entry.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>

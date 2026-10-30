@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { OrgScopeType, Team } from "@/schemas/admin/org-structure.schema"
@@ -21,18 +23,19 @@ export function OrgScopeSelect({
   allowAllTeams?: boolean
 }) {
   const selectedTeam = teams.find((team) => team.id === value.teamId)
+  const id = useId()
 
   return (
     // auto-fit (não 3 colunas fixas): dentro de um Dialog estreito, 3 colunas fixas cortavam o
     // texto do select ("Todos os g…") — achado do QA visual da criação de Orquestrador.
     <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
       <div className="space-y-1.5">
-        <Label>Alcance por grupo</Label>
+        <Label htmlFor={`${id}-scope`}>Alcance por grupo</Label>
         <Select
           value={value.scopeType}
           onValueChange={(scopeType) => onChange({ scopeType: scopeType as OrgScopeType })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${id}-scope`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -45,12 +48,12 @@ export function OrgScopeSelect({
 
       {value.scopeType !== "ALL_TEAMS" ? (
         <div className="space-y-1.5">
-          <Label>Grupo</Label>
+          <Label htmlFor={`${id}-team`}>Grupo</Label>
           <Select
             value={value.teamId ?? ""}
             onValueChange={(teamId) => onChange({ scopeType: value.scopeType, teamId, subteamId: undefined })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${id}-team`} className="w-full">
               <SelectValue placeholder="Selecione o grupo" />
             </SelectTrigger>
             <SelectContent>
@@ -66,13 +69,13 @@ export function OrgScopeSelect({
 
       {value.scopeType === "SUBTEAM" ? (
         <div className="space-y-1.5">
-          <Label>Subgrupo</Label>
+          <Label htmlFor={`${id}-subteam`}>Subgrupo</Label>
           <Select
             value={value.subteamId ?? ""}
             onValueChange={(subteamId) => onChange({ ...value, subteamId })}
             disabled={!selectedTeam}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${id}-subteam`} className="w-full">
               <SelectValue placeholder="Selecione o subgrupo" />
             </SelectTrigger>
             <SelectContent>

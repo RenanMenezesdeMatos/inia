@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 export class QaWriteBlockedError extends DomainError {
   constructor(sql: string) {
@@ -51,21 +52,9 @@ export function createReadOnlyDatabase(db: Database, options: { enforcedByDataba
  * `idle_in_transaction_session_timeout` derrubaria), e consultas em paralelo continuam em paralelo, cada uma na sua conexão.
  */
 async function queryInReadOnlyTransaction(db: Database, sql: unknown, rest: unknown[]): Promise<unknown> {
-  const client = await db.connect()
-  let discard = false
-  try {
-    await client.query("begin transaction read only")
-    const result = await (client.query as (...args: unknown[]) => Promise<unknown>)(sql, ...rest)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => {
-      discard = true
-    })
-    throw error
-  } finally {
-    client.release(discard)
-  }
+  // Pelo helper de transação: com o pool, `begin read only` numa conexão própria; com um cliente que já está numa transação
+  // (provas contra o banco de teste), um savepoint só-leitura — antes, `connect()` num cliente lançava e a rota devolvia 500.
+  return inTransaction(db, (client) => (client.query as (...args: unknown[]) => Promise<unknown>)(sql, ...rest), { readOnly: true, savepoint: "read_only_query" })
 }
 
 export { isReadOnlySql }

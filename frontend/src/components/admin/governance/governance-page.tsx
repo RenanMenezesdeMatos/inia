@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { BookA, Pencil, Plus, ShieldBan, Trash2 } from "lucide-react"
 
@@ -128,6 +128,7 @@ function ProhibitedTopicsPanel() {
   const [editing, setEditing] = useState<ProhibitedTopic | null>(null)
   const [name, setName] = useState("")
   const [requiredBehavior, setRequiredBehavior] = useState("")
+  const fieldId = useId()
 
   function openCreateForm() {
     setEditing(null)
@@ -273,12 +274,12 @@ function ProhibitedTopicsPanel() {
 
       <TabsContent value="form" className="mt-4 max-w-xl space-y-3">
         <div className="space-y-1.5">
-          <Label>Assunto</Label>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <Label htmlFor={`${fieldId}-name`}>Assunto</Label>
+          <Input id={`${fieldId}-name`} value={name} onChange={(event) => setName(event.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Comportamento esperado</Label>
-          <Textarea value={requiredBehavior} onChange={(event) => setRequiredBehavior(event.target.value)} rows={3} />
+          <Label htmlFor={`${fieldId}-behavior`}>Comportamento esperado</Label>
+          <Textarea id={`${fieldId}-behavior`} value={requiredBehavior} onChange={(event) => setRequiredBehavior(event.target.value)} rows={3} />
         </div>
         {error ? <p className="text-sm text-destructive">{error.message}</p> : null}
         <div className="flex justify-end gap-2">
@@ -306,6 +307,7 @@ function GlossaryPanel() {
   const [editing, setEditing] = useState<GlossaryTerm | null>(null)
   const [term, setTerm] = useState("")
   const [definition, setDefinition] = useState("")
+  const fieldId = useId()
 
   function openCreateForm() {
     setEditing(null)
@@ -455,12 +457,12 @@ function GlossaryPanel() {
 
       <TabsContent value="form" className="mt-4 max-w-xl space-y-3">
         <div className="space-y-1.5">
-          <Label>Termo</Label>
-          <Input value={term} onChange={(event) => setTerm(event.target.value)} />
+          <Label htmlFor={`${fieldId}-term`}>Termo</Label>
+          <Input id={`${fieldId}-term`} value={term} onChange={(event) => setTerm(event.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Definição e aplicação no feedback</Label>
-          <Textarea value={definition} onChange={(event) => setDefinition(event.target.value)} rows={3} />
+          <Label htmlFor={`${fieldId}-definition`}>Definição e aplicação no feedback</Label>
+          <Textarea id={`${fieldId}-definition`} value={definition} onChange={(event) => setDefinition(event.target.value)} rows={3} />
         </div>
         {error ? <p className="text-sm text-destructive">{error.message}</p> : null}
         <div className="flex justify-end gap-2">

@@ -109,14 +109,14 @@ export function buildGestureClips(setup: RigPoseSetup, root: Object3D): Map<Gest
     for (let frame = 0; frame < frameCount; frame++) {
       const u = frame / (frameCount - 1)
       times[frame] = u * seconds
-      while (segment < phases.length - 2 && u > phases[segment + 1].at) segment++
-      const from = phases[segment]
-      const to = phases[segment + 1]
+      while (segment < phases.length - 2 && u > phases[segment + 1]!.at) segment++
+      const from = phases[segment]!
+      const to = phases[segment + 1]!
       const span = Math.max(1e-6, to.at - from.at)
       const eased = easeInOutSine((u - from.at) / span)
       for (const name of names) {
-        const a = solved[segment].get(name)!
-        const b = solved[segment + 1].get(name)!
+        const a = solved[segment]!.get(name)!
+        const b = solved[segment + 1]!.get(name)!
         sample.slerpQuaternions(a, b, eased)
         values.get(name)!.set([sample.x, sample.y, sample.z, sample.w], frame * 4)
       }

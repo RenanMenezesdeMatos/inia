@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { ArrowDown, ArrowUp, Plus, Route, Settings2, X } from "lucide-react"
 
 import {
@@ -239,6 +239,7 @@ export function RoutingEditor({ item, canWrite }: { item: UseCaseRouting; canWri
   const [draft, setDraft] = useState<DraftState>(saved)
   const [testResult, setTestResult] = useState<RoutingTestResult | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+  const maxCostId = useId()
   const save = useSaveAiRoutingDraftMutation()
   const discard = useDiscardAiRoutingDraftMutation()
   const activate = useActivateAiRoutingDraftMutation()
@@ -418,9 +419,9 @@ export function RoutingEditor({ item, canWrite }: { item: UseCaseRouting; canWri
       ) : null}
 
       <section className="space-y-2">
-        <Label>Limite de custo estimado por requisição (opcional)</Label>
+        <Label htmlFor={maxCostId}>Limite de custo estimado por requisição (opcional)</Label>
         <div className="flex gap-2">
-          <Input aria-label="Limite de custo por requisição" inputMode="decimal" className="w-40" disabled={!canWrite} value={draft.maxCost} placeholder="ex.: 0.05" onChange={(event) => update({ maxCost: event.target.value })} />
+          <Input id={maxCostId} inputMode="decimal" className="w-40" disabled={!canWrite} value={draft.maxCost} placeholder="ex.: 0.05" onChange={(event) => update({ maxCost: event.target.value })} />
           <Input aria-label="Moeda do limite" className="w-24 font-mono uppercase" maxLength={3} disabled={!canWrite} value={draft.costCurrency} onChange={(event) => update({ costCurrency: event.target.value.toUpperCase() })} />
         </div>
         <p className="text-xs text-muted-foreground">Só a entrada é estimável antes da chamada. Com limite ativo, modelos sem preço configurado deixam de ser candidatos.</p>

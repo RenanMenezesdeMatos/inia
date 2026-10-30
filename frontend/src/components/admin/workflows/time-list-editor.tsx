@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-export function TimeListEditor({ times, onChange }: { times: string[]; onChange: (next: string[]) => void }) {
+export function TimeListEditor({ times, onChange, id }: { times: string[]; onChange: (next: string[]) => void; id?: string }) {
   const [draft, setDraft] = useState("09:00")
 
   function add() {
@@ -34,7 +34,7 @@ export function TimeListEditor({ times, onChange }: { times: string[]; onChange:
         {times.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum horário adicionado ainda.</p> : null}
       </div>
       <div className="flex gap-2">
-        <Input type="time" value={draft} onChange={(event) => setDraft(event.target.value)} className="w-32" />
+        <Input id={id} type="time" value={draft} onChange={(event) => setDraft(event.target.value)} className="w-32" />
         <Button type="button" variant="outline" size="sm" onClick={add}>
           <Plus className="h-4 w-4" /> Adicionar horário
         </Button>

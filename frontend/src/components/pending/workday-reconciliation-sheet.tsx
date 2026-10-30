@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { CalendarX2, CheckCircle2, ClipboardCheck, Database, UserX, Wrench } from "lucide-react"
 import { toast } from "sonner"
 
@@ -53,6 +53,7 @@ type Choice = "UNJUSTIFIED_ABSENCE" | "JUSTIFIED_ABSENCE" | "WORKED_DATA_MISSING
 function Body({ detail, employeeHref }: { detail: WorkdayReconciliationDetail; employeeHref?: (personId: string) => string }) {
   const [choice, setChoice] = useState<Choice | null>(null)
   const [reasonCode, setReasonCode] = useState<JustifiedAbsenceReason>(detail.justifiedReasons[0]?.code ?? "ATESTADO")
+  const reasonLabelId = useId()
   const resolve = useResolveWorkdayReconciliationMutation()
   const pending = detail.status === "PENDING"
 
@@ -128,8 +129,8 @@ function Body({ detail, employeeHref }: { detail: WorkdayReconciliationDetail; e
                 </label>
                 {choice === "JUSTIFIED_ABSENCE" ? (
                   <div className="ml-9 space-y-2" data-testid="workday-reason-options">
-                    <Label className="text-xs text-muted-foreground">Motivo</Label>
-                    <RadioGroup value={reasonCode} onValueChange={(value) => setReasonCode(value as JustifiedAbsenceReason)} className="grid grid-cols-2 gap-2">
+                    <Label id={reasonLabelId} className="text-xs text-muted-foreground">Motivo</Label>
+                    <RadioGroup aria-labelledby={reasonLabelId} value={reasonCode} onValueChange={(value) => setReasonCode(value as JustifiedAbsenceReason)} className="grid grid-cols-2 gap-2">
                       {detail.justifiedReasons.map((option) => (
                         <label key={option.code} className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1.5 text-sm">
                           <RadioGroupItem value={option.code} id={`workday-code-${option.code}`} />

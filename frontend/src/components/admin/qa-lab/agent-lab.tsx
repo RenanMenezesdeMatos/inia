@@ -44,12 +44,12 @@ export function AgentLab() {
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Agent</Label>
+          <Label htmlFor="qa-agent-select">Agent</Label>
           {agentsQuery.isLoading ? (
             <Skeleton className="h-10 w-full" />
           ) : (
             <Select value={agentId} onValueChange={setAgentId}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="qa-agent-select" className="w-full">
                 <SelectValue placeholder="Selecione o agente" />
               </SelectTrigger>
               <SelectContent>

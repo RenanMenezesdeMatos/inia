@@ -88,22 +88,22 @@ export function emissionClassOf(phone: PhoneSymbol): number {
  * vizinhança (calculado pelo chamador numa varredura só).
  */
 export function frameFeatures(store: FeatureFrameStore, f: number, levelDb: number, localMax: number, out: Float64Array): void {
-  const energy = store.energyDb[f]
-  const vowel = store.vowelBandDb[f]
+  const energy = store.energyDb[f]!
+  const vowel = store.vowelBandDb[f]!
   out[0] = clamp(energy - levelDb, -60, 8)
   out[1] = clamp(energy - localMax, -60, 0)
-  out[2] = clamp(store.midBandDb[f] - vowel, -40, 5)
+  out[2] = clamp(store.midBandDb[f]! - vowel, -40, 5)
   out[3] = clamp(energy - vowel, 0, 40)
-  out[4] = store.highBandRatio[f]
-  out[5] = store.voicing[f]
+  out[4] = store.highBandRatio[f]!
+  out[5] = store.voicing[f]!
 }
 
 /** Log-verossimilhança (≤ 0, escala z²/2 saturada) de um vetor de características sob uma classe. */
 export function classScore(model: ClassModel, x: Float64Array): number {
   let cost = 0
   for (let k = 0; k < FEATURE_COUNT; k++) {
-    const [mean, sd, side] = model[k]
-    let z = (x[k] - mean) / sd
+    const [mean, sd, side] = model[k]!
+    let z = (x[k]! - mean) / sd
     if ((side < 0 && z > 0) || (side > 0 && z < 0)) z = 0
     const c = 0.5 * z * z
     cost += c < FEATURE_CAP ? c : FEATURE_CAP
@@ -147,12 +147,12 @@ export class WindowEmissions {
     for (let c = 0; c < EMISSION_CLASS_COUNT; c++) cumulative[c * stride] = 0
     const x = this.features
     for (let i = 0; i < count; i++) {
-      frameFeatures(store, first + i, levelDb, this.localMax[i], x)
+      frameFeatures(store, first + i, levelDb, this.localMax[i]!, x)
       let bestSpeech = Number.NEGATIVE_INFINITY
       for (let c = 0; c < EMISSION_CLASS_COUNT; c++) {
         const base = c * stride
-        const score = this.weight * classScore(this.models[c], x)
-        cumulative[base + i + 1] = cumulative[base + i] + score
+        const score = this.weight * classScore(this.models[c]!, x)
+        cumulative[base + i + 1] = cumulative[base + i]! + score
         if (c !== PAUSE_INDEX && score > bestSpeech) bestSpeech = score
       }
       this.bestSpeech[i] = bestSpeech
@@ -162,7 +162,7 @@ export class WindowEmissions {
   /** Soma dos escores da classe `cls` nos quadros locais `[a, b)`. */
   segment(cls: number, a: number, b: number): number {
     const base = cls * (this.count + 1)
-    return this.cumulative[base + b] - this.cumulative[base + a]
+    return this.cumulative[base + b]! - this.cumulative[base + a]!
   }
 
   /** Escore de um quadro local. */
@@ -187,11 +187,11 @@ export class WindowEmissions {
       const f = first + i
       const right = Math.min(hi - 1, f + LOCAL_MAX_RADIUS)
       for (; next <= right; next++) {
-        while (tail > head && energy[deque[tail - 1]] <= energy[next]) tail--
+        while (tail > head && energy[deque[tail - 1]!]! <= energy[next]!) tail--
         deque[tail++] = next
       }
-      while (head < tail && deque[head] < f - LOCAL_MAX_RADIUS) head++
-      this.localMax[i] = head < tail ? energy[deque[head]] : energy[f]
+      while (head < tail && deque[head]! < f - LOCAL_MAX_RADIUS) head++
+      this.localMax[i] = head < tail ? energy[deque[head]!]! : energy[f]!
     }
   }
 }

@@ -72,7 +72,7 @@ async function labHarness(scripts: ReplayScript[]) {
     },
   )
   transport.primeAudioPlayback()
-  const ctx: FakeContext = factory.contexts[0]
+  const ctx: FakeContext = factory.contexts[0]!
   const startedAt = Date.now()
   // Relógio do AudioContext andando junto com os timers falsos (passos de 10 ms).
   const advance = async (ms: number) => {
@@ -100,7 +100,7 @@ describe("laboratório: transporte de produção + servidor falso com capturas r
     const { transport, sockets, lipsync, states, advance } = await labHarness([script])
     expect(transport.isConnected).toBe(true)
     transport.sendText("Diga a frase 1")
-    expect(sockets[0].sent.some((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.text === "Diga a frase 1")).toBe(true)
+    expect(sockets[0]!.sent.some((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.text === "Diga a frase 1")).toBe(true)
     await advance(9000)
     const audioSteps = script.steps.filter((step) => step.kind === "audio")
     expect(lipsync.chunks).toHaveLength(audioSteps.length)
@@ -115,14 +115,14 @@ describe("laboratório: transporte de produção + servidor falso com capturas r
     transport.sendText("Explique")
     await advance(3000)
     expect(states.at(-1)).toBe("speaking")
-    const firstTurn = lipsync.chunks[0].turnId
+    const firstTurn = lipsync.chunks[0]!.turnId
     const chunksBefore = lipsync.chunks.length
     // O servidor falso ainda tem conteúdo da resposta longa a mandar (a geração vai até ~17 s).
-    expect(sockets[0].replaying).toBe("resposta-longa")
+    expect(sockets[0]!.replaying).toBe("resposta-longa")
 
     await transport.bargeIn()
     // O do turno de texto e o do barge-in.
-    expect(sockets[0].sent.filter((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.activityStart)).toHaveLength(2)
+    expect(sockets[0]!.sent.filter((message) => (message.realtimeInput as Record<string, unknown> | undefined)?.activityStart)).toHaveLength(2)
     expect(lipsync.interrupts).toHaveLength(1)
     await advance(1000)
     // As 2 mensagens em voo chegaram, mas nenhum áudio da geração antiga foi agendado.

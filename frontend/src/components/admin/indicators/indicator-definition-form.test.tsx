@@ -115,7 +115,7 @@ describe("Formulário de indicador — seções dirigidas pelo catálogo de comp
     expect(screen.getByLabelText(/Código/)).toBeDisabled()
     expect(screen.getByRole("combobox", { name: "Unidade" })).toBeDisabled()
     expect(screen.getByRole("combobox", { name: "Direção desejada" })).toBeDisabled()
-    expect(screen.getByRole("combobox", { name: "Estratégia de consolidação" })).toBeDisabled()
+    expect(screen.getByRole("combobox", { name: /^Como consolidar este indicador em um período\?/ })).toBeDisabled()
     expect(screen.getByRole("switch", { name: /Medição operacional ativada/ })).toBeDisabled()
     expect(screen.getByLabelText("Nome")).toBeEnabled()
     expect(screen.getByLabelText("Amostra mínima (opcional)")).toBeEnabled()

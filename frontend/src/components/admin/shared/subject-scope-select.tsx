@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { Subject, SubjectScopeType } from "@/schemas/admin/org-structure.schema"
@@ -15,15 +17,16 @@ export function SubjectScopeSelect({
   value: SubjectScopeValue
   onChange: (value: SubjectScopeValue) => void
 }) {
+  const id = useId()
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1.5">
-        <Label>Alcance por assunto</Label>
+        <Label htmlFor={`${id}-scope`}>Alcance por assunto</Label>
         <Select
           value={value.scopeType}
           onValueChange={(scopeType) => onChange({ scopeType: scopeType as SubjectScopeType })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${id}-scope`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -35,9 +38,9 @@ export function SubjectScopeSelect({
 
       {value.scopeType === "SUBJECT" ? (
         <div className="space-y-1.5">
-          <Label>Assunto</Label>
+          <Label htmlFor={`${id}-subject`}>Assunto</Label>
           <Select value={value.subjectId ?? ""} onValueChange={(subjectId) => onChange({ ...value, subjectId })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${id}-subject`} className="w-full">
               <SelectValue placeholder="Selecione o assunto" />
             </SelectTrigger>
             <SelectContent>

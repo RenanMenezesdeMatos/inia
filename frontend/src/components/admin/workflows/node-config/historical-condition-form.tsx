@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -19,6 +21,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
   const availableAggregations = aggregationsFor(query.source, selectedIndicator?.operationalAggregation)
   const aggregationUnsupported = !availableAggregations.includes(aggregation)
   const changeMode = query.compareTo?.kind === "PREVIOUS_PERIOD" ? (query.compareTo.changeMode ?? "VALUE") : undefined
+  const fieldId = useId()
 
   function updateQuery(patch: Partial<HistoricalQuery>) {
     onChange({ ...node, config: { ...node.config, historicalQuery: { ...query, ...patch } } })
@@ -81,9 +84,9 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
         </div>
       )}
       <div className="space-y-1.5">
-        <Label>Analisar</Label>
+        <Label htmlFor={`${fieldId}-aggregation`}>Analisar</Label>
         <Select value={aggregation} onValueChange={(value) => setAggregation(value as HistoricalAggregation)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-aggregation`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -113,9 +116,9 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
         <>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label>Considerar medições onde valor</Label>
+              <Label htmlFor={`${fieldId}-measurement-comparator`}>Considerar medições onde valor</Label>
               <Select value={query.comparator ?? "LT"} onValueChange={(comparator) => updateQuery({ comparator: comparator as Comparator })}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-measurement-comparator`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -128,18 +131,19 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Valor de referência</Label>
-              <Input type="number" value={query.indicatorThreshold ?? 0} onChange={(event) => updateQuery({ indicatorThreshold: Number(event.target.value) })} />
+              <Label htmlFor={`${fieldId}-indicator-threshold`}>Valor de referência</Label>
+              <Input id={`${fieldId}-indicator-threshold`} type="number" value={query.indicatorThreshold ?? 0} onChange={(event) => updateQuery({ indicatorThreshold: Number(event.target.value) })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 border-t pt-3">
             <div className="space-y-1.5">
-              <Label>Quantidade</Label>
-              <TypedComparatorSelect kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
+              <Label htmlFor={`${fieldId}-count-comparator`}>Quantidade</Label>
+              <TypedComparatorSelect id={`${fieldId}-count-comparator`} kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Número</Label>
+              <Label htmlFor={`${fieldId}-count-threshold`}>Número</Label>
               <Input
+                id={`${fieldId}-count-threshold`}
                 type="number"
                 value={node.config.thresholdNumeric ?? ""}
                 onChange={(event) => onChange({ ...node, config: { ...node.config, thresholdNumeric: Number(event.target.value), thresholdBoolean: null } })}
@@ -150,8 +154,9 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
       ) : (
         <>
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Mínimo de medições (opcional)</Label>
+            <Label htmlFor={`${fieldId}-minimum-sample`} className="text-xs text-muted-foreground">Mínimo de medições (opcional)</Label>
             <Input
+              id={`${fieldId}-minimum-sample`}
               type="number"
               min={1}
               value={query.minimumSampleSize ?? ""}
@@ -167,7 +172,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
             <MinimumCoverageField value={query.minimumCoverage} onChange={(minimumCoverage) => updateQuery({ minimumCoverage })} />
           ) : null}
           <div className="space-y-1.5 border-t pt-3">
-            <Label>Referência da comparação</Label>
+            <Label htmlFor={`${fieldId}-compare-to`}>Referência da comparação</Label>
             <Select
               value={query.compareTo?.kind ?? "FIXED"}
               onValueChange={(value) => {
@@ -178,7 +183,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
                 onChange({ ...node, config: { ...node.config, thresholdNumeric: null, historicalQuery: { ...query, compareTo } } })
               }}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-compare-to`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -204,7 +209,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
           </div>
           {query.compareTo?.kind === "PREVIOUS_PERIOD" ? (
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Como comparar</Label>
+              <Label htmlFor={`${fieldId}-change-mode`} className="text-xs text-muted-foreground">Como comparar</Label>
               <Select
                 value={changeMode}
                 onValueChange={(value) => {
@@ -215,7 +220,7 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
                   })
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-change-mode`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -235,13 +240,14 @@ export function HistoricalConditionForm({ node, onChange }: { node: Extract<Flow
           ) : null}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label>{changeMode === "PERCENT" ? "Variação" : HISTORICAL_AGGREGATION_LABELS[aggregation]}</Label>
-              <TypedComparatorSelect kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
+              <Label htmlFor={`${fieldId}-result-comparator`}>{changeMode === "PERCENT" ? "Variação" : HISTORICAL_AGGREGATION_LABELS[aggregation]}</Label>
+              <TypedComparatorSelect id={`${fieldId}-result-comparator`} kind="NUMBER" value={node.config.comparator} onChange={(comparator) => onChange({ ...node, config: { ...node.config, comparator } })} />
             </div>
             {!query.compareTo || changeMode === "PERCENT" ? (
               <div className="space-y-1.5">
-                <Label>{changeMode === "PERCENT" ? "Percentual mínimo de variação (%)" : "Valor de referência"}</Label>
+                <Label htmlFor={`${fieldId}-result-threshold`}>{changeMode === "PERCENT" ? "Percentual mínimo de variação (%)" : "Valor de referência"}</Label>
                 <Input
+                  id={`${fieldId}-result-threshold`}
                   type="number"
                   value={node.config.thresholdNumeric ?? ""}
                   onChange={(event) => onChange({ ...node, config: { ...node.config, thresholdNumeric: Number(event.target.value), thresholdBoolean: null } })}

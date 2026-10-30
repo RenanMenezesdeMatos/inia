@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -112,6 +112,7 @@ export function ActionForm({
   onChange: (next: FlowNode) => void
 }) {
   const config = node.config
+  const fieldId = useId()
   // Contexto do node no grafo: depois de "Consolidar resultados" = Agent de síntese (evolução 2026-09-16).
   const afterJoin = useMemo(() => resolveNodeContexts(graph).get(node.id) === "CONSOLIDATED_RESULT", [graph, node.id])
   // V1.5.10: "Gerar feedback de atendimento" só é oferecido com o módulo LIGADO neste ambiente (mesma flag do backend);
@@ -121,7 +122,7 @@ export function ActionForm({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Tipo de ação</Label>
+        <Label htmlFor={`${fieldId}-action-type`}>Tipo de ação</Label>
         <Select
           value={config.actionType}
           onValueChange={(value) => {
@@ -139,7 +140,7 @@ export function ActionForm({
             } else onChange({ ...node, config: { actionType: "SET_VARIABLE", variableId: "", value: true } })
           }}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-action-type`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -221,8 +222,9 @@ export function ActionForm({
             </p>
           ) : null}
           <div className="space-y-1.5">
-            <Label>Agente</Label>
+            <Label htmlFor={`${fieldId}-agent`}>Agente</Label>
             <AgentPicker
+              id={`${fieldId}-agent`}
               agents={agents}
               value={config.agentId}
               onChange={(agentId) => onChange({ ...node, config: { ...config, actionType: "CALL_AGENT", agentId } })}
@@ -252,14 +254,14 @@ export function ActionForm({
           ) : null}
           {triggerDataOrigin(trigger) === "channel_flag" && !afterJoin ? (
             <div className="space-y-1.5">
-              <Label>Formato da análise</Label>
+              <Label htmlFor={`${fieldId}-output-contract`}>Formato da análise</Label>
               <Select
                 value={config.outputContract ?? "FEEDBACK"}
                 onValueChange={(value) =>
                   onChange({ ...node, config: { ...config, outputContract: value === "PROCESS_AUDIT" || value === "PROCESS_ASSESSMENT" ? value : undefined } })
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-output-contract`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -354,8 +356,9 @@ export function ActionForm({
       {config.actionType === "SET_CONFIG_VALUE" ? (
         <div className="space-y-2">
           <div className="space-y-1.5">
-            <Label>Chave</Label>
+            <Label htmlFor={`${fieldId}-config-key`}>Chave</Label>
             <Input
+              id={`${fieldId}-config-key`}
               value={config.configKey}
               onChange={(event) => onChange({ ...node, config: { ...config, configKey: event.target.value } })}
               placeholder="ex.: acompanhamento.monitorias_por_operador"
@@ -363,7 +366,7 @@ export function ActionForm({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <Label>Tipo</Label>
+              <Label htmlFor={`${fieldId}-value-type`}>Tipo</Label>
               <Select
                 value={config.valueType}
                 onValueChange={(valueType) =>
@@ -377,7 +380,7 @@ export function ActionForm({
                   })
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-value-type`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -388,10 +391,10 @@ export function ActionForm({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Valor</Label>
+              <Label htmlFor={`${fieldId}-value`}>Valor</Label>
               {config.valueType === "BOOLEAN" ? (
                 <Select value={String(config.value)} onValueChange={(value) => onChange({ ...node, config: { ...config, value: value === "true" } })}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id={`${fieldId}-value`} className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -401,6 +404,7 @@ export function ActionForm({
                 </Select>
               ) : (
                 <Input
+                  id={`${fieldId}-value`}
                   type={config.valueType === "NUMERIC" ? "number" : "text"}
                   value={String(config.value)}
                   onChange={(event) =>

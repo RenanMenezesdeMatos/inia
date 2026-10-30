@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { Label } from "@/components/ui/label"
 import type { Agent } from "@/schemas/admin/agent.schema"
 
 import { AgentPicker } from "./agent-picker"
@@ -39,5 +40,25 @@ describe("AgentPicker — caracterização: a lista acompanha o valor que vem de
     expect(screen.getByRole("button", { name: /Especialista de Faturamento/ })).toBeInTheDocument()
     rerender(<AgentPicker agents={agents} value="" onChange={vi.fn()} />)
     expect(screen.getByPlaceholderText("Buscar agente...")).toBeInTheDocument()
+  })
+})
+
+describe("AgentPicker — o rótulo de quem usa o seletor nomeia a busca", () => {
+  it("com id, o <Label htmlFor> encontra o campo de busca; o agente escolhido continua nomeado pelo próprio nome", () => {
+    const agents = [agent("a-fat", "Especialista de Faturamento", "FATURAMENTO")]
+    const { rerender } = render(
+      <>
+        <Label htmlFor="picker-agent">Agente</Label>
+        <AgentPicker id="picker-agent" agents={agents} value="" onChange={vi.fn()} />
+      </>,
+    )
+    expect(screen.getByLabelText("Agente")).toBe(screen.getByPlaceholderText("Buscar agente..."))
+    rerender(
+      <>
+        <Label htmlFor="picker-agent">Agente</Label>
+        <AgentPicker id="picker-agent" agents={agents} value="a-fat" onChange={vi.fn()} />
+      </>,
+    )
+    expect(screen.getByRole("button", { name: /Especialista de Faturamento/ })).toBeInTheDocument()
   })
 })

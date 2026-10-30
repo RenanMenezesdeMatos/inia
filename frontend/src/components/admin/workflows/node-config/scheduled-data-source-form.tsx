@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -25,6 +27,7 @@ export function ScheduledDataSourceForm({
   onChange: (next: ScheduledDataSource) => void
 }) {
   const uiKind = uiScheduleSourceKind(source)
+  const fieldId = useId()
 
   function setUiKind(next: UiScheduleSourceKind) {
     if (next === "MONITORING") onChange({ kind: "MONITORING", sampleSize: 2, period: "D1" })
@@ -37,9 +40,9 @@ export function ScheduledDataSourceForm({
     <div className="space-y-3 rounded-md border p-3">
       <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Fonte de dados</p>
       <div className="space-y-1.5">
-        <Label>O que avaliar</Label>
+        <Label htmlFor={`${fieldId}-kind`}>O que avaliar</Label>
         <Select value={uiKind} onValueChange={(value) => setUiKind(value as UiScheduleSourceKind)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-kind`} className="w-full">
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
           <SelectContent>
@@ -60,8 +63,9 @@ export function ScheduledDataSourceForm({
 
       {uiKind === "MONITORING" && source?.kind === "MONITORING" ? (
         <div className="space-y-1.5">
-          <Label>Quantas chamadas amostrar</Label>
+          <Label htmlFor={`${fieldId}-sample-size`}>Quantas chamadas amostrar</Label>
           <Input
+            id={`${fieldId}-sample-size`}
             type="number"
             min={1}
             max={10}
@@ -73,8 +77,9 @@ export function ScheduledDataSourceForm({
 
       {uiKind === "PERFORMANCE" && source?.kind === "PERFORMANCE" ? (
         <div className="space-y-1.5">
-          <Label>Quantos fechamentos (competências)</Label>
+          <Label htmlFor={`${fieldId}-closures`}>Quantos fechamentos (competências)</Label>
           <Input
+            id={`${fieldId}-closures`}
             type="number"
             min={1}
             max={3}
@@ -90,12 +95,12 @@ export function ScheduledDataSourceForm({
 
       {source && source.kind !== "PERFORMANCE" ? (
         <div className="space-y-1.5">
-          <Label>Período avaliado</Label>
+          <Label htmlFor={`${fieldId}-period`}>Período avaliado</Label>
           <Select
             value={source.period}
             onValueChange={(period) => onChange({ ...source, period: periodWindowSchema.parse(period) as PeriodWindow })}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-period`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

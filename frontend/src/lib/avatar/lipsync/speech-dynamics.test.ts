@@ -109,7 +109,7 @@ describe("tipo do acento de frase nas capturas reais (direção do F0)", () => {
 
   it("frase-01: os declarativos terminam em queda nuclear; 'juntos?' (sim/não) termina em subida", () => {
     const accents = accentsOf("frase-01-apresentacao")
-    const last = accents[accents.length - 1]
+    const last = accents[accents.length - 1]!
     expect(last.nuclear).toBe(true)
     expect(last.shape).toBe("rise")
     const declaratives = accents.filter((accent) => accent.nuclear && accent !== last)

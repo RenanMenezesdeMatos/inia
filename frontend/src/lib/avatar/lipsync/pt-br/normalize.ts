@@ -112,18 +112,18 @@ function scanPieces(text: string, atLineStart: boolean): Piece[] {
   let index = 0
   let lineStart = atLineStart
   while (index < text.length) {
-    const char = text[index]
+    const char = text[index]!
     if (WHITESPACE.test(char)) {
       if (char === "\n") lineStart = true
       index += 1
       continue
     }
     const start = index
-    while (index < text.length && !WHITESPACE.test(text[index])) index += 1
+    while (index < text.length && !WHITESPACE.test(text[index]!)) index += 1
     const raw = text.slice(start, index)
     let after = index
     let newlines = 0
-    while (after < text.length && WHITESPACE.test(text[after])) {
+    while (after < text.length && WHITESPACE.test(text[after]!)) {
       if (text[after] === "\n") newlines += 1
       after += 1
     }
@@ -138,9 +138,9 @@ function splitPunctuation(raw: string): { core: string; trailing: string } {
   let start = 0
   let end = raw.length
   // Primeiro a pontuação final: um "—" ou "..." solto vira pausa, não some como pontuação inicial.
-  while (end > start && TRAILING_PUNCT.has(raw[end - 1])) end -= 1
+  while (end > start && TRAILING_PUNCT.has(raw[end - 1]!)) end -= 1
   while (start < end) {
-    const char = raw[start]
+    const char = raw[start]!
     const next = raw[start + 1]
     const signedNumber = (char === "-" || char === "+" || char === "−") && next !== undefined && next >= "0" && next <= "9"
     if (signedNumber || !(LEADING_PUNCT.has(char) || char === "-" || char === "+")) break
@@ -239,7 +239,7 @@ function coreToWords(core: string, context: WordContext): string[] {
   if (match) return ordinalWords(Number(match[1]), match[2] === "ª")
   match = PERCENT.exec(core)
   if (match) {
-    const parsed = parseNumber(match[1])
+    const parsed = parseNumber(match[1]!)
     if (parsed) return [...numberWords(parsed), "por", "cento"]
   }
   match = TIMES.exec(core)
@@ -252,9 +252,9 @@ function coreToWords(core: string, context: WordContext): string[] {
   match = NUMBER_WITH_UNIT.exec(core)
   if (match) {
     // "4G"/"5G" não são gramas: unidade de uma letra só vale minúscula.
-    const unitText = match[2]
+    const unitText = match[2]!
     const unit = unitText.length === 1 && unitText !== unitText.toLowerCase() ? undefined : UNIT_WORDS.get(unitText.toLowerCase())
-    const value = parseNumber(match[1])
+    const value = parseNumber(match[1]!)
     if (unit && value) {
       const singular = !value.digitString && value.integer === 1 && value.fraction === null
       return [...numberWords(value, unit.feminine === true), singular ? unit.singular : unit.plural]
@@ -262,7 +262,7 @@ function coreToWords(core: string, context: WordContext): string[] {
   }
 
   const currencyAlone = CURRENCY_SYMBOL.exec(core)
-  if (currencyAlone) return [CURRENCIES[currencyAlone[1]].plural]
+  if (currencyAlone) return [CURRENCIES[currencyAlone[1]!]!.plural]
 
   const withoutEmoji = core.replace(EMOJI, "")
   if (withoutEmoji.length === 0) return []
@@ -318,8 +318,8 @@ function letterWords(core: string): string[] {
     return spellLetters(lower)
   }
   const plural = /^([A-Z]{2,5})s$/.exec(cleaned)
-  if (plural && !ACRONYMS_AS_WORDS.has(plural[1])) {
-    const spelled = spellLetters(plural[1])
+  if (plural && !ACRONYMS_AS_WORDS.has(plural[1]!)) {
+    const spelled = spellLetters(plural[1]!)
     spelled[spelled.length - 1] += "s"
     return spelled
   }
@@ -342,7 +342,7 @@ type Group = {
 }
 
 function currencyGroup(pieces: readonly Piece[], index: number): Group | null {
-  const piece = pieces[index]
+  const piece = pieces[index]!
   let symbol: string
   let numberText: string
   let count: number
@@ -351,22 +351,22 @@ function currencyGroup(pieces: readonly Piece[], index: number): Group | null {
   if (alone && piece.trailing === "") {
     const next = pieces[index + 1]
     if (!next) return null
-    symbol = alone[1]
+    symbol = alone[1]!
     numberText = next.core
     count = 2
     textParts = [piece.core, next.core]
   } else {
     const combined = CURRENCY_WITH_NUMBER.exec(piece.core)
     if (!combined) return null
-    symbol = combined[1]
-    numberText = combined[2]
+    symbol = combined[1]!
+    numberText = combined[2]!
     count = 1
     textParts = [piece.core]
   }
   const parsed = parseNumber(numberText)
   const currency = CURRENCIES[symbol]
   if (!parsed || !currency) return null
-  const last = pieces[index + count - 1]
+  const last = pieces[index + count - 1]!
   const scalePiece = last.trailing === "" ? pieces[index + count] : undefined
   const scale = scalePiece && isScaleWord(scalePiece.core) ? scalePiece.core : null
   if (scale && scalePiece) {
@@ -387,7 +387,7 @@ const LOWERCASE_LETTER = /^[a-zà-öø-ÿ]$/
 function spokenInitialAt(pieces: readonly Piece[], index: number): string | null {
   const piece = pieces[index]
   if (!piece || piece.core.length === 0) return null
-  const first = piece.core[0]
+  const first = piece.core[0]!
   // Caminho rápido: palavra comum em minúsculas começa com a própria letra.
   if (LOWERCASE_LETTER.test(first) && ONLY_LETTERS.test(piece.core) && !ABBREVIATIONS.has(piece.core)) return first
   const group = currencyGroup(pieces, index)
@@ -397,7 +397,7 @@ function spokenInitialAt(pieces: readonly Piece[], index: number): string | null
 
 /** Peças seguintes que precisam estar completas antes de decidir esta (0 = decide sozinha). */
 function lookaheadNeeded(pieces: readonly Piece[], index: number): number {
-  const piece = pieces[index]
+  const piece = pieces[index]!
   if (piece.trailing !== "") return 0
   if (CURRENCY_SYMBOL.test(piece.core)) {
     const next = pieces[index + 1]
@@ -441,7 +441,7 @@ export function tokenizeForSpeech(text: string, options: TokenizeOptions = {}): 
   const pieces = scanPieces(text, options.atLineStart ?? true)
   let completeCount = pieces.length
   if (!final && pieces.length > 0) {
-    const last = pieces[pieces.length - 1]
+    const last = pieces[pieces.length - 1]!
     if (!last.followedByWhitespace && !endsUnambiguously(last)) completeCount -= 1
   }
 
@@ -449,7 +449,7 @@ export function tokenizeForSpeech(text: string, options: TokenizeOptions = {}): 
   const tokens: Pending[] = []
   let index = 0
   while (index < completeCount) {
-    const piece = pieces[index]
+    const piece = pieces[index]!
     if (!final && index + lookaheadNeeded(pieces, index) >= completeCount) break
 
     if (piece.lineStart && LIST_MARKER.test(piece.raw)) {
@@ -473,7 +473,7 @@ export function tokenizeForSpeech(text: string, options: TokenizeOptions = {}): 
       group = { count: 1, text: piece.core, words: onlyPunctuation ? [] : coreToWords(piece.core, context) }
     }
 
-    const lastPiece = pieces[index + group.count - 1]
+    const lastPiece = pieces[index + group.count - 1]!
     const trailing = lastPiece.trailing + (group.words.length === 0 && PAUSE_ONLY.test(piece.core) ? piece.core : "")
     let pauseAfter = pauseOf(trailing)
     const abbreviation = ABBREVIATIONS_WITH_PAUSE.has(lastPiece.core.toLowerCase())
@@ -513,7 +513,7 @@ export function tokenizeForSpeech(text: string, options: TokenizeOptions = {}): 
     ...token,
     nextInitial: token.pauseAfter === "none" ? spokenInitialAt(pieces, nextPiece) : null,
   }))
-  const consumed = index < pieces.length ? pieces[index].start : text.length
+  const consumed = index < pieces.length ? pieces[index]!.start : text.length
   return { tokens: result, consumed }
 }
 

@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { StructuredContentPicker } from "../structured-content-picker"
@@ -23,6 +25,7 @@ export function HumanReviewForm({
   workflowId: string
   onChange: (next: FlowNode) => void
 }) {
+  const instructionId = useId()
   return (
     <div className="space-y-3">
       <HierarchicalTargetPicker
@@ -50,8 +53,9 @@ export function HumanReviewForm({
       />
 
       <div className="space-y-1.5">
-        <Label>Instrução para o revisor (opcional)</Label>
+        <Label htmlFor={instructionId}>Instrução para o revisor (opcional)</Label>
         <Input
+          id={instructionId}
           value={node.config.instruction ?? ""}
           onChange={(event) => onChange({ ...node, config: { ...node.config, instruction: event.target.value || undefined } })}
           placeholder="ex.: Valide se a ocorrência identificada pela IA realmente configura conduta inadequada."

@@ -113,23 +113,23 @@ export class SegmentalViterbi {
     const { elements, firstElement, emissions, rate } = input
     const held = input.firstHeldFrames ?? 0
     for (let j = 0; j < K; j++) {
-      const element = elements[firstElement + j]
+      const element = elements[firstElement + j]!
       const scale = element.phone === "_" ? 1 : rate
       this.expF[j] = Math.max(1, (element.expectedMs * scale) / 10)
       this.minF[j] = Math.max(1, Math.round((element.minMs * Math.min(1, scale)) / 10), j === 0 ? held : 0)
-      this.maxF[j] = Math.max(this.minF[j] + 1, Math.ceil((element.maxMs * Math.max(1, scale)) / 10))
+      this.maxF[j] = Math.max(this.minF[j]! + 1, Math.ceil((element.maxMs * Math.max(1, scale)) / 10))
     }
     const score = this.score
     const back = this.back
     score.fill(NEG, 0, cells)
     // Linha 0 = início virtual; linha r (≥ 1) = elemento r − 1 terminado.
-    score[0] = input.startCosts ? -input.startCosts[0] : 0
+    score[0] = input.startCosts ? -input.startCosts[0]! : 0
     back[0] = BACK_START
     this.bandLo[0] = 0
     this.bandHi[0] = 0
     if (input.startCosts) {
       for (let r = 1; r <= K && r < input.startCosts.length; r++) {
-        const cost = input.startCosts[r]
+        const cost = input.startCosts[r]!
         if (!Number.isFinite(cost)) continue
         score[r * stride] = -cost
         back[r * stride] = BACK_START
@@ -137,19 +137,19 @@ export class SegmentalViterbi {
     }
 
     for (let j = 0; j < K; j++) {
-      const element = elements[firstElement + j]
+      const element = elements[firstElement + j]!
       const prevRow = j * stride
       const row = (j + 1) * stride
       const cls = element.cls
-      const minF = this.minF[j]
-      const maxF = this.maxF[j]
-      const exp = this.expF[j]
+      const minF = this.minF[j]!
+      const maxF = this.maxF[j]!
+      const exp = this.expF[j]!
       const sigma = element.sigma
       const present = element.presentCost
       const skip = element.optional && !(j === 0 && held > 0) ? element.skipCost : Number.NaN
-      const prevLo = this.bandLo[j]
-      const prevHi = this.bandHi[j]
-      const startsHere = input.startCosts !== null && score[row] > NEG / 2
+      const prevLo = this.bandLo[j]!
+      const prevHi = this.bandHi[j]!
+      const startsHere = input.startCosts !== null && score[row]! > NEG / 2
       let lo = element.optional && !(j === 0 && held > 0) ? prevLo : prevLo + minF
       if (startsHere) lo = 0
       const hi = Math.min(W, prevHi + maxF)
@@ -162,10 +162,10 @@ export class SegmentalViterbi {
       let runArg = -1
       let runNext = prevLo
       for (let t = lo; t <= hi; t++) {
-        let best = score[row + t]
-        let arg = back[row + t]
+        let best = score[row + t]!
+        let arg = back[row + t]!
         if (!Number.isNaN(skip)) {
-          const prev = score[prevRow + t]
+          const prev = score[prevRow + t]!
           if (prev > NEG / 2 && prev - skip > best) {
             best = prev - skip
             arg = BACK_SKIP
@@ -173,7 +173,7 @@ export class SegmentalViterbi {
         }
         const dMax = Math.min(isPause ? PAUSE_FLAT_FRAMES : maxF, t - prevLo)
         for (let d = minF; d <= dMax; d++) {
-          const prev = score[prevRow + t - d]
+          const prev = score[prevRow + t - d]!
           if (prev <= NEG / 2) continue
           const value = prev + present + durationCost(d, exp, sigma) + emissions.segment(cls, t - d, t)
           if (value > best) {
@@ -184,7 +184,7 @@ export class SegmentalViterbi {
         if (isPause) {
           const limit = t - PAUSE_FLAT_FRAMES - 1
           for (; runNext <= limit && runNext <= prevHi; runNext++) {
-            const prev = score[prevRow + runNext]
+            const prev = score[prevRow + runNext]!
             if (prev <= NEG / 2) continue
             const value = prev - emissions.segment(cls, 0, runNext)
             if (value > runMax) {
@@ -216,7 +216,7 @@ export class SegmentalViterbi {
     const score = this.score
     const ends: HsmmEnd[] = []
     for (let j = 0; j < K; j++) {
-      const complete = score[(j + 1) * stride + W]
+      const complete = score[(j + 1) * stride + W]!
       if (complete > NEG / 2) ends.push({ score: complete, element: j, kind: "complete", from: W })
       if (!input.openEnd) continue
       const partial = this.bestPartial(j)
@@ -227,10 +227,10 @@ export class SegmentalViterbi {
       const row = K * stride
       let best = NEG
       let from = -1
-      for (let t = this.bandLo[K]; t < W; t++) {
-        const prev = score[row + t]
+      for (let t = this.bandLo[K]!; t < W; t++) {
+        const prev = score[row + t]!
         if (prev <= NEG / 2) continue
-        const value = prev + g[W] - g[t]
+        const value = prev + g[W]! - g[t]!
         if (value > best) {
           best = value
           from = t
@@ -244,15 +244,15 @@ export class SegmentalViterbi {
 
   private bestPartial(j: number): { score: number; from: number } {
     const input = this.input!
-    const element = input.elements[input.firstElement + j]
+    const element = input.elements[input.firstElement + j]!
     const W = input.emissions.count
     const prevRow = j * this.stride
-    const exp = this.expF[j]
+    const exp = this.expF[j]!
     let best = NEG
     let from = -1
-    const dMax = Math.min(W - this.bandLo[j], this.maxF[j])
+    const dMax = Math.min(W - this.bandLo[j]!, this.maxF[j]!)
     for (let d = 1; d <= dMax; d++) {
-      const prev = this.score[prevRow + W - d]
+      const prev = this.score[prevRow + W - d]!
       if (prev <= NEG / 2) continue
       // Pela metade: só a duração longa demais custa.
       const duration = d <= exp ? 0 : durationCost(d, exp, element.sigma)
@@ -274,7 +274,7 @@ export class SegmentalViterbi {
     g[0] = 0
     const margin = input.fillerMargin
     const bestSpeech = input.emissions.bestSpeech
-    for (let i = 0; i < W; i++) g[i + 1] = g[i] + Math.max(input.emissions.frame(PAUSE_CLASS, i), bestSpeech[i] - margin)
+    for (let i = 0; i < W; i++) g[i + 1] = g[i]! + Math.max(input.emissions.frame(PAUSE_CLASS, i), bestSpeech[i]! - margin)
     return g
   }
 
@@ -297,7 +297,7 @@ export class SegmentalViterbi {
       t = end.from
     }
     while (j >= 0) {
-      const arg = this.back[(j + 1) * stride + t]
+      const arg = this.back[(j + 1) * stride + t]!
       if (arg === BACK_START) break
       if (arg === BACK_SKIP) out.push({ element: input.firstElement + j, start: t, end: t, skipped: true, partial: false })
       else {

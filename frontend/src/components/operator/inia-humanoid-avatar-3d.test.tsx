@@ -116,7 +116,7 @@ describe("IniaHumanoidAvatar3D — Canvas estável", () => {
   it("entrega o <canvas> criado para o gravador do laboratório (onCanvasReady)", () => {
     const onCanvasReady = vi.fn()
     render(<IniaHumanoidAvatar3D modelUrl="/avatar.glb" state="idle" driver={fakeDriver()} onCanvasReady={onCanvasReady} />)
-    const props = canvasRenders.mock.calls[0][0] as { onCreated: (state: { gl: unknown }) => void }
+    const props = canvasRenders.mock.calls[0]![0] as { onCreated: (state: { gl: unknown }) => void }
     const canvas = document.createElement("canvas")
     const gl = { domElement: canvas, outputColorSpace: "", toneMapping: 0, toneMappingExposure: 1 }
     props.onCreated({ gl })

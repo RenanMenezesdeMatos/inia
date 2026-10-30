@@ -15,7 +15,7 @@ function setup(options: SpeechPlaybackOptions = {}) {
     onChunkScheduled: (chunk) => chunks.push(chunk),
     ...options,
   })
-  return { playback, contexts, events, chunks, createContext, ctx: () => contexts[contexts.length - 1] }
+  return { playback, contexts, events, chunks, createContext, ctx: () => contexts[contexts.length - 1]! }
 }
 
 /** 40 ms de PCM a 24 kHz. */
@@ -95,10 +95,10 @@ describe("createSpeechPlayback", () => {
     expect(playback.isPlaying()).toBe(true)
 
     ctx().currentTime = 0.06
-    ctx().sources[0].finish()
+    ctx().sources[0]!.finish()
     expect(events).toHaveLength(1)
     ctx().currentTime = 0.1
-    ctx().sources[1].finish()
+    ctx().sources[1]!.finish()
     expect(events.at(-1)).toEqual({ type: "turn-drained", turnId: turn, endedAt: 0.1 })
     expect(playback.isPlaying()).toBe(false)
   })
@@ -112,7 +112,7 @@ describe("createSpeechPlayback", () => {
     const turn = playback.beginTurn()
     playback.enqueuePcm(chunk40ms(), turn)
     ctx().currentTime = 1.06
-    ctx().sources[0].finish()
+    ctx().sources[0]!.finish()
     expect(events.map((event) => event.type)).toEqual(["turn-started"])
     vi.advanceTimersByTime(150)
     expect(events.map((event) => event.type)).toEqual(["turn-started"])
@@ -131,8 +131,8 @@ describe("createSpeechPlayback", () => {
     playback.subscribe({ onChunkScheduled: () => void playback.interrupt() })
     expect(playback.enqueuePcm(chunk40ms(), turn)).toBeNull()
     const [source] = ctx().sources
-    expect(source.startedAt).toBeCloseTo(1.02)
-    expect(source.stoppedAt).not.toBeNull()
+    expect(source!.startedAt).toBeCloseTo(1.02)
+    expect(source!.stoppedAt).not.toBeNull()
     expect(playback.isPlaying()).toBe(false)
   })
 
@@ -145,7 +145,7 @@ describe("createSpeechPlayback", () => {
 
     const stoppedAt = playback.interrupt()
     expect(stoppedAt).toBeCloseTo(0.16)
-    const turnGain = ctx().gains[1]
+    const turnGain = ctx().gains[1]!
     expect(turnGain.gain.calls.at(-1)).toEqual(["ramp", 0, stoppedAt])
     expect(ctx().sources.every((source) => source.stoppedAt === stoppedAt)).toBe(true)
     expect(events.at(-1)).toEqual({ type: "turn-interrupted", turnId: turn, stoppedAt })
@@ -161,7 +161,7 @@ describe("createSpeechPlayback", () => {
     const next = playback.beginTurn()
     expect(playback.enqueuePcm(chunk40ms(), next)?.startAt).toBe(stoppedAt)
     expect(ctx().gains).toHaveLength(3)
-    expect(ctx().gains[2].gain.calls).toHaveLength(0)
+    expect(ctx().gains[2]!.gain.calls).toHaveLength(0)
   })
 
   it("interrupt sem áudio agendado cala na hora e sem contexto devolve null", () => {
@@ -207,7 +207,7 @@ describe("createSpeechPlayback", () => {
     const turn = playback.beginTurn()
     playback.enqueuePcm(chunk40ms(), turn)
     await playback.close()
-    expect(contexts[0].close).toHaveBeenCalled()
+    expect(contexts[0]!.close).toHaveBeenCalled()
     expect(playback.context).toBeNull()
     expect(playback.currentTurnId).toBe(0)
     expect(playback.heardTime(0)).toBeNull()
@@ -226,7 +226,7 @@ describe("createSpeechPlayback", () => {
     playback.prime()
     const recorder = new FakeNode()
     const untap = playback.tapOutput(recorder as unknown as AudioNode)
-    const master = ctx().gains[0]
+    const master = ctx().gains[0]!
     expect(master.outputs.has(recorder)).toBe(true)
     untap()
     expect(master.outputs.has(recorder)).toBe(false)

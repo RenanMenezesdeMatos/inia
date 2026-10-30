@@ -517,9 +517,9 @@ function AgentForm({ agent, duplicateFrom, onSaved }: { agent?: Agent; duplicate
                 <CharacterCounter id="agent-name-count" value={name} limits={AGENT_TEXT_LIMITS.name} />
               </div>
               <div className="space-y-1.5">
-                <Label>Tipo</Label>
+                <Label htmlFor="agent-type">Tipo</Label>
                 <Select value={agentType} onValueChange={(value) => setAgentType(value as AgentType)}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="agent-type" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

@@ -49,10 +49,10 @@ describe("F0 e proeminência tonal", () => {
     const { extractor } = analyze(voice(0.6, () => hz))
     const store = extractor.store
     const values: number[] = []
-    for (let f = 5; f < store.count - 5; f++) if (store.f0Hz[f] > 0) values.push(store.f0Hz[f])
+    for (let f = 5; f < store.count - 5; f++) if (store.f0Hz[f]! > 0) values.push(store.f0Hz[f]!)
     expect(values.length).toBeGreaterThan(30)
     values.sort((a, b) => a - b)
-    const median = values[Math.floor(values.length / 2)]
+    const median = values[Math.floor(values.length / 2)]!
     expect(Math.abs(median / hz - 1)).toBeLessThan(0.03)
     // Nenhum quadro na oitava de baixo ou de cima.
     expect(values.filter((value) => Math.abs(12 * Math.log2(value / hz)) > 6)).toEqual([])

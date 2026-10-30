@@ -1,7 +1,7 @@
 "use client"
 
 import { BookOpen, Sparkles, X } from "lucide-react"
-import { useState } from "react"
+import { useId, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,11 +21,12 @@ import { applyAiDraft, applyTrainingCompetency, requestAiDraft, updateInterventi
 const has = (detail: InterventionDetail, key: string) => detail.type.capabilities.some((capability) => capability.key === key)
 
 function Field({ label, value, editing, onChange, multiline = true, placeholder }: { label: string; value: string; editing: boolean; onChange: (value: string) => void; multiline?: boolean; placeholder?: string }) {
+  const fieldId = useId()
   if (!editing) return value ? <div className="space-y-0.5"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="whitespace-pre-wrap text-sm">{value}</p></div> : null
   return (
     <div className="space-y-1">
-      <Label className="text-xs">{label}</Label>
-      {multiline ? <Textarea value={value} onChange={(event) => onChange(event.target.value)} rows={2} placeholder={placeholder} /> : <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />}
+      <Label htmlFor={fieldId} className="text-xs">{label}</Label>
+      {multiline ? <Textarea id={fieldId} value={value} onChange={(event) => onChange(event.target.value)} rows={2} placeholder={placeholder} /> : <Input id={fieldId} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />}
     </div>
   )
 }
@@ -39,6 +40,7 @@ export function InterventionPlanSection({ detail }: { detail: InterventionDetail
   const current = editing ? plan : detail.plan
   const training = has(detail, "TRAINING")
   const actionPlan = has(detail, "ACTION_PLAN")
+  const dueDateId = useId()
 
   return (
     <div className="space-y-3">
@@ -65,8 +67,8 @@ export function InterventionPlanSection({ detail }: { detail: InterventionDetail
             <Field label="Objetivo mensurável" value={current.measurableObjective?.target ?? ""} editing={editing} multiline={false} onChange={(target) => set({ measurableObjective: { indicatorCode: current.measurableObjective?.indicatorCode ?? detail.indicatorCode, target, by: current.measurableObjective?.by ?? detail.dueAt } })} />
             {editing ? (
               <div className="space-y-1">
-                <Label className="text-xs">Até</Label>
-                <Input type="date" value={current.measurableObjective?.by ?? detail.dueAt} onChange={(event) => set({ measurableObjective: { indicatorCode: current.measurableObjective?.indicatorCode ?? detail.indicatorCode, target: current.measurableObjective?.target ?? "", by: event.target.value } })} />
+                <Label htmlFor={dueDateId} className="text-xs">Até</Label>
+                <Input id={dueDateId} type="date" value={current.measurableObjective?.by ?? detail.dueAt} onChange={(event) => set({ measurableObjective: { indicatorCode: current.measurableObjective?.indicatorCode ?? detail.indicatorCode, target: current.measurableObjective?.target ?? "", by: event.target.value } })} />
               </div>
             ) : current.measurableObjective ? <p className="self-end text-xs text-muted-foreground">até {current.measurableObjective.by}</p> : null}
           </div>

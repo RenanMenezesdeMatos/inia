@@ -49,7 +49,7 @@ function label(message: Record<string, unknown>): string {
   const data = content.modelTurn?.parts?.[0]?.inlineData?.data
   if (data) return `audio:${data}`
   if (content.outputTranscription) return `text:${content.outputTranscription.text}`
-  return Object.keys(content)[0]
+  return Object.keys(content)[0]!
 }
 
 beforeEach(() => {

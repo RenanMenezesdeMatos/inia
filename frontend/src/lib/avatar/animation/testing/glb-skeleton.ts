@@ -48,11 +48,11 @@ export function loadGlbSkeleton(file: string): Object3D | null {
     if (node.scale) object.scale.copy(new Vector3().fromArray(node.scale))
     return object
   })
-  gltf.nodes.forEach((node, index) => node.children?.forEach((child) => objects[index].add(objects[child])))
+  gltf.nodes.forEach((node, index) => node.children?.forEach((child) => objects[index]!.add(objects[child]!)))
   const root = new Group()
   const scene = gltf.scenes?.[gltf.scene ?? 0]
-  const rootNodes = scene?.nodes ?? gltf.nodes.map((_, index) => index).filter((index) => !objects[index].parent)
-  for (const index of rootNodes) root.add(objects[index])
+  const rootNodes = scene?.nodes ?? gltf.nodes.map((_, index) => index).filter((index) => !objects[index]!.parent)
+  for (const index of rootNodes) root.add(objects[index]!)
   root.updateMatrixWorld(true)
   return root
 }

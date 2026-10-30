@@ -69,7 +69,7 @@ export function measureFixture(schedule: ReplaySchedule, options: MeasureOptions
 
   const phones = engine.debugSnapshot({ frames: false }).phones
   const words = phonemizeText(schedule.fixture.transcript)
-  const wordText = (index: number) => (index >= 0 && index < words.length ? words[index].text : "?")
+  const wordText = (index: number) => (index >= 0 && index < words.length ? words[index]!.text : "?")
   const level = percentileEnergy(store, 0.85)
 
   const aligned = phones.filter((p) => p.source === "aligned")
@@ -97,7 +97,7 @@ export function measureFixture(schedule: ReplaySchedule, options: MeasureOptions
   // Vogais-núcleo.
   const voiced = nuclei.filter((phone) => {
     const f = nearestFrame(store, center(phone))
-    return store.voicing[f] >= 0.5 && store.energyDb[f] >= level - 20
+    return store.voicing[f]! >= 0.5 && store.energyDb[f]! >= level - 20
   }).length
 
   // Fricativas surdas.
@@ -106,7 +106,7 @@ export function measureFixture(schedule: ReplaySchedule, options: MeasureOptions
   let onHighBand = 0
   for (const phone of fricatives) {
     let peak = 0
-    for (let f = store.lowerBound(phone.start); f < store.count && store.time[f] <= phone.end; f++) peak = Math.max(peak, store.highBandRatio[f])
+    for (let f = store.lowerBound(phone.start); f < store.count && store.time[f]! <= phone.end; f++) peak = Math.max(peak, store.highBandRatio[f]!)
     if (peak >= 0.3) onHighBand++
     else fricativeMisses.push(`${phone.phone}@${wordText(phone.wordIndex)}(${(center(phone) - schedule.audioStart).toFixed(2)})`)
   }
@@ -196,23 +196,23 @@ function center(phone: AlignedPhone): number {
 }
 
 function lastBefore(list: readonly AlignedPhone[], time: number): AlignedPhone | undefined {
-  for (let k = list.length - 1; k >= 0; k--) if (center(list[k]) < time) return list[k]
+  for (let k = list.length - 1; k >= 0; k--) if (center(list[k]!) < time) return list[k]
   return undefined
 }
 
 function nearestFrame(store: FeatureFrameStore, t: number): number {
   const f = Math.min(store.count - 1, store.lowerBound(t))
-  return f > 0 && Math.abs(store.time[f - 1] - t) < Math.abs(store.time[f] - t) ? f - 1 : f
+  return f > 0 && Math.abs(store.time[f - 1]! - t) < Math.abs(store.time[f]! - t) ? f - 1 : f
 }
 
 function valueAt(store: FeatureFrameStore, column: Float32Array, t: number): number {
-  return column[nearestFrame(store, t)]
+  return column[nearestFrame(store, t)]!
 }
 
 /** Nível de fala: percentil da energia dos quadros com som, calculado à parte do motor. */
 function percentileEnergy(store: FeatureFrameStore, p: number): number {
   const energies: number[] = []
-  for (let f = 0; f < store.count; f++) if (store.energyDb[f] > -70) energies.push(store.energyDb[f])
+  for (let f = 0; f < store.count; f++) if (store.energyDb[f]! > -70) energies.push(store.energyDb[f]!)
   energies.sort((a, b) => a - b)
   return energies[Math.floor(energies.length * p)] ?? -20
 }
@@ -251,8 +251,8 @@ export function compareWordTimings(reference: readonly AlignedPhone[], phones: r
   return {
     compared: deltas.length,
     beyond: deltas.filter((d) => d.deltaMs > limitMs).length,
-    maxDeltaMs: sorted.length > 0 ? sorted[sorted.length - 1] : 0,
-    p90DeltaMs: sorted.length > 0 ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))] : 0,
+    maxDeltaMs: sorted.length > 0 ? sorted[sorted.length - 1]! : 0,
+    p90DeltaMs: sorted.length > 0 ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))]! : 0,
     missing: [...ref.keys()].filter((w) => !got.has(w)).length,
     worst: deltas.filter((d) => d.deltaMs > limitMs).sort((a, b) => b.deltaMs - a.deltaMs),
   }
@@ -312,15 +312,15 @@ function similar(a: string, b: string): boolean {
   if (a.length < 3 || b.length < 3) return false
   const prev = Array.from({ length: b.length + 1 }, (_, j) => j)
   for (let i = 1; i <= a.length; i++) {
-    let diagonal = prev[0]
+    let diagonal = prev[0]!
     prev[0] = i
     for (let j = 1; j <= b.length; j++) {
-      const above = prev[j]
-      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
+      const above = prev[j]!
+      prev[j] = Math.min(prev[j]! + 1, prev[j - 1]! + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
       diagonal = above
     }
   }
-  return prev[b.length] / Math.max(a.length, b.length) <= 0.34
+  return prev[b.length]! / Math.max(a.length, b.length) <= 0.34
 }
 
 /** Casa as palavras do texto (`text[i]`) com as da referência por edição de sequência. */
@@ -332,17 +332,17 @@ export function matchWords(text: readonly string[], reference: readonly string[]
   const score = Array.from({ length: n + 1 }, () => new Float64Array(m + 1))
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      const match = similar(a[i - 1], b[j - 1]) ? score[i - 1][j - 1] + 1 : Number.NEGATIVE_INFINITY
-      score[i][j] = Math.max(match, score[i - 1][j], score[i][j - 1])
+      const match = similar(a[i - 1]!, b[j - 1]!) ? score[i - 1]![j - 1]! + 1 : Number.NEGATIVE_INFINITY
+      score[i]![j] = Math.max(match, score[i - 1]![j]!, score[i]![j - 1]!)
     }
   }
   const pairs: Array<[number, number]> = []
   for (let i = n, j = m; i > 0 && j > 0; ) {
-    if (similar(a[i - 1], b[j - 1]) && score[i][j] === score[i - 1][j - 1] + 1) {
+    if (similar(a[i - 1]!, b[j - 1]!) && score[i]![j] === score[i - 1]![j - 1]! + 1) {
       pairs.push([i - 1, j - 1])
       i--
       j--
-    } else if (score[i - 1][j] >= score[i][j - 1]) i--
+    } else if (score[i - 1]![j]! >= score[i]![j - 1]!) i--
     else j--
   }
   return pairs.reverse()
@@ -358,20 +358,20 @@ export function compareWithReference(schedule: ReplaySchedule, phones: readonly 
   for (const phone of phones) if (phone.wordIndex >= 0 && phone.source === "aligned" && !starts.has(phone.wordIndex)) starts.set(phone.wordIndex, phone.start)
   const errors: Array<{ word: string; errorMs: number }> = []
   for (const [w, r] of pairs) {
-    const start = starts.get(words[w].phones[0]?.wordIndex ?? w)
+    const start = starts.get(words[w]!.phones[0]?.wordIndex ?? w)
     if (start === undefined) continue
-    errors.push({ word: words[w].text, errorMs: (start - schedule.audioStart - reference[r].start) * 1000 })
+    errors.push({ word: words[w]!.text, errorMs: (start - schedule.audioStart - reference[r]!.start) * 1000 })
   }
   const signed = errors.map((e) => e.errorMs).sort((x, y) => x - y)
   const abs = errors.map((e) => Math.abs(e.errorMs)).sort((x, y) => x - y)
-  const at = (list: number[], q: number) => (list.length === 0 ? 0 : list[Math.min(list.length - 1, Math.floor(list.length * q))])
+  const at = (list: number[], q: number) => (list.length === 0 ? 0 : list[Math.min(list.length - 1, Math.floor(list.length * q))]!)
   return {
     matched: pairs.length,
     compared: errors.length,
     medianSignedMs: at(signed, 0.5),
     medianAbsMs: at(abs, 0.5),
     p90AbsMs: at(abs, 0.9),
-    maxAbsMs: abs.length > 0 ? abs[abs.length - 1] : 0,
+    maxAbsMs: abs.length > 0 ? abs[abs.length - 1]! : 0,
     within50: errors.filter((e) => Math.abs(e.errorMs) <= 50).length,
     within100: errors.filter((e) => Math.abs(e.errorMs) <= 100).length,
     within300: errors.filter((e) => Math.abs(e.errorMs) <= 300).length,

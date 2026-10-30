@@ -84,9 +84,9 @@ function CreateKnowledgeForm() {
           <Input id="knowledge-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Procedimento de segunda via" />
         </div>
         <div className="space-y-1.5">
-          <Label>Tipo de documento</Label>
+          <Label htmlFor="knowledge-document-type">Tipo de documento</Label>
           <Select value={documentType} onValueChange={(value) => setDocumentType(value as KnowledgeDocumentType)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id="knowledge-document-type" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -208,9 +208,9 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
           <Input id="edit-knowledge-title" value={title} onChange={(event) => setTitle(event.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <Label>Tipo de documento</Label>
+          <Label htmlFor="edit-knowledge-document-type">Tipo de documento</Label>
           <Select value={documentType} onValueChange={(value) => setDocumentType(value as KnowledgeDocumentType)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id="edit-knowledge-document-type" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -237,9 +237,9 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
       </div>
 
       <div className="space-y-1.5">
-        <Label>Status</Label>
+        <Label htmlFor="edit-knowledge-status">Status</Label>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id="edit-knowledge-status" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

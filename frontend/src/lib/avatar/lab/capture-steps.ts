@@ -33,7 +33,7 @@ export type CaptureStep = {
 /** Bytes do bloco `data` de um WAV (procura o bloco em vez de assumir 44 bytes de cabeçalho). */
 export function wavDataBytes(wav: Uint8Array): Uint8Array {
   const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength)
-  const ascii = (at: number) => String.fromCharCode(wav[at], wav[at + 1], wav[at + 2], wav[at + 3])
+  const ascii = (at: number) => String.fromCharCode(wav[at]!, wav[at + 1]!, wav[at + 2]!, wav[at + 3]!)
   if (wav.length < 12 || ascii(0) !== "RIFF" || ascii(8) !== "WAVE") throw new Error("não é um WAV (RIFF/WAVE)")
   let offset = 12
   while (offset + 8 <= wav.length) {
@@ -78,7 +78,7 @@ export function buildCaptureSteps(fixture: Pick<CaptureFixtureJson, "events">, p
   let chunkIndex = 0
   return fixture.events.map((event): CaptureStep => {
     if ("audioBytes" in event) {
-      const bytes = chunks[chunkIndex++]
+      const bytes = chunks[chunkIndex++]!
       return {
         t: event.t,
         kind: "audio",

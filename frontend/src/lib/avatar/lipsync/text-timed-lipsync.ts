@@ -65,7 +65,7 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
         this.phones.push({ phone: token.phone, start: t, end: t + duration, stressed: token.stressed, nucleus: token.nucleus, wordIndex: token.wordIndex, source: "aligned", loudness: ASSUMED_LOUDNESS })
         t += duration
       }
-      this.words.push({ charStart, wordIndex: word.phones[0].wordIndex, question: word.questionEnd })
+      this.words.push({ charStart, wordIndex: word.phones[0]!.wordIndex, question: word.questionEnd })
       const pause = PAUSE_MS[word.pauseAfter] / 1000 / rate
       if (pause > 0) {
         this.phones.push({ phone: "_", start: t, end: t + pause, stressed: false, nucleus: false, wordIndex: -1, source: "aligned", loudness: 0 })
@@ -78,20 +78,20 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
   boundary(charIndex: number, atTime: number): void {
     if (this.words.length === 0 || atTime >= this.endedAt) return
     let index = -1
-    for (let w = 0; w < this.words.length; w++) if (this.words[w].charStart <= charIndex) index = w
+    for (let w = 0; w < this.words.length; w++) if (this.words[w]!.charStart <= charIndex) index = w
     if (index < 0) return
-    const wordIndex = this.words[index].wordIndex
+    const wordIndex = this.words[index]!.wordIndex
     const first = this.phones.findIndex((phone) => phone.wordIndex === wordIndex)
     if (first < 0) return
-    const shift = atTime - this.phones[first].start
+    const shift = atTime - this.phones[first]!.start
     if (Math.abs(shift) < 0.005) return
     for (let i = first; i < this.phones.length; i++) {
-      this.phones[i].start += shift
-      this.phones[i].end += shift
+      this.phones[i]!.start += shift
+      this.phones[i]!.end += shift
     }
     // Emenda com o que veio antes: nada sobreposto; um buraco vira silêncio (a boca descansa).
     for (let i = first - 1; i >= 0; i--) {
-      const phone = this.phones[i]
+      const phone = this.phones[i]!
       if (phone.start >= atTime) {
         phone.start = atTime
         phone.end = atTime
@@ -149,10 +149,10 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
     let lastStressed = -1
     for (let i = 0; i <= this.phones.length; i++) {
       const phone = this.phones[i]
-      if (i === this.phones.length || phone.phone === "_") {
+      if (i === this.phones.length || phone!.phone === "_") {
         if (lastStressed >= 0) this.accents[lastStressed] = true
         lastStressed = -1
-      } else if (phone.stressed && phone.nucleus) lastStressed = i
+      } else if (phone!.stressed && phone!.nucleus) lastStressed = i
     }
     const fadeStart = this.timeline.fadeStart
     this.timeline.clear()
@@ -165,7 +165,7 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
     let best = 0
     for (let i = 0; i < this.phones.length; i++) {
       if (!this.accents[i]) continue
-      const phone = this.phones[i]
+      const phone = this.phones[i]!
       const x = (time - (phone.start + phone.end) / 2) / EMPHASIS_WIDTH_SECONDS
       if (x < -4 || x > 4) continue
       best = Math.max(best, Math.exp(-x * x))
@@ -174,7 +174,7 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
   }
 
   private phraseStart(index: number): number {
-    for (let i = index - 1; i >= 0; i--) if (this.timeline.isPause(i)) return this.timeline.end[i]
+    for (let i = index - 1; i >= 0; i--) if (this.timeline.isPause(i)) return this.timeline.end[i]!
     return this.startedAt
   }
 
@@ -183,7 +183,7 @@ class BrowserSpeechLipsync implements TextTimedLipsync {
     const wordIndex = this.timeline.wordIndex[index]
     // A pergunta vale para a oração inteira: procura a próxima palavra que fecha oração.
     const at = this.words.findIndex((plan) => plan.wordIndex === wordIndex)
-    return at >= 0 && this.words[at].question
+    return at >= 0 && this.words[at]!.question
   }
 }
 

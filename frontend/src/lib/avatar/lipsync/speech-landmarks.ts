@@ -69,14 +69,14 @@ export class SpeechLandmarks {
   /** Até onde os núcleos já são definitivos (um pico ainda sem queda confirmada fica de fora). */
   get nucleusFrontier(): number {
     if (this.envCount === 0) return Number.NEGATIVE_INFINITY
-    const envFrontier = this.store.time[this.envCount - 1]
-    if (this.seekingMax && this.curMaxFrame >= 0 && !this.final) return this.store.time[this.curMaxFrame] - 0.001
+    const envFrontier = this.store.time[this.envCount - 1]!
+    if (this.seekingMax && this.curMaxFrame >= 0 && !this.final) return this.store.time[this.curMaxFrame]! - 0.001
     return envFrontier
   }
 
   /** Início de silêncio ainda aberto na fronteira (fim de fala provável), NaN se falando. */
   get openSilenceStart(): number {
-    return this.silenceRunStart >= 0 ? this.store.time[this.silenceRunStart] - HOP_SECONDS / 2 : Number.NaN
+    return this.silenceRunStart >= 0 ? this.store.time[this.silenceRunStart]! - HOP_SECONDS / 2 : Number.NaN
   }
 
   reset(): void {
@@ -107,10 +107,10 @@ export class SpeechLandmarks {
     if (final) this.final = true
     // 1) Nível, silêncio e pausas: quadro a quadro, sem atraso.
     for (let i = this.processed; i < store.count; i++) {
-      const energy = store.energyDb[i]
+      const energy = store.energyDb[i]!
       if (energy > -70) {
         const bin = Math.max(0, Math.min(100, Math.round(-energy)))
-        this.histogram[bin]++
+        this.histogram[bin]!++
         this.histogramTotal++
         if (this.histogramTotal >= MIN_LEVEL_FRAMES && this.histogramTotal % 16 === 0) this.updateLevel()
       }
@@ -119,8 +119,8 @@ export class SpeechLandmarks {
         if (this.silenceRunStart < 0) this.silenceRunStart = i
       } else {
         if (this.silenceRunStart >= 0) this.closeSilence(i - 1)
-        if (Number.isNaN(this.firstSpeechTime)) this.firstSpeechTime = store.time[i]
-        this.lastSpeechTime = store.time[i]
+        if (Number.isNaN(this.firstSpeechTime)) this.firstSpeechTime = store.time[i]!
+        this.lastSpeechTime = store.time[i]!
       }
     }
     this.processed = store.count
@@ -133,9 +133,9 @@ export class SpeechLandmarks {
       for (let k = -ENV_RADIUS; k <= ENV_RADIUS; k++) {
         const j = i + k
         if (j < 0 || j >= store.count) continue
-        const w = ENV_WEIGHTS[k + ENV_RADIUS]
-        acc += w * Math.pow(10, store.vowelBandDb[j] / 10)
-        accMid += w * Math.pow(10, store.midBandDb[j] / 10)
+        const w = ENV_WEIGHTS[k + ENV_RADIUS]!
+        acc += w * Math.pow(10, store.vowelBandDb[j]! / 10)
+        accMid += w * Math.pow(10, store.midBandDb[j]! / 10)
         weight += w
       }
       const envDb = 10 * Math.log10(acc / weight + 1e-10)
@@ -146,7 +146,7 @@ export class SpeechLandmarks {
         this.env = grown
       }
       this.env[this.envCount++] = envDb
-      this.detectPeak(i, detectDb, store.energyDb[i] < this.silenceDb)
+      this.detectPeak(i, detectDb, store.energyDb[i]! < this.silenceDb)
     }
     if (final) {
       if (this.seekingMax && this.curMaxFrame >= 0 && this.curMax - this.lastValley >= PEAK_DELTA_DB) this.confirmPeak()
@@ -162,7 +162,7 @@ export class SpeechLandmarks {
     // Percentil 85 da energia dos quadros com som: o "nível de fala" do turno.
     let target = this.histogramTotal * 0.15
     for (let bin = 0; bin <= 100; bin++) {
-      target -= this.histogram[bin]
+      target -= this.histogram[bin]!
       if (target <= 0) {
         this.speechLevelDb = Math.max(-40, -bin)
         return
@@ -175,8 +175,8 @@ export class SpeechLandmarks {
     this.silenceRunStart = -1
     // Silêncio antes da primeira fala é o ataque do turno, não pausa entre unidades.
     if (Number.isNaN(this.firstSpeechTime)) return
-    const start = this.store.time[first] - HOP_SECONDS / 2
-    const end = this.store.time[lastSilent] + HOP_SECONDS / 2
+    const start = this.store.time[first]! - HOP_SECONDS / 2
+    const end = this.store.time[lastSilent]! + HOP_SECONDS / 2
     if (end - start >= MIN_PAUSE_SECONDS) this.pauses.push({ start, end })
   }
 
@@ -208,15 +208,15 @@ export class SpeechLandmarks {
     const store = this.store
     const frame = this.curMaxFrame
     const detectDb = this.curMax
-    const envDb = this.env[frame]
+    const envDb = this.env[frame]!
     this.curMaxFrame = -1
     if (frame < 0) return
     let voicing = 0
-    for (let k = Math.max(0, frame - 2); k <= Math.min(store.count - 1, frame + 2); k++) voicing = Math.max(voicing, store.voicing[k])
-    const loudEnough = envDb >= this.speechLevelDb - 26 && store.energyDb[frame] >= this.silenceDb + 8
+    for (let k = Math.max(0, frame - 2); k <= Math.min(store.count - 1, frame + 2); k++) voicing = Math.max(voicing, store.voicing[k]!)
+    const loudEnough = envDb >= this.speechLevelDb - 26 && store.energyDb[frame]! >= this.silenceDb + 8
     if (!loudEnough || voicing < 0.4) return
     const leftProminence = Number.isFinite(this.lastValley) ? detectDb - this.lastValley : 30
-    const nucleus: Nucleus = { time: store.time[frame], frame, envDb, prominenceDb: Math.min(leftProminence, 30), voicing }
+    const nucleus: Nucleus = { time: store.time[frame]!, frame, envDb, prominenceDb: Math.min(leftProminence, 30), voicing }
     const last = this.nuclei[this.nuclei.length - 1]
     if (last && nucleus.time - last.time < MIN_NUCLEUS_GAP_SECONDS) {
       if (detectDb <= this.lastPeakDetect) return
@@ -233,7 +233,7 @@ export function lowerBoundBy(nuclei: readonly Nucleus[], time: number): number {
   let hi = nuclei.length
   while (lo < hi) {
     const mid = (lo + hi) >>> 1
-    if (nuclei[mid].time < time) lo = mid + 1
+    if (nuclei[mid]!.time < time) lo = mid + 1
     else hi = mid
   }
   return lo
@@ -244,7 +244,7 @@ export function lowerBoundPauseEnd(pauses: readonly SpeechPause[], time: number)
   let hi = pauses.length
   while (lo < hi) {
     const mid = (lo + hi) >>> 1
-    if (pauses[mid].end < time) lo = mid + 1
+    if (pauses[mid]!.end < time) lo = mid + 1
     else hi = mid
   }
   return lo

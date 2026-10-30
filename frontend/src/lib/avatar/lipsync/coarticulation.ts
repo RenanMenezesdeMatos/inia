@@ -185,7 +185,7 @@ export class MouthTimeline {
     const next = Math.max(0, Math.min(this.count, count))
     if (next === this.count) return
     this.count = next
-    this.invalidateNear(next > 0 ? this.end[next - 1] : Number.NEGATIVE_INFINITY)
+    this.invalidateNear(next > 0 ? this.end[next - 1]! : Number.NEGATIVE_INFINITY)
   }
 
   append(phone: AlignedPhone): void {
@@ -194,7 +194,7 @@ export class MouthTimeline {
     const articulation = ARTICULATION[phone.phone]
     this.start[i] = phone.start
     this.end[i] = Math.max(phone.start, phone.end)
-    this.code[i] = PHONE_CODE[phone.phone]
+    this.code[i] = PHONE_CODE[phone.phone]!
     let flags = 0
     if (phone.stressed) flags |= FLAG_STRESSED
     if (phone.nucleus) flags |= FLAG_NUCLEUS
@@ -207,7 +207,7 @@ export class MouthTimeline {
     let hard = 0
     const isVowel = PHONES[phone.phone].class === "vowel" || PHONES[phone.phone].class === "glide"
     for (let c = 0; c < CHANNELS; c++) {
-      const key = MOUTH_CHANNEL_KEYS[c]
+      const key = MOUTH_CHANNEL_KEYS[c]!
       let target = c === JAW && phone.jawTarget !== undefined ? phone.jawTarget : articulation.target[key] ?? 0
       const dominance = articulation.dominance[key] ?? articulation.defaultDominance
       if (c === JAW && isVowel) {
@@ -229,7 +229,7 @@ export class MouthTimeline {
     const e = this.end[i]
     this.plateauA[i] = e - s >= 2 * edge ? s + edge : (s + e) / 2
     this.plateauB[i] = e - s >= 2 * edge ? e - edge : (s + e) / 2
-    this.invalidateNear(i > 0 ? Math.min(this.end[i - 1], this.start[i]) : Number.NEGATIVE_INFINITY)
+    this.invalidateNear(i > 0 ? Math.min(this.end[i - 1]!, this.start[i]) : Number.NEGATIVE_INFINITY)
   }
 
   appendAll(phones: readonly AlignedPhone[]): void {
@@ -238,12 +238,12 @@ export class MouthTimeline {
 
   /** Fim do último fone que não é pausa (−∞ sem fones). */
   get speechEnd(): number {
-    for (let i = this.count - 1; i >= 0; i--) if (!(this.flags[i] & FLAG_PAUSE)) return this.end[i]
+    for (let i = this.count - 1; i >= 0; i--) if (!(this.flags[i]! & FLAG_PAUSE)) return this.end[i]!
     return Number.NEGATIVE_INFINITY
   }
 
   get speechStart(): number {
-    for (let i = 0; i < this.count; i++) if (!(this.flags[i] & FLAG_PAUSE)) return this.start[i]
+    for (let i = 0; i < this.count; i++) if (!(this.flags[i]! & FLAG_PAUSE)) return this.start[i]!
     return Number.POSITIVE_INFINITY
   }
 
@@ -253,7 +253,7 @@ export class MouthTimeline {
     let hi = this.count
     while (lo < hi) {
       const mid = (lo + hi) >>> 1
-      if (this.start[mid] <= t) lo = mid + 1
+      if (this.start[mid]! <= t) lo = mid + 1
       else hi = mid
     }
     return lo - 1
@@ -262,45 +262,45 @@ export class MouthTimeline {
   /** Índice do fone que contém `t` (−1 se nenhum). */
   indexAt(t: number): number {
     const i = this.lastStartingBefore(t)
-    return i >= 0 && t < this.end[i] ? i : -1
+    return i >= 0 && t < this.end[i]! ? i : -1
   }
 
   isPause(i: number): boolean {
-    return (this.flags[i] & FLAG_PAUSE) !== 0
+    return (this.flags[i]! & FLAG_PAUSE) !== 0
   }
 
   isStressedNucleus(i: number): boolean {
-    return (this.flags[i] & (FLAG_STRESSED | FLAG_NUCLEUS)) === (FLAG_STRESSED | FLAG_NUCLEUS)
+    return (this.flags[i]! & (FLAG_STRESSED | FLAG_NUCLEUS)) === (FLAG_STRESSED | FLAG_NUCLEUS)
   }
 
   isNucleus(i: number): boolean {
-    return (this.flags[i] & FLAG_NUCLEUS) !== 0
+    return (this.flags[i]! & FLAG_NUCLEUS) !== 0
   }
 
   isAudioOnly(i: number): boolean {
-    return (this.flags[i] & FLAG_AUDIO_ONLY) !== 0
+    return (this.flags[i]! & FLAG_AUDIO_ONLY) !== 0
   }
 
   phoneAt(i: number): PhoneSymbol {
-    return PHONE_SYMBOLS[this.code[i]]
+    return PHONE_SYMBOLS[this.code[i]!]!
   }
 
   /** Instante em que a meta do fone `i` começa a valer (início do platô, ou o centro). */
   keyStart(i: number): number {
     this.ensureKeys(i)
-    return this.keyA[i]
+    return this.keyA[i]!
   }
 
   /** Instante em que a meta do fone `i` deixa de valer (fim do platô, ou o centro). */
   keyEnd(i: number): number {
     this.ensureKeys(i)
-    return this.keyB[i]
+    return this.keyB[i]!
   }
 
   /** Meta final (com limite de velocidade) do fone `i` no canal `channel` — diagnóstico/testes. */
   keyOf(i: number, channel: number): number {
     this.ensureKeys(i)
-    return this.key[i * CHANNELS + channel]
+    return this.key[i * CHANNELS + channel]!
   }
 
   /** Pose da boca no instante `t`. Não aloca. */
@@ -319,23 +319,23 @@ export class MouthTimeline {
     let right = -1
     let t0 = 0
     let t1 = 0
-    if (k < 0 || (k === 0 && t < this.keyA[0])) {
+    if (k < 0 || (k === 0 && t < this.keyA[0]!)) {
       // Antes da meta do primeiro fone: sai do repouso.
       right = 0
-      t1 = this.keyA[0]
+      t1 = this.keyA[0]!
       t0 = t1 - REST_LEAD_SECONDS
-    } else if (t >= this.keyA[k] && t <= this.keyB[k]) {
+    } else if (t >= this.keyA[k]! && t <= this.keyB[k]!) {
       left = k
       right = k
     } else {
-      const previous = t < this.keyA[k] ? k - 1 : k
-      t0 = this.keyB[previous]
+      const previous = t < this.keyA[k]! ? k - 1 : k
+      t0 = this.keyB[previous]!
       if (previous === count - 1) {
         // Depois da meta do último fone: volta ao repouso.
         left = previous
         t1 = t0 + REST_LEAD_SECONDS
       } else {
-        t1 = this.keyA[previous + 1]
+        t1 = this.keyA[previous + 1]!
         if (t1 - t0 <= 2 * REST_LEAD_SECONDS) {
           left = previous
           right = previous + 1
@@ -352,7 +352,7 @@ export class MouthTimeline {
     this.ensureKeys(Math.min(count - 1, Math.max(left, right) + 1))
     if (left >= 0 && left === right) {
       const offset = left * CHANNELS
-      for (let c = 0; c < CHANNELS; c++) pose[c] = this.key[offset + c]
+      for (let c = 0; c < CHANNELS; c++) pose[c] = this.key[offset + c]!
     } else if (left < 0 && right < 0) {
       pose.fill(0)
     } else {
@@ -374,9 +374,9 @@ export class MouthTimeline {
       const a = left * CHANNELS
       const b = right * CHANNELS
       for (let c = 0; c < CHANNELS; c++) {
-        const p0 = left >= 0 ? this.key[a + c] : 0
-        const p1 = right >= 0 ? this.key[b + c] : 0
-        pose[c] = h00 * p0 + h10 * m0[c] + h01 * p1 + h11 * m1[c]
+        const p0 = left >= 0 ? this.key[a + c]! : 0
+        const p1 = right >= 0 ? this.key[b + c]! : 0
+        pose[c] = h00 * p0 + h10 * m0[c]! + h01 * p1 + h11 * m1[c]!
       }
     }
 
@@ -385,25 +385,25 @@ export class MouthTimeline {
     floor.fill(0)
     let closure = 0
     for (let i = Math.max(0, k - 1); i <= k + 1 && i < count; i++) {
-      const hard = this.hardMask[i]
+      const hard = this.hardMask[i]!
       if (hard === 0) continue
-      const bump = hardEnvelope(t, this.start[i], this.end[i])
+      const bump = hardEnvelope(t, this.start[i]!, this.end[i]!)
       if (bump <= 0) continue
       const offset = i * CHANNELS
       for (let c = 0; c < CHANNELS; c++) {
         if (hard & (1 << c)) {
-          const value = this.target[offset + c] * bump
-          if (value > floor[c]) floor[c] = value
+          const value = this.target[offset + c]! * bump
+          if (value > floor[c]!) floor[c] = value
         }
       }
       if (hard & (1 << LIP_CLOSE) && bump > closure) closure = bump
     }
-    for (let c = 0; c < CHANNELS; c++) if (floor[c] > pose[c]) pose[c] = floor[c]
+    for (let c = 0; c < CHANNELS; c++) if (floor[c]! > pose[c]!) pose[c] = floor[c]!
     if (closure > 0) {
       // Lábios selados: nada de dentes à mostra nem lábios estirados/abertos brigando com o selo.
-      pose[UPPER_LIP_RAISE] *= 1 - closure
-      pose[LOWER_LIP_DOWN] *= 1 - closure
-      pose[SPREAD] *= 1 - 0.5 * closure
+      pose[UPPER_LIP_RAISE]! *= 1 - closure
+      pose[LOWER_LIP_DOWN]! *= 1 - closure
+      pose[SPREAD]! *= 1 - 0.5 * closure
     }
 
     let fade = 1
@@ -411,16 +411,16 @@ export class MouthTimeline {
       const x = Math.min(1, (t - this.fadeStart) / this.fadeDuration)
       fade = 1 - x * x * (3 - 2 * x)
     }
-    out.jaw = Math.min(MAX_JAW, Math.max(0, pose[JAW])) * fade
-    out.lipClose = clamp01(pose[LIP_CLOSE]) * fade
-    out.round = clamp01(pose[ROUND]) * fade
-    out.pucker = clamp01(pose[PUCKER]) * fade
-    out.spread = clamp01(pose[SPREAD]) * fade
-    out.lowerLipTuck = clamp01(pose[LOWER_LIP_TUCK]) * fade
-    out.upperLipRaise = clamp01(pose[UPPER_LIP_RAISE]) * fade
-    out.lowerLipDown = clamp01(pose[LOWER_LIP_DOWN]) * fade
-    out.jawForward = clamp01(pose[JAW_FORWARD]) * fade
-    out.lipCompress = clamp01(pose[LIP_COMPRESS]) * fade
+    out.jaw = Math.min(MAX_JAW, Math.max(0, pose[JAW]!)) * fade
+    out.lipClose = clamp01(pose[LIP_CLOSE]!) * fade
+    out.round = clamp01(pose[ROUND]!) * fade
+    out.pucker = clamp01(pose[PUCKER]!) * fade
+    out.spread = clamp01(pose[SPREAD]!) * fade
+    out.lowerLipTuck = clamp01(pose[LOWER_LIP_TUCK]!) * fade
+    out.upperLipRaise = clamp01(pose[UPPER_LIP_RAISE]!) * fade
+    out.lowerLipDown = clamp01(pose[LOWER_LIP_DOWN]!) * fade
+    out.jawForward = clamp01(pose[JAW_FORWARD]!) * fade
+    out.lipCompress = clamp01(pose[LIP_COMPRESS]!) * fade
   }
 
   /**
@@ -429,20 +429,20 @@ export class MouthTimeline {
    * quando ela é monótona. Escreve num array em vez de devolver número: não aloca.
    */
   private tangents(i: number, out: Float64Array): void {
-    if (this.keyB[i] > this.keyA[i]) {
+    if (this.keyB[i]! > this.keyA[i]!) {
       out.fill(0)
       return
     }
-    const center = this.keyA[i]
-    const hasLeft = i > 0 && center - this.keyB[i - 1] <= 2 * REST_LEAD_SECONDS
-    const hasRight = i + 1 < this.count && this.keyA[i + 1] - center <= 2 * REST_LEAD_SECONDS
-    const leftSpan = hasLeft ? center - this.keyB[i - 1] : REST_LEAD_SECONDS
-    const rightSpan = hasRight ? this.keyA[i + 1] - center : REST_LEAD_SECONDS
+    const center = this.keyA[i]!
+    const hasLeft = i > 0 && center - this.keyB[i - 1]! <= 2 * REST_LEAD_SECONDS
+    const hasRight = i + 1 < this.count && this.keyA[i + 1]! - center <= 2 * REST_LEAD_SECONDS
+    const leftSpan = hasLeft ? center - this.keyB[i - 1]! : REST_LEAD_SECONDS
+    const rightSpan = hasRight ? this.keyA[i + 1]! - center : REST_LEAD_SECONDS
     const offset = i * CHANNELS
     for (let c = 0; c < CHANNELS; c++) {
-      const value = this.key[offset + c]
-      const leftValue = hasLeft ? this.key[offset - CHANNELS + c] : 0
-      const rightValue = hasRight ? this.key[offset + CHANNELS + c] : 0
+      const value = this.key[offset + c]!
+      const leftValue = hasLeft ? this.key[offset - CHANNELS + c]! : 0
+      const rightValue = hasRight ? this.key[offset + CHANNELS + c]! : 0
       const sl = leftSpan > 1e-6 ? (value - leftValue) / leftSpan : 0
       const sr = rightSpan > 1e-6 ? (rightValue - value) / rightSpan : 0
       out[c] = sl * sr > 0 ? (2 * sl * sr) / (sl + sr) : 0
@@ -480,8 +480,8 @@ export class MouthTimeline {
    */
   private ensureTimes(index: number): void {
     for (let i = this.timesValid; i <= index; i++) {
-      this.keyA[i] = this.plateauA[i] + (i > 0 ? this.transitionLoan(i - 1, false) : 0)
-      this.keyB[i] = this.plateauB[i] - (i + 1 < this.count ? this.transitionLoan(i, true) : 0)
+      this.keyA[i] = this.plateauA[i]! + (i > 0 ? this.transitionLoan(i - 1, false) : 0)
+      this.keyB[i] = this.plateauB[i]! - (i + 1 < this.count ? this.transitionLoan(i, true) : 0)
     }
     if (index + 1 > this.timesValid) this.timesValid = index + 1
   }
@@ -493,19 +493,19 @@ export class MouthTimeline {
    * platô). Buraco longo (transição pelo repouso) não empresta.
    */
   private transitionLoan(j: number, fromLeft: boolean): number {
-    const gap = this.plateauA[j + 1] - this.plateauB[j]
+    const gap = this.plateauA[j + 1]! - this.plateauB[j]!
     if (gap > 2 * REST_LEAD_SECONDS) return 0
-    const availableLeft = (this.plateauB[j] - this.plateauA[j]) / 2
-    const availableRight = (this.plateauB[j + 1] - this.plateauA[j + 1]) / 2
+    const availableLeft = (this.plateauB[j]! - this.plateauA[j]!) / 2
+    const availableRight = (this.plateauB[j + 1]! - this.plateauA[j + 1]!) / 2
     const available = availableLeft + availableRight
     if (available <= 0) return 0
     let need = 0
     const a = j * CHANNELS
     const b = a + CHANNELS
     for (let c = 0; c < CHANNELS; c++) {
-      const velocity = VELOCITY[c]
+      const velocity = VELOCITY[c]!
       if (!Number.isFinite(velocity)) continue
-      const time = (HERMITE_PEAK * Math.abs(this.rawKey[b + c] - this.rawKey[a + c])) / velocity
+      const time = (HERMITE_PEAK * Math.abs(this.rawKey[b + c]! - this.rawKey[a + c]!)) / velocity
       if (time > need) need = time
     }
     const deficit = Math.min(need - gap, available)
@@ -524,29 +524,29 @@ export class MouthTimeline {
     const den = this.den
     num.fill(0)
     den.fill(DOMINANCE_EPSILON)
-    const t = (this.start[i] + this.end[i]) / 2
+    const t = (this.start[i]! + this.end[i]!) / 2
     let lo = i
-    while (lo > 0 && this.end[lo - 1] >= t - WINDOW_SECONDS) lo--
+    while (lo > 0 && this.end[lo - 1]! >= t - WINDOW_SECONDS) lo--
     let hi = i + 1
-    while (hi < this.count && this.start[hi] <= t + WINDOW_SECONDS) hi++
+    while (hi < this.count && this.start[hi]! <= t + WINDOW_SECONDS) hi++
     for (let j = lo; j < hi; j++) {
-      const s = this.start[j]
-      const e = this.end[j]
+      const s = this.start[j]!
+      const e = this.end[j]!
       const distance = t < s ? s - t : t > e ? t - e : 0
       if (distance > WINDOW_SECONDS) continue
-      const decay = this.decay[j]
+      const decay = this.decay[j]!
       const base = Math.exp(-decay * distance)
       const anticipatory = t < s ? Math.exp(-decay * ANTICIPATORY_ROUNDING * distance) : base
       const jaw = Math.exp(-JAW_DECAY_RATE * distance)
       const offset = j * CHANNELS
       for (let c = 0; c < CHANNELS; c++) {
-        const weight = this.dominance[offset + c] * (c === JAW ? jaw : c === ROUND || c === PUCKER ? anticipatory : base)
-        num[c] += weight * this.target[offset + c]
-        den[c] += weight
+        const weight = this.dominance[offset + c]! * (c === JAW ? jaw : c === ROUND || c === PUCKER ? anticipatory : base)
+        num[c]! += weight * this.target[offset + c]!
+        den[c]! += weight
       }
     }
     const offset = i * CHANNELS
-    for (let c = 0; c < CHANNELS; c++) this.rawKey[offset + c] = num[c] / den[c]
+    for (let c = 0; c < CHANNELS; c++) this.rawKey[offset + c] = num[c]! / den[c]!
   }
 
   /**
@@ -563,21 +563,21 @@ export class MouthTimeline {
     const gaps = this.gaps
     for (let j = 0; j < n; j++) {
       const source = (from + j) * CHANNELS
-      for (let c = 0; c < CHANNELS; c++) window[j * CHANNELS + c] = this.rawKey[source + c]
-      if (j < n - 1) gaps[j] = Math.max(0, this.keyA[from + j + 1] - this.keyB[from + j])
+      for (let c = 0; c < CHANNELS; c++) window[j * CHANNELS + c] = this.rawKey[source + c]!
+      if (j < n - 1) gaps[j] = Math.max(0, this.keyA[from + j + 1]! - this.keyB[from + j]!)
     }
     for (let c = 0; c < CHANNELS; c++) {
-      const velocity = VELOCITY[c]
+      const velocity = VELOCITY[c]!
       if (!Number.isFinite(velocity)) continue
       for (let pass = 0; pass < LIMIT_PASSES; pass++) {
         const forward = pass % 2 === 0
         for (let step = 0; step < n - 1; step++) {
           const j = forward ? step : n - 2 - step
-          if (gaps[j] > 2 * REST_LEAD_SECONDS) continue
-          const allowed = (velocity * gaps[j]) / HERMITE_PEAK
+          if (gaps[j]! > 2 * REST_LEAD_SECONDS) continue
+          const allowed = (velocity * gaps[j]!) / HERMITE_PEAK
           const p = j * CHANNELS + c
           const q = p + CHANNELS
-          const delta = window[q] - window[p]
+          const delta = window[q]! - window[p]!
           const excess = Math.abs(delta) - allowed
           if (excess <= 0) continue
           // Pausa é repouso: não cede (quem chega atrasado é a fala); entre dois fones, cada um cede metade.
@@ -586,14 +586,14 @@ export class MouthTimeline {
           if (pinnedP && pinnedQ) continue
           const share = pinnedP || pinnedQ ? 1 : 0.5
           const move = Math.sign(delta) * excess * share
-          if (!pinnedP) window[p] += move
-          if (!pinnedQ) window[q] -= move
+          if (!pinnedP) window[p]! += move
+          if (!pinnedQ) window[q]! -= move
         }
       }
     }
     const offset = i * CHANNELS
     const local = (i - from) * CHANNELS
-    for (let c = 0; c < CHANNELS; c++) this.key[offset + c] = window[local + c]
+    for (let c = 0; c < CHANNELS; c++) this.key[offset + c] = window[local + c]!
   }
 
   private grow(): void {

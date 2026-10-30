@@ -52,7 +52,7 @@ export class FrameStats {
     sorted.set(this.intervals.subarray(0, count))
     sorted.sort()
     let total = 0
-    for (let i = 0; i < count; i++) total += sorted[i]
+    for (let i = 0; i < count; i++) total += sorted[i]!
     return { fps: (1000 * count) / total, p50Ms: percentile(sorted, 0.5), p95Ms: percentile(sorted, 0.95), count }
   }
 }
@@ -61,5 +61,5 @@ export class FrameStats {
 export function percentile(sorted: ArrayLike<number>, p: number): number {
   if (sorted.length === 0) return 0
   const rank = Math.ceil(Math.min(1, Math.max(0, p)) * sorted.length)
-  return sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))]
+  return sorted[Math.min(sorted.length - 1, Math.max(0, rank - 1))]!
 }

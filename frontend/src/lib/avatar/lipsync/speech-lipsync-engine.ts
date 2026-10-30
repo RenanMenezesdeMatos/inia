@@ -227,9 +227,9 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     // O relógio ouvido também empurra a consolidação: nada que já tocou é reescrito.
     if (!this.interrupted && heardTime >= this.firstAudioStart && heardTime <= this.scheduledEnd) this.aligner.noteHeard(heardTime)
     const t = heardTime + this.anticipation
-    const coverageEnd = timeline.count > 0 ? timeline.end[timeline.count - 1] : Number.NEGATIVE_INFINITY
+    const coverageEnd = timeline.count > 0 ? timeline.end[timeline.count - 1]! : Number.NEGATIVE_INFINITY
     const store = this.extractor.store
-    const analyzedEnd = store.count > 0 ? store.time[store.count - 1] : Number.NEGATIVE_INFINITY
+    const analyzedEnd = store.count > 0 ? store.time[store.count - 1]! : Number.NEGATIVE_INFINITY
     const live = !this.interrupted && !this.aligner.isDone && t > coverageEnd && t <= analyzedEnd
     if (live) this.liveAudioMouth(t, out.mouth)
     else timeline.sample(t, out.mouth)
@@ -242,7 +242,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     else if (!timeline.isPause(index)) out.speaking = true
     // Pausa: curta no meio da fala ainda é "falando" (respiração entre palavras); longa ou a pausa
     // final do turno não é — o corpo sai do modo fala e a boca descansa.
-    else out.speaking = index < timeline.count - 1 && timeline.end[index] - timeline.start[index] < LONG_PAUSE_SECONDS
+    else out.speaking = index < timeline.count - 1 && timeline.end[index]! - timeline.start[index]! < LONG_PAUSE_SECONDS
     out.emphasis = this.emphasisAt(t)
     out.accentDirection = this.emphasisDirection
     out.accentNuclear = this.emphasisNuclear
@@ -313,7 +313,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
   private addWords(words: G2PWord[]): void {
     this.aligner.addWords(words)
     for (const word of words) {
-      const index = word.phones.length > 0 ? word.phones[0].wordIndex : -1
+      const index = word.phones.length > 0 ? word.phones[0]!.wordIndex : -1
       if (index < 0) continue
       if (index >= this.questionByWord.length) {
         const grown = new Uint8Array(Math.max(index + 1, this.questionByWord.length * 2))
@@ -340,7 +340,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     const committed = this.aligner.committed
     this.timeline.truncate(this.syncedCommitted)
     this.accentStable = Math.min(this.accentStable, this.syncedCommitted)
-    for (let i = this.syncedCommitted; i < committed.length; i++) this.timeline.append(committed[i])
+    for (let i = this.syncedCommitted; i < committed.length; i++) this.timeline.append(committed[i]!)
     this.syncedCommitted = committed.length
     this.timeline.appendAll(this.aligner.provisional)
     this.appendAudioOnlyPreview()
@@ -360,8 +360,8 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     const store = this.extractor.store
     if (store.count === 0) return
     const timeline = this.timeline
-    const from = timeline.count > 0 ? timeline.end[timeline.count - 1] : store.time[0] - HOP_SECONDS / 2
-    const frontier = store.time[store.count - 1] + HOP_SECONDS / 2
+    const from = timeline.count > 0 ? timeline.end[timeline.count - 1]! : store.time[0]! - HOP_SECONDS / 2
+    const frontier = store.time[store.count - 1]! + HOP_SECONDS / 2
     const to = Math.min(frontier, this.aligner.heardUntil + AUDIO_ONLY_PREVIEW_SECONDS)
     if (!(to - from >= 2 * HOP_SECONDS)) return
     timeline.appendAll(audioOnlyPhones(store, this.landmarks, from, to))
@@ -389,17 +389,17 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     const analyzed = this.extractor.analyzedUntil
     const done = this.aligner.isDone
     // Os vizinhos de um núcleo só-áudio (duração, loudness) também precisam estar consolidados.
-    const committedEnd = this.syncedCommitted > 0 ? timeline.end[this.syncedCommitted - 1] : Number.NEGATIVE_INFINITY
+    const committedEnd = this.syncedCommitted > 0 ? timeline.end[this.syncedCommitted - 1]! : Number.NEGATIVE_INFINITY
     let stable = true
     for (let i = this.accentStable; i < timeline.count; i++) {
       const candidate = timeline.isStressedNucleus(i) || (timeline.isAudioOnly(i) && timeline.isNucleus(i) && this.audioOnlyCandidate(i))
       this.accentCandidate[i] = candidate ? 1 : 0
       // Sem áudio analisado ainda, não há F0: 0 (é recalculado quando o áudio chegar).
-      const score = candidate && timeline.start[i] < analyzed ? this.prosody.prominence(timeline.start[i], timeline.end[i]) : 0
+      const score = candidate && timeline.start[i]! < analyzed ? this.prosody.prominence(timeline.start[i]!, timeline.end[i]!) : 0
       this.accentScore[i] = score
       // Direção só de quem pode ser acento (a do nuclear pede a menor proeminência).
-      this.accentDirection[i] = score >= NUCLEAR_ACCENT_MIN_SEMITONES ? this.prosody.direction(timeline.start[i], timeline.end[i]) : 0
-      const settled = done || (timeline.end[i] + PROMINENCE_LOOKAHEAD_SECONDS <= analyzed && (!timeline.isAudioOnly(i) || timeline.end[i] + PROMINENCE_LOOKAHEAD_SECONDS <= committedEnd))
+      this.accentDirection[i] = score >= NUCLEAR_ACCENT_MIN_SEMITONES ? this.prosody.direction(timeline.start[i]!, timeline.end[i]!) : 0
+      const settled = done || (timeline.end[i]! + PROMINENCE_LOOKAHEAD_SECONDS <= analyzed && (!timeline.isAudioOnly(i) || timeline.end[i]! + PROMINENCE_LOOKAHEAD_SECONDS <= committedEnd))
       if (stable && i < this.syncedCommitted && settled) this.accentStable = i + 1
       else stable = false
     }
@@ -431,10 +431,10 @@ class LipsyncEngine implements SpeechLipsyncEngine {
    */
   private stressContrast(a: number, b: number): number {
     const timeline = this.timeline
-    const durationA = timeline.end[a] - timeline.start[a]
-    const durationB = timeline.end[b] - timeline.start[b]
+    const durationA = timeline.end[a]! - timeline.start[a]!
+    const durationB = timeline.end[b]! - timeline.start[b]!
     if (durationA <= 0 || durationB <= 0) return 0
-    return Math.log(durationB / durationA) + (timeline.loudness[b] - timeline.loudness[a]) * STRESS_LOUDNESS_DB_SCALE
+    return Math.log(durationB / durationA) + (timeline.loudness[b]! - timeline.loudness[a]!) * STRESS_LOUDNESS_DB_SCALE
   }
 
   /**
@@ -445,8 +445,8 @@ class LipsyncEngine implements SpeechLipsyncEngine {
   private nextNucleusInPhrase(i: number): number {
     const timeline = this.timeline
     for (let j = i + 1; j < timeline.count; j++) {
-      if (timeline.start[j] - timeline.end[i] > PHRASE_FINAL_REACH_SECONDS) return UNKNOWN_NUCLEUS
-      if (timeline.isPause(j) && timeline.end[j] - timeline.start[j] >= PHRASE_BREAK_SECONDS) return NO_NUCLEUS
+      if (timeline.start[j]! - timeline.end[i]! > PHRASE_FINAL_REACH_SECONDS) return UNKNOWN_NUCLEUS
+      if (timeline.isPause(j) && timeline.end[j]! - timeline.start[j]! >= PHRASE_BREAK_SECONDS) return NO_NUCLEUS
       if (timeline.isNucleus(j)) return j
     }
     return this.aligner.isDone ? NO_NUCLEUS : UNKNOWN_NUCLEUS
@@ -456,8 +456,8 @@ class LipsyncEngine implements SpeechLipsyncEngine {
   private previousNucleusInPhrase(i: number): number {
     const timeline = this.timeline
     for (let j = i - 1; j >= 0; j--) {
-      if (timeline.start[i] - timeline.end[j] > PHRASE_FINAL_REACH_SECONDS) return -1
-      if (timeline.isPause(j) && timeline.end[j] - timeline.start[j] >= PHRASE_BREAK_SECONDS) return -1
+      if (timeline.start[i]! - timeline.end[j]! > PHRASE_FINAL_REACH_SECONDS) return -1
+      if (timeline.isPause(j) && timeline.end[j]! - timeline.start[j]! >= PHRASE_BREAK_SECONDS) return -1
       if (timeline.isNucleus(j)) return j
     }
     return -1
@@ -475,21 +475,21 @@ class LipsyncEngine implements SpeechLipsyncEngine {
         if (!timeline.isNucleus(j)) continue
         // Inserção ordenada (no máximo 4 valores).
         let k = count++
-        const duration = timeline.end[j] - timeline.start[j]
-        while (k > 0 && durations[k - 1] > duration) {
-          durations[k] = durations[k - 1]
+        const duration = timeline.end[j]! - timeline.start[j]!
+        while (k > 0 && durations[k - 1]! > duration) {
+          durations[k] = durations[k - 1]!
           k--
         }
         durations[k] = duration
-        if (found === 0 && timeline.loudness[j] > adjacentLoudness) adjacentLoudness = timeline.loudness[j]
+        if (found === 0 && timeline.loudness[j]! > adjacentLoudness) adjacentLoudness = timeline.loudness[j]!
         found++
       }
     }
     if (count === 0) return true
-    const median = count % 2 === 1 ? durations[count >> 1] : (durations[(count >> 1) - 1] + durations[count >> 1]) / 2
-    const duration = timeline.end[i] - timeline.start[i]
+    const median = count % 2 === 1 ? durations[count >> 1]! : (durations[(count >> 1) - 1]! + durations[count >> 1]!) / 2
+    const duration = timeline.end[i]! - timeline.start[i]!
     if (median <= 0 || duration <= 0) return true
-    return Math.log(duration / median) + (timeline.loudness[i] - adjacentLoudness) * STRESS_LOUDNESS_DB_SCALE >= STRESS_LIKE_THRESHOLD
+    return Math.log(duration / median) + (timeline.loudness[i]! - adjacentLoudness) * STRESS_LOUDNESS_DB_SCALE >= STRESS_LIKE_THRESHOLD
   }
 
   /** Loudness 0..1 suavizada (média de ±30 ms de quadros) no instante `t`. */
@@ -502,7 +502,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     let acc = 0
     let n = 0
     for (; first < last && first < store.count; first++) {
-      acc += Math.pow(10, store.energyDb[first] / 10)
+      acc += Math.pow(10, store.energyDb[first]! / 10)
       n++
     }
     if (n === 0) return 0
@@ -523,11 +523,11 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     let i = timeline.lastStartingBefore(t + EMPHASIS_WINDOW_SECONDS)
     let best = 0
     let bestIndex = -1
-    for (; i >= 0 && timeline.end[i] >= t - EMPHASIS_WINDOW_SECONDS; i--) {
+    for (; i >= 0 && timeline.end[i]! >= t - EMPHASIS_WINDOW_SECONDS; i--) {
       if (this.accentCandidate[i] !== 1 || !this.isAccent(i)) continue
-      const center = (timeline.start[i] + timeline.end[i]) / 2
+      const center = (timeline.start[i]! + timeline.end[i]!) / 2
       const x = (t - center) / EMPHASIS_WIDTH_SECONDS
-      const strength = Math.min(1, this.accentScore[i] / ACCENT_FULL_SEMITONES)
+      const strength = Math.min(1, this.accentScore[i]! / ACCENT_FULL_SEMITONES)
       const pulse = Math.exp(-x * x) * (0.55 + 0.45 * strength)
       if (pulse > best) {
         best = pulse
@@ -535,7 +535,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
       }
     }
     if (bestIndex >= 0) {
-      this.emphasisDirection = this.accentDirection[bestIndex]
+      this.emphasisDirection = this.accentDirection[bestIndex]!
       this.emphasisNuclear = this.isPhraseFinal(bestIndex)
     }
     return best
@@ -547,16 +547,16 @@ class LipsyncEngine implements SpeechLipsyncEngine {
    */
   private isAccent(i: number): boolean {
     const timeline = this.timeline
-    const score = this.accentScore[i]
+    const score = this.accentScore[i]!
     const nuclear = this.isPhraseFinal(i)
     if (score < (nuclear ? NUCLEAR_ACCENT_MIN_SEMITONES : ACCENT_MIN_SEMITONES)) return false
-    const center = (timeline.start[i] + timeline.end[i]) / 2
+    const center = (timeline.start[i]! + timeline.end[i]!) / 2
     for (let direction = -1; direction <= 1; direction += 2) {
       for (let j = i + direction; j >= 0 && j < timeline.count; j += direction) {
-        const other = (timeline.start[j] + timeline.end[j]) / 2
+        const other = (timeline.start[j]! + timeline.end[j]!) / 2
         if (Math.abs(other - center) > ACCENT_RIVAL_SECONDS) break
         if (this.accentCandidate[j] !== 1) continue
-        const rival = this.accentScore[j]
+        const rival = this.accentScore[j]!
         if (rival < score || (rival === score && j > i)) continue
         if (nuclear && !this.isPhraseFinal(j)) continue
         return false
@@ -586,8 +586,8 @@ class LipsyncEngine implements SpeechLipsyncEngine {
   private endsPhrase(i: number): boolean {
     const timeline = this.timeline
     for (let j = i + 1; j < timeline.count; j++) {
-      if (timeline.start[j] - timeline.end[i] > PHRASE_FINAL_REACH_SECONDS) return false
-      if (timeline.isPause(j) && timeline.end[j] - timeline.start[j] >= PHRASE_BREAK_SECONDS) return true
+      if (timeline.start[j]! - timeline.end[i]! > PHRASE_FINAL_REACH_SECONDS) return false
+      if (timeline.isPause(j) && timeline.end[j]! - timeline.start[j]! >= PHRASE_BREAK_SECONDS) return true
       if (this.accentCandidate[j] === 1) return false
     }
     return this.aligner.isDone
@@ -597,7 +597,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     const timeline = this.timeline
     if (index < 0 || timeline.isPause(index)) return 0
     for (let i = index - 1; i >= 0; i--) {
-      if (timeline.isPause(i) && timeline.end[i] - timeline.start[i] >= PHRASE_PAUSE_SECONDS) return t - timeline.end[i]
+      if (timeline.isPause(i) && timeline.end[i]! - timeline.start[i]! >= PHRASE_PAUSE_SECONDS) return t - timeline.end[i]!
     }
     return t - timeline.speechStart
   }
@@ -605,7 +605,7 @@ class LipsyncEngine implements SpeechLipsyncEngine {
   private questionAt(index: number): boolean {
     const timeline = this.timeline
     for (let i = index; i >= 0; i--) {
-      const word = timeline.wordIndex[i]
+      const word = timeline.wordIndex[i]!
       if (word >= 0) return word < this.questionByWord.length && this.questionByWord[word] === 1
     }
     return false
@@ -624,9 +624,9 @@ class LipsyncEngine implements SpeechLipsyncEngine {
     let energy = 0
     let n = 0
     for (let f = Math.max(0, center - 2); f <= center + 2 && f < store.count; f++) {
-      env += f < landmarks.envCount ? landmarks.env[f] : store.vowelBandDb[f]
-      high += store.highBandRatio[f]
-      energy += store.energyDb[f]
+      env += f < landmarks.envCount ? landmarks.env[f]! : store.vowelBandDb[f]!
+      high += store.highBandRatio[f]!
+      energy += store.energyDb[f]!
       n++
     }
     Object.assign(out, REST_MOUTH)

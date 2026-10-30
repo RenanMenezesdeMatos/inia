@@ -8,7 +8,7 @@ describe("teste de claque", () => {
   it("clique com ataque imediato e silêncio no resto do período", () => {
     const pcm = createClickPcm(24000)
     expect(pcm.length).toBe(24000)
-    expect(Math.abs(pcm[0]) + Math.abs(pcm[1]) + Math.abs(pcm[2])).toBeGreaterThan(0.1)
+    expect(Math.abs(pcm[0]!) + Math.abs(pcm[1]!) + Math.abs(pcm[2]!)).toBeGreaterThan(0.1)
     expect(pcm.slice(400).every((x) => x === 0)).toBe(true)
   })
 
@@ -28,12 +28,12 @@ describe("teste de claque", () => {
     clapper.start(5)
     const clicks = clapper.state.clicks
     expect(clicks).toHaveLength(5)
-    for (let k = 1; k < clicks.length; k++) expect(clicks[k] - clicks[k - 1]).toBeCloseTo(CLAP_PERIOD_SECONDS, 6)
+    for (let k = 1; k < clicks.length; k++) expect(clicks[k]! - clicks[k - 1]!).toBeCloseTo(CLAP_PERIOD_SECONDS, 6)
     // Relógio do contexto em 1 quadro antes do 1º clique: o flash já acende (a imagem sai no próximo vsync).
     const context = current()
-    advanceContext(context, clicks[0] - 0.01)
+    advanceContext(context, clicks[0]! - 0.01)
     expect(clapper.frame(1000)).toBe(true)
-    advanceContext(context, clicks[0] + FLASH_SECONDS + 0.02)
+    advanceContext(context, clicks[0]! + FLASH_SECONDS + 0.02)
     expect(clapper.frame(1000 + 1000 / 60)).toBe(false)
   })
 })

@@ -94,7 +94,7 @@ describe.each(AVATAR_MODEL_FILES)("pose base e gestos — %s (esqueleto real)", 
       let moved = 0
       for (const track of clip.tracks) {
         expect(names.has(track.name.replace(/\.quaternion$/, "")), track.name).toBe(true)
-        for (let index = 1; index < track.times.length; index++) expect(track.times[index]).toBeGreaterThan(track.times[index - 1])
+        for (let index = 1; index < track.times.length; index++) expect(track.times[index]).toBeGreaterThan(track.times[index - 1]!)
         const count = track.times.length
         const first = new Quaternion().fromArray(track.values, 0)
         const last = new Quaternion().fromArray(track.values, (count - 1) * 4)

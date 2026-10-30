@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useId, useState } from "react"
 import { CalendarClock, Hand, Radio, TrendingUp, type LucideIcon } from "lucide-react"
 
 import {
@@ -100,6 +100,7 @@ function scheduleFrequencyKindOf(trigger: ScheduleTrigger): ScheduleFrequencyKin
  */
 function ScheduleTriggerFields({ value, onChange, scope }: { value: ScheduleTrigger; onChange: (next: ScheduleTrigger) => void; scope?: ScopeInput }) {
   const mode = scheduleModeOf(value)
+  const modeId = useId()
 
   function setMode(next: "CALENDAR" | "RELATIVE_TO_SHIFT") {
     if (next === "CALENDAR") onChange({ kind: "schedule", mode: "CALENDAR", times: [], intervalDays: 1, frequency: { type: "DAILY" } })
@@ -109,9 +110,9 @@ function ScheduleTriggerFields({ value, onChange, scope }: { value: ScheduleTrig
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Modo da agenda</Label>
+        <Label htmlFor={modeId}>Modo da agenda</Label>
         <Select value={mode} onValueChange={(next) => setMode(next as "CALENDAR" | "RELATIVE_TO_SHIFT")}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={modeId} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -153,13 +154,14 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
 
   const monthly = value.frequency?.type === "MONTHLY" ? value.frequency : undefined
   const weekly = value.frequency?.type === "WEEKLY" ? value.frequency : undefined
+  const fieldId = useId()
 
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Frequência</Label>
+        <Label htmlFor={`${fieldId}-frequency`}>Frequência</Label>
         <Select value={kind} onValueChange={(next) => setFrequencyKind(next as ScheduleFrequencyKind)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-frequency`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -173,8 +175,8 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
       </div>
 
       <div className="space-y-1.5">
-        <Label>Horários</Label>
-        <TimeListEditor times={value.times ?? []} onChange={(times) => onChange({ ...value, times })} />
+        <Label htmlFor={`${fieldId}-times`}>Horários</Label>
+        <TimeListEditor id={`${fieldId}-times`} times={value.times ?? []} onChange={(times) => onChange({ ...value, times })} />
       </div>
 
       {kind === "WEEKLY" ? (
@@ -198,7 +200,7 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
       {kind === "MONTHLY" ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label>Executar</Label>
+            <Label htmlFor={`${fieldId}-monthly-mode`}>Executar</Label>
             <Select
               value={monthly?.mode ?? "DAY_OF_MONTH"}
               onValueChange={(mode) =>
@@ -208,7 +210,7 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
                 })
               }
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-monthly-mode`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -219,8 +221,9 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
           </div>
           {monthly?.mode === "DAY_OF_MONTH" ? (
             <div className="space-y-1.5">
-              <Label>Dia</Label>
+              <Label htmlFor={`${fieldId}-monthly-day`}>Dia</Label>
               <Input
+                id={`${fieldId}-monthly-day`}
                 type="number"
                 min={1}
                 max={31}
@@ -237,8 +240,9 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
 
       {kind === "EVERY_N_DAYS" ? (
         <div className="space-y-1.5">
-          <Label>A cada quantos dias</Label>
+          <Label htmlFor={`${fieldId}-interval`}>A cada quantos dias</Label>
           <Input
+            id={`${fieldId}-interval`}
             type="number"
             min={1}
             max={90}
@@ -308,6 +312,7 @@ function RelativeScheduleFields({ value, onChange, scope }: { value: ScheduleTri
   const relative = value.relative ?? defaultRelativeFor("PERCENTAGE")
   const isComplete = isTriggerComplete(value)
   const previewQuery = useSchedulePreviewQuery(value, scope, isComplete)
+  const fieldId = useId()
 
   function setAnchor(anchor: ScheduleAnchor) {
     onChange({ ...value, relative: defaultRelativeFor(anchor) })
@@ -316,9 +321,9 @@ function RelativeScheduleFields({ value, onChange, scope }: { value: ScheduleTri
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label>Momento</Label>
+        <Label htmlFor={`${fieldId}-anchor`}>Momento</Label>
         <Select value={relative.anchor} onValueChange={(next) => setAnchor(next as ScheduleAnchor)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-anchor`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -333,8 +338,9 @@ function RelativeScheduleFields({ value, onChange, scope }: { value: ScheduleTri
 
       {relative.anchor === "START" || relative.anchor === "END" ? (
         <div className="space-y-1.5">
-          <Label>{relative.anchor === "START" ? "Quantidade (minutos após o início)" : "Antecedência (minutos antes do fim)"}</Label>
+          <Label htmlFor={`${fieldId}-offset`}>{relative.anchor === "START" ? "Quantidade (minutos após o início)" : "Antecedência (minutos antes do fim)"}</Label>
           <Input
+            id={`${fieldId}-offset`}
             type="number"
             min={0}
             max={1440}
@@ -348,9 +354,10 @@ function RelativeScheduleFields({ value, onChange, scope }: { value: ScheduleTri
         </div>
       ) : (
         <div className="space-y-1.5">
-          <Label>Percentual da jornada</Label>
+          <Label htmlFor={`${fieldId}-percentage`}>Percentual da jornada</Label>
           <div className="flex flex-wrap items-center gap-2">
             <Input
+              id={`${fieldId}-percentage`}
               type="number"
               min={0}
               max={100}
@@ -434,6 +441,7 @@ export function TriggerFields({
 }) {
   const flagsQuery = useChannelFlagsQuery()
   const indicatorsQuery = useIndicatorsWithRulesQuery()
+  const fieldId = useId()
 
   return (
     <div className="space-y-4">
@@ -496,9 +504,9 @@ export function TriggerFields({
           </div>
           {value.context === "INDICATOR_MEASUREMENT" ? (
             <div className="space-y-1.5">
-              <Label>Indicador</Label>
+              <Label htmlFor={`${fieldId}-manual-indicator`}>Indicador</Label>
               <Select value={value.indicatorCode ?? ""} onValueChange={(indicatorCode) => onChange({ kind: "manual", context: "INDICATOR_MEASUREMENT", indicatorCode })}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-manual-indicator`} className="w-full">
                   <SelectValue placeholder="Selecione o indicador" />
                 </SelectTrigger>
                 <SelectContent>
@@ -517,9 +525,9 @@ export function TriggerFields({
         </div>
       ) : value.kind === "channel_flag" ? (
         <div className="space-y-1.5">
-          <Label>Flag do canal</Label>
+          <Label htmlFor={`${fieldId}-flag`}>Flag do canal</Label>
           <Select value={value.channelFlagId} onValueChange={(channelFlagId) => onChange({ kind: "channel_flag", channelFlagId })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-flag`} className="w-full">
               <SelectValue placeholder="Selecione a flag" />
             </SelectTrigger>
             <SelectContent>
@@ -533,9 +541,9 @@ export function TriggerFields({
         </div>
       ) : (
         <div className="space-y-1.5">
-          <Label>Indicador</Label>
+          <Label htmlFor={`${fieldId}-indicator`}>Indicador</Label>
           <Select value={value.indicatorCode} onValueChange={(indicatorCode) => onChange({ kind: "indicator", indicatorCode })}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-indicator`} className="w-full">
               <SelectValue placeholder="Selecione o indicador" />
             </SelectTrigger>
             <SelectContent>

@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { decodeSourcePath, decodeStructuredFieldPath, encodeSourcePath, encodeStructuredFieldPath, encodeVariableSourcePath, mapOutputFieldTypeToVariableType, resolveDynamicValueSources, resolveStructuredFields } from "../content-sources"
@@ -69,6 +71,7 @@ function DynamicVariableSourceForm({
   const compatibleFields = structuredFields?.filter((field) => mapOutputFieldTypeToVariableType(field.type) === variableType)
   const currentFieldPath = decoded?.kind === "node" && decoded.field ? decodeStructuredFieldPath(decoded.field) : null
   const compatibleVariables = (variablesQuery.data ?? []).filter((candidate) => candidate.type === variableType && candidate.id !== currentVariableId)
+  const fieldId = useId()
 
   function selectFonte(next: DynamicFonteKind) {
     if (next === "trigger") onChange(encodeSourcePath("trigger", ""))
@@ -78,9 +81,9 @@ function DynamicVariableSourceForm({
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Label>Fonte</Label>
+        <Label htmlFor={`${fieldId}-fonte`}>Fonte</Label>
         <Select value={fonte || undefined} onValueChange={(value) => selectFonte(value as DynamicFonteKind)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-fonte`} className="w-full">
             <SelectValue placeholder="Selecione" />
           </SelectTrigger>
           <SelectContent>
@@ -98,14 +101,14 @@ function DynamicVariableSourceForm({
       {fonte === "node" ? (
         <div className="space-y-2">
           <div className="space-y-1.5">
-            <Label>Resultado de</Label>
+            <Label htmlFor={`${fieldId}-node`}>Resultado de</Label>
             {nodeOptions.length === 0 ? (
               <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
                 Nenhum resultado disponível ainda — conecte este nó depois de um Agente, Orquestrador ou Avaliar política de acompanhamento.
               </p>
             ) : (
               <Select value={nodeId} onValueChange={(next) => onChange(encodeSourcePath(next, ""))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-node`} className="w-full">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -120,9 +123,9 @@ function DynamicVariableSourceForm({
           </div>
           {nodeId && structuredFields ? (
             <div className="space-y-1.5">
-              <Label>Informação</Label>
+              <Label htmlFor={`${fieldId}-field`}>Informação</Label>
               <Select value={currentFieldPath ?? undefined} onValueChange={(fieldPath) => onChange(encodeStructuredFieldPath(nodeId, fieldPath))}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`${fieldId}-field`} className="w-full">
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
@@ -146,12 +149,12 @@ function DynamicVariableSourceForm({
 
       {fonte === "variable" ? (
         <div className="space-y-1.5">
-          <Label>Variável</Label>
+          <Label htmlFor={`${fieldId}-variable`}>Variável</Label>
           {compatibleVariables.length === 0 ? (
             <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">Nenhuma outra variável do mesmo tipo disponível ainda.</p>
           ) : (
             <Select value={variableId} onValueChange={(next) => onChange(encodeVariableSourcePath(next))}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-variable`} className="w-full">
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
               <SelectContent>
@@ -200,6 +203,7 @@ export function SetVariableForm({
   // contando como dinâmico, senão o Select "Origem do valor" volta sozinho pra Fixo assim que o
   // admin troca de modo (bug encontrado testando no navegador).
   const isDynamic = config.sourcePath !== undefined
+  const fieldId = useId()
 
   function selectVariable(next: WorkflowVariable) {
     // Trocar de variável invalida a origem/valor anteriores — o tipo pode não bater mais com o
@@ -217,15 +221,15 @@ export function SetVariableForm({
   return (
     <div className="space-y-2">
       <div className="space-y-1.5">
-        <Label>Variável</Label>
-        <WorkflowVariablePicker workflowId={workflowId} value={config.variableId} onChange={selectVariable} />
+        <Label htmlFor={`${fieldId}-variable`}>Variável</Label>
+        <WorkflowVariablePicker id={`${fieldId}-variable`} workflowId={workflowId} value={config.variableId} onChange={selectVariable} />
       </div>
 
       {variable ? (
         <div className="space-y-1.5">
-          <Label>Origem do valor</Label>
+          <Label htmlFor={`${fieldId}-origin`}>Origem do valor</Label>
           <Select value={isDynamic ? "dynamic" : "fixed"} onValueChange={(value) => setOrigin(value as "fixed" | "dynamic")}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger id={`${fieldId}-origin`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -238,8 +242,8 @@ export function SetVariableForm({
 
       {variable && !isDynamic && fieldType ? (
         <div className="space-y-1.5">
-          <Label>Valor</Label>
-          <TypedValueInput kind={fieldType} comparator="EQUALS" value={config.value} onChange={(value) => onChange({ ...config, value })} />
+          <Label htmlFor={`${fieldId}-value`}>Valor</Label>
+          <TypedValueInput id={`${fieldId}-value`} kind={fieldType} comparator="EQUALS" value={config.value} onChange={(value) => onChange({ ...config, value })} />
         </div>
       ) : null}
 

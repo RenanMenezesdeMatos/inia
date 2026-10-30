@@ -1,5 +1,6 @@
 import type pg from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { resolveWindowComponentsBySubject, type ComponentWindow, type WindowComponentRow } from "../../indicators/application/operational-window-components.js"
 import type { MeasurementWindowRow, WindowEligibilityFacts } from "../../indicators/application/operational-measurement-resolver.js"
 import { localDateOf, localDatesInWindow, resolvePreviousTimeWindow, resolveTimeWindow, type TimeWindow } from "../../workflows/application/time-window.js"
@@ -202,18 +203,7 @@ export async function readStructureWindows(
   input: { organizationId: string; personIds: string[]; comparison: OperationalComparison; window: TimeWindow; previousWindow: TimeWindow; now: Date; timeZone: string; indicatorCodes: string[] },
 ): Promise<StructureReadModelWindows | null> {
   if (!isPool(db)) return readStructureWindowsWith(db, input)
-  const client = await db.connect()
-  try {
-    await client.query("begin isolation level repeatable read read only")
-    const result = await readStructureWindowsWith(client as unknown as Database, input)
-    await client.query("commit")
-    return result
-  } catch (error) {
-    await client.query("rollback").catch(() => undefined)
-    throw error
-  } finally {
-    client.release()
-  }
+  return inTransaction(db, (client) => readStructureWindowsWith(client as unknown as Database, input), { isolation: "repeatable read", readOnly: true })
 }
 
 async function readStructureWindowsWith(

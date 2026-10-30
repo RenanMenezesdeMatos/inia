@@ -175,8 +175,8 @@ class SpeechDriver implements AvatarSpeechDriver {
       return
     }
     let due = 0
-    while (due < this.delayed.length && this.delayed[due].at - CUE_LEAD_SECONDS <= heard) {
-      this.pushImmediate(this.delayed[due].cue)
+    while (due < this.delayed.length && this.delayed[due]!.at - CUE_LEAD_SECONDS <= heard) {
+      this.pushImmediate(this.delayed[due]!.cue)
       due++
     }
     if (due > 0) this.delayed.splice(0, due)

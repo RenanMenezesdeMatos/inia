@@ -1,5 +1,6 @@
 "use client"
 
+import { useId } from "react"
 import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -43,6 +44,7 @@ function GroupRuleForm({
   removable: boolean
 }) {
   const origin = groupRuleOriginOf(rule)
+  const originId = useId()
 
   function setOrigin(next: GroupRuleOrigin) {
     onChange({
@@ -65,9 +67,9 @@ function GroupRuleForm({
         ) : null}
       </div>
       <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">Origem</Label>
+        <Label htmlFor={originId} className="text-xs text-muted-foreground">Origem</Label>
         <Select value={origin} onValueChange={(value) => setOrigin(value as GroupRuleOrigin)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={originId} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -106,6 +108,7 @@ export function ConditionGroupForm({
   onChange: (next: FlowNode) => void
 }) {
   const group = node.config.group!
+  const operatorId = useId()
 
   function updateRuleAt(index: number, nextRule: ConditionRule) {
     const rules = group.rules.map((rule, i) => (i === index ? nextRule : rule))
@@ -125,12 +128,12 @@ export function ConditionGroupForm({
     <div className="space-y-3 rounded-md border p-3">
       <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Grupo de condições</p>
       <div className="space-y-1.5">
-        <Label>Combinar regras com</Label>
+        <Label htmlFor={operatorId}>Combinar regras com</Label>
         <Select
           value={group.operator}
           onValueChange={(value) => onChange({ ...node, config: { ...node.config, group: { ...group, operator: value as "ALL" | "ANY" } } })}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={operatorId} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

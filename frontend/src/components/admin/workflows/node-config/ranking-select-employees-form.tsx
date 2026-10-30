@@ -1,5 +1,7 @@
 "use client"
 
+import { useId } from "react"
+
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -86,6 +88,7 @@ export function RankingSelectEmployeesForm({
   // Valor bruto depende da direção oficial do indicador escolhido — "TARGET"/indicador ainda não
   // selecionado não tem Melhores/Piores/Evolução/Queda disponível nesta V1.
   const directionAvailable = kind !== "VALUE" || (selectedIndicator !== undefined && selectedIndicator.desiredDirection !== "TARGET")
+  const fieldId = useId()
 
   function updateRanking(patch: Partial<EmployeeRankingConfig>) {
     onChange({ ...node, config: { selectionMode: "RANKING", ranking: { ...ranking, ...patch } } })
@@ -140,9 +143,9 @@ export function RankingSelectEmployeesForm({
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div className="space-y-1.5">
-        <Label>Ranquear por</Label>
+        <Label htmlFor={`${fieldId}-basis`}>Ranquear por</Label>
         <Select value={basis} onValueChange={(value) => setBasis(value as "VALUE" | "CHANGE")}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-basis`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -153,9 +156,9 @@ export function RankingSelectEmployeesForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label>O que deseja analisar?</Label>
+        <Label htmlFor={`${fieldId}-kind`}>O que deseja analisar?</Label>
         <Select value={kind} onValueChange={(value) => setKind(value as RankingAnalysisKind)}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-kind`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -182,9 +185,9 @@ export function RankingSelectEmployeesForm({
       )}
 
       <div className="space-y-1.5">
-        <Label>Considerando</Label>
+        <Label htmlFor={`${fieldId}-aggregation`}>Considerando</Label>
         <Select value={ranking.aggregation ?? "AVERAGE"} onValueChange={(value) => updateRanking({ aggregation: value as EmployeeRankingAggregation })}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-aggregation`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -218,9 +221,9 @@ export function RankingSelectEmployeesForm({
       <div className="grid grid-cols-2 gap-2 border-t pt-3">
         {isQuartile ? (
           <div className="space-y-1.5">
-            <Label>Quartil operacional</Label>
+            <Label htmlFor={`${fieldId}-quartile`}>Quartil operacional</Label>
             <Select value={ranking.operationalQuartile ?? "Q4"} onValueChange={(value) => updateRanking({ operationalQuartile: value as EmployeeRankingConfig["operationalQuartile"] })}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-quartile`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -234,8 +237,9 @@ export function RankingSelectEmployeesForm({
           </div>
         ) : (
           <div className="space-y-1.5">
-            <Label>Selecionar</Label>
+            <Label htmlFor={`${fieldId}-count`}>Selecionar</Label>
             <Input
+              id={`${fieldId}-count`}
               type="number"
               min={1}
               value={ranking.count ?? 5}
@@ -245,7 +249,7 @@ export function RankingSelectEmployeesForm({
           </div>
         )}
         <div className="space-y-1.5">
-          <Label>{basis === "CHANGE" ? "Direção" : "Posição"}</Label>
+          <Label htmlFor={`${fieldId}-selection`}>{basis === "CHANGE" ? "Direção" : "Posição"}</Label>
           {basis === "CHANGE" && !directionAvailable ? (
             <p className="text-xs text-destructive">
               {selectedIndicator?.desiredDirection === "TARGET"
@@ -254,7 +258,7 @@ export function RankingSelectEmployeesForm({
             </p>
           ) : (
             <Select value={ranking.selection ?? (basis === "CHANGE" ? "DECLINED" : "LOWEST")} onValueChange={(value) => updateRanking({ selection: value as EmployeeRankingSelection })}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id={`${fieldId}-selection`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -286,9 +290,9 @@ export function RankingSelectEmployeesForm({
       ) : null}
 
       <div className="space-y-1.5">
-        <Label>Separar ranking por</Label>
+        <Label htmlFor={`${fieldId}-partition`}>Separar ranking por</Label>
         <Select value={partitionBy} onValueChange={(value) => updateRanking({ partitionBy: value as EmployeeRankingConfig["partitionBy"] })}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger id={`${fieldId}-partition`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
