@@ -583,6 +583,18 @@ arquivo entraram só os dois trechos do F-02, aplicados ao índice por patch.
   - SQL Server não rodou, porque depende de emulação em ARM.
 - **Navegador:** a visão em tabela de Workflows foi conferida na tela real (servidor de desenvolvimento local, conta de teste da massa demo). O nome de cada linha é um `<a href>` focável. Ao fim: preferência de visão devolvida para cards, logout, janela restaurada. Os outros itens visíveis (fronteiras de erro, rótulos acessíveis) ficaram cobertos por testes de componente e pelo build.
 
+- **Primeira execução do CI no GitHub** (publicação `7f35d9ac`):
+  - backend verde; provas puladas, como previsto (são sob demanda);
+  - frontend com 1 falha: o custo de CPU do lip-sync deu 1.137 ms para 55 s de fala (~2%) contra o orçamento absoluto de 1%, que
+    foi calibrado na máquina de desenvolvimento;
+  - decisão: no CI (`CI=true`) o teste se pula e diz por quê, pela mesma regra que já valia para máquina saturada (medida que
+    não diz nada sobre o motor). Ele continua valendo localmente (`npm run verificar`);
+  - observação para o produto: em hardware mais fraco que o de desenvolvimento, o lip-sync passa de 1% de CPU. Vale medir numa
+    máquina típica de operador antes de concluir algo;
+  - nenhum timeout de RPC do Vitest no CI.
+- **Instabilidade observada sob carga alta (local):** `Parse Error: Expected HTTP/` do supertest em testes de rota, uma vez em
+  `qa-lab-router.test.ts` e uma em `feedback-review-router.test.ts`. Repetidos sozinhos, passam (3/3). Não investigado.
+
 ### 11.2 O que continua em aberto
 
 - **Arquivos com trabalho de outras sessões** (por decisão do usuário):
