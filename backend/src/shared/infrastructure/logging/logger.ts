@@ -1,6 +1,7 @@
 import { format } from "node:util"
 import pino from "pino"
 import { env } from "../../../config/env.js"
+import { currentRequestId } from "../../application/observability/request-context.js"
 
 /**
  * LOGS ESTRUTURADOS SEM ESCRITA SÍNCRONA. No Windows o serviço (WinSW) lê a saída do Node por um PIPE — e no Windows o Node
@@ -43,8 +44,14 @@ function sharedDestination() {
 }
 
 function rootLogger(): pino.Logger {
-  root ??= env.NODE_ENV === "test" ? pino({ enabled: false }) : pino({ level: env.LOG_LEVEL, base: { pid: process.pid } }, sharedDestination())
+  root ??= env.NODE_ENV === "test" ? pino({ enabled: false }) : pino({ level: env.LOG_LEVEL, base: { pid: process.pid }, mixin: requestIdField }, sharedDestination())
   return root
+}
+
+/** Dentro de uma requisição HTTP, toda linha leva o id dela (o mesmo devolvido em `x-request-id` e no 500 genérico). */
+function requestIdField(): Record<string, unknown> {
+  const requestId = currentRequestId()
+  return requestId ? { requestId } : {}
 }
 
 /** Logger estruturado de um componente (`name` vira campo de cada linha). */

@@ -23,6 +23,7 @@ import { linkPersonToSourcePerson, loadPersonLink } from "../../people/applicati
 import { describeManagedFieldViolations, emptyPersonFieldControl, managedFieldViolations, type PersonSourceField } from "../../data-hub/domain/person-field-control.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * NÍVEL HIERÁRQUICO da pessoa (`people.role`) — dado ORGANIZACIONAL, não acesso (V1.5.7). "ADMIN" aqui é legado: marca uma
@@ -145,13 +146,13 @@ export function createUserAccountRouter(db: Database) {
   const accessRepository = createPostgresAccessRepository(db)
   // Custódia de credencial (e-mail de login, inativação) — a mesma do módulo de acessos.
   const accountDeps: AccountAccessDeps = { repository: accessRepository, now: () => new Date(), accounts: createPostgresAccountAccessRepository(db), hashPassword, temporaryPasswordTtlHours: env.TEMPORARY_PASSWORD_TTL_HOURS }
-  const actorOf = (request: Request) => ({ organizationId: request.user!.organizationId, accountId: request.user!.sub, personId: request.user!.personId })
+  const actorOf = (request: Request) => ({ organizationId: sessionUser(request).organizationId, accountId: sessionUser(request).sub, personId: sessionUser(request).personId })
   // Escopo de `people.manage` (V1.5.7): administrador de um Grupo/Subgrupo só enxerga/edita pessoas de lá; fora = 404.
-  const scopesOf = (request: Request) => getManageableScopes(db, request.user!, "people.manage")
+  const scopesOf = (request: Request) => getManageableScopes(db, sessionUser(request), "people.manage")
   const personInScope = async (request: Request, personId: string) => {
     const scopes = await scopesOf(request)
     if (scopes.unrestricted || scopes.allTeams) return true
-    const person = await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [personId, request.user!.organizationId])
+    const person = await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [personId, sessionUser(request).organizationId])
     const row = person.rows[0]
     return Boolean(row && ((row.team_id && scopes.teamIds.has(row.team_id)) || (row.subteam_id && scopes.subteamIds.has(row.subteam_id))))
   }
@@ -168,7 +169,7 @@ export function createUserAccountRouter(db: Database) {
    * escopo por pessoa (`/:id`), que trataria "creation-policy" como id.
    */
   router.get("/creation-policy", async (request, response) => {
-    const sources = await loadLivePersonFeeds(db, request.user!.organizationId, "EMPLOYEES")
+    const sources = await loadLivePersonFeeds(db, sessionUser(request).organizationId, "EMPLOYEES")
     response.json({ data: { hierarchyRequiresMatricula: sources.length > 0, sources } })
   })
 
@@ -182,7 +183,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.get("/:id/employment-status", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const person = await db.query<{ current_employment_status: string; operational_capital_code: string | null }>(`select current_employment_status, operational_capital_code from people where id = $1 and organization_id = $2`, [request.params.id, organizationId])
     if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
     const timeZone = await resolveOrganizationTimezone(db, organizationId)
@@ -201,7 +202,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.post("/:id/employment-status", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = employmentStatusSchema.parse(request.body)
     const person = await db.query(`select id from people where id = $1 and organization_id = $2`, [request.params.id, organizationId])
     if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
@@ -233,7 +234,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listUsersSchema.parse(request.query)
     const scopes = await scopesOf(request)
     const filter = new SqlFilter([organizationId])
@@ -256,7 +257,7 @@ export function createUserAccountRouter(db: Database) {
   // Detalhe da pessoa: a que ela PERTENCE na estrutura (Grupo, Subgrupo, gestor — dado da base) e quem controla cada campo.
   // O que ela ADMINISTRA (papéis com escopo) é acesso e fica em /api/v1/admin/access.
   router.get("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query<{
       id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null
       team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; manager_id: string | null; manager_name: string | null
@@ -292,7 +293,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = createUserSchema.parse(request.body)
     const scopes = await scopesOf(request)
     if (!scopes.unrestricted && !scopes.allTeams && !(input.teamId && scopes.teamIds.has(input.teamId))) {
@@ -300,7 +301,7 @@ export function createUserAccountRouter(db: Database) {
     }
     if (isHierarchyRole(input.role) && !coversOrganization(scopes)) throw LEADERSHIP_REQUIRES_ORGANIZATION()
     // Criar a conta com senha = custódia de credencial: exige também administrar acessos no escopo do Grupo.
-    const accessScopes = await getManageableScopes(db, request.user!, "access.users.manage")
+    const accessScopes = await getManageableScopes(db, sessionUser(request), "access.users.manage")
     if (!accessScopes.unrestricted && !accessScopes.allTeams && !(input.teamId && accessScopes.teamIds.has(input.teamId))) {
       throw new DomainError("Criar uma conta de acesso exige administrar acessos no Grupo da pessoa.", "FORBIDDEN", 403)
     }
@@ -340,7 +341,7 @@ export function createUserAccountRouter(db: Database) {
         // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
         await client.query(
           `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
-          [organizationId, request.user!.personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: request.user!.sub })],
+          [organizationId, sessionUser(request).personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
         )
         return { personId, account, expiresAt }
       })
@@ -358,7 +359,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateUserSchema.parse(request.body)
     const personId = request.params.id!
     const teamIdSent = "teamId" in request.body
@@ -381,7 +382,7 @@ export function createUserAccountRouter(db: Database) {
     }
     const changesAccess = input.role !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined
     // Ninguém altera o próprio nível, Grupo, e-mail de login ou situação de acesso — outra pessoa autorizada precisa fazer isso.
-    if (changesAccess && personId === request.user!.personId) {
+    if (changesAccess && personId === sessionUser(request).personId) {
       throw new DomainError("Você não pode alterar o seu próprio nível, Grupo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
     }
     const scopes = await scopesOf(request)
@@ -441,7 +442,7 @@ export function createUserAccountRouter(db: Database) {
            insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload)
            select organization_id, $5::uuid, 'ACCESS_DISABLED', 'user_account', id, $6::jsonb
            from changed where $2::boolean is false and was_active`,
-          [input.email ?? null, input.active ?? null, request.params.id, organizationId, request.user!.personId, JSON.stringify({ personId: request.params.id, reason: "PERSON_DEACTIVATED", sessionsRevoked: true })],
+          [input.email ?? null, input.active ?? null, request.params.id, organizationId, sessionUser(request).personId, JSON.stringify({ personId: request.params.id, reason: "PERSON_DEACTIVATED", sessionsRevoked: true })],
         )
       }
       response.json({ data: person.rows[0] })
@@ -460,15 +461,15 @@ export function createUserAccountRouter(db: Database) {
    * própria conta. Pré-condições do dado: ver people/application/person-source-link.ts.
    */
   router.post("/:id/link", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const fromPersonId = request.params.id!
     const { targetPersonId } = linkSchema.parse(request.body)
-    if (fromPersonId === request.user!.personId) {
+    if (fromPersonId === sessionUser(request).personId) {
       throw new DomainError("Você não pode vincular a sua própria conta — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
     }
     if (targetPersonId !== fromPersonId && !(await personInScope(request, targetPersonId))) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
     await assertAccountRelinkAllowed(accountDeps, actorOf(request), fromPersonId, targetPersonId)
-    const result = await linkPersonToSourcePerson(db, { organizationId, fromPersonId, toPersonId: targetPersonId, actorPersonId: request.user!.personId, actorAccountId: request.user!.sub })
+    const result = await linkPersonToSourcePerson(db, { organizationId, fromPersonId, toPersonId: targetPersonId, actorPersonId: sessionUser(request).personId, actorAccountId: sessionUser(request).sub })
     response.json({ data: result })
   })
 
@@ -479,7 +480,7 @@ export function createUserAccountRouter(db: Database) {
   // mudar a jornada de alguém nunca deixa uma ocorrência futura presa a um horário antigo (Parte
   // 28): o checador sempre lê a linha vigente de HOJE, fresca, a cada tick.
   router.get("/:id/shift", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query(
       `select start_time "startTime", work_minutes "workMinutes", effective_from "effectiveFrom"
        from employee_work_shifts
@@ -491,7 +492,7 @@ export function createUserAccountRouter(db: Database) {
   })
 
   router.put("/:id/shift", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = workShiftSchema.parse(request.body)
     const person = await db.query(`select id from people where id = $1 and organization_id = $2`, [request.params.id, organizationId])
     if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })

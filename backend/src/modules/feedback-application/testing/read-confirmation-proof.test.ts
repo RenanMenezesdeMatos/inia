@@ -21,6 +21,8 @@ import { confirmFeedbackReading, recordReadConfirmationEvent } from "../applicat
 import { verifyPassword } from "../../auth/infrastructure/password-hasher.js"
 import { createFeedbackApplicationsRouter } from "../presentation/feedback-applications-router.js"
 import { createFeedbackReadConfirmationsRouter } from "../presentation/feedback-read-confirmations-router.js"
+import { createOperatorRouter } from "../../reporting/presentation/operator-router.js"
+import { frontendSchema } from "../../../shared/presentation/testing/frontend-schema.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
 const ORG = "00000000-0000-4000-8000-000000000001"
@@ -219,5 +221,33 @@ describe.skipIf(!ENABLED)("Confirmação de ciência com login e senha — prova
     expect((await request(app).post(`/feedbacks/${feedbackId}/acknowledge`)).status).toBe(404)
     const { application } = await startOrResumeApplication(db(), scopeOf(joana, joanaAccount), { kind: "PUBLISHED_FEEDBACK", id: await publish(joana) }, new Date())
     expect((await request(app).post(`/feedback-applications/${application.id}/complete`)).status).toBe(404)
+  })
+
+  it("contrato com a tela: o Acompanhamento (perfil, feed e próxima página) e a resposta da ciência passam pelos schemas zod do frontend", async () => {
+    const feedbackId = await publish(joana)
+    const app = express()
+    app.use(express.json())
+    app.use((req, _res, next) => { req.user = { sub: joanaAccount, personId: joana, organizationId: ORG, role: "OPERATOR", name: "Joana", email: joanaEmail, avatarUrl: null, jobTitle: null, teamId: null, teamName: null }; next() })
+    app.use("/operator", createOperatorRouter(db()))
+    app.use("/feedback-read-confirmations", createFeedbackReadConfirmationsRouter(db()))
+    const [overviewSchema, pageSchema, confirmationSchema] = await Promise.all([
+      frontendSchema("schemas/operator/operator-overview.schema.ts", "operatorOverviewSchema"),
+      frontendSchema("schemas/operator/operator-overview.schema.ts", "operatorFeedbackPageSchema"),
+      frontendSchema("schemas/feedback-read-confirmations/feedback-read-confirmation.schema.ts", "readConfirmationResultSchema"),
+    ])
+
+    const overview = await request(app).get("/operator/overview")
+    expect(overview.status, JSON.stringify(overview.body).slice(0, 400)).toBe(200)
+    const screen = overviewSchema.parse(overview.body.data) as { feedbacks: { id: string }[] }
+    // O feedback publicado agora está no que a tela leu — o schema validou um item real, não uma lista vazia.
+    expect(screen.feedbacks.map((item) => item.id)).toContain(feedbackId)
+
+    const page = await request(app).get("/operator/feedbacks?limit=1")
+    expect(page.status).toBe(200)
+    pageSchema.parse(page.body.data)
+
+    const confirmed = await request(app).post("/feedback-read-confirmations").send({ ...attempt(feedbackId, { entryPoint: "FOLLOW_UP_FEED" }), login: joanaEmail, password: TEST_PASSWORD })
+    expect(confirmed.status).toBe(200)
+    confirmationSchema.parse(confirmed.body.data)
   })
 })

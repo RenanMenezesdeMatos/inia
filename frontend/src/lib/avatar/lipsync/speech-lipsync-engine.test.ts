@@ -2,7 +2,7 @@ import os from "node:os"
 import v8 from "node:v8"
 import vm from "node:vm"
 
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 
 import { compareWithReference, measureFixture } from "./__fixtures__/fixture-metrics"
 import {
@@ -26,6 +26,12 @@ import { createSpeechFrame } from "./types"
  * entregues na ordem e no instante em que chegaram, com o agendamento colado do transporte.
  * Roda com o G2P de teste (letras) e, quando o G2P de verdade responde, também com ele.
  */
+
+// Os blocos de replay das capturas são CPU síncrona de segundos por teste. Encadeados só por microtarefas, sob carga o worker
+// passava de 60 s sem voltar ao event loop e não lia a resposta do processo principal ("[vitest-worker]: Timeout calling
+// onTaskUpdate", prazo fixo do Vitest). Uma volta ao event loop entre esses testes resolve. Fica fora do bloco de turnos, onde
+// estão as medidas de custo e de alocação (dependem do ritmo do JIT e do lugar delas no arquivo).
+const yieldToEventLoop = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 const ALL_FIXTURES = listFixtureIds()
 // Capturas em que a transcrição do Live veio incompleta (2026-10-07): teste próprio, abaixo.
@@ -78,6 +84,7 @@ const isNucleusVowel = (phone: AlignedPhone) => phone.nucleus && PHONES[phone.ph
 const center = (phone: AlignedPhone) => (phone.start + phone.end) / 2
 
 describe.each(PHONEMIZERS)("motor de lip-sync nas capturas reais (%s)", (_label, options) => {
+  afterEach(yieldToEventLoop)
   it.each(FIXTURES)("%s: /p/ e /b/ caem nos vales de energia (≥ 80%%) e todo P/B/M fecha os lábios", (id) => {
     const { engine } = run(id, options)
     const { phones, frames } = engine.debugSnapshot()
@@ -175,6 +182,7 @@ function warmUpEngine(): void {
  * Limitação conhecida: com um trecho faltando NO MEIO, as palavras depois do buraco ficam adiantadas.
  */
 describe.runIf(realG2PAvailable)("motor de lip-sync com a transcrição incompleta (G2P PT-BR)", () => {
+  afterEach(yieldToEventLoop)
   it.each(INCOMPLETE_TEXT_FIXTURES)("%s: a boca acompanha a fala sem texto e descansa depois dela", (id) => {
     const { engine, schedule } = run(id, {})
     const { phones, frames } = engine.debugSnapshot()
@@ -225,6 +233,7 @@ describe.runIf(realG2PAvailable)("motor de lip-sync com a transcrição incomple
  * depois dele é desenhado pela boca "ao vivo" do áudio — ver `aligner.ts › TEXT_END_GRACE_SECONDS`).
  */
 describe.runIf(realG2PAvailable)("motor de lip-sync com o texto atrasado (G2P PT-BR)", () => {
+  afterEach(yieldToEventLoop)
   const SCENARIOS: Array<{ label: string; delay: number; jitter: number; seed: number }> = [
     { label: "0,25 s", delay: 0.25, jitter: 0, seed: 1 },
     { label: "0,5 s", delay: 0.5, jitter: 0, seed: 1 },
@@ -456,6 +465,12 @@ describe("motor de lip-sync: turnos, interrupção e streaming", () => {
       return { elapsed: cpuMs() - started, worst: worstChunk }
     }
     const runs = [measure(), measure(), measure()]
+    // A carga oscila: conferida também DEPOIS de medir (medida feita sob saturação não diz nada sobre o motor).
+    const loadAfter = os.loadavg()[0] ?? 0
+    if (loadAfter > os.availableParallelism()) {
+      console.warn(`[lip-sync] custo de CPU descartado: a máquina saturou durante a medida (carga ${loadAfter.toFixed(1)} em ${os.availableParallelism()} núcleos)`)
+      ctx.skip()
+    }
     const elapsed = Math.min(...runs.map((run) => run.elapsed))
     const worst = Math.min(...runs.map((run) => run.worst))
     const speechSeconds = schedule.speechEnd - schedule.speechStart
@@ -474,7 +489,9 @@ describe("motor de lip-sync: turnos, interrupção e streaming", () => {
     const frame = createSpeechFrame()
     const t0 = schedule.speechStart
     const span = schedule.speechEnd - schedule.speechStart
-    for (let i = 0; i < 2000; i++) engine.sample(t0 + (i / 2000) * span, frame)
+    // Aquecimento explícito até o V8 otimizar `sample()`: com 2.000 chamadas a medida dependia dos testes anteriores (e, com a
+    // máquina sobrecarregada, da compilação em segundo plano) e às vezes pegava código não otimizado (~1,5 KB/chamada).
+    for (let i = 0; i < 100_000; i++) engine.sample(t0 + (i / 100_000) * span, frame)
     gc()
     const before = process.memoryUsage().heapUsed
     for (let i = 0; i < 5000; i++) engine.sample(t0 + (i / 5000) * span, frame)

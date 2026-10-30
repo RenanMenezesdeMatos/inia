@@ -6,6 +6,7 @@ import type { FlowGraph } from "../../domain/graph-schema.js"
 import { parseSourcePath } from "../../application/validate-workflow-for-publish.js"
 import { createWorkflowVariableSchema, updateWorkflowVariableSchema } from "../../domain/workflow-variable-schema.js"
 import { NOT_FOUND, canManageWorkflow, fetchScopedRow } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 function graphReferencesVariable(graph: FlowGraph, variableId: string): boolean {
   return graph.nodes.some((node) => {
@@ -25,9 +26,9 @@ export function registerWorkflowVariableRoutes(router: Router, db: Database): vo
   // ---------------------------------------------------------------------------------------
 
   router.get("/:id/variables", async (request, response) => {
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query(
@@ -39,9 +40,9 @@ export function registerWorkflowVariableRoutes(router: Router, db: Database): vo
 
   router.post("/:id/variables", async (request, response) => {
     const input = createWorkflowVariableSchema.parse(request.body)
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query<{ id: string; name: string; type: string; createdAt: string }>(
@@ -53,9 +54,9 @@ export function registerWorkflowVariableRoutes(router: Router, db: Database): vo
 
   router.patch("/:id/variables/:variableId", async (request, response) => {
     const input = updateWorkflowVariableSchema.parse(request.body)
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query<{ id: string; name: string; type: string; createdAt: string }>(
@@ -67,9 +68,9 @@ export function registerWorkflowVariableRoutes(router: Router, db: Database): vo
   })
 
   router.delete("/:id/variables/:variableId", async (request, response) => {
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const graphsResult = await db.query<{ draft_graph: FlowGraph; published_graph: FlowGraph | null }>(

@@ -4,6 +4,7 @@ import type { Database } from "../../../../infrastructure/database/pool.js"
 import { getManageableScopes, type ManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import { listManualRunCollaborators, listManualRunInteractions, listManualRunMeasurements, listManualRuns, loadManualRun, loadManualRunTarget, manualRunBlockers, requestManualRun, type CollaboratorScopeCheck } from "../../application/manual-run.js"
 import { NOT_FOUND, canManageWorkflow, fetchScopedRow, type WorkflowRouterOptions } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 
 /** Gatilho Manual — "Executar agora". Registradas na ordem original (ver workflow-router.ts). */
@@ -25,18 +26,18 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   }
 
   async function manualRunAccess(request: import("express").Request) {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const workflowId = String(request.params.id)
     const current = await fetchScopedRow(db, organizationId, workflowId)
     if (!current) return null
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return null
     const target = await loadManualRunTarget(db, organizationId, workflowId)
     return target ? { target, canAccess: collaboratorScopeCheck(scopes) } : null
   }
 
   router.get("/:id/manual-run", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const { target } = access
@@ -55,7 +56,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   })
 
   router.get("/:id/manual-run/collaborators", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const input = z.object({ search: z.string().trim().max(120).optional() }).parse(request.query)
@@ -63,7 +64,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   })
 
   router.get("/:id/manual-run/interactions", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const input = z.object({ collaboratorId: z.string().uuid(), search: z.string().trim().max(120).optional() }).parse(request.query)
@@ -71,7 +72,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   })
 
   router.get("/:id/manual-run/measurements", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const input = z.object({ collaboratorId: z.string().uuid() }).parse(request.query)
@@ -79,7 +80,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   })
 
   router.post("/:id/manual-runs", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const input = z
@@ -92,7 +93,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
       .parse(request.body)
     const result = await requestManualRun(
       db,
-      { organizationId, workflowId: request.params.id!, requestedBy: request.user!.personId, collaboratorId: input.collaboratorId, interactionId: input.interactionId ?? null, indicatorMeasurementId: input.indicatorMeasurementId ?? null, idempotencyKey: input.idempotencyKey },
+      { organizationId, workflowId: request.params.id!, requestedBy: sessionUser(request).personId, collaboratorId: input.collaboratorId, interactionId: input.interactionId ?? null, indicatorMeasurementId: input.indicatorMeasurementId ?? null, idempotencyKey: input.idempotencyKey },
       access.canAccess,
     )
     // Só o disparo NOVO acorda o worker do motor (reivindica na hora, sem esperar a varredura); o reenvio não faz nada.
@@ -102,7 +103,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
   })
 
   router.get("/:id/manual-runs/:runId", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
     const run = await loadManualRun(db, organizationId, request.params.id!, request.params.runId!)

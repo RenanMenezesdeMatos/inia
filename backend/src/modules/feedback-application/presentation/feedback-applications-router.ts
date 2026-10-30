@@ -17,6 +17,7 @@ import {
   type ApplicationScope,
   type SpeechSynthesizer,
 } from "../application/feedback-application-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Aplicação de feedback conversacional — `/api/v1/feedback-applications`, sempre do PRÓPRIO destinatário (a pessoa da sessão;
@@ -39,7 +40,7 @@ const idParam = z.string().uuid()
 export function createFeedbackApplicationsRouter(db: Database, deps: { now?: () => Date; synthesizeSpeech?: { synthesize: SpeechSynthesizer; /** Voz + identidades aceitas no cache para a rota em vigor (policy da organização ou legado). */ accepted: () => Promise<SpeechCacheIdentity> } } = {}) {
   const router = Router()
   const now = deps.now ?? (() => new Date())
-  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): ApplicationScope => ({ organizationId: request.user!.organizationId, personId: request.user!.personId })
+  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): ApplicationScope => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
 
   router.get("/", async (request, response) => {
     response.json({ data: { items: await listApplications(db, scopeOf(request)) } })

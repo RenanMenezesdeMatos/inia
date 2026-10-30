@@ -5,6 +5,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { coversOrganization, getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { acknowledgeRemovedCheckpoint, approveCheckpointVersion, approveProposedInChangeSet, linkAmbiguousCheckpoint, rejectCheckpointVersion, setCheckpointScopes, setDocumentGovernance, syncCheckpointRegistry, updateCheckpointDefinition, type RegistryActor } from "../application/checkpoint-registry-service.js"
 import { listRegistryDocuments, loadCheckpointDefinition, loadDocumentRegistry, loadScopeOptions } from "../application/checkpoint-registry-queries.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * /api/v1/admin/checkpoints — "Checkpoints da operação" (montado com `knowledge.manage` NA ORGANIZAÇÃO INTEIRA: checkpoint é
@@ -19,9 +20,9 @@ const governanceSchema = z.object({ enabled: z.boolean() }).strict()
 
 export function createCheckpointRegistryRouter(db: Database) {
   const router = Router()
-  const session = (request: Request): RegistryActor => ({ organizationId: request.user!.organizationId, personId: request.user!.personId ?? null })
+  const session = (request: Request): RegistryActor => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId ?? null })
   const requireOrganizationWide = async (request: Request) => {
-    if (!coversOrganization(await getManageableScopes(db, request.user!, "knowledge.manage"))) throw new DomainError("Governar checkpoints exige a administração das Bases de Conhecimento na organização inteira.", "FORBIDDEN", 403)
+    if (!coversOrganization(await getManageableScopes(db, sessionUser(request), "knowledge.manage"))) throw new DomainError("Governar checkpoints exige a administração das Bases de Conhecimento na organização inteira.", "FORBIDDEN", 403)
   }
 
   router.get("/documents", async (request, response) => {

@@ -29,6 +29,8 @@
     "start": "node scripts/install/run.mjs start",
     "github:publish": "node scripts/github/publicar.mjs",
     "security:check": "node scripts/security/verificar.mjs",
-    "security:scan": "node scripts/security/varredura-appsec.mjs"
+    "security:scan": "node scripts/security/varredura-appsec.mjs",
+    "verificar": "node scripts/ci/verificar.mjs",
+    "typecheck:estrito": "node frontend/scripts/typecheck-strict.mjs"
   }
 }

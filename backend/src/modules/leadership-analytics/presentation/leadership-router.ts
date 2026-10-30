@@ -6,6 +6,7 @@ import { ANALYTICS_SUBJECT_KINDS } from "../../performance-analytics/domain/anal
 import { isGroupingDimension } from "../../performance-analytics/domain/hierarchy-levels.js"
 import { buildLeadershipHome, loadLeadershipSession, toolDependencies, type LeadershipSession } from "../application/leadership-context.js"
 import { executeLeadershipTool, isLeadershipTool } from "../application/leadership-toolset.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const subjectQuerySchema = z.object({
   subjectKind: z.enum(ANALYTICS_SUBJECT_KINDS as [string, ...string[]]).optional(),
@@ -17,7 +18,7 @@ const subjectQuerySchema = z.object({
  * Leituras determinísticas da liderança — as MESMAS funções que as ferramentas do chat executam, sem IA: o cartão "Onde atuar
  * hoje" do Acompanhamento e a verificação dos números. O sujeito vindo da query é validado contra o escopo da sessão.
  */
-export function createLeadershipRouter(db: Database, loadSession: (request: Request) => Promise<LeadershipSession | null> = (request) => loadLeadershipSession(db, request.user!)) {
+export function createLeadershipRouter(db: Database, loadSession: (request: Request) => Promise<LeadershipSession | null> = (request) => loadLeadershipSession(db, sessionUser(request))) {
   const router = Router()
 
   const requireSession = async (request: Request): Promise<LeadershipSession> => {

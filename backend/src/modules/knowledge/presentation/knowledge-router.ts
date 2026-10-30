@@ -13,6 +13,7 @@ import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
 import { canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { syncCheckpointRegistry } from "../../checkpoint-registry/application/checkpoint-registry-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const registryLog = createLogger("checkpoint-registry")
 
@@ -200,16 +201,16 @@ async function normalizeOrgScopes(db: Pick<Database, "query">, organizationId: s
 
 export function createKnowledgeRouter(db: Database) {
   const router = Router()
-  const scopesOf = (request: { user?: { organizationId: string; sub: string } }) => getManageableScopes(db, request.user!, "knowledge.manage")
+  const scopesOf = (request: { user?: { organizationId: string; sub: string } }) => getManageableScopes(db, sessionUser(request), "knowledge.manage")
   /** Documento legível pelo administrador da sessão (null = 404). */
   const readable = async (request: { user?: { organizationId: string; sub: string } }, id: string) => {
-    const documentScopes = await loadDocumentScopes(db, request.user!.organizationId, id)
+    const documentScopes = await loadDocumentScopes(db, sessionUser(request).organizationId, id)
     if (!documentScopes) return null
     return (await canReadDocument(db, await scopesOf(request), documentScopes)) ? documentScopes : null
   }
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listKnowledgeSchema.parse(request.query)
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.title", 'q."originalFilename"'])
@@ -243,7 +244,7 @@ export function createKnowledgeRouter(db: Database) {
 
   router.get("/:id", async (request, response) => {
     if (!(await readable(request, request.params.id))) return response.status(404).json(NOT_FOUND)
-    const detail = await fetchDocumentDetail(db, request.user!.organizationId, request.params.id)
+    const detail = await fetchDocumentDetail(db, sessionUser(request).organizationId, request.params.id)
     if (!detail) return response.status(404).json(NOT_FOUND)
     response.json({ data: detail })
   })
@@ -252,7 +253,7 @@ export function createKnowledgeRouter(db: Database) {
   // download. Passa pelo mesmo requireAdmin do router; não existe URL pública para o binário.
   router.get("/:id/file", async (request, response) => {
     if (!(await readable(request, request.params.id))) return response.status(404).json(NOT_FOUND)
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query<{ title: string; original_filename: string | null; source_type: string | null; file_data: Buffer }>(
       `select d.title, d.original_filename, d.source_type, f.file_data
        from knowledge_documents d
@@ -272,7 +273,7 @@ export function createKnowledgeRouter(db: Database) {
   // extração de texto). O arquivo original nunca é alterado; a conversão acontece a cada leitura.
   router.get("/:id/preview", async (request, response) => {
     if (!(await readable(request, request.params.id))) return response.status(404).json(NOT_FOUND)
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query<{ source_type: string; file_data: Buffer }>(
       `select d.source_type, f.file_data
        from knowledge_documents d
@@ -298,7 +299,7 @@ export function createKnowledgeRouter(db: Database) {
   })
 
   router.post("/", upload.single("file"), async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     // Sem corpo multipart/JSON o Express deixa `request.body` indefinido: vira erro de validação (400), não TypeError (500).
     const body = (request.body ?? {}) as Record<string, unknown>
     const input = createKnowledgeSchema.parse({
@@ -362,7 +363,7 @@ export function createKnowledgeRouter(db: Database) {
   })
 
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateKnowledgeSchema.parse(request.body)
     const documentId = request.params.id
     const currentScopes = await loadDocumentScopes(db, organizationId, documentId)
@@ -431,7 +432,7 @@ export function createKnowledgeRouter(db: Database) {
   })
 
   router.delete("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const currentScopes = await loadDocumentScopes(db, organizationId, request.params.id)
     if (!currentScopes || !canWriteDocument(await scopesOf(request), toTargets(currentScopes))) return response.status(404).json(NOT_FOUND)
     const result = await db.query(

@@ -8,6 +8,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { discardStrategyDraft, loadStrategyOverview, publishStrategyDraft, saveStrategyDraft, setStrategyActive, type StrategyActor } from "../application/diagnostic-strategy-service.js"
 import { simulateDiagnosticStrategy } from "../application/simulate-diagnostic-strategy.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * V1.6.2 — /api/v1/admin/indicator-diagnostic-strategies (montado com `configuration.manage`, a mesma permissão da tela de
@@ -26,10 +27,10 @@ const SIMULATION_RECENT_MEASUREMENTS = 90
 export function createDiagnosticStrategyRouter(db: Database) {
   const router = Router()
   const session = (request: Request) => {
-    const user = request.user!
+    const user = sessionUser(request)
     return { organizationId: user.organizationId, actor: { userAccountId: user.sub, personId: user.personId } satisfies StrategyActor, user }
   }
-  const scopesOf = (request: Request) => getManageableScopes(db, request.user!, "configuration.manage")
+  const scopesOf = (request: Request) => getManageableScopes(db, sessionUser(request), "configuration.manage")
   const requireOrganizationWide = async (request: Request) => {
     if (!coversOrganization(await scopesOf(request))) throw new DomainError("Alterar a estratégia de diagnóstico exige a administração de indicadores na organização inteira.", "FORBIDDEN", 403)
   }

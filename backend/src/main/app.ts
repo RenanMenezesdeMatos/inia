@@ -67,6 +67,8 @@ import { createNotificationsRouter } from "../modules/notifications/presentation
 import { createDataHubRouter } from "../modules/data-hub/presentation/data-hub-router.js"
 import { createDataIngestionRouter } from "../modules/data-hub/presentation/data-ingestion-router.js"
 import { DomainError } from "../shared/domain/domain-error.js"
+import { currentRequestId } from "../shared/application/observability/request-context.js"
+import { requestIdMiddleware } from "../shared/presentation/request-id.js"
 import { DataRunError } from "../modules/data-hub/domain/error-codes.js"
 import { createResponseCompression } from "../shared/presentation/compression.js"
 import { createOriginGuard } from "../shared/presentation/origin-guard.js"
@@ -202,6 +204,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const aiRuntime = createAiRuntime(database, { adapters: aiAdapters })
   if (options.registerAiRuntime) registerAiRuntime(aiRuntime)
   app.disable("x-powered-by")
+  // Antes de tudo: o id da requisição (logs e 500 genérico) vale para a cadeia inteira, inclusive métricas e limites.
+  app.use(requestIdMiddleware())
   if (options.metrics) app.use(options.metrics.middleware)
   // IP real do cliente atrás do IIS/proxy (limites de tentativas) — só de proxies explicitamente confiáveis.
   app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY))
@@ -427,7 +431,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
     // Falha inesperada: registrada no servidor (sem corpo, cookies nem query — podem ter dado pessoal ou segredo) e
     // devolvida sem detalhe interno.
     httpLog.error({ method: request.method, path: request.path, err: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error) }, "erro não tratado na API")
-    response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno." } })
+    // O id (também no cabeçalho x-request-id e em cada linha do log) liga a reclamação do usuário ao erro registrado.
+    response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno.", requestId: currentRequestId() ?? undefined } })
   }
   app.use(errorHandler)
   return app

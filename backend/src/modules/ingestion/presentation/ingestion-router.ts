@@ -6,6 +6,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { enrollFlagWorkflows } from "../../workflows/application/flag-enrollment.js"
 import { enrollIndicatorWorkflows } from "../../workflows/application/indicator-enrollment.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 // Ingestão LEGADA (anterior à Central de Dados) — montada só para `data_hub.manage` com escopo de organização. Organização =
 // a da sessão; colaborador precisa ser dela; tamanhos limitados (achado I-F5).
@@ -29,7 +30,7 @@ export const INGESTION_CLOCK_SKEW_MS = 5 * 60_000
 export function createIngestionRouter(db: Database) {
   const router = Router()
   router.post("/indicator-measurements/batch", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = z.array(measurementSchema).min(1).max(1000).parse(request.body)
     const results = await inTransaction(db, async (client) => {
       const results = []
@@ -64,7 +65,7 @@ export function createIngestionRouter(db: Database) {
   })
 
   router.post("/interactions", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = interactionSchema.parse(request.body)
     const operator = await db.query(`select 1 from people where id = $1 and organization_id = $2`, [input.operatorId, organizationId])
     if (!operator.rows[0]) return response.status(422).json({ error: { code: "OPERATOR_NOT_FOUND", message: "Colaborador não encontrado nesta organização." } })

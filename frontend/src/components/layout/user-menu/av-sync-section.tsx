@@ -43,7 +43,7 @@ export function AvSyncSection() {
           min={-AV_OFFSET_LIMIT_MS}
           max={AV_OFFSET_LIMIT_MS}
           step={10}
-          onValueChange={([next]) => setAvOffsetMs(next)}
+          onValueChange={([next]) => next !== undefined && setAvOffsetMs(next)}
           aria-labelledby={titleId}
           getAriaValueText={(ms) => describeAvOffset(ms)}
         />

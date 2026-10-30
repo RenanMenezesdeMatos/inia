@@ -13,6 +13,7 @@ import {
   updateBusinessDomain,
   type BusinessDomainActor,
 } from "../application/business-domain-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Catálogo de Domínios de negócio — `/api/v1/admin/business-domains` (só ADMIN, montado em app.ts).
@@ -32,14 +33,14 @@ const listSchema = z.object({
 })
 
 function actorOf(request: { user?: { organizationId: string; personId?: string | null } }): BusinessDomainActor {
-  return { organizationId: request.user!.organizationId, actorId: request.user?.personId ?? null }
+  return { organizationId: sessionUser(request).organizationId, actorId: request.user?.personId ?? null }
 }
 
 export function createBusinessDomainRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listSchema.parse(request.query)
     const filter = new SqlFilter([organizationId]).search(input.search, ["q.name", "q.code"])
     if (input.active !== undefined) filter.equals("q.active", input.active)
@@ -49,17 +50,17 @@ export function createBusinessDomainRouter(db: Database) {
   })
 
   router.get("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const domain = await findBusinessDomain(db, organizationId, request.params.id!)
     if (!domain) return response.status(404).json(NOT_FOUND)
     response.json({ data: domain })
   })
 
   router.get("/:id/dependencies", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const domain = await findBusinessDomain(db, organizationId, request.params.id!)
     if (!domain) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     response.json({ data: await loadVisibleBusinessDomainDependencies(db, organizationId, domain, scopes) })
   })
 

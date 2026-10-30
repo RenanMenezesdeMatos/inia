@@ -13,6 +13,7 @@ import {
   updateArgumentScript,
   type ArgumentScriptActor,
 } from "../application/argument-script-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * /api/v1/admin/argument-scripts — Argumentários (montado com `configuration.manage`, a mesma permissão das antigas Regras de
@@ -21,10 +22,10 @@ import {
 export function createArgumentScriptRouter(db: Database) {
   const router = Router()
   const session = (request: Request) => {
-    const user = request.user!
+    const user = sessionUser(request)
     return { actor: { organizationId: user.organizationId, personId: user.personId ?? null } satisfies ArgumentScriptActor, user }
   }
-  const scopesOf = (request: Request) => getManageableScopes(db, request.user!, "configuration.manage")
+  const scopesOf = (request: Request) => getManageableScopes(db, sessionUser(request), "configuration.manage")
 
   /** O que o usuário pode escolher como escopo (a tela mostra "Todos os grupos" só para quem administra a organização). */
   router.get("/scope-options", async (request, response) => {

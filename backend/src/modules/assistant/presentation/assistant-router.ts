@@ -19,6 +19,7 @@ import {
   type StructuredOutputDefinition,
 } from "../domain/structured-output-definition.js"
 import { assertStructuredOutputChangeAllowed, loadStructuredOutputUsage } from "../application/structured-output-dependencies.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 const NOT_FOUND = { error: { code: "ORCHESTRATOR_NOT_FOUND", message: "Orquestrador não encontrado." } }
@@ -248,9 +249,9 @@ export function createAssistantRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listOrchestratorsSchema.parse(request.query)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.name", 'q."orchestratorAgentName"'])
       .equals("q.active", input.active)
@@ -267,10 +268,10 @@ export function createAssistantRouter(db: Database) {
   })
 
   router.get("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query(`${ORCHESTRATOR_SELECT} and o.id = $2`, [organizationId, request.params.id])
     if (!result.rows[0]) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, result.rows[0])) return response.status(404).json(NOT_FOUND)
     response.json({ data: decorateOrchestratorRow(result.rows[0]) })
   })
@@ -278,19 +279,19 @@ export function createAssistantRouter(db: Database) {
   /** Onde cada path do resultado estruturado é usado (Workflows em rascunho/publicados) — a UI
    * mostra o impacto ANTES de apagar/renomear; a gravação aplica a mesma regra. */
   router.get("/:id/structured-output-usage", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
     response.json({ data: await loadStructuredOutputUsage(db, organizationId, request.params.id!) })
   })
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = createOrchestratorSchema.parse(request.body)
 
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     const newScope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
     if (!newScope || !canManageScope(scopes, newScope)) {
       throw new DomainError("Você não tem permissão para criar um orquestrador nesse escopo.", "ORCHESTRATOR_SCOPE_FORBIDDEN", 403)
@@ -340,12 +341,12 @@ export function createAssistantRouter(db: Database) {
   })
 
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateOrchestratorSchema.parse(request.body)
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
 
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null
@@ -456,10 +457,10 @@ export function createAssistantRouter(db: Database) {
   })
 
   router.delete("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`delete from assistant_orchestrators where id = $1 and organization_id = $2`, [request.params.id, organizationId])

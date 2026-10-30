@@ -74,7 +74,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
     const target = loaderRef.current
     if (!target || !hasMore || loadMoreError) return
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting || loading || loadingMoreHistory) return
+      if (!entry?.isIntersecting || loading || loadingMoreHistory) return
       // Tudo o que chegou já está à mostra: pede a próxima página (o observer é recriado quando ela chega).
       if (visibleCount >= timeline.length) return loadMoreHistory()
       setLoading(true)

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url"
 import { defineConfig } from "vitest/config"
 
 /**
@@ -6,6 +7,10 @@ import { defineConfig } from "vitest/config"
  * lógica. 20 s dá folga para essa variação e ainda derruba um teste que trave de verdade.
  */
 export default defineConfig({
+  // Contrato frontend × backend: as provas validam respostas reais com os schemas zod da tela, carregados do código-fonte do
+  // frontend (src/shared/presentation/testing/frontend-schema.ts), e eles importam uns aos outros por `@/`. O backend não usa
+  // esse alias em lugar nenhum.
+  resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("../frontend/src/", import.meta.url)) }] },
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,

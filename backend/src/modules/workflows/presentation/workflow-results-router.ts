@@ -6,6 +6,7 @@ import { canManageScope, getManageableScopes } from "../../auth/application/mana
 import { resolveOrganizationTimezone } from "../application/organization-timezone.js"
 import { addDays, localDateParts, zonedTimeToIso } from "../application/schedule-recurrence.js"
 import { loadDispatchDetail, loadResultsPage, loadResultsSummary, type ResultsFilters } from "../application/workflow-results-reader.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * V1.5.13 — aba "Resultados" do editor de Workflow (read model; nenhuma escrita):
@@ -47,7 +48,7 @@ export function createWorkflowResultsRouter(db: Database) {
   const router = Router()
 
   async function authorize(request: Parameters<Parameters<typeof router.get>[1]>[0]) {
-    const user = request.user!
+    const user = sessionUser(request)
     const workflow = await db.query<{ scopeType: string; teamId: string | null; subteamId: string | null }>(
       `select scope_type "scopeType", team_id "teamId", subteam_id "subteamId" from workflows where id = $1 and organization_id = $2`,
       [request.params.id, user.organizationId],

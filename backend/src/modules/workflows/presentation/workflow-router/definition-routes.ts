@@ -15,6 +15,7 @@ import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js
 import { assertGoLiveConfirmed, computeGoLiveImpact } from "../../application/go-live-impact.js"
 import { writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 const createWorkflowSchema = z.object({
   name: z.string().trim().min(2),
@@ -85,10 +86,10 @@ async function validateTriggerExists(db: Database, organizationId: string, trigg
 export function registerWorkflowDefinitionRoutes(router: Router, db: Database): void {
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = createWorkflowSchema.parse(request.body)
 
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
     if (!scope || !canManageScope(scopes, scope)) {
       throw new DomainError("Você não tem permissão para criar workflows nesse escopo.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
@@ -125,7 +126,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
   // schedule-recurrence.ts/shift-schedule.ts), nunca uma implementação divergente no frontend.
   // Funciona sem workflow criado ainda (usado no diálogo de criação).
   router.post("/schedule-preview", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = schedulePreviewSchema.parse(request.body)
     if (input.trigger.kind !== "schedule") {
       throw new DomainError("Preview só está disponível para o Trigger por agenda.", "WORKFLOW_INVALID_TRIGGER", 422)
@@ -137,7 +138,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
       const relative = input.trigger.relative!
       const scope = input.scope ?? { scopeType: "ALL_TEAMS" as const, teamId: null }
       // A prévia lista nomes de operadores do escopo: só de um escopo que quem pede administra (achado A-F09).
-      if (!canManageScope(await getManageableScopes(db, request.user!, "workflows.manage"), { scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: null })) {
+      if (!canManageScope(await getManageableScopes(db, sessionUser(request), "workflows.manage"), { scopeType: scope.scopeType, teamId: scope.teamId ?? null, subteamId: null })) {
         throw new DomainError("Você só pode pré-visualizar a agenda de Grupos do seu escopo.", "FORBIDDEN", 403)
       }
       const operators = await db.query<{ id: string; name: string }>(
@@ -198,12 +199,12 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
   // Nome/descrição/ativo valem na hora. Abrangência e Gatilho vão para o RASCUNHO da configuração —
   // num Workflow publicado nada que o runtime lê muda até Publicar (ver domain/workflow-configuration.ts).
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateWorkflowSchema.parse(request.body)
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
 
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const movedScope = input.scopeType !== undefined ? await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null }) : null

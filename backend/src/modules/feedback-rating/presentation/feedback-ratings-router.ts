@@ -2,6 +2,7 @@ import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { listMyRatings, rateFeedback, type RatingScope } from "../application/feedback-rating-service.js"
 import { feedbackRatingInputSchema } from "../domain/feedback-rating.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Avaliação do feedback pelo próprio destinatário — `/api/v1/feedback-ratings` (migration 113). A pessoa é sempre a da sessão.
@@ -12,7 +13,7 @@ import { feedbackRatingInputSchema } from "../domain/feedback-rating.js"
 export function createFeedbackRatingsRouter(db: Database, deps: { now?: () => Date } = {}) {
   const router = Router()
   const now = deps.now ?? (() => new Date())
-  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): RatingScope => ({ organizationId: request.user!.organizationId, personId: request.user!.personId })
+  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): RatingScope => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
 
   router.get("/", async (request, response) => {
     response.json({ data: { items: await listMyRatings(db, scopeOf(request)) } })

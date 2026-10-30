@@ -6,6 +6,7 @@ import { SUPERVISOR_PROVISIONABLE_CODES } from "../domain/schedule-exception.js"
 import { JUSTIFIED_ABSENCE_REASONS, WORKDAY_CLASSIFICATIONS } from "../domain/workday-classification.js"
 import { booleanParam, listParam, paginationQuerySchema, searchParam } from "../../../shared/presentation/list-query.js"
 import { buildTeamCalendar, CALENDAR_ATTENTION_KINDS, cancelForTeam, classificationHistoryForTeam, classifyForTeam, DEFAULT_CALENDAR_PAGE_SIZE, exceptionAuditForTeam, provisionForTeam } from "../application/team-calendar.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 // Filtros e paginação no mesmo formato das listagens administrativas (`?jobTitle=a&jobTitle=b`, `page`, `pageSize`).
@@ -42,7 +43,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
     try {
       const query = querySchema.parse(request.query)
       response.json({
-        data: await buildTeamCalendar(db, analytics, request.user!, {
+        data: await buildTeamCalendar(db, analytics, sessionUser(request), {
           anchorId: query.anchorId ?? null,
           from: query.from,
           to: query.to,
@@ -60,7 +61,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
   router.post("/exceptions", async (request, response, next) => {
     try {
       const body = provisionSchema.parse(request.body)
-      response.status(201).json({ data: await provisionForTeam(db, analytics, request.user!, body) })
+      response.status(201).json({ data: await provisionForTeam(db, analytics, sessionUser(request), body) })
     } catch (error) {
       next(error)
     }
@@ -69,7 +70,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
   router.delete("/exceptions/:exceptionId", async (request, response, next) => {
     try {
       const { exceptionId } = idSchema.parse(request.params)
-      response.json({ data: await cancelForTeam(db, analytics, request.user!, exceptionId) })
+      response.json({ data: await cancelForTeam(db, analytics, sessionUser(request), exceptionId) })
     } catch (error) {
       next(error)
     }
@@ -78,7 +79,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
   router.post("/classifications", async (request, response, next) => {
     try {
       const body = classifySchema.parse(request.body)
-      response.status(201).json({ data: await classifyForTeam(db, analytics, request.user!, body) })
+      response.status(201).json({ data: await classifyForTeam(db, analytics, sessionUser(request), body) })
     } catch (error) {
       next(error)
     }
@@ -87,7 +88,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
   router.get("/classifications/:personId/:date", async (request, response, next) => {
     try {
       const params = historyParamsSchema.parse(request.params)
-      response.json({ data: await classificationHistoryForTeam(db, analytics, request.user!, params) })
+      response.json({ data: await classificationHistoryForTeam(db, analytics, sessionUser(request), params) })
     } catch (error) {
       next(error)
     }
@@ -96,7 +97,7 @@ export function createTeamCalendarRouter(db: Database, analytics: AnalyticsReadR
   router.get("/exceptions/:exceptionId/audit", async (request, response, next) => {
     try {
       const { exceptionId } = idSchema.parse(request.params)
-      response.json({ data: await exceptionAuditForTeam(db, analytics, request.user!, exceptionId) })
+      response.json({ data: await exceptionAuditForTeam(db, analytics, sessionUser(request), exceptionId) })
     } catch (error) {
       next(error)
     }

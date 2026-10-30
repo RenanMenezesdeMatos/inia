@@ -22,19 +22,20 @@ import {
   updateProductNode,
   type ProductCatalogActor,
 } from "../application/product-catalog-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Cadastro de produtos — `/api/v1/admin/product-catalog` (montado em app.ts com `configuration.manage`; escrita só com escopo da
  * organização inteira, como os demais catálogos da organização). Toda regra vive no serviço; aqui só HTTP.
  */
-const actorOf = (request: { user?: { organizationId: string; personId?: string | null } }): ProductCatalogActor => ({ organizationId: request.user!.organizationId, personId: request.user?.personId ?? null })
+const actorOf = (request: { user?: { organizationId: string; personId?: string | null } }): ProductCatalogActor => ({ organizationId: sessionUser(request).organizationId, personId: request.user?.personId ?? null })
 const sourceKind = z.enum(SOURCE_KINDS)
 
 export function createProductCatalogRouter(db: Database) {
   const router = Router()
 
   router.get("/nodes", async (request, response) => {
-    response.json({ data: await listProductNodes(db, request.user!.organizationId) })
+    response.json({ data: await listProductNodes(db, sessionUser(request).organizationId) })
   })
   router.post("/nodes", async (request, response) => {
     response.status(201).json({ data: await createProductNode(db, actorOf(request), request.body) })
@@ -54,10 +55,10 @@ export function createProductCatalogRouter(db: Database) {
   })
 
   router.get("/criteria", async (request, response) => {
-    response.json({ data: await listIdentificationCriteria(db, request.user!.organizationId) })
+    response.json({ data: await listIdentificationCriteria(db, sessionUser(request).organizationId) })
   })
   router.get("/criteria/:id", async (request, response) => {
-    response.json({ data: await getIdentificationCriterion(db, request.user!.organizationId, request.params.id!) })
+    response.json({ data: await getIdentificationCriterion(db, sessionUser(request).organizationId, request.params.id!) })
   })
   router.post("/criteria", async (request, response) => {
     response.status(201).json({ data: await createIdentificationCriterion(db, actorOf(request), request.body) })
@@ -83,10 +84,10 @@ export function createProductCatalogRouter(db: Database) {
   })
 
   router.get("/sources", async (request, response) => {
-    response.json({ data: await listProductScopeSources(db, request.user!.organizationId) })
+    response.json({ data: await listProductScopeSources(db, sessionUser(request).organizationId) })
   })
   router.get("/sources/:kind/:id/scope", async (request, response) => {
-    response.json({ data: await productScopeHistory(db, request.user!.organizationId, sourceKind.parse(request.params.kind), request.params.id!) })
+    response.json({ data: await productScopeHistory(db, sessionUser(request).organizationId, sourceKind.parse(request.params.kind), request.params.id!) })
   })
   router.put("/sources/:kind/:id/scope", async (request, response) => {
     response.json({ data: await setProductScope(db, actorOf(request), sourceKind.parse(request.params.kind), request.params.id!, request.body) })

@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getContestation, listContestations, reviewContestation, type Reviewer } from "../application/contestation-review-service.js"
 import { contestationReviewInputSchema, FEEDBACK_DISLIKE_REASONS } from "../domain/feedback-rating.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const listQuerySchema = z
   .object({
@@ -25,7 +26,7 @@ const listQuerySchema = z
 export function createFeedbackContestationsRouter(db: Database, deps: { now?: () => Date } = {}) {
   const router = Router()
   const now = deps.now ?? (() => new Date())
-  const reviewerOf = (request: { user?: { organizationId: string; personId: string } }): Reviewer => ({ organizationId: request.user!.organizationId, personId: request.user!.personId })
+  const reviewerOf = (request: { user?: { organizationId: string; personId: string } }): Reviewer => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
   const id = (value: unknown) => z.string().uuid().parse(value)
 
   router.get("/", async (request, response) => {

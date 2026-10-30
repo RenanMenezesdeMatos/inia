@@ -21,6 +21,7 @@ import { DataRunError } from "../domain/error-codes.js"
 import { suggestMapping } from "../domain/mapping.js"
 import { buildPushOpenApi, type PushOpenApiFeed } from "../domain/push-openapi.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Rotas administrativas da Central de Dados — `/api/v1/admin/data-hub`. Protegidas por
@@ -66,7 +67,7 @@ async function requireDatabaseSource(db: Database, organizationId: string, sourc
 export function createDataHubRouter(db: Database, contextOverrides: Partial<Omit<DataHubContext, "db">> = {}) {
   const ctx = createDataHubContext(db, contextOverrides)
   const router = Router()
-  const org = (request: { user?: { organizationId: string } }) => request.user!.organizationId
+  const org = (request: { user?: { organizationId: string } }) => sessionUser(request).organizationId
   const actor = (request: { user?: { personId: string } }) => request.user?.personId ?? null
 
   // ---- Banco de dados externo (descoberta e teste — zero escrita) --------------------------

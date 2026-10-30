@@ -2,6 +2,7 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, dateParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 const listCallExpectationsSchema = orgScopeFilterSchema.extend({
@@ -30,7 +31,7 @@ export function createCallExpectationRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listCallExpectationsSchema.parse(request.query)
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.expectation", 'q."teamName"', 'q."subteamName"', 'q."subjectName"'])

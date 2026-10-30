@@ -18,6 +18,7 @@ import { assertAggregateCohort, buildUsabilityContext, type UsabilityContext } f
 import type { UsabilityTab } from "../application/query/usability-filters.js"
 import { buildUsabilityExport, EXPORT_TABLES, type ExportTab } from "../application/query/usability-export.js"
 import { workflowsQuery } from "../application/query/workflows-query.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Monitoria de usabilidade — `/api/v1/admin/usability`. Montado atrás de `usability.view` (qualquer escopo); cada rota aplica a
@@ -35,7 +36,7 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
   const router = Router()
   const now = () => options.now?.() ?? new Date()
   const contextOf = (request: Request, tab: UsabilityTab, query: Record<string, unknown> = request.query as Record<string, unknown>) =>
-    buildUsabilityContext(db, { access: request.access!, personId: request.user!.personId, tab, query, now: now() })
+    buildUsabilityContext(db, { access: request.access!, personId: sessionUser(request).personId, tab, query, now: now() })
   // Números (e a exportação deles): para quem só vê agregados, só com o recorte de 5 pessoas ou mais (achado C18 da 4ª auditoria).
   const metricsOf = async (request: Request, tab: UsabilityTab, query?: Record<string, unknown>) => {
     const ctx = await contextOf(request, tab, query)
@@ -44,7 +45,7 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
   }
   const manageActor = (request: Request, ctx: UsabilityContext) => {
     if (!ctx.can.manage) throw new DomainError("Configurar a monitoria exige permissão de gestão na organização inteira.", "FORBIDDEN", 403)
-    return { organizationId: ctx.organizationId, personId: request.user!.personId, accountId: request.user!.sub }
+    return { organizationId: ctx.organizationId, personId: sessionUser(request).personId, accountId: sessionUser(request).sub }
   }
 
   router.get("/context", async (request, response) => response.json({ data: await contextQuery(db, await contextOf(request, "overview")) }))
@@ -81,16 +82,16 @@ export function createUsabilityRouter(db: Database, options: { now?: () => Date 
       const result = await buildUsabilityExport(db, ctx, exportTab, z.string().max(40).parse(table))
       await db.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'USABILITY_EXPORT', 'USABILITY', $1, $3)`, [
         ctx.organizationId,
-        request.user!.personId,
+        sessionUser(request).personId,
         JSON.stringify({ tab: exportTab, table, rows: result.rows, period: { from: ctx.period.fromDate, to: ctx.period.toDate }, filters: query }),
       ])
-      await recordServerUsageEvent(db, { organizationId: ctx.organizationId, name: "usability.export", accountId: request.user!.sub, actorPersonId: request.user!.personId, properties: { stage: "COMPLETED", tab: `${exportTab}:${String(table)}`, rows: result.rows } })
+      await recordServerUsageEvent(db, { organizationId: ctx.organizationId, name: "usability.export", accountId: sessionUser(request).sub, actorPersonId: sessionUser(request).personId, properties: { stage: "COMPLETED", tab: `${exportTab}:${String(table)}`, rows: result.rows } })
       response.setHeader("content-type", "text/csv; charset=utf-8")
       response.setHeader("content-disposition", `attachment; filename="${result.filename}"`)
       response.setHeader("cache-control", "no-store")
       response.send(result.csv)
     } catch (error) {
-      await recordServerUsageEvent(db, { organizationId: ctx.organizationId, name: "usability.export", accountId: request.user!.sub, actorPersonId: request.user!.personId, properties: { stage: "FAILED", tab: `${exportTab}:${String(table).slice(0, 20)}`, rows: null } })
+      await recordServerUsageEvent(db, { organizationId: ctx.organizationId, name: "usability.export", accountId: sessionUser(request).sub, actorPersonId: sessionUser(request).personId, properties: { stage: "FAILED", tab: `${exportTab}:${String(table).slice(0, 20)}`, rows: null } })
       throw error
     }
   })

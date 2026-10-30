@@ -17,6 +17,7 @@ import {
 import { OPERATIONAL_AGGREGATION_KINDS } from "../../indicators/domain/operational-aggregation.js"
 import { loadVisibleIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
 import { createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 const ruleSchema = z.object({
@@ -90,7 +91,7 @@ const RULE_SCOPE_FORBIDDEN = () => new DomainError("Esta regra vale para Grupos 
 
 export function createIndicatorRuleRouter(db: Database) {
   const router = Router()
-  const scopesOf = (request: Request) => getManageableScopes(db, request.user!, "configuration.manage")
+  const scopesOf = (request: Request) => getManageableScopes(db, sessionUser(request), "configuration.manage")
   const organizationOnly = async (request: Request, _response: Response, next: NextFunction) => {
     try {
       if (!coversOrganization(await scopesOf(request))) return next(ORGANIZATION_REQUIRED())
@@ -102,13 +103,13 @@ export function createIndicatorRuleRouter(db: Database) {
   /** Regra existente dentro do escopo de quem pede (fora = 404, não revela). */
   const ruleInScope = async (request: Request, ruleId: string) => {
     if (!z.string().uuid().safeParse(ruleId).success) return false
-    const rule = await db.query<{ scope_type: string; team_id: string | null; subteam_id: string | null }>(`select scope_type, team_id, subteam_id from indicator_calculation_rules where id = $1 and organization_id = $2 and deleted_at is null`, [ruleId, request.user!.organizationId])
+    const rule = await db.query<{ scope_type: string; team_id: string | null; subteam_id: string | null }>(`select scope_type, team_id, subteam_id from indicator_calculation_rules where id = $1 and organization_id = $2 and deleted_at is null`, [ruleId, sessionUser(request).organizationId])
     const row = rule.rows[0]
     return Boolean(row && canManageScope(await scopesOf(request), { scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id }))
   }
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listIndicatorsSchema.parse(request.query)
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.code", "q.name", "q.unit"])
@@ -148,33 +149,33 @@ export function createIndicatorRuleRouter(db: Database) {
   })
 
   router.get("/definitions/:id/dependencies", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const definition = await findIndicatorDefinition(db, organizationId, request.params.id)
     if (!definition) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
-    response.json({ data: await loadVisibleIndicatorDependencies(db, organizationId, definition, await getManageableScopes(db, request.user!, "workflows.manage")) })
+    response.json({ data: await loadVisibleIndicatorDependencies(db, organizationId, definition, await getManageableScopes(db, sessionUser(request), "workflows.manage")) })
   })
 
   router.post("/definitions", organizationOnly, async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const definition = await createIndicatorDefinition(db, organizationId, request.body)
     response.status(201).json({ data: definition })
   })
 
   router.patch("/definitions/:id", organizationOnly, async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const { definition } = await updateIndicatorDefinition(db, organizationId, String(request.params.id), request.body)
     response.json({ data: definition })
   })
 
   router.delete("/definitions/:id", organizationOnly, async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const deleted = await deleteIndicatorDefinition(db, organizationId, String(request.params.id))
     if (!deleted) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
     return response.status(204).send()
   })
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = ruleSchema.parse(request.body)
     const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
     if (!scope || !canManageScope(await scopesOf(request), scope)) throw RULE_SCOPE_FORBIDDEN()
@@ -206,7 +207,7 @@ export function createIndicatorRuleRouter(db: Database) {
   })
 
   router.patch("/:ruleId", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = ruleUpdateSchema.parse(request.body)
     if (!(await ruleInScope(request, String(request.params.ruleId)))) return response.status(404).json({ error: { code: "RULE_NOT_FOUND", message: "Regra não encontrada." } })
     const result = await db.query(
@@ -226,7 +227,7 @@ export function createIndicatorRuleRouter(db: Database) {
 
   router.delete("/:ruleId", async (request, response) => {
     if (!(await ruleInScope(request, String(request.params.ruleId)))) return response.status(404).json({ error: { code: "RULE_NOT_FOUND", message: "Regra não encontrada." } })
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query(
       `update indicator_calculation_rules set deleted_at = now() where id = $1 and organization_id = $2 and deleted_at is null returning id`,
       [request.params.ruleId, organizationId],
@@ -236,7 +237,7 @@ export function createIndicatorRuleRouter(db: Database) {
   })
 
   router.put("/glossary", organizationOnly, async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = glossaryUpsertSchema.parse(request.body)
     await inTransaction(db, async (client) => {
       await client.query(

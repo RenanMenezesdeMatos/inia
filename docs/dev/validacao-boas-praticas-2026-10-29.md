@@ -13,6 +13,9 @@ confiabilidade, testes e manutenção. Não houve pentest nem repetição da aud
 
 ## 1. Diagnóstico executivo
 
+> **Atualização de 30/10/2026:** as pendências deixadas em 29/10 foram tratadas a pedido do usuário (§11). A matriz da §3 e a
+> tabela de achados registrados (§4) mostram o estado final.
+
 A base está acima da média para a stack. TypeScript estrito nos dois lados, sem `any` real em produção e sem `@ts-ignore`.
 O backend é um monólito modular consistente: tratamento de erro centralizado, timeouts em toda chamada externa, desligamento
 gracioso, prontidão e logs estruturados assíncronos. No frontend, os dados passam pelo TanStack Query, as respostas são
@@ -68,11 +71,11 @@ Os itens marcados com ✔ foram corrigidos nesta rodada.
 | Área | Prática | Situação | Evidência / observação |
 |---|---|---|---|
 | TS | Compilador estrito | A | `strict` nos dois lados; backend também com `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` |
-| TS | Opções estritas extras no frontend | AP | O frontend não tem `noUncheckedIndexedAccess`. Ligar a opção gera 1.213 erros em 61 arquivos (42 de produção); `exactOptionalPropertyTypes` gera 245 → proposta P-2 |
+| TS | Opções estritas extras no frontend | AP (catraca) ✔ | Catraca `npm run typecheck:estrito` (`frontend/scripts/typecheck-strict.mjs`): nenhum arquivo pode ganhar erro de `noUncheckedIndexedAccess`; base de 1.208 erros em 58 arquivos (eram 1.213 em 61), concentrados no lip-sync do avatar e no chat da INIA |
 | TS | `any` / supressões | A | 0 `any` real em produção (as 29 ocorrências no backend são uma função chamada `any`); 0 `@ts-ignore`/`@ts-expect-error` |
-| TS | Assertions | AP | `as unknown as`: 50 no backend e 31 no frontend, sobretudo `PoolClient`↔`Database` (ver P-1). `request.user!` aparece 314× no backend (o tipo do Express não sabe que `requireAuth` já rodou) |
+| TS | Assertions | AP | `request.user!`: 328 trocados por `sessionUser(request)` (tipado, 401 se faltar); 36 restam, todos em arquivos com trabalho não commitado de outras sessões. `as unknown as`: 35 no backend (eram 50 — os helpers de transação saíram) e 31 no frontend |
 | TS | Dados externos validados em runtime | A | Zod nas entradas da API, nas respostas do frontend, no `env` e nos contratos da IA; frames SSE do chat usam `JSON.parse(...) as` (arquivo com trabalho de outra sessão, não tocado) |
-| TS | Tipos duplicados frontend × backend | AP | Esquemas zod independentes nos dois lados, sem teste de contrato (exceto paridade de Workflow) → proposta P-3 |
+| TS | Tipos duplicados frontend × backend | AP ✔ | Esquemas continuam independentes, mas há contrato: a prova de ciência valida as respostas reais do Acompanhamento e da confirmação com os schemas zod da tela (`backend/src/shared/presentation/testing/frontend-schema.ts`); outras telas podem usar o mesmo carregador |
 | React | Composição e responsabilidades | A | Componentes grandes já divididos em partes (`refatoracao-progressiva.md` §5) |
 | React | Hooks e dependências | A | `react-hooks` 7 com React Compiler no lint; 1 aviso aceito (chat). ✔ `react-hooks/invariant` agora é erro (F-08) |
 | React | Efeitos e estado derivado | A | 105 `useEffect`; os avisos de `set-state-in-effect` caíram para 1 na rodada de 07–08/10 |
@@ -80,29 +83,29 @@ Os itens marcados com ✔ foram corrigidos nesta rodada.
 | React | Carregamento / erro / vazio | AP→A ✔ | Estados por tela existem; faltava a fronteira de erro de rota (F-05), agora existe |
 | React | Keys e imutabilidade | A | 94 `key={index}`; nas listas editáveis (regras de condição, campos, horários) as linhas são controladas e sem estado local, sem defeito demonstrável |
 | React | Renderização / carregamento de código | NV | Sem medição de bundle nem de profiler nesta rodada; nenhuma otimização recomendada sem medida |
-| React | Acessibilidade funcional | AP→A ✔ | jsx-a11y (rodado à parte): 5 tabelas sem acesso por teclado, corrigidas (F-06). Os 38 `label-has-associated-control` não foram triados (ver §8) |
+| React | Acessibilidade funcional | A ✔ | 5 tabelas sem teclado corrigidas (F-06; conferido no navegador); os 38 `label-has-associated-control` são falsos positivos (nome acessível calculado no DOM); 4 problemas reais achados na triagem e corrigidos (2 nomes diferentes do texto visível, 1 campo sem nome, 1 botão de ícone sem nome). Não triados: 216 avisos de `Label` do shadcn com a regra estendida |
 | Express | Organização de rotas/middlewares/regras | A | `app.ts` monta os routers com autorização explícita por rota; regras ficam em `application/` |
 | Express | Validação de entrada | A | Zod no router ou no serviço (`raw: unknown` + `parse`); query strings tratadas com guarda de tipo; `limit` com teto |
 | Express | Erro centralizado (Express 5) | A | `errorHandler` final: `DomainError`, `ZodError`, erros de entrada e de conector (4xx); 500 sem detalhe interno; promessas rejeitadas chegam via Express 5 |
 | Express | `app.listen` no Express 5 | N→A ✔ | O erro do listen era ignorado (F-02) |
 | Node | Promessas sem tratamento | A | Lint com tipos (rodado à parte): 0 `no-floating-promises`; 1 `no-misused-promises` falso positivo (`server.ts:72`, já tem `.catch`) |
-| Node | `unhandledRejection` | AP (decisão) | Loga, conta nas métricas e **segue**. O padrão do Node 24 é `throw`; nodebestpractices 2.6/2.10 recomenda tratar como desconhecido. É decisão registrada em `process-lifecycle.ts` → D-1 |
+| Node | `unhandledRejection` | A (decisão) | Registra, conta nas métricas e segue — decisão do usuário em 30/10 (P-8); o lint com tipos não acha promessa solta |
 | Node | Timeouts em chamadas externas | A | Todos os 9 `fetch` de produção têm `AbortSignal.timeout`/deadline; o pool tem `statement_timeout`, `idle_in_transaction_session_timeout`, `connectionTimeout` e `query_timeout` |
 | Node | Retentativa e idempotência | A | Retry com limite nos clientes de IA; workers com posse (lease) e `skip locked`; Idempotency-Key no API Push |
 | Node | Transações e consistência | AP→A ✔ | 51 de 52 arquivos corretos; `run-pipeline.ts` corrigido (F-01); 5 helpers mascaravam erro (F-03) |
 | Node | Paginação e consumo | A | Listas com página/teto (`respondList`, keyset no caminho quente, `Math.min(100, …)`) |
 | Node | Configuração por ambiente | A | `env.ts` valida com zod e recusa a subida com configuração inconsistente |
 | Node | Encerramento do processo | A | `createShutdown` (prontidão → dreno → fechar → prazo), `installProcessHandlers`, keep-alive 65 s |
-| Node | Logs úteis sem dado sensível | A / AP | pino assíncrono, `console.*` em ponte para JSON, erro 500 sem corpo/cookie/query; **sem id de correlação por requisição** → P-5 |
+| Node | Logs úteis sem dado sensível | A ✔ | pino assíncrono, `console.*` em ponte para JSON, erro 500 sem corpo/cookie/query; id de requisição (`x-request-id`) em toda linha de log e no corpo do 500 genérico (P-5) |
 | Arq. | Acoplamento / ciclos | A | Ciclos verificados nas divisões de 07–08/10; nada novo encontrado |
-| Arq. | Regra de negócio duplicada | AP | 23 cópias de `inTransaction` em 4 variantes (P-1); duplicações intencionais documentadas (`refatoracao-progressiva.md` §6) |
+| Arq. | Regra de negócio duplicada | A ✔ | Transação num helper único (P-1: 22 cópias e 38 blocos escritos à mão); duplicações intencionais documentadas (`refatoracao-progressiva.md` §6) |
 | Arq. | Limites entre camadas | A | Router → serviço → SQL/adaptador; a execução de IA fica atrás de uma interface única |
 | Arq. | Código morto | A | Removido em 07/10 (knip); o restante está inventariado |
 | Testes | Fluxos críticos e de falha | AP→A ✔ | Muitos testes de domínio e rota, mas os caminhos de falha de transação e de `listen` não eram exercitados (agora são) |
 | Testes | Integração de rotas | A | 79 arquivos com supertest; 44 de 57 routers com teste próprio |
-| Testes | Mocks que escondem problema | AP | 56 arquivos com `vi.mock` no backend; as 82 provas contra banco real ficam desligadas por padrão e **apodrecem** (§6.3) → P-6 |
-| Testes | Reprodutibilidade | AP | `npm ci` por app, Node ≥ 24 na raiz; sem `.nvmrc`; frontend com `@types/node` 20 e sem `engines`; sem formatador configurado (estilo consistente na prática) |
-| Testes | CI | N | Sem pipeline → P-4 |
+| Testes | Mocks que escondem problema | AP | 56 arquivos com `vi.mock`; as provas de banco agora barram banco desatualizado (P-6), duas desatualizadas foram corrigidas (D-10, D-11) e há contrato com a tela (P-3). Continuam desligadas por padrão; no CI, sob demanda (num banco novo, 5 casos antigos falham — §11) |
+| Testes | Reprodutibilidade | A ✔ | `npm ci` por app; Node 24 em `.nvmrc`, `engines` nos dois lados e tipos do Node 24 no frontend; sem formatador (preferência, D-6) |
+| Testes | CI | A ✔ | `.github/workflows/ci.yml` (backend e frontend bloqueantes; provas de banco sob demanda) e `npm run verificar` (o mesmo localmente) — P-4 |
 
 ## 4. Achados
 
@@ -231,14 +234,14 @@ preferência de estilo · 5 = pendente de investigação. Prioridade P1 (alta) a
 
 | ID | Achado | Classe | Prioridade | Por que não foi alterado |
 |---|---|---|---|---|
-| D-1 | `unhandledRejection` só registra e o processo segue. O padrão do Node 24 é `throw`; nodebestpractices 2.6 e 2.10 recomendam reiniciar diante de erro desconhecido | 5 | P3 | É decisão registrada no código e muda o comportamento do processo. A contagem já fica em `/internal/metrics`; decidir com a operação |
-| D-2 | Logs HTTP sem id de correlação por requisição (nodebestpractices 5.14). O `AsyncLocalStorage` existe só na telemetria de IA e no trace do chat | 3 | P3 | Toca `app.ts`, que tem trabalho de outra sessão → P-5 |
-| D-3 | 23 helpers `inTransaction` em 4 variantes (com ou sem savepoint, com ou sem `.catch`), com detecção de `PoolClient` por `typeof db.release` e `as unknown as` | 3 | P3 | Mudança ampla → P-1 |
-| D-4 | `request.user!` aparece 314× no backend | 3 | P4 | Sem defeito: `requireAuth` garante o valor. Um tipo de requisição autenticada removeria as asserções; é mudança ampla |
-| D-5 | Frontend: `@types/node` 20 com runtime Node 24; sem `engines`/`.nvmrc` | 3 | P4 | Atualizar dependência fica fora do escopo ("sem atualização em massa") |
+| D-1 | `unhandledRejection` só registra e segue | 5 | P3 | **Decidido em 30/10: manter** (P-8) |
+| D-2 | Logs sem id de requisição | 3 | P3 | **Feito em 30/10** (P-5, §11) |
+| D-3 | 23 helpers `inTransaction` em 4 variantes | 3 | P3 | **Feito em 29/10** (P-1, §9) |
+| D-4 | `request.user!` 314× no backend | 3 | P4 | **Feito em 30/10**: 328 trocas por `sessionUser`; 36 restam em arquivos de outras sessões (§11) |
+| D-5 | Frontend com `@types/node` 20, sem `engines`/`.nvmrc` | 3 | P4 | **Feito em 30/10** (tipos 24.19.2, `engines`, `.nvmrc`) |
 | D-6 | Sem formatador (Prettier/EditorConfig) | 4 | P4 | Preferência; o estilo atual é consistente na prática |
 | D-7 | Frames SSE do chat lidos com `JSON.parse(...) as` (`lib/realtime/gemini-text-client.ts`) | 3 | P3 | Arquivo com trabalho de outra sessão; o servidor é o mesmo produto |
-| D-8 | 38 `label-has-associated-control` (jsx-a11y) | 5 | P4 | Maior parte provavelmente falso positivo com `Label`/`Field` próprios; não triado |
+| D-8 | 38 `label-has-associated-control` | 5 | P4 | **Triado em 30/10**: todos falsos positivos; 4 problemas reais achados à parte e corrigidos (§11) |
 | D-9 | `operator-inia-chat.tsx`: 1 aviso `set-state-in-effect` e 5 `exhaustive-deps` desligados | — | — | Já documentado (`refatoracao-progressiva.md` §8); arquivo com trabalho de outra sessão |
 
 **Para a AppSec:** nenhuma vulnerabilidade nova foi identificada nesta rodada. F-01 e F-02 são de robustez, não de segurança.
@@ -540,5 +543,87 @@ arquivo entraram só os dois trechos do F-02, aplicados ao índice por patch.
 | `147d6636` | F-05 e P-7 — fronteiras de erro de rota e `global-error.tsx` |
 | `16bbee3a` | F-06 — tabelas acessíveis pelo teclado |
 | `3c805f5e` | F-07, F-08 e F-09 — erro interno do React Compiler como erro de lint; classes pelo `cn` |
+| (este) | relatório |
+
+## 11. Terceira rodada (30/10/2026): as pendências
+
+**Decisões do usuário:**
+- P-8: manter "registra e segue";
+- CI no GitHub Actions mais um script local;
+- não mexer nos arquivos das frentes não commitadas (Meu turno, Treino, chat da INIA);
+- trocar os `request.user!`.
+
+| Item | O que foi feito | Validação |
+|---|---|---|
+| D-4 | Helper `sessionUser(request)` (`backend/src/modules/auth/presentation/session-user.ts`): usuário com tipo garantido; sem ele, o mesmo 401 `UNAUTHENTICATED` do `requireAuth` em vez de `TypeError`/500. Foram 328 trocas mecânicas em 56 arquivos, feitas por subagente e revisadas aqui; 36 ficam em arquivos com trabalho de outras sessões (`app.ts`, `auth-router`, `realtime-router`, `usage-events-router`, Treino, Meu turno) | tipos, lint, testes dos 40 módulos tocados; teste do helper (2) |
+| P-3 | `backend/src/shared/presentation/testing/frontend-schema.ts` carrega o schema zod da tela pelo caminho do frontend (alias `@/` no `backend/vitest.config.ts`). A prova de ciência ganhou o caso "contrato com a tela": `/operator/overview`, `/operator/feedbacks` e a confirmação passam pelos schemas `operatorOverviewSchema`, `operatorFeedbackPageSchema` e `readConfirmationResultSchema` | prova 6/6; sabotagem: sem `feedbacksNextCursor` na resposta, a prova falha com "expected string, received undefined" |
+| P-2 | Catraca `npm run typecheck:estrito` (`frontend/scripts/typecheck-strict.mjs` + `typecheck-strict-baseline.json`): roda `tsc` com `noUncheckedIndexedAccess` e falha se algum arquivo ganhar erro; `--atualizar-base` só para encolher. Três arquivos de produto zerados (`query-fields`, `operator-daily-feedback-feed`, `av-sync-section`) | base 1.213 → 1.208 erros, 61 → 58 arquivos; sabotagem: arquivo novo com `lista[0].toUpperCase()` reprova; a catraca pegou também um erro meu no teste do lip-sync |
+| P-4 | `.github/workflows/ci.yml` (actions presas por SHA, `permissions: contents: read`): jobs backend (tipos, tipos dos scripts, lint, testes) e frontend (tipos, catraca, lint, testes, build), bloqueantes; job `provas` sob demanda, com PostgreSQL 17, migrations, dados de referência e massa demo. `npm run verificar` (`scripts/ci/verificar.mjs`) roda o mesmo localmente (`--sem-build`, `--provas`) | YAML validado; os passos conferidos localmente (§11.1) |
+| P-5 | `x-request-id`: `backend/src/shared/presentation/request-id.ts` (aceita o id do proxy se for identificador simples de 8–64 caracteres, senão gera UUID; devolve no cabeçalho) + `shared/application/observability/request-context.ts` (`AsyncLocalStorage`); o logger põe `requestId` em toda linha (`mixin` do pino) e o 500 genérico devolve `requestId` | 5 testes do middleware (inclusive simultâneas e depois de `await`) + teste de ponta a ponta no `app.test.ts` (banco falhando → 500 com o id do cabeçalho, sem detalhe interno) |
+| Acessibilidade | Os 38 avisos `label-has-associated-control` são falsos positivos (`<label>` envolvendo `Switch`/`RadioGroupItem`/`Input`, nome conferido com `dom-accessibility-api`). A triagem achou 4 problemas reais, corrigidos: `source-wizard` e `database-wizard` com `aria-label` diferente do texto visível (WCAG 2.5.3), "Namespace de origem" sem nome, botão "Inserir imagem" sem nome | testes de `data-hub` e `profile` (69) |
+| D-11 | A conta do preço legado roda numa organização C criada e apagada pela própria prova; a chamada legada continua na organização da prova (o painel a soma) | `ai-providers-proof` 19/19 no `inia_test` com o cadastro da outra sessão |
+| Node 24 | `frontend`: `@types/node` 20 → 24.19.2 (lockfile: só ele e `undici-types`), `engines.node >=24`; `.nvmrc` na raiz | tipos, catraca, testes e build |
+| Vitest | Causa do "Timeout calling onTaskUpdate": o arquivo de replays do lip-sync é CPU síncrona encadeada por microtarefas; sob carga o worker passava de 60 s (prazo fixo do Vitest) sem ler a resposta do processo principal — aparecia até com carga 3, pela disputa entre os próprios workers. Correção em `speech-lipsync-engine.test.ts`: volta ao event loop entre os testes dos três blocos de replay; o teste de alocação ganhou aquecimento explícito de 100 mil chamadas (antes dependia da ordem dos testes e falhava isolado); o de custo de CPU confere a carga também depois de medir. Tentativas descartadas no caminho: volta ao event loop em todo o arquivo (desestabilizava a alocação) e mover custo/alocação para arquivo próprio (o custo passava a disputar CPU com os replays) | 3 rodadas da suíte do frontend com carga 30–40: 0 timeouts (antes, 1 por rodada); o arquivo passa em todas as rodadas, com o custo pulado sob carga alta, como prometido |
+
+### 11.1 Ambiente: provas num banco novo e bancos externos
+
+- **Provas num banco recém-criado** (o que o job `provas` do CI faz), em ordem:
+  - só com as migrations: 338 ok, 17 falhas;
+  - mais dados de referência: as mesmas falhas;
+  - mais massa demo (53 s): restam **5 falhas antigas**:
+    - `diagnostic-strategy-proof`: 500;
+    - `analytics-read-model-proof`: 2 estouros de tempo;
+    - `diagnostic-calls-proof`: 1 estouro de tempo e 1 texto divergente na "regressão Ícaro".
+
+  Não foram investigadas nesta rodada; por isso o job de provas é sob demanda e não bloqueia. O banco descartável foi apagado.
+- **Prova de bancos externos** (`external-database-proof`):
+  - rodou com PostgreSQL, MariaDB e MySQL de exemplo em contêineres efêmeros. As senhas aleatórias ficaram só no ambiente do comando: o `.env` da raiz não foi criado, porque mudaria como a instalação enxerga esta máquina. Os contêineres foram removidos no fim;
+  - 27 de 30 casos falham no teste de conexão (`health: ERROR`);
+  - **numa cópia limpa da revisão `77c5adcd` (antes desta auditoria) a falha é a mesma** (PostgreSQL: 9 falhas, 1 ok). É anterior a estas mudanças; a causa não foi identificada (a regra do banco interno compara porta e não é ela);
+  - SQL Server não rodou, porque depende de emulação em ARM.
+- **Navegador:** a visão em tabela de Workflows foi conferida na tela real (servidor de desenvolvimento local, conta de teste da massa demo). O nome de cada linha é um `<a href>` focável. Ao fim: preferência de visão devolvida para cards, logout, janela restaurada. Os outros itens visíveis (fronteiras de erro, rótulos acessíveis) ficaram cobertos por testes de componente e pelo build.
+
+### 11.2 O que continua em aberto
+
+- **Arquivos com trabalho de outras sessões** (por decisão do usuário):
+  - D-7, validação dos eventos SSE do chat;
+  - D-9, o chat da INIA;
+  - a cópia de `inTransaction` do Treino;
+  - os 36 `request.user!` restantes;
+  - o `className` sem `cn` no chat.
+- **Provas que não passam:**
+  - as 5 que falham num banco novo;
+  - a causa da falha da prova de bancos externos;
+  - SQL Server.
+- **Acessibilidade:** os 216 avisos de `Label` do shadcn com a regra estendida (amostra indica maioria de falsos positivos).
+- **Não medido:** tamanho de bundle e desempenho de renderização, sem medida e portanto sem recomendação.
+- **Uso do CI:** ele consome minutos do plano do GitHub a cada publicação.
+
+### 11.3 Verificações da terceira rodada
+
+| Verificação | Resultado |
+|---|---|
+| `npm run verificar` — backend | tipos, tipos dos scripts e lint limpos; 488 arquivos ok / 86 pulados, **5.290 testes ok** / 471 pulados, 0 falhas |
+| `npm run verificar` — frontend | tipos e lint limpos (1 aviso, o mesmo); catraca: 1.208 erros em 58 arquivos, nenhum piorou; build ok |
+| Testes do frontend | 183 arquivos, **2.065 ok** / 1 pulado, 0 falhas, exit 0, **0 timeouts** do Vitest em 3 rodadas com carga 30–40 (a 1ª rodada do `verificar`, antes da correção do lip-sync, terminou com o timeout) |
+| Provas tocadas nesta rodada | `read-confirmation-proof` 6/6 (contrato), `ai-providers-proof` 19/19, `data-hub-proof` e demais da Central (sem mudança) |
+| Navegador | tabela de Workflows com link focável por linha (servidor de desenvolvimento local) |
+
+### 11.4 Commits da terceira rodada
+
+Branch `admin-list-standardization`, com índice temporário: o staging de outras sessões nunca foi levado nem desfeito. Do
+`backend/src/main/app.ts` entraram só o import, o middleware e o corpo do 500; o resto do arquivo é trabalho não commitado de
+outra sessão.
+
+| Commit | Conteúdo |
+|---|---|
+| `81690653` | D-4 — `sessionUser` no lugar de `request.user!` (56 arquivos + helper) |
+| `113f2e98` | P-5 — id de requisição em toda linha de log e no 500 genérico |
+| `f4c5d4ab` | P-3 — contrato frontend × backend nas provas |
+| `db4ae011` | D-11 — prova do preço legado independente do banco de teste |
+| `faf64a13` | P-4 e P-2 — GitHub Actions, `npm run verificar` e catraca de tipagem estrita |
+| `f292cc8a` | Acessibilidade — nomes acessíveis e controles sem nome |
+| `b64f8425` | Node 24 no frontend (`@types/node`, `engines`, `.nvmrc`) |
+| `64cb184b` | Vitest — fim do timeout de RPC; custo/alocação do lip-sync estáveis |
 | (este) | relatório |
 

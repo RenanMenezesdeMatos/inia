@@ -5,6 +5,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { displayIconKeySchema } from "../../../shared/domain/display-icon.js"
 import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { callOutcomeSchema, type CallOutcome } from "../domain/call-outcome.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 // Nome de exibição e ícone (migration 115): como a flag aparece para o colaborador no motivo do feedback ("Monitoria · Rechamada").
@@ -63,7 +64,7 @@ export function createChannelFlagRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listChannelFlagsSchema.parse(request.query)
     const filter = new SqlFilter([organizationId])
       .search(input.search, ['q."flagName"', "q.description", "q.label"])
@@ -78,12 +79,12 @@ export function createChannelFlagRouter(db: Database) {
   // Canais distintos já cadastrados — alimenta o filtro de canal sem a UI precisar varrer a
   // lista inteira.
   router.get("/channels", async (request, response) => {
-    const result = await db.query<{ channel: string }>(`select distinct channel from channel_flags where organization_id = $1 order by channel`, [request.user!.organizationId])
+    const result = await db.query<{ channel: string }>(`select distinct channel from channel_flags where organization_id = $1 order by channel`, [sessionUser(request).organizationId])
     response.json({ data: result.rows.map((row) => row.channel) })
   })
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = channelFlagSchema.parse(request.body)
     await validateOutcome(db, organizationId, input.valueType, input.callOutcome, input.relatedIndicatorId)
     try {
@@ -102,7 +103,7 @@ export function createChannelFlagRouter(db: Database) {
   })
 
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateChannelFlagSchema.parse(request.body)
     const current = (await db.query<{ value_type: string }>(`select value_type from channel_flags where id = $1 and organization_id = $2`, [request.params.id, organizationId])).rows[0]
     if (current) await validateOutcome(db, organizationId, current.value_type, input.callOutcome, input.relatedIndicatorId)
@@ -146,7 +147,7 @@ export function createChannelFlagRouter(db: Database) {
   })
 
   router.delete("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     try {
       const result = await db.query<{ id: string }>(
         `delete from channel_flags where id = $1 and organization_id = $2 returning id`,

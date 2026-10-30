@@ -19,6 +19,7 @@ import { syntheticCorpusSchema } from "../domain/synthetic-corpus.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { projectPeerTranscript } from "../../investigation/domain/peer-privacy-projection.js"
 import { projectTranscript } from "../../investigation/domain/transcript-projection.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * /api/v1/best-practices — base de boas práticas. LEITURA: o público do Diagnóstico (lidera alguém ativo ou tem `indicators.view`)
@@ -30,7 +31,7 @@ type Reader = { scope: ViewerScope | null; scopes: ManageableScopes; visiblePeop
 const hasManageScope = (scopes: ManageableScopes) => scopes.unrestricted || scopes.allTeams || scopes.teamIds.size > 0 || scopes.subteamIds.size > 0
 
 async function readerOf(db: Database, repository: AnalyticsReadRepository, request: Request): Promise<Reader> {
-  const user = request.user!
+  const user = sessionUser(request)
   const scopes = await getManageableScopes(db, user, "configuration.manage")
   let scope: ViewerScope | null = null
   try {

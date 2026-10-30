@@ -11,6 +11,7 @@ import { addPricing, createModel, deleteModel, getModel, listModels, listPricing
 import { activateDraft, deactivatePolicy, discardDraft, legacyEnvironmentSummary, listRouting, saveDraft, testRouting } from "../application/ai-policy-service.js"
 import { connectionsHealth, usageDashboard } from "../application/ai-usage-service.js"
 import { usageRanking, usageRankingContext, type RankingViewer } from "../application/ai-usage-ranking-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * /api/v1/admin/ai — administração de Providers, Conexões, Modelos, Roteamento, Custos e
@@ -27,7 +28,7 @@ const idParam = z.uuid()
 const useCaseParam = z.string().regex(/^[A-Z][A-Z0-9_]{1,39}$/)
 
 function actorOf(request: Request): Actor {
-  return { organizationId: request.user!.organizationId, personId: request.user!.personId ?? null }
+  return { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId ?? null }
 }
 
 export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & { db: Database }) {
@@ -36,7 +37,7 @@ export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & {
   // Permissões derivadas das atribuições de papel reais (modelo geral de acesso, lidas do banco a cada request — nunca do JWT).
   router.use(async (request: Request, _response: Response, next: NextFunction) => {
     try {
-      const access = request.access ?? (await createPostgresAccessRepository(context.db).loadContext(request.user!.organizationId, request.user!.sub))
+      const access = request.access ?? (await createPostgresAccessRepository(context.db).loadContext(sessionUser(request).organizationId, sessionUser(request).sub))
       request.access = access
       request.aiPermissions = aiPermissionsFor(access)
       next()
@@ -87,7 +88,7 @@ export function createAiManagementRouter(context: Omit<AiAdminContext, "db"> & {
 
   // Quem mais usa (ranking por estrutura): permissão explícita; o recorte de pessoas sai do escopo da conta, no serviço.
   // Pessoa = a da CONTA lida do banco neste request (escopo "Minha estrutura"), não a foto do JWT.
-  const rankingViewer = (request: Request): RankingViewer => ({ organizationId: request.user!.organizationId, personId: request.access!.personId, access: request.access! })
+  const rankingViewer = (request: Request): RankingViewer => ({ organizationId: sessionUser(request).organizationId, personId: request.access!.personId, access: request.access! })
   router.get("/usage/ranking/context", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRankingContext(context, rankingViewer(request)) }))
   router.get("/usage/ranking", can("AI_USAGE_RANKING_READ"), async (request, response) => response.json({ data: await usageRanking(context, rankingViewer(request), request.query) }))
 

@@ -5,6 +5,7 @@ import { AVATAR_DELIVERY_EVENTS, AVATAR_FAILURE_REASONS } from "../domain/avatar
 import { applyAvatarDeliveryEvent, loadRecipientInbox, markWorkflowConversationSeen, type RecipientScope } from "../application/avatar-delivery-service.js"
 import { loadRecadoSpeechAudio, type RecadoSpeechSynthesizer } from "../application/recado-speech-audio.js"
 import type { SpeechCacheIdentity } from "../../../shared/application/model-routing/ai-runtime.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Entregas da INIA para a PESSOA DA SESSÃO (Workflow Outputs V1): recados de voz (convite → aceite → fala) e conversas de
@@ -20,7 +21,7 @@ const idParam = z.string().uuid()
 export function createIniaDeliveriesRouter(db: Database, deps: { now?: () => Date; synthesizeSpeech?: { synthesize: RecadoSpeechSynthesizer; /** Voz + identidades aceitas no cache para a rota em vigor (policy da organização ou legado). */ accepted: () => Promise<SpeechCacheIdentity> } } = {}) {
   const router = Router()
   const now = deps.now ?? (() => new Date())
-  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): RecipientScope => ({ organizationId: request.user!.organizationId, personId: request.user!.personId })
+  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): RecipientScope => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
 
   router.get("/inbox", async (request, response) => {
     response.json({ data: await loadRecipientInbox(db, scopeOf(request)) })

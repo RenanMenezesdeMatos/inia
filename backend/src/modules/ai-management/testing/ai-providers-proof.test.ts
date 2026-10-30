@@ -28,6 +28,8 @@ const textOf = (response: { kind: string; text?: string }) => (response.kind ===
 const ENABLED = process.env.INIA_DB_PROOF === "1"
 const ORG = "00000000-0000-4000-8000-000000000001"
 const ORG_B = "0b0b0b0b-0000-4000-8000-00000000ab01"
+/** Só da conta do preço legado: o banco de teste é compartilhado e a organização A pode ter o modelo legado cadastrado por outro trabalho. */
+const ORG_C = "0c0c0c0c-0000-4000-8000-00000000ac01"
 const ADMIN = { email: "carla.nunes@inia.com", password: "Inia@123" }
 const SCOPED = { email: "qa.ai.scoped@inia.local", password: "Inia@QA-123" }
 const SECRET = "sk-qa-proof-SECRET-VALUE-0123456789"
@@ -43,9 +45,9 @@ const startedAt = new Date()
 async function cleanup() {
   const connections = await pool.query<{ id: string }>(`select id from ai_connections where name like $1`, [`${PREFIX}%`])
   const ids = connections.rows.map((row) => row.id)
-  await pool.query(`delete from ai_usage_events where organization_id = any($1::uuid[]) and occurred_at >= $2`, [[ORG, ORG_B], startedAt])
-  await pool.query(`delete from ai_routing_policies where organization_id = any($1::uuid[])`, [[ORG, ORG_B]])
-  await pool.query(`delete from ai_budgets where organization_id = any($1::uuid[])`, [[ORG, ORG_B]])
+  await pool.query(`delete from ai_usage_events where organization_id = any($1::uuid[]) and occurred_at >= $2`, [[ORG, ORG_B, ORG_C], startedAt])
+  await pool.query(`delete from ai_routing_policies where organization_id = any($1::uuid[])`, [[ORG, ORG_B, ORG_C]])
+  await pool.query(`delete from ai_budgets where organization_id = any($1::uuid[])`, [[ORG, ORG_B, ORG_C]])
   if (ids.length > 0) {
     await pool.query(`delete from ai_model_pricing where model_id in (select id from ai_models where connection_id = any($1::uuid[]))`, [ids])
     await pool.query(`delete from ai_models where connection_id = any($1::uuid[])`, [ids])
@@ -55,11 +57,11 @@ async function cleanup() {
   await pool.query(`delete from audit_logs where entity_type like 'ai_%' and created_at >= $1`, [startedAt])
   await pool.query(`delete from user_accounts where email = $1`, [SCOPED.email])
   await pool.query(`delete from people where organization_id = $1 and name = $2`, [ORG, `${PREFIX}Admin de grupo`])
-  await pool.query(`delete from organizations where id = $1`, [ORG_B])
+  await pool.query(`delete from organizations where id = any($1::uuid[])`, [[ORG_B, ORG_C]])
 }
 
-async function execute(purpose: "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS", source: "AGENT" | "SPECIALIST" = "AGENT") {
-  return runWithAiOrganization(ORG, () =>
+async function execute(purpose: "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS", source: "AGENT" | "SPECIALIST" = "AGENT", organizationId = ORG) {
+  return runWithAiOrganization(organizationId, () =>
     generateForRoute({ classification: { phase: "SYNTHESIS", purpose, source, semanticType: "TEXT" }, systemPrompt: "Prova", contents: [{ role: "user", text: "Olá" }], structuredOutput: purpose === "AGENT_SYNTHESIS", route: routeFor({ purpose, phase: "SYNTHESIS" }, "CURRENT") }),
   )
 }
@@ -240,14 +242,6 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
 
   it("uso LEGADO é precificado pela tabela da organização (mesmo provider + id do modelo) — rota inalterada; cadastro ambíguo = sem preço", async () => {
     const legacyModel = routeFor({ purpose: "AGENT_SYNTHESIS", phase: "SYNTHESIS" }, "CURRENT").profile.model
-    // Preço do uso legado só sai da tabela com o modelo cadastrado UMA vez na organização (regra "ambíguo = sem preço"). Um
-    // cadastro dele feito fora da prova (ex.: a configuração inicial de IA aplicada no banco de teste) torna o caso impossível:
-    // falha dizendo isso, em vez de um "UNKNOWN" sem contexto.
-    const preexisting = await pool.query<{ connection: string }>(
-      `select c.name connection from ai_models m join ai_connections c on c.id = m.connection_id
-        where m.organization_id = $1 and c.provider_key = $4 and m.provider_model_id = $2 and c.name not like $3`,
-      [ORG, legacyModel, `${PREFIX}%`, "GOOGLE_GENAI"],
-    )
     const gemini = await api.post("/api/v1/admin/ai/connections").send({ providerKey: "GOOGLE_GENAI", name: `${PREFIX}Gemini`, baseUrl: fake.url, apiKey: "AIza-qa-proof-000000000000", isLocal: false })
     expect(gemini.status, JSON.stringify(gemini.body)).toBe(201)
     const model = await api.post("/api/v1/admin/ai/models").send({ connectionId: gemini.body.data.id, providerModelId: legacyModel, displayName: "Legado da prova" })
@@ -257,16 +251,28 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     const before = legacyCalls.length
     expect(textOf(await execute("AGENT_SYNTHESIS"))).toBe("resposta legada (fake)")
     expect(legacyCalls.length).toBe(before + 1)
-    const priced = await pool.query(`select routing_mode, cost::text, currency, cost_status, pricing_source, pricing_id from ai_usage_events where organization_id = $1 and occurred_at >= $2 order by id desc limit 1`, [ORG, startedAt])
-    // Conferida só aqui: a chamada legada acima acontece de qualquer jeito (os casos seguintes contam com o uso dela).
-    expect(preexisting.rows.map((row) => row.connection), `banco de teste com "${legacyModel}" já cadastrado fora da prova: com dois cadastros o preço legado fica ambíguo por regra`).toEqual([])
+    // A conta do preço numa organização só da prova (C), montada direto no banco: a regra só precifica o uso legado com o modelo
+    // cadastrado UMA vez na organização ("ambíguo = sem preço"), e a organização A do banco de teste compartilhado pode ter o mesmo
+    // modelo cadastrado por outro trabalho (ex.: a configuração inicial de IA). A chamada legada acima continua na A: o painel a soma.
+    await pool.query(`insert into organizations (id, name, slug) values ($1, 'QA Org C', 'qa-org-c-ai-proof')`, [ORG_C])
+    const register = async (name: string) => {
+      const connection = await pool.query<{ id: string }>(`insert into ai_connections (organization_id, provider_key, name, base_url) values ($1, 'GOOGLE_GENAI', $2, $3) returning id`, [ORG_C, `${PREFIX}${name}`, fake.url])
+      return (await pool.query<{ id: string }>(`insert into ai_models (organization_id, connection_id, provider_model_id, display_name) values ($1, $2, $3, 'Legado da prova') returning id`, [ORG_C, connection.rows[0]!.id, legacyModel])).rows[0]!.id
+    }
+    const modelC = await register("Gemini C")
+    await pool.query(
+      `insert into ai_model_pricing (organization_id, model_id, currency, input_per_million, output_per_million, cached_input_per_million, reasoning_per_million, effective_from)
+       values ($1, $2, 'USD', 0.25, 1.5, 0.025, 1.5, now() - interval '1 minute')`,
+      [ORG_C, modelC],
+    )
+    expect(textOf(await execute("AGENT_SYNTHESIS", "AGENT", ORG_C))).toBe("resposta legada (fake)")
+    const priced = await pool.query(`select routing_mode, cost::text, currency, cost_status, pricing_source, pricing_id from ai_usage_events where organization_id = $1 and occurred_at >= $2 order by id desc limit 1`, [ORG_C, startedAt])
     // 50 × 0,25/1M + 5 × 1,5/1M (fake legado)
     expect(priced.rows[0]).toMatchObject({ routing_mode: "LEGACY", cost_status: "ESTIMATED", pricing_source: "TABLE", currency: "USD" })
     expect(Number(priced.rows[0].cost)).toBeCloseTo(0.00002, 10)
-    const twin = await api.post("/api/v1/admin/ai/connections").send({ providerKey: "GOOGLE_GENAI", name: `${PREFIX}Gemini 2`, baseUrl: fake.url, apiKey: "AIza-qa-proof-111111111111", isLocal: false })
-    await api.post("/api/v1/admin/ai/models").send({ connectionId: twin.body.data.id, providerModelId: legacyModel })
-    await execute("AGENT_SYNTHESIS")
-    const ambiguous = await pool.query(`select cost, cost_status, pricing_source from ai_usage_events where organization_id = $1 and occurred_at >= $2 order by id desc limit 1`, [ORG, startedAt])
+    await register("Gemini C 2")
+    await execute("AGENT_SYNTHESIS", "AGENT", ORG_C)
+    const ambiguous = await pool.query(`select cost, cost_status, pricing_source from ai_usage_events where organization_id = $1 and occurred_at >= $2 order by id desc limit 1`, [ORG_C, startedAt])
     expect(ambiguous.rows[0]).toMatchObject({ cost: null, cost_status: "UNKNOWN", pricing_source: "NONE" })
   })
 

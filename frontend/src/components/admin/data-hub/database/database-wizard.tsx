@@ -463,7 +463,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
                 </label>
               ) : null}
               <label className="flex items-start gap-3 text-sm">
-                <Switch checked={importNow} onCheckedChange={setImportNow} aria-label="Importar agora" />
+                <Switch checked={importNow} onCheckedChange={setImportNow} aria-label="Fazer a primeira importação agora" />
                 <span>
                   <span className="font-medium">Fazer a primeira importação agora</span>
                   <span className="block text-xs text-muted-foreground">Desligado: a primeira carga acontece na frequência escolhida.</span>

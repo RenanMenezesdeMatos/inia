@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { createRequireAuth } from "../../auth/presentation/require-auth.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 import { canAnywhere, canOrganizationWide, type AccessContext } from "../domain/access-decision.js"
 import type { Permission } from "../domain/permissions.js"
 import { createPostgresAccessRepository } from "../infrastructure/postgres-access-repository.js"
@@ -23,7 +24,7 @@ export function requirePermission(db: Pick<Database, "query">, permission: Permi
   const requireAuth = createRequireAuth(db)
   const guard = async (request: Request, response: Response, next: NextFunction) => {
     try {
-      const access = await repository.loadContext(request.user!.organizationId, request.user!.sub)
+      const access = await repository.loadContext(sessionUser(request).organizationId, sessionUser(request).sub)
       const allowed = options.organizationWide ? canOrganizationWide(access, permission) : canAnywhere(access, permission)
       if (!allowed) return response.status(403).json({ error: { code: "FORBIDDEN", message: "Você não tem permissão para este recurso." } })
       request.access = access

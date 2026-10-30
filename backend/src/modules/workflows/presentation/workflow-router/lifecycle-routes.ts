@@ -12,6 +12,7 @@ import { consolidatedStructureAnchorId, consolidatedStructureSchema } from "../.
 import { populationFilterAnchorId, populationFilterGroupRef, populationFilterSchema } from "../../domain/population-filter-schema.js"
 import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, normalizedPopulationFilter, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 const saveDraftSchema = z.object({ graph: flowGraphSchema })
 
@@ -31,11 +32,11 @@ const updateAnalysisConfigSchema = z.discriminatedUnion("mode", [
 export function registerWorkflowLifecycleRoutes(router: Router, db: Database): void {
 
   router.put("/:id/draft", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = saveDraftSchema.parse(request.body)
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`update workflows set draft_graph = $1, updated_at = now() where id = $2 and organization_id = $3`, [
@@ -55,11 +56,11 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
   // essas combinações mesmo se o payload vier manual, nunca confia só no frontend escondendo a
   // opção.
   router.put("/:id/analysis-config", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateAnalysisConfigSchema.parse(request.body)
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     if (input.mode === "CONSOLIDATED") {
@@ -122,10 +123,10 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
    * 2026-09-16). Só `DomainError` vira `{ valid: false }`; qualquer outro erro sobe normalmente.
    */
   router.post("/:id/validate", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
     try {
       await validateWorkflowForPublish(db, organizationId, request.params.id!, current)
@@ -144,10 +145,10 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
    * (409) quando o impacto exige confirmação e o fingerprint não veio — o mesmo cálculo, nunca dois.
    */
   router.get("/:id/publish-impact", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
     const impact = await computeGoLiveImpact(db, organizationId, {
       workflowId: request.params.id!,
@@ -162,9 +163,9 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
 
   // Publicar: o ÚNICO caminho do rascunho (grafo + configuração) para o que o runtime lê (publish-workflow.ts).
   router.post("/:id/publish", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = publishSchema.parse(request.body ?? {})
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     const published = await publishWorkflow(db, {
       organizationId,
       workflowId: request.params.id!,
@@ -181,10 +182,10 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
   // "Descartar alterações de configuração": o rascunho volta a ser a configuração publicada (o grafo
   // em rascunho não é tocado). Sem versão publicada não há configuração publicada para voltar.
   router.post("/:id/configuration/discard", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
     if (!current.published) {
       throw new DomainError("Este workflow ainda não foi publicado — não há configuração publicada para restaurar.", "WORKFLOW_NOT_PUBLISHED", 409)
@@ -195,10 +196,10 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
   })
 
   router.delete("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`delete from workflows where id = $1 and organization_id = $2`, [request.params.id, organizationId])

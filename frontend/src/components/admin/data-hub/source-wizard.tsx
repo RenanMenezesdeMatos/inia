@@ -527,7 +527,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
                 </label>
               ) : null}
               <label className="flex items-start gap-3 text-sm">
-                <Switch checked={failOnAnyRejection} onCheckedChange={setFailOnAnyRejection} aria-label="Falhar com qualquer rejeição" />
+                <Switch checked={failOnAnyRejection} onCheckedChange={setFailOnAnyRejection} aria-label="Exigir carga íntegra" />
                 <span>
                   <span className="font-medium">Exigir carga íntegra</span>
                   <span className="block text-xs text-muted-foreground">Qualquer registro rejeitado impede a carga inteira (padrão: válidos entram, inválidos vão para a quarentena).</span>

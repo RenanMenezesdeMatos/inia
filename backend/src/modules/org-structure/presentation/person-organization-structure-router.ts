@@ -8,6 +8,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { postgresHierarchyReader } from "../../workflows/application/organizational-recipient.js"
 import { loadManagementMetrics } from "../application/load-management-metrics.js"
 import { buildPersonOrganizationStructure, type PersonOrganizationStructureDeps } from "../application/person-organization-structure.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const paramsSchema = z.object({ personId: z.string().uuid() })
 
@@ -40,7 +41,7 @@ export function createPersonOrganizationStructureRouter(db: Database, deps?: Par
   router.get("/:personId/organization-structure", async (request, response, next) => {
     try {
       const { personId } = paramsSchema.parse(request.params)
-      response.json({ data: await buildPersonOrganizationStructure(resolved, request.user!, personId) })
+      response.json({ data: await buildPersonOrganizationStructure(resolved, sessionUser(request), personId) })
     } catch (error) {
       next(error)
     }

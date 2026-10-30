@@ -19,6 +19,7 @@ import { resolveOfficialClosure, type OfficialClosureContext } from "../../indic
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 import { decodeFollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
 import { loadAvatarPresenter, personAvatarLoader, type PersonAvatarLoader } from "../../profile-preferences/application/person-presentation-loader.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const followUpQuerySchema = z.object({
   ack: z.enum(["all", "pending"]).default("all"),
@@ -77,7 +78,7 @@ export function createAnalyticsRouter(
 
   router.get("/context", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const query = subjectQuerySchema.parse(request.query)
       const subject = query.subjectKind && query.subjectId ? buildAnalyticsSubject(query.subjectKind, query.subjectId) : null
       const closure = await resolveOfficialClosure(db, scope.organizationId, now())
@@ -89,7 +90,7 @@ export function createAnalyticsRouter(
 
   router.get("/indicators", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = subjectFrom(request, scope)
       const closure = await resolveOfficialClosure(db, scope.organizationId, now())
       const period = periodFrom(request, closure)
@@ -103,7 +104,7 @@ export function createAnalyticsRouter(
 
   router.get("/indicators/breakdown", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = requireStructure(subjectFrom(request, scope))
       const groupBy = request.query.groupBy
       if (!isGroupingDimension(groupBy)) throw new DomainError("Agrupamento inválido.", "INVALID_GROUPING", 400)
@@ -115,7 +116,7 @@ export function createAnalyticsRouter(
 
   router.get("/indicators/:code/members", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = requireStructure(subjectFrom(request, scope))
       const query = paginationQuerySchema.merge(sortSchema).extend({ search: searchParam, sort: z.enum(["achievement", "name", "delta"]).default("achievement") }).parse(request.query)
       const page = await buildIndicatorMembers(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())), request.params.code!, query)
@@ -128,7 +129,7 @@ export function createAnalyticsRouter(
 
   router.get("/team", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = requireStructure(subjectFrom(request, scope))
       const overview = await buildTeamOverview(repository, scope, subject, periodFrom(request, await resolveOfficialClosure(db, scope.organizationId, now())))
       const present = await loadAvatarPresenter(personAvatars, scope.organizationId, overview.units.flatMap((unit) => (unit.leader ? [unit.leader.personId] : [])))
@@ -140,7 +141,7 @@ export function createAnalyticsRouter(
 
   router.get("/team/members", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = requireStructure(subjectFrom(request, scope))
       const query = paginationQuerySchema
         .merge(sortSchema)
@@ -166,7 +167,7 @@ export function createAnalyticsRouter(
 
   router.get("/follow-ups", async (request, response, next) => {
     try {
-      const scope = await loadViewerScope(repository, request.user!)
+      const scope = await loadViewerScope(repository, sessionUser(request))
       const subject = subjectFrom(request, scope)
       const query = followUpQuerySchema.parse(request.query)
       const before = decodeFollowUpCursor(query.cursor)

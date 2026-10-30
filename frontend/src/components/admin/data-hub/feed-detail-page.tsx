@@ -239,7 +239,7 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
               </div>
               <div className="space-y-1.5">
                 <Label>Namespace de origem</Label>
-                <Input readOnly value={feed.sourceNamespace ?? feed.source?.publicId ?? ""} className="font-mono text-xs" />
+                <Input readOnly aria-label="Namespace de origem" value={feed.sourceNamespace ?? feed.source?.publicId ?? ""} className="font-mono text-xs" />
               </div>
             </CardContent>
           </Card>

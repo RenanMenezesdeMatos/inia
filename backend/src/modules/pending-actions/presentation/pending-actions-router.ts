@@ -7,6 +7,7 @@ import { JUSTIFIED_ABSENCE_REASONS } from "../../people/domain/workday-classific
 import { resolveReconciliation } from "../../people/application/workday-reconciliation-service.js"
 import { buildHumanReviewDetail, buildPendingActions, buildWorkdayReconciliationDetail, decideHumanReview, decideWorkdayReconciliation, type ResolveWorkday, type SubmitDecision } from "../application/build-pending-actions.js"
 import { PgPendingActionsRepository, type PendingActionsRepository } from "../application/pending-actions-repository.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const reviewParamsSchema = z.object({ enrollmentId: z.string().uuid(), nodeId: z.string().min(1) })
 const decisionBodySchema = z.object({ decision: humanReviewDecisionSchema })
@@ -35,33 +36,33 @@ export function createPendingActionsRouter(
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await buildPendingActions(repository, viewer) })
   })
 
   router.get("/human-reviews/:enrollmentId/:nodeId", async (request, response) => {
     const params = reviewParamsSchema.parse(request.params)
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await buildHumanReviewDetail(repository, viewer, params.enrollmentId, params.nodeId) })
   })
 
   router.post("/human-reviews/:enrollmentId/:nodeId/decision", async (request, response) => {
     const params = reviewParamsSchema.parse(request.params)
     const body = decisionBodySchema.parse(request.body)
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await decideHumanReview(repository, submit, viewer, { ...params, decision: body.decision }) })
   })
 
   router.get("/workday-reconciliations/:reconciliationId", async (request, response) => {
     const params = workdayParamsSchema.parse(request.params)
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await buildWorkdayReconciliationDetail(repository, viewer, params.reconciliationId) })
   })
 
   router.post("/workday-reconciliations/:reconciliationId/resolve", async (request, response) => {
     const params = workdayParamsSchema.parse(request.params)
     const decision = workdayDecisionSchema.parse(request.body)
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await decideWorkdayReconciliation(repository, resolveWorkday, viewer, params.reconciliationId, decision) })
   })
 

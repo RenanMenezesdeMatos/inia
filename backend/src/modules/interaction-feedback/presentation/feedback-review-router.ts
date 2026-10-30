@@ -9,6 +9,7 @@ import { createPostgresFeedbackReviewReader } from "../infrastructure/postgres-f
 import { createPostgresInteractionFeedbackStore } from "../infrastructure/postgres-interaction-feedback-store.js"
 import { createPostgresFeedbackDeliveryStore } from "../infrastructure/postgres-feedback-delivery-store.js"
 import { createPostgresReliableFeedbackStore } from "../../reliable-feedback/infrastructure/postgres-reliable-feedback-store.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const listQuerySchema = z.object({
@@ -51,7 +52,7 @@ export function createFeedbackReviewRouter(database: Database, deps?: Partial<Fe
   const clock = deps?.clock ?? systemClock
   const resolved: FeedbackReviewDeps = { reader: deps?.reader ?? createPostgresFeedbackReviewReader(database), store: deps?.store ?? createPostgresInteractionFeedbackStore(database), now: deps?.now ?? (() => clock.now()), deliveries: deps && "deliveries" in deps ? deps.deliveries : createPostgresFeedbackDeliveryStore(database), reliable: deps && "reliable" in deps ? deps.reliable : createPostgresReliableFeedbackStore(database) }
   const router = Router()
-  const viewerOf = (request: { user?: { personId: string; organizationId: string } }) => ({ personId: request.user!.personId, organizationId: request.user!.organizationId })
+  const viewerOf = (request: { user?: { personId: string; organizationId: string } }) => ({ personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId })
 
   router.get("/access", async (request, response) => {
     response.json({ data: await getFeedbackQualityAccess(resolved, viewerOf(request)) })

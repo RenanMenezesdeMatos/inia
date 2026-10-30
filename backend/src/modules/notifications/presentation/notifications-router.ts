@@ -4,6 +4,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { PgPendingActionsRepository, type PendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { buildNotificationSummary, markAllNotificationsRead, markNotificationRead } from "../application/build-notification-summary.js"
 import { PgNotificationsRepository, type NotificationsRepository } from "../application/notifications-repository.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const idSchema = z.object({ id: z.string().uuid() })
 
@@ -12,18 +13,18 @@ export function createNotificationsRouter(database: Database, repository: Notifi
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await buildNotificationSummary(repository, pendingActions, viewer) })
   })
 
   router.post("/read-all", async (request, response) => {
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     response.json({ data: await markAllNotificationsRead(repository, viewer) })
   })
 
   router.post("/:id/read", async (request, response) => {
     const { id } = idSchema.parse(request.params)
-    const viewer = { personId: request.user!.personId, organizationId: request.user!.organizationId }
+    const viewer = { personId: sessionUser(request).personId, organizationId: sessionUser(request).organizationId }
     await markNotificationRead(repository, viewer, id)
     response.status(204).send()
   })

@@ -7,6 +7,7 @@ import { createPostgresProposalStore } from "../application/report-proposals.js"
 import { createPostgresReportRuntime } from "../application/report-runtime.js"
 import { createReport, deleteReport, getReportDetail, listReports, loadReportAccess, openProposal, previewReport, reportOptions, retryDeliveryAnalysis, runReportNow, searchAudiencePeople, setReportStatus, updateReport, type ReportActor, type ReportServiceDeps } from "../application/report-service.js"
 import { createPostgresReportStore } from "../application/report-store.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * `/api/v1/reports` — reports recorrentes. Dono e organização SEMPRE da sessão; permissões revalidadas a cada pedido no serviço
@@ -27,7 +28,7 @@ export function createReportsRouter(db: Database, overrides: Partial<ReportServi
     analysisWriter: overrides.analysisWriter ?? gatewayAnalysisWriter,
     now: overrides.now ?? (() => new Date()),
   }
-  const actorOf = (request: Request): ReportActor => ({ organizationId: request.user!.organizationId, accountId: request.user!.sub, personId: request.user!.personId })
+  const actorOf = (request: Request): ReportActor => ({ organizationId: sessionUser(request).organizationId, accountId: sessionUser(request).sub, personId: sessionUser(request).personId })
 
   router.get("/", async (request, response) => response.json({ data: await listReports(deps, actorOf(request)) }))
   router.get("/access", async (request, response) => {

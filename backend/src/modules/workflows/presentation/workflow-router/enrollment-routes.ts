@@ -6,6 +6,7 @@ import { dateParam, listParam, respondList, searchParam, SqlFilter } from "../..
 import { getManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import { humanReviewDecisionSchema } from "../../domain/graph-schema.js"
 import { NOT_FOUND, canManageWorkflow, fetchScopedRow } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 const submitHumanReviewDecisionSchema = z.object({ nodeId: z.string().min(1), decision: humanReviewDecisionSchema })
 
@@ -36,9 +37,9 @@ const ENROLLMENT_SELECT = `
 export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): void {
 
   router.get("/:id/enrollments", async (request, response) => {
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const input = listEnrollmentsSchema.parse(request.query)
@@ -60,13 +61,13 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
   // até esta rota gravar a decisão e reagendar o próximo tick.
   router.post("/:id/enrollments/:enrollmentId/decision", async (request, response) => {
     const input = submitHumanReviewDecisionSchema.parse(request.body)
-    const current = await fetchScopedRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     // Gravação compartilhada com a Surface Pendências do revisor (submit-human-review-decision.ts).
-    await submitHumanReviewDecision(db, { enrollmentId: request.params.enrollmentId!, workflowId: request.params.id!, nodeId: input.nodeId, decision: input.decision, reviewerId: request.user!.personId })
+    await submitHumanReviewDecision(db, { enrollmentId: request.params.enrollmentId!, workflowId: request.params.id!, nodeId: input.nodeId, decision: input.decision, reviewerId: sessionUser(request).personId })
     response.status(204).send()
   })
 }

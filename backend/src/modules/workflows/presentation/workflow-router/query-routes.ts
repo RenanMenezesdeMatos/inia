@@ -5,6 +5,7 @@ import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, 
 import { applyManageableScopeFilter, canManageScope, getManageableScopes } from "../../../auth/application/manageable-scopes.js"
 import type { FlowGraph } from "../../domain/graph-schema.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT } from "./shared.js"
+import { sessionUser } from "../../../auth/presentation/session-user.js"
 
 const listWorkflowsSchema = orgScopeFilterSchema.extend({
   search: searchParam,
@@ -20,9 +21,9 @@ const listWorkflowsSchema = orgScopeFilterSchema.extend({
 export function registerWorkflowQueryRoutes(router: Router, db: Database): void {
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listWorkflowsSchema.parse(request.query)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.name", "q.description"])
       .in(`q.trigger ->> 'kind'`, input.triggerKind)
@@ -37,10 +38,10 @@ export function registerWorkflowQueryRoutes(router: Router, db: Database): void 
   })
 
   router.get("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, request.params.id])
     if (!result.rows[0]) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "workflows.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageScope(scopes, result.rows[0])) return response.status(404).json(NOT_FOUND)
 
     const graphResult = await db.query<{ draft_graph: FlowGraph; published_graph: FlowGraph | null }>(

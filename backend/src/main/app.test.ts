@@ -92,4 +92,19 @@ describe("app", () => {
     const response = await request(createApp(emptyDatabase)).get("/api/v1/supervision-cases")
     expect(response.status).toBe(401)
   })
+
+  it("500 genérico devolve o id da requisição (o mesmo do cabeçalho x-request-id e das linhas de log), sem detalhe interno", async () => {
+    const brokenDatabase = {
+      query: async () => {
+        throw new Error("conexão recusada: segredo-do-banco")
+      },
+      connect: async () => {
+        throw new Error("not needed")
+      },
+    } as unknown as Database
+    const response = await request(createApp(brokenDatabase, { rateLimits: false })).post("/api/v1/auth/login").set("x-request-id", "suporte-ticket-4242").send({ email: "alguem@inia.com", password: "x" })
+    expect(response.status).toBe(500)
+    expect(response.headers["x-request-id"]).toBe("suporte-ticket-4242")
+    expect(response.body).toEqual({ error: { code: "INTERNAL_ERROR", message: "Erro interno.", requestId: "suporte-ticket-4242" } })
+  })
 })

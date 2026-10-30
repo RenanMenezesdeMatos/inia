@@ -7,6 +7,7 @@ import { buildHolidayCatalogCoverage } from "../application/holiday-catalog-cove
 import { resolveWorkScheduleHorizon } from "../application/work-schedule-service.js"
 import { BRAZILIAN_CAPITALS, BRAZILIAN_STATE_CODES } from "../domain/brazilian-capitals.js"
 import { HOLIDAY_FALLBACK_POLICIES } from "../domain/work-schedule.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Calendário operacional — feriados da organização (`/api/v1/admin/operational-calendar/holidays`,
@@ -50,7 +51,7 @@ export function createOperationalCalendarRouter(db: Database) {
 
   /** Política de feriado no fallback + limite de aviso do horizonte da escala. */
   router.get("/settings", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query<{ holidayFallbackPolicy: string; scheduleHorizonWarningDays: number }>(`select holiday_fallback_policy "holidayFallbackPolicy", schedule_horizon_warning_days "scheduleHorizonWarningDays" from organizations where id = $1`, [organizationId])
     const timeZone = await resolveOrganizationTimezone(db, organizationId)
     const horizon = await resolveWorkScheduleHorizon(db, organizationId, localDateOf(new Date(), timeZone))
@@ -58,7 +59,7 @@ export function createOperationalCalendarRouter(db: Database) {
   })
 
   router.patch("/settings", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = settingsSchema.parse(request.body)
     const result = await db.query<{ holidayFallbackPolicy: string; scheduleHorizonWarningDays: number }>(
       `update organizations set holiday_fallback_policy = coalesce($2, holiday_fallback_policy), schedule_horizon_warning_days = coalesce($3, schedule_horizon_warning_days)
@@ -99,12 +100,12 @@ export function createOperationalCalendarRouter(db: Database) {
   })
 
   router.get("/holidays", async (request, response) => {
-    const result = await db.query(`${SELECT} order by holiday_date`, [request.user!.organizationId])
+    const result = await db.query(`${SELECT} order by holiday_date`, [sessionUser(request).organizationId])
     response.json({ data: result.rows })
   })
 
   router.post("/holidays", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = holidaySchema.parse(request.body)
     const result = await db.query(
       `insert into organization_holidays (organization_id, holiday_date, name, scope, active) values ($1, $2, $3, $4, $5)
@@ -116,7 +117,7 @@ export function createOperationalCalendarRouter(db: Database) {
   })
 
   router.patch("/holidays/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = holidaySchema.partial().parse(request.body)
     const result = await db.query(
       `update organization_holidays set holiday_date = coalesce($3::date, holiday_date), name = coalesce($4, name), scope = coalesce($5, scope), active = coalesce($6, active), updated_at = now()
@@ -129,7 +130,7 @@ export function createOperationalCalendarRouter(db: Database) {
   })
 
   router.delete("/holidays/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const result = await db.query(`delete from organization_holidays where id = $2 and organization_id = $1`, [organizationId, request.params.id])
     if (!result.rowCount) return response.status(404).json({ error: { code: "HOLIDAY_NOT_FOUND", message: "Feriado não encontrado." } })
     response.status(204).end()

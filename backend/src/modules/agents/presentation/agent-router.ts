@@ -13,6 +13,7 @@ import { actionLimitsProblem, describeActionLimits, type AgentActionLimits } fro
 import { describeSpecialtyProblem, legacySpecialtyFor, legacySpecialtySchema, resolveAgentSpecialty, specialtyKindSchema, type AgentSpecialty } from "../domain/agent-specialty.js"
 import { runAgent } from "../application/run-agent.js"
 import { buildSystemPrompt } from "../application/build-system-prompt.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 const testAgentSchema = z.object({
@@ -330,9 +331,9 @@ export function createAgentRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = listAgentsSchema.parse(request.query)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     const filter = new SqlFilter([organizationId])
       .search(input.search, ["q.name", "q.objective", "q.description"])
       .in('q."agentType"', input.agentType)
@@ -348,10 +349,10 @@ export function createAgentRouter(db: Database) {
   })
 
   router.get("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedAgentRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query(`${AGENT_SELECT} and a.id = $2`, [organizationId, request.params.id])
@@ -359,10 +360,10 @@ export function createAgentRouter(db: Database) {
   })
 
   router.get("/:id/history", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedAgentRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query(
@@ -376,10 +377,10 @@ export function createAgentRouter(db: Database) {
   })
 
   router.get("/:id/runs", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedAgentRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const result = await db.query(
@@ -395,10 +396,10 @@ export function createAgentRouter(db: Database) {
   })
 
   router.get("/:id/preview-prompt", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedAgentRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const agentResult = await db.query<{ organization_id: string; name: string; objective: string; description: string; context_prompt: string }>(
@@ -411,21 +412,21 @@ export function createAgentRouter(db: Database) {
   })
 
   router.post("/:id/test", async (request, response) => {
-    const current = await fetchScopedAgentRow(db, request.user!.organizationId, request.params.id!)
+    const current = await fetchScopedAgentRow(db, sessionUser(request).organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const input = testAgentSchema.parse(request.body)
-    const run = await runAgent(db, { organizationId: request.user!.organizationId, agentId: request.params.id!, inputContext: input.input, source: "MANUAL_TEST" })
+    const run = await runAgent(db, { organizationId: sessionUser(request).organizationId, agentId: request.params.id!, inputContext: input.input, source: "MANUAL_TEST" })
     response.status(201).json({ data: run })
   })
 
   router.post("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = agentSchema.parse(request.body)
 
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
     if (!scope || !canManageScope(scopes, scope)) {
       throw new DomainError("Você não tem permissão para criar agentes nesse escopo.", "AGENT_SCOPE_FORBIDDEN", 403)
@@ -484,7 +485,7 @@ export function createAgentRouter(db: Database) {
   })
 
   router.patch("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const input = updateAgentSchema.parse(request.body)
     try {
       const outcome = await inTransaction(db, async (client) => {
@@ -499,7 +500,7 @@ export function createAgentRouter(db: Database) {
           return "NOT_FOUND" as const
         }
 
-        const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+        const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
         if (!canManageScope(scopes, before.rows[0])) {
           return "NOT_FOUND" as const
         }
@@ -610,10 +611,10 @@ export function createAgentRouter(db: Database) {
   })
 
   router.delete("/:id", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const current = await fetchScopedAgentRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
-    const scopes = await getManageableScopes(db, request.user!, "agents.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`delete from agents where id = $1 and organization_id = $2`, [request.params.id, organizationId])

@@ -24,6 +24,7 @@ import {
   type MemoryFilters,
   type ProcessOrder,
 } from "../../feedback-engine/application/leadership-diagnostics.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const LEVEL_ORDER = `case pe.current_level when 'MANAGER' then 5 when 'ACTION_PLAN' then 4 when 'COACH' then 3 when 'ORIENT' then 2 else 1 end`
 
@@ -45,7 +46,7 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
 
   // Padrões de diagnóstico: agregados da população (motivo × indicador), sem pessoas — abertos a quem abre a área.
   router.get("/", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const reason = typeof request.query.reason === "string" ? request.query.reason : null
     const indicator = typeof request.query.indicator === "string" ? request.query.indicator : null
     const result = await db.query(`select id,reason,indicator_code "indicator",sample_size "sampleSize",reference_group "referenceGroup",measured_difference "measuredDifference",finding,phrase_example "phraseExample",rhythm_finding "rhythmFinding",confidence,generated_at "generatedAt" from diagnostic_insights where organization_id=$1 and ($2::text is null or reason=$2) and ($3::text is null or indicator_code=$3) order by confidence desc`, [scope.organizationId, reason, indicator])
@@ -54,7 +55,7 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
 
   // Escalonamentos: SÓ de operadores ativos do conjunto visível — nunca a organização inteira por padrão.
   router.get("/performance", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const visibleOperators = [...scope.nodes.values()].filter((node) => node.active && node.role === "OPERATOR").map((node) => node.id)
     if (visibleOperators.length === 0) return response.json({ data: [] })
     const result = await db.query(`select pe.id,p.id "operatorId",p.name "operatorName",p.avatar_url "avatarUrl",t.name "teamName",pe.current_level "currentLevel",pe.reason,pe.consecutive_cycles "consecutiveCycles",pe.previous_actions "previousActions",pe.ai_recommendation "aiRecommendation",pe.confidence::float,pe.generated_at "generatedAt" from performance_escalations pe join people p on p.id=pe.operator_id left join teams t on t.id=p.team_id where pe.organization_id=$1 and p.organization_id=$1 and pe.status='ACTIVE' and pe.operator_id = any($2::uuid[]) order by ${LEVEL_ORDER} desc,pe.generated_at desc`, [scope.organizationId, visibleOperators])
@@ -89,12 +90,12 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
   }
 
   router.get("/memory/summary", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const filters = filtersOf(request.query)
     response.json({ data: { filters, method: METHOD_NOTE, ...(await memorySummary(db, scope.organizationId, visiblePeople(scope), filters)) } })
   })
   router.get("/memory/filter-options", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const people = visiblePeople(scope)
     const [teams, subteams, subjects, documents] = await Promise.all([
       db.query<{ id: string; name: string }>(`select distinct t.id, t.name from call_assessments a join teams t on t.id = a.team_id where a.organization_id = $1 and a.person_id = any($2::uuid[]) order by t.name`, [scope.organizationId, people]),
@@ -106,50 +107,50 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
     response.json({ data: { teams: teams.rows, subteams: subteams.rows, subjects: subjects.rows.map((row) => row.value), documents: documents.rows, people: personOptions } })
   })
   router.get("/memory/processes", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const order: ProcessOrder = request.query.order === "MET" || request.query.order === "ALL" ? request.query.order : "DEVIATIONS"
     // Temas com os pontos dentro, inteiros: a leitura é por tema (uma organização tem dezenas de pontos, não milhares).
     response.json({ data: await processAggregates(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query), order) })
   })
   router.get("/memory/people", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const page = pageOf(request.query)
     const groupBy: GroupBy = request.query.groupBy === "TEAM" || request.query.groupBy === "SUBTEAM" ? request.query.groupBy : "PERSON"
     const result = await peopleAggregates(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query), groupBy, page)
     response.json({ data: { ...result, groupBy, page: page.page, pageSize: page.pageSize } })
   })
   router.get("/memory/concentration", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const dimension: Dimension = request.query.dimension === "WEEKDAY" || request.query.dimension === "SUBJECT" || request.query.dimension === "HOUR" ? request.query.dimension : "DAY"
     response.json({ data: { dimension, buckets: await concentration(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query), dimension) } })
   })
   router.get("/memory/materials", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const items = await materialAggregates(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query))
     const accessible = await resolveAccessibleKnowledgeMaterials(db, { organizationId: scope.organizationId, viewer: { personId: scope.viewer.id }, materialIds: items.map((item) => item.documentId) })
     response.json({ data: { items: items.map((item) => ({ ...item, href: accessible.has(item.documentId) ? buildKnowledgeMaterialHref(item.documentId) : null })) } })
   })
   router.get("/memory/indicators", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const page = pageOf(request.query)
     const result = await indicatorInvestigations(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query), page)
     response.json({ data: { ...result, page: page.page, pageSize: page.pageSize } })
   })
   router.get("/memory/indicators/:id", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const id = uuid(request.params.id)
     const detail = id ? await indicatorInvestigationDetail(db, scope.organizationId, visiblePeople(scope), id) : null
     if (!detail) throw new DomainError("Investigação não encontrada.", "DIAGNOSTIC_NOT_FOUND", 404)
     response.json({ data: detail })
   })
   router.get("/memory/assessments", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const page = pageOf(request.query)
     const result = await assessmentList(db, scope.organizationId, visiblePeople(scope), filtersOf(request.query), page)
     response.json({ data: { ...result, page: page.page, pageSize: page.pageSize } })
   })
   router.get("/memory/assessments/:id", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const id = uuid(request.params.id)
     const detail = id ? await assessmentDetail(db, scope.organizationId, visiblePeople(scope), id) : null
     if (!detail) throw new DomainError("Avaliação não encontrada.", "DIAGNOSTIC_NOT_FOUND", 404)
@@ -159,7 +160,7 @@ export function createDiagnosticsRouter(db: Database, deps: { repository?: Analy
     response.json({ data: { ...detail, criteria: detail.criteria.map((criterion) => ({ ...criterion, href: accessible.has(criterion.documentId) ? buildKnowledgeMaterialHref(criterion.documentId) : null })) } })
   })
   router.get("/memory/export.csv", async (request, response) => {
-    const scope = await authorize(repository, request.user!)
+    const scope = await authorize(repository, sessionUser(request))
     const filters = filtersOf(request.query)
     const people = visiblePeople(scope)
     // Visão de uma lista fechada: o valor entra no nome do arquivo e no cabeçalho do CSV (nunca texto livre da URL).

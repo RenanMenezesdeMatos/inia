@@ -3,6 +3,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { loadAccessibleKnowledgeMaterial } from "../application/knowledge-material-access.js"
 import { DocxPreviewTooLargeError, renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
 import { sendKnowledgeFile } from "./knowledge-file-response.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Leitor de material da Base de Conhecimento para QUALQUER usuário autenticado — a página real
@@ -16,8 +17,8 @@ export function createKnowledgeMaterialRouter(db: Database) {
   const router = Router()
 
   const viewerOf = (request: { user?: { personId: string; organizationId: string } }) => ({
-    organizationId: request.user!.organizationId,
-    viewer: { personId: request.user!.personId },
+    organizationId: sessionUser(request).organizationId,
+    viewer: { personId: sessionUser(request).personId },
   })
 
   const notFound = (response: { status: (code: number) => { json: (body: unknown) => unknown } }) =>

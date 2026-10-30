@@ -7,6 +7,7 @@ import { loadAccess, canSeeInterventionsOf } from "../application/intervention-a
 import * as interventions from "../application/intervention-service.js"
 import { generateReportNarrative, type NarrativeWriter } from "../application/report-narrative.js"
 import { applyAiDraft, draftInterventionWithAi } from "../application/ai-draft.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Experiência do líder — `/api/v1/interventions` (sessão obrigatória; organização e viewer sempre da sessão). Cada rota confere
@@ -16,12 +17,12 @@ const revision = z.object({ expectedRevision: z.number().int().optional() })
 
 export function createInterventionRouter(db: Database, deps: { writer?: NarrativeWriter } = {}) {
   const router = Router()
-  const viewerOf = async (request: Request): Promise<interventions.Viewer> => ({ organizationId: request.user!.organizationId, personId: request.user!.personId, access: await loadAccess(db, request.user!.organizationId, request.user!.sub) })
+  const viewerOf = async (request: Request): Promise<interventions.Viewer> => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId, access: await loadAccess(db, sessionUser(request).organizationId, sessionUser(request).sub) })
   const id = (request: Request) => String(request.params.interventionId)
 
   router.get("/pending", async (request, response) => response.json({ data: await interventions.listPendingInterventions(db, await viewerOf(request)) }))
   // Catálogo de competências para o treinamento (configuração da organização — nenhum dado de colaborador).
-  router.get("/competencies", async (request, response) => response.json({ data: await interventions.listTrainingCompetencies(db, request.user!.organizationId) }))
+  router.get("/competencies", async (request, response) => response.json({ data: await interventions.listTrainingCompetencies(db, sessionUser(request).organizationId) }))
   router.get("/cases/:caseId", async (request, response) => response.json({ data: await interventions.listCaseInterventions(db, await viewerOf(request), String(request.params.caseId)) }))
   router.get("/people/:personId", async (request, response) => response.json({ data: await interventions.listPersonInterventions(db, await viewerOf(request), String(request.params.personId)) }))
   router.post("/", async (request, response) => response.status(201).json({ data: await interventions.openManualIntervention(db, await viewerOf(request), request.body) }))

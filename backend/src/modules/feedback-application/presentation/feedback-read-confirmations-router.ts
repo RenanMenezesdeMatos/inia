@@ -5,6 +5,7 @@ import { verifyPassword } from "../../auth/infrastructure/password-hasher.js"
 import { FEEDBACK_SOURCE_KINDS } from "../domain/feedback-application.js"
 import { READ_CONFIRMATION_CLIENT_EVENTS, READ_CONFIRMATION_DEVICES, READ_CONFIRMATION_ENTRY_POINTS } from "../domain/read-confirmation.js"
 import { confirmFeedbackReading, recordReadConfirmationEvent, type PasswordVerifier, type ReadConfirmationScope } from "../application/read-confirmation-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Confirmação de ciência com login e senha — `/api/v1/feedback-read-confirmations`, sempre do PRÓPRIO destinatário (pessoa e
@@ -29,9 +30,9 @@ export function createFeedbackReadConfirmationsRouter(db: Database, deps: { now?
   const now = deps.now ?? (() => new Date())
   const verify = deps.verifyPassword ?? verifyPassword
   const scopeOf = (request: { user?: { organizationId: string; personId: string; sub: string } }): ReadConfirmationScope => ({
-    organizationId: request.user!.organizationId,
-    personId: request.user!.personId,
-    accountId: request.user!.sub,
+    organizationId: sessionUser(request).organizationId,
+    personId: sessionUser(request).personId,
+    accountId: sessionUser(request).sub,
   })
 
   router.post("/events", async (request, response) => {

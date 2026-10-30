@@ -5,6 +5,7 @@ import { fetchOperatorProfile } from "../application/fetch-operator-overview.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { accessDenied, canOpenEmployeeProfile, loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { loadPersonPresentation } from "../../profile-preferences/application/person-presentation-loader.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 export function createSupervisorRouter(db: Database) {
@@ -20,16 +21,16 @@ export function createSupervisorRouter(db: Database) {
   router.get("/operators/:id", async (request, response, next) => {
     const id = request.params.id!
     try {
-      const scope = await loadViewerScope(analyticsRepository, request.user!)
+      const scope = await loadViewerScope(analyticsRepository, sessionUser(request))
       // Ficha = operador ativo visível que não é o próprio viewer (subárvore operacional ∪ escopo de `indicators.view`).
       if (!canOpenEmployeeProfile(scope, id)) throw accessDenied()
     } catch (error) {
       return next(error)
     }
-    const profile = await fetchOperatorProfile(db, request.user!.organizationId, id)
+    const profile = await fetchOperatorProfile(db, sessionUser(request).organizationId, id)
     if (!profile) return response.status(404).json({ error: { code: "OPERATOR_NOT_FOUND", message: "Colaborador não encontrado." } })
     // LGPD: quem abriu a ficha (monitorias, planos, escalonamento) de outra pessoa (migration 151).
-    await recordPersonalDataAccess(db, { organizationId: request.user!.organizationId, viewerPersonId: request.user!.personId, subjectPersonId: id, dataKind: "EMPLOYEE_PROFILE", resourceId: null })
+    await recordPersonalDataAccess(db, { organizationId: sessionUser(request).organizationId, viewerPersonId: sessionUser(request).personId, subjectPersonId: id, dataKind: "EMPLOYEE_PROFILE", resourceId: null })
     // Indicadores e feedbacks NÃO vêm por aqui: a ficha mostra os indicadores pela área de analytics e o Acompanhamento pelo feed
     // da estrutura (`/analytics/follow-ups`) — carregá-los aqui era leitura descartada a cada abertura.
     const [plans, monitorings, escalation] = await Promise.all([
@@ -38,7 +39,7 @@ export function createSupervisorRouter(db: Database) {
       db.query(`select current_level "currentLevel",reason,consecutive_cycles "consecutiveCycles",previous_actions "previousActions",ai_recommendation "aiRecommendation",confidence::float,generated_at "generatedAt" from performance_escalations where operator_id=$1 and status='ACTIVE' order by generated_at desc limit 1`, [id]),
     ])
     // Apresentação do colaborador VISITADO (nome escolhido por ele, foto e capa dele) — nunca as preferências de quem visita.
-    const presentation = await loadPersonPresentation(db, request.user!.organizationId, id)
+    const presentation = await loadPersonPresentation(db, sessionUser(request).organizationId, id)
     return response.json({ data: { profile: { ...profile, presentation }, plans: plans.rows, monitorings: monitorings.rows, escalation: escalation.rows[0] ?? null } })
   })
   return router

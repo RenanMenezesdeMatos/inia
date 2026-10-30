@@ -18,6 +18,7 @@ import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, type Policy
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
 import { canSeeInterventionsOf } from "../application/intervention-access.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
  * Administração das políticas de acompanhamento — `/api/v1/admin/intervention-policies`. Permissões SEPARADAS: editar,
@@ -34,7 +35,7 @@ declare module "express-serve-static-core" {
 }
 
 const forbidden = (message = "Você não tem permissão para este recurso.") => new DomainError(message, "FORBIDDEN", 403)
-const actorOf = (request: Request) => ({ userAccountId: request.user!.sub, personId: request.user!.personId })
+const actorOf = (request: Request) => ({ userAccountId: sessionUser(request).sub, personId: sessionUser(request).personId })
 const accessOf = (request: Request) => request.interventionAccess!
 
 const policyScopeOf = (policy: Pick<PolicyHeader, "scopeType" | "teamId" | "subteamId">): AccessScope =>
@@ -54,14 +55,14 @@ function requireOrganizationWide(permission: Permission) {
 }
 
 async function policyForWrite(db: Database, request: Request, permission: Permission): Promise<PolicyHeader> {
-  const policy = await config.loadPolicyOrThrow(db, request.user!.organizationId, String(request.params.policyId))
+  const policy = await config.loadPolicyOrThrow(db, sessionUser(request).organizationId, String(request.params.policyId))
   if (!seesPolicy(accessOf(request), policy)) throw new DomainError("Política não encontrada.", "INTERVENTION_POLICY_NOT_FOUND", 404)
   if (!coversPolicy(accessOf(request), permission, policy)) throw forbidden("Seu escopo não cobre o escopo desta política.")
   return policy
 }
 
 async function policyForRead(db: Database, request: Request): Promise<PolicyHeader> {
-  const policy = await config.loadPolicyOrThrow(db, request.user!.organizationId, String(request.params.policyId))
+  const policy = await config.loadPolicyOrThrow(db, sessionUser(request).organizationId, String(request.params.policyId))
   if (!seesPolicy(accessOf(request), policy)) throw new DomainError("Política não encontrada.", "INTERVENTION_POLICY_NOT_FOUND", 404)
   return policy
 }
@@ -71,13 +72,13 @@ async function policyForRead(db: Database, request: Request): Promise<PolicyHead
  * (`loadViewerScope`), ou Workflows no escopo (o mesmo critério do "Executar agora"). Fora disso = 404 (nunca revela).
  */
 async function canSimulateWith(db: Database, request: Request, personId: string): Promise<boolean> {
-  if (personId === request.user!.personId) return false
+  if (personId === sessionUser(request).personId) return false
   const access = accessOf(request)
   const repository = createPostgresAccessRepository(db)
   const collaborator = await repository.collaborator(access.organizationId, personId)
   if (!collaborator) return false
   if (canOnCollaborator(access, "workflows.manage", collaborator, await repository.isInStructure(access.organizationId, access.personId, personId))) return true
-  const scope = await loadViewerScope(new PgAnalyticsReadRepository(db), request.user!, "indicators.view")
+  const scope = await loadViewerScope(new PgAnalyticsReadRepository(db), sessionUser(request), "indicators.view")
   return scope.nodes.has(personId)
 }
 
@@ -96,14 +97,14 @@ export function createInterventionAdminRouter(db: Database) {
   const router = Router()
   router.use(async (request, _response, next) => {
     try {
-      request.interventionAccess = await createPostgresAccessRepository(db).loadContext(request.user!.organizationId, request.user!.sub)
+      request.interventionAccess = await createPostgresAccessRepository(db).loadContext(sessionUser(request).organizationId, sessionUser(request).sub)
       if (![...POLICY_PERMISSIONS, "workflows.manage" as Permission].some((permission) => canAnywhere(request.interventionAccess!, permission))) return next(forbidden())
       return next()
     } catch (error) {
       return next(error)
     }
   })
-  const organizationOf = (request: Request) => request.user!.organizationId
+  const organizationOf = (request: Request) => sessionUser(request).organizationId
   const anyPolicyPermission = requireAny(POLICY_PERMISSIONS)
 
   // Catálogo técnico (fixo em código): o que o editor precisa para montar tipos e políticas.
@@ -333,7 +334,7 @@ export function createInterventionAdminRouter(db: Database) {
     const version = original.policy_version_id ? await loadPolicyVersion(db, organizationOf(request), original.policy_version_id) : null
     const evaluation = await evaluatePolicy(db, { organizationId: organizationOf(request), policy: { ...policy, active: true }, personId: original.person_id, asOf: original.as_of, recommendOnly: Boolean(original.facts?.recommendOnly), version })
     if (!evaluation) throw new DomainError("Colaborador não encontrado.", "PERSON_NOT_FOUND", 404)
-    const result = await applyEvaluation(db, { evaluation, origin: "REEVALUATION", idempotencyKey: `reeval:${original.id}:${randomUUID()}`, requestedBy: request.user!.personId, supersedesEvaluationId: original.id, reevaluationReason: reason, applyDecisions: false })
+    const result = await applyEvaluation(db, { evaluation, origin: "REEVALUATION", idempotencyKey: `reeval:${original.id}:${randomUUID()}`, requestedBy: sessionUser(request).personId, supersedesEvaluationId: original.id, reevaluationReason: reason, applyDecisions: false })
     response.status(201).json({ data: result })
   })
 

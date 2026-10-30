@@ -12,6 +12,7 @@ import { ACCOUNT_ACCESS_STATUSES } from "../domain/account-access-status.js"
 import { ACCESS_SCOPE_TYPES } from "../domain/access-scope.js"
 import { createPostgresAccessRepository } from "../infrastructure/postgres-access-repository.js"
 import { createPostgresAccountAccessRepository } from "../infrastructure/postgres-account-access-repository.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const idParam = z.string().uuid()
 const listSchema = z.object({ search: z.string().trim().max(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20) })
@@ -30,7 +31,7 @@ export function createAccessRouter(database: Database, deps?: { repository?: Acc
   const resolved: AccessDeps = { repository: deps?.repository ?? createPostgresAccessRepository(database), now: () => clock.now() }
   const accountDeps: AccountAccessDeps = { ...resolved, accounts: deps?.accounts ?? createPostgresAccountAccessRepository(database), hashPassword, temporaryPasswordTtlHours: env.TEMPORARY_PASSWORD_TTL_HOURS }
   const router = Router()
-  const actorOf = (request: { user?: { organizationId: string; sub: string; personId: string } }) => ({ organizationId: request.user!.organizationId, accountId: request.user!.sub, personId: request.user!.personId })
+  const actorOf = (request: { user?: { organizationId: string; sub: string; personId: string } }) => ({ organizationId: sessionUser(request).organizationId, accountId: sessionUser(request).sub, personId: sessionUser(request).personId })
 
   router.get("/roles", async (request, response) => { response.json({ data: await listRoles(resolved, actorOf(request)) }) })
   router.get("/scope-options", async (request, response) => { response.json({ data: await scopeOptions(resolved, actorOf(request)) }) })

@@ -3,6 +3,7 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { resolveOfficialClosure } from "../application/official-closure.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
 /**
@@ -15,13 +16,13 @@ export function createEmployeePerformanceRouter(db: Database) {
   const router = Router()
 
   router.get("/", async (request, response) => {
-    const organizationId = request.user!.organizationId
+    const organizationId = sessionUser(request).organizationId
     const personIdInput = typeof request.query.personId === "string" ? request.query.personId : undefined
     if (personIdInput !== undefined && !z.string().uuid().safeParse(personIdInput).success) return response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Colaborador inválido." } })
     const personId = personIdInput
     // Atingimento, peso, PRV (remuneração variável) e quartil são dado sensível: só das pessoas do escopo de quem consulta
     // (achado A-F03) — administrador de Grupo/Subgrupo não lê a organização inteira.
-    const scopes = await getManageableScopes(db, request.user!, "configuration.manage")
+    const scopes = await getManageableScopes(db, sessionUser(request), "configuration.manage")
     const organizationWide = scopes.unrestricted || scopes.allTeams
     const teamIds = scopes.unrestricted ? [] : [...scopes.teamIds]
     const subteamIds = scopes.unrestricted ? [] : [...scopes.subteamIds]

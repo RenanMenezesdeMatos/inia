@@ -7,7 +7,7 @@ import { GROUP_BY_LABELS, PERIOD_DISPLAY_LABELS, SITUATION_LABELS, SORT_LABELS, 
 import { ChipToggleGroup, Field, OptionSelect } from "./form-controls"
 import { switchTool } from "./form-helpers"
 
-const options = <K extends string>(labels: Record<K, string>, keys?: K[]) => (keys ?? (Object.keys(labels) as K[])).map((value) => ({ value, label: labels[value] }))
+const options = <K extends string>(labels: Record<K, string>, keys?: K[]) => (keys ?? (Object.keys(labels) as K[])).map((value): { value: K; label: string } => ({ value, label: labels[value] ?? value }))
 
 /** "Que dados": o tipo de consulta e os parâmetros dela, a estrutura e o período analisado. */
 export function QueryFields({ definition, onChange, catalog }: { definition: ReportDefinition; onChange: (definition: ReportDefinition) => void; catalog: ReportOptions }) {

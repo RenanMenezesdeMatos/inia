@@ -6,6 +6,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { INIA_SCENE_IMAGE_LIMITS, INIA_SCENE_IMAGES, normalizeBlur, normalizeDim, validatePeriod, type ScenePeriod } from "../domain/inia-scene.js"
 import { validateSlot, type TimeSlot } from "../domain/scene-time-slots.js"
 import { createScene, deleteScene, loadCurrentScene, loadSceneImage, loadScenePrimaryImage, loadScenesOverview, setDefaultScene, updateScene, type SceneActor, type SceneImageInput } from "../application/inia-scene-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 type Clock = () => Date
 // Arquivos: `image` (contrato antigo: a imagem principal) ou `file-N`, referenciados pelo manifesto `images`.
@@ -101,7 +102,7 @@ function blurFrom(value: string | undefined): number | undefined {
 }
 const idSchema = z.string().uuid()
 
-const actorOf = (request: { user?: { organizationId: string; personId: string } }): SceneActor => ({ organizationId: request.user!.organizationId, personId: request.user!.personId })
+const actorOf = (request: { user?: { organizationId: string; personId: string } }): SceneActor => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
 const sceneIdOf = (value: unknown) => {
   const parsed = idSchema.safeParse(value)
   if (!parsed.success) throw new DomainError("Cenário não encontrado.", "INIA_SCENE_NOT_FOUND", 404)
@@ -113,7 +114,7 @@ export function createIniaSceneAdminRouter(db: Database, clock: Clock = () => ne
   const router = Router()
 
   router.get("/", async (request, response) => {
-    response.json({ data: await loadScenesOverview(db, request.user!.organizationId, clock()) })
+    response.json({ data: await loadScenesOverview(db, sessionUser(request).organizationId, clock()) })
   })
 
   router.post("/", receiveImage, async (request, response) => {
@@ -124,7 +125,7 @@ export function createIniaSceneAdminRouter(db: Database, clock: Clock = () => ne
     const images: SceneImageInput[] = input.images !== undefined ? imagesFrom(input.images, files, { allowIds: false }) : legacy ? [{ label: "Principal", slot: null, isPrimary: true, data: legacy }] : []
     if (images.length === 0) throw new DomainError("Envie a imagem do cenário.", "INIA_SCENE_IMAGE_REQUIRED", 422)
     const id = await createScene(db, actorOf(request), { name: input.name, period: periodFrom(input.scheduleStart, input.scheduleEnd), images, blur: blurFrom(input.blur), dim: dimFrom(input.dim) })
-    response.status(201).json({ data: { id, overview: await loadScenesOverview(db, request.user!.organizationId, clock()) } })
+    response.status(201).json({ data: { id, overview: await loadScenesOverview(db, sessionUser(request).organizationId, clock()) } })
   })
 
   router.patch("/:id", receiveImage, async (request, response) => {
@@ -135,18 +136,18 @@ export function createIniaSceneAdminRouter(db: Database, clock: Clock = () => ne
     if (input.schedule === "set" && period === null) throw new DomainError(PERIOD_MESSAGES.SCENE_PERIOD_INCOMPLETE, "SCENE_PERIOD_INCOMPLETE", 422)
     const images = input.images !== undefined ? imagesFrom(input.images, files, { allowIds: true }) : undefined
     await updateScene(db, actorOf(request), sceneId, { name: input.name, period, images, primaryImage: images ? undefined : legacyImageOf(files), blur: blurFrom(input.blur), dim: dimFrom(input.dim) })
-    response.json({ data: await loadScenesOverview(db, request.user!.organizationId, clock()) })
+    response.json({ data: await loadScenesOverview(db, sessionUser(request).organizationId, clock()) })
   })
 
   router.delete("/:id", async (request, response) => {
     await deleteScene(db, actorOf(request), sceneIdOf(request.params.id))
-    response.json({ data: await loadScenesOverview(db, request.user!.organizationId, clock()) })
+    response.json({ data: await loadScenesOverview(db, sessionUser(request).organizationId, clock()) })
   })
 
   router.put("/default", async (request, response) => {
     const { sceneId } = z.object({ sceneId: idSchema.nullable() }).strict().parse(request.body ?? {})
     await setDefaultScene(db, actorOf(request), sceneId)
-    response.json({ data: await loadScenesOverview(db, request.user!.organizationId, clock()) })
+    response.json({ data: await loadScenesOverview(db, sessionUser(request).organizationId, clock()) })
   })
 
   return router
@@ -176,18 +177,18 @@ export function createIniaSceneRouter(db: Database, clock: Clock = () => new Dat
 
   router.get("/current", async (request, response) => {
     response.setHeader("cache-control", "private, no-store")
-    response.json({ data: await loadCurrentScene(db, request.user!.organizationId, clock()) })
+    response.json({ data: await loadCurrentScene(db, sessionUser(request).organizationId, clock()) })
   })
 
   router.get("/images/:imageId", async (request, response) => {
     const id = idSchema.safeParse(request.params.imageId)
-    return sendImage(response, id.success ? await loadSceneImage(db, request.user!.organizationId, id.data) : null)
+    return sendImage(response, id.success ? await loadSceneImage(db, sessionUser(request).organizationId, id.data) : null)
   })
 
   // Endereço antigo: a imagem principal do cenário.
   router.get("/:id/image", async (request, response) => {
     const id = idSchema.safeParse(request.params.id)
-    return sendImage(response, id.success ? await loadScenePrimaryImage(db, request.user!.organizationId, id.data) : null)
+    return sendImage(response, id.success ? await loadScenePrimaryImage(db, sessionUser(request).organizationId, id.data) : null)
   })
 
   return router

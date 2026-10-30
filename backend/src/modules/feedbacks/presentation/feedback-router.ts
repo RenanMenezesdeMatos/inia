@@ -4,6 +4,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { caseVisibleTo, loadCaseVisibility } from "../../supervision-cases/application/case-visibility.js"
 import { PublishFeedback } from "../application/publish-feedback.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const notFound = () => new DomainError("Feedback não encontrado.", "FEEDBACK_NOT_FOUND", 404)
 
@@ -18,7 +19,7 @@ export function createFeedbackRouter(database: Database) {
   router.post("/:id/publish", async (request, response) => {
     const id = z.string().uuid().safeParse(request.params.id)
     if (!id.success) throw notFound()
-    const user = request.user!
+    const user = sessionUser(request)
     const owner = await database.query<{ operator_id: string; team_id: string | null; subteam_id: string | null }>(
       `select c.operator_id, c.team_id, p.subteam_id from feedbacks f join supervision_cases c on c.id = f.case_id join people p on p.id = c.operator_id
        where f.id = $1 and f.organization_id = $2`,

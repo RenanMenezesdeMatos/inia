@@ -6,6 +6,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { COVER_PRESETS } from "../domain/person-presentation.js"
 import { PROFILE_IMAGE_LIMITS } from "../domain/profile-image.js"
 import { loadMyProfile, loadProfileImage, updateMyProfile, type AvatarChange, type CoverChange } from "../application/profile-preferences-service.js"
+import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: PROFILE_IMAGE_LIMITS.COVER.maxBytes, files: 2, fields: 8 } }).fields([
   { name: "avatar", maxCount: 1 },
@@ -38,7 +39,7 @@ const updateSchema = z
 /** `/api/v1/me/profile` — só a pessoa da sessão (não há parâmetro de pessoa). */
 export function createMyProfileRouter(db: Database) {
   const router = Router()
-  const ownerOf = (request: { user?: { organizationId: string; personId: string; sub: string } }) => ({ organizationId: request.user!.organizationId, personId: request.user!.personId, accountId: request.user!.sub })
+  const ownerOf = (request: { user?: { organizationId: string; personId: string; sub: string } }) => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId, accountId: sessionUser(request).sub })
 
   router.get("/", async (request, response) => {
     response.json({ data: await loadMyProfile(db, ownerOf(request)) })
@@ -83,7 +84,7 @@ export function createProfileImageRouter(db: Database) {
   const router = Router()
   router.get("/:id", async (request, response) => {
     const id = z.string().uuid().safeParse(request.params.id)
-    const image = id.success ? await loadProfileImage(db, request.user!.organizationId, id.data) : null
+    const image = id.success ? await loadProfileImage(db, sessionUser(request).organizationId, id.data) : null
     if (!image) return response.status(404).json({ error: { code: "PROFILE_IMAGE_NOT_FOUND", message: "Imagem não encontrada." } })
     response.setHeader("content-type", image.mimeType)
     response.setHeader("content-length", image.data.length)
