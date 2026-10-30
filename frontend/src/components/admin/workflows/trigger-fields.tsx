@@ -181,9 +181,10 @@ function CalendarScheduleFields({ value, onChange }: { value: ScheduleTrigger; o
 
       {kind === "WEEKLY" ? (
         <div className="space-y-1.5">
-          <Label>Dias da semana</Label>
+          <Label id={`${fieldId}-weekdays`}>Dias da semana</Label>
           <ToggleGroup
             type="multiple"
+            aria-labelledby={`${fieldId}-weekdays`}
             value={weekly?.weekdays ?? []}
             onValueChange={(weekdays) => onChange({ ...value, frequency: { type: "WEEKLY", weekdays: weekdays as Weekday[] } })}
             className="flex-wrap justify-start"
@@ -446,8 +447,8 @@ export function TriggerFields({
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <Label>Tipo de gatilho</Label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Label id={`${fieldId}-kind`}>Tipo de gatilho</Label>
+        <div role="group" aria-labelledby={`${fieldId}-kind`} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {TRIGGER_KIND_OPTIONS.map((option) => {
             const Icon = option.icon
             const selected = value.kind === option.kind
@@ -455,6 +456,7 @@ export function TriggerFields({
               <button
                 key={option.kind}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => {
                   if (selected) return
                   if (option.kind === "channel_flag") onChange({ kind: "channel_flag", channelFlagId: "" })

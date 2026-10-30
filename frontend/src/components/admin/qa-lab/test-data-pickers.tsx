@@ -134,10 +134,10 @@ export function MeasurementPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1.5">
-          <Label>Cenário</Label>
-          <div className="flex gap-1">
+          <Label id={`${fieldId}-scenario`}>Cenário</Label>
+          <div role="group" aria-labelledby={`${fieldId}-scenario`} className="flex gap-1">
             {(["MATCH", "NO_MATCH", "ALL"] as const).map((option) => (
-              <Button key={option} type="button" size="sm" variant={scenario === option ? "default" : "outline"} onClick={() => setScenario(option)}>
+              <Button key={option} type="button" size="sm" variant={scenario === option ? "default" : "outline"} aria-pressed={scenario === option} onClick={() => setScenario(option)}>
                 {option === "MATCH" ? "Atende" : option === "NO_MATCH" ? "Não atende" : "Todas"}
               </Button>
             ))}

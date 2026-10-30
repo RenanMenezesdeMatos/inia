@@ -113,9 +113,10 @@ export function OutputForm({
       ) : null}
 
       <div className="space-y-1.5">
-        <Label>Superfícies</Label>
+        <Label id={`${fieldId}-surfaces`}>Superfícies</Label>
         <ToggleGroup
           type="multiple"
+          aria-labelledby={`${fieldId}-surfaces`}
           value={config.surfaces}
           onValueChange={(value) => onChange({ ...node, config: { ...config, surfaces: value as OutputSurface[] } })}
           className="flex-wrap justify-start"

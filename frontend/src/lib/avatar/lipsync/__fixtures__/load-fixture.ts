@@ -479,10 +479,10 @@ export function createTestPhonemizer(): TranscriptPhonemizer {
   let syllableIndex = 0
   const emit = (text: string): G2PWord[] => {
     const words = testPhonemizeText(text, wordIndex, syllableIndex)
-    if (words.length > 0) {
-      wordIndex = words[words.length - 1]!.phones[0].wordIndex + 1
-      syllableIndex = words[words.length - 1]!.phones[words[words.length - 1]!.phones.length - 1].syllableIndex + 1
-    }
+    // Cada palavra devolvida consome um índice; a próxima sílaba vem do último fone emitido (sem supor fone na última palavra).
+    wordIndex += words.length
+    const lastPhone = words.flatMap((word) => word.phones).at(-1)
+    if (lastPhone) syllableIndex = lastPhone.syllableIndex + 1
     return words
   }
   return {

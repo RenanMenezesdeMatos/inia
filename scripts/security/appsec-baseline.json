@@ -73,6 +73,7 @@
   "react-href-var|frontend/src/components/layout/top-bar/area-switcher.tsx|18cf2a3beaeb715c",
   "react-insecure-request|backend/scripts/poc-tools/holdout-v2/holdout-phase-a-local.ts|1cf3cac80b051dba",
   "react-insecure-request|backend/scripts/poc-tools/holdout-v2/holdout-phase-a-local.ts|e7b4b85f5b793fdb",
+  "spawn-shell-true|scripts/ci/verificar.mjs|1fa0e14e70e6612f",
   "spawn-shell-true|scripts/install/run.mjs|296ed741a5657a04",
   "spawn-shell-true|scripts/security/verificar.mjs|1b114e110820f9ae",
   "tainted-sql-string|backend/src/modules/agents/presentation/agent-router.ts|7fac7c93bf072cf0",
@@ -94,7 +95,6 @@
  ],
  "gitleaks": [],
  "osv": [
-  "backend|@azure/msal-node@6.0.1|GHSA-xcx6-jx8p-x3h5",
   "backend|@vitest/mocker@3.2.7|GHSA-82fw-gwwq-j7x9",
   "backend|@vitest/mocker@3.2.7|GHSA-qxg6-89mg-rqv8",
   "backend|tinypool@1.1.1|GHSA-5gmw-xhrv-c9v3",
@@ -167,5 +167,5 @@
   "frontend|vitest@3.2.7|GHSA-82fw-gwwq-j7x9",
   "frontend|zod@3.25.76|GHSA-mrhx-c7xc-m3w5"
  ],
- "geradoEm": "2026-10-29"
+ "geradoEm": "2026-10-30"
 }

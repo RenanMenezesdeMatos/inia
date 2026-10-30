@@ -65,6 +65,18 @@ describe("TriggerConfigEditor — troca de tipo", () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
+  it("acessibilidade: o tipo de gatilho é um grupo com nome e diz qual está escolhido; os dias da semana também têm nome", () => {
+    const view = renderEditor()
+    const kinds = screen.getByRole("group", { name: "Tipo de gatilho" })
+    expect(within(kinds).getByRole("button", { name: /Manual/ })).toHaveAttribute("aria-pressed", "true")
+    expect(within(kinds).getByRole("button", { name: /Por agenda/ })).toHaveAttribute("aria-pressed", "false")
+    view.unmount()
+    renderEditor({ kind: "schedule", mode: "CALENDAR", times: ["09:00"], intervalDays: 1, frequency: { type: "WEEKLY", weekdays: ["MON"] } })
+    // ToggleGroup de múltipla escolha = toolbar do Radix (cada dia já diz se está marcado); agora com o nome do rótulo.
+    const weekdays = screen.getByRole("toolbar", { name: "Dias da semana" })
+    expect(within(weekdays).getByRole("button", { name: "Seg" })).toHaveAttribute("aria-pressed", "true")
+  })
+
   it("a prévia da Agenda avisa quando o horário de hoje já passou (entrar no ar hoje dispara na hora)", () => {
     renderEditor({ kind: "schedule", mode: "CALENDAR", times: ["18:30"], intervalDays: 1, frequency: { type: "MONTHLY", mode: "DAY_OF_MONTH", day: 5 } })
     expect(screen.getByTestId("schedule-preview-catch-up")).toHaveTextContent("já passou: se este gatilho entrar no ar hoje (ao publicar ou ativar), essa execução começa em até 1 minuto")

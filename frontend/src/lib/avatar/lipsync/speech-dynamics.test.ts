@@ -41,6 +41,13 @@ const randomBlinks = measureBehavior(results, { seeds: 12, prosodicBlinks: false
 /** Acentos de uma captura, em segundos desde o início do áudio. */
 const accentsOf = (id: string) => byId.get(id)!.accents.map((accent) => ({ ...accent, at: accent.t - byId.get(id)!.track.start }))
 
+describe("régua da dinâmica", () => {
+  it("roteiro sem áudio é erro explícito (antes o envelope lia o índice −1 e a correlação virava NaN sem aviso)", () => {
+    const schedule = schedules.get(FIXTURES[0]!)!
+    expect(() => measureDynamics({ ...schedule, steps: schedule.steps.filter((step) => step.kind !== "audio") })).toThrow("o roteiro não tem áudio")
+  })
+})
+
 describe("dinâmica da boca nas capturas reais", () => {
   it.each(["a (aberto)", "é/ó", "s/z/x/j", "f/v", "t/d/n/l"])("%s: mandíbula no centro do fone a ±25%% do alvo", (group) => {
     expect(Math.abs(ratioOf(group) - 1)).toBeLessThanOrEqual(0.25)

@@ -2,7 +2,8 @@
 // `npm run verificar` — a mesma verificação do CI (.github/workflows/ci.yml), rodando na máquina: para usar antes de cada
 // entrega e para plugar em qualquer pipeline (o da Vivo inclusive) com um comando só. Não altera nada no repositório.
 //
-//   npm run verificar                    tipos, lint e testes do backend e do frontend, catraca de tipagem estrita e build
+//   npm run verificar                    segredos e dependências (security:check), tipos, lint e testes do backend e do frontend,
+//                                        catraca de tipagem estrita e build
 //   npm run verificar -- --sem-build     sem o `next build` (mais rápido)
 //   npm run verificar -- --provas        também as provas contra o banco de teste (INIA_DB_PROOF=1; exige o PostgreSQL de
 //                                        teste com as migrations em dia — `npm --prefix backend run db:migrate:test`)
@@ -16,6 +17,8 @@ const withBuild = !args.includes("--sem-build")
 const withProofs = args.includes("--provas")
 
 const steps = [
+  // Segredos no código e `npm audit` das dependências de produção (crítica/alta reprova; sem rede, só avisa).
+  { name: "segurança · segredos e dependências", cwd: ".", command: ["npm", "run", "-s", "security:check"] },
   { name: "backend · tipos", cwd: "backend", command: ["npx", "tsc", "-p", "tsconfig.json", "--noEmit"] },
   { name: "backend · tipos dos scripts", cwd: "backend", command: ["npm", "run", "-s", "typecheck:scripts"] },
   { name: "backend · lint", cwd: "backend", command: ["npx", "eslint", "."] },

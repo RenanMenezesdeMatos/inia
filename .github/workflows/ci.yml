@@ -71,6 +71,20 @@ jobs:
       - name: Build
         run: npx next build
 
+  # Segredos no código (nomes de arquivo, padrões de chave) e `npm audit` das dependências de produção do backend e da interface:
+  # crítica ou alta reprova; moderada/baixa só avisa (docs/security/pendencias-e-riscos.md, R-14). Um alerta novo publicado contra
+  # uma dependência pode deixar este job vermelho sem mudança no código — é o aviso que se quer.
+  seguranca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Segredos e dependências (npm run security:check)
+        run: npm run security:check
+
   # Provas contra PostgreSQL: só sob demanda (Actions › CI › Run workflow › "provas"), porque levam ~10 min. Banco novo com
   # migrations, dados de referência e massa demo — o mesmo ambiente do inia_test. Em 30/10/2026, num banco assim, todas passaram
   # (78 arquivos, 379 casos; docs/dev/validacao-boas-praticas-2026-10-29.md, §12). As de bancos externos pedem os contêineres de

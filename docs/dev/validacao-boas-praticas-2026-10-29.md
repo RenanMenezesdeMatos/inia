@@ -1,7 +1,8 @@
 # Validação de boas práticas — TypeScript, React, Node.js/Express (29/10/2026)
 
 Rodada de engenharia separada da auditoria AppSec (`docs/security/appsec-2026-10-29/`): qualidade, arquitetura,
-confiabilidade, testes e manutenção. Não houve pentest nem repetição da auditoria de segurança. Os commits estão em §10 (sem push).
+confiabilidade, testes e manutenção. Não houve pentest nem repetição da auditoria de segurança. Os commits estão em §10, §11.4 e
+§12.9; o código vai ao GitHub por snapshot (`npm run github:publish`), sem o histórico local.
 
 - **Revisão Git:** `77c5adcd` (branch `admin-list-standardization`). O working tree já tinha **96 alterações locais de outras
   sessões** (Meu turno, Treino com a INIA, AppSec de 29/10 e monitoria de usabilidade). A lista e os hashes dos arquivos foram
@@ -13,8 +14,9 @@ confiabilidade, testes e manutenção. Não houve pentest nem repetição da aud
 
 ## 1. Diagnóstico executivo
 
-> **Atualização de 30/10/2026:** as pendências deixadas em 29/10 foram tratadas a pedido do usuário (§11). A matriz da §3 e a
-> tabela de achados registrados (§4) mostram o estado final.
+> **Atualização de 30/10/2026:** as pendências deixadas em 29/10 foram tratadas a pedido do usuário (§11), e as que ainda
+> ficaram abertas, na quarta rodada (§12). A matriz da §3 e a tabela de achados registrados (§4) mostram o estado final; o
+> texto abaixo descreve a primeira rodada.
 
 A base está acima da média para a stack. TypeScript estrito nos dois lados, sem `any` real em produção e sem `@ts-ignore`.
 O backend é um monólito modular consistente: tratamento de erro centralizado, timeouts em toda chamada externa, desligamento
@@ -39,7 +41,8 @@ com o código antigo. Também foram fechadas duas violações de regras existent
 - a pendência do erro interno do React Compiler, que agora é erro no lint;
 - `className` montado sem `cn`.
 
-Das mudanças amplas, ficaram propostas, sem implementação:
+Das mudanças amplas, ficaram propostas em 29/10 (todas implementadas depois, a pedido — §9 e §11 —, menos a P-8, decidida:
+manter "registra e segue"):
 
 - unificar os 23 helpers de transação;
 - adotar gradualmente `noUncheckedIndexedAccess` no frontend;
@@ -309,27 +312,30 @@ As provas rodaram uma por vez (`--no-file-parallelism`). No fim, nenhuma conexã
 
 ## 7. Propostas de mudanças amplas
 
-P-1, P-6 e P-7 foram implementadas na segunda rodada, a pedido (§9). As demais continuam como proposta.
+Todas foram tratadas, a pedido: P-1, P-6 e P-7 na segunda rodada (§9); P-2, P-3, P-4 e P-5 na terceira (§11); a verificação
+de segurança da P-4 entrou no CI em §12.11; a P-8 foi decidida (manter "registra e segue").
 
 | ID | Proposta | Justificativa | Impacto | Plano de validação |
 |---|---|---|---|---|
 | P-1 ✔ (§9) | Helper único de transação em `src/shared/infrastructure/database/transaction.ts`: savepoint quando recebe um `PoolClient`, `rollback` protegido, `release(erro)` quando o rollback falha. Tipo `Queryable` para o executor, sem `as unknown as` | F-01 e F-03 nasceram da cópia divergente: 23 helpers, 4 variantes | 23 arquivos, por módulo, um de cada vez | Teste unitário do helper (os mesmos cenários de `run-pipeline.test.ts`) + suíte do módulo + prova de banco do módulo |
-| P-2 | `noUncheckedIndexedAccess` gradual no frontend: `tsconfig.strict.json` estendendo o principal, `include` só com as pastas já limpas, rodado como catraca (a lista só cresce) | O backend já usa a opção; no frontend o custo foi medido (1.213 erros em 61 arquivos) | Por pasta; sem ligar em massa | `tsc -p tsconfig.strict.json` limpo + testes da pasta |
-| P-3 | Testes de contrato frontend × backend nos endpoints críticos (Acompanhamento, ciência, chat, reports): teste do backend que valida a resposta real (supertest) com o schema zod do frontend, como já faz `validate-workflow-for-publish.parity.test.ts` | Esquemas zod independentes nos dois lados, sem nada provando que dizem o mesmo | Só testes | O teste falha ao remover um campo da resposta |
-| P-4 | CI mínimo no padrão da empresa: `npm ci`, `tsc`, `typecheck:scripts`, `eslint`, `vitest` dos dois lados, `next build`, `security:check`; provas de banco num job com PostgreSQL e migrações aplicadas | Hoje tudo é manual; as provas de banco apodrecem sem aviso (§6.3) | Infraestrutura (depende de onde o código vive na Vivo) | Pipeline verde na revisão atual |
-| P-5 | Id de correlação por requisição (`x-request-id` ou gerado) em `AsyncLocalStorage`, incluído nos logs do pino e no 500 devolvido | Ligar a reclamação do usuário ao log do servidor (nodebestpractices 5.14) | `app.ts` + logger | Teste de rota: o 500 traz o id e o log registra o mesmo id |
+| P-2 ✔ (§11, §12.5) | `noUncheckedIndexedAccess` gradual no frontend: `tsconfig.strict.json` estendendo o principal, `include` só com as pastas já limpas, rodado como catraca (a lista só cresce) | O backend já usa a opção; no frontend o custo foi medido (1.213 erros em 61 arquivos) | Por pasta; sem ligar em massa | `tsc -p tsconfig.strict.json` limpo + testes da pasta |
+| P-3 ✔ (§11) | Testes de contrato frontend × backend nos endpoints críticos (Acompanhamento, ciência, chat, reports): teste do backend que valida a resposta real (supertest) com o schema zod do frontend, como já faz `validate-workflow-for-publish.parity.test.ts` | Esquemas zod independentes nos dois lados, sem nada provando que dizem o mesmo | Só testes | O teste falha ao remover um campo da resposta |
+| P-4 ✔ (§11, §12.11) | CI mínimo no padrão da empresa: `npm ci`, `tsc`, `typecheck:scripts`, `eslint`, `vitest` dos dois lados, `next build`, `security:check`; provas de banco num job com PostgreSQL e migrações aplicadas | Hoje tudo é manual; as provas de banco apodrecem sem aviso (§6.3) | Infraestrutura (depende de onde o código vive na Vivo) | Pipeline verde na revisão atual |
+| P-5 ✔ (§11) | Id de correlação por requisição (`x-request-id` ou gerado) em `AsyncLocalStorage`, incluído nos logs do pino e no 500 devolvido | Ligar a reclamação do usuário ao log do servidor (nodebestpractices 5.14) | `app.ts` + logger | Teste de rota: o 500 traz o id e o log registra o mesmo id |
 | P-6 ✔ (§9) | As provas de banco conferem, antes de rodar, se o `inia_test` tem todas as migrações do diretório, e falham com "banco de teste desatualizado — rode `db:migrate:test`" | §6.3: 12 falhas que parecem de código e são de ambiente | Um helper usado nas 82 provas | Rodar com o banco desatualizado gera a mensagem clara |
 | P-7 ✔ (§9) | `app/global-error.tsx` próprio (com `<html>`/`<body>` e o tema) | Erro no layout raiz ainda cai na página padrão do Next | 1 arquivo | Erro forçado no layout em ambiente local |
-| P-8 | Decidir a política de `unhandledRejection` (D-1): manter "loga e segue" com alerta na métrica, ou desligar com código 1 como o padrão do Node | Divergência da referência | Operação | Decisão registrada + teste de `installProcessHandlers` |
+| P-8 decidida (§11) | Decidir a política de `unhandledRejection` (D-1): manter "loga e segue" com alerta na métrica, ou desligar com código 1 como o padrão do Node | Divergência da referência | Operação | Decisão registrada + teste de `installProcessHandlers` |
 
 ## 8. Pendências, limitações e como repetir
 
-- **Não verificado no navegador.** Nenhum servidor de desenvolvimento estava rodando, e o working tree e os cookies são
+- **Não verificado no navegador (29/10).** Nenhum servidor de desenvolvimento estava rodando, e o working tree e os cookies eram
   compartilhados com outras sessões. As mudanças visíveis (fronteira de erro, links e botões nas tabelas, `cn`) foram
-  verificadas por testes de componente, tipos, lint e build.
-- **Não triados:** os 38 avisos `label-has-associated-control`, o tamanho de bundle e o desempenho de renderização (sem medida, sem
-  recomendação).
-- **Prova de banco de bancos externos** (`external-database-proof`) não foi rodada: exige os bancos de exemplo em Docker.
+  verificadas por testes de componente, tipos, lint e build. Depois: tabela de Workflows na tela real (§11.1) e as telas de
+  acessibilidade das rodadas 4 e 5 (§12.11).
+- **Não triados (29/10):** os 38 avisos `label-has-associated-control` — triados em §11 e, com a regra estendida (216), em §12.4.
+  Tamanho de bundle e desempenho de renderização continuam sem medida, por decisão do usuário.
+- **Prova de banco de bancos externos** (`external-database-proof`) não foi rodada em 29/10; em 30/10 passou 40/40 nos 4 motores
+  (§12.2).
 - **Limites das referências:**
   - o WebFetch devolve as páginas resumidas, então as citações abaixo são paráfrases;
   - a página do npm do TypeScript recusou o acesso (403);
@@ -525,7 +531,7 @@ Essa migração e `backend/seeds/ai/configuracao-inicial.json` são trabalho **n
 | Migração dos blocos escritos direto (depois) | backend `tsc`, `typecheck:scripts` e `eslint .` limpos; `vitest run` 485 arquivos ok / 85 pulados, 5.277 testes ok / 467 pulados, 0 falhas; provas dos 15 módulos idênticas antes × depois |
 | Provas da Central de Dados (P-6 ativa) | rodam com o banco em dia; barradas com mensagem clara diante de um banco desatualizado |
 
-## 10. Commits (29/10/2026, sem push)
+## 10. Commits (29/10/2026; publicados depois por snapshot)
 
 Branch `admin-list-standardization`. Cada arquivo foi adicionado explicitamente; o trabalho não commitado de outras sessões
 no mesmo working tree ficou de fora. Isso inclui os trechos de coleta de usabilidade em `backend/src/main/server.ts`: desse
@@ -744,9 +750,7 @@ consulta só-leitura do QA Lab (§12.1). 2 testes novos do helper (11 no total).
 ### 12.8 O que continua em aberto
 
 - Arquivos das frentes do usuário (Meu turno, Treino, chat da INIA, monitoria de usabilidade): os itens de §11.2 que estão neles, os 212 erros de tipagem estrita.
-- Os 3 possíveis defeitos das fixtures do lip-sync (§12.5).
-- Acessibilidade fora dos 216: os `ToggleGroup` de múltipla escolha sem nome de grupo ("Superfícies", "Dias da semana") e os
-  botões de "Cenário" e "Tipo de gatilho" sem `aria-pressed` (não dizem qual opção está escolhida).
+- ~~Os 3 possíveis defeitos das fixtures do lip-sync (§12.5)~~ e ~~os grupos sem nome / botões sem estado~~ — resolvidos em §12.10.
 - Medidas de desempenho (tamanho de bundle, renderização): fora desta rodada, por decisão do usuário.
 
 ### 12.9 Commits da quarta rodada
@@ -762,3 +766,55 @@ Branch `admin-list-standardization`, com o mesmo índice temporário da terceira
 | `512a997d` | Acessibilidade — 131 rótulos associados (triagem dos 216) e 4 nomes iguais ao texto visível |
 | `9e47941b` | Tipagem estrita do avatar (só `!`, JavaScript idêntico) e base da catraca 215/7 |
 | (este) | relatório e comentário do job de provas |
+
+### 12.10 Fechamento (30/10/2026, a pedido): o que §12.8 deixava em aberto
+
+- **Grupos sem nome:** os `ToggleGroup` de múltipla escolha "Superfícies" (Output e Escalonar) e "Dias da semana" (Agenda) — o
+  Radix os renderiza como `toolbar`, e cada item já anunciava `aria-pressed` — agora têm o nome do rótulo (`aria-labelledby`).
+- **Opção escolhida:** "Tipo de gatilho" (Workflows) e "Cenário" (QA Lab) viraram grupos com nome, e cada botão diz se está
+  escolhido (`aria-pressed`). Sem mudança visual.
+- **Fixtures do lip-sync:** os 2 caminhos não acontecem com os dados atuais (toda palavra recebe ao menos um fone; todo replay
+  tem áudio — conferido), mas o código ficou explícito:
+  - o G2P de teste incremental numera palavras por `+ palavras devolvidas` e a próxima sílaba pelo último fone emitido, sem
+    supor fone na última palavra;
+  - `measureDynamics` com roteiro sem áudio lança erro com o motivo, em vez de correlação `NaN` sem aviso.
+- Testes: 5 de acessibilidade (gatilho, dias da semana, Superfícies em Output e Escalonar, Cenário — falham no código anterior),
+  1 da régua sem áudio (falha no anterior) e 2 que fixam a numeração do G2P incremental (inclusive "10h" → "h").
+- Catraca: **215 → 212 erros, 7 → 5 arquivos** — todos nas frentes do usuário (chat da INIA, tempo real, monitoria das conversas).
+- Verificações: tipos e lint limpos; suíte do frontend 186 arquivos, **2.077 testes ok**.
+
+
+### 12.11 Antes de publicar (30/10/2026, a pedido): relatório, segurança no CI e conferência na tela
+
+- **Relatório:** §1, §7 e §8 ainda descreviam a primeira rodada como estado atual (propostas "sem implementação", avisos "não
+  triados", prova externa "não rodada"); agora apontam para onde cada item foi resolvido.
+- **Verificação de segurança no CI (o que faltava da P-4):** job `seguranca` no `ci.yml` e primeiro passo do `npm run verificar`
+  — `npm run security:check`: segredos no código e `npm audit` das dependências de produção (crítica/alta reprova; sem rede, só
+  avisa). Ao ligar, reprovou: GHSA-xcx6-jx8p-x3h5 (alta) no `@azure/msal-node` 6.0.1, que vem com o driver do SQL Server
+  (`tedious` → `@azure/identity`). O caminho não é usado pela INIA (fluxo de *authorization code*; a Central de Dados entra com
+  login e senha). **Decisão do usuário: atualizar agora.** Feito pela política de dependências (atualização pontual
+  `npm update @azure/identity tedious`):
+  - `@azure/identity` 4.13.3 → 4.14.1, `@azure/msal-node` 6.0.1 → 7.1.2 (e `msal-common` 16.15.0) — com 1 a 3 dias: exceção dos
+    14 dias pela correção de segurança; mantenedores oficiais da Microsoft, sem atestado de procedência no npm;
+  - `tedious` 20.3.3 → 20.3.8 (atestado SLSA; sai o `sprintf-js`, plano do R-14 para depois de 24/10);
+  - transitivos novos (`open` 11.0.4, `wsl-utils`, `powershell-utils`, `is-in-ssh`) com mais de 14 dias; `npm audit signatures`:
+    491 pacotes com assinatura verificada;
+  - `security:check` verde (restam 2 moderadas conhecidas, `uuid` via `exceljs`); prova do SQL Server 10/10 com o driver novo;
+    R-14 de `docs/security/pendencias-e-riscos.md` atualizado;
+  - `npm run security:scan` (Semgrep, Gitleaks, OSV e Syft em contêineres sem rede): Gitleaks e OSV sem item novo; o Semgrep
+    apontou 1 novo, `spawn-shell-true` em `scripts/ci/verificar.mjs` (rodada 3) — **falso positivo**, a mesma classe já triada
+    na linha de base para `scripts/install/run.mjs` e `scripts/security/verificar.mjs`: comandos fixos no próprio script e shell
+    só no Windows, onde o Node exige para rodar `npm`/`npx` (.cmd). Linha de base regravada só para Semgrep e OSV e conferida:
+    Semgrep 91 → 92 (esse item), OSV 72 → 71 (sai o GHSA-xcx6-jx8p-x3h5 do `msal-node` 6.0.1).
+- **Na tela** (servidores locais próprios — API só como API, sem worker, para não disparar trabalho pago da fila —, conta demo
+  de administrador, nada salvo; ao fim, logout e servidores desligados):
+  - Novo workflow: "Tipo de gatilho" é um grupo com nome e só a opção escolhida está marcada; em "Por agenda" › "Semanalmente",
+    "Dias da semana" tem nome e cada dia diz se está marcado; o rótulo "Frequência" aponta para o seletor;
+  - Roteamento de IA: o rótulo "Limite de custo estimado por requisição (opcional)" está ligado ao campo (desabilitado para esta
+    conta, que não edita IA — por isso o foco não vai);
+  - Indicadores › Novo indicador: o seletor se chama "Como consolidar este indicador em um período?" e clicar no rótulo o abre,
+    como nos campos que já usavam `htmlFor`;
+  - nenhum erro no console nem no servidor; visual sem mudança;
+  - **não conferidos na tela:** "Cenário" do QA Lab (exige administrador geral; a conta de teste que tem esse papel já trocou a
+    senha, e senha não se adivinha) e "Superfícies" no painel do nó (mesmo padrão de "Dias da semana") — os dois cobertos por
+    teste de componente.

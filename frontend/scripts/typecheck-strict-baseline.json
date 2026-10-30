@@ -4,8 +4,6 @@
     "src/components/admin/usability/conversations-tab.tsx": 4,
     "src/components/operator/operator-inia-chat.test.tsx": 94,
     "src/components/operator/operator-inia-chat.tsx": 1,
-    "src/lib/avatar/lipsync/__fixtures__/dynamics-metrics.ts": 1,
-    "src/lib/avatar/lipsync/__fixtures__/load-fixture.ts": 2,
     "src/lib/realtime/gemini-realtime-transport.replay.test.ts": 21,
     "src/lib/realtime/gemini-realtime-transport.test.ts": 92
   }

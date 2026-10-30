@@ -53,6 +53,18 @@ function renderPanel(node: FlowNode, graph: FlowGraph): void {
   render(<NodeConfigPanel node={node} graph={graph} trigger={FLAG} workflowId="wf-1" onChange={vi.fn()} onDelete={vi.fn()} onClose={vi.fn()} />, { wrapper })
 }
 
+describe("NodeConfigPanel — acessibilidade", () => {
+  it.each([
+    ["output", DEFAULT_CONFIG.output],
+    ["action", { actionType: "ESCALATE", target: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" }, surfaces: ["FOLLOW_UP"] }],
+  ] as const)("Superfícies (%s): a toolbar do ToggleGroup tem o nome do rótulo", (type, config) => {
+    const trigger = { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} } as unknown as FlowNode
+    const node = { id: "node", type, label: `Nó ${type}`, position: { x: 0, y: 0 }, config } as unknown as FlowNode
+    renderPanel(node, { nodes: [trigger, node], edges: [{ id: "e1", source: "trigger", target: "node", sourceHandle: "always" }] } as unknown as FlowGraph)
+    expect(screen.getByRole("toolbar", { name: "Superfícies" })).toBeInTheDocument()
+  })
+})
+
 describe("NodeConfigPanel — cada tipo de nó monta o seu formulário", () => {
   for (const type of Object.keys(DEFAULT_CONFIG) as FlowNodeType[]) {
     it(type, () => {

@@ -156,7 +156,9 @@ export function measureDynamics(schedule: ReplaySchedule, options: DynamicsOptio
   for (const step of schedule.steps) if (step.kind === "audio") extractor.push(step.chunk.pcm, step.chunk.startAt, step.chunk.sampleRate)
   extractor.flush()
   const store = extractor.store
-  const envelopeAt = (t: number) => Math.pow(10, store.vowelBandDb[Math.min(store.count - 1, store.lowerBound(t))] / 20)
+  // Sem áudio não há envelope de referência: o índice seria −1 e a correlação viraria NaN sem aviso.
+  if (store.count === 0) throw new Error("measureDynamics: o roteiro não tem áudio — não há envelope para comparar a boca.")
+  const envelopeAt = (t: number) => Math.pow(10, store.vowelBandDb[Math.min(store.count - 1, store.lowerBound(t))]! / 20)
   const speech = shown.filter((p) => p.t >= schedule.speechStart && p.t <= schedule.speechEnd)
   const jaw = speech.map((p) => p.jaw)
   let bestMs = 0
