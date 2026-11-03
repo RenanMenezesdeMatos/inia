@@ -11,7 +11,8 @@
 //
 //   npm run github:publish                     monta, confere, mostra o resumo, pergunta e envia
 //   npm run github:publish -- --simular        monta, confere e mostra o resumo; não envia nada
-//   npm run github:publish -- --verificar      antes de perguntar, roda typecheck, lint e testes numa cópia do snapshot
+//   npm run github:publish -- --verificar      antes de perguntar, roda a verificação do `npm run verificar` (a mesma do CI)
+//                                              numa cópia do snapshot
 //   npm run github:publish -- -m "título"      título do commit no GitHub (o corpo continua listando os commits locais)
 //   npm run github:publish -- --sem-corpo      lista só o assunto de cada commit local, sem o corpo
 //
@@ -20,11 +21,12 @@
 // passa pela mesma conferência de valores dos .env e padrões de chave que o snapshot.
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs"
+import { constants, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { basename, dirname, isAbsolute, join, relative } from "node:path"
 import { createInterface } from "node:readline"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { runVerificationSteps, verificationSteps } from "../ci/verificar.mjs"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..")
 const REPOSITORY = "RenanMenezesdeMatos/inia"
@@ -446,7 +448,7 @@ const HELP = `Publica o código atual no repositório privado ${REPOSITORY} (${B
 
   npm run github:publish                     monta, confere, mostra o resumo, pergunta e envia
   npm run github:publish -- --simular        só monta, confere e mostra o resumo (nada é enviado)
-  npm run github:publish -- --verificar      também roda typecheck, lint e testes numa cópia do snapshot
+  npm run github:publish -- --verificar      também roda a verificação do npm run verificar numa cópia do snapshot
   npm run github:publish -- --completo       lista todas as mudanças e a mensagem inteira no resumo, sem cortar
   npm run github:publish -- -m "título"      título do commit no GitHub (o corpo continua listando os commits locais)
   npm run github:publish -- --sem-corpo      a mensagem lista só o assunto de cada commit local
@@ -504,31 +506,21 @@ function localSecrets() {
 function runVerification(tree) {
   const workdir = mkdtempSync(join(tmpdir(), "inia-verificar-"))
   try {
-    console.log(`\nVerificação numa cópia exportada do snapshot (${workdir})`)
+    console.log(`\nVerificação do npm run verificar numa cópia exportada do snapshot (${workdir})`)
     const exported = spawnSync("sh", ["-c", 'git archive --format=tar "$1" | tar -xf - -C "$2"', "sh", tree, workdir], { cwd: ROOT, stdio: ["ignore", "inherit", "inherit"] })
     if (exported.status !== 0) throw new PublishError("não foi possível exportar o snapshot (git archive)")
     for (const project of ["backend", "frontend"]) {
       const modules = join(ROOT, project, "node_modules")
       if (!existsSync(modules)) throw new PublishError(`${project}/node_modules não existe — rode npm run install:all antes de --verificar`)
-      symlinkSync(modules, join(workdir, project, "node_modules"), "dir")
+      // O `next build` (Turbopack) recusa node_modules que aponte para fora da pasta: o do frontend vai copiado — por clone
+      // (APFS, reflink) quando o disco permite, ~13 s e sem ocupar espaço; cópia comum quando não. O do backend basta o link.
+      if (project === "frontend") cpSync(realpathSync(modules), join(workdir, project, "node_modules"), { recursive: true, mode: constants.COPYFILE_FICLONE, verbatimSymlinks: true })
+      else symlinkSync(modules, join(workdir, project, "node_modules"), "dir")
     }
-    const steps = [
-      ["backend", "typecheck"],
-      ["backend", "typecheck:scripts"],
-      ["backend", "lint"],
-      ["backend", "test"],
-      ["frontend", "typecheck"],
-      ["frontend", "lint"],
-      ["frontend", "test"],
-    ]
-    const failed = []
-    for (const [project, script] of steps) {
-      console.log(`\n▶ ${project}: npm run ${script}`)
-      const result = spawnSync("npm", ["run", script], { cwd: join(workdir, project), stdio: "inherit" })
-      if (result.status !== 0) failed.push(`${project}: npm run ${script}`)
-    }
-    if (failed.length > 0) throw new PublishError(`a verificação falhou em:\n${failed.map((step) => `  ✗ ${step}`).join("\n")}`)
-    console.log("\n  ✓ typecheck, lint e testes do backend e do frontend passaram na cópia do snapshot")
+    // Os segredos já foram conferidos no próprio snapshot; a cópia não tem .git, então o security:check confere só as dependências.
+    const failed = runVerificationSteps(workdir, verificationSteps({ withSecrets: false }))
+    if (failed.length > 0) throw new PublishError(`a verificação falhou em:\n${failed.map((step) => `  ✗ ${step.name}`).join("\n")}`)
+    console.log("\n  ✓ a verificação do npm run verificar passou na cópia do snapshot")
   } finally {
     rmSync(workdir, { recursive: true, force: true })
   }

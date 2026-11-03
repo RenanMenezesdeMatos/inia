@@ -11,6 +11,8 @@
 //
 //   npm run security:check                 as duas verificações
 //   npm run security:check -- --sem-audit  só os segredos (sem rede)
+//   npm run security:check -- --sem-segredos  só as dependências — para quem já conferiu os segredos por conta própria (o
+//                                            `github:publish -- --verificar` confere no snapshot e roda isto numa cópia sem .git)
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
@@ -19,6 +21,7 @@ import { findEnvFiles, fingerprint, KEY_PATTERNS, MIN_SECRET_LENGTH, parseAllowe
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..")
 const skipAudit = process.argv.includes("--sem-audit")
+const skipSecrets = process.argv.includes("--sem-segredos")
 let problems = 0
 let warnings = 0
 const ok = (message) => console.log(`  ✓ ${message}`)
@@ -34,50 +37,54 @@ const bad = (message) => {
 const git = (args, input) => spawnSync("git", args, { cwd: ROOT, encoding: "utf8", input, maxBuffer: 256 * 1024 * 1024 })
 
 // ----------------------------------------------------------------------------------------------------------- segredos
-console.log("Segredos no código (versionados + novos não ignorados)")
-const listed = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
-if (listed.status !== 0) {
-  bad(`git ls-files falhou: ${listed.stderr.trim()}`)
+if (skipSecrets) {
+  console.log("Segredos no código: pulados (--sem-segredos)")
 } else {
-  const paths = listed.stdout.split("\0").filter(Boolean).filter((path) => existsSync(join(ROOT, path)))
-  const byName = sensitiveFiles(paths)
-  if (byName.length) for (const { path, reason } of byName) bad(`${reason}: ${path} — tire do repositório (e do histórico, se já foi commitado)`)
-  else ok(`nenhum arquivo de segredo pelo nome em ${paths.length} arquivos`)
+  console.log("Segredos no código (versionados + novos não ignorados)")
+  const listed = git(["ls-files", "-z", "--cached", "--others", "--exclude-standard"])
+  if (listed.status !== 0) {
+    bad(`git ls-files falhou: ${listed.stderr.trim()}`)
+  } else {
+    const paths = listed.stdout.split("\0").filter(Boolean).filter((path) => existsSync(join(ROOT, path)))
+    const byName = sensitiveFiles(paths)
+    if (byName.length) for (const { path, reason } of byName) bad(`${reason}: ${path} — tire do repositório (e do histórico, se já foi commitado)`)
+    else ok(`nenhum arquivo de segredo pelo nome em ${paths.length} arquivos`)
 
-  const allowedFile = join(ROOT, "scripts/github/padroes-permitidos.txt")
-  const allowed = existsSync(allowedFile) ? parseAllowedPatternHits(readFileSync(allowedFile, "utf8")) : new Set()
-  let keyHits = 0
-  for (const { name, regex } of KEY_PATTERNS) {
-    // Pasta de trabalho (com as mudanças ainda não commitadas) + arquivos novos não ignorados. -o: só o trecho casado.
-    const result = git(["grep", "-a", "-o", "-z", "-E", "--untracked", "-e", regex])
-    if (result.status > 1) {
-      bad(`git grep falhou (${name}): ${result.stderr.trim()}`)
-      continue
+    const allowedFile = join(ROOT, "scripts/github/padroes-permitidos.txt")
+    const allowed = existsSync(allowedFile) ? parseAllowedPatternHits(readFileSync(allowedFile, "utf8")) : new Set()
+    let keyHits = 0
+    for (const { name, regex } of KEY_PATTERNS) {
+      // Pasta de trabalho (com as mudanças ainda não commitadas) + arquivos novos não ignorados. -o: só o trecho casado.
+      const result = git(["grep", "-a", "-o", "-z", "-E", "--untracked", "-e", regex])
+      if (result.status > 1) {
+        bad(`git grep falhou (${name}): ${result.stderr.trim()}`)
+        continue
+      }
+      const hits = new Set()
+      for (const line of result.stdout.split("\n")) {
+        const separator = line.indexOf("\0")
+        if (separator === -1) continue
+        const token = line.slice(separator + 1).replace(/^[^A-Za-z0-9_-]/, "")
+        hits.add(`${line.slice(0, separator)} ${fingerprint(token)}`)
+      }
+      for (const hit of [...hits].filter((entry) => !allowed.has(entry))) {
+        keyHits += 1
+        bad(`${name}: ${hit.split(" ")[0]} (se for chave inventada de teste, libere com a linha "${hit}" em scripts/github/padroes-permitidos.txt)`)
+      }
     }
-    const hits = new Set()
-    for (const line of result.stdout.split("\n")) {
-      const separator = line.indexOf("\0")
-      if (separator === -1) continue
-      const token = line.slice(separator + 1).replace(/^[^A-Za-z0-9_-]/, "")
-      hits.add(`${line.slice(0, separator)} ${fingerprint(token)}`)
-    }
-    for (const hit of [...hits].filter((entry) => !allowed.has(entry))) {
-      keyHits += 1
-      bad(`${name}: ${hit.split(" ")[0]} (se for chave inventada de teste, libere com a linha "${hit}" em scripts/github/padroes-permitidos.txt)`)
-    }
-  }
-  if (keyHits === 0) ok("nenhum padrão de chave fora da lista de falsos positivos")
+    if (keyHits === 0) ok("nenhum padrão de chave fora da lista de falsos positivos")
 
-  // Valores dos .env locais: nunca impressos nem passados na linha de comando (vão pela entrada padrão do git grep).
-  const secrets = findEnvFiles(ROOT).flatMap((file) => secretValues(parseEnv(readFileSync(file, "utf8"))).map((secret) => ({ ...secret, source: relative(ROOT, file) })))
-  const values = [...new Set(secrets.map((secret) => secret.value).filter((value) => value.length >= MIN_SECRET_LENGTH))]
-  if (values.length === 0) ok("nenhum .env local com segredo para procurar")
-  else {
-    const found = git(["grep", "-F", "-l", "-z", "--untracked", "-f", "-"], `${values.join("\n")}\n`)
-    const files = found.status === 0 ? found.stdout.split("\0").filter(Boolean) : []
-    if (found.status > 1) bad(`git grep falhou: ${found.stderr.trim()}`)
-    else if (files.length) for (const file of files) bad(`um valor secreto dos .env locais aparece em ${file} — troque o valor (ele vazou) e tire do arquivo`)
-    else ok(`os ${values.length} valores secretos dos .env locais não aparecem em nenhum arquivo do repositório`)
+    // Valores dos .env locais: nunca impressos nem passados na linha de comando (vão pela entrada padrão do git grep).
+    const secrets = findEnvFiles(ROOT).flatMap((file) => secretValues(parseEnv(readFileSync(file, "utf8"))).map((secret) => ({ ...secret, source: relative(ROOT, file) })))
+    const values = [...new Set(secrets.map((secret) => secret.value).filter((value) => value.length >= MIN_SECRET_LENGTH))]
+    if (values.length === 0) ok("nenhum .env local com segredo para procurar")
+    else {
+      const found = git(["grep", "-F", "-l", "-z", "--untracked", "-f", "-"], `${values.join("\n")}\n`)
+      const files = found.status === 0 ? found.stdout.split("\0").filter(Boolean) : []
+      if (found.status > 1) bad(`git grep falhou: ${found.stderr.trim()}`)
+      else if (files.length) for (const file of files) bad(`um valor secreto dos .env locais aparece em ${file} — troque o valor (ele vazou) e tire do arquivo`)
+      else ok(`os ${values.length} valores secretos dos .env locais não aparecem em nenhum arquivo do repositório`)
+    }
   }
 }
 

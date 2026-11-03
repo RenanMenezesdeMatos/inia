@@ -818,3 +818,48 @@ Branch `admin-list-standardization`, com o mesmo índice temporário da terceira
   - **não conferidos na tela:** "Cenário" do QA Lab (exige administrador geral; a conta de teste que tem esse papel já trocou a
     senha, e senha não se adivinha) e "Superfícies" no painel do nó (mesmo padrão de "Dias da semana") — os dois cobertos por
     teste de componente.
+
+### 12.12 CI — ajustes depois da avaliação contra boas práticas (03/11/2026, a pedido)
+
+O CI foi comparado com a documentação do GitHub Actions (uso seguro, sintaxe, recursos de segurança) e com o OpenSSF
+Scorecard. Foram aplicadas as melhorias de custo baixo:
+
+- **Actions atualizadas:** `actions/checkout` v4.2.2 → v7.0.1 (`3d3c42e5`) e `actions/setup-node` v4.4.0 → v7.1.0
+  (`949feb24`), continuam presas por SHA. A execução de 30/10 avisava que as v4 são do Node 20 e rodavam forçadas no Node 24
+  (o GitHub retirou o Node 20 dos runners em 23/09/2026). Notas das majors conferidas: o cache automático do setup-node v5+
+  só liga com `packageManager` no `package.json`, que a INIA não usa; nada mais muda para este CI. As duas versões têm mais
+  de 14 dias (política de dependências).
+- **Concurrency por evento** (`ci-<evento>-<ramo>`): antes, disparar as provas à mão cancelava a verificação de uma
+  publicação no `main`, e vice-versa.
+- **Agenda semanal** (segunda, 06:00 de Brasília): rodam `seguranca` e `provas`, de modo que alerta novo contra uma dependência
+  e prova de banco quebrada apareçam mesmo sem publicação — o motivo original da P-4 ("as provas de banco apodrecem sem
+  aviso"). `backend` e `frontend` ficam fora da agenda: já rodam a cada publicação.
+- **Uma lista só:** `github:publish -- --verificar` roda os passos de `scripts/ci/verificar.mjs` (antes, só tipos, lint e
+  testes; faltavam a catraca, o build e o `npm audit`). Na cópia do snapshot, o `node_modules` do frontend vai clonado,
+  porque o Turbopack recusa link simbólico para fora da pasta ("Symlink node_modules could not be resolved"); são cerca de
+  13 s em APFS. O `security:check` ganhou `--sem-segredos`: a cópia não tem `.git`, e os segredos já foram conferidos no
+  próprio snapshot.
+- **Deploy só com CI verde:** a IT-INIA-011 (B3) espera o CI do commit (`gh run watch --exit-status`), e a D0 lembra.
+- **Dependabot alerts ligados** no repositório do GitHub (é configuração, não arquivo). As correções automáticas por PR
+  continuam desligadas, porque um PR mesclado no GitHub seria desfeito pelo próximo `github:publish`.
+- **Não feito (desproporcional hoje):**
+  - proteção de branch: dá 403 no plano gratuito para repositório privado e não combina com o envio direto do snapshot;
+  - CodeQL e secret scanning: exigem licença paga em repositório privado;
+  - matriz de versões do Node (só existe a 24) e CD automático.
+
+Verificação:
+
+- YAML lido com `js-yaml` e o `if` de cada job simulado por evento:
+  - push ou PR: `backend`, `frontend` e `seguranca`;
+  - agenda: `seguranca` e `provas`;
+  - manual com "provas": os quatro.
+- `github:publish -- --simular --verificar` num worktree destacado com as mudanças: os 10 passos verdes (segurança 2 s,
+  backend 102 s, frontend 184 s, build incluído) e nada enviado.
+- Os comandos da B3 foram conferidos na execução 41102555962 ("already completed with 'success'").
+- `security:scan` (só Semgrep): 92 itens, 0 novos. A impressão do falso positivo `spawn-shell-true` de
+  `scripts/ci/verificar.mjs` (§12.11) mudou só porque a linha passou a usar o parâmetro `root`. A base foi atualizada só
+  nessa linha (`1fa0e14e…` → `e46c411d…`), sem regravar o resto, porque a pasta tem mudanças de outras sessões.
+- **Não conferido:** o CI no próprio GitHub com as actions novas, que só roda depois do commit e da publicação.
+- Achado lateral: o `npm audit --omit=dev` do backend passou de 2 para 9 itens moderados. O motivo é um aviso novo do
+  `minimatch` (negação de serviço por "globparts amplification") na cadeia `exceljs` → `archiver`, além do `uuid` já
+  conhecido. Não há crítica nem alta; a triagem pela política de dependências fica pendente.
