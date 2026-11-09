@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react"
 
 import { describeClarificationAnswer, describeSource, openStepOf, type ClarificationAnswer, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
 import { ClarificationForm, type ClarificationFormAnswer } from "./clarification-form"
+import { KnowledgeSourceImages } from "./knowledge-source-images"
 import { KnowledgeSources } from "./knowledge-sources"
 import { ScenarioSummary } from "./scenario-summary"
 
@@ -79,6 +80,7 @@ export function KnowledgeClarificationBlock({ view, interactive, busy = false, o
           </div>
         </div>
       ) : null}
+      {view.status === "ANSWERED" ? <KnowledgeSourceImages sources={view.sources} /> : null}
       {view.status === "ANSWERED" ? <KnowledgeSources sources={view.sources} /> : null}
     </div>
   )

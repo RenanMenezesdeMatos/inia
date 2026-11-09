@@ -1,8 +1,10 @@
 import { Router } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { loadAccessibleKnowledgeMaterial } from "../application/knowledge-material-access.js"
+import { loadKnowledgeVersionImage } from "../application/knowledge-file-images.js"
+import { loadAccessibleKnowledgeMaterial, resolveAccessibleMaterialVersion } from "../application/knowledge-material-access.js"
+import { LIVE_FILE_QUERY, type LiveFileRow } from "../application/live-knowledge-version.js"
 import { DocxPreviewTooLargeError, renderDocxPreviewHtml } from "../infrastructure/docx-preview.js"
-import { sendKnowledgeFile } from "./knowledge-file-response.js"
+import { sendKnowledgeFile, sendKnowledgeImage } from "./knowledge-file-response.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
@@ -34,13 +36,19 @@ export function createKnowledgeMaterialRouter(db: Database) {
   router.get("/:id/file", async (request, response) => {
     const material = await loadAccessibleKnowledgeMaterial(db, { ...viewerOf(request), materialId: request.params.id! })
     if (!material) return notFound(response)
-    const result = await db.query<{ file_data: Buffer }>(
-      `select f.file_data from knowledge_files f where f.knowledge_document_id = $1 order by f.created_at desc limit 1`,
-      [material.id],
-    )
+    const result = await db.query<LiveFileRow>(LIVE_FILE_QUERY, [material.id, viewerOf(request).organizationId])
     const row = result.rows[0]
     if (!row) return response.status(404).json({ error: { code: "KNOWLEDGE_FILE_NOT_FOUND", message: "Arquivo original não encontrado para este material." } })
     sendKnowledgeFile(response, { sourceType: material.sourceType, filename: material.originalFilename ?? `${material.title}.bin`, data: row.file_data })
+  })
+
+  // Imagem do PDF em vigor, para a página de leitura e para as respostas do chat. Mesma checagem de acesso do detalhe. Imagem que só existia numa
+  // versão anterior fica indisponível, como o arquivo daquela versão.
+  router.get("/:id/images/:imageId", async (request, response) => {
+    const versionId = await resolveAccessibleMaterialVersion(db, { ...viewerOf(request), materialId: request.params.id! })
+    const image = versionId ? await loadKnowledgeVersionImage(db, versionId, request.params.imageId!) : null
+    if (!image) return notFound(response)
+    sendKnowledgeImage(request, response, image)
   })
 
   // Prévia HTML (hoje só DOCX) — mesma conversão do admin, mesmo arquivo intacto.
@@ -50,10 +58,7 @@ export function createKnowledgeMaterialRouter(db: Database) {
     if (material.sourceType !== "DOCX") {
       return response.status(415).json({ error: { code: "KNOWLEDGE_PREVIEW_UNSUPPORTED", message: "Este formato não tem prévia em HTML." } })
     }
-    const result = await db.query<{ file_data: Buffer }>(
-      `select f.file_data from knowledge_files f where f.knowledge_document_id = $1 order by f.created_at desc limit 1`,
-      [material.id],
-    )
+    const result = await db.query<LiveFileRow>(LIVE_FILE_QUERY, [material.id, viewerOf(request).organizationId])
     const row = result.rows[0]
     if (!row) return response.status(404).json({ error: { code: "KNOWLEDGE_FILE_NOT_FOUND", message: "Arquivo original não encontrado para este material." } })
     try {

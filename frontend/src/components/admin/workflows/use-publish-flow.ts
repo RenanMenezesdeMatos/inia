@@ -10,11 +10,12 @@ import { fetchPublishImpact } from "@/services/admin/workflow-service"
 
 /**
  * Publicar abre um diálogo quando há algo a mostrar ANTES de pôr no ar: configuração (gatilho/Abrangência/população)
- * mudando, impacto que exige confirmação, ou a primeira publicação de uma Agenda (quando ela dispara pela 1ª vez).
+ * mudando, impacto que exige confirmação, ou a primeira publicação de qualquer gatilho: é quando o fluxo passa a agir sobre
+ * pessoas reais (workflow novo já nasce ativo), e por Flag ou Indicador não haveria outro aviso.
  * Republicar só o fluxo, sem mudança de configuração e sem impacto, publica direto.
  */
 export function publishNeedsDialog(impact: GoLiveImpact): boolean {
-  return impact.requiresConfirmation || impact.configurationChanges.length > 0 || (impact.firstPublication && impact.schedule !== null)
+  return impact.requiresConfirmation || impact.configurationChanges.length > 0 || impact.firstPublication
 }
 
 export type PublishDialogState = { impact: GoLiveImpact; impactChanged: boolean }

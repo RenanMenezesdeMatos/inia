@@ -21,6 +21,7 @@ import {
   DATABASE_ENGINE_LABELS,
   DATABASE_ENGINES,
   cadenceLabel,
+  cadenceProblem,
   type AvailabilityPolicy,
   type Cadence,
   type ConnectionTest,
@@ -31,9 +32,13 @@ import {
   type Preview,
   type Sample,
   type Source,
+  type SourceDetail,
 } from "@/schemas/admin/data-hub.schema"
 
-import { AvailabilityPolicyField, CadenceSelect } from "../connection-form"
+import { CadenceSelect } from "../cadence-select"
+import { ConfigAccessPanel, isConfigLocked } from "../config-access/config-access-panel"
+import { useConfigUnlockPrompt } from "../config-access/use-config-unlock-prompt"
+import { AvailabilityPolicyField } from "../connection-form"
 import { MappingEditor } from "../mapping-editor"
 import { PreviewTable } from "../preview-table"
 import { ConnectionHealthBadge } from "../status-badges"
@@ -45,8 +50,8 @@ import { DatabaseSyncSettings, describeSync, suggestSync, syncDraftValid, toData
  * "Conectar banco de dados" — fluxo guiado da Central para bancos EXTERNOS (SQL Server, PostgreSQL, MariaDB, MySQL):
  * banco → conexão e teste → tabela/visão → conjunto de dados da INIA e leitura → amostra e mapeamento → validar,
  * frequência e ativar. Testar, descobrir, amostrar e validar nunca escrevem nada; a importação só começa ao ativar.
- * Com uma conexão existente (`existing`), começa na escolha da tabela: a mesma conexão alimenta vários conjuntos sem
- * pedir a senha de novo.
+ * Com uma conexão existente (`existing`), começa na escolha da tabela: a mesma conexão alimenta vários conjuntos, mas ler as tabelas
+ * do cliente exige informar a senha do banco, que vale 30 minutos para esta pessoa.
  */
 const STEPS = ["Banco", "Conexão", "Tabela ou visão", "Conjunto de dados", "Amostra e mapeamento", "Validar e ativar"] as const
 const FIRST_DATASET_STEP = 2
@@ -81,12 +86,14 @@ function message(error: unknown, fallback: string): string {
   return error instanceof AdminApiError ? error.message : error instanceof Error ? error.message : fallback
 }
 
-export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: Source | null; onAddAnother?: () => void }) {
+export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: SourceDetail | null; onAddAnother?: () => void }) {
+  const prompt = useConfigUnlockPrompt()
   const contractsQuery = useDataContractsQuery()
   const createSource = useCreateSourceMutation()
   const updateSource = useUpdateSourceMutation()
   const addingDataset = existing !== null
   const firstStep = addingDataset ? FIRST_DATASET_STEP : 0
+  const needsPassword = isConfigLocked(existing?.configAccess)
 
   const [step, setStep] = useState(firstStep)
   const [draft, setDraft] = useState<DatabaseDraft>(() => emptyDatabaseDraft("SQLSERVER"))
@@ -143,7 +150,8 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
   async function saveConnection(): Promise<Source | null> {
     const payload = { name: draft.name.trim(), config: { kind: "DATABASE", database: toDatabaseConfig(draft) }, secrets: draft.password ? { password: draft.password } : undefined }
     try {
-      const saved = source ? await updateSource.mutateAsync({ id: source.id, input: payload }) : await createSource.mutateAsync(payload)
+      const current = source
+      const saved = current ? await prompt.guarded(() => updateSource.mutateAsync({ id: current.id, input: payload })) : await createSource.mutateAsync(payload)
       setSource(saved)
       setDraft((current) => ({ ...current, password: "" }))
       setTest(null)
@@ -158,7 +166,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
     setBusy(true)
     setError(null)
     try {
-      const fetched = await fetchSourceSample(source.id, { connectorConfig, contractKey: contract.key })
+      const fetched = await prompt.guarded(() => fetchSourceSample(source.id, { connectorConfig, contractKey: contract.key }))
       setSample(fetched)
       setMapping((current) => (current.fields.length ? current : fetched.suggestedMapping))
       setPreview(null)
@@ -174,7 +182,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
     setBusy(true)
     setError(null)
     try {
-      setPreview(await previewSourceMapping(source.id, { contractKey: contract.key, mapping, sample: { columns: sample.columns, records: sample.records } }))
+      setPreview(await prompt.guarded(() => previewSourceMapping(source.id, { contractKey: contract.key, mapping, sample: { columns: sample.columns, records: sample.records } })))
     } catch (err) {
       setError(message(err, "Não foi possível validar a amostra."))
     } finally {
@@ -193,12 +201,14 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
       let feed = null
       for (let attempt = 1; !feed; attempt += 1) {
         try {
-          feed = await createFeed(source.id, { ...input, feedKey: attempt === 1 ? base : `${base}-${attempt}` })
+          const feedKey = attempt === 1 ? base : `${base}-${attempt}`
+          feed = await prompt.guarded(() => createFeed(source.id, { ...input, feedKey }))
         } catch (err) {
           if (!(err instanceof AdminApiError && err.code === "DATA_FEED_KEY_CONFLICT") || attempt >= 20) throw err
         }
       }
-      await setFeedStatus(feed.id, "ACTIVATE")
+      const createdId = feed.id
+      await prompt.guarded(() => setFeedStatus(createdId, "ACTIVATE"))
       const run = importNow ? await syncFeedNow(feed.id) : null
       setResult({ feedId: feed.id, runId: run?.id ?? null })
     } catch (err) {
@@ -242,7 +252,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
       case 1:
         return problems.length === 0 && testedOk
       case 2:
-        return Boolean(object && description)
+        return !needsPassword && Boolean(object && description)
       case 3:
         return Boolean(contract && sync && syncDraftValid(sync) && datasetName.trim().length >= 2)
       case 4:
@@ -301,11 +311,15 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {prompt.dialog}
         {addingDataset && step === FIRST_DATASET_STEP ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" data-testid="database-reuse-note">
-            <span>Conexão reutilizada — servidor, usuário e senha já estão guardados; nada precisa ser digitado de novo.</span>
-            <ConnectionHealthBadge health={existing.connectionHealth} error={existing.connectionError} checkedAt={existing.connectionCheckedAt} />
-          </div>
+          <>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" data-testid="database-reuse-note">
+              <span>Conexão reutilizada: servidor e usuário já estão guardados. Listar as tabelas do cliente exige a senha do banco.</span>
+              <ConnectionHealthBadge health={existing.connectionHealth} error={existing.connectionError} checkedAt={existing.connectionCheckedAt} />
+            </div>
+            <ConfigAccessPanel sourceId={existing.id} kind={existing.kind} access={existing.configAccess} />
+          </>
         ) : null}
 
         {step === 0 ? (
@@ -348,7 +362,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
           </div>
         ) : null}
 
-        {step === 2 && source ? <DatabaseObjectPicker sourceId={source.id} value={object} onChange={(nextObject) => { setObject(nextObject); setDescription(null); setSync(null) }} onDescribed={onDescribed} /> : null}
+        {step === 2 && source && !needsPassword ? <DatabaseObjectPicker sourceId={source.id} value={object} onChange={(nextObject) => { setObject(nextObject); setDescription(null); setSync(null) }} onDescribed={onDescribed} /> : null}
 
         {step === 3 && description && sync ? (
           <div className="space-y-5">
@@ -477,7 +491,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
               <div><dt className="text-xs text-muted-foreground">Frequência</dt><dd>{cadenceLabel(cadence)}</dd></div>
             </dl>
             <p className="text-xs text-muted-foreground">Até aqui nada foi gravado nos dados da INIA. Ao ativar, a importação usa o mesmo processo de validação: o que não passar fica na quarentena com o motivo.</p>
-            <Button onClick={activate} disabled={busy || !preview || preview.mappingProblems.length > 0 || preview.valid === 0}>
+            <Button onClick={activate} disabled={busy || !preview || preview.mappingProblems.length > 0 || preview.valid === 0 || cadenceProblem(cadence) !== null}>
               {busy ? <Loader2 className="animate-spin" /> : <Check />} Ativar {importNow ? "e importar" : ""}
             </Button>
             {preview && preview.valid === 0 ? <p className="text-xs text-destructive">Nenhuma linha da amostra é válida — ajuste o mapeamento antes de ativar.</p> : null}

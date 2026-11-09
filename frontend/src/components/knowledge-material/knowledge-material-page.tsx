@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Download, FileWarning, Paperclip } from "lucide-react"
@@ -9,12 +9,15 @@ import { toast } from "sonner"
 import { KnowledgeArticleContent } from "@/components/admin/knowledge/knowledge-article-content"
 import { SourceTypeBadge } from "@/components/admin/knowledge/knowledge-meta"
 import { DOCUMENT_HTML_CLASS, formatFileSize } from "@/components/admin/knowledge/knowledge-visuals"
+import { KnowledgeReadingView, READING_VIEW_NOTE, ReadingModeSwitch, type ReadingMode } from "@/components/knowledge-reading/knowledge-reading-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api/api-client"
 import { formatShortDateTime } from "@/lib/format/date"
+import { canReadAsContent } from "@/lib/knowledge/document-inserts"
+import { knowledgeMaterialImageSrc } from "@/lib/knowledge/knowledge-image-src"
 import { sanitizeDocumentHtml } from "@/lib/security/sanitize-document-html"
 import { cn } from "@/lib/utils"
 import { useKnowledgeMaterialFileQuery, useKnowledgeMaterialPreviewQuery, useKnowledgeMaterialQuery } from "@/queries/knowledge/use-knowledge-material-queries"
@@ -148,11 +151,37 @@ function PlainFilePreview({ material }: { material: KnowledgeMaterial }) {
   return <pre className={cn("max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-xl border border-border bg-muted/40 p-5 leading-7", material.sourceType === "JSON" ? "font-mono text-[13px]" : "font-sans text-[15px]")}>{formatted}</pre>
 }
 
-function PdfPreview({ material }: { material: KnowledgeMaterial }) {
+/** Página citada numa fonte. Outra versão em vigor = o número pode não ser o mesmo, e a tela diz isso em vez de afirmar. */
+type Citation = { page: number | undefined; versionId: string | undefined }
+
+/** De onde a página citada veio, e o caminho até ela no PDF original quando a leitura é o conteúdo. */
+function CitedPageNote({ material, citation, onOpenPdf }: { material: KnowledgeMaterial; citation: Citation; onOpenPdf?: ((page: number) => void) | undefined }) {
+  if (citation.page === undefined) return null
+  const page = citation.page
+  const otherVersion = citation.versionId !== undefined && material.versionId !== undefined && citation.versionId !== material.versionId
+  return (
+    <p className="flex flex-wrap items-start gap-2 rounded-lg border border-border bg-muted/40 p-2 text-xs text-muted-foreground" data-testid="material-cited-page">
+      <FileWarning className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1">{otherVersion ? `A resposta citou a página ${page} de uma versão anterior deste material. Nesta versão, o conteúdo pode estar em outra página.` : `Aberto na página ${page}, citada na resposta.`}</span>
+      {onOpenPdf ? (
+        <Button type="button" variant="link" size="xs" className="h-auto p-0" onClick={() => onOpenPdf(page)}>
+          Ver no PDF
+        </Button>
+      ) : null}
+    </p>
+  )
+}
+
+function PdfPreview({ material, citation, page, jumpId }: { material: KnowledgeMaterial; citation: Citation; page: number | undefined; jumpId: number }) {
   const fileQuery = useKnowledgeMaterialFileQuery(material.id)
   if (fileQuery.isLoading) return <Skeleton className="h-[60vh] w-full rounded-xl" />
   if (fileQuery.isError || !fileQuery.data) return <ExtractedTextFallback material={material} reason="O arquivo original não está disponível para visualização. Abaixo está o texto extraído no cadastro." />
-  return <KnowledgePdfViewer file={fileQuery.data.blob} />
+  return (
+    <div className="space-y-2">
+      <CitedPageNote material={material} citation={citation} />
+      <KnowledgePdfViewer file={fileQuery.data.blob} initialPage={page} jumpId={jumpId} />
+    </div>
+  )
 }
 
 function useDownload(material: KnowledgeMaterial, cached: { blob: Blob; filename: string | null } | undefined) {
@@ -184,10 +213,21 @@ function useDownload(material: KnowledgeMaterial, cached: { blob: Blob; filename
   return { download, pending }
 }
 
-function DocumentView({ material }: { material: KnowledgeMaterial }) {
-  const fileQuery = useKnowledgeMaterialFileQuery(material.sourceType === "PDF" ? material.id : null)
+function DocumentView({ material, citation }: { material: KnowledgeMaterial; citation: Citation }) {
+  const isPdf = material.sourceType === "PDF"
+  const canRead = isPdf && canReadAsContent(material.content, material.extraction)
+  const [mode, setMode] = useState<ReadingMode>(canRead ? "content" : "pdf")
+  const [pdfTarget, setPdfTarget] = useState({ page: citation.page, id: 0 })
+  const openPdfPage = useCallback((page: number) => {
+    setPdfTarget((current) => ({ page, id: current.id + 1 }))
+    setMode("pdf")
+  }, [])
+  const imageSrc = useCallback((imageId: string) => knowledgeMaterialImageSrc(material.id, imageId), [material.id])
+  // O arquivo só é baixado quando alguém vai ler o PDF: na leitura como conteúdo, ele não faz falta.
+  const fileQuery = useKnowledgeMaterialFileQuery(isPdf && mode === "pdf" ? material.id : null)
   const { download, pending } = useDownload(material, fileQuery.data)
   const size = formatFileSize(material.fileSizeBytes)
+  const reading = canRead && mode === "content"
   return (
     <Card>
       <CardContent className="p-0">
@@ -209,19 +249,31 @@ function DocumentView({ material }: { material: KnowledgeMaterial }) {
         </Header>
         <div className="space-y-3 px-4 py-5 sm:px-6 sm:py-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{material.sourceType === "PDF" ? "Leitura do arquivo original." : material.sourceType === "DOCX" ? "Prévia gerada a partir do arquivo original." : "Conteúdo do arquivo."}</p>
+            {canRead ? <ReadingModeSwitch mode={mode} onChange={setMode} /> : <p className="text-xs text-muted-foreground">{isPdf ? "Leitura do arquivo original." : material.sourceType === "DOCX" ? "Prévia gerada a partir do arquivo original." : "Conteúdo do arquivo."}</p>}
             <Button size="sm" variant="outline" disabled={pending} onClick={download} data-usage-element="material.download">
               <Download /> {pending ? "Preparando..." : "Baixar original"}
             </Button>
           </div>
-          {material.sourceType === "PDF" ? <PdfPreview material={material} /> : material.sourceType === "DOCX" ? <DocxPreview material={material} /> : <PlainFilePreview material={material} />}
+          {canRead ? <p className="text-xs text-muted-foreground">{reading ? READING_VIEW_NOTE : "Leitura do arquivo original."}</p> : null}
+          {reading ? (
+            <div className="space-y-3">
+              <CitedPageNote material={material} citation={citation} onOpenPdf={openPdfPage} />
+              <KnowledgeReadingView content={material.content} extraction={material.extraction!} title={material.title} imageSrc={imageSrc} targetPage={citation.page} onOpenPage={openPdfPage} />
+            </div>
+          ) : isPdf ? (
+            <PdfPreview material={material} citation={citation} page={pdfTarget.page} jumpId={pdfTarget.id} />
+          ) : material.sourceType === "DOCX" ? (
+            <DocxPreview material={material} />
+          ) : (
+            <PlainFilePreview material={material} />
+          )}
         </div>
       </CardContent>
     </Card>
   )
 }
 
-export function KnowledgeMaterialPage({ materialId }: { materialId: string }) {
+export function KnowledgeMaterialPage({ materialId, citedPage, citedVersionId }: { materialId: string; citedPage?: number | undefined; citedVersionId?: string | undefined }) {
   const query = useKnowledgeMaterialQuery(materialId)
   if (query.isLoading) return <PageSkeleton />
   if (query.isError) {
@@ -234,7 +286,7 @@ export function KnowledgeMaterialPage({ materialId }: { materialId: string }) {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
       <BackButton />
-      {isFileSource(material.sourceType) ? <DocumentView material={material} /> : <ArticleView material={material} />}
+      {isFileSource(material.sourceType) ? <DocumentView material={material} citation={{ page: citedPage, versionId: citedVersionId }} /> : <ArticleView material={material} />}
     </div>
   )
 }

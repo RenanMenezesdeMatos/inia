@@ -1,3 +1,4 @@
+import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { parseCsv, type ParsedTable } from "../../domain/csv-parser.js"
 import { DataRunError } from "../../domain/error-codes.js"
 import type { SourceRecord } from "../../domain/mapping.js"
@@ -38,4 +39,18 @@ export async function parseFileBatch(config: FileFeedConfig, bytes: Uint8Array, 
   const batch: FetchedBatch = { columns: table.columns, records: table.rows, bytes: bytes.byteLength, totalRecords: table.totalRows, detail }
   if (table.sheets) batch.sheets = table.sheets
   return batch
+}
+
+/**
+ * Leitura de arquivo DENTRO de uma requisição (upload, amostra): o erro da leitura volta com o código estável — 422 (arquivo que
+ * não dá para ler, inclusive planilha grande demais para o leitor isolado) ou 503 (leitores ocupados, tente de novo) — e não como
+ * erro interno.
+ */
+export async function parseFileBatchForRequest(config: FileFeedConfig, bytes: Uint8Array, limit?: number): Promise<FetchedBatch> {
+  try {
+    return await parseFileBatch(config, bytes, limit)
+  } catch (error) {
+    if (error instanceof DataRunError) throw new DomainError(error.message, error.code, error.transient ? 503 : 422)
+    throw error
+  }
 }

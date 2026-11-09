@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   decodeSourcePath,
   decodeStructuredFieldPath,
+  describeWholeResultOrigin,
   encodeSourcePath,
   encodeStructuredFieldPath,
   encodeVariableSourcePath,
@@ -12,6 +13,14 @@ import {
 import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
+
+describe("describeWholeResultOrigin", () => {
+  it("não repete o prefixo do rótulo da lista na frase", () => {
+    expect(describeWholeResultOrigin("Resultado de: Agente de Feedback")).toBe("de Agente de Feedback")
+    expect(describeWholeResultOrigin("Feedback confiável: Gerar feedback")).toBe("de Feedback confiável: Gerar feedback")
+    expect(describeWholeResultOrigin(undefined)).toBe("da origem selecionada")
+  })
+})
 
 describe("encode/decodeSourcePath", () => {
   it("round-trips a node path with a field", () => {

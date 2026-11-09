@@ -1,5 +1,6 @@
 "use client"
 
+import { useSearchParams } from "next/navigation"
 import { useMemo, useState } from "react"
 import { Play, Zap } from "lucide-react"
 
@@ -106,7 +107,9 @@ function WorkflowSelect({ value, onChange, id }: { value: string; onChange: (id:
 }
 
 export function WorkflowLab() {
-  const [workflowId, setWorkflowId] = useState("")
+  // "Testar" no editor abre aqui com o workflow já escolhido.
+  const requestedWorkflowId = useSearchParams().get("workflowId")
+  const [workflowId, setWorkflowId] = useState(requestedWorkflowId ?? "")
   const workflowQuery = useWorkflowQuery(workflowId)
   const loadedWorkflow = workflowQuery.data ?? null
   // null = automático (publicada quando existe, senão rascunho).

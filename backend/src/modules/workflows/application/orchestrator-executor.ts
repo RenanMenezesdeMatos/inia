@@ -1,9 +1,14 @@
+import { isRecognitionSkippedOutput } from "./recognition-fact.js"
+import { withKnowledgeConsultation } from "../../knowledge/application/knowledge-consultation-context.js"
+import { enforceResponseBeforeNextStep } from "../../governance/application/response-compliance.js"
+import { replyComplianceSources } from "../../governance/domain/response-compliance.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
 import type { ChatTurn } from "../../assistant/infrastructure/gemini-function-calling-client.js"
 import { generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
 import { resolveOrchestratorById } from "../../assistant/application/resolve-orchestrator.js"
+import type { ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { extractSupportMaterialsMarker } from "../../feedbacks/domain/support-material.js"
 import { extractValidatedStructuredResult, runOrchestratedReply, withStructuredOutputInstructions, type OrchestratedReply } from "../../assistant/application/run-orchestrated-reply.js"
 import type { OrchestratorNodeConfig } from "../domain/graph-schema.js"
@@ -19,7 +24,17 @@ export type OrchestratorExecutionContext = EnrollmentSubjectContext & {
   /** Transcrição/texto de contexto do enrollment (mesmo `inputContext` que um Agent node recebe) — vira contexto extra do prompt do orquestrador. */
   inputContext: string
   /** MOTOR DE FEEDBACK — com "Avaliação de processo", o especialista escolhido roda a análise do motor (memória gravada). */
-  engine?: { effects: Pick<WorkflowEffectSink, "feedbackEngine">; organizationId: string; workflowId: string | null; enrollmentId: string; nodeId: string; matchedFlagName: string | null } | undefined
+  engine?: { effects: Pick<WorkflowEffectSink, "feedbackEngine" | "recordWorkflowKnowledgeUsage">; organizationId: string; workflowId: string | null; enrollmentId: string; nodeId: string; matchedFlagName: string | null } | undefined
+  /** Execução de uma versão PUBLICADA do Workflow: etapa sem versão fixada = publicada antes do versionamento (PEN-076). */
+  publishedRun?: boolean | undefined
+  /** Alcance do Workflow (motor e QA Lab): a versão fixada do Orquestrador só roda se servir a ele. */
+  workflowScope: ScopedTarget
+}
+
+/** Versão do Orquestrador que a etapa executa (PEN-076): a fixada; sem ela, numa versão publicada, a de origem da migração. A
+ * resolução confere o alcance dessa versão com o do Workflow (`resolve-orchestrator.ts`). */
+export function orchestratorPinOf(config: { orchestratorVersionId?: string | undefined }, publishedRun: boolean | undefined, workflowScope: ScopedTarget) {
+  return { versionId: config.orchestratorVersionId ?? null, legacyPin: !config.orchestratorVersionId && publishedRun === true, workflowScope }
 }
 
 export type OrchestratorNodeOutput = OrchestratedReply & {
@@ -31,6 +46,11 @@ export type OrchestratorNodeOutput = OrchestratedReply & {
   skippedReason?: "EMPTY_FAN_IN" | "CALL_ALREADY_MONITORED"
 }
 export type OrchestratorExecutionResult = { nodeOutput: OrchestratorNodeOutput }
+
+/** O que uma etapa de orquestrador entrega ao próximo passo: o texto e o resultado estruturado, quando há. */
+function complianceTextOf(reply: { text: string; structuredResult?: unknown }): string {
+  return reply.structuredResult ? `${reply.text}\n\n${JSON.stringify(reply.structuredResult)}` : reply.text
+}
 
 /**
  * Chama o Orchestrator (módulo assistant) como um node do Workflow — reaproveita a mesma
@@ -55,7 +75,7 @@ export async function executeOrchestrator(
   const operatorId = await resolveEnrollmentOperatorId(context)
   if (!operatorId) throw new Error("Não foi possível identificar o operador para acionar o orquestrador.")
 
-  const orchestrator = await resolveOrchestratorById(context.db, context.organizationId, config.orchestratorId, "WORKFLOW", config.instruction)
+  const orchestrator = await resolveOrchestratorById(context.db, context.organizationId, config.orchestratorId, "WORKFLOW", config.instruction, orchestratorPinOf(config, context.publishedRun, context.workflowScope))
   if (!orchestrator) {
     throw new Error("Orquestrador não encontrado, inativo, ou não habilitado para uso em workflow.")
   }
@@ -70,7 +90,9 @@ export async function executeOrchestrator(
     }
   }
   const history = [{ role: "user" as const, text: config.instruction }]
-  const reply = await runOrchestratedReply(
+  // Uma etapa de orquestrador é uma consulta às bases: uma versão só de cada base, e as usadas ficam registradas (PEN-008).
+  const reply = await withKnowledgeConsultation(async () => {
+    const orchestrated = await runOrchestratedReply(
     context.db,
     orchestrator,
     history,
@@ -106,6 +128,13 @@ export async function executeOrchestrator(
       allowSynthesisPassthrough: config.specialistOutputContract === "PROCESS_ASSESSMENT" || config.routing?.mode === "DOMAINS",
     },
   )
+    if (context.engine) await context.engine.effects.recordWorkflowKnowledgeUsage(context.db, context.engine.enrollmentId)
+    // Conferência antes de a saída seguir (PEN-017). A avaliação de processo roda no motor de feedback, que não recebe as regras: depende da PEN-018.
+    if (config.specialistOutputContract !== "PROCESS_ASSESSMENT") {
+      await enforceResponseBeforeNextStep(context.db, { organizationId: context.organizationId, text: complianceTextOf(orchestrated), agentId: orchestrator.orchestratorAgentId || null, surface: "WORKFLOW_ORCHESTRATOR", source: "WORKFLOW_ORCHESTRATOR", workflowEnrollmentId: context.engine?.enrollmentId, sources: replyComplianceSources(orchestrated, orchestrator) })
+    }
+    return orchestrated
+  })
   return { nodeOutput: { ...reply, orchestratorId: orchestrator.orchestratorId, orchestratorName: orchestrator.orchestratorName } }
 }
 
@@ -118,6 +147,9 @@ export type ConsolidatedOrchestratorContext = {
   inputContext: string
   fanIn: EmployeeFanInOutput
   collection: EmployeeCollectionOutput | null
+  publishedRun?: boolean | undefined
+  /** Alcance do Workflow: a versão fixada do Orquestrador só roda se servir a ele. */
+  workflowScope: ScopedTarget
 }
 
 /** Monta um texto estruturado com os N resultados individuais — nunca UUID cru (nomes resolvidos
@@ -159,6 +191,11 @@ function describeConsolidatedContext(fanIn: EmployeeFanInOutput, collection: Emp
     const partitionPrefix = partitionNameByEmployeeId.has(child.employeeId) ? `[${partitionNameByEmployeeId.get(child.employeeId)}] ` : ""
     if (child.status === "failed") {
       lines.push(`${partitionPrefix}${name}: falhou — ${child.failureReason ?? "motivo não identificado"}.`)
+      continue
+    }
+    // Sem reconhecimento: só o fato, sem os números. A pessoa não é destaque nem caso de atenção, e o modelo inventava leitura em cima deles ("estagnação").
+    if (Object.values(child.nodeOutputs).some(isRecognitionSkippedOutput)) {
+      lines.push(`${partitionPrefix}${name}: sem reconhecimento neste ciclo. Só esta pessoa tinha dados, então não houve comparação.`)
       continue
     }
     const reviewEntry = Object.values(child.nodeOutputs).find(
@@ -204,7 +241,7 @@ export async function executeOrchestratorConsolidated(
   config: OrchestratorNodeConfig,
   context: ConsolidatedOrchestratorContext,
 ): Promise<OrchestratorExecutionResult> {
-  const orchestrator = await resolveOrchestratorById(context.db, context.organizationId, config.orchestratorId, "WORKFLOW", config.instruction)
+  const orchestrator = await resolveOrchestratorById(context.db, context.organizationId, config.orchestratorId, "WORKFLOW", config.instruction, orchestratorPinOf(config, context.publishedRun, context.workflowScope))
   if (!orchestrator) {
     throw new Error("Orquestrador não encontrado, inativo, ou não habilitado para uso em workflow.")
   }
@@ -253,6 +290,7 @@ export async function executeOrchestratorConsolidated(
 
   // Pós-JOIN não aciona especialistas (o consolidado já vem do Execution Context) — sem candidato
   // de KB nesta chamada, logo sem recomendação; qualquer marcador emitido pelo modelo é ignorado.
+  await enforceResponseBeforeNextStep(context.db, { organizationId: context.organizationId, text: complianceTextOf({ text, structuredResult }), agentId: orchestrator.orchestratorAgentId || null, surface: "WORKFLOW_ORCHESTRATOR", source: "WORKFLOW_ORCHESTRATOR" })
   const reply: OrchestratedReply = { text, agentId: null, calls: [], results: [], structuredResult, supportMaterialCandidates: [], ...(structuredResultValidation ? { structuredResultValidation } : {}) }
   return { nodeOutput: { ...reply, orchestratorId: orchestrator.orchestratorId, orchestratorName: orchestrator.orchestratorName } }
 }

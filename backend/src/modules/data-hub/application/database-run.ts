@@ -3,7 +3,7 @@ import { DataRunError } from "../domain/error-codes.js"
 import type { DatabaseColumn } from "../domain/database/column-types.js"
 import { databaseFeedConfigSchema, planPage, readDatabaseCheckpoint, startPointOf, type DatabaseCheckpoint, type DatabaseFeedConfig } from "../domain/database/database-sync.js"
 import { feedMappingSchema, type FeedMapping } from "../domain/mapping.js"
-import type { RunMetrics, RunStage } from "../domain/run-status.js"
+import { RUN_LEASE_SECONDS, type RunMetrics, type RunStage } from "../domain/run-status.js"
 import { fingerprintColumns } from "../domain/schema-fingerprint.js"
 import { describeObjectInSession, readPage, resolveFeedColumns, resolveSourceConnection, withDatabaseSession, type DatabasePageRow, type DatabaseSessionScope } from "./connectors/database-connector.js"
 import type { FetchedBatch } from "./connectors/file-connector.js"
@@ -28,8 +28,6 @@ import { inTransaction } from "../../../shared/infrastructure/database/transacti
  * Uma página inteira sem nenhum registro válido para a carga (FALHOU) sem avançar sobre ela — mapeamento errado
  * nunca "consome" linhas.
  */
-const LEASE_SECONDS = 15 * 60
-
 export function usesWholeBatch(loaded: Pick<LoadedRun, "contract" | "feed">, config: DatabaseFeedConfig): boolean {
   if (loaded.contract.category === "MASTER" || loaded.contract.writePolicy === "ATOMIC" || loaded.feed.failOnAnyRejection) return true
   return config.sync.mode === "FULL" && config.sync.keyColumns.length === 0
@@ -92,7 +90,7 @@ function checkpointOf(plan: ReadPlan, position: string[] | null, reachedEnd: boo
 }
 
 async function heartbeat(ctx: DataHubContext, runId: string): Promise<void> {
-  await ctx.db.query(`update data_ingestion_runs set claimed_until = now() + make_interval(secs => $2) where id = $1 and claimed_until is not null`, [runId, LEASE_SECONDS])
+  await ctx.db.query(`update data_ingestion_runs set claimed_until = now() + make_interval(secs => $2) where id = $1 and claimed_until is not null`, [runId, RUN_LEASE_SECONDS])
 }
 
 /**
@@ -136,6 +134,14 @@ async function iteratePages(ctx: DataHubContext, runId: string, scope: DatabaseS
 // ---------------------------------------------------------------------------------------------
 // CARGA ÚNICA — lê tudo (até o limite) e devolve um lote para o pipeline de sempre.
 // ---------------------------------------------------------------------------------------------
+/**
+ * Acrescenta os registros das linhas lidas, um a um. Nunca `records.push(...rows.map(...))`: uma leitura sem ordenação ou um
+ * grupo empatado chega até `maxRowsPerRun` (até 1.000.000) linhas, e espalhar tantos argumentos estoura a pilha do V8.
+ */
+export function appendRecords(records: Record<string, unknown>[], rows: readonly Pick<DatabasePageRow, "record">[]): void {
+  for (const row of rows) records.push(row.record)
+}
+
 export async function fetchDatabaseWholeBatch(ctx: DataHubContext, loaded: LoadedRun): Promise<FetchedBatch> {
   const config = databaseConfigOfFeed(loaded)!
   const connection = await resolveSourceConnection(ctx, loaded.source)
@@ -153,12 +159,12 @@ export async function fetchDatabaseWholeBatch(ctx: DataHubContext, loaded: Loade
         if (rows.length > config.maxRowsPerRun) {
           throw new DataRunError("DATA_SOURCE_VOLUME_LIMIT", `A origem tem mais de ${config.maxRowsPerRun} linhas. Escolha uma chave para ler em páginas (o checkpoint retoma do meio) ou aumente o limite por carga.`)
         }
-        records.push(...rows.map((row) => row.record))
+        appendRecords(records, rows)
         reachedEnd = true
         position = null
       } else {
         const outcome = await iteratePages(ctx, loaded.run.id, scope, plan, async (rows, nextPosition) => {
-          records.push(...rows.map((row) => row.record))
+          appendRecords(records, rows)
           position = nextPosition
         })
         if (!outcome.reachedEnd) {

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Activity, CalendarClock, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react"
+import { Activity, CalendarClock, CircleAlert, Plus, Trash2, Workflow as WorkflowIcon, Zap } from "lucide-react"
 
 import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
@@ -49,6 +49,8 @@ import { useCreateWorkflowMutation, useDeleteWorkflowMutation, useUpdateWorkflow
 import type { WorkflowListParams, WorkflowTriggerInput } from "@/services/admin/workflow-service"
 import { goLiveImpactFromError, triggerBadgeText, type GoLiveImpact, type Workflow, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 import { GoLiveImpactDialog } from "@/components/admin/workflows/go-live-impact-dialog"
+import { WorkflowRunStateBadge } from "@/components/admin/workflows/workflow-run-state-badge"
+import { describeWorkflowDeletion, workflowRunState } from "@/components/admin/workflows/workflow-run-state"
 
 const groupLabel = formatScopeLabel
 
@@ -93,7 +95,7 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Novo workflow</DialogTitle>
-          <DialogDescription>Defina o nome, o gatilho e o grupo — o editor visual abre em seguida.</DialogDescription>
+          <DialogDescription>Escolha o nome, quando o fluxo começa e onde ele vale. Nada roda até você publicar.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -102,7 +104,8 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
           </div>
           <TriggerFields value={trigger} onChange={setTrigger} scope={orgScope} />
           <div className="space-y-1.5">
-            <Label>Grupo</Label>
+            <Label>Abrangência</Label>
+            <p className="text-xs text-muted-foreground">Em quais grupos este workflow pode atuar.</p>
             {manageableTeamsQuery.data ? (
               <OrgScopeSelect
                 teams={manageableTeamsQuery.data.teams}
@@ -143,7 +146,7 @@ function DeleteWorkflowButton({ workflow }: { workflow: Workflow }) {
       <AlertDialogContent onClick={(event) => event.stopPropagation()}>
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {workflow.name}?</AlertDialogTitle>
-          <AlertDialogDescription>Essa ação não pode ser desfeita. Execuções em andamento serão interrompidas.</AlertDialogDescription>
+          <AlertDialogDescription>{describeWorkflowDeletion(workflow.activeEnrollments)}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -159,7 +162,7 @@ function DeleteWorkflowButton({ workflow }: { workflow: Workflow }) {
               }
             }}
           >
-            {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
+            {deleteMutation.isPending ? "Excluindo..." : "Excluir workflow"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -192,6 +195,7 @@ export function ActiveSwitch({ workflow }: { workflow: Workflow }) {
         checked={workflow.active}
         disabled={updateMutation.isPending}
         aria-label={workflow.active ? "Desativar workflow" : "Ativar workflow"}
+        title={workflow.active ? (workflow.published ? "Desativar: não inicia novas execuções, e as em andamento ficam paradas até reativar." : "Quando publicado, o fluxo já começa a valer. Desligue para publicar sem colocá-lo no ar.") : workflow.published ? "Ativar: a versão publicada volta a valer." : "Ligue para o fluxo começar a valer quando for publicado."}
         onCheckedChange={(checked) => void setActive(checked)}
       />
       <GoLiveImpactDialog
@@ -210,7 +214,7 @@ export function ActiveSwitch({ workflow }: { workflow: Workflow }) {
 function PublishedBadge({ workflow }: { workflow: Workflow }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Badge variant={workflow.published ? "default" : "outline"}>{workflow.published ? "Publicado" : "Rascunho"}</Badge>
+      <WorkflowRunStateBadge workflow={workflow} />
       {(workflow.configurationChanges ?? []).length > 0 ? (
         <Badge variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-300" title="Gatilho, Abrangência ou população alterados no rascunho — só valem ao Publicar.">
           Configuração não publicada
@@ -227,10 +231,12 @@ const TRIGGER_KIND_LABELS: Record<WorkflowTrigger["kind"], string> = {
   manual: "Manual",
 }
 
-function WorkflowCard({ workflow }: { workflow: Workflow }) {
+const blockedCountText = (count: number) => (count === 1 ? "1 bloqueada" : `${count} bloqueadas`)
+
+export function WorkflowCard({ workflow }: { workflow: Workflow }) {
   return (
     <EntityCard
-      muted={!workflow.active}
+      muted={workflowRunState(workflow).key !== "LIVE"}
       icon={<EntityCardIcon icon={WorkflowIcon} className="bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300" />}
       kicker={
         <>
@@ -255,6 +261,7 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
           <EntityCardTag icon={Activity}>
             {workflow.activeEnrollments} em execução
           </EntityCardTag>
+          {workflow.blockedEnrollments > 0 ? <EntityCardTag icon={CircleAlert}>{blockedCountText(workflow.blockedEnrollments)}</EntityCardTag> : null}
         </>
       }
       footerStart={
@@ -268,7 +275,7 @@ function WorkflowCard({ workflow }: { workflow: Workflow }) {
   )
 }
 
-function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
+export function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
   const router = useRouter()
   return (
     <div className="overflow-x-auto">
@@ -300,7 +307,10 @@ function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
                 <PublishedBadge workflow={workflow} />
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{groupLabel(workflow)}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{workflow.activeEnrollments}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {workflow.activeEnrollments}
+                {workflow.blockedEnrollments > 0 ? <span className="block text-xs text-amber-800 dark:text-amber-300">{blockedCountText(workflow.blockedEnrollments)}</span> : null}
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 <time dateTime={workflow.createdAt}>{formatDateOnly(workflow.createdAt)}</time>
               </TableCell>
@@ -346,8 +356,7 @@ export function WorkflowsPage() {
           <div>
             <CardTitle>Workflows</CardTitle>
             <CardDescription>
-              Fluxos visuais: quando uma flag chega, o grafo decide o que acontece — esperar, checar uma condição, chamar um agente ou definir uma
-              configuração.
+              Fluxos que começam por uma flag, um indicador, uma agenda ou um clique, analisam com IA, decidem o caminho e entregam o resultado a quem precisa, com revisão humana quando necessário.
             </CardDescription>
           </div>
           <Button onClick={() => setCreateOpen(true)}>
@@ -372,7 +381,7 @@ export function WorkflowsPage() {
         >
           <ListMultiSelectFilter label="Gatilho" values={list.filters.triggerKind} onChange={(values) => list.setFilter("triggerKind", values)} options={TRIGGER_KIND_OPTIONS} />
           <ListBooleanFilter value={list.filters.published} onChange={(value) => list.setFilter("published", value)} allLabel="Publicados e rascunhos" trueLabel="Publicados" falseLabel="Rascunhos" ariaLabel="Filtrar por publicação" />
-          <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+          <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Ligados e desligados" trueLabel="Ligados" falseLabel="Desligados" ariaLabel="Filtrar por interruptor ligado ou desligado" />
           <ListBooleanFilter value={list.filters.hasActiveEnrollments} onChange={(value) => list.setFilter("hasActiveEnrollments", value)} allLabel="Com ou sem execuções" trueLabel="Com execuções em andamento" falseLabel="Sem execuções em andamento" ariaLabel="Filtrar por execuções em andamento" />
           <ListOrgScopeFilter
             teams={teamsQuery.data}
@@ -389,7 +398,7 @@ export function WorkflowsPage() {
           empty={{
             icon: WorkflowIcon,
             title: "Nenhum workflow criado ainda",
-            description: "Crie um fluxo para reagir a flags, indicadores ou horários agendados.",
+            description: "Crie um fluxo para reagir a flags, indicadores, horários agendados ou um clique em Executar agora.",
             action: (
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus /> Novo workflow

@@ -41,6 +41,7 @@ const answerFor = (call: ScriptedCall) =>
 function setup(script: (call: ScriptedCall, index: number) => unknown) {
   const memory = createMemoryConversationStore()
   const clarification = fixtureClarificationService(script, { now: () => NOW })
+  const responseChecks: { text: string; sources?: unknown }[] = []
   // Orquestração falsa que respeita o portão `proceed` como a real (pergunta nova: ela corre junto do esclarecimento).
   const proceeded: boolean[] = []
   const orchestratedReply = vi.fn(async (...args: unknown[]) => {
@@ -70,6 +71,10 @@ function setup(script: (call: ScriptedCall, index: number) => unknown) {
       selfContext: async () => SELF,
       knowledgeClarification: clarification.service,
       accessibleKnowledgeDocuments: async (_org, _person, ids) => new Set(ids),
+      responseCheck: async (_db, input) => {
+        responseChecks.push(input)
+        return { outcome: "NOT_APPLICABLE" }
+      },
     }),
   )
   app.use(errorHandler)
@@ -81,7 +86,7 @@ function setup(script: (call: ScriptedCall, index: number) => unknown) {
     await request(app).post("/api/v1/realtime/voice-turn").send({ conversationId: response.body.data?.conversationId ?? conversationId, turnId: `voice-1-${turn}`, userText: spoken })
     return response
   }
-  return { app, memory, clarification, orchestratedReply, speak, proceeded }
+  return { app, memory, clarification, orchestratedReply, speak, proceeded, responseChecks }
 }
 
 afterEach(() => {
@@ -89,6 +94,24 @@ afterEach(() => {
 })
 
 describe("voz de quem atende — esclarecimento pelas bases", () => {
+  it("resposta à etapa aberta: a conferência recebe o texto da seção da base em que ela se apoiou, antes de o modelo de voz falar", async () => {
+    const { speak, responseChecks } = setup((call, index) => {
+      if (index === 0) return clarify(call)
+      if (call.stage === "PLANNER") return { decision: "ANSWER", pendingReply: { kind: "OPTIONS", optionRefs: ["O1"] }, questionFacts: [], answerEvidence: [refOf(call.prompt, "titularidade — Empresa", "troca comum")] }
+      return answerFor(call)
+    })
+    const first = await speak("quais documentos para troca de titularidade?", "Quais documentos preciso para troca de titularidade?", null)
+    await speak("é empresa", "Quais documentos preciso para troca de titularidade? — é empresa", first.body.data.conversationId)
+    const checked = responseChecks.filter((entry) => entry.text.includes("Contrato social") || entry.text.includes("tipo de cliente"))
+    expect(checked[0]!.sources).toEqual([])
+    const sources = checked[1]!.sources as { origin: string; title: string | null; text: string }[]
+    expect(sources[0]).toMatchObject({ origin: "KNOWLEDGE" })
+    expect(sources[0]!.title).toContain("Empresa")
+    expect(sources[0]!.text.length).toBeGreaterThan(20)
+    // A pergunta anterior da INIA vai como resposta anterior; a seção vem antes dela.
+    expect(sources.at(-1)).toMatchObject({ origin: "PRIOR_ANSWER" })
+  })
+
   it("pergunta ambígua pela voz: estado na tela, fala com a pergunta e as opções curtas, a orquestração que corria junto é descartada sem ferramentas; gravado no canal de voz", async () => {
     const { speak, memory, clarification, orchestratedReply, proceeded } = setup((call) => clarify(call))
     const response = await speak("quais documentos para troca de titularidade?", "Quais documentos preciso para troca de titularidade?", null)

@@ -13,6 +13,7 @@ export type FakeEffects = Omit<Spied<WorkflowEffectSink>, "agentRuns" | "interac
 export function createFakeEffects(overrides: Partial<FakeEffects> = {}): FakeEffects {
   return {
     dispatchAlert: vi.fn(async () => {}),
+    recordWorkflowKnowledgeUsage: vi.fn(async () => {}),
     dispatchWorkflowOutputRows: vi.fn(async () => {}),
     publishFeedback: vi.fn(async () => ({ caseId: "case-fake", feedbackId: "feedback-fake" })),
     setConfigValue: vi.fn(async () => {}),

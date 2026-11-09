@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { cadenceLabel, computeFreshness, expectedIntervalMinutes, type Cadence, type FreshnessState } from "../../data-hub/domain/freshness.js"
+import { cadenceLabel, computeFeedFreshness, expectedIntervalMinutes, type Cadence, type FreshnessState } from "../../data-hub/domain/freshness.js"
 
 /**
  * CONFIANÇA do estado funcional conhecido — "tenho informação suficientemente recente para uma
@@ -119,7 +119,7 @@ async function resolveContractFreshness(db: Database, organizationId: string, no
       expectedIntervalMinutes: interval,
       lastSuccessAt: row.last_success_at?.toISOString() ?? null,
       lastDataAt: row.last_data_at?.toISOString() ?? null,
-      freshness: computeFreshness(row.last_success_at, interval, now),
+      freshness: computeFeedFreshness({ lastSuccessAt: row.last_success_at, cadence: row.cadence, expectedIntervalMinutes: row.expected_interval_minutes }, now, timeZone),
     }
   })
   const authoritative = feeds.filter((feed) => feed.authoritative)

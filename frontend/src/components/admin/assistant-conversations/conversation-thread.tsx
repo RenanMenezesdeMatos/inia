@@ -21,6 +21,7 @@ import { parseLeadershipCards } from "@/schemas/leadership/leadership.schema"
 import { fetchMonitoredMessages, type MonitoredConversation } from "@/services/admin/assistant-conversations-service"
 
 import { ConversationStatus, conversationKindOf, conversationTitleOf, messagesLabel, OwnerAvatar } from "./conversation-presentation"
+import { ConversationAgentHistory } from "./conversation-agent-history"
 
 const PAGE_LIMIT = 30
 /** Conversa em andamento: busca mensagens NOVAS (depois da última) nesse intervalo. */
@@ -34,6 +35,26 @@ const MESSAGE_ORIGIN_LABELS: Record<string, string> = { FEEDBACK: "Apresentaçã
  * ordem cronológica estável. Somente leitura. Montado com `key = conversationId` (trocar de conversa recomeça do zero).
  * Mensagens novas chegam por polling SEM deslocar quem está lendo mensagens antigas (aviso "novas mensagens").
  */
+/** O que a conferência fez com esta resposta: quem lê a conversa vê a regra, o motivo e o texto original. Prevenção e detecção são ditas como são. */
+function ResponseCheckAudit({ check }: { check: NonNullable<ConversationMessage["responseCheck"]> }) {
+  const title = check.outcome === "CHECK_FAILED"
+    ? check.action === "BLOCKED" ? "A conferência falhou: a resposta não foi entregue" : "A conferência falhou: a resposta já tinha sido entregue"
+    : check.action === "BLOCKED" ? "Bloqueada antes da entrega" : "Detectada depois da entrega"
+  return (
+    <div className="mt-2 space-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs" data-testid="response-check-audit">
+      <p className="font-medium">{title}</p>
+      {check.rules.length > 0 ? <p>Regra: {check.rules.map((rule) => rule.name).join(", ")}</p> : null}
+      {check.reason ? <p className="text-muted-foreground">{check.reason}</p> : null}
+      {check.flaggedContent ? (
+        <details>
+          <summary className="cursor-pointer">Ver o texto original</summary>
+          <p className="mt-1 whitespace-pre-wrap">{check.flaggedContent}</p>
+        </details>
+      ) : null}
+    </div>
+  )
+}
+
 export function ConversationThread({ conversationId, onBack }: { conversationId: string; onBack?: () => void }) {
   const [conversation, setConversation] = useState<MonitoredConversation | null>(null)
   const [messages, setMessages] = useState<ConversationMessage[]>([])
@@ -178,6 +199,7 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
                     <MessageContent className="max-w-[85%]">
                       <MessageHeader className="px-1">{assistant ? "INIA" : owner.name}{originLabel ? <span className="ml-1.5 font-normal text-muted-foreground">· {originLabel}</span> : null}</MessageHeader>
                       <Bubble variant={assistant ? "muted" : "default"} className="max-w-full"><BubbleContent className="space-y-2 px-4 py-3">{assistant ? <RichContent text={message.content} /> : <span className="whitespace-pre-wrap">{message.content}</span>}</BubbleContent></Bubble>
+                      {assistant && message.responseCheck ? <ResponseCheckAudit check={message.responseCheck} /> : null}
                       {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
                       {/* Cartões de dados que a pessoa viu (liderança): recolhidos e só de leitura — auditoria do que a resposta afirmou. */}
                       {assistant ? <LeadershipCards collapsible readOnly cards={parseLeadershipCards(message.analytics)} /> : null}
@@ -213,7 +235,10 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
   )
 }
 
-/** Cabeçalho da conversa: o tipo e o assunto, quem conversou (cargo e equipe), quando começou e quantas mensagens houve. */
+/**
+ * Cabeçalho da conversa: o tipo e o assunto, quem conversou (cargo e equipe), quando começou e quantas mensagens houve — e o
+ * "Ver histórico desta conversa" (agentes que atuaram, versões e chamadas impedidas; PEN-071).
+ */
 function ThreadHeader({ conversation, onBack }: { conversation: MonitoredConversation; onBack: (() => void) | undefined }) {
   const { owner } = conversation
   const kind = conversationKindOf(conversation)
@@ -238,6 +263,8 @@ function ThreadHeader({ conversation, onBack }: { conversation: MonitoredConvers
         </span>
         {conversation.kind !== "LEGACY_HISTORY" ? <span>Iniciada em {formatShortDateTime(conversation.startedAt)}</span> : null}
         <span className="tabular-nums">{messagesLabel(conversation.messageCount)}{voice > 0 ? ` · ${voice} por voz` : ""}</span>
+        {/* "Histórico anterior" (registros de antes da 094) é anterior ao registro por agente (164): não há o que listar. */}
+        {conversation.kind !== "LEGACY_HISTORY" ? <span className="ml-auto"><ConversationAgentHistory conversationId={conversation.id} /></span> : null}
       </div>
     </header>
   )

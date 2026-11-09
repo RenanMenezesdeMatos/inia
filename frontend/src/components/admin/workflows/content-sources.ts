@@ -37,6 +37,14 @@ export function resolveContentSources(
   return sources
 }
 
+const RESULT_OF_PREFIX = "Resultado de: "
+
+/** Para a frase "o resultado completo de X": o rótulo da lista já começa com "Resultado de:", que na frase só se repetiria. */
+export function describeWholeResultOrigin(originLabel: string | undefined): string {
+  if (!originLabel) return "da origem selecionada"
+  return `de ${originLabel.startsWith(RESULT_OF_PREFIX) ? originLabel.slice(RESULT_OF_PREFIX.length) : originLabel}`
+}
+
 const OUTCOME_OPTIONS = [
   { value: "CREATED", label: "Intervenção criada" },
   { value: "PENDING_APPROVAL", label: "Aprovação pendente" },

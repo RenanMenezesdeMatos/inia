@@ -34,6 +34,8 @@ export const productNodeSchema = z.object({
   scopeCount: z.number().catch(0),
   childCount: z.number().catch(0),
   inUse: z.boolean().catch(false),
+  /** Usado agora por base, indício ou produto dentro dele. Histórico não barra a exclusão. */
+  blocksDeletion: z.boolean().catch(false),
 })
 export type ProductNode = z.infer<typeof productNodeSchema>
 
@@ -91,6 +93,8 @@ export const productScopeSourceSchema = z.object({
   title: z.string(),
   status: z.string().nullable().catch(null),
   scope: z.object({ assignmentId: z.string(), nodeIds: z.array(z.string()), since: z.string() }).nullable().catch(null),
+  /** Base de conhecimento: produtos de uma versão ainda fora de uso, diferentes dos que valem. Sem efeito até a versão entrar em uso. */
+  pendingScope: z.object({ version: z.number(), status: z.string(), nodeIds: z.array(z.string()) }).nullish().catch(null),
 })
 export type ProductScopeSource = z.infer<typeof productScopeSourceSchema>
 
@@ -98,7 +102,9 @@ export const productScopeHistorySchema = z.object({
   sourceKind: z.enum(["KNOWLEDGE_DOCUMENT", "ARGUMENT_SCRIPT"]),
   sourceId: z.string(),
   title: z.string(),
-  history: z.array(z.object({ assignmentId: z.string(), nodeIds: z.array(z.string()), effectiveFrom: z.string(), effectiveUntil: z.string().nullable(), createdByName: z.string().nullable().catch(null) })),
+  history: z.array(z.object({ assignmentId: z.string(), nodeIds: z.array(z.string()), effectiveFrom: z.string(), effectiveUntil: z.string().nullable(), createdByName: z.string().nullable().catch(null)})),
+  /** Base de conhecimento: o rascunho onde a escolha ficou (null = nada mudou). */
+  pending: z.object({ version: z.number(), nodeIds: z.array(z.string()) }).nullish(),
 })
 export type ProductScopeHistory = z.infer<typeof productScopeHistorySchema>
 

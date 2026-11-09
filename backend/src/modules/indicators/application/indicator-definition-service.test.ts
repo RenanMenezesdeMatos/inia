@@ -57,6 +57,16 @@ describe("serviço de definição de indicador — mesmo contrato do produto (ro
     expect(writes).toHaveLength(0)
   })
 
+  it("a mensagem aponta o caminho certo: correção controlada para unidade, direção e estratégia; indicador novo para código e medição operacional", async () => {
+    const { db } = fakeDb(TMA, { measurements: 12 })
+    for (const patch of [{ unit: "COUNT" }, { desiredDirection: "HIGHER" }, { operationalAggregation: "LATEST" }]) {
+      await expect(updateIndicatorDefinition(db, ORG, TMA.id, patch)).rejects.toThrow(/Use "Corrigir unidade, direção ou cálculo"/)
+    }
+    await expect(updateIndicatorDefinition(db, ORG, TMA.id, { code: "TMA_V2" })).rejects.toThrow(/crie um novo indicador/)
+    await expect(updateIndicatorDefinition(db, ORG, TMA.id, { dailySupported: false })).rejects.toThrow(/crie um novo indicador/)
+    await expect(updateIndicatorDefinition(db, ORG, TMA.id, { code: "TMA_V2", unit: "COUNT" })).rejects.toThrow(/crie um novo indicador/)
+  })
+
   it("desligar a medição operacional com histórico também é bloqueado; ligar é sempre seguro", async () => {
     const locked = fakeDb(TMA, { measurements: 1 })
     await expect(updateIndicatorDefinition(locked.db, ORG, TMA.id, { dailySupported: false })).rejects.toMatchObject({ code: "INDICATOR_SEMANTIC_LOCKED" })
@@ -71,9 +81,11 @@ describe("serviço de definição de indicador — mesmo contrato do produto (ro
     expect(definition).toMatchObject({ operationalAggregation: "LATEST", unit: "COUNT", desiredDirection: "HIGHER" })
   })
 
-  it("exclusão só sem histórico — com histórico orienta a desativar (status ≠ capacidade)", async () => {
+  it("exclusão: histórico não barra, porque nada é apagado; o que barra é o uso de agora", async () => {
     const withHistory = fakeDb(TMA, { goals: 3 })
-    await expect(deleteIndicatorDefinition(withHistory.db, ORG, TMA.id)).rejects.toMatchObject({ code: "INDICATOR_HAS_DEPENDENTS", statusCode: 409 })
+    await expect(deleteIndicatorDefinition(withHistory.db, ORG, TMA.id)).resolves.toMatchObject({ hasHistory: true, goals: 3 })
+    const cited = fakeDb(TMA, { workflows: ["Modelo · 01"] })
+    await expect(deleteIndicatorDefinition(cited.db, ORG, TMA.id)).rejects.toMatchObject({ code: "INDICATOR_HAS_DEPENDENTS", statusCode: 409 })
     const clean = fakeDb(TMA)
     await expect(deleteIndicatorDefinition(clean.db, ORG, TMA.id)).resolves.toMatchObject({ hasHistory: false })
     expect(clean.client.query).toHaveBeenCalledWith("commit")

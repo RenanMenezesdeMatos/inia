@@ -314,8 +314,9 @@ export function generateOperatorDailyMeasurements(
         periodStart: `${day}T00:00:00${DEMO_TZ_OFFSET}`,
         periodEnd: `${day}T23:59:59${DEMO_TZ_OFFSET}`,
         value: contacts,
-        numerator: contacts,
-        denominator: 1,
+        // Soma não define o valor por componentes: nem a carga aceitaria numerador e denominador aqui.
+        numerator: null,
+        denominator: null,
         sampleCount: contacts,
       })
     }

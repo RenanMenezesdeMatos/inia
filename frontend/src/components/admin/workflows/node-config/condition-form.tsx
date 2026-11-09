@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { decodeSourcePath, encodeVariableSourcePath } from "../content-sources"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
-import { COMPARATOR_LABELS, type Comparator, type FlowGraph, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
+import { COMPARATOR_LABELS, resolveNodeContexts, type Comparator, type FlowGraph, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
 import { triggerProvidesValue, triggerValueIsBoolean, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 import { ConditionGroupForm, EMPTY_GROUP_RULE } from "./condition-group-form"
 import { buildIndicatorAnalysisConfig } from "./indicator-analysis"
@@ -101,7 +101,7 @@ export function ConditionForm({
     return (
       <div className="space-y-3">
         {modeSelector}
-        <IndicatorConditionForm node={node} evaluationMode={evaluationMode} onChange={onChange} />
+        <IndicatorConditionForm node={node} evaluationMode={evaluationMode} individualPath={resolveNodeContexts(graph).get(node.id) === "EMPLOYEE"} onChange={onChange} />
       </div>
     )
   }

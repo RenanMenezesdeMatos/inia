@@ -1,6 +1,6 @@
 import type { DataHubLogger } from "../application/data-hub-context.js"
 import type { HttpClient, HttpRequest, HttpResponse, SecretStore, SftpClient, SftpConnection, SftpFileEntry } from "../application/ports.js"
-import { DataRunError } from "../domain/error-codes.js"
+import { DataRunError, NOT_A_CREDENTIAL_REFUSAL } from "../domain/error-codes.js"
 import type { SecretPurpose } from "../domain/source-config.js"
 
 /** Fakes dos ports — os testes nunca dependem de internet, servidor SFTP ou vault. */
@@ -42,7 +42,7 @@ export class FakeSftpClient implements SftpClient {
 
   private guard(connection: SftpConnection): void {
     if (this.authFailure || (!connection.password && !connection.privateKey)) throw new DataRunError("DATA_SOURCE_AUTH_FAILED", "Usuário, senha ou chave privada recusados pelo servidor SFTP.")
-    if (this.hostKeyMismatch) throw new DataRunError("DATA_SOURCE_AUTH_FAILED", "A host key do servidor não confere com a fingerprint configurada.")
+    if (this.hostKeyMismatch) throw new DataRunError("DATA_SOURCE_AUTH_FAILED", "A host key do servidor não confere com a fingerprint configurada.", NOT_A_CREDENTIAL_REFUSAL)
   }
 
   async list(connection: SftpConnection, directory: string): Promise<SftpFileEntry[]> {

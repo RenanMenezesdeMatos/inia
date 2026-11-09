@@ -56,6 +56,7 @@ export function formatIndicatorValue(value: number, unit: string): string {
 // ---------------------------------------------------------------------------------------------
 export const DESIRED_DIRECTIONS = ["HIGHER", "LOWER", "TARGET"] as const
 export const desiredDirectionSchema = z.enum(DESIRED_DIRECTIONS)
+export const DESIRED_DIRECTION_LABELS: Record<(typeof DESIRED_DIRECTIONS)[number], string> = { HIGHER: "Maior é melhor", LOWER: "Menor é melhor", TARGET: "Bater uma meta específica" }
 
 // ---------------------------------------------------------------------------------------------
 // Granularidade operacional — só o que ingestão + runtime suportam HOJE. HOURLY/INTERACTION
@@ -196,6 +197,31 @@ export function checkComponentCoherence(kind: OperationalAggregationKind, value:
   if (expected === null) return null
   const tolerance = Math.max(0.1, Math.abs(expected) * 0.01, 0.5 * 10 ** -informedDecimals(value))
   return { expected, tolerance, coherent: Math.abs(expected - value) <= tolerance + 1e-9 }
+}
+
+export type ComponentsProblem = { kind: "NOT_DEFINED_BY_COMPONENTS" } | { kind: "INCOHERENT"; expected: number; tolerance: number }
+
+/**
+ * Regra ÚNICA para uma linha enviada com numerador E denominador: a carga diária, o fechamento oficial e a prévia da correção
+ * de indicador usam esta função. A estratégia que não define o valor por componentes recusa os dois; a que define confere o
+ * valor. Denominador zero nunca chega a ser incoerente (dia sem elegíveis: a conta só existe na soma do período).
+ */
+export function componentsProblem(kind: OperationalAggregationKind, value: number, numerator: number, denominator: number): ComponentsProblem | null {
+  if (componentValueScale(kind) === null) return { kind: "NOT_DEFINED_BY_COMPONENTS" }
+  const coherence = checkComponentCoherence(kind, value, numerator, denominator)
+  if (coherence === null || coherence.coherent) return null
+  return { kind: "INCOHERENT", expected: coherence.expected, tolerance: coherence.tolerance }
+}
+
+export function componentsNotDefinedMessage(kind: OperationalAggregationKind, indicatorCode: string): string {
+  return `A estratégia "${AGGREGATION_STRATEGY_METADATA[kind].label}" do indicador "${indicatorCode}" não define o valor por numerador e denominador. Envie a linha sem os componentes ou revise a estratégia no catálogo — nada foi gravado.`
+}
+
+/** Faixa de valor que a unidade admite: a carga recusa a linha e a correção de indicador não aceita o histórico fora dela. */
+export function unitValueProblem(unit: string, value: number): string | null {
+  if (unit === "PERCENT" && (value < 0 || value > 100)) return "Percentual precisa estar entre 0 e 100."
+  if (unit === "SECONDS" && value < 0) return "Tempo em segundos não pode ser negativo."
+  return null
 }
 
 // ---------------------------------------------------------------------------------------------

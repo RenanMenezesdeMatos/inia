@@ -1,3 +1,4 @@
+import { createEnrollmentLookups } from "../../../workflows/application/enrollment-lookups.js"
 import { enrollFlagWorkflows } from "../../../workflows/application/flag-enrollment.js"
 import { resolveChannelFlags, resolveEmployees, resolveInteractions, type ChannelFlagRef } from "../reference-resolver.js"
 import { dedupeByKey, emptyApply, num, reject, str, type DomainWriter, type Rejection, type ValidRecord } from "./domain-writer.js"
@@ -195,9 +196,11 @@ export const interactionFlagsWriter: DomainWriter<PreparedFlag> = {
       [context.organizationId],
     )
     const triggeredFlags = new Set(triggered.rows.map((row) => row.channel_flag_id))
+    // Leituras que não dependem da linha uma vez por lote, na transação do lote (enrollment-lookups.ts).
+    const lookups = createEnrollmentLookups(client)
     for (const row of touchedRows) {
       if (!triggeredFlags.has(row.flag.id)) continue
-      await enrollFlagWorkflows(client, { organizationId: context.organizationId, interactionId: row.interactionId, operatorId: row.operatorId, channelFlagId: row.flag.id, flagName: row.flag.flagName, value: row.value })
+      await enrollFlagWorkflows(client, { organizationId: context.organizationId, interactionId: row.interactionId, operatorId: row.operatorId, channelFlagId: row.flag.id, flagName: row.flag.flagName, value: row.value }, lookups)
     }
     return outcome
   },

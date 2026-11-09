@@ -261,6 +261,7 @@ Cada espera tem `lock_timeout` de 2 s, para falhar com erro de lock em vez de es
 
 - **Dev compartilhado:** os servidores de outros checkouts rodam código antigo e NÃO têm a tarefa `analytics-rollup`. Sem worker deste código, rode `npm run analytics:rollup`. Marcas pendentes não erram o número: só deixam aqueles membros mais lentos.
 - **Triggers por statement disparam para qualquer gravador**, inclusive seed e scripts. Atualização em massa de `indicator_definitions` marca a organização inteira, e a próxima rodada é uma reconstrução completa.
+- **Correção de estratégia ou unidade de um indicador** ([indicadores-e-estrutura.md](indicadores-e-estrutura.md)) não precisa de nenhum passo extra: o UPDATE marca a organização, a leitura cai no caminho original até a próxima rodada, e o cache do resumo muda de chave. Prova: `indicator-correction-proof`.
 - **Cache da camada oficial e do grafo é por processo:** com várias instâncias, cada uma tem o seu. A chave tem a versão lida do banco, então nunca serve dado velho.
 - **Não implementado de propósito:**
   - Rollup equipe×dia. O grão pessoa × janela respondeu em ~100 ms para 2,3 mil membros; medir antes de criar.

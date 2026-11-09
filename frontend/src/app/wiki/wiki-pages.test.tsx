@@ -29,6 +29,7 @@ import FollowUpPage from "./acompanhamento/page"
 import PendingPage from "./pendencias/page"
 import NotificationsPage from "./notificacoes/page"
 import WorkflowEngineOverviewPage from "./workflows/page"
+import WorkflowExamplesPage from "./workflows/exemplos/page"
 import CreateWorkflowPage from "./workflows/criacao/page"
 import TriggersPage from "./workflows/triggers/page"
 import ManualExecutionPage from "./workflows/execucao-manual/page"
@@ -50,6 +51,7 @@ import AiModelsPage from "./administracao/ia-modelos/page"
 import InterventionPoliciesWikiPage from "./administracao/politicas-de-acompanhamento/page"
 import DataHubPage from "./central-de-dados/page"
 import DataHubConnectorsPage from "./central-de-dados/conectores/page"
+import DataHubClientDatabasePage from "./central-de-dados/banco-do-cliente/page"
 import DataHubGuidesPage from "./central-de-dados/guias/page"
 import SecurityPage from "./seguranca/page"
 import PracticalCasesPage from "./casos-praticos/page"
@@ -98,6 +100,7 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/pendencias": PendingPage,
   "/wiki/notificacoes": NotificationsPage,
   "/wiki/workflows": WorkflowEngineOverviewPage,
+  "/wiki/workflows/exemplos": WorkflowExamplesPage,
   "/wiki/workflows/criacao": CreateWorkflowPage,
   "/wiki/workflows/triggers": TriggersPage,
   "/wiki/workflows/execucao-manual": ManualExecutionPage,
@@ -119,6 +122,7 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/administracao/politicas-de-acompanhamento": InterventionPoliciesWikiPage,
   "/wiki/central-de-dados": DataHubPage,
   "/wiki/central-de-dados/conectores": DataHubConnectorsPage,
+  "/wiki/central-de-dados/banco-do-cliente": DataHubClientDatabasePage,
   "/wiki/central-de-dados/guias": DataHubGuidesPage,
   "/wiki/seguranca": SecurityPage,
   "/wiki/casos-praticos": PracticalCasesPage,

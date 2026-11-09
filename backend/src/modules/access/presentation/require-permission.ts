@@ -19,14 +19,18 @@ declare module "express-serve-static-core" {
  * de organização (recursos do tenant: QA Lab, configuração de IA). Deny by default; 403 no formato de sempre. O recurso
  * concreto (escopo de Grupo/Subgrupo) continua sendo checado dentro do módulo.
  */
-export function requirePermission(db: Pick<Database, "query">, permission: Permission, options: { organizationWide?: boolean } = {}) {
+export function requirePermission(db: Pick<Database, "query">, permission: Permission, options: { organizationWide?: boolean; onDenied?: (request: Request) => Promise<void> } = {}) {
   const repository = createPostgresAccessRepository(db)
   const requireAuth = createRequireAuth(db)
   const guard = async (request: Request, response: Response, next: NextFunction) => {
     try {
       const access = await repository.loadContext(sessionUser(request).organizationId, sessionUser(request).sub)
       const allowed = options.organizationWide ? canOrganizationWide(access, permission) : canAnywhere(access, permission)
-      if (!allowed) return response.status(403).json({ error: { code: "FORBIDDEN", message: "Você não tem permissão para este recurso." } })
+      if (!allowed) {
+        // Registro da tentativa: quem registra decide o que guardar, e uma falha ali nunca troca o 403 por outra resposta.
+        await options.onDenied?.(request).catch((error: unknown) => console.error(JSON.stringify({ event: "permission_denied_audit_failed", permission, message: error instanceof Error ? error.message : String(error) })))
+        return response.status(403).json({ error: { code: "FORBIDDEN", message: "Você não tem permissão para este recurso." } })
+      }
       request.access = access
       return next()
     } catch (error) {

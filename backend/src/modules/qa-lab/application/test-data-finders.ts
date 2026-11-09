@@ -2,11 +2,12 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { comparatorMatches, evaluateDataCondition, isDataCondition, type ConditionBranch, type EvaluationOptions } from "../../workflows/application/condition-evaluator.js"
+import { assertNodeMatchesIndicatorCatalog } from "../../workflows/application/indicator-graph-guard.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { resolveStructureAnchorOperatorIds } from "../../workflows/application/hierarchy-subjects.js"
 import { consolidatedStructureAnchorId, consolidatedStructureSchema, type ConsolidatedStructure } from "../../workflows/domain/consolidated-structure-schema.js"
 import { structureAnchorGroupRef } from "../../workflows/domain/structure-anchor-schema.js"
-import { comparatorSchema, flowGraphSchema, type FlowNode } from "../../workflows/domain/graph-schema.js"
+import { comparatorSchema, flowGraphSchema, resolveNodeContexts, type FlowNode } from "../../workflows/domain/graph-schema.js"
 import { loadWorkflowForSimulation, resolveSimulationGraph, withSimulationConfiguration } from "./build-simulated-enrollment.js"
 import { resolveEligibleOperatorIds } from "./interaction-evidence.js"
 
@@ -270,7 +271,8 @@ export async function previewConditionForOperators(db: Database, organizationId:
   if (!loaded) throw new DomainError("Workflow não encontrado.", "WORKFLOW_NOT_FOUND", 404)
   const { graph, source } = resolveSimulationGraph(loaded, input.graphSource)
   const workflow = withSimulationConfiguration(loaded, source)
-  const node = flowGraphSchema.parse(graph).nodes.find((candidate) => candidate.id === input.nodeId)
+  const parsedGraph = flowGraphSchema.parse(graph)
+  const node = parsedGraph.nodes.find((candidate) => candidate.id === input.nodeId)
   if (!node || node.type !== "condition") throw new DomainError("Selecione um node de Condição.", "QA_NODE_NOT_CONDITION", 422)
   // Mesmo contexto organizacional (timezone IANA) que a execução real usa — a prévia nunca
   // resolve janela em fuso diferente do motor.
@@ -282,6 +284,8 @@ export async function previewConditionForOperators(db: Database, organizationId:
       422,
     )
   }
+  // A execução real recusa agregação que a estratégia vigente não aceita: a prévia diz o mesmo, em vez de mostrar um número que o motor nunca usaria.
+  await assertNodeMatchesIndicatorCatalog(db, organizationId, node)
   const now = input.simulatedNow ? new Date(input.simulatedNow) : new Date()
   const configuredStructure = workflow.consolidated_structure ? consolidatedStructureSchema.parse(workflow.consolidated_structure) : null
   if (configuredStructure) {
@@ -295,9 +299,10 @@ export async function previewConditionForOperators(db: Database, organizationId:
     // Mesmo "sujeito técnico" que schedule-check.ts usa como scheduled_subject_id (âncora ou
     // membro determinístico) — o evaluator agrega sobre TODOS os membros de qualquer forma.
     const operatorId = anchorId ?? [...memberIds].sort()[0]!
-    // Quartil operacional é individual (posição de UM colaborador na população da estrutura):
-    // a prévia lista cada membro, com a MESMA população (os membros) e uma resolução em lote.
-    if (node.config.historicalQuery?.source === "OPERATIONAL_QUARTILE") {
+    // Quartil operacional é individual (posição de UM colaborador na população da estrutura), e todo o caminho depois de "Aplicar
+    // individualmente" também (o motor avalia a pessoa): a prévia lista cada membro, com a MESMA população (os membros) e uma resolução
+    // em lote.
+    if (node.config.historicalQuery?.source === "OPERATIONAL_QUARTILE" || resolveNodeContexts(parsedGraph).get(node.id) === "EMPLOYEE") {
       return { node, rows: await previewOperatorRows(db, node, memberIds, memberIds, now, evaluationOptions) }
     }
     const result = await evaluateDataCondition(db, node.config, { operatorId, subjectIds: memberIds }, now, evaluationOptions)

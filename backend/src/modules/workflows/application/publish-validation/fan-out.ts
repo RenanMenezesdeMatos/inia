@@ -1,5 +1,6 @@
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { findNode, resolveNodeContexts, type EmployeeRankingConfig, type FlowEdge, type FlowGraph, type FlowNode } from "../../domain/graph-schema.js"
+import { rankingNeedsDirection } from "../../domain/indicator-graph-compatibility.js"
 import { outputTargetRole } from "../../domain/output-schema.js"
 import { postgresHierarchyReader, requireStructureRecipient } from "../organizational-recipient.js"
 import type { PublishGraphContext } from "./context.js"
@@ -473,8 +474,7 @@ export async function validateRankings(context: PublishGraphContext): Promise<vo
     const ranking = node.config.ranking
     validateEmployeeRankingConfig(`A configuração de ranking do nó "${node.label}"`, ranking, "WORKFLOW_INVALID_SELECTION_RANKING")
     const basis = ranking.rankingBasis ?? "VALUE"
-    const needsDirection = basis === "CHANGE" || ranking.selection === "BEST" || ranking.selection === "WORST" || ranking.selection === "OPERATIONAL_QUARTILE"
-    if (needsDirection && (ranking.source ?? "MEASUREMENT") === "MEASUREMENT") {
+    if (rankingNeedsDirection(ranking) && (ranking.source ?? "MEASUREMENT") === "MEASUREMENT") {
       const indicator = await db.query<{ desired_direction: string }>(`select desired_direction from indicator_definitions where code = $1 and organization_id = $2`, [
         ranking.indicatorCode,
         organizationId,

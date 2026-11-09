@@ -1,6 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { actionExecutors } from "./action-executors.js"
 import { comparatorMatches, evaluateDataCondition, evaluateGenericComparator, type ConditionSubject, type EvaluationOptions } from "./condition-evaluator.js"
+import { assertNodeMatchesIndicatorCatalog } from "./indicator-graph-guard.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
 import { resolveEnrollmentOperatorId } from "./enrollment-subject.js"
 import { resolveContextValue } from "./execution-context.js"
@@ -9,6 +10,8 @@ import { notifyHumanReviewPending } from "./human-review-executor.js"
 import { resolveOrganizationTimezone } from "./organization-timezone.js"
 import { executeOrchestrator, executeOrchestratorConsolidated } from "./orchestrator-executor.js"
 import { executeSynthesisAgent } from "./synthesis-agent-executor.js"
+import { withWorkflowAgent } from "./workflow-agent-version.js"
+import { priorChainDelivery } from "./workflow-retry.js"
 import { executeOutput } from "./output-executor.js"
 import { executeInterventionPolicyNode } from "./intervention-policy-executor.js"
 import { localDateParts } from "./schedule-recurrence.js"
@@ -65,6 +68,10 @@ export type EnrollmentRow = {
    * aponta pro enrollment RAIZ, nunca encadeia (nested fan-out é inválido pela matriz de
    * contexto — um filho nunca fan-out de novo). */
   parent_enrollment_id?: string | null
+  /** Não-nulo = nova tentativa de uma execução bloqueada (PEN-073): o Output não repete entregas da cadeia. Ausente no QA Lab. */
+  retry_of_enrollment_id?: string | null
+  /** Só no QA Lab: o contexto da execução principal, que ali é simulada e não tem linha no banco. No motor, ela é lida quando preciso. */
+  parent_node_outputs?: Record<string, unknown>
 }
 
 export type WorkflowScope = {
@@ -141,6 +148,19 @@ async function evaluationOptions(context: ProcessContext): Promise<EvaluationOpt
 }
 
 /**
+ * A coleção de um "Selecionar colaboradores" anterior. A execução filha de "Aplicar individualmente" nasce sem contexto: copiar a lista
+ * para cada filho custaria N × N (fan-out grande), então ela fica só na execução principal e é lida de lá, apenas quando alguém pede.
+ */
+async function readCollection(context: ProcessContext, collectionNodeId: string): Promise<EmployeeCollectionOutput | undefined> {
+  const { enrollment } = context
+  const own = enrollment.node_outputs[collectionNodeId] as EmployeeCollectionOutput | undefined
+  if (own || !enrollment.parent_enrollment_id) return own
+  if (enrollment.parent_node_outputs) return enrollment.parent_node_outputs[collectionNodeId] as EmployeeCollectionOutput | undefined
+  const parent = await context.db.query<{ collection: EmployeeCollectionOutput | null }>(`select node_outputs -> $1 collection from workflow_enrollments where id = $2 and organization_id = $3`, [collectionNodeId, enrollment.parent_enrollment_id, enrollment.organization_id])
+  return parent.rows[0]?.collection ?? undefined
+}
+
+/**
  * População do quartil OPERACIONAL de uma Condition (source OPERATIONAL_QUARTILE — Parte 33):
  * a coleção anterior quando a Condition vem depois de um "Selecionar colaboradores"; senão a
  * Estrutura Consolidada ∩ elegíveis (modo Consolidado) ou Abrangência ∩ Filtro populacional
@@ -149,10 +169,7 @@ async function evaluationOptions(context: ProcessContext): Promise<EvaluationOpt
  */
 async function resolveConditionPopulation(context: ProcessContext, nodeId: string, operatorId: string): Promise<string[]> {
   const previous = findPrecedingCollectionNode(context.graph, nodeId)
-  if (previous) {
-    const stored = context.enrollment.node_outputs[previous.id] as EmployeeCollectionOutput | undefined
-    return stored?.memberIds ?? []
-  }
+  if (previous) return (await readCollection(context, previous.id))?.memberIds ?? []
   const population: WorkflowPopulation = {
     scopeType: context.workflow.scopeType,
     teamId: context.workflow.teamId,
@@ -180,7 +197,9 @@ async function resolveConditionSubject(db: Database, enrollment: EnrollmentRow, 
   if (!operatorId) throw new Error("Não foi possível identificar o operador para avaliar a condição.")
 
   const structure = workflow.consolidatedStructure
-  if (!structure) return { operatorId, subjectIds: [operatorId] }
+  // Execução filha de "Aplicar individualmente": o sujeito é a pessoa, mesmo em Workflow consolidado (mesmo critério do destinatário do
+  // Output). Agregar a estrutura aqui faria uma pessoa seguir pelo caminho decidido pelo resultado da equipe.
+  if (!structure || enrollment.parent_enrollment_id) return { operatorId, subjectIds: [operatorId] }
 
   // Modo Consolidado: a pessoa-âncora do enrollment (`scheduled_subject_id`) já É a pessoa
   // configurada (Supervisor/Coordenador/.../ou um membro-carregador de Subgrupo/Grupo — ver
@@ -298,6 +317,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
     }
 
     case "condition": {
+      await assertNodeMatchesIndicatorCatalog(context.db, context.enrollment.organization_id, node)
       let branch: string
       let matched = false
       // Valores efetivamente resolvidos — vão pro payload do evento `condition_evaluated`
@@ -395,14 +415,17 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         }
         const collectionNode = findPrecedingCollectionNode(context.graph, joinNode.id)
         const collection = collectionNode ? (context.enrollment.node_outputs[collectionNode.id] as EmployeeCollectionOutput | undefined) : undefined
-        const synthesis = await executeSynthesisAgent(node.config, {
-          db: context.db,
-          organizationId: context.enrollment.organization_id,
-          inputContext: context.inputContext,
-          fanIn,
-          collection: collection ?? null,
-          recorder: context.effects.agentRuns,
-        })
+        const synthesisConfig = node.config
+        const synthesis = await withWorkflowAgent(context.db, context.enrollment.organization_id, synthesisConfig.agentId, { scopeType: context.workflow.scopeType, teamId: context.workflow.teamId, subteamId: context.workflow.subteamId }, () =>
+          executeSynthesisAgent(synthesisConfig, {
+            db: context.db,
+            organizationId: context.enrollment.organization_id,
+            inputContext: context.inputContext,
+            fanIn,
+            collection: collection ?? null,
+            recorder: context.effects.agentRuns,
+          }),
+        )
         const edge = requireEdge(context.graph, node.id, "always")
         if ("fail" in edge) return edge.fail
         return {
@@ -422,6 +445,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         workflowVersionId: context.enrollment.version_id,
         nodeId: node.id,
         graph: context.graph,
+        readCollection: (collectionNodeId) => readCollection(context, collectionNodeId),
         enrollment: {
           id: context.enrollment.id,
           interactionId: context.enrollment.interaction_id,
@@ -474,6 +498,8 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
     }
 
     case "orchestrator": {
+      // A versão fixada do Orquestrador só roda se servir ao Grupo do Workflow (conferida na resolução, motor e QA Lab).
+      const workflowScope = { scopeType: context.workflow.scopeType, teamId: context.workflow.teamId, subteamId: context.workflow.subteamId }
       const contexts = resolveNodeContexts(context.graph)
       const isConsolidated = contexts.get(node.id) === "CONSOLIDATED_RESULT"
       const result = isConsolidated
@@ -486,12 +512,14 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
             }
             const collectionNode = findPrecedingCollectionNode(context.graph, joinNode.id)
             const collection = collectionNode ? (context.enrollment.node_outputs[collectionNode.id] as EmployeeCollectionOutput | undefined) : undefined
-            return executeOrchestratorConsolidated(node.config, { db: context.db, organizationId: context.enrollment.organization_id, inputContext: context.inputContext, fanIn, collection: collection ?? null })
+            return executeOrchestratorConsolidated(node.config, { db: context.db, organizationId: context.enrollment.organization_id, inputContext: context.inputContext, fanIn, collection: collection ?? null, publishedRun: Boolean(context.enrollment.version_id), workflowScope })
           })()
         : await executeOrchestrator(node.config, {
             db: context.db,
             organizationId: context.enrollment.organization_id,
             inputContext: context.inputContext,
+            publishedRun: Boolean(context.enrollment.version_id),
+            workflowScope,
             enrollment: {
               interactionId: context.enrollment.interaction_id,
               indicatorMeasurementId: context.enrollment.indicator_measurement_id,
@@ -538,9 +566,11 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         await notifyHumanReviewPending(node.config, {
           db: context.db,
           organizationId: context.enrollment.organization_id,
+          workflowId: context.enrollment.workflow_id,
           enrollmentId: context.enrollment.id,
           nodeId: node.id,
           nodeOutputs: context.enrollment.node_outputs,
+          variables: context.enrollment.variables,
           enrollment: {
             interactionId: context.enrollment.interaction_id,
             indicatorMeasurementId: context.enrollment.indicator_measurement_id,
@@ -553,6 +583,13 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
     }
 
     case "output": {
+      // Nova tentativa (PEN-073): o que a cadeia original → tentativas já entregou por este nó não é entregue de novo.
+      const delivered = context.enrollment.retry_of_enrollment_id ? await priorChainDelivery(context.db, context.enrollment.id, node.id) : null
+      if (delivered) {
+        const edge = requireEdge(context.graph, node.id, "always")
+        if ("fail" in edge) return edge.fail
+        return { kind: "advance", nextNodeId: edge.target, eventType: "output_already_delivered", eventPayload: { deliveredByEnrollmentId: delivered.enrollmentId }, nodeOutput: delivered.nodeOutput ?? { alreadyDeliveredBy: delivered.enrollmentId } }
+      }
       const result = await executeOutput(node.config, {
         db: context.db,
         organizationId: context.enrollment.organization_id,
@@ -560,6 +597,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         nodeId: node.id,
         nodeLabel: node.label,
         nodeOutputs: context.enrollment.node_outputs,
+        variables: context.enrollment.variables,
         enrollment: {
           interactionId: context.enrollment.interaction_id,
           indicatorMeasurementId: context.enrollment.indicator_measurement_id,
@@ -608,6 +646,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
       // condition-evaluator.ts nesta mesma evolução).
       const structure = context.workflow.consolidatedStructure
       if (!structure) throw new Error(`O nó "${node.label}" (Selecionar colaboradores) só é válido num Workflow em modo Consolidado.`)
+      await assertNodeMatchesIndicatorCatalog(context.db, context.enrollment.organization_id, node)
       // Ausente = "CONDITION" (Parte 64 do pedido de Ranking — dado publicado antes desta
       // evolução nunca tem `selectionMode`, continua se comportando exatamente como antes).
       const mode = node.config.selectionMode === "RANKING" ? "RANKING" : "CONDITION"

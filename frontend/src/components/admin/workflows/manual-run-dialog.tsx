@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertTriangle, CheckCircle2, CircleDashed, Loader2, Play, RotateCcw, XCircle } from "lucide-react"
+import { AlertTriangle, Ban, CheckCircle2, CircleDashed, Loader2, Play, RotateCcw, XCircle } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,8 @@ import {
 } from "@/schemas/admin/workflow-manual-run.schema"
 import { OUTPUT_SURFACE_LABELS } from "@/schemas/admin/workflow-graph.schema"
 
+import { BLOCKED_GUIDANCE, blockedReasonText, blockReasonOf, enrollmentEventLabel, type BlockReason } from "./enrollments/enrollment-format"
+
 function formatDateTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "—"
@@ -54,25 +56,17 @@ function newIdempotencyKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-const TERMINAL_STAGES = new Set(["COMPLETED", "FAILED"])
+// BLOCKED (por agente ou por revisão) também para o polling: a execução nunca é repetida sozinha — só por uma
+// nova tentativa confirmada.
+const TERMINAL_STAGES = new Set(["COMPLETED", "FAILED", "BLOCKED"])
 
-const EVENT_LABELS: Record<string, string> = {
-  manual_run_requested: "Execução manual solicitada",
-  node_advanced: "Etapa concluída",
-  action_executed: "Ação executada",
-  condition_evaluated: "Condição avaliada",
-  intervention_policy_evaluated: "Política de acompanhamento avaliada",
-  orchestrator_executed: "Orquestrador executado",
-  output_dispatched: "Saída entregue",
-  human_review_requested: "Revisão humana solicitada",
-  human_review_decided: "Revisão humana decidida",
-  reliable_feedback_held_for_qa: "Feedback retido para o QA",
-  wait_started: "Espera iniciada",
-  wait_elapsed: "Espera encerrada",
-  node_failed: "Falha nesta tentativa",
-  flow_dead: "Execução encerrada com falha",
-  flow_completed: "Execução concluída",
+function blockedRunText(reason: BlockReason, cause: string | null): string {
+  if (reason === "AGENT_ACCESS_NOT_AUTHORIZED") return "A etapa do agente não pôde começar: a versão vigente dele não está autorizada para este Workflow."
+  if (reason === "AGENT_INACTIVE") return "A etapa do agente não pôde começar: o agente está inativo."
+  const why = blockedReasonText(reason, { cause })
+  return `${why.charAt(0).toUpperCase()}${why.slice(1)}.`
 }
+
 
 /** Superfícies dos Outputs da versão PUBLICADA — o que esta execução pode entregar de verdade. */
 function publishedSurfaces(workflow: WorkflowDetail): string[] {
@@ -86,6 +80,7 @@ function publishedSurfaces(workflow: WorkflowDetail): string[] {
 function StageIcon({ stage }: { stage: ManualRun["execution"]["stage"] }) {
   if (stage === "COMPLETED") return <CheckCircle2 className="h-4 w-4 text-emerald-600" />
   if (stage === "FAILED") return <XCircle className="h-4 w-4 text-destructive" />
+  if (stage === "BLOCKED") return <Ban className="h-4 w-4 text-amber-600" />
   if (stage === "WAITING") return <CircleDashed className="h-4 w-4 text-amber-600" />
   if (stage === "RETRYING") return <AlertTriangle className="h-4 w-4 text-amber-600" />
   return <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -123,6 +118,11 @@ function ManualRunStatus({ workflowId, runId, onShowExecutions, onShowResults }:
           <p className="text-sm font-medium">{MANUAL_RUN_STAGE_LABELS[run.execution.stage]}</p>
           {run.execution.stage === "WAITING" && run.execution.waitingFor ? <p className="text-xs text-muted-foreground">{MANUAL_RUN_WAITING_LABELS[run.execution.waitingFor]}</p> : null}
           {run.execution.currentNodeLabel && run.execution.stage !== "COMPLETED" ? <p className="text-xs text-muted-foreground">Nó atual: {run.execution.currentNodeLabel}</p> : null}
+          {run.execution.stage === "BLOCKED" ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300" data-testid="manual-run-blocked">
+              {blockedRunText(blockReasonOf(run.execution.blockedReason), run.execution.blockedCause)} {BLOCKED_GUIDANCE[blockReasonOf(run.execution.blockedReason)]}
+            </p>
+          ) : null}
           {run.execution.lastError ? <p className="text-xs text-destructive">{run.execution.lastError}</p> : null}
           {run.execution.nextRetryAt ? <p className="text-xs text-muted-foreground">Nova tentativa às {formatDateTime(run.execution.nextRetryAt)}.</p> : null}
           <p className="text-xs text-muted-foreground">
@@ -141,9 +141,11 @@ function ManualRunStatus({ workflowId, runId, onShowExecutions, onShowResults }:
               ? "A execução terminou sem nenhuma entrega (o fluxo não chegou a um Output ou nada era entregável)."
               : run.execution.stage === "FAILED"
                 ? "Nada foi entregue — a execução falhou antes de chegar a um Output."
-                : run.execution.stage === "WAITING"
-                  ? "Nada entregue ainda — a execução está parada aguardando uma decisão."
-                  : "Nada entregue ainda — só a execução foi iniciada."}
+                : run.execution.stage === "BLOCKED"
+                  ? "Nada foi entregue — a execução parou antes da entrega. As etapas já concluídas mantêm os resultados."
+                  : run.execution.stage === "WAITING"
+                    ? "Nada entregue ainda — a execução está parada aguardando uma decisão."
+                    : "Nada entregue ainda — só a execução foi iniciada."}
           </p>
         ) : (
           <ul className="space-y-1 text-sm">
@@ -179,7 +181,7 @@ function ManualRunStatus({ workflowId, runId, onShowExecutions, onShowResults }:
           {run.execution.events.map((event, index) => (
             <li key={`${event.eventType}-${index}`} className="flex gap-2">
               <span className="text-muted-foreground tabular-nums">{formatDateTime(event.createdAt)}</span>
-              <span>{EVENT_LABELS[event.eventType] ?? event.eventType}</span>
+              <span>{enrollmentEventLabel(event.eventType)}</span>
               {event.nodeLabel ? <span className="text-muted-foreground">· {event.nodeLabel}</span> : null}
             </li>
           ))}

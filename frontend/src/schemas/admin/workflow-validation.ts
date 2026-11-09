@@ -4,10 +4,11 @@ import type { WorkflowTrigger } from "./workflow.schema"
 import type { ValidationContext, ValidationIssue, VariableInfo } from "./workflow-validation/types"
 import { validateBranchEdges, validateGraphShape, validateInteractionFeedbackSource, validateManualTrigger, validateConsolidatedTrigger, validatePaidCycles, validateScheduleDataSources, validateScheduleTrigger, validateTranscriptRequirements } from "./workflow-validation/trigger-context"
 import { validateConditions } from "./workflow-validation/conditions"
-import { validateAgentHasOutput, validateNoVariableCycles, validateSetVariableNode } from "./workflow-validation/actions"
+import { validateAgentHasOutput, validateCallAgentNode, validateNoVariableCycles, validateSetVariableNode } from "./workflow-validation/actions"
 import { validateOrchestratorNode } from "./workflow-validation/orchestrators"
 import { validateInterventionPolicyNode } from "./workflow-validation/intervention-policy"
 import { validateEscalations, validateHumanReviewTargets } from "./workflow-validation/review-escalation"
+import { validateNodeReferences } from "./workflow-validation/node-references"
 import { validateConversationalOutputs, validateOutputSourceNode, validateStructuredSources } from "./workflow-validation/outputs"
 import { validateConsolidatedGraph } from "./workflow-validation/fan-out"
 import { validateDiagnosisSources } from "./workflow-validation/indicator-diagnosis"
@@ -43,6 +44,7 @@ export function validateWorkflowGraph(
   validateScheduleTrigger(context)
   for (const node of graph.nodes) {
     validateSetVariableNode(context, node)
+    validateCallAgentNode(context, node)
     validateOutputSourceNode(context, node)
     validateOrchestratorNode(context, node)
     validateInterventionPolicyNode(context, node)
@@ -52,6 +54,7 @@ export function validateWorkflowGraph(
   validateHumanReviewTargets(context)
   validateConversationalOutputs(context)
   validateStructuredSources(context)
+  validateNodeReferences(context)
   validateEscalations(context)
   validateManualTrigger(context)
   validateConsolidatedTrigger(context)

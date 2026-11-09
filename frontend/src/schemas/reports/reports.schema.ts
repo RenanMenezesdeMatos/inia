@@ -183,6 +183,8 @@ export const reportDeliveryContentSchema = z.object({
 })
 export type ReportDeliveryContent = z.infer<typeof reportDeliveryContentSchema>
 
+export const deletedReportSchema = z.object({ id: z.string(), name: z.string(), deletedAt: z.string() })
+
 export const receivedDeliverySchema = z.object({
   id: z.string(),
   reportId: z.string(),

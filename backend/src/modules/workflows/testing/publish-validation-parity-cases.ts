@@ -25,11 +25,15 @@ import { PARITY_TEAM_ID, type ParityDbFacts, type ParitySetup } from "./publish-
 export const AGENT_ID = "0a7a0000-0000-4000-8000-0000000000b1"
 export const ORCHESTRATOR_ID = "0a7a0000-0000-4000-8000-0000000000b2"
 export const FLAG_ID = "0a7a0000-0000-4000-8000-0000000000b3"
+const AGENT_VERSION_ID = "0a7a0000-0000-4000-8000-0000000000b4"
+const ORCHESTRATOR_VERSION_ID = "0a7a0000-0000-4000-8000-0000000000b5"
 export const VARIABLE_A = "0a7a0000-0000-4000-8000-0000000000c1"
 export const VARIABLE_B = "0a7a0000-0000-4000-8000-0000000000c2"
 const DOMAIN_ID = "0a7a0000-0000-4000-8000-0000000000c3"
 const MISSING_UUID = "0a7a0000-0000-4000-8000-0000000000ff"
 const POLICY_ID = "0a7a0000-0000-4000-8000-0000000000c4"
+/** Outro Grupo, que não é o `PARITY_TEAM_ID`. */
+const OTHER_TEAM_ID = "0a7a0000-0000-4000-8000-0000000000c6"
 
 // ---------------------------------------------------------------------------------------------
 // Gatilhos
@@ -139,6 +143,8 @@ export function consolidatedGraph(replace: Partial<Record<"select" | "agent" | "
 }
 const consolidated = (graph: unknown, extra: Partial<ParitySetup> = {}) => setup(SCHEDULE, graph, { consolidated: true, ...extra })
 const withRanking = (ranking: Record<string, unknown>) => consolidated(consolidatedGraph({ select: select("select", { selectionMode: "RANKING", ranking }) }))
+const RANKING_BEST = { source: "PRV_ACHIEVEMENT", aggregation: "AVERAGE", period: { kind: "CALENDAR", unit: "MONTH" }, selection: "BEST", count: 1, rankingBasis: "VALUE", partitionBy: "SUBTEAM" }
+const RECOGNITION_AGENT = agent("agent", { outputContract: "RECOGNITION", scheduledDataSource: { kind: "PERFORMANCE", closures: 1 } })
 const RANKING_OK = { source: "MEASUREMENT", indicatorCode: "TMA", aggregation: "WEIGHTED_AVERAGE", period: { kind: "ROLLING_DAYS", days: 7 }, selection: "HIGHEST", count: 3 }
 /** Indicador "valor do indicador" de referência para Conditions históricas (TMA = média ponderada no banco falso). */
 const HISTORY = { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TMA", aggregation: "WEIGHTED_AVERAGE", period: { kind: "ROLLING_DAYS", days: 7 } }
@@ -293,7 +299,7 @@ export const MIRRORED: MirroredCase[] = [
 
   // ---- reliable-feedback: "Gerar feedback" e o Output que o publica -----------------------------------------------
   { family: "reliable-feedback", name: "origem que não existe", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), generateFeedback("fb", { sourceNodeId: "sumiu" }), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "WORKFLOW_FEEDBACK_SOURCE_NOT_FOUND", nodeId: "fb" },
-  { family: "reliable-feedback", name: "origem sem escolha (rascunho recusado ao salvar)", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), generateFeedback("fb", { sourceNodeId: "" }), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "VALIDATION_ERROR", nodeId: "fb" },
+  { family: "reliable-feedback", name: "origem sem escolha (rascunho salva, publicação recusa)", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), generateFeedback("fb", { sourceNodeId: "" }), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "VALIDATION_ERROR", nodeId: "fb" },
   { family: "reliable-feedback", name: "origem que não é Agent nem Orquestrador", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), output("out-1"), generateFeedback("fb", { sourceNodeId: "out-1" }), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "WORKFLOW_FEEDBACK_SOURCE_INCOMPATIBLE", nodeId: "fb" },
   { family: "reliable-feedback", name: "origem que vem depois", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), generateFeedback(), agent(), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "WORKFLOW_FEEDBACK_SOURCE_NOT_ANCESTOR", nodeId: "fb" },
   { family: "reliable-feedback", name: "tipo automático ambíguo (Agenda, Agent sem formato)", setup: setup(SCHEDULE, chain(triggerNode(), scheduledAgent(), generateFeedback(), output("out", "nodeOutputs.fb", { target: { type: "CURRENT_OPERATOR" } }), endNode())), code: "WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS", nodeId: "fb" },
@@ -321,6 +327,10 @@ export const MIRRORED: MirroredCase[] = [
   { family: "reliable-feedback", name: "Gerar feedback sem Output que o entregue", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent(), generateFeedback(), output("out", "nodeOutputs.agent"), endNode())), code: "WORKFLOW_FEEDBACK_WITHOUT_OUTPUT", nodeId: "fb" },
 
   // ---- indicator-diagnosis: indicador e estratégia --------------------------------------------------------------
+  { family: "indicator-diagnosis", name: "reconhecimento sem seleção antes", setup: setup(SCHEDULE, chain(triggerNode(), RECOGNITION_AGENT, output(), endNode())), code: "WORKFLOW_RECOGNITION_REQUIRES_RANKING", nodeId: "agent" },
+  { family: "indicator-diagnosis", name: "reconhecimento com seleção por critério", setup: consolidated(consolidatedGraph({ agent: RECOGNITION_AGENT })), code: "WORKFLOW_RECOGNITION_REQUIRES_RANKING", nodeId: "agent" },
+  { family: "indicator-diagnosis", name: "reconhecimento com ranking de piores", setup: consolidated(consolidatedGraph({ select: select("select", { selectionMode: "RANKING", ranking: { ...RANKING_BEST, selection: "WORST" } }), agent: RECOGNITION_AGENT })), code: "WORKFLOW_RECOGNITION_REQUIRES_RANKING", nodeId: "agent" },
+  { family: "indicator-diagnosis", name: "reconhecimento com fonte de monitoria", setup: consolidated(consolidatedGraph({ select: select("select", { selectionMode: "RANKING", ranking: RANKING_BEST }), agent: agent("agent", { outputContract: "RECOGNITION", scheduledDataSource: { kind: "MONITORING", sampleSize: 3, period: "WEEK" } }) })), code: "WORKFLOW_RECOGNITION_REQUIRES_RANKING", nodeId: "agent" },
   { family: "indicator-diagnosis", name: "fechamento do PRV com gatilho por Flag", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent("agent", { outputContract: "PRV_CLOSING_DIAGNOSIS", scheduledDataSource: { kind: "PERFORMANCE", closures: 1 } }), output(), endNode())), code: "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE", nodeId: "agent" },
   { family: "indicator-diagnosis", name: "fechamento do PRV com Agenda e fonte de monitoria", setup: setup(SCHEDULE, chain(triggerNode(), scheduledAgent("agent", { outputContract: "PRV_CLOSING_DIAGNOSIS" }), output(), endNode())), code: "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE", nodeId: "agent" },
   { family: "indicator-diagnosis", name: "diagnóstico do indicador com gatilho por Flag", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent("agent", { outputContract: "INDICATOR_DIAGNOSIS" }), output(), endNode())), code: "WORKFLOW_INDICATOR_DIAGNOSIS_REQUIRES_INDICATOR", nodeId: "agent" },
@@ -456,6 +466,25 @@ export const ACCEPTED: AcceptedCase[] = [
   { name: "C06 · ciclo Revisão 'Reprovado' → Espera → agente", setup: setup(FLAG_BOOLEAN, reviewLoop(true)) },
   // D5: só nó alcançável a partir do Gatilho precisa de todas as saídas — um nó solto no canvas nunca roda.
   { name: "D5 · Condição solta no canvas, sem ligação nenhuma", setup: setup(FLAG_BOOLEAN, { nodes: [triggerNode(), endNode(), condition("loose", { comparator: "EQUALS", thresholdBoolean: true })], edges: [edge("trigger", "always", "end")] }) },
+  // Quartil oficial entre "Aplicar individualmente" e "Consolidar resultados": lê o fechamento da própria pessoa (o editor oferece a opção).
+  { name: "quartil oficial no caminho individual de um Workflow consolidado", setup: consolidated({
+    nodes: [triggerNode(), select(), apply(), condition("cond", { comparator: "EQUALS", thresholdText: "Q4", performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "PRV_QUARTILE" } }), join(), endNode()],
+    edges: [edge("trigger", "always", "select"), edge("select", "always", "apply"), edge("apply", "always", "cond"), edge("cond", "true", "join"), edge("cond", "false", "join"), edge("cond", "no_data", "join"), edge("join", "always", "end")],
+  }) },
+  // PEN-076: etapa com a versão do Orquestrador fixada. A versão de agente de grafos antigos é ignorada (revisão de 03/11/2026: o
+  // agente vale pela vigente) — continua aceita.
+  { name: "etapa com a versão do agente fixada", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), agent("agent", { agentVersionId: AGENT_VERSION_ID }), output(), endNode())) },
+  { name: "etapa com a versão do Orquestrador fixada", setup: setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { orchestratorVersionId: ORCHESTRATOR_VERSION_ID }), output("out", "nodeOutputs.orq"), endNode())) },
+  {
+    name: "versão fixada do Orquestrador no mesmo Grupo do Workflow",
+    setup: setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { orchestratorVersionId: ORCHESTRATOR_VERSION_ID }), output("out", "nodeOutputs.orq"), endNode()), {
+      scope: { scopeType: "TEAM", teamId: PARITY_TEAM_ID, subteamId: null },
+      db: {
+        orchestrator: (id) => ({ id, output_schema: null, structured_output: null, output_instructions: null, scopeType: "TEAM", teamId: PARITY_TEAM_ID, subteamId: null, name: "Orquestrador", active: true, invocation_mode: "WORKFLOW" }),
+        orchestratorVersion: (id) => ({ id, scopeType: "TEAM", teamId: PARITY_TEAM_ID, subteamId: null }),
+      },
+    }),
+  },
 ]
 
 // ---------------------------------------------------------------------------------------------
@@ -487,6 +516,7 @@ export const BACKEND_ONLY: BackendOnlyCase[] = [
   { name: "agente que não existe", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: () => null }), code: "WORKFLOW_AGENT_NOT_FOUND", nodeId: "agent" },
   { name: "agente inativo", reason: "catálogo de agentes", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ active: false }) }), code: "WORKFLOW_AGENT_INACTIVE", nodeId: "agent" },
   { name: "agente de outro Grupo", reason: "abrangência do agente", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ scope_type: "TEAM", team_id: PARITY_TEAM_ID, subteam_id: null }) }), code: "WORKFLOW_AGENT_SCOPE_FORBIDDEN", nodeId: "agent" },
+  { name: "agente nunca publicado", reason: "versões do agente", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ current_version_id: null }) }), code: "WORKFLOW_AGENT_NOT_PUBLISHED", nodeId: "agent" },
   {
     name: "destinatário fixo inexistente, inativo ou de outra organização",
     reason: "cadastro de pessoas",
@@ -498,6 +528,19 @@ export const BACKEND_ONLY: BackendOnlyCase[] = [
   { name: "Agent de síntese no caminho individual", reason: "especialidade do agente", setup: withDb(VALID_AGENT_FLOW, { agent: agentRow({ specialty_kind: "SYNTHESIS" }) }), code: "WORKFLOW_AGENT_SYNTHESIS_REQUIRES_JOIN", nodeId: "agent" },
   { name: "Orquestrador que não existe", reason: "catálogo de orquestradores", setup: withDb(VALID_ORCHESTRATOR_FLOW, { orchestrator: () => null }), code: "WORKFLOW_ORCHESTRATOR_NOT_FOUND", nodeId: "orq" },
   { name: "Orquestrador inativo", reason: "catálogo de orquestradores", setup: withDb(VALID_ORCHESTRATOR_FLOW, { orchestrator: orchestratorRow({ active: false }) }), code: "WORKFLOW_ORCHESTRATOR_INACTIVE", nodeId: "orq" },
+  { name: "versão fixada que não é do Orquestrador", reason: "versões do orquestrador", setup: withDb(setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { orchestratorVersionId: ORCHESTRATOR_VERSION_ID }), output("out", "nodeOutputs.orq"), endNode())), { orchestratorVersion: () => null }), code: "WORKFLOW_ORCHESTRATOR_VERSION_NOT_FOUND", nodeId: "orq" },
+  // A execução usa o alcance e os especialistas da versão FIXADA, não os de hoje: fixar a versão de quando o Orquestrador era de outro Grupo
+  // levaria os especialistas e as bases daquele Grupo para os colaboradores deste, mesmo com o Orquestrador de hoje no Grupo certo.
+  {
+    name: "versão fixada de quando o Orquestrador era de outro Grupo",
+    reason: "abrangência da versão do orquestrador",
+    setup: withDb(setup(FLAG_BOOLEAN, chain(triggerNode(), orchestrator("orq", { orchestratorVersionId: ORCHESTRATOR_VERSION_ID }), output("out", "nodeOutputs.orq"), endNode()), { scope: { scopeType: "TEAM", teamId: PARITY_TEAM_ID, subteamId: null } }), {
+      orchestrator: orchestratorRow({ scopeType: "TEAM", teamId: PARITY_TEAM_ID }),
+      orchestratorVersion: (id) => ({ id, scopeType: "TEAM", teamId: OTHER_TEAM_ID, subteamId: null }),
+    }),
+    code: "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
+    nodeId: "orq",
+  },
   { name: "Orquestrador só de chat/voz", reason: "modo de invocação do orquestrador", setup: withDb(VALID_ORCHESTRATOR_FLOW, { orchestrator: orchestratorRow({ invocation_mode: "INTERACTIVE" }) }), code: "WORKFLOW_ORCHESTRATOR_INVALID_INVOCATION", nodeId: "orq" },
   { name: "Orquestrador de outro Grupo", reason: "abrangência do orquestrador", setup: withDb(VALID_ORCHESTRATOR_FLOW, { orchestrator: orchestratorRow({ scopeType: "TEAM", teamId: PARITY_TEAM_ID }) }), code: "WORKFLOW_ORCHESTRATOR_SCOPE_FORBIDDEN" },
   {
@@ -531,12 +574,15 @@ export const BACKEND_ONLY_CODES = [
   "WORKFLOW_AGENT_NOT_FOUND",
   "WORKFLOW_AGENT_INACTIVE",
   "WORKFLOW_AGENT_SCOPE_FORBIDDEN",
+  "WORKFLOW_AGENT_NOT_PUBLISHED",
   "WORKFLOW_RECIPIENT_NOT_FOUND",
   "WORKFLOW_AGENT_INVALID_TYPE",
   "WORKFLOW_AGENT_NOT_CONSOLIDATED",
   "WORKFLOW_AGENT_SYNTHESIS_REQUIRES_JOIN",
   "WORKFLOW_ORCHESTRATOR_NOT_FOUND",
   "WORKFLOW_ORCHESTRATOR_INACTIVE",
+  "WORKFLOW_ORCHESTRATOR_VERSION_NOT_FOUND",
+  "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
   "WORKFLOW_ORCHESTRATOR_INVALID_INVOCATION",
   "WORKFLOW_ORCHESTRATOR_SCOPE_FORBIDDEN",
   "WORKFLOW_ORCHESTRATOR_ROUTING_DOMAIN_INVALID",

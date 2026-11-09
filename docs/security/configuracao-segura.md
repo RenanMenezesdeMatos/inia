@@ -20,6 +20,10 @@ O que a política de destinos nega sempre (salvo liberação explícita): metada
 `fe80::/10`, `fd00:ec2::254`, nomes `metadata*`), endereços não roteáveis, o host:porta do banco interno (`DATABASE_URL`) e, em
 produção, a própria máquina (loopback). Redes privadas (10/8, 172.16/12, 192.168/16, fc00::/7) são permitidas no modo `OPEN`.
 
+Cancelamento de registros: `DATA_EXPLORER_CANCEL_MAX_ROWS` e `DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES*`, também com teto. Conceda `data_hub.cancel_records` só por papel, nunca por escopo de Grupo.
+
+Consulta de dados da Central: variáveis `DATA_EXPLORER_*`, com valores iniciais conservadores e um teto que impede "sem limite". Tabela em `docs/dev/central-de-dados-consulta.md`. Quem precisa do acesso recebe o papel Administrador de dados: não há concessão automática.
+
 ## 2. Interface (`frontend/.env.local`)
 
 `NEXT_PUBLIC_INIA_API_URL` entra no build e define a origem da API na CSP (`img-src`/`connect-src`) e se o HSTS é enviado

@@ -214,7 +214,12 @@ export type HierarchicalTarget = z.infer<typeof hierarchicalTargetSchema>
 // INDICATOR DIAGNOSIS V1: PRV_CLOSING_DIAGNOSIS = diagnóstico do FECHAMENTO oficial do PRV (gatilho por Agenda + fonte "Fechamentos
 // oficiais"): o sistema lê o fechamento, faz a triagem pela estratégia de cada indicador, escolhe população/amostra e REAPROVEITA
 // as observações de processo já verificadas; o Agent só avalia as chamadas que faltam (nenhuma = nenhuma chamada ao modelo).
-export const agentOutputContractSchema = z.enum(["FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS"])
+// RECOGNITION = reconhecimento de quem um ranking escolheu (Agenda + "Fechamentos oficiais"): o sistema diz ao Agent a posição e como cada
+// resultado ficou frente à meta, e ele só escreve. Ser o melhor basta, mesmo abaixo da meta (workflows/application/recognition-fact.ts).
+export const agentOutputContractSchema = z.enum(["FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS", "RECOGNITION"])
+
+/** Só "Melhores" e "Evolução" dão motivo para reconhecer. "Maiores/Menores valores" são pura matemática: num TMA, o maior valor é o pior resultado. */
+export const isRecognitionRankingSelection = (selection: string | undefined): selection is "BEST" | "IMPROVED" => selection === "BEST" || selection === "IMPROVED"
 
 /**
  * V1.5.10 — de onde vem a(s) interação(ões) de "Gerar feedback de atendimento" (feedback INDIVIDUAL de UMA interação;
@@ -249,6 +254,10 @@ export const actionConfigSchema = z.union([
   z.object({
     actionType: z.literal("CALL_AGENT"),
     agentId: z.string().uuid(),
+    // Versão do agente que esta etapa executa (PEN-002, item 6). Fixada ao escolher o agente e mantida em toda republicação
+    // até alguém trocá-la no rascunho; publicar o agente nunca a muda. Ausente só em versões publicadas antes do versionamento
+    // (valem pela versão de origem da migração — workflow-agent-version.ts).
+    agentVersionId: z.string().uuid().optional(),
     scheduledDataSource: scheduledDataSourceSchema.optional(),
     outputContract: agentOutputContractSchema.optional(),
     // Missão dada ao Agent quando o node roda DEPOIS de "Consolidar resultados" (Agent de síntese,
@@ -326,6 +335,9 @@ export const orchestratorNodeConfigSchema = z.object({
   // node executa. Pode existir mais de um Orchestrator (Monitoria Geral, Retenção, etc.), cada
   // um com seus próprios especialistas; o Workflow decide qual usar aqui, não o motor sozinho.
   orchestratorId: z.string().uuid(),
+  // Versão do Orquestrador (PEN-076): cada versão publicada fixa as versões dos agentes dela. Ausente só em versões do
+  // Workflow publicadas antes do versionamento (valem pela versão de origem da migração).
+  orchestratorVersionId: z.string().uuid().optional(),
   // Instrução fixa dada ao Orchestrator — não há um operador vivo perguntando nada aqui, o
   // Workflow está atribuindo uma missão. Reaproveita a mesma infraestrutura de mensagem/prompt
   // do caminho interativo (run-orchestrated-reply.ts), só que com uma única mensagem fixa.

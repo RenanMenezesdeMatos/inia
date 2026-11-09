@@ -4,8 +4,8 @@ import Link from "next/link"
 import { BookOpen, ChevronDown } from "lucide-react"
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { buildKnowledgeMaterialHref } from "@/lib/knowledge/material-href"
-import { groupSourcesByDocument, sourcePartLabel, type ClarificationSource } from "@/schemas/knowledge-clarification/clarification.schema"
+import { buildKnowledgeMaterialHref, buildKnowledgeMaterialPageHref } from "@/lib/knowledge/material-href"
+import { groupSourcesByDocument, sourcePageLabel, sourcePartLabel, type ClarificationSource } from "@/schemas/knowledge-clarification/clarification.schema"
 
 /**
  * Fontes de uma resposta pelas bases, com o título de cada base uma vez. No CHAT ficam recolhidas ("Fontes consultadas", fechado):
@@ -31,7 +31,17 @@ export function KnowledgeSources({ sources, variant = "chat" }: { sources: Clari
             {group.items.map(({ source, index }) => (
               <li key={`${source.documentId}-${source.chunkIndex}-${index}`} className="flex gap-1.5 text-muted-foreground">
                 {audit ? <><span className="shrink-0 font-medium tabular-nums">[{index + 1}]</span>{" "}</> : null}
-                <span className="min-w-0 break-words">{sourcePartLabel(source)}</span>
+                <span className="min-w-0 break-words">
+                  {sourcePartLabel(source)}
+                  {source.pages && sourcePageLabel(source) ? (
+                    <>
+                      {" · "}
+                      <Link href={buildKnowledgeMaterialPageHref(source.documentId, { page: source.pages.from, versionId: source.versionId })} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline dark:text-chart-4" aria-label={`Abrir ${group.documentTitle} na página ${source.pages.from} (abre em nova aba)`}>
+                        {sourcePageLabel(source)}
+                      </Link>
+                    </>
+                  ) : null}
+                </span>
               </li>
             ))}
           </ul>

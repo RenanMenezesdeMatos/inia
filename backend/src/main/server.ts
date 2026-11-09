@@ -2,8 +2,11 @@
 import "./server-database-session.js"
 import type { Server } from "node:http"
 import { env } from "../config/env.js"
-import { pool } from "../infrastructure/database/pool.js"
-import { createExclusiveJobRunner, startPeriodicJobs } from "../infrastructure/jobs/periodic-jobs.js"
+import { databaseSession, pool } from "../infrastructure/database/pool.js"
+import { createPostgresJobLockSession } from "../infrastructure/jobs/job-lock-session.js"
+import { startPeriodicJobs } from "../infrastructure/jobs/periodic-jobs.js"
+import { processPendingKnowledgeVersions } from "../modules/knowledge/application/knowledge-versions.js"
+import { processKnowledgeOcrJobs } from "../modules/knowledge/application/knowledge-ocr-jobs.js"
 import { startWorkflowWorker } from "../modules/workflows/application/workflow-worker.js"
 import { runScheduleCheck } from "../modules/workflows/application/schedule-check.js"
 import { createDataHubContext } from "../modules/data-hub/application/data-hub-context.js"
@@ -84,8 +87,10 @@ function startProcessing() {
   // fila a cada 2 s e é acordado na hora por disparo manual (no mesmo processo) e pelo checador de agenda. Matrícula = posse
   // com lease + skip locked: 2+ processos de processamento nunca rodam o mesmo nó.
   const workflowWorker = startWorkflowWorker(pool, { concurrency: env.WORKFLOW_WORKER_CONCURRENCY })
-  // Tarefas periódicas: cada rodada roda em UM processo (trava consultiva no banco) e nunca se sobrepõe à anterior.
-  const exclusive = createExclusiveJobRunner(pool)
+  // Tarefas periódicas: cada rodada roda em UM processo (trava consultiva no banco) e nunca se sobrepõe à anterior. As travas
+  // ficam numa conexão própria do processo (fora do pool): o trabalho das tarefas usa o pool só pelo tempo de cada consulta.
+  const jobLocks = createPostgresJobLockSession({ connectionString: env.activeDatabaseUrl, applicationName: databaseSession.applicationName })
+  const exclusive = jobLocks.runExclusive
   const dataHubContext = createDataHubContext(pool)
   const reportStore = createPostgresReportStore(pool)
   const reportExecutorDeps: ExecutorDeps = { store: reportStore, runtime: createPostgresReportRuntime(pool), now: () => new Date(), analyze: (delivery, report) => analyzeDelivery(reportStore, gatewayAnalysisWriter, delivery, report) }
@@ -95,23 +100,32 @@ function startProcessing() {
       name: "workflow-schedule",
       intervalMs: 60_000,
       startup: () => runEmploymentStatusProjection(pool).catch((error) => console.error("Falha na projeção de situação funcional:", error)),
-      run: async () => {
+      run: async ({ signal }) => {
         await runEmploymentStatusProjection(pool).catch((error) => console.error("Falha na projeção de situação funcional:", error))
+        // Trava perdida no meio (conexão das travas caiu): outro processo pode assumir — não começa a segunda etapa.
+        if (signal.aborted) return
         await runScheduleCheck(pool).catch((error) => console.error("Falha no checador de gatilho por agenda:", error))
       },
       after: () => workflowWorker.wake(),
     },
     // Central de Dados: agenda feeds vencidos, processa a fila de cargas e purga o raw expirado.
     { name: "data-hub", intervalMs: 15_000, run: () => runDataHubTick(dataHubContext), errorLabel: "Falha no tick da Central de Dados:" },
+    // Bases de conhecimento: conclui publicações que ficaram sem dono (API reiniciada, falha passageira). A API processa na hora; esta varredura é a garantia.
+    { name: "knowledge-publications", intervalMs: 15_000, run: () => processPendingKnowledgeVersions(pool), errorLabel: "Falha na publicação de bases:" },
+    // PDFs digitalizados: lê as páginas sem texto (OCR) num documento por vez no conjunto e grava o texto no rascunho. Ver knowledge-ocr-jobs.ts.
+    { name: "knowledge-ocr", intervalMs: 15_000, run: () => processKnowledgeOcrJobs(pool), errorLabel: "Falha na leitura de PDF digitalizado:" },
     // Reports recorrentes: agenda (cria a execução do horário vencido, uma por report × horário), fila (execução com posse e
-    // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega). Ver docs/dev/reports-recorrentes.md.
+    // até 3 tentativas) e recuperação da análise da IA (sem refazer a entrega; posse por entrega — uma chamada de IA por vez em
+    // qualquer processo, inclusive junto com a análise que a execução faz logo depois de gravar). Ver docs/dev/reports-recorrentes.md.
     { name: "report-schedule", intervalMs: 60_000, run: () => scheduleDueReports(pool, new Date()).then(() => undefined), errorLabel: "Falha na agenda de reports:" },
     { name: "report-runs", intervalMs: 15_000, run: () => processReportRuns(pool, reportExecutorDeps).then(() => undefined), errorLabel: "Falha na execução de reports:" },
     // Base de boas práticas: fila de análises (uma por rodada, com posse de 20 min e uma nova tentativa). Ver docs/dev/memoria/boas-praticas.md.
     { name: "best-practice-analyses", intervalMs: 15_000, run: () => processBestPracticeAnalyses(pool).then(() => undefined), errorLabel: "Falha nas análises de boas práticas:" },
-    { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: () => retryPendingAnalyses(pool, reportExecutorDeps.store, gatewayAnalysisWriter).then(() => undefined), errorLabel: "Falha na análise de reports:" },
+    // Com a trava perdida, para antes da próxima reivindicação.
+    { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: ({ signal }) => retryPendingAnalyses(reportExecutorDeps.store, gatewayAnalysisWriter, { signal }).then(() => undefined), errorLabel: "Falha na análise de reports:" },
     // Read model do analytics da liderança: refaz tudo depois da meia-noite local e recalcula quem tem marca pendente.
-    { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: () => runAnalyticsRollup(pool), errorLabel: "Falha no read model do analytics:" },
+    // Com a trava perdida, para entre lotes (duas reconstruções juntas dariam chave duplicada/deadlock nos lotes).
+    { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: ({ signal }) => runAnalyticsRollup(pool, { signal }), errorLabel: "Falha no read model do analytics:" },
     // Retenção: só as políticas LIGADAS em data_retention_policies (todas nascem desligadas — prazo é decisão de produto/LGPD).
     { name: "data-retention", intervalMs: 3_600_000, run: () => runDataRetention(pool), errorLabel: "Falha na retenção de dados:" },
     {
@@ -120,11 +134,11 @@ function startProcessing() {
       name: "calendar",
       intervalMs: 300_000,
       runOnStart: true,
-      run: () =>
-        runWorkdayReconciliation(pool)
-          .catch((error) => console.error("Falha na reconciliação de dias de trabalho:", error))
-          .then(() => runScheduleHorizonAlerts(pool))
-          .catch((error) => console.error("Falha no alerta de horizonte da escala:", error)),
+      run: async ({ signal }) => {
+        await runWorkdayReconciliation(pool).catch((error) => console.error("Falha na reconciliação de dias de trabalho:", error))
+        if (signal.aborted) return
+        await runScheduleHorizonAlerts(pool).catch((error) => console.error("Falha no alerta de horizonte da escala:", error))
+      },
     },
     // Contadores dos limites de requisição que já não contam (janelas vencidas — migration 126).
     { name: "rate-limit-purge", intervalMs: 10 * 60_000, run: () => purgeExpiredRateLimitHits(pool), errorLabel: "Falha na limpeza dos limites de requisição:" },
@@ -142,6 +156,7 @@ function startProcessing() {
   return {
     workflowWorker,
     jobs,
+    jobLocks,
     async stop() {
       stopFeedbackDeliverySweeper?.()
       stopUsageAnalyticsWorker?.()
@@ -150,6 +165,8 @@ function startProcessing() {
       // 12 min); o que sobrar é retomado quando a posse vencer.
       const [{ abandoned }] = await Promise.all([workflowWorker.stop(10_000), jobs.stop(10_000)])
       if (abandoned > 0) console.warn(`Motor de workflow: ${abandoned} execução(ões) em andamento serão retomadas quando a posse vencer.`)
+      // Depois das rodadas: cada uma destravou ao terminar; o que sobrou cai com a sessão.
+      await jobLocks.stop()
     },
   }
 }
@@ -157,7 +174,7 @@ function startProcessing() {
 const processing = parts.processing ? startProcessing() : null
 const health =
   parts.workerHealth && processing && env.WORKER_HEALTH_PORT > 0
-    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, token: env.INIA_METRICS_TOKEN, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, jobs: processing.jobs.status(), ...metrics.snapshot() }) })
+    ? startWorkerHealthServer({ port: env.WORKER_HEALTH_PORT, host: env.WORKER_HEALTH_HOST, token: env.INIA_METRICS_TOKEN, snapshot: () => ({ workflowRunning: processing.workflowWorker.running, jobs: processing.jobs.status(), jobLocks: processing.jobLocks.status(), ...metrics.snapshot() }) })
     : null
 if (role === "worker") process.stdout.write("INIA processamento (worker) iniciado — motor de Workflow e tarefas periódicas, sem HTTP público.\n")
 

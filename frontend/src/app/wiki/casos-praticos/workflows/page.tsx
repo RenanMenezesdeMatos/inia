@@ -183,6 +183,7 @@ export default function WorkflowModelsPage() {
           links={[
             { href: "/wiki/casos-praticos", label: "Guias integrados" },
             { href: "/wiki/workflows", label: "Workflow Engine — visão geral" },
+            { href: "/wiki/workflows/exemplos", label: "Aprenda na prática", hint: "jornadas guiadas, etapa por etapa" },
             { href: "/wiki/qa-lab", label: "QA Lab", hint: "testar qualquer modelo com dados reais" },
           ]}
         />

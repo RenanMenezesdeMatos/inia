@@ -132,18 +132,19 @@ describe("applyOutcome — fan_out (Aplicar individualmente, EMPLOYEE_COLLECTION
 /** Fake DB pra "join_check" (fan-in/JOIN): responde a query agregada de prontidão
  * (`countFanOutChildren`) e a query de detalhe (`loadFanOutChildren`) a partir de uma lista de
  * filhos configurada pelo teste — nunca insere nada (o insert já é testado acima). */
-function fakeJoinDb(children: { id: string; scheduled_subject_id: string; status: "completed" | "dead"; node_outputs?: Record<string, unknown> }[], deadReasons: Record<string, string> = {}) {
+function fakeJoinDb(children: { id: string; scheduled_subject_id: string; status: "completed" | "dead" | "blocked"; node_outputs?: Record<string, unknown> }[], deadReasons: Record<string, string> = {}) {
   const calls: { sql: string; params: unknown[] }[] = []
   const db = {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push({ sql, params: params ?? [] })
       if (sql.includes("count(*) filter")) {
-        return { rows: [{ completed: String(children.filter((c) => c.status === "completed").length), failed: String(children.filter((c) => c.status === "dead").length) }], rowCount: 1 }
+        return { rows: [{ completed: String(children.filter((c) => c.status === "completed").length), failed: String(children.filter((c) => c.status === "dead" || c.status === "blocked").length) }], rowCount: 1 }
       }
       if (sql.includes("select id, scheduled_subject_id, status, node_outputs")) {
         return { rows: children.map((c) => ({ id: c.id, scheduled_subject_id: c.scheduled_subject_id, status: c.status, node_outputs: c.node_outputs ?? {} })), rowCount: children.length }
       }
-      if (sql.includes("event_type = 'flow_dead'")) {
+      // Motivo de quem não chegou ao Join: `flow_dead` ou, desde a PEN-073, `node_blocked` (agente inativo).
+      if (sql.includes("'flow_dead'")) {
         const deadIds = (params as [string[]])[0]
         return { rows: deadIds.filter((id) => deadReasons[id]).map((id) => ({ enrollment_id: id, payload: { message: deadReasons[id] } })), rowCount: 0 }
       }

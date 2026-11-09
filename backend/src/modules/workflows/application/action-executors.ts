@@ -2,8 +2,11 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "./organization-timezone.js"
 import { resolveCalendarWindow, resolvePreviousCalendarWindow, type CalendarUnit } from "./time-window.js"
 import { runAgent } from "../../agents/application/run-agent.js"
-import { findPrecedingCondition, type ActionConfig, type FlowGraph } from "../domain/graph-schema.js"
+import { findPrecedingCollectionNode, findPrecedingCondition, type ActionConfig, type FlowGraph } from "../domain/graph-schema.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
+import { formatIndicatorValue } from "../../indicators/domain/indicator-definition.js"
+import { describeRecognitionFact, hasRecognitionGround, recognitionFactOf, recognitionSkippedOutput, TARGET_STATUS_TEXT, targetStatusOf, type RecognitionFact, type TargetStatus } from "./recognition-fact.js"
+import type { EmployeeCollectionOutput } from "./select-employees-executor.js"
 import { loadLatestTranscriptForModel } from "./transcript.js"
 import { prepareIndicatorDiagnosis } from "../../indicator-diagnosis/application/prepare-diagnosis.js"
 import { executeEscalation } from "./escalate-executor.js"
@@ -19,6 +22,9 @@ import { callAgentForIndicatorDiagnosis, callAgentForPrvClosing } from "./prv-cl
 import { INDICATOR_ANALYSIS_NODE_OUTPUT_KIND, type IndicatorAnalysisNodeOutput } from "../../feedback-engine/domain/node-output.js"
 import type { InvestigationTarget } from "../../feedback-engine/application/investigate-indicator.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
+import { AgentInactiveError } from "../../agents/domain/agent-inactive-error.js"
+import { withWorkflowAgent } from "./workflow-agent-version.js"
 
 export type ActionExecutionContext = {
   db: Database
@@ -50,6 +56,8 @@ export type ActionExecutionContext = {
   now: Date
   /** Boundary de side effects (ver effect-sink.ts). */
   effects: WorkflowEffectSink
+  /** A coleção de um "Selecionar colaboradores" anterior: na execução individual, ela está na execução principal (node-handlers.ts). */
+  readCollection?: (collectionNodeId: string) => Promise<EmployeeCollectionOutput | undefined>
 }
 
 /**
@@ -92,7 +100,8 @@ async function callAgentForInteraction(config: Extract<ActionConfig, { actionTyp
       thresholdBoolean: condition?.config.thresholdBoolean ?? null,
       thresholdNumeric: condition?.config.thresholdNumeric?.toString() ?? null,
       // PRV_CLOSING_DIAGNOSIS só existe com Agenda (a publicação recusa com Flag): aqui vale o formato de sempre.
-      outputContract: config.outputContract === "PRV_CLOSING_DIAGNOSIS" ? undefined : config.outputContract,
+      // Esses dois formatos partem do fechamento oficial (a publicação recusa com interação): aqui valeria o formato padrão.
+      outputContract: config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "RECOGNITION" ? undefined : config.outputContract,
     },
   })
 }
@@ -402,13 +411,31 @@ async function callAgentForIndicatorSummary(
   })
 }
 
+/** Formato "Reconhecimento": por que esta pessoa foi escolhida. Sem o motivo oficial, a execução falha em vez de elogiar sem base. */
+async function resolveRecognitionFact(context: ActionExecutionContext, operatorId: string): Promise<RecognitionFact> {
+  const selection = findPrecedingCollectionNode(context.graph, context.nodeId)
+  const collection = selection ? (context.readCollection ? await context.readCollection(selection.id) : (context.enrollment.nodeOutputs[selection.id] as EmployeeCollectionOutput | undefined)) : undefined
+  const fact = collection ? recognitionFactOf(collection, operatorId, await recognitionSubjectOf(context, collection)) : null
+  if (!fact) throw new Error(`O formato "Reconhecimento" não encontrou esta pessoa no ranking de "Selecionar colaboradores": sem o motivo oficial, nada é reconhecido.`)
+  return fact
+}
+
+async function recognitionSubjectOf(context: ActionExecutionContext, collection: EmployeeCollectionOutput): Promise<string> {
+  if (collection.mode !== "RANKING") return ""
+  const { source, indicatorCode } = collection.ranking
+  if (source === "PRV_ACHIEVEMENT") return "Atingimento do PRV"
+  const indicator = indicatorCode ? (await context.db.query<{ name: string }>(`select name from indicator_definitions where code = $1 and organization_id = $2`, [indicatorCode, context.organizationId])).rows[0]?.name ?? indicatorCode : "indicador"
+  return source === "INDICATOR_ACHIEVEMENT" ? `Atingimento de ${indicator}` : indicator
+}
+
 /**
  * Fechamentos oficiais (PRV + indicadores por competência) — lidos prontos de
  * employee_prv_performance/employee_indicator_performance, nunca recalculados (o PRV é sempre o
  * valor persistido; weight_percent só explica a composição). Reaproveita o contrato
  * "indicator_summary" de runAgent: a competência mais recente vira a lista de indicadores, e
  * as anteriores entram como histórico textual pro agente comentar a evolução com os números
- * oficiais, sem calcular variação.
+ * oficiais, sem calcular variação. No formato "Reconhecimento", o sistema acrescenta o motivo da
+ * escolha e a leitura de cada resultado frente à meta — os demais formatos recebem o texto de sempre.
  */
 async function callAgentForPerformance(
   config: Extract<ActionConfig, { actionType: "CALL_AGENT" }>,
@@ -416,6 +443,7 @@ async function callAgentForPerformance(
   operatorId: string,
   teamId: string,
   closures: number,
+  recognition: RecognitionFact | null = null,
 ) {
   type PrvRow = { id: string; reference_period: string; achievement_percent: string; quartile: string }
   type IndicatorRow = {
@@ -457,13 +485,22 @@ async function callAgentForPerformance(
   if (periods.length === 0) throw new Error("Sem fechamento oficial de performance (PRV/indicadores) para este operador.")
 
   const latestPeriod = periods[0]!
+  const indicatorStatus = (row: IndicatorRow): TargetStatus => targetStatusOf({ achievementPercent: row.achievement_percent === null ? null : Number(row.achievement_percent), value: Number(row.value), target: row.target_value === null ? null : Number(row.target_value), direction: row.desired_direction })
+  const prvStatus = (row: PrvRow): TargetStatus => targetStatusOf({ achievementPercent: Number(row.achievement_percent), value: Number(row.achievement_percent), target: 100, direction: "HIGHER" })
+  const indicatorTargetText = (row: IndicatorRow) => (recognition ? `, ${TARGET_STATUS_TEXT[indicatorStatus(row)]}` : "")
+  const prvTargetText = (row: PrvRow) => (recognition ? `, ${TARGET_STATUS_TEXT[prvStatus(row)]} (meta: 100%)` : "")
+  // No reconhecimento, o texto vai para a pessoa: unidade como na tela ("350 s"), nunca o código do catálogo ("350 SECONDS").
+  const shown = (value: string, unit: string) => (recognition ? formatIndicatorValue(Number(value), unit) : `${value} ${unit}`)
+  const shownTarget = (row: IndicatorRow) => (recognition && row.target_value !== null ? formatIndicatorValue(Number(row.target_value), row.unit) : (row.target_value ?? "não informada"))
+  const shownAchievement = (value: string) => (recognition ? formatIndicatorValue(Number(value), "PERCENT") : `${value}%`)
   const describeIndicator = (row: IndicatorRow) =>
-    `- ${row.name} (${row.code}): ${row.value} ${row.unit}, meta ${row.target_value ?? "não informada"}${row.achievement_percent !== null ? `, atingimento ${row.achievement_percent}%` : ""}${row.weight_percent !== null ? `, peso ${row.weight_percent}%` : ""}${row.quartile ? `, quartil ${row.quartile}` : ""}`
-  const lines: string[] = []
+    `- ${row.name} (${row.code}): ${shown(row.value, row.unit)}, meta ${shownTarget(row)}${row.achievement_percent !== null ? `, atingimento ${shownAchievement(row.achievement_percent)}` : ""}${row.weight_percent !== null ? `, peso ${row.weight_percent}%` : ""}${row.quartile ? `, quartil ${row.quartile}` : ""}${indicatorTargetText(row)}`
+  const recognitionReason = recognition ? describeRecognitionFact(recognition) : null
+  const lines: string[] = recognitionReason ? [`Motivo do reconhecimento (fato oficial, definido por regra do sistema): ${recognitionReason}`, ""] : []
   for (const period of periods) {
     const prv = prvRows.rows.find((row) => row.reference_period === period)
     lines.push(`Fechamento ${period}${period === latestPeriod ? " (mais recente)" : ""}:`)
-    lines.push(prv ? `- PRV oficial: atingimento ${prv.achievement_percent}%, quartil ${prv.quartile}` : "- PRV oficial: sem dados nesta competência")
+    lines.push(prv ? `- PRV oficial: atingimento ${shownAchievement(prv.achievement_percent)}, quartil ${prv.quartile}${prvTargetText(prv)}` : "- PRV oficial: sem dados nesta competência")
     const rows = indicatorRows.rows.filter((row) => row.reference_period === period)
     if (rows.length === 0) lines.push("- Indicadores: sem dados nesta competência")
     lines.push(...rows.map(describeIndicator))
@@ -473,6 +510,12 @@ async function callAgentForPerformance(
 
   const latestRows = indicatorRows.rows.filter((row) => row.reference_period === latestPeriod)
   const latestPrv = prvRows.rows.find((row) => row.reference_period === latestPeriod)
+  if (recognition) {
+    const rankedRow = latestRows.find((row) => row.code === recognition.indicatorCode)
+    const rankedResult: TargetStatus = recognition.indicatorCode === null ? (latestPrv ? prvStatus(latestPrv) : "UNKNOWN") : rankedRow ? indicatorStatus(rankedRow) : "UNKNOWN"
+    // Sem motivo para reconhecer, nada é pedido à IA: a execução segue, e o motivo fica na saída do nó.
+    if (!hasRecognitionGround(recognition, rankedResult)) return { id: "", outputText: null, status: "COMPLETED", errorMessage: null, recognitionSkipped: recognitionSkippedOutput(recognition, operatorId, rankedResult) } as const
+  }
   const indicators = latestRows.map((row) => ({
     code: row.code,
     name: row.name,
@@ -482,7 +525,7 @@ async function callAgentForPerformance(
     direction: row.desired_direction,
     measurementIds: [row.id],
   }))
-  if (latestPrv) indicators.unshift({ code: "PRV", name: "PRV (atingimento oficial)", unit: "%", value: Number(latestPrv.achievement_percent), targetValue: 100, direction: "HIGHER", measurementIds: [latestPrv.id] })
+  if (latestPrv) indicators.unshift({ code: "PRV", name: "PRV (atingimento oficial)", unit: recognition ? "PERCENT" : "%", value: Number(latestPrv.achievement_percent), targetValue: 100, direction: "HIGHER", measurementIds: [latestPrv.id] })
 
   const periodLabel = `Fechamento ${latestPeriod}${periods.length > 1 ? ` (+${periods.length - 1} anterior${periods.length > 2 ? "es" : ""})` : ""}`
   return runAgent(context.db, {
@@ -502,6 +545,7 @@ async function callAgentForPerformance(
       periodEnd: `${latestPeriod}-01`,
       evidenceSourceType: "employee_performance",
       indicators,
+      ...(recognition && recognitionReason ? { recognition: { subject: recognition.subject, reason: recognitionReason, snapshot: recognition } } : {}),
     },
   })
 }
@@ -520,6 +564,7 @@ async function callAgentForSchedule(config: Extract<ActionConfig, { actionType: 
   if (source.kind === "PERFORMANCE" && config.outputContract === "PRV_CLOSING_DIAGNOSIS") return callAgentForPrvClosing(config, context, operatorId, teamId)
   // INDICATOR DIAGNOSIS V2 — diagnóstico DIRETO de UM indicador a partir do fechamento oficial dele (sem PRV).
   if (source.kind === "PERFORMANCE" && config.outputContract === "INDICATOR_DIAGNOSIS" && source.indicatorCode) return callAgentForIndicatorDiagnosis(config, context, operatorId, teamId, source.indicatorCode)
+  if (source.kind === "PERFORMANCE" && config.outputContract === "RECOGNITION") return callAgentForPerformance(config, context, operatorId, teamId, source.closures, await resolveRecognitionFact(context, operatorId))
   if (source.kind === "PERFORMANCE") return callAgentForPerformance(config, context, operatorId, teamId, source.closures)
 
   const window = resolvePeriodWindow(source.period, context.now)
@@ -550,6 +595,7 @@ async function callAgentForSchedule(config: Extract<ActionConfig, { actionType: 
 const escalate: Executor = async (config, context) => {
   if (config.actionType !== "ESCALATE") throw new Error("Config de ação inválida para ESCALATE.")
   const result = await executeEscalation(config, {
+    variables: context.enrollment.variables,
     db: context.db,
     organizationId: context.organizationId,
     enrollmentId: context.enrollment.id,
@@ -581,10 +627,12 @@ const CONCLUSION_LABELS: Record<string, string> = {
  * (validação funcional de 20/10/2026: o nó rodou o motor com o Agent desligado e publicou feedback).
  */
 async function loadRunnableEngineAgent(context: ActionExecutionContext, agentId: string): Promise<{ updatedAt: Date | null }> {
-  const agent = (await context.db.query<{ active: boolean; updated_at: Date | null }>(`select active, updated_at from agents where id = $1 and organization_id = $2`, [agentId, context.organizationId])).rows[0]
+  const agent = (await context.db.query<{ name: string; active: boolean; updated_at: Date | null }>(`select name, active, updated_at from agents where id = $1 and organization_id = $2`, [agentId, context.organizationId])).rows[0]
   if (!agent) throw new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
-  if (!agent.active) throw new DomainError("Este agente está inativo.", "AGENT_INACTIVE", 422)
-  return { updatedAt: agent.updated_at }
+  const version = agentSnapshotFor(agentId)
+  if (!agent.active) throw new AgentInactiveError(agentId, version?.config.name ?? agent.name, version?.versionId ?? null, version?.versionNumber ?? null)
+  // A versão publicada entra na chave de "configuração do especialista" da memória do motor: outra versão = outra configuração.
+  return { updatedAt: version?.versionId ? ((await context.db.query<{ published_at: Date }>(`select published_at from agent_versions where id = $1`, [version.versionId])).rows[0]?.published_at ?? agent.updated_at) : agent.updated_at }
 }
 
 /**
@@ -602,9 +650,6 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
     const flag = context.enrollment.matchedFlagName
     const value = context.enrollment.matchedValueBoolean !== null ? (context.enrollment.matchedValueBoolean ? "sim" : "não") : context.enrollment.matchedValueNumeric ?? ""
     const selectionReason = flag ? `Sinal da chamada no gatilho do Workflow: ${flag}${value ? ` = ${value}` : ""}.` : "Chamada selecionada pela execução do Workflow."
-    // `ONE_MONITORING_PER_CALL_V1`: chamada já monitorada não é analisada de novo para monitoria (zero IA); o "Gerar feedback" se abstém.
-    const monitored = await context.effects.feedbackEngine.deliveredMonitoring(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId })
-    if (monitored) return { nodeOutput: { kind: "FEEDBACK_ENGINE_CALL_ALREADY_MONITORED", interactionId: context.enrollment.interactionId, personId: operator.operator_id, skippedReason: "CALL_ALREADY_MONITORED", existing: { source: monitored.source, id: monitored.id, deliveredAt: monitored.deliveredAt.toISOString() }, text: `Chamada já monitorada (${monitored.deliveredAt.toISOString().slice(0, 10)}): uma chamada recebe uma monitoria só — nada foi analisado.` } }
     await loadRunnableEngineAgent(context, config.agentId)
     const nodeOutput = await context.effects.feedbackEngine.analyzeCall(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId, collaboratorId: operator.operator_id, agentId: config.agentId, trigger: { ...trigger, selectionReason } })
     return { nodeOutput }
@@ -635,9 +680,30 @@ async function callAgentThroughEngine(config: Extract<ActionConfig, { actionType
   return { nodeOutput }
 }
 
+/**
+ * `ONE_MONITORING_PER_CALL_V1`: chamada já monitorada não é analisada de novo para monitoria (zero IA); o "Gerar feedback" se
+ * abstém. Conferida ANTES da autorização do agente: aqui a execução do agente nunca começa, então agente inativo não bloqueia
+ * (PEN-070 — a autorização vale quando a execução vai começar).
+ */
+async function alreadyMonitoredCall(config: Extract<ActionConfig, { actionType: "CALL_AGENT" }>, context: ActionExecutionContext): Promise<ActionResult | null> {
+  if (!context.enrollment.interactionId || config.outputContract !== "PROCESS_ASSESSMENT") return null
+  const monitored = await context.effects.feedbackEngine.deliveredMonitoring(context.db, { organizationId: context.organizationId, interactionId: context.enrollment.interactionId })
+  if (!monitored) return null
+  const operator = (await context.db.query<{ operator_id: string }>(`select operator_id from interactions where id = $1 and organization_id = $2`, [context.enrollment.interactionId, context.organizationId])).rows[0]
+  if (!operator) throw new Error("Interação não encontrada para a análise da chamada.")
+  return { nodeOutput: { kind: "FEEDBACK_ENGINE_CALL_ALREADY_MONITORED", interactionId: context.enrollment.interactionId, personId: operator.operator_id, skippedReason: "CALL_ALREADY_MONITORED", existing: { source: monitored.source, id: monitored.id, deliveredAt: monitored.deliveredAt.toISOString() }, text: `Chamada já monitorada (${monitored.deliveredAt.toISOString().slice(0, 10)}): uma chamada recebe uma monitoria só — nada foi analisado.` } }
+}
+
 const callAgent: Executor = async (config, context) => {
   if (config.actionType !== "CALL_AGENT") throw new Error("Config de ação inválida para CALL_AGENT.")
+  const monitored = await alreadyMonitoredCall(config, context)
+  if (monitored) return monitored
+  // A etapa executa a versão VIGENTE do agente (revisão da PEN-002/PEN-076), se ele estiver ativo (PEN-070) e autorizado para o
+  // alcance do Workflow (condição de segurança da revisão) — conferido agora, quando a execução dele vai começar.
+  return withWorkflowAgent(context.db, context.organizationId, config.agentId, { scopeType: context.scopeType, teamId: context.teamId, subteamId: context.subteamId }, () => callAgentVersion(config, context))
+}
 
+async function callAgentVersion(config: Extract<ActionConfig, { actionType: "CALL_AGENT" }>, context: ActionExecutionContext): Promise<ActionResult> {
   const engine = await callAgentThroughEngine(config, context)
   if (engine) return engine
 
@@ -647,6 +713,7 @@ const callAgent: Executor = async (config, context) => {
       ? await callAgentForIndicator(config, context)
       : await callAgentForSchedule(config, context)
 
+  if ("recognitionSkipped" in run) return { nodeOutput: run.recognitionSkipped }
   // V1.7.1c — propaga o erro ORIGINAL (classificável: contrato × provedor × invariante), não só a mensagem.
   if (run.status === "FAILED") throw "error" in run && run.error instanceof Error ? run.error : new Error(run.errorMessage ?? "Falha ao executar o agente.")
   // O agente nunca publica nada sozinho — só devolve o resultado estruturado (workflowResult)

@@ -2,7 +2,7 @@ import { Braces, FileText, FileType2, Notebook, ScrollText, type LucideIcon } fr
 
 import { formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
-import type { KnowledgeSourceType, KnowledgeStatus } from "@/schemas/admin/knowledge.schema"
+import type { KnowledgeSourceType } from "@/schemas/admin/knowledge.schema"
 
 export const SOURCE_TYPE_ICONS: Record<KnowledgeSourceType, LucideIcon> = {
   TEXT: Notebook,
@@ -22,11 +22,18 @@ export const SOURCE_TYPE_TONE: Record<KnowledgeSourceType, string> = {
   JSON: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
 }
 
-export const STATUS_BADGE_VARIANT: Record<KnowledgeStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  DRAFT: "outline",
-  APPROVED: "secondary",
-  PUBLISHED: "secondary",
-  ARCHIVED: "outline",
+/** Dado que a versão não guardou: dito assim, nunca inventado. */
+export const NOT_RECORDED = "Não registrado"
+
+/** Versão como aparece nas telas: "V4". */
+export function versionLabel(version: number) {
+  return `V${version}`
+}
+
+/** "Salvo por Fulano em 03/11/2026 09:00": quem fez e quando, com "Não registrado" quando a versão não guardou o nome. */
+export function byLine(verb: string, name: string | null, at: string | null) {
+  const when = at ? formatShortDateTime(at, { withYear: true }) : ""
+  return `${verb} por ${name ?? NOT_RECORDED}${when ? ` em ${when}` : ""}`
 }
 
 export function formatFileSize(bytes: number | null | undefined) {

@@ -6,8 +6,11 @@ import { Database, DatabaseZap, FileUp, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 
+import { AuditLogTab } from "./audit-log-tab"
 import { ContractsTab } from "./contracts-tab"
+import { DataExplorerTab } from "./explorer/data-explorer-tab"
 import { FeedsTab } from "./feeds-tab"
 import { OverviewTab } from "./overview-tab"
 import { QualityTab } from "./quality-tab"
@@ -21,6 +24,8 @@ const TABS = [
   { value: "runs", label: "Cargas" },
   { value: "quality", label: "Qualidade dos dados" },
   { value: "contracts", label: "Contratos de dados" },
+  { value: "explore", label: "Consultar dados" },
+  { value: "audit", label: "Registro" },
 ] as const
 type TabValue = (typeof TABS)[number]["value"]
 
@@ -34,7 +39,10 @@ export function DataHubPage() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const requested = searchParams.get("tab")
-  const tab: TabValue = TABS.some((entry) => entry.value === requested) ? (requested as TabValue) : "overview"
+  // A aba só aparece para quem tem a permissão. Sem ela, o link cai na Visão geral; quem decide de verdade é a rota do servidor.
+  const canExploreData = useCurrentUserQuery().data?.access.capabilities.canExploreData === true
+  const tabs = TABS.filter((entry) => entry.value !== "explore" || canExploreData)
+  const tab: TabValue = tabs.some((entry) => entry.value === requested) ? (requested as TabValue) : "overview"
 
   function setTab(next: string) {
     const params = new URLSearchParams(searchParams.toString())
@@ -78,7 +86,7 @@ export function DataHubPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <div className="overflow-x-auto">
           <TabsList>
-            {TABS.map((entry) => (
+            {tabs.map((entry) => (
               <TabsTrigger key={entry.value} value={entry.value} className="whitespace-nowrap">
                 {entry.label}
               </TabsTrigger>
@@ -102,6 +110,14 @@ export function DataHubPage() {
         </TabsContent>
         <TabsContent value="contracts" className="mt-4">
           <ContractsTab />
+        </TabsContent>
+        {canExploreData ? (
+          <TabsContent value="explore" className="mt-4">
+            <DataExplorerTab />
+          </TabsContent>
+        ) : null}
+        <TabsContent value="audit" className="mt-4">
+          <AuditLogTab />
         </TabsContent>
       </Tabs>
     </div>

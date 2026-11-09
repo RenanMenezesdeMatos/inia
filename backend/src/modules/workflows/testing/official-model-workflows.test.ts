@@ -10,7 +10,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DEMO_RANDOM_SEED } from "../../../infrastructure/database/demo-mass/demo-constants.js"
 import { createRandom } from "../../../infrastructure/database/demo-mass/random.js"
 import { generateStructure } from "../../../infrastructure/database/demo-mass/structure-generator.js"
-import { flowGraphSchema, nodeBranches, resolveNodeContexts, type FlowGraph } from "../domain/graph-schema.js"
+import { flowGraphSchema, isRecognitionRankingSelection, nodeBranches, resolveNodeContexts, type FlowGraph } from "../domain/graph-schema.js"
 import { outputTargetRole } from "../domain/output-schema.js"
 import { resolveStructureRecipient } from "../application/organizational-recipient.js"
 import { inMemoryHierarchyReader, type InMemoryPerson } from "./in-memory-hierarchy-reader.js"
@@ -551,6 +551,16 @@ describe("Template oficial × instância demo — o modelo conceitual nunca depe
     expect(kinds.get("16")).toEqual({ kind: "PERSON_ANCHOR", role: "SUPERVISOR" })
     expect(kinds.get("20")).toEqual({ kind: "PERSON_ANCHOR", role: "MANAGER" })
     for (const key of ["04", "05", "11", "12", "14", "15"]) expect(kinds.get(key), key).toEqual({ kind: "PERSON_ANCHOR", role: "DIRECTOR" })
+  })
+
+  it("Modelos 11 e 12: o Especialista de Reconhecimento escreve no formato Reconhecimento, sobre um ranking de reconhecimento", () => {
+    for (const key of ["11", "12"]) {
+      const { graph } = MODELS.find((model) => model.key === key)!
+      const agent = graph.nodes.find((node) => node.id === "agent")
+      expect(agent?.type === "action" && agent.config.actionType === "CALL_AGENT" ? agent.config.outputContract : null, key).toBe("RECOGNITION")
+      const selection = graph.nodes.find((node) => node.type === "select_employees")
+      expect(selection?.type === "select_employees" && selection.config.ranking ? isRecognitionRankingSelection(selection.config.ranking.selection) : false, key).toBe(true)
+    }
   })
 
   it.each(MODELS.map((model) => [model.key, model] as const))("Modelo %s: a instância demo satisfaz o requisito do template (binding resolvido na estrutura demo real)", (_key, model) => {

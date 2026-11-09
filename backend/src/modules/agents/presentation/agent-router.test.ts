@@ -4,6 +4,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { legacyAccessQuery } from "../../access/testing/legacy-admin-fixture.js"
+import { AGENT_LIVE_COLUMNS } from "../domain/agent-config.js"
 
 // Escopo Administrativo (Parte 32/33 do pedido): fecha o gap real encontrado na auditoria —
 // agent-router.ts só filtrava a listagem, nunca checava canManageScope em get/:id, patch/:id,
@@ -48,6 +49,26 @@ const AGENT_TEAM_A = {
 }
 const AGENT_TEAM_B = { ...AGENT_TEAM_A, id: "agent-b", name: "Agente RETENÇÃO", teamId: TEAM_B, teamName: "RETENÇÃO" }
 
+type AgentFixture = { id: string; name: string; agentType: string; objective: string; description: string; contextPrompt: string; active: boolean; scopeType: string; teamId: string | null; subteamId: string | null; actionLimitsEnabled: boolean; actionLimits: string | null }
+
+/** Colunas vivas de `agents` (`AGENT_LIVE_COLUMNS` — a versão vigente; num agente nunca publicado, o cadastro que acompanha o rascunho). */
+function liveRowOf(agent: AgentFixture, overrides: Record<string, unknown> = {}) {
+  return {
+    name: agent.name, agent_type: agent.agentType, objective: agent.objective, description: agent.description, context_prompt: agent.contextPrompt,
+    scope_type: agent.scopeType, team_id: agent.teamId, subteam_id: agent.subteamId, specialty: null, specialty_kind: null, domain: null, capability: null,
+    consolidated_input: false, business_domain_id: null, recommend_support_materials: false, investigation_capabilities: [],
+    action_limits_enabled: agent.actionLimitsEnabled, action_limits: agent.actionLimits, ...overrides,
+  }
+}
+
+/** Estado de ciclo de vida (`loadAgentLifecycle`, migration 164): por padrão o agente já tem versão publicada e nenhum rascunho. */
+function lifecycleRowOf(agent: AgentFixture, overrides: Record<string, unknown> = {}) {
+  return {
+    id: agent.id, organizationId: ACCOUNT.organization_id, active: agent.active, currentVersionId: `${agent.id}-v1`, currentVersionNumber: 1,
+    draftConfig: null, draftRevision: 0, draftUpdatedAt: null, draftUpdatedByName: null, scopeType: agent.scopeType, teamId: agent.teamId, subteamId: agent.subteamId, ...overrides,
+  }
+}
+
 function fakeDatabase(
   roleAssignmentRows: unknown[],
   passwordHash: string,
@@ -67,7 +88,20 @@ function fakeDatabase(
     if (sql.includes("from subteams where team_id")) {
       return { rows: [], rowCount: 0 }
     }
-    // agent-router.ts sempre busca por `and a.id = $2` (get/patch fluxos) — decide qual agente
+    const byId = (id: unknown) => [AGENT_TEAM_A, AGENT_TEAM_B].find((row) => row.id === id)
+    // Ciclo de vida (agent-versions.ts › loadAgentLifecycle) busca por `a.id = $1` — antes do AGENT_SELECT, que também lê `from agents a`.
+    if (sql.includes('a.draft_config "draftConfig"')) {
+      const agent = byId(params?.[0])
+      return { rows: agent ? [lifecycleRowOf(agent)] : [], rowCount: agent ? 1 : 0 }
+    }
+    // Configuração viva (base da edição quando não há rascunho).
+    if (sql.includes(AGENT_LIVE_COLUMNS) && sql.includes("from agents where id = $1")) {
+      const agent = byId(params?.[0])
+      return { rows: agent ? [liveRowOf(agent)] : [], rowCount: agent ? 1 : 0 }
+    }
+    // Salvar o rascunho devolve a revisão nova (PEN-050).
+    if (sql.includes('returning draft_revision "revision"')) return { rows: [{ revision: 1 }], rowCount: 1 }
+    // AGENT_SELECT busca por `and a.id = $2` (get/patch fluxos) — decide qual agente
     // devolver a partir do id pedido, nunca uma lista.
     if (sql.includes("from agents a") && params && params.length >= 2) {
       const id = params[1]
@@ -77,7 +111,7 @@ function fakeDatabase(
     if (sql.includes("select scope_type") && sql.includes("from agents where id")) {
       const id = params?.[0]
       const agent = [AGENT_TEAM_A, AGENT_TEAM_B].find((row) => row.id === id)
-      return agent ? { rows: [{ scopeType: agent.scopeType, teamId: agent.teamId, subteamId: agent.subteamId }], rowCount: 1 } : { rows: [], rowCount: 0 }
+      return agent ? { rows: [{ scopeType: agent.scopeType, teamId: agent.teamId, subteamId: agent.subteamId, active: agent.active }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     return { rows: [], rowCount: 0 }
   }
@@ -211,7 +245,11 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
     { id: "d0000000-0000-4000-8000-000000000006", code: "BACKOFFICE", name: "Backoffice", active: false },
   ]
   const baseBody = { name: "Agent · Entregas", agentType: "CUSTOM", objective: "objetivo válido", description: "descrição válida", contextPrompt: "prompt com mais de dez caracteres", scopeType: "ALL_TEAMS" }
-  function catalogDatabase(passwordHash: string, inserts: unknown[][], current?: { specialty_kind: string | null; domain: string | null; business_domain_id: string | null }) {
+  /**
+   * `inserts` = as gravações das colunas vivas (`writeLiveAgentConfig`): agente novo nasce como rascunho não publicado (PEN-002)
+   * e a linha viva acompanha o rascunho — é nela que ficam a FK e o dual-write. `drafts` = o rascunho gravado na criação.
+   */
+  function catalogDatabase(passwordHash: string, inserts: unknown[][], current?: { specialty_kind: string | null; domain: string | null; business_domain_id: string | null }, drafts: Record<string, unknown>[] = []) {
     return fakeDatabase([], passwordHash, (sql, params) => {
       if (sql.includes("from business_domains where organization_id = $1 and (id = any($2::uuid[]) or code = any($3::text[]))")) {
         const ids = (params?.[1] as string[]) ?? []
@@ -219,19 +257,23 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
         const rows = DOMAINS.filter((domain) => ids.includes(domain.id) || codes.includes(domain.code))
         return { rows, rowCount: rows.length }
       }
+      // Domínio da configuração em edição (rascunho/versão), lido do catálogo pelo id.
+      if (sql.includes("from business_domains where id = $1")) {
+        const rows = DOMAINS.filter((domain) => domain.id === params?.[0])
+        return { rows, rowCount: rows.length }
+      }
       if (sql.trim().startsWith("insert into agents")) {
-        inserts.push(params ?? [])
+        // $11 = draft_config (agente nasce como rascunho, sem versão publicada).
+        drafts.push(JSON.parse(String(params?.[10])) as Record<string, unknown>)
         return { rows: [{ id: AGENT_TEAM_A.id }], rowCount: 1 }
       }
-      if (sql.includes("select a.specialty, a.specialty_kind, a.domain, a.capability, a.consolidated_input") && current) {
-        const domain = DOMAINS.find((candidate) => candidate.id === current.business_domain_id)
-        return { rows: [{ specialty: current.domain, specialty_kind: current.specialty_kind, domain: current.domain, capability: null, consolidated_input: false, business_domain_id: domain?.id ?? null, business_domain_code: domain?.code ?? null, business_domain_name: domain?.name ?? null, business_domain_active: domain?.active ?? null }], rowCount: 1 }
+      if (current && sql.includes(AGENT_LIVE_COLUMNS) && sql.includes("from agents where id = $1")) {
+        return { rows: [liveRowOf(AGENT_TEAM_A, { scope_type: "ALL_TEAMS", team_id: null, specialty: current.domain, specialty_kind: current.specialty_kind, domain: current.domain, business_domain_id: current.business_domain_id })], rowCount: 1 }
       }
-      if (sql.trim().startsWith("update agents set")) {
+      if (sql.trim().startsWith("update agents set name = $3")) {
         inserts.push(params ?? [])
-        return { rows: [{ id: AGENT_TEAM_A.id }], rowCount: 1 }
+        return { rows: [], rowCount: 1 }
       }
-      if (sql.includes('select name, agent_type "agentType"') && sql.includes("from agents where id = $1")) return { rows: [AGENT_TEAM_A], rowCount: 1 }
       return undefined
     })
   }
@@ -253,11 +295,14 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
   it("domínio criado pelo catálogo (LOGISTICA) funciona sem mudança no código: grava a FK e faz dual-write do código em `domain` e `specialty`", async () => {
     const passwordHash = await hashPassword("Inia@123")
     const inserts: unknown[][] = []
-    const agent = await loginAgent(catalogDatabase(passwordHash, inserts))
+    const drafts: Record<string, unknown>[] = []
+    const agent = await loginAgent(catalogDatabase(passwordHash, inserts, undefined, drafts))
     const byId = await agent.post("/api/v1/admin/agents").send({ ...baseBody, specialtyKind: "DOMAIN", businessDomainId: "d0000000-0000-4000-8000-000000000005" })
     expect(byId.status).toBe(201)
-    // insert: … $11 specialty, $12 specialty_kind, $13 domain, $14 capability, $15 consolidated_input, $16 business_domain_id, $17 recommend_support_materials (padrão false), $18 capacidades
+    // colunas vivas: … $11 specialty, $12 specialty_kind, $13 domain, $14 capability, $15 consolidated_input, $16 business_domain_id, $17 recommend_support_materials (padrão false), $18 capacidades
     expect(inserts[0]!.slice(10, 18)).toEqual(["LOGISTICA", "DOMAIN", "LOGISTICA", null, false, "d0000000-0000-4000-8000-000000000005", false, []])
+    // O rascunho criado (PEN-002) carrega a MESMA especialidade.
+    expect(drafts[0]).toMatchObject({ specialty: "LOGISTICA", specialtyKind: "DOMAIN", domain: "LOGISTICA", businessDomainId: "d0000000-0000-4000-8000-000000000005" })
     // Forma de compatibilidade (só o código): resolve para a MESMA FK.
     const byCode = await agent.post("/api/v1/admin/agents").send({ ...baseBody, name: "Agent · Entregas 2", specialtyKind: "DOMAIN", domain: "logistica" })
     expect(byCode.status).toBe(201)
@@ -288,25 +333,34 @@ describe("agent-router — Agent DOMAIN referencia um Domínio de negócio do ca
 
 describe("agent-router — Limites de atuação (migration 124)", () => {
   const body = { name: "Agent · Faturamento", agentType: "CUSTOM", objective: "objetivo válido", description: "descrição válida", contextPrompt: "prompt com mais de dez caracteres", scopeType: "ALL_TEAMS" }
-  function limitsDatabase(passwordHash: string, writes: { sql: string; params: unknown[] }[], before = { ...AGENT_TEAM_A, scopeType: "ALL_TEAMS", teamId: null }) {
+  /**
+   * O agente editado ainda não foi publicado: a edição grava o rascunho (PEN-002) e a linha viva o acompanha — as colunas vivas
+   * (`update agents set name = $3 …`, `action_limits_enabled`/`action_limits` por último) são onde os limites ficam gravados.
+   */
+  function limitsDatabase(passwordHash: string, writes: { sql: string; params: unknown[] }[], before: AgentFixture = { ...AGENT_TEAM_A, scopeType: "ALL_TEAMS", teamId: null }) {
     return fakeDatabase([], passwordHash, (sql, params) => {
       if (sql.trim().startsWith("insert into agents") || sql.trim().startsWith("update agents set") || sql.includes("insert into agent_history")) {
         writes.push({ sql, params: params ?? [] })
-        return { rows: [{ id: AGENT_TEAM_A.id }], rowCount: 1 }
+        return { rows: [{ id: AGENT_TEAM_A.id, revision: 1 }], rowCount: 1 }
       }
-      if (sql.includes('select name, agent_type "agentType"') && sql.includes("from agents where id = $1")) return { rows: [before], rowCount: 1 }
+      if (sql.includes('a.draft_config "draftConfig"')) return { rows: [lifecycleRowOf(before, { currentVersionId: null, currentVersionNumber: null })], rowCount: 1 }
+      if (sql.includes(AGENT_LIVE_COLUMNS) && sql.includes("from agents where id = $1")) return { rows: [liveRowOf(before)], rowCount: 1 }
       return undefined
     })
   }
+  const liveWrites = (writes: { sql: string; params: unknown[] }[]) => writes.filter((write) => write.sql.trim().startsWith("update agents set name = $3"))
+  const draftOf = (write: { params: unknown[] } | undefined, index: number) => JSON.parse(String(write!.params[index])) as Record<string, unknown>
 
   it("criar: desligado por padrão; ligado grava o texto aparado; ligado sem texto = 422 sem gravar nada", async () => {
     const passwordHash = await hashPassword("Inia@123")
     const writes: { sql: string; params: unknown[] }[] = []
     const agent = await loginAgent(limitsDatabase(passwordHash, writes))
     expect((await agent.post("/api/v1/admin/agents").send(body)).status).toBe(201)
-    expect(writes[0]!.params.slice(-2)).toEqual([false, null])
+    expect(liveWrites(writes)[0]!.params.slice(-2)).toEqual([false, null])
     expect((await agent.post("/api/v1/admin/agents").send({ ...body, actionLimitsEnabled: true, actionLimits: "  Só faturamento e cobrança.  " })).status).toBe(201)
-    expect(writes.filter((write) => write.sql.trim().startsWith("insert into agents")).at(-1)!.params.slice(-2)).toEqual([true, "Só faturamento e cobrança."])
+    expect(liveWrites(writes).at(-1)!.params.slice(-2)).toEqual([true, "Só faturamento e cobrança."])
+    // O rascunho criado ($11 do insert) guarda o mesmo texto aparado.
+    expect(draftOf(writes.filter((write) => write.sql.trim().startsWith("insert into agents")).at(-1), 10)).toMatchObject({ actionLimitsEnabled: true, actionLimits: "Só faturamento e cobrança." })
     const before = writes.length
     const missing = await agent.post("/api/v1/admin/agents").send({ ...body, actionLimitsEnabled: true, actionLimits: "   " })
     expect(missing.status).toBe(422)
@@ -322,14 +376,18 @@ describe("agent-router — Limites de atuação (migration 124)", () => {
     const stored = { ...AGENT_TEAM_A, scopeType: "ALL_TEAMS", teamId: null, actionLimitsEnabled: false, actionLimits: "Só faturamento." }
     const agent = await loginAgent(limitsDatabase(passwordHash, writes, stored))
     expect((await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: true })).status).toBe(200)
-    const update = writes.find((write) => write.sql.trim().startsWith("update agents set"))!
+    const update = liveWrites(writes)[0]!
     expect(update.params.slice(-2)).toEqual([true, "Só faturamento."])
+    // O rascunho salvo ($3 de `set draft_config`) leva o mesmo estado.
+    expect(draftOf(writes.find((write) => write.sql.includes("set draft_config")), 2)).toMatchObject({ actionLimitsEnabled: true, actionLimits: "Só faturamento." })
     const history = JSON.parse(String(writes.find((write) => write.sql.includes("insert into agent_history"))!.params[5]))
-    expect(history).toEqual([{ field: "actionLimits", label: "Limites de atuação", from: "Desligados — Só faturamento.", to: "Ligados — Só faturamento." }])
+    // Com o alcance da configuração anterior e da nova: decide quem lê os valores (agent-router.config-scope.test.ts).
+    const allTeams = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }
+    expect(history).toEqual([{ field: "actionLimits", label: "Limites de atuação", from: "Desligados — Só faturamento.", to: "Ligados — Só faturamento.", configScopes: [allTeams, allTeams] }])
 
     writes.length = 0
     expect((await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: false, actionLimits: "Só faturamento." })).status).toBe(200)
-    expect(writes.find((write) => write.sql.trim().startsWith("update agents set"))!.params.slice(-2)).toEqual([false, "Só faturamento."])
+    expect(liveWrites(writes)[0]!.params.slice(-2)).toEqual([false, "Só faturamento."])
 
     const empty = await agent.patch("/api/v1/admin/agents/agent-a").send({ actionLimitsEnabled: true, actionLimits: "" })
     expect(empty.status).toBe(422)

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
 import type { QaRunRecord } from "./qa-run-repository.js"
 
@@ -140,13 +141,21 @@ function fakeDatabase(options: {
   prv?: { achievement_percent: string; quartile: string } | null
   /** Interação sem transcrição persistida (Parte 17). */
   withoutTranscript?: boolean
+  /** Versão do Orquestrador que a etapa fixa (`orchestratorVersionId`), com o alcance gravado nela. */
+  orchestratorVersion?: { id: string; number: number; config: Row }
 }) {
   const log: { sql: string; params: unknown[] }[] = []
   const runs = new Map<string, QaRunRecord>()
   let runCounter = 0
 
   async function query(sql: string, params: unknown[] = []) {
+    if (sql.includes("from people where id = any($1::uuid[]) and active")) return { rows: (params[0] as string[]).map((id) => ({ id })), rowCount: (params[0] as string[]).length }
     log.push({ sql, params })
+    // --- versão do agente (migration 164): o agente de monitoria publicado, versão vigente v1 ---
+    const versioned = answerAgentVersionQuery(sql, params, (agentId) =>
+      agentId === AGENT_ID ? { id: AGENT_ID, name: "Agente de Monitoria", objective: "Avaliar", description: "desc", context_prompt: "prompt", active: true } : undefined,
+    )
+    if (versioned) return versioned
     const text = sql.replace(/\s+/g, " ").trim()
 
     // --- qa_runs (banco real) ---
@@ -251,7 +260,7 @@ function fakeDatabase(options: {
     if (text.includes("select team_id from people where id = $1")) return { rows: [{ team_id: TEAM_ID }], rowCount: 1 }
     if (text.includes("select id from people where reports_to_id = $1 and role = 'OPERATOR'")) return { rows: [{ id: OPERATOR_ID }], rowCount: 1 }
     if (text.includes("from employee_work_shifts")) return options.shift ? { rows: [options.shift], rowCount: 1 } : { rows: [], rowCount: 0 }
-    if (text.includes("from employee_prv_performance where person_id = $1 and reference_period <= $2")) {
+    if (text.includes("from employee_prv_performance where") && text.includes("person_id = $1 and reference_period <= $2")) {
       return options.prv ? { rows: [{ id: "prv-1", personId: OPERATOR_ID, subteamId: null, referencePeriod: "2026-08", achievementPercent: options.prv.achievement_percent, quartile: options.prv.quartile, source: "SEED" }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     if (text.includes("from employee_indicator_performance") || text.includes("from employee_prv_performance")) return { rows: [], rowCount: 0 }
@@ -271,8 +280,12 @@ function fakeDatabase(options: {
     if (text.includes("from assistant_orchestrators o join agents a")) {
       return { rows: [{ id: ORCHESTRATOR_ID, name: "Orquestrador Geral", orchestrator_agent_id: AGENT_ID, objective: "obj", description: "desc", context_prompt: "prompt", output_instructions: "um JSON" }], rowCount: 1 }
     }
-    if (text.includes("from assistant_orchestrator_specialists s")) {
-      return { rows: [{ agent_id: AGENT_ID, tool_name: "consultar_indicadores", name: "Agente de Monitoria", objective: "Explica indicadores", description: "" }], rowCount: 1 }
+    if (text.includes("from assistant_orchestrator_specialists where orchestrator_id = $1")) {
+      return { rows: [{ agentId: AGENT_ID, toolName: "consultar_indicadores" }], rowCount: 1 }
+    }
+    if (text.includes("from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2")) {
+      const version = options.orchestratorVersion
+      return version && params[0] === version.id && params[1] === ORCHESTRATOR_ID ? { rows: [version], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     if (text.includes("select p.name, p.team_id, t.name team_name from people p")) return { rows: [{ name: "João Silva", team_id: TEAM_ID, team_name: "FATURAS" }], rowCount: 1 }
     if (text.includes("from feedbacks f")) return { rows: [], rowCount: 0 }
@@ -638,12 +651,12 @@ describe("createReadOnlyDatabase — boundary fechada", () => {
 
 /** Trigger → Condition → Orchestrator → Output: o orquestrador precisa de MAIS de uma request
  * (roteamento → especialista → síntese) — cenário do limite de requests (Parte 62). */
-function orchestratorGraph(): FlowGraph {
+function orchestratorGraph(orchestratorVersionId?: string): FlowGraph {
   return {
     nodes: [
       { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} },
       { id: "condition", type: "condition", label: "Nota URA < 3", position: { x: 0, y: 1 }, config: { comparator: "LT", thresholdNumeric: 3 } },
-      { id: "orch", type: "orchestrator", label: "Analisar chamada", position: { x: 0, y: 2 }, config: { orchestratorId: ORCHESTRATOR_ID, instruction: "Analise a chamada." } },
+      { id: "orch", type: "orchestrator", label: "Analisar chamada", position: { x: 0, y: 2 }, config: { orchestratorId: ORCHESTRATOR_ID, instruction: "Analise a chamada.", ...(orchestratorVersionId ? { orchestratorVersionId } : {}) } },
       { id: "output", type: "output", label: "Publicar", position: { x: 0, y: 3 }, config: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["FOLLOW_UP"], source: "nodeOutputs.orch" } },
       { id: "end", type: "end", label: "Fim", position: { x: 0, y: 4 }, config: {} },
     ],
@@ -715,6 +728,39 @@ describe("QA Lab — UMA interação real como massa de teste (Trigger por Flag)
     expect(step.aiCalls).toBe(1)
     expect(step.error).toBe("Limite de requests de IA atingido antes da próxima etapa (utilizado: 1 / 1).")
     expect(writes(log)).toEqual(["insert into qa_runs"])
+  })
+
+  // A versão fixada leva o alcance e os especialistas dela para a execução. Rascunho (o QA Lab não passa pela publicação) ou versão
+  // publicada antes da conferência da publicação: a etapa falha antes de qualquer especialista ou IA, sem cair na versão atual.
+  const PINNED_VERSION_ID = "55555555-5555-4555-8555-555555555555"
+  const OTHER_TEAM_ID = "44444444-4444-4444-8444-444444444444"
+  const pinnedVersion = (teamId: string) => ({ id: PINNED_VERSION_ID, number: 1, config: { scopeType: "TEAM", teamId, subteamId: null, specialists: [{ agentId: AGENT_ID, toolName: "consultar_indicadores" }] } })
+
+  it("Orchestrator com versão fixada de outro Grupo: a etapa falha com o motivo, sem chamar a IA nem cair na versão atual", async () => {
+    const { db, log } = fakeDatabase({ graph: orchestratorGraph(PINNED_VERSION_ID), flagValue: 1, workflow: { scope_type: "TEAM", team_id: TEAM_ID }, orchestratorVersion: pinnedVersion(OTHER_TEAM_ID) })
+    const run = await startWorkflowSimulation(db, QA_ORGANIZATION, { ...baseInput, maxAiCalls: 5 }, ADMIN_ID)
+
+    expect(run.status).toBe("FAILED")
+    const step = run.trace.steps.find((item) => item.nodeId === "orch")!
+    expect(step.status).toBe("failed")
+    expect(step.error).toContain("não está disponível para o grupo deste workflow")
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(run.aiCalls).toBe(0)
+    // Nada dos especialistas da versão foi resolvido (nem a lista atual do Orquestrador).
+    expect(log.some((entry) => entry.sql.includes("assistant_orchestrator_specialists") || entry.sql.includes("agent_versions"))).toBe(false)
+    expect(writes(log)).toEqual(["insert into qa_runs"])
+  })
+
+  it("Orchestrator com versão fixada do mesmo Grupo: executa normalmente com os especialistas da versão", async () => {
+    fetchMock.mockImplementation(async () => geminiResponse(JSON.stringify({ candidates: [] })))
+    fetchMock
+      .mockImplementationOnce(async () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ functionCall: { name: "consultar_indicadores", args: { query: "chamada" } } }] } }], usageMetadata: { promptTokenCount: 500, candidatesTokenCount: 50, totalTokenCount: 550 } }), text: async () => "" }))
+    const { db } = fakeDatabase({ graph: orchestratorGraph(PINNED_VERSION_ID), flagValue: 1, workflow: { scope_type: "TEAM", team_id: TEAM_ID }, orchestratorVersion: pinnedVersion(TEAM_ID) })
+    const run = await startWorkflowSimulation(db, QA_ORGANIZATION, { ...baseInput, maxAiCalls: 1 }, ADMIN_ID)
+
+    expect(run.status).toBe("PAUSED")
+    expect(run.state).toMatchObject({ pauseReason: "AI_BUDGET", currentNodeId: "orch" })
+    expect(run.trace.aiCalls.map((call) => call.role)).toEqual(["orchestrator_routing"])
   })
 
   it("Parar antes da IA com interação selecionada: Trigger e Condition avaliados, evidência visível, IA não chamada, 0 tokens", async () => {

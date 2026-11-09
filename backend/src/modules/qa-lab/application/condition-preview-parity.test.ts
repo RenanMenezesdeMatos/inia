@@ -136,7 +136,7 @@ function fakeDatabase(fixture: Fixture, graph: FlowGraph, options: { structure?:
     }
 
     // ---- metas ----
-    if (text.startsWith("with resolved as")) {
+    if (text.startsWith("with subjects as") && text.includes("goal_of as")) {
       const ids = params[2] as string[]
       return {
         rows: fixture.people
@@ -170,12 +170,12 @@ function fakeDatabase(fixture: Fixture, graph: FlowGraph, options: { structure?:
       source: "SEED",
     })
     const prvRow = (r: PrvRow) => ({ id: `${r.personId}-${r.referencePeriod}`, personId: r.personId, subteamId: null, referencePeriod: r.referencePeriod, achievementPercent: r.achievement, quartile: r.quartile, source: "SEED" })
-    if (text.includes("from employee_indicator_performance eip join indicator_definitions idef") && text.includes("where eip.person_id = $1 and idef.code = $2")) {
+    if (text.includes("from employee_indicator_performance eip join indicator_definitions idef") && text.includes("eip.person_id = $1 and idef.code = $2")) {
       const rows = perfFor([params[0] as string], params[1] as string, params[2] as string)
       const limit = text.endsWith("limit 1") ? 1 : Number(params[3])
       return { rows: rows.slice(0, limit).map(perfRow), rowCount: 0 }
     }
-    if (text.includes("from employee_prv_performance where person_id = $1 and reference_period <= $2")) {
+    if (text.includes("from employee_prv_performance where") && text.includes("person_id = $1 and reference_period <= $2")) {
       const rows = prvFor([params[0] as string], params[1] as string)
       const limit = text.endsWith("limit 1") ? 1 : Number(params[2])
       return { rows: rows.slice(0, limit).map(prvRow), rowCount: 0 }
@@ -234,6 +234,8 @@ function fakeDatabase(fixture: Fixture, graph: FlowGraph, options: { structure?:
     if (text.includes("proves_work_activity order by code")) return { rows: [], rowCount: 0 }
     if (text.includes("f.availability_policy") || text.includes("availability_policy from indicator_definitions")) return { rows: [], rowCount: 0 }
     if (text.includes("from workday_classifications c")) return { rows: [], rowCount: 0 }
+    // Defesa da execução contra o catálogo vigente (indicator-graph-guard.ts): sem linha, nada a conferir nesta fixture.
+    if (text.includes("operational_aggregation, desired_direction from indicator_definitions")) return { rows: [], rowCount: 0 }
     throw new Error(`SQL não roteado no fake: ${text.slice(0, 120)}`)
   }
   return { db: { query, connect: async () => ({ query, release: () => {} }) } as unknown as Database, log }

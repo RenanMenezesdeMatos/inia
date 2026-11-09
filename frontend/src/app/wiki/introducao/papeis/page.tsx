@@ -85,9 +85,12 @@ export default function RolesPage() {
           QA Lab); o <strong className="font-medium text-foreground">Administrador</strong> pode ser da organização ou{" "}
           <strong className="font-medium text-foreground">restrito a um Grupo/Subgrupo</strong> — aí só vê, edita e publica Bases, Agents, Orchestrators
           e Workflows dentro do escopo, e a opção &quot;Todos os grupos&quot; não aparece; o{" "}
-          <strong className="font-medium text-foreground">Administrador de acessos</strong> cuida só de contas e papéis. Ver Indicadores e Equipe, os
+          <strong className="font-medium text-foreground">Administrador de acessos</strong> cuida só de contas e papéis; o{" "}
+          <strong className="font-medium text-foreground">Administrador de dados</strong> abre só a{" "}
+          <WikiLink href="/wiki/central-de-dados#configurar-com-senha">Central de Dados</WikiLink>, na organização inteira, e só o Administrador geral concede esse papel.
+          Ver Indicadores e Equipe, os
           Dados da estrutura e o Calendário da equipe de outras pessoas também são permissões: estão no Administrador geral (organização) e no
-          Administrador (no escopo dele); o Administrador de acessos e o QA de feedback não as recebem. O que alguém administra não depende do Grupo a
+          Administrador (no escopo dele); o Administrador de acessos, o Administrador de dados e o QA de feedback não as recebem. O que alguém administra não depende do Grupo a
           que pertence: para administrar vários Grupos, a conta recebe o papel uma vez para cada Grupo (ver{" "}
           <WikiLink href="/wiki/administracao#usuarios">Usuários e acessos</WikiLink>).
         </p>

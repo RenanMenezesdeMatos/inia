@@ -100,4 +100,21 @@ describe("consulta flexível — fonte operacional (mês corrente)", () => {
     const card = await query(await depsFor(L.sara, "SUPERVISOR", { ...leadershipOrg(), operationalSummary: empty }), { fonte: "OPERACIONAL" })
     expect(card.limitations.join(" ")).toContain("Ainda não há medição diária")
   })
+
+  it("por unidade: no máximo 3 resumos ao mesmo tempo (cada um pode segurar uma conexão do pool)", async () => {
+    const deps = await depsFor(L.gabriel, "MANAGER", { ...leadershipOrg(), operationalSummary: summary })
+    const load = deps.repository.loadStructureOperationalSummary.bind(deps.repository)
+    let inFlight = 0
+    let peak = 0
+    deps.repository.loadStructureOperationalSummary = async (...args: Parameters<typeof load>) => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      return load(...args)
+    }
+    const card = await query(deps, { fonte: "OPERACIONAL", indicadores: ["TMA"], agrupar_por: "SUPERVISOR" })
+    expect(card.rows.length).toBeGreaterThan(3)
+    expect(peak).toBe(3)
+  })
 })

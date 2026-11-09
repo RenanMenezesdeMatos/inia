@@ -223,6 +223,8 @@ export const workflowSchema = z.object({
   published: z.boolean(),
   trigger: workflowTriggerSchema,
   activeEnrollments: z.number(),
+  /** Execuções paradas, esperando alguém corrigir a causa e pedir nova tentativa. */
+  blockedEnrollments: z.number().catch(0),
   // Modo de avaliação (Individual x Consolidado) — nunca um campo próprio: derivado de
   // consolidatedStructure (presente = Consolidado). populationFilter só é relevante em modo
   // Individual (ausente = todos os colaboradores elegíveis da Abrangência).
@@ -313,6 +315,56 @@ export const workflowEnrollmentEventSchema = z.object({
 })
 export type WorkflowEnrollmentEvent = z.infer<typeof workflowEnrollmentEventSchema>
 
+/**
+ * "blocked" = parou numa etapa e nunca é repetida sozinha (PEN-070/073, P5c). O motivo vem em `blockedReason`: revisão sem revisor ou sem conteúdo, agente inativo
+ * ou, desde a revisão de 03/11/2026, acesso não autorizado (a versão vigente do agente não cobre o contexto da execução).
+ */
+export const workflowEnrollmentStatusSchema = z.enum(["active", "waiting", "completed", "failed", "dead", "blocked"])
+export type WorkflowEnrollmentStatus = z.infer<typeof workflowEnrollmentStatusSchema>
+
+/** Agente que impediu a etapa (gravado no bloqueio) — campos tolerantes: payloads antigos não trazem nada disso. */
+const enrollmentBlockedDetailsSchema = z.object({
+  agentId: z.string().nullable().catch(null),
+  agentName: z.string().nullable().catch(null),
+  agentVersionId: z.string().nullable().catch(null),
+  agentVersionNumber: z.number().nullable().catch(null),
+  /** Só em AGENT_ACCESS_NOT_AUTHORIZED: alcance do agente (SCOPE) ou base de conhecimento não autorizada (KNOWLEDGE). */
+  denial: z.enum(["SCOPE", "KNOWLEDGE"]).nullable().optional().catch(null),
+  /** Só nos bloqueios de Revisão humana: por que não há revisor ou conteúdo. */
+  cause: z.string().nullable().optional().catch(null),
+})
+
+/** Nova tentativa pedida a partir desta execução (PEN-073): quem pediu, quando e como está. */
+const enrollmentRetrySchema = z.object({
+  id: z.string(),
+  status: z.string().catch("active"),
+  requestedAt: z.string().nullable().catch(null),
+  requestedByName: z.string().nullable().catch(null),
+})
+
+/** Execução de agente ligada a esta execução do Workflow — agente e versão REALMENTE usados (PEN-074/PEN-002). */
+const enrollmentAgentRunSchema = z.object({
+  nodeId: z.string().nullable().catch(null),
+  agentRunId: z.string(),
+  agentId: z.string(),
+  agentName: z.string().catch("Agente"),
+  agentActive: z.boolean().catch(true),
+  agentVersionNumber: z.number().nullable().catch(null),
+  status: z.string().catch("COMPLETED"),
+})
+
+/**
+ * Agente e versão mostrados e confirmados no pedido da nova tentativa (só nas tentativas) — a VIGENTE na confirmação. A versão
+ * realmente usada está em `agentRuns`: se alguém publicou entre a confirmação e a chamada, as duas diferem.
+ */
+const enrollmentRetryAgentSchema = z.object({
+  nodeId: z.string().nullable().optional().catch(null),
+  agentId: z.string().nullable().optional().catch(null),
+  nodeLabel: z.string().catch(""),
+  agentName: z.string().nullable().catch(null),
+  agentVersionNumber: z.number().nullable().catch(null),
+})
+
 export const workflowEnrollmentSchema = z.object({
   id: z.string(),
   currentNodeId: z.string(),
@@ -321,18 +373,54 @@ export const workflowEnrollmentSchema = z.object({
     .object({ id: z.string(), requestedAt: z.coerce.string(), requestedByName: z.string(), collaboratorName: z.string(), context: manualTriggerContextSchema })
     .nullable()
     .optional(),
-  status: z.enum(["active", "waiting", "completed", "failed", "dead"]),
+  status: workflowEnrollmentStatusSchema,
   nextEvalAt: z.coerce.string(),
   createdAt: z.coerce.string(),
   updatedAt: z.coerce.string(),
   events: z.array(workflowEnrollmentEventSchema),
+  /** Versão do Workflow em que ESTA execução roda (a original fica na sua; a nova tentativa, na vigente da confirmação). */
+  versionId: z.string().nullable().catch(null),
+  versionNumber: z.number().nullable().catch(null),
+  blockedAt: z.string().nullable().catch(null),
+  blockedNodeId: z.string().nullable().catch(null),
+  blockedReason: z.string().nullable().catch(null),
+  blockedDetails: enrollmentBlockedDetailsSchema.nullable().catch(null),
+  /** Preenchidos só numa nova tentativa: a execução original, quem pediu e quando. */
+  retryOfEnrollmentId: z.string().nullable().catch(null),
+  retryRequestedByName: z.string().nullable().catch(null),
+  retryRequestedAt: z.string().nullable().catch(null),
+  retryAgents: z.array(enrollmentRetryAgentSchema).catch([]),
+  /** Novas tentativas pedidas a partir desta execução, na ordem em que foram criadas. */
+  retries: z.array(enrollmentRetrySchema).catch([]),
+  agentRuns: z.array(enrollmentAgentRunSchema).catch([]),
 })
 export type WorkflowEnrollment = z.infer<typeof workflowEnrollmentSchema>
 
-export const ENROLLMENT_STATUS_LABELS: Record<WorkflowEnrollment["status"], string> = {
+export const ENROLLMENT_STATUS_LABELS: Record<WorkflowEnrollmentStatus, string> = {
   active: "Em andamento",
   waiting: "Aguardando",
   completed: "Concluído",
   failed: "Falhou",
-  dead: "Desistiu",
+  dead: "Encerrada com falha",
+  blocked: "Bloqueada",
+}
+
+/** Motivo de uma execução "blocked" (`blockedReason`) — o rótulo completo do status. */
+export const ENROLLMENT_BLOCKED_REASON_LABELS: Record<string, string> = {
+  AGENT_INACTIVE: "Bloqueada — agente inativo",
+  AGENT_ACCESS_NOT_AUTHORIZED: "Bloqueada — acesso não autorizado",
+  HUMAN_REVIEW_NO_REVIEWER: "Bloqueada — sem revisor",
+  HUMAN_REVIEW_CONTENT_MISSING: "Bloqueada — conteúdo ausente",
+  TRIGGERING_RECORD_CANCELLED: "Bloqueada — medição cancelada",
+}
+
+/** Rótulo de um status que chega como texto livre (ex.: o das novas tentativas) — desconhecido aparece como veio. */
+export function enrollmentStatusLabel(status: string): string {
+  return ENROLLMENT_STATUS_LABELS[status as WorkflowEnrollmentStatus] ?? status
+}
+
+/** Rótulo do status de UMA execução: bloqueada mostra o motivo ("Bloqueada — agente inativo" / "— acesso não autorizado"). */
+export function enrollmentStatusLabelOf(enrollment: Pick<WorkflowEnrollment, "status" | "blockedReason">): string {
+  if (enrollment.status === "blocked" && enrollment.blockedReason) return ENROLLMENT_BLOCKED_REASON_LABELS[enrollment.blockedReason] ?? ENROLLMENT_STATUS_LABELS.blocked
+  return ENROLLMENT_STATUS_LABELS[enrollment.status]
 }

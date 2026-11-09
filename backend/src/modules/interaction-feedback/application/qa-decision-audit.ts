@@ -71,7 +71,7 @@ export async function loadQaDecisionAudit(db: Database, input: { organizationId:
               r.reason_category, coalesce(length(r.reviewer_comment), 0) > 0 has_comment, r.final_wording is not null edited, a.enrollment_id, w.name workflow_name
        from reliable_feedback_item_reviews r
        join reliable_feedback_artifacts a on a.id = r.artifact_id
-       left join workflows w on w.id = a.workflow_id
+       left join workflows_all w on w.id = a.workflow_id
        where r.organization_id = $1 and r.reviewed_at between $2 and $3
        union all
        select 'INTERACTION', r.id, r.run_id, r.item_index, r.review_status, r.reviewed_at, r.reviewed_by,

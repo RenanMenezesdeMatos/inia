@@ -31,6 +31,7 @@ const WORKFLOW: Workflow = {
   published: true,
   trigger: { kind: "schedule", mode: "CALENDAR", times: ["08:00"], intervalDays: 1, frequency: { type: "DAILY" } },
   activeEnrollments: 0,
+  blockedEnrollments: 0,
   configurationChanges: [],
 }
 

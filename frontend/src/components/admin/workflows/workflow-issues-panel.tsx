@@ -19,6 +19,8 @@ import type { PublishValidationStatus } from "./use-publish-validation"
 export function WorkflowIssuesPanel({
   issues,
   status = "ready",
+  emptyFlow = false,
+  nothingToPublish = false,
   nodeLabelById,
   onSelectIssue,
   onRevalidate,
@@ -27,6 +29,10 @@ export function WorkflowIssuesPanel({
   issues: GraphIssue[]
   /** Estado da validação (use-publish-validation.ts). "Pronto para publicar" só em `ready`. */
   status?: PublishValidationStatus
+  /** Só Gatilho e Fim: publicar não faria nada, então a tela diz o que falta em vez de "Pronto para publicar". */
+  emptyFlow?: boolean
+  /** O rascunho salvo já é o que está publicado. */
+  nothingToPublish?: boolean
   nodeLabelById: (nodeId: string) => string | undefined
   onSelectIssue: (nodeId: string) => void
   onRevalidate?: () => void
@@ -36,7 +42,7 @@ export function WorkflowIssuesPanel({
   if (issues.length === 0) {
     if (status === "stale") {
       return (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="stale">
+        <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="stale">
           <CircleDashed className="h-4 w-4" aria-hidden />
           Alterações não salvas — salve o rascunho para validar a publicação.
         </p>
@@ -44,7 +50,7 @@ export function WorkflowIssuesPanel({
     }
     if (status === "validating") {
       return (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="validating" aria-live="polite">
+        <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="validating">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
           Validando no servidor…
         </p>
@@ -52,7 +58,7 @@ export function WorkflowIssuesPanel({
     }
     if (status === "error") {
       return (
-        <div className="flex min-w-0 items-center gap-2" data-testid="workflow-issues-summary" data-status="error">
+        <div role="status" className="flex min-w-0 items-center gap-2" data-testid="workflow-issues-summary" data-status="error">
           <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
           <p className="truncate text-sm text-amber-700 dark:text-amber-300">Não foi possível validar no servidor.</p>
           <Button variant="outline" size="sm" className="shrink-0" onClick={onRevalidate}>
@@ -62,10 +68,26 @@ export function WorkflowIssuesPanel({
         </div>
       )
     }
+    if (emptyFlow) {
+      return (
+        <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="empty">
+          <CircleDashed className="h-4 w-4" aria-hidden />
+          Este fluxo ainda não faz nada: adicione etapas entre o início e o fim.
+        </p>
+      )
+    }
+    if (nothingToPublish) {
+      return (
+        <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="published">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          Sem alterações: este rascunho já é a versão publicada.
+        </p>
+      )
+    }
     return (
-      <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="ready">
+      <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="workflow-issues-summary" data-status="ready">
         <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
-        Pronto para publicar — validação local e do servidor sem problemas.
+        Pronto para publicar — sem problemas na validação.
       </p>
     )
   }
@@ -73,7 +95,7 @@ export function WorkflowIssuesPanel({
   return (
     <div className="flex min-w-0 items-center gap-2" data-testid="workflow-issues-summary" data-status={status === "invalid" ? "invalid" : "blocked_local"}>
       <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
-      <p className="truncate text-sm font-medium text-destructive">
+      <p role="status" className="truncate text-sm font-medium text-destructive">
         Não é possível publicar — {count} {count === 1 ? "problema" : "problemas"}
       </p>
       <Popover open={open} onOpenChange={setOpen}>
@@ -85,9 +107,9 @@ export function WorkflowIssuesPanel({
         <PopoverContent align="start" side="top" className="w-[min(32rem,calc(100vw-2rem))]">
           <PopoverHeader>
             <PopoverTitle>Problemas que impedem a publicação</PopoverTitle>
-            <PopoverDescription>Clique em um problema para abrir o nó responsável.</PopoverDescription>
+            <PopoverDescription>Clique em um problema para abrir a etapa responsável.</PopoverDescription>
           </PopoverHeader>
-          <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label="Lista de problemas do grafo">
+          <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label="Lista de problemas do fluxo">
             {issues.map((issue, index) => {
               const label = issue.nodeId ? nodeLabelById(issue.nodeId) : undefined
               return (
@@ -111,6 +133,13 @@ export function WorkflowIssuesPanel({
           </ol>
         </PopoverContent>
       </Popover>
+      {/* A causa pode ter sido corrigida em outra tela (agente, hierarquia); sem alteração aqui, Salvar não refaz a validação. */}
+      {status === "invalid" && onRevalidate ? (
+        <Button variant="ghost" size="sm" className="shrink-0" onClick={onRevalidate}>
+          <RefreshCw aria-hidden />
+          Validar de novo
+        </Button>
+      ) : null}
     </div>
   )
 }

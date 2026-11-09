@@ -76,8 +76,8 @@ async function transaction<T>(client: Client, work: () => Promise<T>): Promise<T
 export async function ensureDemoVolumeIndicator(client: Client): Promise<{ created: boolean; id: string }> {
   const input = validateIndicatorDefinition(indicatorDefinitionInputSchema.parse({ ...DEMO_VOLUME_INDICATOR, minimumSampleSize: null, availabilityPolicy: null, active: true }))
   const inserted = await client.query<{ id: string }>(
-    `insert into indicator_definitions (id, organization_id, code, name, unit, desired_direction, daily_supported, operational_aggregation, minimum_sample_size, minimum_coverage, official_closure_supported, active, proves_work_activity, unjustified_absence_policy)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, $12, $13) on conflict (organization_id, code) do nothing returning id`,
+    `insert into indicator_definitions_all (id, organization_id, code, name, unit, desired_direction, daily_supported, operational_aggregation, minimum_sample_size, minimum_coverage, official_closure_supported, active, proves_work_activity, unjustified_absence_policy)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, $12, $13) on conflict (organization_id, code) where deleted_at is null do nothing returning id`,
     [demoId(`indicator:${input.code}`), DEMO_ORGANIZATION_ID, input.code, input.name, input.unit, input.desiredDirection, input.dailySupported, input.operationalAggregation, input.minimumSampleSize, input.minimumCoverage, input.officialClosureSupported, input.provesWorkActivity, input.unjustifiedAbsencePolicy],
   )
   if (inserted.rows[0]) return { created: true, id: inserted.rows[0].id }
@@ -104,9 +104,9 @@ export async function ensureChannelFlags(client: Client): Promise<Map<string, st
   await transaction(client, async () => {
     for (const flag of DEMO_FLAGS) {
       await client.query(
-        `insert into channel_flags (id, organization_id, channel, flag_name, value_type, description, active)
+        `insert into channel_flags_all (id, organization_id, channel, flag_name, value_type, description, active)
          values ($1, $2, $3, $4, $5, $6, true)
-         on conflict (organization_id, channel, flag_name) do nothing`,
+         on conflict (organization_id, channel, flag_name) where deleted_at is null do nothing`,
         [demoFlagId(flag.name), DEMO_ORGANIZATION_ID, DEMO_CHANNEL, flag.name, flag.valueType, flag.description],
       )
     }

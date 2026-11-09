@@ -204,6 +204,8 @@ export type ConversationMessage = {
   /** `PRODUCT_APPLICABILITY_V1` (monitoramento): o esclarecimento foi uma confirmação feita NA CONVERSA sobre um feedback — não é
    * observação da gravação. */
   clarificationProvenance?: "CHAT_CONFIRMATION"
+  /** Conferência da resposta (PEN-017), só no monitoramento: o que foi barrado ou detectado nesta mensagem, com o texto original. */
+  responseCheck?: { outcome: string; control: string; action: string; rules: { kind: string; name: string }[]; reason: string | null; flaggedContent: string | null }
   /** "WORKFLOW" = recado entregue por um fluxo da INIA (mensagem destacada); "FEEDBACK" = apresentação de uma aplicação de
    * feedback; null nas demais. */
   origin?: "WORKFLOW" | "FEEDBACK" | null

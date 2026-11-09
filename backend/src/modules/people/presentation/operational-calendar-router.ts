@@ -20,12 +20,21 @@ import { sessionUser } from "../../auth/presentation/session-user.js"
 
 export const HOLIDAY_SCOPES = ["ORGANIZATION", "NATIONAL", "STATE", "CITY"] as const
 
-const holidaySchema = z.object({
+const holidayFieldsSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   name: z.string().trim().min(2).max(120),
-  scope: z.enum(HOLIDAY_SCOPES).default("ORGANIZATION"),
-  active: z.boolean().default(true),
+  scope: z.enum(HOLIDAY_SCOPES),
+  active: z.boolean(),
 })
+
+const createHolidaySchema = holidayFieldsSchema.extend({
+  scope: holidayFieldsSchema.shape.scope.default("ORGANIZATION"),
+  active: holidayFieldsSchema.shape.active.default(true),
+})
+
+// Sem `.default`: o Zod 4 aplica o padrão mesmo dentro de `.partial()`, e o `coalesce` do PATCH gravaria o padrão por cima do
+// valor atual. O interruptor da tela envia só `active`, e isso trocava a abrangência do feriado.
+const updateHolidaySchema = holidayFieldsSchema.partial()
 
 const SELECT = `select id, holiday_date::text "date", name, scope, active, created_at "createdAt", updated_at "updatedAt" from organization_holidays where organization_id = $1`
 
@@ -106,10 +115,10 @@ export function createOperationalCalendarRouter(db: Database) {
 
   router.post("/holidays", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const input = holidaySchema.parse(request.body)
+    const input = createHolidaySchema.parse(request.body)
     const result = await db.query(
-      `insert into organization_holidays (organization_id, holiday_date, name, scope, active) values ($1, $2, $3, $4, $5)
-       on conflict (organization_id, holiday_date, name) do update set scope = excluded.scope, active = excluded.active, updated_at = now()
+      `insert into organization_holidays_all (organization_id, holiday_date, name, scope, active) values ($1, $2, $3, $4, $5)
+       on conflict (organization_id, holiday_date, name) where deleted_at is null do update set scope = excluded.scope, active = excluded.active, updated_at = now()
        returning id, holiday_date::text "date", name, scope, active, created_at "createdAt", updated_at "updatedAt"`,
       [organizationId, input.date, input.name, input.scope, input.active],
     )
@@ -118,7 +127,7 @@ export function createOperationalCalendarRouter(db: Database) {
 
   router.patch("/holidays/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const input = holidaySchema.partial().parse(request.body)
+    const input = updateHolidaySchema.parse(request.body)
     const result = await db.query(
       `update organization_holidays set holiday_date = coalesce($3::date, holiday_date), name = coalesce($4, name), scope = coalesce($5, scope), active = coalesce($6, active), updated_at = now()
        where id = $2 and organization_id = $1
@@ -131,7 +140,8 @@ export function createOperationalCalendarRouter(db: Database) {
 
   router.delete("/holidays/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const result = await db.query(`delete from organization_holidays where id = $2 and organization_id = $1`, [organizationId, request.params.id])
+    // Exclusão lógica (migration 177): sai do calendário e do cálculo, e volta pela Central de Dados, desligado.
+    const result = await db.query(`update organization_holidays_all set active = false, deleted_at = now(), deleted_by_person_id = $3, updated_at = now() where id = $2 and organization_id = $1 and deleted_at is null`, [organizationId, request.params.id, sessionUser(request).personId ?? null])
     if (!result.rowCount) return response.status(404).json({ error: { code: "HOLIDAY_NOT_FOUND", message: "Feriado não encontrado." } })
     response.status(204).end()
   })

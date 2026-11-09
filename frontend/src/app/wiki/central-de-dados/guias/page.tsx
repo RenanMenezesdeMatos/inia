@@ -62,7 +62,7 @@ export default function DataHubGuidesPage() {
         />
         <WarningCallout title="Credencial errada">
           A carga falha com DATA_SOURCE_AUTH_FAILED, a fonte fica em <strong>Erro</strong> e a conexão em <strong>Conexão com erro</strong> — mas os dados já
-          aplicados continuam &quot;Atualizados&quot; até a cadência vencer. Rotacione a credencial em Configuração e clique em Retomar.
+          aplicados continuam &quot;Atualizados&quot; até a cadência vencer. Rotacione a credencial em Configuração e clique em Retomar. Quem tem horários escolhidos espera o próximo; para carregar na hora, use Sincronizar agora.
         </WarningCallout>
       </WikiSection>
 
@@ -112,7 +112,7 @@ export default function DataHubGuidesPage() {
             <TableBody>
               <TableRow>
                 <TableCell>Fonte &quot;Conexão OK&quot; mas dados &quot;Atrasado&quot;</TableCell>
-                <TableCell>A conexão funciona, mas nenhuma carga bem-sucedida dentro de 2× a cadência (feed pausado, cargas falhando por dados, fonte pausada).</TableCell>
+                <TableCell>A conexão funciona, mas não houve carga bem-sucedida em 2× o intervalo ou, com dias e horários, até uma hora depois do segundo horário perdido (feed pausado, cargas falhando por dados, fonte pausada).</TableCell>
                 <TableCell>Veja Cargas do feed; retome feed/fonte; corrija a causa das falhas.</TableCell>
               </TableRow>
               <TableRow>

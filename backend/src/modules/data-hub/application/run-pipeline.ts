@@ -3,10 +3,10 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { requireDataContract } from "../domain/contract-registry.js"
 import type { DataContract } from "../domain/data-contract.js"
 import { DataRunError, type RecordError } from "../domain/error-codes.js"
-import { computeFreshness, expectedIntervalMinutes, nextSyncAt } from "../domain/freshness.js"
+import { computeFeedFreshness, nextSyncAt } from "../domain/freshness.js"
 import { feedMappingSchema, mapRecord, validateMapping, type SourceRecord } from "../domain/mapping.js"
 import { REMOTE_SOURCE_KINDS } from "../domain/source-config.js"
-import { emptyMetrics, MAX_RUN_ATTEMPTS, RETRY_BACKOFF_MS, type RunMetrics, type RunStage, type RunStatus } from "../domain/run-status.js"
+import { emptyMetrics, retryDelayMs, RUN_LEASE_SECONDS, type RunMetrics, type RunStage, type RunStatus } from "../domain/run-status.js"
 import { columnsFromRecords, fingerprintColumns, missingMappedSources } from "../domain/schema-fingerprint.js"
 import { extractRecords, fetchApiRecords } from "./connectors/api-pull-connector.js"
 import { parseFileBatch, type FetchedBatch } from "./connectors/file-connector.js"
@@ -37,12 +37,21 @@ const MAX_PERSISTED_REJECTIONS = 10_000
 
 type Queryable = Pick<DataHubContext["db"], "query">
 
+/**
+ * Renovação da posse do Run (`claimed_until`, parâmetro $4/$5 = RUN_LEASE_SECONDS) embutida nas gravações de progresso que já
+ * existem — etapa e lote aplicado —, sempre pelo pool e fora da transação do lote. Run sem posse (executado direto, sem claim)
+ * continua sem posse. Sem isto, só o banco externo renovava: um arquivo/API/SFTP de mais de 15 min voltava para a fila pelo
+ * `recoverInterruptedRuns` ainda rodando e era executado de novo, em paralelo.
+ */
+const renewLeaseSql = (param: number) => `claimed_until = case when claimed_until is null then null else now() + make_interval(secs => $${param}) end`
+
 export async function transition(db: Queryable, runId: string, status: RunStatus, stages: RunStage[], detail: string | null = null): Promise<RunStage[]> {
   const now = new Date().toISOString()
   const last = stages[stages.length - 1]
   if (last && !last.finishedAt) last.finishedAt = now
   const next = [...stages, { stage: status, startedAt: now, finishedAt: null, detail }]
-  await db.query(`update data_ingestion_runs set status = $2, stages = $3 where id = $1`, [runId, status, JSON.stringify(next)])
+  // Cada etapa também renova a posse (sem instrução a mais): uma carga viva nunca é dada como interrompida.
+  await db.query(`update data_ingestion_runs set status = $2, stages = $3, ${renewLeaseSql(4)} where id = $1`, [runId, status, JSON.stringify(next), RUN_LEASE_SECONDS])
   return next
 }
 
@@ -120,7 +129,7 @@ export async function applyInTransactions<T>(db: Database, runId: string, ready:
         await client.query("commit")
         open = false
       }
-      await db.query(`update data_ingestion_runs set records_inserted = $2, records_updated = $3, records_unchanged = $4 where id = $1`, [runId, total.inserted, total.updated, total.unchanged])
+      await db.query(`update data_ingestion_runs set records_inserted = $2, records_updated = $3, records_unchanged = $4, ${renewLeaseSql(5)} where id = $1`, [runId, total.inserted, total.updated, total.unchanged, RUN_LEASE_SECONDS])
     }
     if (atomic) {
       await client.query("commit")
@@ -276,6 +285,12 @@ export async function finishRun(ctx: DataHubContext, loaded: LoadedRun, status: 
   )
 }
 
+/** Situação de agora, não a de quando a carga começou. */
+async function isPaused(ctx: DataHubContext, feedId: string): Promise<boolean> {
+  const result = await ctx.db.query(`select 1 from data_feeds f join data_sources s on s.id = f.source_id where f.id = $1 and (f.status = 'PAUSED' or s.status = 'PAUSED')`, [feedId])
+  return (result.rowCount ?? 0) > 0
+}
+
 /** Executa um Run já na fila. Nunca lança por erro de dados/fonte: o resultado vai para o próprio Run. */
 export async function executeRun(ctx: DataHubContext, runId: string): Promise<DataRunRow | null> {
   const loaded = await loadRun(ctx, runId)
@@ -396,14 +411,19 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
   } catch (error) {
     const runError = error instanceof DataRunError ? error : new DataRunError("DATA_INTERNAL_ERROR", error instanceof Error ? error.message : "Erro inesperado.")
     if (!(error instanceof DataRunError)) ctx.logger.error({ runId: run.id, feedId: feed.id, sourceId: source.id, err: error instanceof Error ? { name: error.name, message: error.message } : String(error) }, "data-hub run crashed")
-    if (runError.transient && attempt < MAX_RUN_ATTEMPTS) {
-      const backoff = RETRY_BACKOFF_MS[Math.min(attempt - 1, RETRY_BACKOFF_MS.length - 1)]!
+    const backoff = runError.transient ? retryDelayMs(run.triggerKind, attempt) : null
+    // Pausado com a tentativa em andamento (ela pode levar minutos esperando a origem): a carga não volta para a fila.
+    if (backoff !== null && !(await isPaused(ctx, feed.id))) {
       stages = closeStages(stages, `${runError.message} · nova tentativa em ${Math.round(backoff / 60_000)} min`)
       await ctx.db.query(
         `update data_ingestion_runs set status = 'QUEUED', stages = $2, next_attempt_at = now() + make_interval(secs => $3), error_code = $4, error_message = $5, claimed_until = null where id = $1`,
         [run.id, JSON.stringify(stages), backoff / 1000, runError.code, runError.message.slice(0, 1000)],
       )
       await ctx.db.query(`update data_feeds set last_run_at = now(), last_error_code = $2, last_error_message = $3 where id = $1`, [feed.id, runError.code, runError.message.slice(0, 1000)])
+      // As tentativas podem levar horas: a tela já mostra a conexão com erro, sem esperar o fim delas. A carga que voltar a ler põe HEALTHY de novo (finishRun).
+      if ((REMOTE_SOURCE_KINDS as readonly string[]).includes(source.kind)) {
+        await ctx.db.query(`update data_sources set connection_health = 'ERROR', connection_checked_at = $2, connection_error = $3, updated_at = now() where id = $1`, [source.id, ctx.clock.now(), runError.message.slice(0, 500)])
+      }
       ctx.logger.warn({ runId: run.id, feedId: feed.id, sourceId: source.id, errorCode: runError.code, attempt }, "data-hub run retry scheduled")
       return (await loadRun(ctx, run.id))?.run ?? null
     }
@@ -415,7 +435,6 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
 }
 
 /** Atualidade dos feeds — helper compartilhado entre listagens e home. */
-export function feedFreshness(feed: Pick<DataFeedRow, "lastSuccessAt" | "cadence" | "expectedIntervalMinutes">, now: Date) {
-  const interval = feed.expectedIntervalMinutes ?? expectedIntervalMinutes(feed.cadence)
-  return computeFreshness(feed.lastSuccessAt ? new Date(feed.lastSuccessAt) : null, interval, now)
+export function feedFreshness(feed: Pick<DataFeedRow, "lastSuccessAt" | "cadence" | "expectedIntervalMinutes">, now: Date, timeZone: string) {
+  return computeFeedFreshness({ lastSuccessAt: feed.lastSuccessAt ? new Date(feed.lastSuccessAt) : null, cadence: feed.cadence, expectedIntervalMinutes: feed.expectedIntervalMinutes }, now, timeZone)
 }

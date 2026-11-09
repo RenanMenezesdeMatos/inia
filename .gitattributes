@@ -4,3 +4,7 @@ deploy/windows/**/*.ps1 text eol=crlf
 deploy/windows/**/*.config text eol=crlf
 # Atalhos de linha de comando do Windows (Prompt de Comando).
 *.cmd text eol=crlf
+# Motor de OCR das bases (Tesseract em WebAssembly + português): arquivos de terceiros, sem diff de texto. Ver backend/vendor/tesseract/LEIA-ME.md.
+backend/vendor/tesseract/*.wasm binary
+backend/vendor/tesseract/*.traineddata binary
+backend/vendor/tesseract/*.cjs -diff linguist-vendored

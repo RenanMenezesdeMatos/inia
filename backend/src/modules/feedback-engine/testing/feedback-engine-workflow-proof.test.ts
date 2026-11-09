@@ -7,6 +7,7 @@
  */
 import pg from "pg"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import type { AgentConfig } from "../../agents/domain/agent-config.js"
 import type { EngineModelRequest } from "../application/ports.js"
 import { CHECKLIST_V1, PROCEDURE_V1, TRANSCRIPT } from "./fixtures.js"
 
@@ -22,6 +23,7 @@ const { processEnrollment } = await import("../../workflows/application/engine.j
 const { createEngineDeps } = await import("../application/engine-wiring.js")
 const { analyzeCall } = await import("../application/analyze-call.js")
 const { findLegacyHolds, resolveLegacyHold } = await import("../application/legacy-holds.js")
+const { loadAgentLifecycle, loadEditableAgentConfig, publishAgentDraft, saveAgentDraft } = await import("../../agents/application/agent-versions.js")
 const { memorySummary, processAggregates, peopleAggregates, assessmentDetail } = await import("../application/leadership-diagnostics.js")
 /** Pontos de todos os temas (a resposta agrupa por tema). */
 const pointsOf = (result: Awaited<ReturnType<typeof processAggregates>>) => result.themes.flatMap((theme) => theme.items)
@@ -80,6 +82,13 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     control.model = { async generate(request: unknown) { stages.push((request as EngineModelRequest).stage); if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs)); return fake.model.generate(request as EngineModelRequest) } }
     return fake
   }
+  /** Publica pelas mesmas funções da tela. O Workflow executa a versão vigente (PEN-002): mudar a coluna do agente por SQL não chega à execução. */
+  const publishAgent = async (agentId: string, changes: Partial<AgentConfig> = {}) => {
+    const publisher = { personId: null, name: "Proof Engine" }
+    const editable = (await loadEditableAgentConfig(pool, ORG, agentId))!
+    await saveAgentDraft(pool, editable.lifecycle, { ...editable.config, ...changes }, publisher)
+    await publishAgentDraft(pool, (await loadAgentLifecycle(pool, ORG, agentId))!, publisher)
+  }
 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL, max: 8 })
@@ -101,6 +110,8 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     }
     procedureDoc = await document("Procedimento — Segunda via de conta", PROCEDURE_V1)
     await document("Checklist de Encerramento de Chamada", CHECKLIST_V1)
+    // Agente criado por SQL nasce sem versão, e o Workflow só roda agente publicado (PEN-002). Publica depois de ligar as bases, que fazem parte da versão.
+    for (const agentId of [agent, agentB]) await publishAgent(agentId)
   })
   afterAll(async () => {
     if (!pool) return
@@ -423,7 +434,7 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     await saveStrategyDraft(pool as never, ORG, indicator.id, { config: { ...emptyStrategyConfig(), segmentation: { enabled: true, dimensions: ["SUBJECT"], minimumSegmentInteractions: 3 }, interactionInvestigation: { enabled: true, maxInteractions: 5, minimumAnalyzed: 3, minimumCoveragePercent: null }, processAssessment: { enabled: true }, closingTriage: { enabled: true, developmentQuartiles: ["Q3", "Q4"], belowTarget: true, quartileWorsened: true, recognitionQuartiles: ["Q1"] } } }, actor)
     await publishStrategyDraft(pool as never, ORG, indicator.id, actor)
     // Ferramentas de investigação são do AGENT (lista vazia = nenhuma): o especialista desta prova tem as que o diagnóstico usa.
-    await pool.query("update agents set investigation_capabilities = '{INDICATOR_ANALYSIS,SEGMENTATION,INTERACTION_ANALYSIS}' where id = $1", [agent])
+    await publishAgent(agent, { investigationCapabilities: ["INDICATOR_ANALYSIS", "SEGMENTATION", "INTERACTION_ANALYSIS"] })
     const person = (await pool.query<{ id: string }>("insert into people (organization_id, name, role, team_id, reports_to_id) values ($1, 'Proof Engine Indicador', 'OPERATOR', $2, $3) returning id", [ORG, team, supervisor])).rows[0]!.id
     created.people.push(person)
     for (const [ref, value, achievement, quartile] of [[previous, 330, 109, "Q2"], [period, 450, 80, "Q4"]] as const) {
@@ -479,7 +490,8 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     // Validade e reuso da investigação (Postgres real): mesmas fontes → reuso (inclusive pela chave registrada DEPOIS das análises
     // que a própria investigação fez); chamada NOVA no período com o MESMO oficial → nova revisão vigente, anterior no histórico.
     const { investigateIndicator } = await import("../application/investigate-indicator.js")
-    const agentConfiguredAt = (await pool.query<{ updated_at: Date }>("select updated_at from agents where id = $1", [agent])).rows[0]!.updated_at.toISOString()
+    // Mesma marca que o nó do Workflow põe na chave de reuso: a publicação da versão vigente (`loadRunnableEngineAgent`).
+    const agentConfiguredAt = (await pool.query<{ published_at: Date }>("select v.published_at from agents a join agent_versions v on v.id = a.current_version_id where a.id = $1", [agent])).rows[0]!.published_at.toISOString()
     // `ONE_INDICATOR_FEEDBACK_PER_PERIOD_V1`: o período já foi entregue à pessoa — uma nova execução não investiga (zero modelo).
     const stagesBeforeSkip = stages.length
     const skipped = await investigateIndicator(createEngineDeps({ db: pool as never }).investigate, { organizationId: ORG, personId: person, agentId: agent, agentConfiguredAt, enrollmentId: enrollment, target: { kind: "OFFICIAL_CLOSING" as const, indicatorCode: indicator.code }, trigger: { kind: "EVALUATION" as const, selectionReason: "prova do período entregue" }, now: new Date() })

@@ -69,10 +69,10 @@ export function isTriggerComplete(trigger: WorkflowTriggerInput): boolean {
 }
 
 const TRIGGER_KIND_OPTIONS: { kind: WorkflowTriggerInput["kind"]; label: string; description: string; icon: LucideIcon }[] = [
-  { kind: "channel_flag", label: "Flag de canal", description: "Evento de interação", icon: Radio },
-  { kind: "indicator", label: "Indicador", description: "Evento de medição", icon: TrendingUp },
-  { kind: "schedule", label: "Por agenda", description: "Recorrência de calendário", icon: CalendarClock },
-  { kind: "manual", label: "Manual", description: "Executar agora", icon: Hand },
+  { kind: "channel_flag", label: "Flag de canal", description: "Quando uma interação chega com a flag", icon: Radio },
+  { kind: "indicator", label: "Indicador", description: "Quando chega uma nova medição", icon: TrendingUp },
+  { kind: "schedule", label: "Por agenda", description: "Em dias e horários definidos", icon: CalendarClock },
+  { kind: "manual", label: "Manual", description: "Quando alguém clicar em Executar", icon: Hand },
 ]
 
 type ScheduleFrequencyKind = ScheduleFrequency["type"]

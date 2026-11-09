@@ -14,6 +14,14 @@ export { currentReferencePeriod }
 // GUARD CENTRAL: todo leitor oficial abaixo filtra `reference_period <= lastClosedReferencePeriod`
 // (official-closure-policy.ts) — o mês corrente nunca é fechamento, exista ou não a linha.
 
+// ORGANIZAÇÃO DAS PRÓPRIAS PESSOAS: os índices de employee_indicator_performance/employee_prv_performance começam por
+// `organization_id`; sem ela cada leitura varria a tabela inteira (dev, 70 mil linhas: 34 ms → 0,45 ms por chamada). A
+// organização vem do cadastro das pessoas consultadas (subconsulta calculada uma vez), então a assinatura continua a mesma e o
+// resultado também — toda linha de desempenho pertence à organização da pessoa. O código do indicador é único só DENTRO da
+// organização, por isso a definição também é resolvida nela.
+const ORGANIZATION_OF_PERSON = (personParam: string) => `(select p.organization_id from people p where p.id = ${personParam})`
+const ORGANIZATIONS_OF_PEOPLE = (personIdsParam: string) => `any((select array_agg(distinct p.organization_id) from people p where p.id = any(${personIdsParam}::uuid[]))::uuid[])`
+
 /**
  * Linha mais recente (reference_period <= agora) de performance do colaborador nesse indicador —
  * nunca calculada, só lida da fonte externa (ver employee-performance-schema.ts). null = sem
@@ -31,8 +39,8 @@ export async function findLatestIndicatorPerformance(
             eip.subteam_id "subteamId", eip.reference_period "referencePeriod", eip.value, eip.target_value "targetValue",
             eip.achievement_percent "achievementPercent", eip.weight_percent "weightPercent", eip.quartile, eip.source
      from employee_indicator_performance eip
-     join indicator_definitions idef on idef.id = eip.indicator_definition_id
-     where eip.person_id = $1 and idef.code = $2 and eip.reference_period <= $3
+     join indicator_definitions idef on idef.id = eip.indicator_definition_id and idef.organization_id = eip.organization_id
+     where eip.organization_id = ${ORGANIZATION_OF_PERSON("$1")} and eip.person_id = $1 and idef.code = $2 and eip.reference_period <= $3
      order by eip.reference_period desc
      limit 1`,
     [personId, indicatorCode, lastClosedReferencePeriod(now, timeZone)],
@@ -45,7 +53,7 @@ export async function findLatestPrvPerformance(db: Database, personId: string, n
     `select id, person_id "personId", subteam_id "subteamId", reference_period "referencePeriod",
             achievement_percent "achievementPercent", quartile, source
      from employee_prv_performance
-     where person_id = $1 and reference_period <= $2
+     where organization_id = ${ORGANIZATION_OF_PERSON("$1")} and person_id = $1 and reference_period <= $2
      order by reference_period desc
      limit 1`,
     [personId, lastClosedReferencePeriod(now, timeZone)],
@@ -73,8 +81,8 @@ export async function findRecentIndicatorPerformance(
             eip.subteam_id "subteamId", eip.reference_period "referencePeriod", eip.value, eip.target_value "targetValue",
             eip.achievement_percent "achievementPercent", eip.weight_percent "weightPercent", eip.quartile, eip.source
      from employee_indicator_performance eip
-     join indicator_definitions idef on idef.id = eip.indicator_definition_id
-     where eip.person_id = $1 and idef.code = $2 and eip.reference_period <= $3
+     join indicator_definitions idef on idef.id = eip.indicator_definition_id and idef.organization_id = eip.organization_id
+     where eip.organization_id = ${ORGANIZATION_OF_PERSON("$1")} and eip.person_id = $1 and idef.code = $2 and eip.reference_period <= $3
      order by eip.reference_period desc
      limit $4`,
     [personId, indicatorCode, lastClosedReferencePeriod(now, timeZone), limit],
@@ -87,7 +95,7 @@ export async function findRecentPrvPerformance(db: Database, personId: string, n
     `select id, person_id "personId", subteam_id "subteamId", reference_period "referencePeriod",
             achievement_percent "achievementPercent", quartile, source
      from employee_prv_performance
-     where person_id = $1 and reference_period <= $2
+     where organization_id = ${ORGANIZATION_OF_PERSON("$1")} and person_id = $1 and reference_period <= $2
      order by reference_period desc
      limit $3`,
     [personId, lastClosedReferencePeriod(now, timeZone), limit],
@@ -124,14 +132,14 @@ export async function aggregateAchievementHistory(
   const params: unknown[] = [personIds, startPeriod, lastIncludedPeriod]
   let indicatorFilter = ""
   if (table === "employee_indicator_performance") {
-    indicatorFilter = `and indicator_definition_id = (select id from indicator_definitions where code = $${params.length + 1})`
+    indicatorFilter = `and indicator_definition_id = any(array(select i.id from indicator_definitions i where i.code = $${params.length + 1} and i.organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")}))`
     params.push(indicatorCode)
   }
   const result = await db.query<{ avg_value: string | null; min_value: string | null; max_value: string | null; sample_count: string }>(
     `select avg(achievement_percent)::numeric avg_value, min(achievement_percent)::numeric min_value,
             max(achievement_percent)::numeric max_value, count(*)::int sample_count
      from ${table}
-     where person_id = any($1::uuid[]) and reference_period >= $2 and reference_period <= $3 ${indicatorFilter}`,
+     where organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")} and person_id = any($1::uuid[]) and reference_period >= $2 and reference_period <= $3 ${indicatorFilter}`,
     params,
   )
   const row = result.rows[0]
@@ -172,7 +180,7 @@ export async function aggregateAchievementClosures(
   const params: unknown[] = [personIds, lastClosedReferencePeriod(now, timeZone), count]
   let indicatorFilter = ""
   if (table === "employee_indicator_performance") {
-    indicatorFilter = `and indicator_definition_id = (select id from indicator_definitions where code = $${params.length + 1})`
+    indicatorFilter = `and indicator_definition_id = any(array(select i.id from indicator_definitions i where i.code = $${params.length + 1} and i.organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")}))`
     params.push(indicatorCode)
   }
   const result = await db.query<{
@@ -185,14 +193,14 @@ export async function aggregateAchievementClosures(
   }>(
     `with recent_periods as (
        select distinct reference_period from ${table}
-       where person_id = any($1::uuid[]) and reference_period <= $2 ${indicatorFilter}
+       where organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")} and person_id = any($1::uuid[]) and reference_period <= $2 ${indicatorFilter}
        order by reference_period desc
        limit $3
      ),
      per_period as (
        select t.reference_period, avg(t.achievement_percent)::numeric avg_value, count(*)::int sample_count
        from ${table} t
-       where t.person_id = any($1::uuid[]) and t.reference_period in (select reference_period from recent_periods) ${indicatorFilter}
+       where t.organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")} and t.person_id = any($1::uuid[]) and t.reference_period in (select reference_period from recent_periods) ${indicatorFilter}
        group by t.reference_period
      )
      select avg(t.achievement_percent)::numeric avg_value, min(t.achievement_percent)::numeric min_value,
@@ -200,7 +208,7 @@ export async function aggregateAchievementClosures(
             (select count(*) from recent_periods)::int total_closures,
             (select json_agg(json_build_object('referencePeriod', reference_period, 'avgValue', avg_value, 'sampleCount', sample_count) order by reference_period) from per_period) periods
      from ${table} t
-     where t.person_id = any($1::uuid[]) and t.reference_period in (select reference_period from recent_periods) ${indicatorFilter}`,
+     where t.organization_id = ${ORGANIZATIONS_OF_PEOPLE("$1")} and t.person_id = any($1::uuid[]) and t.reference_period in (select reference_period from recent_periods) ${indicatorFilter}`,
     params,
   )
   const row = result.rows[0]

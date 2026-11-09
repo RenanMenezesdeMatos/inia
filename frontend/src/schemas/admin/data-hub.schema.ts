@@ -1,6 +1,9 @@
 import { z } from "zod"
 
+import { cadenceSchema } from "@/schemas/admin/data-hub-cadence.schema"
 import { workScheduleHorizonSchema } from "@/schemas/admin/operational-calendar.schema"
+
+export { cadenceLabel, cadenceProblem, cadencePreviewSchema, cadenceSaveProblem, cadenceSchema, type Cadence, type CadencePreview } from "@/schemas/admin/data-hub-cadence.schema"
 
 /**
  * Contrato do frontend com `/api/v1/admin/data-hub` — espelha os tipos do backend
@@ -180,13 +183,6 @@ export const TRANSFORM_LABELS: Record<TransformKind, string> = {
 }
 export const DATE_FORMATS = ["ISO", "dd/MM/yyyy", "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "MM/dd/yyyy", "yyyyMMdd", "yyyy-MM-dd HH:mm:ss"] as const
 
-export const cadenceSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("MANUAL") }),
-  z.object({ kind: z.literal("INTERVAL"), minutes: z.number() }),
-  z.object({ kind: z.literal("DAILY"), time: z.string() }),
-])
-export type Cadence = z.infer<typeof cadenceSchema>
-
 /** DISPONIBILIDADE ESPERADA (migration 069): "o dado de D chega em D+lagDays até HH:MM" — distinta de cadência/freshness. */
 export const availabilityPolicySchema = z.object({ lagDays: z.number().int().min(0).max(14), availableByLocalTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) })
 export type AvailabilityPolicy = z.infer<typeof availabilityPolicySchema>
@@ -198,12 +194,6 @@ export function availabilityPolicyLabel(policy: AvailabilityPolicy | null | unde
 
 /** Contratos para os quais a disponibilidade esperada importa (evidência de produção e situação funcional). */
 export const AVAILABILITY_RELEVANT_CONTRACTS = ["INDICATOR_MEASUREMENTS", "INTERACTIONS", "EMPLOYEES", "EMPLOYEE_ABSENCES"] as const
-
-export function cadenceLabel(cadence: Cadence): string {
-  if (cadence.kind === "MANUAL") return "Manual"
-  if (cadence.kind === "INTERVAL") return cadence.minutes % 60 === 0 ? `A cada ${cadence.minutes / 60}h` : `A cada ${cadence.minutes} min`
-  return `Diário às ${cadence.time}`
-}
 
 export const transformSchema = z.object({ kind: z.enum(TRANSFORM_KINDS) }).passthrough()
 export type Transform = { kind: TransformKind } & Record<string, unknown>
@@ -307,11 +297,19 @@ export const pushTokenSchema = z.object({
 })
 export type PushToken = z.infer<typeof pushTokenSchema>
 
+/** Se esta pessoa, nesta sessão, pode configurar a fonte agora. `fields` = o que precisa digitar para liberar. */
+export const configAccessSchema = z.object({ required: z.boolean(), unlocked: z.boolean(), expiresAt: z.string().nullable(), fields: z.array(z.string()) })
+export type ConfigAccess = z.infer<typeof configAccessSchema>
+
 export const sourceDetailSchema = sourceSummarySchema.extend({
   secrets: z.array(z.object({ purpose: z.string(), createdAt: z.string(), rotatedAt: z.string().nullable() })),
   tokens: z.array(pushTokenSchema),
   /** API Pull com credencial por http:// — a tela avisa enquanto estiver assim. */
   transportWarning: z.string().nullable().default(null),
+  configAccess: configAccessSchema,
+  createdByName: z.string().nullable(),
+  updatedByName: z.string().nullable(),
+  lastChangedAt: z.string().nullable(),
 })
 export type SourceDetail = z.infer<typeof sourceDetailSchema>
 
@@ -513,7 +511,7 @@ export const qualitySchema = z.object({
   topWarnings: z.array(z.object({ code: z.string(), label: z.string(), count: z.number() })).default([]),
   totals: z.object({ errors: z.number(), warnings: z.number() }).default({ errors: 0, warnings: 0 }),
   feedsWithRejections: z.array(z.object({ feedId: z.string(), feedName: z.string(), sourceName: z.string(), rejected: z.number(), received: z.number(), rate: z.number() })),
-  staleFeeds: z.array(z.object({ feedId: z.string(), feedName: z.string(), sourceName: z.string(), lastSuccessAt: z.string().nullable(), expectedIntervalMinutes: z.number().nullable() })),
+  staleFeeds: z.array(z.object({ feedId: z.string(), feedName: z.string(), sourceName: z.string(), lastSuccessAt: z.string().nullable(), cadenceLabel: z.string() })),
   schemaChanges: z.array(z.object({ feedId: z.string(), feedName: z.string(), sourceName: z.string(), schemaChangedAt: z.string(), lastErrorMessage: z.string().nullable() })),
   recentRejections: z.array(z.object({ runId: z.string(), feedName: z.string(), recordNumber: z.number(), sourceRecordKey: z.string().nullable(), errorCode: z.string(), field: z.string().nullable(), message: z.string(), createdAt: z.string(), severity: z.enum(["ERROR", "WARNING"]).default("ERROR") })),
   /** Calendário operacional: capital preenchida, 6x1 sem calendário, horizonte terminando. */
@@ -569,3 +567,23 @@ export type LineageEntry = z.infer<typeof lineageEntrySchema>
 
 export const sftpFileSchema = z.object({ name: z.string(), path: z.string(), size: z.number(), modifiedAt: z.string().nullable(), matches: z.boolean() })
 export type SftpFile = z.infer<typeof sftpFileSchema>
+
+// ---- Registro da Central: quem fez o quê ----------------------------------------------------
+export const auditEventSchema = z.object({
+  id: z.string(),
+  action: z.string(),
+  actorId: z.string().nullable(),
+  actorName: z.string().nullable(),
+  entityType: z.string(),
+  entityId: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  createdAt: z.string(),
+  sourceId: z.string().nullable(),
+  sourceName: z.string().nullable(),
+  sourceKind: z.string().nullable(),
+  sourceDeletedAt: z.string().nullable(),
+  feedId: z.string().nullable(),
+  feedName: z.string().nullable(),
+  feedDeletedAt: z.string().nullable(),
+})
+export type AuditEvent = z.infer<typeof auditEventSchema>

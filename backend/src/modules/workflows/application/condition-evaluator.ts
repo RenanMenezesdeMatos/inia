@@ -466,20 +466,30 @@ type GoalResolution = { value: number | null; reason?: "NO_GOAL" | "INCOMPATIBLE
 // "Meta vigente" pra PRV não tem uma definição na fonte hoje — fora do escopo desta correção
 // (só indicatorCode/COUNT), nunca redesenhada aqui.
 async function resolveGoalValue(db: Database, indicatorCode: string | undefined, subjectIds: string[], now: Date): Promise<GoalResolution> {
+  // A meta é resolvida UMA vez por Subgrupo/Grupo distinto do conjunto (goal_of) e depois distribuída às pessoas — antes,
+  // as duas subconsultas rodavam por pessoa (2 × N buscas em goals × indicator_definitions; estrutura de 2.398 pessoas no
+  // dev: 56 ms e 41 mil buffers → 1,8 ms e 673). Mesma regra de vigência e mesmas linhas, na mesma ordem.
   const result = await db.query<{ personId: string; effectiveGoal: string | null; fromSubteam?: boolean | null; subteamName?: string | null; teamName?: string | null }>(
-    `with resolved as (
-       select p.id "personId", st.name "subteamName", t.name "teamName",
+    `with subjects as (
+       select p.id, p.subteam_id, p.team_id from people p where p.id = any($3::uuid[])
+     ),
+     goal_of as (
+       select s.kind, s.subject_id,
               (select g.target_value from goals g join indicator_definitions i on i.id = g.indicator_definition_id
-                where i.code = $1 and g.subject_type = 'SUBTEAM' and g.subject_id = p.subteam_id
+                where i.code = $1 and g.subject_type = s.kind and g.subject_id = s.subject_id
                   and g.valid_from <= $2 and (g.valid_until is null or g.valid_until >= $2)
-                order by g.valid_from desc limit 1) "subteamGoal",
-              (select g.target_value from goals g join indicator_definitions i on i.id = g.indicator_definition_id
-                where i.code = $1 and g.subject_type = 'TEAM' and g.subject_id = p.team_id
-                  and g.valid_from <= $2 and (g.valid_until is null or g.valid_until >= $2)
-                order by g.valid_from desc limit 1) "teamGoal"
+                order by g.valid_from desc limit 1) target_value
+       from (select distinct 'SUBTEAM' kind, subteam_id subject_id from subjects where subteam_id is not null
+             union all
+             select distinct 'TEAM' kind, team_id subject_id from subjects where team_id is not null) s
+     ),
+     resolved as (
+       select p.id "personId", st.name "subteamName", t.name "teamName", sg.target_value "subteamGoal", tg.target_value "teamGoal"
        from people p
        left join subteams st on st.id = p.subteam_id
        left join teams t on t.id = p.team_id
+       left join goal_of sg on sg.kind = 'SUBTEAM' and sg.subject_id = p.subteam_id
+       left join goal_of tg on tg.kind = 'TEAM' and tg.subject_id = p.team_id
        where p.id = any($3::uuid[])
      )
      select "personId", coalesce("subteamGoal", "teamGoal") "effectiveGoal", ("subteamGoal" is not null) "fromSubteam", "subteamName", "teamName"

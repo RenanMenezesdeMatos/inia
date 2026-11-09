@@ -5,15 +5,27 @@ import { z } from "zod"
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
 import {
+  agentDeletionCheckSchema,
   agentHistoryEntrySchema,
+  agentPublishImpactSchema,
+  agentReferenceSummarySchema,
+  agentRunDetailSchema,
   agentRunSchema,
   agentSchema,
   agentTestResultSchema,
+  agentVersionDetailSchema,
+  agentVersionSchema,
   type Agent,
+  type AgentDeletionCheck,
   type AgentHistoryEntry,
+  type AgentPublishImpact,
+  type AgentReferenceSummary,
   type AgentRun,
+  type AgentRunDetail,
   type AgentTestResult,
   type AgentType,
+  type AgentVersion,
+  type AgentVersionDetail,
 } from "@/schemas/admin/agent.schema"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 
@@ -46,8 +58,54 @@ export async function fetchAgentRuns(id: string): Promise<AgentRun[]> {
   return z.array(agentRunSchema).parse(await adminGet(`/api/v1/admin/agents/${id}/runs`))
 }
 
-export async function testAgent(id: string, input: string): Promise<AgentTestResult> {
-  return agentTestResultSchema.parse(await adminSend(`/api/v1/admin/agents/${id}/test`, "POST", { input }))
+export async function fetchAgentRun(id: string, runId: string): Promise<AgentRunDetail> {
+  return agentRunDetailSchema.parse(await adminGet(`/api/v1/admin/agents/${id}/runs/${runId}`))
+}
+
+/** PEN-049: o teste usa o rascunho SALVO ou uma versão publicada (nunca alterações não salvas). */
+export type AgentTestTarget = { target: "DRAFT" } | { target: "VERSION"; versionId: string }
+
+export async function testAgent(id: string, input: string, target?: AgentTestTarget): Promise<AgentTestResult> {
+  return agentTestResultSchema.parse(await adminSend(`/api/v1/admin/agents/${id}/test`, "POST", { input, ...(target ?? {}) }))
+}
+
+export async function fetchAgentVersions(id: string): Promise<AgentVersion[]> {
+  return z.array(agentVersionSchema).parse(await adminGet(`/api/v1/admin/agents/${id}/versions`))
+}
+
+export async function fetchAgentVersion(id: string, versionId: string): Promise<AgentVersionDetail> {
+  return agentVersionDetailSchema.parse(await adminGet(`/api/v1/admin/agents/${id}/versions/${versionId}`))
+}
+
+const versionResultSchema = z.object({ version: z.object({ id: z.string(), number: z.number() }), agent: agentSchema })
+
+/** Prévia da publicação: consumidores afetados que a pessoa pode consultar e mudanças sensíveis em relação à vigente. */
+/** Prévia da publicação; com `versionId`, da reversão para essa versão (reverter também publica). */
+export async function fetchAgentPublishImpact(id: string, versionId?: string): Promise<AgentPublishImpact> {
+  const query = versionId ? `?versionId=${encodeURIComponent(versionId)}` : ""
+  return agentPublishImpactSchema.parse(await adminGet(`/api/v1/admin/agents/${id}/publish-impact${query}`))
+}
+
+export async function publishAgent(id: string, expectedDraftRevision?: number) {
+  return versionResultSchema.parse(await adminSend(`/api/v1/admin/agents/${id}/publish`, "POST", { expectedDraftRevision }))
+}
+
+export async function discardAgentDraft(id: string, expectedDraftRevision?: number): Promise<Agent> {
+  return agentSchema.parse(await adminSend(`/api/v1/admin/agents/${id}/draft/discard`, "POST", { expectedDraftRevision }))
+}
+
+export async function revertAgent(id: string, versionId: string, input: { discardDraft: boolean; expectedDraftRevision?: number }) {
+  return versionResultSchema.parse(await adminSend(`/api/v1/admin/agents/${id}/versions/${versionId}/revert`, "POST", input))
+}
+
+export async function fetchAgentDeletionCheck(id: string): Promise<AgentDeletionCheck> {
+  return agentDeletionCheckSchema.parse(await adminGet(`/api/v1/admin/agents/${id}/deletion-check`))
+}
+
+/** Referências mínimas (inclusive inativos, sem o cadastro) — editor de Workflow e de orquestrador. */
+export async function fetchAgentReferences(ids: string[]): Promise<AgentReferenceSummary[]> {
+  if (ids.length === 0) return []
+  return z.array(agentReferenceSummarySchema).parse(await adminGet(`/api/v1/admin/agents/references${toQueryString({ ids: [...new Set(ids)].sort().join(",") })}`))
 }
 
 export type CreateAgentInput = {
@@ -110,15 +168,16 @@ export async function updateAgentActive(id: string, active: boolean): Promise<Ag
   return agentSchema.parse(await adminSend(`/api/v1/admin/agents/${id}`, "PATCH", { active }))
 }
 
-export async function updateAgent(id: string, input: CreateAgentInput): Promise<Agent> {
-  return agentSchema.parse(await adminSend(`/api/v1/admin/agents/${id}`, "PATCH", agentPayload(input)))
+/** Salva o RASCUNHO (PEN-002). `expectedDraftRevision`: a revisão em que a edição se baseou (PEN-050 — 409 se outra pessoa gravou). */
+export async function updateAgent(id: string, input: CreateAgentInput, expectedDraftRevision?: number): Promise<Agent> {
+  return agentSchema.parse(await adminSend(`/api/v1/admin/agents/${id}`, "PATCH", { ...agentPayload(input), expectedDraftRevision }))
 }
 
 export async function deleteAgent(id: string): Promise<void> {
   await adminSend(`/api/v1/admin/agents/${id}`, "DELETE")
 }
 
-export async function fetchAgentPromptPreview(id: string): Promise<string> {
-  const result = await adminGet<{ prompt: string }>(`/api/v1/admin/agents/${id}/preview-prompt`)
+export async function fetchAgentPromptPreview(id: string, versionId?: string): Promise<string> {
+  const result = await adminGet<{ prompt: string }>(`/api/v1/admin/agents/${id}/preview-prompt${toQueryString({ versionId })}`)
   return result.prompt
 }

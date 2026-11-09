@@ -284,8 +284,8 @@ export async function replaceConnectionHeaders(context: AiAdminContext, actor: A
 }
 
 /**
- * Exclusão (§61): só sem dependência em política (ativa ou rascunho). Com histórico de uso, o
- * histórico continua (evento guarda provider/modelo por nome). Preferível: desabilitar.
+ * Exclusão lógica (§61, migration 177): só sem dependência em política (ativa ou rascunho). A conexão e os modelos dela saem das telas e do roteamento no mesmo instante, que é
+ * como a restauração sabe quais modelos voltam. Preços, histórico de uso e referência de política arquivada continuam. A credencial é revogada: restaurar exige informá-la de novo.
  */
 export async function deleteConnection(context: AiAdminContext, actor: Actor, id: string): Promise<void> {
   const current = await getConnection(context, actor.organizationId, id)
@@ -295,11 +295,9 @@ export async function deleteConnection(context: AiAdminContext, actor: Actor, id
   )
   if (deps.rows.length > 0) throw new DomainError(`A conexão é usada por política(s) de roteamento (${deps.rows.map((row) => `${row.use_case} ${row.status === "ACTIVE" ? "ativa" : "rascunho"}`).join(", ")}). Remova-a das políticas ou desabilite a conexão.`, "AI_CONNECTION_IN_USE", 409, { policies: deps.rows.map((row) => ({ useCase: row.use_case, status: row.status })) })
   await inTransaction(context.db, async (client) => {
-    // Políticas ARQUIVADAS que citam modelos desta conexão perdem só a referência (histórico de uso guarda os nomes).
-    await client.query(`delete from ai_routing_policy_models where model_id in (select id from ai_models where connection_id = $1)`, [id])
-    await client.query(`delete from ai_model_pricing where model_id in (select id from ai_models where connection_id = $1)`, [id])
-    await client.query(`delete from ai_models where connection_id = $1`, [id])
-    await client.query(`delete from ai_connections where organization_id = $1 and id = $2`, [actor.organizationId, id])
+    await client.query(`update ai_connection_secrets set revoked_at = now() where connection_id = $1 and revoked_at is null`, [id])
+    await client.query(`update ai_models_all set enabled = false, deleted_at = now(), deleted_by_person_id = $2, updated_at = now() where connection_id = $1 and deleted_at is null`, [id, actor.personId])
+    await client.query(`update ai_connections_all set enabled = false, deleted_at = now(), deleted_by_person_id = $3, updated_at = now() where organization_id = $1 and id = $2 and deleted_at is null`, [actor.organizationId, id, actor.personId])
   })
   await auditAi(context.db, actor, "AI_CONNECTION_DELETED", "ai_connection", id, { providerKey: current.providerKey, name: current.name })
   context.runtime.invalidate(actor.organizationId)

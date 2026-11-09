@@ -5,6 +5,7 @@ import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { buildStructuredOutputContract, type StructuredOutputDefinition } from "../domain/structured-output-definition.js"
 import { legacyAccessQuery } from "../../access/testing/legacy-admin-fixture.js"
+import { answerOrchestratorVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 /**
  * Construtor visual de resultado estruturado (2026-09-17): a API grava UMA definição e GERA as
@@ -82,6 +83,10 @@ function fakeDatabase(options: {
     if (sql.includes("from user_role_assignments")) return { rows: [], rowCount: 0 }
     const access = legacyAccessQuery(sql, ACCOUNT.role, [])
     if (access) return access
+    // Gravação do Orquestrador (PEN-076): fixa a versão do agente orquestrador e publica a versão nova — fora de `updates`, que
+    // registra só a gravação da configuração.
+    const versioning = answerOrchestratorVersionQuery(sql, params, { agentOf: (id) => (id === ORCH_AGENT_A ? { name: "Agente Orquestrador" } : undefined), orchestratorAgentOf: (id) => (id === ORCHESTRATOR_A ? ORCH_AGENT_A : undefined) })
+    if (versioning) return versioning as { rows: Row[]; rowCount: number }
     if (sql.includes("select structured_output, output_schema, output_instructions from assistant_orchestrators")) return { rows: [options.current], rowCount: 1 }
     if (sql.includes("from assistant_orchestrators where id = $1")) return { rows: [{ scopeType: "TEAM", teamId: TEAM_A, subteamId: null }], rowCount: 1 }
     if (sql.includes("from assistant_orchestrator_specialists where orchestrator_id")) return { rows: [], rowCount: 0 }

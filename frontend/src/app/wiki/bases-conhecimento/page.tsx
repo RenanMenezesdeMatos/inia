@@ -4,11 +4,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CapabilityBadge, ExampleCard, FieldRow, SeeAlso, StepList, UseCases, WarningCallout, WikiArticle, WikiFlow, WikiLink, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
 import type { WikiTocEntry } from "@/components/wiki/wiki-toc"
 import { AUDITED_KNOWLEDGE_BASES, KNOWLEDGE_DOMAIN_LABELS, KNOWLEDGE_USE_CASES } from "@/components/wiki/ai-catalog-data"
-import { DOCUMENT_TYPE_LABELS, KNOWLEDGE_STATUS_LABELS } from "@/schemas/admin/knowledge.schema"
+import { DOCUMENT_TYPE_LABELS, KNOWLEDGE_SITUATION_LABELS, KNOWLEDGE_STATUS_FILTER_LABELS } from "@/schemas/admin/knowledge.schema"
 
 export const metadata: Metadata = {
   title: "Bases de Conhecimento",
-  description: "O que é uma base, como criar (campos reais), Rascunho/Publicado, vínculo com Agents, retrieval por trechos (lexical/BM25 — sem embeddings), orçamento, evidência de base, Conformidade de processo e o catálogo auditado.",
+  description: "O que é uma base, como criar (campos reais), versão em uso, rascunho e atualização, histórico comparável, vínculo com Agents, retrieval por trechos (lexical/BM25 — sem embeddings), orçamento, evidência de base, Conformidade de processo e o catálogo auditado.",
 }
 
 const TOC: WikiTocEntry[] = [
@@ -16,7 +16,9 @@ const TOC: WikiTocEntry[] = [
   { id: "quando-usar", label: "Quando usar / não usar" },
   { id: "como-criar", label: "Como criar uma base" },
   { id: "campos", label: "Os campos, um a um" },
-  { id: "status", label: "Rascunho, Publicado, Arquivado" },
+  { id: "pdf", label: "PDF: o que a IA recebe" },
+  { id: "status", label: "Em uso, rascunho e atualização" },
+  { id: "historico", label: "Histórico, comparação e reversão" },
   { id: "vinculo", label: "Vínculo com Agents" },
   { id: "retrieval", label: "Retrieval: como a IA usa a base" },
   { id: "orcamento", label: "Orçamento de conhecimento" },
@@ -71,8 +73,8 @@ export default function KnowledgeBasesPage() {
             { title: "Título e Tipo de documento", detail: <>Informe o <strong>Título</strong> (é o nome exato que a IA cita como evidência) e escolha o <strong>Tipo de documento</strong>: {Object.values(DOCUMENT_TYPE_LABELS).join(", ")}.</> },
             { title: "Conteúdo: Colar texto ou Enviar arquivo", detail: <>Na aba <strong>Colar texto</strong>, cole o procedimento, manual, FAQ ou fluxo — títulos com <code>#</code>, listas, negrito e tabelas são exibidos formatados e os títulos definem as seções do retrieval. Na aba <strong>Enviar arquivo</strong>, envie PDF, DOCX, TXT ou JSON — o texto é extraído (na edição aparece como “Texto extraído do arquivo”).</> },
             { title: "Alcance por grupo e Alcance por assunto", detail: "Defina em quais Grupos/Subgrupos a base vale (entra pré-selecionada nos Agents daquele grupo) e, opcionalmente, o Assunto." },
-            { title: "Salvar", detail: "A base nasce como Rascunho." },
-            { title: "Publicar", detail: <>Na página da base, clique em <strong>Publicar</strong>. Só bases publicadas entram no runtime dos Agents. Para tirar de circulação, <strong>Arquivar</strong>.</> },
+            { title: "Salvar", detail: "A base nasce como Rascunho (V1). A página mostra “Em uso pela IA: nenhuma versão pronta”." },
+            { title: "Publicar", detail: <>Na página da base, clique em <strong>Publicar</strong> na linha do rascunho. A versão passa pelo processamento e só entra em uso quando fica pronta. Para tirar de circulação, <strong>Arquivar</strong>. Ver <WikiLink href="/wiki/bases-conhecimento#status">Em uso, rascunho e atualização</WikiLink>.</> },
             { title: "Vincular a um Agent", detail: <>Em <strong>Admin › Agentes</strong>, abra o Agent do domínio e mova a base para “Selecionadas” em <strong>Bases de conhecimento consultadas</strong>. Ver <WikiLink href="/wiki/agents#como-criar">Como criar um Agent</WikiLink>.</> },
           ]}
         />
@@ -81,18 +83,96 @@ export default function KnowledgeBasesPage() {
       <WikiSection id="campos" title="Os campos, um a um" eyebrow="1:1 com o formulário">
         <FieldRow label="Título" value="Nome do documento — a IA cita o título exato como evidência de base." />
         <FieldRow label="Tipo de documento" value={`${Object.values(DOCUMENT_TYPE_LABELS).join(", ")}.`} />
-        <FieldRow label="Conteúdo" value="Texto colado (formatação leve) ou texto extraído de PDF/DOCX/TXT/JSON. Alterar o conteúdo cria uma nova versão." />
+        <FieldRow label="Conteúdo" value="Texto colado (formatação leve) ou texto extraído de PDF/DOCX/TXT/JSON. Na edição, fica no rascunho até ele ser publicado e ficar pronto." />
+        <FieldRow label="Arquivo do rascunho (edição)" value="“Trocar arquivo” envia outro PDF/DOCX/TXT/JSON para o rascunho, e o texto passa a ser o extraído dele; a versão anterior continua com o arquivo dela. Se não der para extrair o texto, a tela avisa: dá para digitar o texto, e publicar sem texto falha no processamento, sem tirar do ar a versão em uso." />
+        <FieldRow label="Resumo da alteração (edição e Publicar)" value="Opcional. O que mudou e por quê, mostrado no histórico de versões." />
         <FieldRow label="Alcance por grupo" value="Todos os grupos, Grupo ou Subgrupo — governa a pré-seleção nos Agents e o escopo administrativo." />
         <FieldRow label="Alcance por assunto" value="Assunto opcional, para organizar o catálogo." />
-        <FieldRow label="Status" value={`${Object.values(KNOWLEDGE_STATUS_LABELS).join(", ")} (editável na edição; Publicar/Arquivar também pela ação da página).`} />
+        <FieldRow label="Vale para (produtos)" value="Todos os produtos ou só alguns. Faz parte da versão: fica no rascunho e só vale quando a versão entrar em uso, sem mudar nada antes disso. Mudar exige alcance de organização, para salvar e para publicar. Chamadas já analisadas continuam com o que valia na época." />
+        <FieldRow label="Status" value="Não é um campo: vem do ciclo de vida da versão. O formulário de edição não tem seletor de status." />
       </WikiSection>
 
-      <WikiSection id="status" title="Rascunho, Publicado, Arquivado" eyebrow="Runtime só usa Publicado">
-        <WarningCallout title="Só bases publicadas entram no runtime">
-          O retrieval só enxerga documentos vinculados ao Agent, <strong>publicados</strong>, não excluídos e da organização. Uma base em Rascunho,
-          Aprovado ou Arquivado — mesmo vinculada — é invisível para a IA. Uma base que existe no sistema mas não foi autorizada ao Agent também.
+      <WikiSection id="pdf" title="PDF: o que a IA recebe e o que você vê" eyebrow="Títulos, listas, tabelas, imagens e a página de cada trecho">
+        <p>
+          Ao enviar um PDF, a INIA guarda o arquivo como veio e converte o conteúdo em Markdown: títulos viram seções, listas continuam listas e
+          tabelas mantêm cada valor na linha e na coluna certas. Cabeçalhos e rodapés repetidos saem do texto; um texto fixo fica uma vez. Quando o PDF
+          traz a própria estrutura (tags, como os gerados pelo Word ou pelo navegador), ela vale primeiro. Sem ela, a conversão usa o tamanho da fonte, o
+          negrito, o recuo e as bordas desenhadas. <strong className="font-medium text-foreground">Na dúvida, o texto fica como está, na melhor ordem disponível:</strong>{" "}
+          nada de título, célula ou item inventado.
+        </p>
+        <p>
+          Na aba <strong className="font-medium text-foreground">O que a IA lê</strong> da base aparecem os trechos que a busca e a IA recebem, com a seção e a
+          página de cada um, e a cobertura do arquivo. Na tela, as linhas seguem o documento; a IA recebe as mesmas palavras, na mesma ordem. Clicar numa página abre o PDF nela. A fonte de uma resposta no chat traz a página, que sai do
+          registro da conversão, nunca da IA, e o link abre o material nessa página.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">As imagens do PDF, como prints de uma instrução de trabalho, ficam para quem lê.</strong>{" "}
+          A base abre como um conteúdo cadastrado, com o texto e cada imagem no lugar dela, e o <strong className="font-medium text-foreground">PDF original</strong> fica a um clique.
+          Na resposta do chat, as imagens da seção usada como fonte aparecem abaixo do texto, sem precisar abrir o arquivo: quatro de início, e o resto em Ver mais. Quem escolhe é o sistema, pela posição
+          da imagem no documento. A IA não recebe imagens e não sabe o que há nelas, por isso uma imagem sem texto por perto dificilmente chega a uma resposta. Elas seguem o mesmo acesso do material e podem mostrar dados que estavam na tela
+          capturada: confira o print antes de publicar a base.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">PDF digitalizado, em que não dá para selecionar o texto, é lido por OCR.</strong>{" "}
+          O envio cria o rascunho na hora, com o texto das páginas que já têm texto, e as páginas digitalizadas são lidas em segundo plano, uma por vez. A tela
+          da base mostra o andamento e se atualiza sozinha. Enquanto isso, publicar e editar o texto ficam esperando. Os prints de tela que estavam na página são
+          separados como imagem, sem o texto de dentro, para a letra da tela não se misturar ao conteúdo. O resto passa pelo mesmo conversor, com títulos e listas.
+          O texto lido da imagem pode ter erros de leitura e não sabe o que é negrito. Tabela de página digitalizada é montada pela posição das colunas:
+          célula com mais de uma linha pode virar duas linhas da tabela, e tabela sem colunas claras sai como texto.{" "}
+          <strong className="font-medium text-foreground">Confira o rascunho com o PDF antes de publicar, principalmente números, prazos e valores.</strong>{" "}
+          A leitura é feita no próprio servidor, sem enviar o arquivo a outro serviço.
+        </p>
+        <FieldRow label="Lidas por OCR" value="O texto dessas páginas veio da imagem da página. Cada página da lista abre no PDF, para conferir. O aviso também diz quantos prints foram separados como imagem e se alguma página passou do limite de 300 páginas lidas por documento." />
+        <FieldRow label="Sem texto, parecem digitalizadas" value="Página só com imagem em que o OCR não leu nada (ou que ainda está na fila): o que está nela não chega à IA. As demais páginas do arquivo continuam valendo." />
+        <FieldRow label="Print de tela não separado" value="A identificação dos prints é conservadora: na dúvida, o print fica como texto, porque cortar texto do documento seria pior. Nos manuais medidos que a identificação não tinha visto antes, de um quinto à metade dos prints foram separados; os outros aparecem como texto, com as palavras da tela. Raramente uma tabela ou um quadro de letra pequena com fundo é separado como imagem: o texto dele aparece como imagem no rascunho e não chega à IA." />
+        <FieldRow label="Com imagem grande" value="O texto da página foi lido, mas não o que está dentro da imagem (print de tela, tabela em figura). A imagem aparece no texto para quem lê; a IA não a recebe." />
+        <FieldRow label="Quando o PDF abre em vez do conteúdo" value="PDF com a maior parte das páginas sem texto legível (por exemplo, digitalizado em que a leitura por OCR não achou texto), e versão convertida antes da leitura de imagens. Gráficos e desenhos que não são imagem (feitos com linhas no próprio PDF) só aparecem no PDF original." />
+        <FieldRow label="Texto ilegível" value="O arquivo guarda caracteres sem correspondência legível. A página fica de fora do texto, em vez de levar lixo para a IA." />
+        <WarningCallout title="Reprocessar o arquivo original">
+          Bases enviadas antes da conversão continuam como estão: nada é reescrito sozinho. Em <strong className="font-medium text-foreground">Reprocessar arquivo original</strong>,
+          a conversão atual gera um rascunho a partir do mesmo arquivo, a versão em uso não muda e a comparação de versões diz quantas palavras entraram ou saíram. É também o que traz as imagens para o texto de uma base enviada antes disso. Só vale depois de publicar.
         </WarningCallout>
-        <p>Versões: alterar o conteúdo cria uma nova versão (a página mostra &quot;versão N&quot;); título, tipo, status e alcance são atualizados no registro.</p>
+      </WikiSection>
+
+      <WikiSection id="status" title="Em uso, rascunho e atualização" eyebrow="A IA só usa a versão em uso">
+        <WarningCallout title="Só a versão em uso entra no runtime">
+          O retrieval só enxerga documentos vinculados ao Agent, com versão <strong>em uso</strong>, não excluídos e da organização. Salvar um rascunho ou
+          pedir a publicação não muda o que a IA consulta: a versão só passa a valer quando está publicada, processada e pronta. Uma base sem versão
+          pronta ou arquivada, mesmo vinculada, é invisível para a IA. Uma base que existe no sistema mas não foi autorizada ao Agent também.
+        </WarningCallout>
+        <p>A base mantém a identidade entre as versões. A página de detalhe separa três informações, sem misturar:</p>
+        <FieldRow label="Em uso pela IA" value="O destaque da tela, no formato “Em uso pela IA: V4 · Publicada”. Sem versão pronta: “Em uso pela IA: nenhuma versão pronta”. Arquivada: “Base arquivada: fora de uso pela IA”. O conteúdo mostrado no detalhe é o desta versão; sem versão em uso, o da versão em edição, com o aviso de que ainda não está disponível para a IA." />
+        <FieldRow label="Rascunho: V5" value="A edição em andamento, com quem salvou e quando, Publicar e Descartar. Há um rascunho por base. Editar grava nele título, tipo, alcance, assuntos, conteúdo e arquivo, e salvar sem mudança não cria versão. Descartar não afeta o que está em uso; base que só tem o rascunho se retira com Excluir." />
+        <FieldRow label="Atualização: V5 · Processando ou Falha" value="A publicação pedida. Enquanto processa, a anterior continua em uso e a página se atualiza sozinha. Na falha, a anterior continua em uso, a tela mostra o motivo e oferece Tentar novamente." />
+        <WikiFlow
+          compact
+          steps={[
+            { label: "Salvar rascunho", detail: "nada muda no que a IA usa", tone: "input" },
+            { label: "Publicar", detail: "com resumo da alteração opcional", tone: "core" },
+            { label: "Processando", detail: "a anterior continua em uso", tone: "core" },
+            { label: "Pronta: em uso para todos", detail: "agentes, Workflows e orquestradores, sem republicá-los", tone: "ai" },
+          ]}
+        />
+        <FieldRow label="Publicar" value="Vale para todos os agentes, Workflows e orquestradores que usam a base, na próxima consulta, sem republicá-los. Conteúdo e configuração da versão passam a valer juntos. Consultas já iniciadas terminam com a versão com que começaram, e cada consulta registra a versão usada." />
+        <FieldRow label="Arquivar" value="Disponível sempre que há versão em uso, mesmo com rascunho por cima. A base sai de uso na hora, sem criar versão; o rascunho é mantido e uma atualização em processamento é cancelada." />
+        <FieldRow label="Reativar" value="Devolve a mesma versão arquivada: já pronta, vale na hora; nunca publicada, passa antes pelo processamento. Publicar um rascunho em base arquivada também faz ela voltar a valer, e por isso nunca acontece sem a confirmação à parte: sem ela, nada muda. Confirmada, a base continua arquivada enquanto a versão processa e se ela falhar, e só volta quando a versão fica pronta. Tentar de novo e reverter pedem a mesma confirmação." />
+        <FieldRow label="Conclusão fora de ordem" value="Se uma versão mais nova ficar pronta antes, a mais antiga nunca a substitui: fica como “Não entrou em uso”." />
+        <FieldRow label="Na lista" value={`O status é o da versão em uso, com o número (“V4 · Publicada”), e selos à parte para “Rascunho V5” e “Atualização V5 · Processando” ou “· Falha”. Base sem versão pronta aparece como “Sem versão pronta”. O filtro Status (${Object.values(KNOWLEDGE_STATUS_FILTER_LABELS).join(", ")}) olha esse status: rascunho ou atualização por cima de uma versão em uso continua sendo “Publicada” no filtro.`} />
+        <FieldRow label="No seletor de bases do Agent" value="Base sem versão pronta ganha o selo “Sem versão disponível”: pode ser selecionada, mas o Agent não a consulta até haver uma versão pronta." />
+      </WikiSection>
+
+      <WikiSection id="historico" title="Histórico, comparação e reversão" eyebrow="Na página da base, aba Histórico de versões">
+        <p>
+          Versões publicadas não mudam. A tabela mostra, da mais nova para a mais antiga: número, situação, autor, data, resumo da alteração, quantas
+          consultas usaram a versão e, quando for o caso, “origem: reversão da V3”. Dado que a versão não guardou aparece como “Não registrado”, nunca
+          inventado. As consultas passaram a ser contadas com este registro, então uma versão antiga pode ter sido usada sem aparecer na contagem.
+        </p>
+        <FieldRow label="Situações" value={Object.values(KNOWLEDGE_SITUATION_LABELS).join(", ")} />
+        <FieldRow label="Versão fora do seu alcance" value="Uma versão que valia para Grupos fora do escopo de quem lê aparece só com número, situação e “Sem acesso a esta versão”, sem ações. A permissão da base vale também para conteúdos e arquivos antigos, inclusive por acesso direto à API." />
+        <FieldRow label="Ver e baixar" value="Cada versão abre com o conteúdo, a configuração e o arquivo dela, para ler ou baixar." />
+        <FieldRow label="Comparar" value="Marque duas versões e clique em Comparar. A comparação vai sempre da mais antiga para a mais nova e identifica a vigente. Mostra a configuração (o que entrou, saiu e mudou), o arquivo (“Arquivo trocado: A → B”, adicionado, removido ou sem mudança) e o texto lado a lado, com a contagem de linhas adicionadas, removidas e alteradas. Trechos longos de linhas iguais ficam recolhidos." />
+        <FieldRow label="Quando não dá para comparar" value="A tela diz: “A configuração da versão N não foi registrada”, para versões anteriores a esse registro; “Não há texto extraído da versão N: só dá para informar a troca do arquivo”; “As versões são grandes demais para comparar aqui”." />
+        <FieldRow label="Reverter" value="Para versão que já ficou pronta e não é a vigente. Publica o conteúdo dela como uma versão NOVA, sem apagar nenhuma, e passa pelo processamento como qualquer publicação. Com rascunho em edição, pede a confirmação de descartá-lo; em base arquivada, a de que ela volta a valer. Versão sem configuração registrada volta só com o conteúdo, sobre a configuração em uso." />
       </WikiSection>
 
       <WikiSection id="vinculo" title="Vínculo com Agents" eyebrow="Base autorizada ≠ conteúdo do prompt">
@@ -196,7 +276,7 @@ export default function KnowledgeBasesPage() {
         </p>
         <FieldRow label="Página do material" value="Cada base publicada tem uma página de leitura para quem pode acessá-la (o mesmo documento que o Admin mantém em Base de conhecimento, sem ações de edição): texto formatado, PDF, DOCX ou texto do arquivo, com download do original." />
         <FieldRow label="Quem pode abrir" value="O alcance da base decide: “Todos os grupos” abre para a organização inteira; Grupo/Subgrupo abre para quem está neles e para a gestão que lidera alguém deles. Rascunho, Arquivado, base excluída ou sem alcance cadastrado não abrem para ninguém além de quem administra bases (papel com “Administrar bases de conhecimento” no escopo da base; base sem alcance, só na organização inteira) — e nunca viram link num feedback." />
-        <FieldRow label="Despublicar depois" value="O feedback histórico continua íntegro; a recomendação passa a aparecer como “não está mais disponível”, sem título e sem link." />
+        <FieldRow label="Arquivar depois" value="O feedback histórico continua íntegro; a recomendação passa a aparecer como “não está mais disponível”, sem título e sem link." />
       </WikiSection>
 
       <WikiSection id="esclarecimento" title="Esclarecimento de perguntas ambíguas" eyebrow="Perguntar antes de responder — sempre pelas bases">
@@ -234,7 +314,7 @@ export default function KnowledgeBasesPage() {
           <strong className="font-medium text-foreground">estabelecido</strong> pelas evidências da chamada.
         </p>
         <FieldRow label="Produtos e categorias" value="Os produtos da operação (dados, nunca código — o código técnico é gerado pelo nome e não aparece). Cadastro: nome, categoria (opcional, criada no próprio seletor; serve quando uma base ou um indício vale para todos os produtos dela) e como o cliente e a operação chamam o produto — é com esses nomes que a INIA o reconhece quando alguém fala dele." />
-        <FieldRow label="Vale para (não é 1×1)" value="Cada documento da base e cada argumentário vale para todos os produtos (padrão) ou só para alguns; marcar uma categoria vale para os produtos dela. Escolha no editor da base ou do argumentário (Vale para) ou no detalhe do produto (Adicionar base / Tirar) — é o mesmo registro. A lista de bases mostra a coluna Produtos. Mudar vale a partir da mudança: chamadas anteriores continuam avaliadas com o que valia na época." />
+        <FieldRow label="Vale para (não é 1×1)" value="Cada documento da base e cada argumentário vale para todos os produtos (padrão) ou só para alguns; marcar uma categoria vale para os produtos dela. Escolha no editor da base ou do argumentário (Vale para) ou no detalhe do produto (Adicionar base / Tirar) — é o mesmo registro. A lista de bases mostra a coluna Produtos. Numa base, a mudança fica no rascunho e vale quando a versão entrar em uso; num argumentário, vale a partir da mudança. Chamadas anteriores continuam avaliadas com o que valia na época." />
         <FieldRow label="Indícios — como reconhecer o produto na chamada" value="Em um passo: o que aparece na chamada (ex.: o começo do número da conta), se confirma o produto (sob a condição escrita em “Confirma quando”) ou apenas sugere, e de onde vem; em Mais detalhes, outros produtos que ele indica, em que situação vale, exceções, documento da base e data de início. “Salvar e usar” põe em uso na hora (a vigência nunca começa antes); “Salvar como rascunho” guarda para depois. Versões aprovadas não mudam; Encerrar/Reativar. A análise só considera indícios em uso na data da chamada; um indício que apenas sugere nunca basta sozinho." />
         <FieldRow label="Na análise da chamada" value="A IA separa cada pedido, o objeto dele (conta, contrato, linha, produto, serviço) e as evidências com a origem e o trecho; diferencia produto identificado, só a categoria, mais de um possível, não identificado e evidências em conflito. Menção em negação, hipótese, outro contrato ou corrigida depois não prova o produto; o procedimento que o operador executou também não. A fala do operador que diz ou confirma o produto vale quando o cliente deu, sobre o mesmo pedido, um contexto compatível (a conta, a linha, o serviço); sozinha, só sugere. A IA recebe os números com o formato preservado (o começo, a quantidade de dígitos, o DDD) — o bastante para os indícios, nunca o número inteiro; número cortado ou incerto fica como limitação e nunca é reconstruído." />
         <FieldRow label="Quando o produto não fica estabelecido" value="Os pontos que dependem dele ficam sem avaliação (nem falha, nem acerto) e não são cobrados; os pontos que não dependem do produto, ou que valem para todos os produtos ainda possíveis, continuam avaliados e o feedback acontece com eles. Em “Vale confirmar”, o bloco “Depende do produto” mostra, com o texto literal de cada base, o que o procedimento de cada produto possível pede — informação, não avaliação. Se nada útil sobra, não há feedback, com o motivo registrado. Nunca se escolhe o produto mais comum." />
@@ -424,7 +504,6 @@ export default function KnowledgeBasesPage() {
         <ul className="list-inside list-disc space-y-1">
           <li>Retrieval é lexical (BM25 sobre trechos), não semântico: sinônimos sem radical em comum podem não casar. Embeddings ficam como evolução — a interface não muda.</li>
           <li>Conformidade de processo exige transcrição (gatilho por Flag de canal).</li>
-          <li>Não há versionamento visual/diff entre versões de uma base — só o número da versão atual.</li>
         </ul>
         <SeeAlso
           links={[

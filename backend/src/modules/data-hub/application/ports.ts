@@ -21,18 +21,21 @@ export interface SecretStore {
   describe(sourceId: string): Promise<{ purpose: SecretPurpose; createdAt: string; rotatedAt: string | null }[]>
 }
 
-export type RawObjectMeta = { id: string; filename: string | null; contentType: string; byteSize: number; checksumSha256: string; createdAt: string; expiresAt: string }
+export type RawObjectMeta = { id: string; sourceId: string | null; filename: string | null; contentType: string; byteSize: number; checksumSha256: string; createdAt: string; expiresAt: string }
 
 /** Objetos brutos (arquivos, payloads) — hoje Postgres (bytea), amanhã S3 sem tocar o domínio. */
 export interface RawObjectStore {
   put(input: { organizationId: string; sourceId: string | null; feedId: string | null; filename: string | null; contentType: string; content: Uint8Array; retentionDays?: number }): Promise<RawObjectMeta>
   /** `organizationId` sempre que o id veio da requisição (nunca ler o arquivo de outra organização pelo id). */
   get(id: string, organizationId?: string): Promise<{ meta: RawObjectMeta; content: Uint8Array } | null>
+  /** Só os metadados (existe? checksum, tamanho) — sem trazer o conteúdo (até 50 MB) do banco. Mesmo escopo de `get`. */
+  getMeta(id: string, organizationId?: string): Promise<RawObjectMeta | null>
   /** Remove objetos expirados; devolve quantos saíram. */
   purgeExpired(now?: Date): Promise<number>
 }
 
-export type HttpRequest = { url: string; method: "GET" | "POST"; headers: Record<string, string>; body?: string; timeoutMs: number }
+/** `statusOnly`: só o status e os cabeçalhos interessam; o corpo não é baixado e `body` volta vazio. */
+export type HttpRequest = { url: string; method: "GET" | "POST"; headers: Record<string, string>; body?: string; timeoutMs: number; statusOnly?: boolean }
 export type HttpResponse = { status: number; headers: Record<string, string>; body: string }
 
 export interface HttpClient {

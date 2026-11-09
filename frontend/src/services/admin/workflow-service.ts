@@ -31,6 +31,14 @@ import {
   type ManualRunInteraction,
   type ManualRunMeasurement,
 } from "@/schemas/admin/workflow-manual-run.schema"
+import {
+  workflowExecutionAgentRecordSchema,
+  workflowRetryPreviewSchema,
+  workflowRetryResultSchema,
+  type WorkflowExecutionAgentRecord,
+  type WorkflowRetryPreview,
+  type WorkflowRetryResult,
+} from "@/schemas/admin/workflow-retry.schema"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import type { ConsolidatedStructure } from "@/schemas/admin/consolidated-structure-schema"
 import type { PopulationFilter } from "@/schemas/admin/population-filter-schema"
@@ -109,6 +117,21 @@ export async function submitHumanReviewDecision(
   decision: HumanReviewDecision,
 ): Promise<void> {
   await adminSend(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/decision`, "POST", { nodeId, decision })
+}
+
+/** Prévia da nova tentativa de uma execução bloqueada: o que será usado se confirmada agora (PEN-073 a PEN-075). */
+export async function fetchWorkflowRetryPreview(workflowId: string, enrollmentId: string): Promise<WorkflowRetryPreview> {
+  return workflowRetryPreviewSchema.parse(await adminGet(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/retry`))
+}
+
+/** Confirma a nova tentativa com a impressão digital da prévia vista — o servidor confere tudo de novo antes de criar. */
+export async function confirmWorkflowRetry(workflowId: string, enrollmentId: string, fingerprint: string): Promise<WorkflowRetryResult> {
+  return workflowRetryResultSchema.parse(await adminSend(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/retry`, "POST", { fingerprint }))
+}
+
+/** "Ver histórico desta execução" (PEN-071): só as execuções de agente desta execução do Workflow. */
+export async function fetchWorkflowExecutionAgentRecords(workflowId: string, enrollmentId: string): Promise<WorkflowExecutionAgentRecord[]> {
+  return z.array(workflowExecutionAgentRecordSchema).parse(await adminGet(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/agent-records`))
 }
 
 export type CreateWorkflowInput = { name: string; description?: string; orgScope: OrgScopeValue; trigger: WorkflowTriggerInput }

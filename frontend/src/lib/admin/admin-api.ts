@@ -52,6 +52,13 @@ export async function adminGetBlob(path: string): Promise<{ blob: Blob; filename
   return { blob: await response.blob(), filename: filenameFromDisposition(response.headers.get("content-disposition")) }
 }
 
+/** POST que devolve arquivo (filtros no corpo, sem ir para a URL). Erro antes de o arquivo começar chega como `AdminApiError`. */
+export async function adminPostForBlob(path: string, body: unknown): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await fetch(`${API_URL}${path}`, { method: "POST", credentials: "include", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  if (!response.ok) throw await parseError(response)
+  return { blob: await response.blob(), filename: filenameFromDisposition(response.headers.get("content-disposition")) }
+}
+
 export async function adminSend<T>(path: string, method: "POST" | "PATCH" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     method,

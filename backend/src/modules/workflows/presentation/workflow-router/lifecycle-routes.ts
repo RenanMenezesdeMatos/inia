@@ -3,18 +3,20 @@ import { z } from "zod"
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
 import { canManageScope, getManageableScopes } from "../../../auth/application/manageable-scopes.js"
-import { flowGraphSchema } from "../../domain/graph-schema.js"
+import { parseDraftGraph } from "../../domain/draft-graph.js"
 import { findEmployeeCollectionConflict, findIndividualOnlyConflict, throwConflict, validateFanOutConvergence, validateWorkflowForPublish } from "../../application/validate-workflow-for-publish.js"
 import { computeGoLiveImpact } from "../../application/go-live-impact.js"
 import { draftConfigurationOf, publishWorkflow } from "../../application/publish-workflow.js"
 import { discardDraftConfiguration, writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
+import { deleteWorkflowLogically } from "../../application/logical-workflow-deletion.js"
 import { consolidatedStructureAnchorId, consolidatedStructureSchema } from "../../domain/consolidated-structure-schema.js"
 import { populationFilterAnchorId, populationFilterGroupRef, populationFilterSchema } from "../../domain/population-filter-schema.js"
 import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, normalizedPopulationFilter, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
 
-const saveDraftSchema = z.object({ graph: flowGraphSchema })
+// O grafo é lido por `parseDraftGraph`: o rascunho aceita em branco o que a pessoa ainda vai preencher; só publicar exige tudo.
+const saveDraftSchema = z.object({ graph: z.unknown() })
 
 /** O `fingerprint` do impacto que a pessoa viu e confirmou (go-live-impact.ts) — exigido quando o impacto pede confirmação. */
 const publishSchema = z.object({ confirmation: z.string().trim().min(1).max(64).optional() })
@@ -34,13 +36,14 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
   router.put("/:id/draft", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
     const input = saveDraftSchema.parse(request.body)
+    const graph = parseDraftGraph(input.graph)
     const current = await fetchScopedRow(db, organizationId, request.params.id!)
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     await db.query(`update workflows set draft_graph = $1, updated_at = now() where id = $2 and organization_id = $3`, [
-      JSON.stringify(input.graph),
+      JSON.stringify(graph),
       request.params.id,
       organizationId,
     ])
@@ -76,7 +79,7 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
       // Performance do colaborador (Condition) e "O próprio operador" (Output) só fazem sentido
       // com um colaborador individual — bloqueia a troca de modo ANTES de gravar, em vez de
       // deixar isso só pro publish (Parte 29 do pedido: explicar o que precisa mudar primeiro).
-      const draftGraph = flowGraphSchema.parse(current.draftGraph)
+      const draftGraph = parseDraftGraph(current.draftGraph)
       const conflict = findIndividualOnlyConflict(draftGraph) ?? findEmployeeCollectionConflict(draftGraph) ?? validateFanOutConvergence(draftGraph)
       if (conflict) throwConflict(conflict)
       // A pessoa-âncora (Supervisor/Coordenador/Gerente/Gerente Sênior/Diretor) ou o Subgrupo/
@@ -202,7 +205,9 @@ export function registerWorkflowLifecycleRoutes(router: Router, db: Database): v
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
-    await db.query(`delete from workflows where id = $1 and organization_id = $2`, [request.params.id, organizationId])
+    // Exclusão lógica: nada é apagado, e o histórico continua na Central de Dados.
+    const deleted = await deleteWorkflowLogically(db, { organizationId, workflowId: request.params.id!, actorPersonId: sessionUser(request).personId ?? null })
+    if (!deleted) return response.status(404).json(NOT_FOUND)
     response.status(204).send()
   })
 }

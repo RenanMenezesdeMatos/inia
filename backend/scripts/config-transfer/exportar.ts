@@ -145,11 +145,11 @@ try {
     const versoes = (await client.query<{ version: number; status: string; content: string }>(`select version, status, content from knowledge_versions where document_id = $1 order by version`, [row.id])).rows
     const publicada = [...versoes].reverse().find((versao) => versao.status === "PUBLISHED") ?? null
     const ultima = versoes[versoes.length - 1] ?? null
-    const rascunho = ultima && ultima !== publicada && (!publicada || ultima.version > publicada.version) && ultima.status !== "ARCHIVED" ? ultima : null
+    const rascunho = ultima && ultima !== publicada && (!publicada || ultima.version > publicada.version) && (ultima.status === "DRAFT" || ultima.status === "APPROVED") ? ultima : null
     const escopos = (await client.query<{ scope_type: string; team_id: string | null; subteam_id: string | null }>(`select scope_type, team_id, subteam_id from knowledge_document_org_scopes where knowledge_document_id = $1`, [row.id])).rows
     const assuntos = (await client.query<{ scope_type: string; subject_id: string | null }>(`select scope_type, subject_id from knowledge_document_subject_scopes where knowledge_document_id = $1`, [row.id])).rows
     const porAssunto = assuntos.filter((assunto) => assunto.scope_type === "SUBJECT" && assunto.subject_id).map((assunto) => assuntoPorId.get(assunto.subject_id!) ?? "?")
-    const arquivo = (await client.query<{ file_data: Buffer; checksum: string }>(`select file_data, checksum from knowledge_files where knowledge_document_id = $1 limit 1`, [row.id])).rows[0]
+    const arquivo = (await client.query<{ file_data: Buffer; checksum: string }>(`select f.file_data, f.checksum from knowledge_files f where f.knowledge_document_id = $1 order by f.id = (select v.file_id from knowledge_versions v where v.document_id = f.knowledge_document_id and v.status in ('PUBLISHED', 'ARCHIVED') order by v.version desc limit 1) desc nulls last, f.created_at desc limit 1`, [row.id])).rows[0]
     const chave = titulosUsados.has(row.title) ? `${row.title} #${row.id.slice(0, 8)}` : row.title
     titulosUsados.add(chave)
     tituloDaBase.set(row.id, chave)

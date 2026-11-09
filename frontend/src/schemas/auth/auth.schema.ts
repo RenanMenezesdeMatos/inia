@@ -47,10 +47,15 @@ export const accessCapabilitiesSchema = z.object({
   canAssignRoles: capability,
   canManagePeople: capability,
   canManageAgents: capability,
+  /** Listar, consultar, reativar e excluir agentes inativos (PEN-001/PEN-068; perfis da Vivo: PEN-032). */
+  canManageInactiveAgents: capability,
   canManageKnowledge: capability,
   canManageWorkflows: capability,
   canManageConfiguration: capability,
   canManageDataHub: capability,
+  /** Consulta somente leitura dos dados aprovados da Central (Administrador geral e Administrador de dados). */
+  canExploreData: capability,
+  canOpenUsersAndAccess: capability,
   canViewAi: capability,
   canUseQaLab: capability,
   canReviewFeedback: capability,

@@ -1,3 +1,7 @@
+import { isRecognitionSkippedOutput } from "./recognition-fact.js"
+import { ApplicationInvariantError } from "../../../shared/domain/execution-failure.js"
+import { MISSING_CONTENT_MESSAGES, missingContentCauseOf } from "../domain/execution-block.js"
+import { describeScalarValue, isAbsentContent, resolveContextValue } from "./execution-context.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { deliverySkipText, type DeliverySkip } from "../../feedback-engine/domain/delivery-guards.js"
 import { readSupportMaterials, type SupportMaterialRejection } from "../../feedbacks/domain/support-material.js"
@@ -32,6 +36,8 @@ export type OutputExecutionContext = EnrollmentSubjectContext & {
   /** O Execution Context acumulado do enrollment até agora — de onde `config.source` lê o
    * conteúdo a publicar (ex.: "nodeOutputs.<idDoNodeAgente>"). */
   nodeOutputs: Record<string, unknown>
+  /** Workflow Variables: a tela oferece variável como origem do conteúdo (WF-41). */
+  variables?: Record<string, unknown>
   /** Boundary de side effects (ver effect-sink.ts) — produção grava; QA só registra. */
   effects: WorkflowEffectSink
   /** A ESTRUTURA analisada, quando este Output roda FORA do caminho individual (matrícula raiz de
@@ -65,14 +71,8 @@ export type OutputExecutionResult = {
 /** Mesma convenção de caminho do `sourcePath` de Condition — "nodeOutputs.a.b.c". Exportada pra
  * ser reaproveitada por quem mais precisar ler o Execution Context por path (ex.: o "conteúdo a
  * revisar" do Human Review — ver human-review-executor.ts). */
-export function resolveSource(nodeOutputs: Record<string, unknown>, path: string): unknown {
-  const root: Record<string, unknown> = { nodeOutputs }
-  let current: unknown = root
-  for (const segment of path.split(".")) {
-    if (current === null || typeof current !== "object") return undefined
-    current = (current as Record<string, unknown>)[segment]
-  }
-  return current
+export function resolveSource(nodeOutputs: Record<string, unknown>, path: string, variables: Record<string, unknown> = {}): unknown {
+  return resolveContextValue({ nodeOutputs, variables }, path)
 }
 
 function isAgentWorkflowResult(value: unknown): value is AgentWorkflowResult {
@@ -131,6 +131,7 @@ function isEmployeeFanInOutput(value: unknown): value is { kind: "EMPLOYEE_FAN_I
  * resultado consolidado. `null` = conteúdo sem forma conhecida → frase genérica de sempre.
  */
 export function describeOutputContent(content: unknown): string | null {
+  if (isRecognitionSkippedOutput(content)) return content.text
   // V1.5.12 — feedback confiável: só o texto EMITÍVEL (itens READY/aprovados, texto final do QA); nunca refs/QA interno.
   if (isReliableFeedbackNodeOutput(content)) return content.text.trim() || null
   // Motor de feedback: a mensagem publicável (ou o resumo legível de uma análise) — nunca refs internas.
@@ -150,7 +151,8 @@ export function describeOutputContent(content: unknown): string | null {
   if (isEmployeeFanInOutput(content)) {
     return `${content.expectedCount} colaborador(es) analisado(s) — ${content.completedCount} concluído(s), ${content.failedCount} com falha.`
   }
-  return null
+  // Variável ou campo escolhido na tela: texto, número ou verdadeiro/falso (WF-41).
+  return describeScalarValue(content)
 }
 
 /** FOLLOW_UP/NOTIFICATION pra alguém que não é o próprio operador ainda não tem tela dedicada
@@ -218,7 +220,11 @@ export async function executeOutput(config: OutputNodeConfig, context: OutputExe
   const operatorId = await resolveEnrollmentOperatorId(context)
   if (!operatorId) throw new Error("Não foi possível identificar o operador para publicar o Output.")
 
-  const content = resolveSource(context.nodeOutputs, config.source)
+  const content = resolveSource(context.nodeOutputs, config.source, context.variables)
+  // Conteúdo ausente nunca vira entrega vazia (D2): a versão é fixa, então repetir não resolve.
+  if (isAbsentContent(content)) {
+    throw new ApplicationInvariantError(`O conteúdo de "${context.nodeLabel ?? "Output"}" não está disponível: ${MISSING_CONTENT_MESSAGES[missingContentCauseOf(config.source)]}. Nada foi entregue.`, "WORKFLOW_CONTENT_MISSING")
+  }
   const recipients = await resolveRecipients(context, operatorId, config.target)
   const recipientIds = recipients.map((recipient) => recipient.id)
 
@@ -246,11 +252,13 @@ export async function executeOutput(config: OutputNodeConfig, context: OutputExe
     const skip: DeliverySkip | null = await context.effects.feedbackEngine.deliverySkip(context.db, { organizationId: context.organizationId, messageId: content.messageId })
     if (skip) notPublished = { reason: skip.reason, text: deliverySkipText(skip) }
   }
+  // Reconhecimento sem motivo: não há o que entregar. Mesma postura: a execução segue, e o motivo fica na saída do nó.
+  if (isRecognitionSkippedOutput(content)) notPublished = { reason: content.reason, text: content.text }
   const conversationIds: string[] = []
   const avatarDeliveryIds: string[] = []
   const projections = new Map<string, Awaited<ReturnType<typeof conversationalProjection>>>()
   for (const surface of config.surfaces) {
-    if (notPublished && isEngineMessageNodeOutput(content)) continue
+    if (notPublished && (isEngineMessageNodeOutput(content) || isRecognitionSkippedOutput(content))) continue
     if (CONVERSATIONAL_SURFACES.includes(surface)) {
       // Cada superfície × destinatário é uma entrega própria e idempotente (retry do nó nunca duplica conversa/convite);
       // Chat e Avatar do mesmo destinatário compartilham a MESMA projeção.

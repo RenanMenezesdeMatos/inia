@@ -26,12 +26,35 @@ type Client = pg.PoolClient
 const DOWNSTREAM_REFERENCES: { table: string; column: string; target: "people" | "interactions" | "teams" | "subteams" }[] = [
   // Configuração apontando para Grupos/Subgrupos demo (ex.: os Workflows-modelo oficiais com
   // Abrangência "B2C · Retenção") — sem isto o delete de `teams` estourava a FK no meio da transação.
-  { table: "workflows", column: "team_id", target: "teams" },
-  { table: "workflows", column: "subteam_id", target: "subteams" },
-  { table: "agents", column: "team_id", target: "teams" },
-  { table: "agents", column: "subteam_id", target: "subteams" },
-  { table: "assistant_orchestrators", column: "team_id", target: "teams" },
-  { table: "assistant_orchestrators", column: "subteam_id", target: "subteams" },
+  { table: "workflows_all", column: "team_id", target: "teams" },
+  { table: "workflows_all", column: "subteam_id", target: "subteams" },
+  { table: "agents_all", column: "team_id", target: "teams" },
+  { table: "agents_all", column: "subteam_id", target: "subteams" },
+  { table: "assistant_orchestrators_all", column: "team_id", target: "teams" },
+  { table: "assistant_orchestrators_all", column: "subteam_id", target: "subteams" },
+  { table: "data_record_cancellations", column: "cancelled_by_person_id", target: "people" },
+  { table: "workflows_all", column: "deleted_by_person_id", target: "people" },
+  { table: "agents_all", column: "deleted_by_person_id", target: "people" },
+  { table: "assistant_orchestrators_all", column: "deleted_by_person_id", target: "people" },
+  { table: "argument_scripts_all", column: "deleted_by_person_id", target: "people" },
+  { table: "business_domains_all", column: "deleted_by_person_id", target: "people" },
+  { table: "channel_flags_all", column: "deleted_by_person_id", target: "people" },
+  { table: "prohibited_topics_all", column: "deleted_by_person_id", target: "people" },
+  { table: "glossary_terms_all", column: "deleted_by_person_id", target: "people" },
+  { table: "indicator_definitions_all", column: "deleted_by_person_id", target: "people" },
+  { table: "inia_scenes_all", column: "deleted_by_person_id", target: "people" },
+  { table: "organization_holidays_all", column: "deleted_by_person_id", target: "people" },
+  { table: "product_catalog_nodes_all", column: "deleted_by_person_id", target: "people" },
+  { table: "product_identification_criteria_all", column: "deleted_by_person_id", target: "people" },
+  { table: "ai_connections_all", column: "deleted_by_person_id", target: "people" },
+  { table: "ai_models_all", column: "deleted_by_person_id", target: "people" },
+  { table: "ai_budgets_all", column: "deleted_by_person_id", target: "people" },
+  { table: "workflow_variables_all", column: "deleted_by_person_id", target: "people" },
+  { table: "knowledge_documents", column: "deleted_by_person_id", target: "people" },
+  { table: "data_sources", column: "deleted_by_person_id", target: "people" },
+  { table: "data_feeds", column: "deleted_by_person_id", target: "people" },
+  { table: "indicator_calculation_rules", column: "deleted_by_person_id", target: "people" },
+  { table: "data_record_cancellations", column: "reactivated_by_person_id", target: "people" },
   { table: "supervision_cases", column: "operator_id", target: "people" },
   { table: "supervision_cases", column: "assignee_id", target: "people" },
   { table: "feedbacks", column: "operator_id", target: "people" },
@@ -49,12 +72,12 @@ const DOWNSTREAM_REFERENCES: { table: string; column: string; target: "people" |
   { table: "assistant_interactions", column: "operator_id", target: "people" },
   { table: "assistant_conversations", column: "owner_person_id", target: "people" },
   { table: "qa_runs", column: "executed_by", target: "people" },
-  { table: "workflows", column: "created_by", target: "people" },
+  { table: "workflows_all", column: "created_by", target: "people" },
   { table: "workflow_versions", column: "created_by", target: "people" },
   { table: "audit_logs", column: "actor_id", target: "people" },
   { table: "case_timeline_events", column: "actor_id", target: "people" },
   { table: "agent_history", column: "changed_by_person_id", target: "people" },
-  { table: "assistant_orchestrators", column: "created_by", target: "people" },
+  { table: "assistant_orchestrators_all", column: "created_by", target: "people" },
   { table: "org_config_values", column: "updated_by", target: "people" },
   // Políticas de acompanhamento e intervenções (migration 131): histórico real nunca é apagado pelo reset da massa demo.
   { table: "intervention_policies", column: "team_id", target: "teams" },
@@ -161,17 +184,17 @@ export async function resetDemoMass(client: Client, mass: DemoMass): Promise<Res
     await run("data_sources", `delete from data_sources where id = any($1::uuid[])`, [["de00da7a-0000-4000-8000-000000000001", "de00da7a-0000-4000-8000-000000000002"]])
     // interaction_flags e transcripts caem em cascata (FK on delete cascade).
     await run("interactions", `delete from interactions where id = any($1::uuid[])`, [interactionIds])
-    await run("indicator_measurements", `delete from indicator_measurements where subject_type = 'PERSON' and subject_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
-    await run("employee_indicator_performance", `delete from employee_indicator_performance where person_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
-    await run("employee_prv_performance", `delete from employee_prv_performance where person_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
+    await run("indicator_measurements", `delete from indicator_measurements_all where subject_type = 'PERSON' and subject_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
+    await run("employee_indicator_performance", `delete from employee_indicator_performance_all where person_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
+    await run("employee_prv_performance", `delete from employee_prv_performance_all where person_id = any($1::uuid[]) and source = $2`, [operatorIds, DEMO_SOURCE])
     await run("employee_work_shifts", `delete from employee_work_shifts where person_id = any($1::uuid[])`, [operatorIds])
     // Adotados: só o que a massa gerou PRA ELES, por id determinístico — fechamento/medição/jornada
     // que já existiam (seed SQL antigo, chamadas reais, QA) ficam; a pessoa volta ao Grupo legado.
     if (adoptedOperators.length > 0) {
       const adoptedOperatorIds = new Set(adoptedOperators.map((person) => person.id))
-      await run("indicator_measurements", `delete from indicator_measurements where id = any($1::uuid[])`, [adoptedOperators.flatMap((operator) => mass.dailyMeasurementsOf(operator).map((row) => row.id))])
-      await run("employee_indicator_performance", `delete from employee_indicator_performance where id = any($1::uuid[])`, [mass.performance.indicatorRows.filter((row) => adoptedOperatorIds.has(row.personId)).map((row) => row.id)])
-      await run("employee_prv_performance", `delete from employee_prv_performance where id = any($1::uuid[])`, [mass.performance.prvRows.filter((row) => adoptedOperatorIds.has(row.personId)).map((row) => row.id)])
+      await run("indicator_measurements", `delete from indicator_measurements_all where id = any($1::uuid[])`, [adoptedOperators.flatMap((operator) => mass.dailyMeasurementsOf(operator).map((row) => row.id))])
+      await run("employee_indicator_performance", `delete from employee_indicator_performance_all where id = any($1::uuid[])`, [mass.performance.indicatorRows.filter((row) => adoptedOperatorIds.has(row.personId)).map((row) => row.id)])
+      await run("employee_prv_performance", `delete from employee_prv_performance_all where id = any($1::uuid[])`, [mass.performance.prvRows.filter((row) => adoptedOperatorIds.has(row.personId)).map((row) => row.id)])
       await run("employee_work_shifts", `delete from employee_work_shifts where id = any($1::uuid[])`, [adoptedOperators.map((person) => demoId(`shift:${person.key}`))])
     }
     if (adopted.length > 0) {
@@ -191,7 +214,7 @@ export async function resetDemoMass(client: Client, mass: DemoMass): Promise<Res
     }
     await run("employee_status_periods", `delete from employee_status_periods where person_id = any($1::uuid[])`, [personIds])
     await run("employee_schedule_days", `delete from employee_schedule_days where person_id = any($1::uuid[])`, [personIds])
-    await run("goals", `delete from goals where id = any($1::uuid[])`, [mass.performance.goals.map((goal) => goal.id)])
+    await run("goals", `delete from goals_all where id = any($1::uuid[])`, [mass.performance.goals.map((goal) => goal.id)])
     // Papéis de acesso (V1.5.7) saem junto com as contas demo (histórico só existe para contas que continuam).
     await run("access_role_assignments", `delete from access_role_assignments where user_account_id in (select id from user_accounts where person_id = any($1::uuid[]))`, [personIds])
     await run("user_accounts", `delete from user_accounts where person_id = any($1::uuid[])`, [personIds])
@@ -202,10 +225,10 @@ export async function resetDemoMass(client: Client, mass: DemoMass): Promise<Res
     // Indicador de volume criado pela massa: sai só se nada fora da massa o referencia (medição real, meta, fechamento, Workflow ficam de fora — nunca cascade).
     await run(
       "indicator_definitions",
-      `delete from indicator_definitions d where d.id = $1
-         and not exists (select 1 from indicator_measurements m where m.indicator_definition_id = d.id)
-         and not exists (select 1 from employee_indicator_performance p where p.indicator_definition_id = d.id)
-         and not exists (select 1 from goals g where g.indicator_definition_id = d.id)`,
+      `delete from indicator_definitions_all d where d.id = $1
+         and not exists (select 1 from indicator_measurements_all m where m.indicator_definition_id = d.id)
+         and not exists (select 1 from employee_indicator_performance_all p where p.indicator_definition_id = d.id)
+         and not exists (select 1 from goals_all g where g.indicator_definition_id = d.id)`,
       [demoId(`indicator:${DEMO_VOLUME_INDICATOR.code}`)],
     )
     // Catálogo demo de assuntos canônicos (migration 075): só as definições/aliases que a massa criou, por id.
@@ -217,7 +240,7 @@ export async function resetDemoMass(client: Client, mass: DemoMass): Promise<Res
     await run("operations", `delete from operations where id = any($1::uuid[])`, [mass.structure.operations.filter((operation) => !operation.existing).map((operation) => operation.id)])
     // Flags de canal criadas pelo seed (só as não pré-existentes, e só se ninguém mais as usa).
     const demoFlagIds = DEMO_FLAGS.filter((flag) => !flag.existing).map((flag) => demoFlagId(flag.name))
-    await run("channel_flags", `delete from channel_flags cf where cf.id = any($1::uuid[]) and cf.organization_id = $2 and not exists (select 1 from interaction_flags f where f.channel_flag_id = cf.id)`, [demoFlagIds, DEMO_ORGANIZATION_ID])
+    await run("channel_flags", `delete from channel_flags_all cf where cf.id = any($1::uuid[]) and cf.organization_id = $2 and not exists (select 1 from interaction_flags f where f.channel_flag_id = cf.id)`, [demoFlagIds, DEMO_ORGANIZATION_ID])
     await client.query("commit")
   } catch (error) {
     await client.query("rollback")

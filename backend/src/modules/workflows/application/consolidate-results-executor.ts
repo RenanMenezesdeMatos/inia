@@ -47,11 +47,17 @@ export function buildEmployeeFanInOutput(fanOutNodeId: string, expectedCount: nu
  * `completed` conta quem chegou no Join normalmente; `failed` conta quem morreu (`status='dead'` —
  * não existe `'failed'` de verdade neste motor, ver markFailed em engine.ts) antes de chegar lá,
  * pra nunca deixar o pai esperando pra sempre por causa de um filho que falhou (Parte 14/17/67/74). */
+/**
+ * Um colaborador = uma execução na barreira: a filha bloqueada que ganhou uma nova tentativa (PEN-073) é substituída por ela —
+ * enquanto a tentativa roda, o colaborador ainda não chegou; quando ela termina, conta o resultado dela.
+ */
+const NOT_SUPERSEDED = `not exists (select 1 from workflow_enrollments retry where retry.retry_of_enrollment_id = we.id)`
+
 export async function countFanOutChildren(db: Database, parentEnrollmentId: string, fanOutNodeId: string): Promise<{ completed: number; failed: number }> {
   const result = await db.query<{ completed: string; failed: string }>(
-    `select count(*) filter (where status = 'completed') as completed, count(*) filter (where status = 'dead') as failed
-     from workflow_enrollments
-     where parent_enrollment_id = $1 and fan_out_node_id = $2`,
+    `select count(*) filter (where status = 'completed') as completed, count(*) filter (where status in ('dead', 'blocked')) as failed
+     from workflow_enrollments we
+     where parent_enrollment_id = $1 and fan_out_node_id = $2 and ${NOT_SUPERSEDED}`,
     [parentEnrollmentId, fanOutNodeId],
   )
   return { completed: Number(result.rows[0]?.completed ?? 0), failed: Number(result.rows[0]?.failed ?? 0) }
@@ -63,18 +69,20 @@ export async function countFanOutChildren(db: Database, parentEnrollmentId: stri
 export async function loadFanOutChildren(db: Database, parentEnrollmentId: string, fanOutNodeId: string): Promise<EmployeeFanInChild[]> {
   const rows = await db.query<{ id: string; scheduled_subject_id: string | null; status: string; node_outputs: Record<string, unknown> }>(
     `select id, scheduled_subject_id, status, node_outputs
-     from workflow_enrollments
-     where parent_enrollment_id = $1 and fan_out_node_id = $2
+     from workflow_enrollments we
+     where parent_enrollment_id = $1 and fan_out_node_id = $2 and ${NOT_SUPERSEDED}
      order by created_at`,
     [parentEnrollmentId, fanOutNodeId],
   )
-  const deadIds = rows.rows.filter((row) => row.status === "dead").map((row) => row.id)
+  // "Bloqueada — agente inativo" (PEN-073) não volta sozinha: para a barreira, conta como quem não chegou ao Join.
+  const notArrived = (status: string) => status === "dead" || status === "blocked"
+  const deadIds = rows.rows.filter((row) => notArrived(row.status)).map((row) => row.id)
   const failureReasons = new Map<string, string>()
   if (deadIds.length > 0) {
     const events = await db.query<{ enrollment_id: string; payload: { message?: string } }>(
       `select distinct on (enrollment_id) enrollment_id, payload
        from workflow_enrollment_events
-       where enrollment_id = any($1::uuid[]) and event_type = 'flow_dead'
+       where enrollment_id = any($1::uuid[]) and event_type in ('flow_dead', 'node_blocked')
        order by enrollment_id, created_at desc`,
       [deadIds],
     )
@@ -85,8 +93,8 @@ export async function loadFanOutChildren(db: Database, parentEnrollmentId: strin
   return rows.rows.map((row) => ({
     employeeId: row.scheduled_subject_id ?? "",
     childEnrollmentId: row.id,
-    status: row.status === "dead" ? ("failed" as const) : ("completed" as const),
+    status: notArrived(row.status) ? ("failed" as const) : ("completed" as const),
     nodeOutputs: row.node_outputs ?? {},
-    ...(row.status === "dead" ? { failureReason: failureReasons.get(row.id) ?? "Falha não identificada." } : {}),
+    ...(notArrived(row.status) ? { failureReason: failureReasons.get(row.id) ?? "Falha não identificada." } : {}),
   }))
 }

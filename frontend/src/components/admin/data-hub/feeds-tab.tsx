@@ -10,15 +10,18 @@ import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin
 import { useDataSourcesQuery, useSetFeedStatusMutation, useSyncFeedMutation } from "@/queries/admin/use-data-hub-queries"
 import { REMOTE_SOURCE_KINDS, cadenceLabel, type FeedSummary, type SourceSummary } from "@/schemas/admin/data-hub.schema"
 
+import { ignoreHandled, useConfigUnlockPrompt } from "./config-access/use-config-unlock-prompt"
 import { formatCount, formatRelative } from "./data-hub-format"
 import { FeedStatusBadge, FreshnessBadge } from "./status-badges"
 
 export function FeedRowActions({ feed, source }: { feed: FeedSummary; source: Pick<SourceSummary, "kind" | "status"> }) {
   const status = useSetFeedStatusMutation()
+  const prompt = useConfigUnlockPrompt()
   const sync = useSyncFeedMutation()
   const remote = REMOTE_SOURCE_KINDS.includes(source.kind)
   return (
     <div className="flex items-center justify-end gap-1">
+      {prompt.dialog}
       {remote && feed.status !== "DRAFT" ? (
         <Button size="sm" variant="ghost" onClick={() => sync.mutate(feed.id)} disabled={sync.isPending}>
           <RefreshCw /> Sincronizar
@@ -29,7 +32,7 @@ export function FeedRowActions({ feed, source }: { feed: FeedSummary; source: Pi
           <Pause className="h-4 w-4" />
         </Button>
       ) : (
-        <Button size="icon" variant="ghost" aria-label={feed.status === "DRAFT" ? "Ativar feed" : "Retomar feed"} onClick={() => status.mutate({ id: feed.id, action: feed.status === "DRAFT" ? "ACTIVATE" : "RESUME" })}>
+        <Button size="icon" variant="ghost" aria-label={feed.status === "DRAFT" ? "Ativar feed" : "Retomar feed"} onClick={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: feed.id, action: feed.status === "DRAFT" ? "ACTIVATE" : "RESUME" })))}>
           <Play className="h-4 w-4" />
         </Button>
       )}

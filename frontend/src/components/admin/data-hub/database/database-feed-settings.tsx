@@ -10,7 +10,7 @@ import { AdminApiError } from "@/lib/admin/admin-api"
 import { useDatabaseColumnsQuery, useResetFeedCheckpointMutation } from "@/queries/admin/use-data-hub-queries"
 import { DATABASE_BATCH_SIZE_DEFAULT, DATABASE_MAX_ROWS_PER_RUN_DEFAULT, type DatabaseCheckpoint, type DatabaseFeedConfig } from "@/schemas/admin/data-hub.schema"
 import { formatDateTime } from "../data-hub-format"
-import { DatabaseSyncSettings, toDatabaseSync, type DatabaseSyncDraft } from "./database-sync-settings"
+import { DatabaseSyncSettings, describeSync, toDatabaseSync, type DatabaseSyncDraft } from "./database-sync-settings"
 
 /** Rascunho editável da leitura de um conjunto de banco externo (a tabela/visão em si não muda depois de criado). */
 export function syncDraftFromConfig(config: DatabaseFeedConfig): DatabaseSyncDraft {
@@ -29,14 +29,17 @@ export function configFromSyncDraft(config: DatabaseFeedConfig, draft: DatabaseS
   return { object: config.object, sync: toDatabaseSync(draft), batchSize: draft.batchSize, maxRowsPerRun: draft.maxRowsPerRun }
 }
 
-export function DatabaseFeedConnector({ sourceId, config, draft, onChange }: { sourceId: string; config: DatabaseFeedConfig; draft: DatabaseSyncDraft; onChange: (next: DatabaseSyncDraft) => void }) {
-  const columns = useDatabaseColumnsQuery(sourceId, config.object)
+export function DatabaseFeedConnector({ sourceId, config, draft, onChange, locked = false }: { sourceId: string; config: DatabaseFeedConfig; draft: DatabaseSyncDraft; onChange: (next: DatabaseSyncDraft) => void; locked?: boolean }) {
+  // Sem liberação, nem chama o banco do cliente: mostra o que já está salvo na INIA.
+  const columns = useDatabaseColumnsQuery(locked ? null : sourceId, config.object)
   return (
     <div className="space-y-4">
       <p className="text-sm">
         Lendo {config.object.kind === "VIEW" ? "a visão" : "a tabela"} <span className="font-mono">{config.object.schema}.{config.object.name}</span>
       </p>
-      {columns.isLoading ? (
+      {locked ? (
+        <p className="text-sm text-muted-foreground">Leitura salva: {describeSync(draft)}. Para alterar, informe a senha da fonte.</p>
+      ) : columns.isLoading ? (
         <Skeleton className="h-40" aria-hidden />
       ) : columns.isError ? (
         <p role="alert" className="text-sm text-destructive">
@@ -50,7 +53,7 @@ export function DatabaseFeedConnector({ sourceId, config, draft, onChange }: { s
 }
 
 /** "Até onde a INIA já leu" — o checkpoint em linguagem de gente, com o botão para recomeçar do início. */
-export function DatabaseCheckpointSummary({ feedId, checkpoint }: { feedId: string; checkpoint: Record<string, unknown> | null }) {
+export function DatabaseCheckpointSummary({ feedId, checkpoint, locked = false }: { feedId: string; checkpoint: Record<string, unknown> | null; locked?: boolean }) {
   const reset = useResetFeedCheckpointMutation()
   const [open, setOpen] = useState(false)
   const current = checkpoint && checkpoint.kind === "DATABASE" ? (checkpoint as unknown as DatabaseCheckpoint) : null
@@ -69,7 +72,7 @@ export function DatabaseCheckpointSummary({ feedId, checkpoint }: { feedId: stri
       )}
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogTrigger asChild>
-          <Button variant="link" size="sm" className="h-auto p-0 text-xs" disabled={!current}>
+          <Button variant="link" size="sm" className="h-auto p-0 text-xs" disabled={!current || locked} title={locked ? "Informe a senha da fonte para reiniciar a leitura" : undefined}>
             <RotateCcw className="size-3" /> Reiniciar leitura
           </Button>
         </AlertDialogTrigger>

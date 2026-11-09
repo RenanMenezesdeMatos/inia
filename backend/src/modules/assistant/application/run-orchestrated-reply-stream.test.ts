@@ -3,6 +3,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { OrchestrationSuperseded, runOrchestratedReply, type OrchestrationProgress, type OrchestrationStream } from "./run-orchestrated-reply.js"
 import type { ResolvedOrchestrator } from "./resolve-orchestrator.js"
 import { reconcileShownText } from "../domain/reply-stream.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 /**
  * CHAT EM FLUXO — a resposta final aparece enquanto é escrita, sem marcador interno, sem duplicar e sem mostrar texto que não é
@@ -39,7 +40,8 @@ vi.mock("../infrastructure/gemini-function-calling-client.js", () => ({
   },
 }))
 
-const fakeDb = {} as Database
+/** Banco simulado: só a conferência de ativo na hora de acionar o especialista (PEN-070) — todo agente existe e está ativo. */
+const fakeDb = { query: async (text: string, params?: unknown[]) => answerAgentVersionQuery(text, params, () => ({})) ?? { rows: [], rowCount: 0 } } as unknown as Database
 const SPECIALIST = { name: "agent_processos", description: "Processos.", parameters: { type: "object" as const, properties: { query: { type: "string" } } } }
 
 function orchestrator(overrides: Partial<ResolvedOrchestrator> = {}): ResolvedOrchestrator {

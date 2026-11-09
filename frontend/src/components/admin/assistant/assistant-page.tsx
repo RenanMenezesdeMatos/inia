@@ -53,6 +53,7 @@ import { ORCHESTRATOR_INVOCATION_MODE_LABELS, type Orchestrator } from "@/schema
 import { describeBusinessDomain } from "@/schemas/admin/business-domain.schema"
 import { ORCHESTRATOR_POLICY_KIND_SHORT_LABELS, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy } from "@/schemas/admin/orchestrator-policy"
 import { cn } from "@/lib/utils"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 const groupLabel = formatScopeLabel
 const NEW_HREF = "/admin/assistant/new"
@@ -87,7 +88,7 @@ function DeleteOrchestratorButton({ orchestrator }: { orchestrator: Orchestrator
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {orchestrator.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Essa ação não pode ser desfeita. Operadores no escopo dele voltam a receber a resposta genérica da INIA, sem acionar especialistas.
+            Operadores no escopo dele voltam a receber a resposta genérica da INIA, sem acionar especialistas. {RESTORE_NOTE}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

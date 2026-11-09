@@ -40,6 +40,12 @@ afterEach(() => {
 })
 
 describe("AdminSidebar — organização", () => {
+  it("Administrador de dados: só a Central de Dados, sem a entrada de Usuários e acessos", () => {
+    renderSidebar(caps({ canAccessAdministration: true, canManageDataHub: true }))
+    expect(screen.getByText("Central de Dados")).toBeInTheDocument()
+    for (const name of ["Usuários e acessos", "Indicadores", "Flags de canal", "Calendário operacional", "Agentes", "Workflows"]) expect(screen.queryByText(name)).not.toBeInTheDocument()
+  })
+
   it("agrupa por área, sem Checkpoints e sem os atalhos de criação escondidos nas setas", () => {
     renderSidebar(everything)
     const groups = [...document.querySelectorAll('[data-sidebar="group-label"]')].map((label) => label.textContent)

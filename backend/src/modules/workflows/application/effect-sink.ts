@@ -1,4 +1,6 @@
+import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { recordKnowledgeUsage } from "../../knowledge/application/knowledge-consultation-context.js"
 import { createIndicatorFeedback } from "../../feedbacks/application/create-indicator-feedback.js"
 import { createMonitoringFeedback } from "../../feedbacks/application/create-monitoring-feedback.js"
 import { createOrchestratorFeedback } from "../../feedbacks/application/create-orchestrator-feedback.js"
@@ -47,7 +49,8 @@ export type AgentRunSource = "MANUAL_TEST" | "WORKFLOW" | "QA_SIMULATION"
 /** Persistência de `agent_runs` — abstraída porque `usageCount` de um Agent conta essa tabela:
  * uma execução de QA não pode aparecer ali (Parte 47 do pedido do QA Lab). */
 export type AgentRunRecorder = {
-  start(db: Database, input: { organizationId: string; agentId: string; source: AgentRunSource; inputContext: string; model?: string | null }): Promise<string>
+  /** `agentVersionId` = versão publicada usada; teste do rascunho grava `runTarget: "DRAFT"` e o conteúdo testado (PEN-002, PEN-049). */
+  start(db: Database, input: { organizationId: string; agentId: string; source: AgentRunSource; inputContext: string; model?: string | null; agentVersionId?: string | null; runTarget?: "VERSION" | "DRAFT"; testedConfig?: unknown }): Promise<string>
   /** `toolTrace` = ferramentas de investigação usadas (investigation/domain/tool-trace.ts) — só
    * quando o Agent investigou; fica em `agent_runs.tool_trace` (nunca prompt/cadeia de raciocínio). */
   complete(db: Database, runId: string, outputText: string, toolTrace?: ToolInvocationTrace[] | undefined): Promise<void>
@@ -82,6 +85,8 @@ export type WorkflowEffectSink = {
   /** MOTOR DE FEEDBACK — análise de chamada, investigação de indicador, geração e publicação da mensagem (memória gravada na
    * análise; nenhuma espera por QA). QA Lab: mesma lógica com memória em RAM. */
   feedbackEngine: FeedbackEngineEffects
+  /** Versões das bases usadas por uma etapa de orquestrador (PEN-008). Na simulação não grava nada. */
+  recordWorkflowKnowledgeUsage(db: Database, enrollmentId: string): Promise<void>
   /** "Avaliar política de acompanhamento": grava avaliação, caso, relatório e intervenções numa transação (QA Lab: nada gravado). */
   interventions: InterventionEffects
 }
@@ -91,18 +96,26 @@ export const REJECTED_OUTPUT_MAX_CHARS = 60_000
 
 export const productionAgentRuns: AgentRunRecorder = {
   async start(db, input) {
+    // Coordenação com a exclusão (PEN-069): o registro só nasce se o agente ainda existe, e a linha do agente fica travada
+    // (FOR SHARE) até o registro ser gravado — a exclusão trava a mesma linha (FOR UPDATE) antes de conferir o histórico de uso.
+    // Ou a execução é registrada e a exclusão é bloqueada, ou o agente some e a execução não começa; nunca as duas coisas.
     const created = await db.query<{ id: string }>(
-      `insert into agent_runs(organization_id, agent_id, source, input_context, model, status)
-       values ($1,$2,$3,$4,$5,'PENDING') returning id`,
-      [input.organizationId, input.agentId, input.source, input.inputContext, input.model ?? AGENT_LLM_MODEL],
+      `insert into agent_runs(organization_id, agent_id, source, input_context, model, status, agent_version_id, run_target, tested_config)
+       select $1, a.id, $3, $4, $5, 'PENDING', $6, $7, $8 from agents a where a.id = $2 and a.organization_id = $1 for share
+       returning id`,
+      [input.organizationId, input.agentId, input.source, input.inputContext, input.model ?? AGENT_LLM_MODEL, input.agentVersionId ?? null, input.runTarget ?? (input.agentVersionId ? "VERSION" : null), input.testedConfig === undefined ? null : JSON.stringify(input.testedConfig)],
     )
-    return created.rows[0]!.id
+    const id = created.rows[0]?.id
+    if (!id) throw new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
+    return id
   },
   async complete(db, runId, outputText, toolTrace) {
     await db.query(`update agent_runs set output_text = $1, status = 'COMPLETED', completed_at = now(), tool_trace = $3 where id = $2`, [outputText, runId, toolTrace && toolTrace.length > 0 ? JSON.stringify(toolTrace) : null])
+    await recordKnowledgeUsage(db, { sourceKind: "AGENT_RUN", sourceId: runId })
   },
   async fail(db, runId, message, outputText) {
     await db.query(`update agent_runs set status = 'FAILED', error_message = $1, completed_at = now(), output_text = coalesce($3, output_text) where id = $2`, [message, runId, outputText ? outputText.slice(0, REJECTED_OUTPUT_MAX_CHARS) : null])
+    await recordKnowledgeUsage(db, { sourceKind: "AGENT_RUN", sourceId: runId })
   },
 }
 
@@ -183,6 +196,7 @@ export const productionEffects: WorkflowEffectSink = {
   conversational: productionConversationalEffects,
 
   feedbackEngine: productionFeedbackEngineEffects,
+  recordWorkflowKnowledgeUsage: (db, enrollmentId) => recordKnowledgeUsage(db, { sourceKind: "WORKFLOW", sourceId: enrollmentId }),
 
   interventions: productionInterventionEffects,
 }

@@ -2,7 +2,9 @@ import { Router } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
+import { canOrganizationWide } from "../../access/domain/access-decision.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { responseCheckMode } from "../domain/response-compliance.js"
 
 const topicSchema = z.object({ name: z.string().trim().min(2), requiredBehavior: z.string().trim().min(5) })
 const topicUpdateSchema = z.object({ name: z.string().trim().min(2).optional(), requiredBehavior: z.string().trim().min(5).optional(), active: z.boolean().optional() })
@@ -15,18 +17,48 @@ const SELECT_TOPICS = `select id,name,required_behavior "requiredBehavior",activ
 const SELECT_GLOSSARY = `select id,term,definition,feedback_application "feedbackApplication",active from glossary_terms where organization_id=$1`
 
 /**
- * Exclusão definitiva (nada referencia essas tabelas: o vínculo por Agent saiu na migration 125). O texto apagado fica em
- * `audit_logs` na MESMA instrução — sem ele não sobraria rastro do que a IA deixou de respeitar. Para só suspender, `active=false`.
+ * Exclusão lógica (migration 177): sai das telas e da IA, continua guardado e volta pela Central de Dados, desligado. O texto também fica em `audit_logs` na MESMA instrução:
+ * é o rastro do que a IA deixou de respeitar. Para só suspender, `active=false`.
  */
 const DELETE_WITH_AUDIT = (table: "prohibited_topics" | "glossary_terms", entityType: string, payload: string) =>
-  `with removed as (delete from ${table} where id=$1 and organization_id=$2 returning *)
+  `with removed as (update ${table}_all set active=false, deleted_at=now(), deleted_by_person_id=$3::uuid, updated_at=now() where id=$1 and organization_id=$2 and deleted_at is null returning *)
    insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload)
    select organization_id, $3::uuid, 'DELETE', '${entityType}', id, ${payload} from removed returning entity_id`
 const DELETE_TOPIC = DELETE_WITH_AUDIT("prohibited_topics", "prohibited_topic", `jsonb_build_object('name', name, 'requiredBehavior', required_behavior, 'active', active)`)
 const DELETE_GLOSSARY_TERM = DELETE_WITH_AUDIT("glossary_terms", "glossary_term", `jsonb_build_object('term', term, 'definition', definition, 'active', active)`)
 
+/** O registro da conferência das respostas (PEN-017): só o que foi barrado, detectado ou não pôde ser conferido. */
+const SELECT_RESPONSE_CHECKS = `select c.id, c.surface, c.control, c.outcome, c.action, c.rules, c.reason, c.error_code "errorCode", c.flagged_content "flaggedContent", c.conversation_id "conversationId", c.agent_id "agentId", a.name "agentName", c.created_at "createdAt"
+  from response_compliance_checks c left join agents_all a on a.id = c.agent_id and a.organization_id = c.organization_id
+  where c.organization_id=$1 and c.outcome <> 'ALLOWED'`
+const RESPONSE_CHECK_SUMMARY_DAYS = 30
+
 export function createGovernanceRouter(db: Database) {
   const router = Router()
+
+  /** O texto barrado vem de conversas de toda a organização: ler este registro exige alcançá-la inteira, mesmo sendo leitura. */
+  const requireOrganizationWide = (request: Parameters<typeof sessionUser>[0] & { access?: Parameters<typeof canOrganizationWide>[0] | undefined }, response: { status: (code: number) => { json: (body: unknown) => unknown } }) => {
+    if (request.access && canOrganizationWide(request.access, "configuration.manage")) return true
+    response.status(403).json({ error: { code: "ORGANIZATION_SCOPE_REQUIRED", message: "Este registro vale para a organização inteira: só quem a administra em toda a organização pode lê-lo." } })
+    return false
+  }
+  router.get("/response-checks/summary", async (request, response) => {
+    if (!requireOrganizationWide(request, response)) return
+    const organizationId = sessionUser(request).organizationId
+    const row = (await db.query<{ checked: number; delivered: number; blocked: number; detected: number; failed: number }>(
+      `select count(*)::int checked, count(*) filter (where outcome = 'ALLOWED')::int delivered, count(*) filter (where outcome = 'VIOLATION' and action = 'BLOCKED')::int blocked,
+              count(*) filter (where outcome = 'VIOLATION' and action = 'RECORDED')::int detected, count(*) filter (where outcome = 'CHECK_FAILED')::int failed
+         from response_compliance_checks where organization_id = $1 and created_at > now() - make_interval(days => $2)`,
+      [organizationId, RESPONSE_CHECK_SUMMARY_DAYS],
+    )).rows[0]
+    // O modo em vigor vai junto: a tela nunca apresenta AUDIT ou OFF como prevenção.
+    response.json({ data: { days: RESPONSE_CHECK_SUMMARY_DAYS, mode: responseCheckMode(), ...row } })
+  })
+  router.get("/response-checks", async (request, response) => {
+    if (!requireOrganizationWide(request, response)) return
+    const data = await respondList(db, request.query, { select: SELECT_RESPONSE_CHECKS, filter: new SqlFilter([sessionUser(request).organizationId]), orderBy: 'q."createdAt" desc, q.id' })
+    response.json({ data })
+  })
 
   router.get("/prohibited-topics", async (request, response) => {
     const organizationId = sessionUser(request).organizationId

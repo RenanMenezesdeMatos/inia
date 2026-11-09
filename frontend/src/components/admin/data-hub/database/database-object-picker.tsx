@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils"
 import { useDatabaseColumnsQuery, useDatabaseObjectsQuery } from "@/queries/admin/use-data-hub-queries"
 import { COLUMN_CATEGORY_LABELS, type DatabaseObjectDescription, type DatabaseObjectSummary } from "@/schemas/admin/data-hub.schema"
 
+import { ConfigUnlockForm } from "../config-access/config-unlock-form"
+import { isConfigLockedError, lockedTarget } from "../config-access/use-config-unlock-prompt"
+
 /**
  * Escolha da tabela ou visão no banco externo — a lista vem do catálogo do próprio banco e só traz o que o usuário
  * da conexão PODE ler. Ao escolher, mostra as colunas (tipo, chave primária) para a pessoa confirmar o que está
@@ -52,6 +55,18 @@ export function DatabaseObjectPicker({ sourceId, value, onChange, onDescribed }:
   }, [objects.data])
 
   const errorMessage = (error: unknown) => (error instanceof AdminApiError ? error.message : "Não foi possível consultar o banco.")
+
+  // Liberação venceu nesta etapa: pede a senha aqui mesmo. A tabela escolhida fica guardada em quem chamou, e as consultas repetem ao liberar.
+  const lockError = [objects.error, columns.error].find(isConfigLockedError)
+  const lockTarget = lockError ? lockedTarget(lockError) : null
+  if (lockTarget) {
+    return (
+      <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4" data-testid="config-locked">
+        <p className="text-sm text-muted-foreground">A liberação desta fonte venceu. Informe a senha para continuar listando as tabelas; o que você já escolheu continua guardado.</p>
+        <ConfigUnlockForm target={lockTarget} />
+      </div>
+    )
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

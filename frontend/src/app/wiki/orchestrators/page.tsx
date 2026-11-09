@@ -291,6 +291,12 @@ No Workflow Builder:  Análise › Assunto (Texto)
           consegue referenciá-lo (a publicação bloqueia). <strong className="font-medium text-foreground">{ORCHESTRATOR_INVOCATION_MODE_LABELS.BOTH}</strong>:
           os dois caminhos.
         </p>
+        <p>
+          <strong className="font-medium text-foreground">Excluir</strong> é recusado enquanto um Workflow citar o orquestrador (rascunho, versão publicada vigente
+          ou versão de uma execução em andamento). A mensagem traz os Workflows que você pode consultar; os de fora do seu alcance aparecem só como aviso. Troque o
+          orquestrador nessas etapas e publique; execuções em andamento precisam terminar. Excluir não apaga nada: o histórico fica guardado e ele volta, desativado, por
+          Itens excluídos, na Consulta de dados da Central. Desativar também impede o uso, mas essas etapas passam a falhar ao executar.
+        </p>
       </WikiSection>
 
       <WikiSection id="catalogo" title="Catálogo de Orquestradores" eyebrow={`${DOMAIN_ORCHESTRATORS.length} configurados — ${DOMAIN_ORCHESTRATORS.filter((o) => o.active).length} ativos`}>

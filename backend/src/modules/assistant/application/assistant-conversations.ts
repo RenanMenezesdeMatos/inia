@@ -1,3 +1,4 @@
+import { recordKnowledgeUsage } from "../../knowledge/application/knowledge-consultation-context.js"
 import type { PoolClient } from "pg"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -175,7 +176,56 @@ export async function appendConversationMessage(db: Queryable, input: MessageInp
     return { id: existing.rows[0]!.id, duplicate: true }
   }
   await db.query(`update assistant_conversations set last_activity_at = greatest(last_activity_at, $2) where id = $1`, [input.conversationId, input.occurredAt])
+  await recordAgentParticipation(db, input.organizationId, id, participantsOf(input.toolCalls, input.agentId ?? null))
+  // A resposta guarda quais versões das bases a consulta deste turno usou (PEN-008).
+  if (input.role === "assistant") await recordKnowledgeUsage(db, { sourceKind: "CONVERSATION", sourceId: id })
   return { id, duplicate: false }
+}
+
+type Participant = { agentId: string; agentVersionId: string | null; orchestratorId: string | null; orchestratorVersionId: string | null; role: "ORCHESTRATOR_AGENT" | "SPECIALIST"; outcome: "EXECUTED" | "BLOCKED_INACTIVE" | "BLOCKED_UNAUTHORIZED" }
+
+const SPECIALIST_TOOL = /^agent_([0-9a-f]{32})$/
+const uuidOfTool = (hex: string) => `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+const text = (value: unknown) => (typeof value === "string" && value ? value : null)
+
+/**
+ * Agentes que atuaram na resposta (PEN-002, PEN-065, PEN-070): os especialistas acionados — com a versão usada e "Agente inativo"
+ * quando a chamada foi impedida — e o agente orquestrador. Lidos das chamadas gravadas com a mensagem; uma chamada sem a versão
+ * (voz) fica com a vigente no momento da gravação.
+ */
+export function participantsOf(toolCalls: unknown, agentId: string | null): Participant[] {
+  const participants = new Map<string, Participant>()
+  const add = (participant: Participant) => {
+    const key = `${participant.agentId}|${participant.role}`
+    if (!participants.has(key) || participant.outcome === "EXECUTED") participants.set(key, participant)
+  }
+  for (const call of Array.isArray(toolCalls) ? (toolCalls as Record<string, unknown>[]) : []) {
+    if (!call || typeof call !== "object") continue
+    const match = typeof call.toolName === "string" ? SPECIALIST_TOOL.exec(call.toolName) : null
+    const specialistId = text(call.agentId) ?? (match ? uuidOfTool(match[1]!) : null)
+    const orchestratorId = text(call.orchestratorId)
+    const orchestratorVersionId = text(call.orchestratorVersionId)
+    if (specialistId) add({ agentId: specialistId, agentVersionId: text(call.agentVersionId), orchestratorId, orchestratorVersionId, role: "SPECIALIST", outcome: call.outcome === "BLOCKED_INACTIVE" || call.outcome === "BLOCKED_UNAUTHORIZED" ? call.outcome : "EXECUTED" })
+    const orchestratorAgentId = text(call.orchestratorAgentId)
+    if (orchestratorAgentId) add({ agentId: orchestratorAgentId, agentVersionId: text(call.orchestratorAgentVersionId), orchestratorId, orchestratorVersionId, role: "ORCHESTRATOR_AGENT", outcome: "EXECUTED" })
+  }
+  if (agentId && !participants.has(`${agentId}|SPECIALIST`)) add({ agentId, agentVersionId: null, orchestratorId: null, orchestratorVersionId: null, role: "SPECIALIST", outcome: "EXECUTED" })
+  return [...participants.values()]
+}
+
+/** Grava a participação travando a linha do agente (FOR SHARE), como o registro de execução: nunca para um agente já excluído. */
+async function recordAgentParticipation(db: Queryable, organizationId: string, interactionId: string, participants: Participant[]): Promise<void> {
+  for (const participant of participants) {
+    await db.query(
+      `insert into assistant_interaction_agents (organization_id, interaction_id, agent_id, agent_version_id, orchestrator_id, orchestrator_version_id, role, outcome)
+       select $1, $2, a.id, coalesce((select v.id from agent_versions v where v.id = $4::uuid and v.agent_id = a.id), a.current_version_id),
+              (select o.id from assistant_orchestrators o where o.id = $5::uuid), (select ov.id from assistant_orchestrator_versions ov where ov.id = $6::uuid), $7, $8
+         from agents a where a.id = $3 and a.organization_id = $1
+       for share of a
+       on conflict (interaction_id, agent_id, role) do nothing`,
+      [organizationId, interactionId, participant.agentId, participant.agentVersionId, participant.orchestratorId, participant.orchestratorVersionId, participant.role, participant.outcome],
+    )
+  }
 }
 
 /** `origin = "WORKFLOW"`: a mensagem da INIA entregue por um nó Output (Chat) — a tela a destaca; `"FEEDBACK"`: a apresentação

@@ -88,3 +88,27 @@ export class OrganizationPeopleGraphCache {
 
 /** Um cache por processo (API ou worker). */
 export const organizationPeopleGraphCache = new OrganizationPeopleGraphCache()
+
+/**
+ * O grafo de UMA leitura em lote (ex.: os destinatários de uma execução de report): a versão é conferida na primeira leitura
+ * de cada organização, pelo cache do processo, e o mesmo grafo serve o lote inteiro — um retrato só, sem uma consulta de
+ * versão por pessoa. Vive só durante o lote; nunca substitui o cache do processo.
+ */
+export class PinnedPeopleGraphCache extends OrganizationPeopleGraphCache {
+  private readonly pinned = new Map<string, Promise<OrganizationPeopleGraph>>()
+
+  constructor(private readonly source: OrganizationPeopleGraphCache = organizationPeopleGraphCache) {
+    super(1)
+  }
+
+  override get(db: Pick<Database, "query">, organizationId: string): Promise<OrganizationPeopleGraph> {
+    const cached = this.pinned.get(organizationId)
+    if (cached) return cached
+    const graph = this.source.get(db, organizationId)
+    this.pinned.set(organizationId, graph)
+    graph.catch(() => {
+      if (this.pinned.get(organizationId) === graph) this.pinned.delete(organizationId)
+    })
+    return graph
+  }
+}

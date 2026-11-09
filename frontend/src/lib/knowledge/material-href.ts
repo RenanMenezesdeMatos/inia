@@ -8,3 +8,8 @@
 export function buildKnowledgeMaterialHref(materialId: string): string {
   return `/materiais/${encodeURIComponent(materialId)}`
 }
+
+/** O material aberto na página citada por uma fonte. `versao`: a página vale para aquela versão; a tela avisa se o material já está em outra. */
+export function buildKnowledgeMaterialPageHref(materialId: string, citation: { page: number; versionId: string }): string {
+  return `${buildKnowledgeMaterialHref(materialId)}?pagina=${citation.page}&versao=${encodeURIComponent(citation.versionId)}`
+}

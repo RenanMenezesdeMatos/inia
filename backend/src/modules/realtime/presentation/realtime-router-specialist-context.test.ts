@@ -10,6 +10,7 @@ import { createMemoryConversationStore } from "../../assistant/testing/memory-co
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import type { SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { INIA_CHAT_PERSONA, createRealtimeRouter } from "./realtime-router.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 /**
  * CONTEXTO DA CONVERSA ≠ TRANSCRIÇÃO (2026-10-16). O contexto extra de `runOrchestratedReply` chega a cada especialista como
@@ -53,7 +54,8 @@ async function fakeSpecialist(_db: unknown, _organizationId: string, agentId: st
 const ORG = "00000000-0000-4000-8000-000000000001"
 const LARISSA = "aaaaaaaa-0000-4000-8000-000000000001"
 const user: AuthTokenPayload = { sub: "acc-1", personId: LARISSA, organizationId: ORG, role: "OPERATOR", name: "Larissa", email: "l@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }
-const emptyDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
+// Banco vazio, exceto a conferência de especialista ativo na hora da chamada (PEN-070): todo agente existe e está ativo.
+const emptyDb = { query: async (text: string, params: unknown[] = []) => answerAgentVersionQuery(text, params, () => ({ active: true })) ?? { rows: [], rowCount: 0 } } as unknown as Database
 const SPECIALIST_TOOL = { name: "agent_contestacao", description: "Contestação de fatura.", parameters: { type: "object" as const, properties: { query: { type: "string" } } } }
 const orchestrator = { organizationId: ORG, orchestratorId: "orch-1", orchestratorName: "INIA", orchestratorAgentId: "agent-orch", systemPrompt: "PROMPT DO ORQUESTRADOR", specialists: [{ agentId: "agent-contestacao", toolName: "agent_contestacao" }], tools: [SPECIALIST_TOOL], outputInstructions: null, structuredOutput: null, recommendSupportMaterials: false }
 const ORIGIN = "\n\n[CONTEXTO DE ORIGEM: recado do fechamento de agosto]"

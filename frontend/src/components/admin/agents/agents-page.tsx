@@ -1,19 +1,8 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { Bot, BookOpen, CalendarClock, Plus, ShieldBan, Trash2, UserRound, Zap } from "lucide-react"
+import { Bot, BookOpen, CalendarClock, Plus, ShieldBan, UserRound, Zap } from "lucide-react"
 
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,55 +26,19 @@ import {
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { useAgentsPageQuery, useDeleteAgentMutation, useToggleAgentActiveMutation } from "@/queries/admin/use-agent-queries"
+import { useAgentsPageQuery, useToggleAgentActiveMutation } from "@/queries/admin/use-agent-queries"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { useKnowledgeDocumentsQuery } from "@/queries/admin/use-knowledge-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import type { AgentListParams } from "@/services/admin/agent-service"
-import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, type Agent } from "@/schemas/admin/agent.schema"
+import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, agentPublicationLabel, type Agent } from "@/schemas/admin/agent.schema"
 
 import { AGENT_TYPE_ICONS } from "./agent-visuals"
+import { DeleteAgentDialog } from "./agent-lifecycle/delete-agent-dialog"
 
 function groupLabel(agent: Pick<Agent, "scopeType" | "teamName" | "subteamName">) {
   if (agent.scopeType === "ALL_TEAMS") return "Todos os grupos"
   return agent.subteamName ?? agent.teamName ?? "—"
-}
-
-function DeleteAgentButton({ agent }: { agent: Agent }) {
-  const deleteMutation = useDeleteAgentMutation()
-  const [open, setOpen] = useState(false)
-
-  return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger asChild>
-        <Button size="icon" variant="ghost" aria-label="Excluir agente" disabled={deleteMutation.isPending}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Excluir {agent.name}?</AlertDialogTitle>
-          <AlertDialogDescription>Essa ação não pode ser desfeita. O histórico e as bases associadas a este agente serão removidos.</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <Button
-            variant="destructive"
-            disabled={deleteMutation.isPending}
-            onClick={async () => {
-              try {
-                await deleteMutation.mutateAsync(agent.id)
-                setOpen(false)
-              } catch {
-                // error is surfaced via the toast from useAdminMutation
-              }
-            }}
-          >
-            {deleteMutation.isPending ? "Excluindo..." : "Excluir"}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
 }
 
 function ActiveSwitch({ agent }: { agent: Agent }) {
@@ -97,6 +50,16 @@ function ActiveSwitch({ agent }: { agent: Agent }) {
       aria-label={agent.active ? "Desativar agente" : "Ativar agente"}
       onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: agent.id, active: checked })}
     />
+  )
+}
+
+/** Versão em uso, "Não publicado" (só testes — PEN-047) e rascunho pendente (PEN-002). */
+function PublicationBadge({ agent }: { agent: Agent }) {
+  return (
+    <>
+      <Badge variant={agent.published ? "outline" : "secondary"}>{agentPublicationLabel(agent)}</Badge>
+      {agent.published && agent.hasDraft ? <Badge variant="outline">Rascunho pendente</Badge> : null}
+    </>
   )
 }
 
@@ -119,7 +82,7 @@ function AgentCard({ agent }: { agent: Agent }) {
       actions={
         <>
           <ActiveSwitch agent={agent} />
-          <DeleteAgentButton agent={agent} />
+          <DeleteAgentDialog agent={agent} />
         </>
       }
       description={agent.objective}
@@ -147,7 +110,12 @@ function AgentCard({ agent }: { agent: Agent }) {
           </span>
         </>
       }
-      footerEnd={<Badge variant={agent.active ? "secondary" : "outline"}>{agent.active ? "Ativo" : "Inativo"}</Badge>}
+      footerEnd={
+        <span className="flex items-center gap-1.5">
+          <PublicationBadge agent={agent} />
+          <Badge variant={agent.active ? "secondary" : "outline"}>{agent.active ? "Ativo" : "Inativo"}</Badge>
+        </span>
+      }
     />
   )
 }
@@ -163,6 +131,7 @@ function AgentsTable({ agents }: { agents: Agent[] }) {
             <TableHead>Grupo</TableHead>
             <TableHead>Bases</TableHead>
             <TableHead>Execuções</TableHead>
+            <TableHead>Versão</TableHead>
             <TableHead>Criado em</TableHead>
             <TableHead>Status</TableHead>
             <TableHead />
@@ -191,6 +160,11 @@ function AgentsTable({ agents }: { agents: Agent[] }) {
                 <TableCell className="text-sm text-muted-foreground">{groupLabel(agent)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{agent.knowledgeDocuments.length}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{agent.usageCount}</TableCell>
+                <TableCell>
+                  <span className="flex flex-wrap gap-1">
+                    <PublicationBadge agent={agent} />
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   <time dateTime={agent.createdAt}>{formatDateOnly(agent.createdAt)}</time>
                 </TableCell>
@@ -198,7 +172,7 @@ function AgentsTable({ agents }: { agents: Agent[] }) {
                   <ActiveSwitch agent={agent} />
                 </TableCell>
                 <TableCell className="text-right">
-                  <DeleteAgentButton agent={agent} />
+                  <DeleteAgentDialog agent={agent} />
                 </TableCell>
               </TableRow>
             )
@@ -211,7 +185,8 @@ function AgentsTable({ agents }: { agents: Agent[] }) {
 
 type AgentFilters = Omit<AgentListParams, "page" | "pageSize" | "search"> & { search: string }
 
-const DEFAULT_FILTERS: AgentFilters = { search: "", agentType: [], createdAt: {} }
+// A listagem principal mostra só agentes ativos (PEN-001); inativos, só para administradores, pelo filtro de status.
+const DEFAULT_FILTERS: AgentFilters = { search: "", agentType: [], createdAt: {}, active: true }
 const AGENT_TYPE_OPTIONS = optionsFromLabels(AGENT_TYPE_LABELS)
 
 export function AgentsPage() {
@@ -219,6 +194,7 @@ export function AgentsPage() {
   const knowledgeQuery = useKnowledgeDocumentsQuery()
   const list = useAdminListState({ storageKey: "agents", defaultFilters: DEFAULT_FILTERS })
   const pageQuery = useAgentsPageQuery(list.params)
+  const canManageInactive = useCurrentUserQuery().data?.access.capabilities.canManageInactiveAgents ?? false
 
   return (
     <Card>
@@ -251,7 +227,9 @@ export function AgentsPage() {
           onClearFilters={list.resetFilters}
         >
           <ListMultiSelectFilter label="Tipo" values={list.filters.agentType} onChange={(values) => list.setFilter("agentType", values)} options={AGENT_TYPE_OPTIONS} />
-          <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+          {canManageInactive ? (
+            <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+          ) : null}
           <ListOrgScopeFilter
             teams={teamsQuery.data}
             value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}

@@ -36,6 +36,7 @@ export const MODEL_OUTPUT_CONTRACT_CODES = [
   "AGENT_EXECUTION_EMPTY",
   "ASSISTANT_EMPTY",
   "SPECIALIST_UNEXPECTED_RESPONSE",
+  "RESPONSE_BLOCKED_BY_RULES",
 ] as const
 
 /** Invariantes da aplicação conhecidos (lista explícita; o resto fica UNCLASSIFIED). */

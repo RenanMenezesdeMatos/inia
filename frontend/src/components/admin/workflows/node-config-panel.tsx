@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useOrchestratorsQuery } from "@/queries/admin/use-assistant-queries"
 import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
-import { NODE_TYPE_LABELS, type FlowGraph, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
+import type { FlowGraph, FlowNode } from "@/schemas/admin/workflow-graph.schema"
 import type { WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 import { TriggerConfigEditor } from "./trigger-fields"
 import { ActionForm } from "./node-config/action-form"
@@ -17,7 +17,9 @@ import { OrchestratorForm } from "./node-config/orchestrator-form"
 import { InterventionPolicyForm } from "./node-config/intervention-policy-form"
 import { OutputForm } from "./node-config/output-form"
 import { SelectEmployeesForm } from "./node-config/select-employees-form"
+import { NextStepFields } from "./node-config/next-step-fields"
 import { WaitForm } from "./node-config/wait-form"
+import { nodeKindLabel } from "./node-visuals"
 
 export function NodeConfigPanel({
   node,
@@ -30,6 +32,7 @@ export function NodeConfigPanel({
   populationFilter,
   issues,
   onChange,
+  onConnectBranch,
   onDelete,
   onClose,
 }: {
@@ -48,6 +51,8 @@ export function NodeConfigPanel({
   consolidatedStructure?: { kind: string } | null
   populationFilter?: { kind: string } | null
   onChange: (next: FlowNode) => void
+  /** Liga uma saída desta etapa a outra (ou desliga, com `null`) — a alternativa a arrastar no canvas. */
+  onConnectBranch?: (branchId: string, targetId: string | null) => void
   onDelete: () => void
   onClose: () => void
 }) {
@@ -61,11 +66,13 @@ export function NodeConfigPanel({
     <aside className="h-full space-y-4 p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{NODE_TYPE_LABELS[node.type]}</p>
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{nodeKindLabel(node)}</p>
           <Input
+            aria-label="Nome da etapa"
+            placeholder={nodeKindLabel(node)}
             value={node.label}
             onChange={(event) => onChange({ ...node, label: event.target.value })}
-            className="mt-1 h-8 border-0 px-0 text-base font-medium shadow-none focus-visible:ring-0"
+            className="mt-1 h-8 px-2 text-base font-medium shadow-none"
           />
         </div>
         <div className="flex shrink-0 gap-1">
@@ -112,7 +119,9 @@ export function NodeConfigPanel({
                 {trigger.context === "INTERACTION" ? " e uma interação dele" : trigger.context === "INDICATOR_MEASUREMENT" ? " e uma medição do indicador" : ""}.
               </>
             ) : (
-              <>Este fluxo dispara um enrollment por operador do escopo, nos horários e intervalo abaixo.</>
+              <>
+                Este fluxo começa nos dias e horários abaixo{evaluationMode === "CONSOLIDATED" ? ", com uma execução para a estrutura escolhida" : ", com uma execução para cada colaborador"}.
+              </>
             )}
           </p>
           <TriggerConfigEditor
@@ -125,7 +134,7 @@ export function NodeConfigPanel({
           />
         </div>
       ) : null}
-      {node.type === "wait" ? <WaitForm node={node} onChange={onChange} /> : null}
+      {node.type === "wait" ? <WaitForm key={node.id} node={node} onChange={onChange} /> : null}
       {node.type === "condition" ? (
         <ConditionForm
           node={node}
@@ -172,7 +181,8 @@ export function NodeConfigPanel({
         />
       ) : null}
       {node.type === "intervention_policy" ? <InterventionPolicyForm node={node} graph={graph} onChange={onChange} /> : null}
-      {node.type === "end" ? <p className="text-sm text-muted-foreground">Marca o fim desta jornada.</p> : null}
+      {node.type === "end" ? <p className="text-sm text-muted-foreground">Marca o fim deste caminho do fluxo.</p> : null}
+      {onConnectBranch ? <NextStepFields node={node} graph={graph} onConnectBranch={onConnectBranch} /> : null}
     </aside>
   )
 }

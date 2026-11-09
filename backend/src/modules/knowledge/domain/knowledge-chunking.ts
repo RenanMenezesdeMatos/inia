@@ -8,6 +8,8 @@
  * "documento + seção" (e para o QA Lab mostrar exatamente o que foi recuperado) — nunca um
  * pedaço anônimo de texto.
  */
+import type { ChunkImage } from "./pdf-markdown/page-map.js"
+
 export type KnowledgeChunk = {
   documentId: string
   documentTitle: string
@@ -17,6 +19,10 @@ export type KnowledgeChunk = {
   /** Posição do trecho dentro do documento (0-based) — mantém a ordem original ao montar o prompt. */
   index: number
   text: string
+  /** Páginas do arquivo original de onde o trecho veio (só em PDF convertido; ver `pdf-markdown/page-map.ts`). */
+  pages?: { from: number; to: number }
+  /** Imagens do arquivo que caem neste trecho, para a tela (mesmo arquivo). Nunca vão para a IA. */
+  images?: ChunkImage[]
 }
 
 export const DEFAULT_MAX_CHUNK_CHARS = 1400

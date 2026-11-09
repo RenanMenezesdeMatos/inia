@@ -13,6 +13,7 @@ import { env } from "../../../config/env.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { assignRole, revokeRole } from "../application/access-service.js"
+import { personIdsWithOrganizationWidePermission } from "../application/permission-holders.js"
 import { createPostgresAccessRepository } from "../infrastructure/postgres-access-repository.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -82,6 +83,43 @@ describe.skipIf(!ENABLED)("Modelo de acesso — prova Postgres (papéis × permi
     expect((await admin.get("/api/v1/admin/agents")).status).toBe(403)
     expect((await client.query("select revoked_at is not null revoked from access_role_assignments where id = $1", [adminGrant.id])).rows[0]).toEqual({ revoked: true })
     expect((await client.query("select count(*)::int n from audit_logs where entity_id = $1 and action = 'ACCESS_ROLE_REVOKED'", [adminGrant.id])).rows[0].n).toBe(1)
+  })
+
+  it("Central de Dados: só Administrador geral e Administrador de dados; o Administrador perde a entrada e só o geral concede", async () => {
+    const org = (await client.query<{ id: string }>("select id from organizations order by created_at limit 1")).rows[0]!
+    const hash = await hashPassword("Proof@12345")
+    const person = async (name: string) => {
+      const id = (await client.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, $2, 'ADMIN') returning id", [org.id, name])).rows[0]!.id
+      const email = `${name.toLowerCase().replaceAll(" ", "-")}@proof.inia.local`
+      const accountId = (await client.query<{ id: string }>("insert into user_accounts (organization_id, person_id, email, password_hash) values ($1, $2, $3, $4) returning id", [org.id, id, email, hash])).rows[0]!.id
+      return { id, accountId, email }
+    }
+    const grant = (accountId: string, roleCode: string) => client.query("insert into access_role_assignments (organization_id, user_account_id, role_code, scope_type, granted_at) values ($1, $2, $3, 'ORGANIZATION', now())", [org.id, accountId, roleCode])
+    const geral = await person("Proof Central Geral")
+    await grant(geral.accountId, "ADMINISTRADOR_GERAL")
+    const administrador = await person("Proof Central Administrador")
+    await grant(administrador.accountId, "ADMINISTRADOR")
+    const dados = await person("Proof Central Dados")
+    const app = createApp(client as never, { rateLimits: false })
+    const login = async (email: string) => { const agent = request.agent(app); expect((await agent.post("/api/v1/auth/login").send({ email, password: "Proof@12345" })).status).toBe(200); return agent }
+
+    const admin = await login(administrador.email)
+    expect((await admin.get("/api/v1/admin/data-hub/sources")).status).toBe(403)
+    expect((await admin.post("/api/v1/ingestion/interactions").send({})).status).toBe(403)
+    expect((await admin.get("/api/v1/auth/me")).body.data.access.capabilities).toMatchObject({ canAccessAdministration: true, canManageDataHub: false })
+    expect((await admin.post(`/api/v1/admin/access/accounts/${dados.accountId}/roles`).send({ roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "ORGANIZATION" } })).body.error.code).toBe("ACCESS_ROLE_NOT_DELEGABLE")
+
+    const general = await login(geral.email)
+    expect((await general.post(`/api/v1/admin/access/accounts/${dados.accountId}/roles`).send({ roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "GROUP", teamId: "00000000-0000-4000-8000-000000000000" } })).status).toBeGreaterThanOrEqual(400)
+    expect((await general.post(`/api/v1/admin/access/accounts/${dados.accountId}/roles`).send({ roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "ORGANIZATION" } })).status).toBe(201)
+
+    const dataAdmin = await login(dados.email)
+    expect((await dataAdmin.get("/api/v1/admin/data-hub/sources")).status).toBe(200)
+    expect((await dataAdmin.get("/api/v1/auth/me")).body.data.access).toMatchObject({ permissions: ["data_hub.cancel_records", "data_hub.explore", "data_hub.manage"], capabilities: { canAccessAdministration: true, canManageDataHub: true, canExploreData: true, canManageConfiguration: false } })
+    for (const path of ["/api/v1/admin/agents", "/api/v1/admin/workflows", "/api/v1/admin/users", "/api/v1/admin/qa-lab/runs", "/api/v1/admin/access/accounts"]) expect((await dataAdmin.get(path)).status, path).toBe(403)
+    const holders = await personIdsWithOrganizationWidePermission(client, org.id, "data_hub.manage")
+    expect(holders).toEqual(expect.arrayContaining([geral.id, dados.id]))
+    expect(holders).not.toContain(administrador.id)
   })
 
   it("V1.5.8 — Indicadores, Estrutura, Calendário e ficha: permission + scope, nunca nível hierárquico; Supervisor mantém a visão operacional", async () => {

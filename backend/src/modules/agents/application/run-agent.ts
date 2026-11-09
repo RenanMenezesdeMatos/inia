@@ -6,8 +6,16 @@ import { productionAgentRuns, type AgentRunRecorder, type AgentRunSource } from 
 import type { createMonitoringFeedback, StructuredMonitoringFeedback } from "../../feedbacks/application/create-monitoring-feedback.js"
 import type { createIndicatorFeedback, StructuredIndicatorFeedback } from "../../feedbacks/application/create-indicator-feedback.js"
 import { buildSystemPromptWithTrace, type AgentConfig } from "./build-system-prompt.js"
+import { agentSnapshotFor, withAgentSnapshots } from "./agent-runtime-context.js"
+import { resolveAgentVersionForRun } from "./agent-versions.js"
+import type { AgentConfig as AgentConfigSnapshot, AgentRuntimeSnapshot } from "../domain/agent-config.js"
+import { AgentInactiveError } from "../domain/agent-inactive-error.js"
 import { attachKnowledgeTrace } from "../../../shared/application/llm-telemetry.js"
 import { loadInteractionSubject, withoutCheckpointCatalog, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
+import { withKnowledgeConsultation } from "../../knowledge/application/knowledge-consultation-context.js"
+import { enforceResponseBeforeNextStep } from "../../governance/application/response-compliance.js"
+import { complianceSourcesOfExcerpts } from "../../governance/domain/response-compliance.js"
+import { formatIndicatorValue } from "../../indicators/domain/indicator-definition.js"
 import { processAuditSchema, verifyProcessAudit, type VerifiedProcessAudit } from "../domain/process-audit.js"
 import { PROCESS_ASSESSMENT_CONTRACT, PROCESS_ASSESSMENT_INSTRUCTIONS_V5, PROCESS_ASSESSMENT_MODEL_CONTRACT_V5, PROCESS_ASSESSMENT_MODEL_CONTRACT_VERSION, validateProcessAssessmentOutput, type PresentedExcerptForContract, type RawProcessAssessment } from "../domain/process-assessment-contract.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
@@ -168,6 +176,8 @@ export type WorkflowRunContext =
         direction: string
         measurementIds: string[]
       }[]
+      /** Formato "Reconhecimento": o motivo da escolha, escrito pelo sistema (workflows/application/recognition-fact.ts). */
+      recognition?: { subject: string; reason: string; snapshot: Record<string, unknown> } | undefined
     }
 
 export const STRUCTURED_OUTPUT_INSTRUCTIONS = `
@@ -216,6 +226,18 @@ Responda SOMENTE com um JSON válido (sem markdown, sem texto fora do JSON), nes
   "summary": "resumo em 1-2 frases do panorama geral do período",
   "relatedProcedure": "o TÍTULO EXATO do documento (como aparece depois de ### em 'Bases de conhecimento disponíveis') mais relevante pros indicadores que ficaram abaixo da meta — nunca invente um nome que não esteja literalmente nas fontes fornecidas; se nenhum documento cobrir o caso, escreva 'Nenhum procedimento específico cadastrado'",
   "recommendation": "um resumo geral corrido dirigido diretamente ao operador (2ª pessoa: 'você'), cobrindo TODOS os indicadores listados no contexto — não invente nem omita nenhum. Use SOMENTE os números fornecidos (valor médio do período, meta, quanto falta) — nunca calcule, arredonde ou invente um número que não esteja lá. Para cada indicador fora da meta, uma frase objetiva de orientação; indicadores dentro da meta podem ser citados brevemente como ponto positivo. Termine com 1-2 ações concretas prioritárias pro próximo período. Separe os parágrafos com uma linha em branco. Texto simples, sem markdown."
+}
+Todos os campos são obrigatórios.`
+
+/** RECOGNITION_FEEDBACK_V1 — o positivo não é inferido dos números: quem escolhe é o ranking, e o sistema diz o motivo e a situação frente à meta. */
+export const STRUCTURED_OUTPUT_INSTRUCTIONS_RECOGNITION = `
+Este retorno é um RECONHECIMENTO. A pessoa foi escolhida por uma regra do sistema, descrita em "Motivo do reconhecimento" no contexto. Esse motivo é um fato oficial: reconheça a pessoa por ele, mesmo que o resultado tenha ficado abaixo da meta.
+Responda SOMENTE com um JSON válido (sem markdown, sem texto fora do JSON), neste formato exato:
+{
+  "title": "título curto do reconhecimento, até 80 caracteres, dizendo o que foi reconhecido",
+  "summary": "em 1-2 frases, o motivo do reconhecimento e o número que o sustenta",
+  "relatedProcedure": "o TÍTULO EXATO do documento (como aparece depois de ### em 'Bases de conhecimento disponíveis') relacionado ao resultado reconhecido — nunca invente um nome que não esteja literalmente nas fontes fornecidas; se nenhum documento cobrir o caso, escreva 'Nenhum procedimento específico cadastrado'",
+  "recommendation": "o reconhecimento em si, em texto corrido e tom caloroso, dirigido diretamente à pessoa (2ª pessoa: 'você'). Abra parabenizando a pessoa pelo motivo do reconhecimento, com o número dele e a posição como foi informada, sem nomear colegas. Se o motivo disser que não houve comparação, não fale em melhor resultado nem em destaque sobre outras pessoas: parabenize pela evolução informada ou pelos resultados dentro da meta. Cite os resultados marcados 'dentro da meta' como pontos positivos, com o número. Cada item marcado 'fora da meta', inclusive o PRV e o próprio resultado do motivo, precisa aparecer dito como fora da meta, com o número e sem tom de cobrança: nunca apresente esse resultado como meta batida nem elogie o número em si. Escreva 'fora da meta', não 'abaixo' nem 'acima', porque em alguns indicadores o melhor é o menor valor. Use SOMENTE os números fornecidos, como estão escritos — nunca calcule, arredonde ou invente outro. Não diga de onde o resultado veio: não o atribua a dedicação, foco, esforço, consistência, qualidade ou qualquer outra característica da pessoa ou do trabalho, e não diga que ele reflete, gerou ou é fruto de algo, porque os números não mostram isso. Não diga como melhorar. Termine com uma frase sobre qual resultado dentro da meta vale manter, nomeando-o, e, se houver item fora da meta, qual merece atenção no próximo período; se nada estiver dentro da meta, diga apenas o que merece atenção. Separe os parágrafos com uma linha em branco. Texto simples, sem markdown."
 }
 Todos os campos são obrigatórios.`
 
@@ -549,24 +571,66 @@ type RunAgentInput = {
   subject?: AgentInvestigationSubject | null | undefined
   /** Relógio da execução (Workflow/QA) — padrão: agora. */
   now?: Date | undefined
+  /**
+   * Qual configuração executar (PEN-002, revisão de 03/11/2026). Ausente: a versão já resolvida no contexto por quem chamou
+   * (Workflow, orquestrador — sempre a vigente, conferida por eles) ou, sem ela, a VIGENTE. `VERSION` com `versionId` e `DRAFT`
+   * só no teste manual (PEN-049; o conteúdo do rascunho testado fica gravado na execução).
+   * `DRAFT` leva a configuração do rascunho que QUEM CHAMOU leu (e conferiu): a execução nunca relê o rascunho, que outra pessoa
+   * pode ter salvo com outro alcance entre a conferência e a execução. A versão é relida pelo id, mas versão publicada não muda.
+   */
+  target?: { kind: "VERSION"; versionId?: string | null | undefined } | { kind: "DRAFT"; config: AgentConfigSnapshot } | undefined
 }
 
-export async function runAgent(db: Database, input: RunAgentInput): Promise<AgentRunOutcome> {
+const isActive = async (db: Database, input: RunAgentInput) =>
+  (await db.query<{ active: boolean }>(`select active from agents where id = $1 and organization_id = $2`, [input.agentId, input.organizationId])).rows[0]?.active
+
+/** Versão a executar: a do contexto, a pedida (fixada/rascunho) ou a vigente. Agente inativo ou nunca publicado não executa. */
+async function resolveRunSnapshot(db: Database, input: RunAgentInput): Promise<AgentRuntimeSnapshot> {
+  const inContext = agentSnapshotFor(input.agentId)
+  const resolved = inContext && !input.target
+    ? { ...inContext, active: await isActive(db, input) }
+    : input.target?.kind === "DRAFT"
+      ? { agentId: input.agentId, organizationId: input.organizationId, versionId: null, versionNumber: null, config: input.target.config, active: await isActive(db, input) }
+      : await resolveAgentVersionForRun(db, input.organizationId, input.agentId, input.target?.kind === "VERSION" ? { versionId: input.target.versionId ?? null } : {})
+  if (resolved.active === undefined) throw new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
+  // Autorização na hora em que a execução vai começar (PEN-070): desativado depois do início do processo também não executa.
+  if (!resolved.active) throw new AgentInactiveError(input.agentId, resolved.config.name, resolved.versionId, resolved.versionNumber)
+  return { agentId: resolved.agentId, organizationId: resolved.organizationId, versionId: resolved.versionId, versionNumber: resolved.versionNumber, config: resolved.config }
+}
+
+/** Uma execução de agente é uma consulta às bases: lê uma versão só de cada base e registra as usadas (PEN-008). */
+export function runAgent(db: Database, input: RunAgentInput): Promise<AgentRunOutcome> {
+  return withKnowledgeConsultation(() => runAgentConsultation(db, input))
+}
+
+async function runAgentConsultation(db: Database, input: RunAgentInput): Promise<AgentRunOutcome> {
   const { organizationId } = input
   const recorder = input.recorder ?? productionAgentRuns
-  const agentResult = await db.query<AgentConfig & { active: boolean; recommend_support_materials: boolean; investigation_capabilities: string[] | null }>(
-    `select name, objective, description, context_prompt, active, recommend_support_materials, investigation_capabilities, organization_id from agents where id = $1 and organization_id = $2`,
-    [input.agentId, organizationId],
-  )
-  const agent = agentResult.rows[0]
-  if (!agent) throw new DomainError("Agente não encontrado.", "AGENT_NOT_FOUND", 404)
-  if (!agent.active) throw new DomainError("Este agente está inativo.", "AGENT_INACTIVE", 422)
+  const snapshot = await resolveRunSnapshot(db, input)
+  const agent = {
+    organization_id: organizationId,
+    name: snapshot.config.name,
+    objective: snapshot.config.objective,
+    description: snapshot.config.description,
+    context_prompt: snapshot.config.contextPrompt,
+    recommend_support_materials: snapshot.config.recommendSupportMaterials,
+    investigation_capabilities: snapshot.config.investigationCapabilities,
+  }
 
-  const runId = await recorder.start(db, { organizationId, agentId: input.agentId, source: input.source, inputContext: input.inputContext })
+  // Cada execução registra a versão usada; o teste do rascunho grava o conteúdo testado (PEN-002, PEN-049).
+  const runId = await recorder.start(db, {
+    organizationId,
+    agentId: input.agentId,
+    source: input.source,
+    inputContext: input.inputContext,
+    agentVersionId: snapshot.versionId,
+    runTarget: snapshot.versionId ? "VERSION" : "DRAFT",
+    ...(snapshot.versionId ? {} : { testedConfig: snapshot.config }),
+  })
 
   // `withLlmScope` só etiqueta a telemetria de IA (papel "agent" + qual agente) — ver
-  // shared/application/llm-telemetry.ts; no-op fora do QA Lab.
-  return withLlmScope({ role: "agent", agentId: input.agentId }, () => executeAgentRun(db, input, agent, runId, recorder))
+  // shared/application/llm-telemetry.ts; no-op fora do QA Lab. O contexto da versão faz prompt, bases e limites saírem DELA.
+  return withAgentSnapshots([snapshot], () => withLlmScope({ role: "agent", agentId: input.agentId }, () => executeAgentRun(db, input, agent, runId, recorder)))
 }
 
 /** Sujeito + período padrão da investigação a partir do contexto do Workflow (ou do sujeito explícito). */
@@ -757,6 +821,7 @@ async function executeAgentRun(
           ...investigationFields,
         }
 
+        await enforceResponseBeforeNextStep(db, { organizationId, text: raw, agentId: input.agentId, surface: "AGENT_RUN", source: "AGENT", agentRunId: runId, sources: complianceSourcesOfExcerpts(built.knowledge.retrieved) })
         await recorder.complete(db, runId, raw, investigation?.trace)
         return { id: runId, outputText: raw, status: "COMPLETED", errorMessage: null, workflowResult, ...investigationFields }
       }
@@ -831,18 +896,21 @@ async function executeAgentRun(
       }
 
       // kind === "indicator_summary"
-      const raw = await finalReply(STRUCTURED_OUTPUT_INSTRUCTIONS_INDICATOR_SUMMARY, supportMaterialCandidates, false, "INDICATOR_SUMMARY")
+      const raw = await finalReply(workflow.recognition ? STRUCTURED_OUTPUT_INSTRUCTIONS_RECOGNITION : STRUCTURED_OUTPUT_INSTRUCTIONS_INDICATOR_SUMMARY, supportMaterialCandidates, false, "INDICATOR_SUMMARY")
       const { supportMaterials: selected, supportMaterialsRejected, ...structured } = parseStructuredIndicatorFeedback(raw, supportMaterialCandidates)
       const { supportMaterials } = withInvestigationMaterials({ ...(selected ? { supportMaterials: selected } : {}) })
 
+      // No reconhecimento, a evidência chega à pessoa com a unidade da tela. O resumo de sempre continua igual.
+      const summaryValue = (value: number, unit: string) => (workflow.recognition ? formatIndicatorValue(value, unit) : `${value} ${unit}`)
       const evidenceFound = `${workflow.periodLabel} — ${workflow.indicators
         .map((indicator) =>
           indicator.targetValue !== null
-            ? `${indicator.name}: ${indicator.value} ${indicator.unit} (meta: ${indicator.targetValue} ${indicator.unit})`
-            : `${indicator.name}: ${indicator.value} ${indicator.unit} (sem meta cadastrada)`,
+            ? `${indicator.name}: ${summaryValue(indicator.value, indicator.unit)} (meta: ${summaryValue(indicator.targetValue, indicator.unit)})`
+            : `${indicator.name}: ${summaryValue(indicator.value, indicator.unit)} (sem meta cadastrada)`,
         )
         .join(" | ")}`
-      const observedBehavior = `Resumo de ${workflow.indicators.length} indicador(es) no período ${workflow.periodLabel}.`
+      const observedBehavior = workflow.recognition ? workflow.recognition.reason : `Resumo de ${workflow.indicators.length} indicador(es) no período ${workflow.periodLabel}.`
+      const summaryName = workflow.recognition ? workflow.recognition.subject : "Resumo geral de indicadores"
 
       const workflowResult: AgentWorkflowResult = {
         kind: "indicator",
@@ -859,12 +927,13 @@ async function executeAgentRun(
               periodEnd: workflow.periodEnd,
               indicators: workflow.indicators.map((indicator) => ({ code: indicator.code, measurementIds: indicator.measurementIds })),
             },
+            ...(workflow.recognition ? { recognition: workflow.recognition.snapshot } : {}),
           },
           measuredAt: workflow.periodEnd,
           indicatorCode: "GERAL",
-          indicatorName: "Resumo geral de indicadores",
+          indicatorName: summaryName,
           evidenceFound,
-          impactedIndicator: "Resumo geral de indicadores",
+          impactedIndicator: summaryName,
           observedBehavior,
           structured,
         },
@@ -873,6 +942,7 @@ async function executeAgentRun(
         ...investigationFields,
       }
 
+      await enforceResponseBeforeNextStep(db, { organizationId, text: raw, agentId: input.agentId, surface: "AGENT_RUN", source: "AGENT", agentRunId: runId, sources: complianceSourcesOfExcerpts(built.knowledge.retrieved) })
       await recorder.complete(db, runId, raw, investigation?.trace)
       return { id: runId, outputText: raw, status: "COMPLETED", errorMessage: null, workflowResult, ...investigationFields }
     }
@@ -918,6 +988,7 @@ async function executeAgentRun(
     const extracted = extractSupportMaterialsMarker(rawOutput)
     const selection = supportMaterialCandidates.length > 0 ? selectSupportMaterialRecommendations(extracted.raw, supportMaterialCandidates) : { accepted: [], rejected: [] }
     if (selection.rejected.length > 0) console.warn(JSON.stringify({ event: "agent_support_materials_rejected", rejected: selection.rejected }))
+    await enforceResponseBeforeNextStep(db, { organizationId, text: extracted.text, agentId: input.agentId, surface: "AGENT_RUN", source: "AGENT", agentRunId: runId, sources: complianceSourcesOfExcerpts(built.knowledge.retrieved) })
     await recorder.complete(db, runId, extracted.text, investigation?.trace)
     const freeTextMaterials = withInvestigationMaterials(selection.accepted.length > 0 ? { supportMaterials: selection.accepted } : {})
     return {

@@ -104,6 +104,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
     pages: [
       { href: "/wiki/workflows", title: "Workflow Engine — visão geral", shortTitle: "Visão geral", description: "O que é um Workflow, como pensar um, Escopo/Abrangência/Modo de avaliação, DRAFT × PUBLISHED e validação de publicação." },
       { href: "/wiki/workflows/criacao", title: "Como criar um Workflow", shortTitle: "Como criar", description: "Passo a passo no editor real: novo Workflow, nome, abrangência, gatilho, alvo, população, nodes, salvar, validar, QA Lab, publicar." },
+      { href: "/wiki/workflows/exemplos", title: "Aprenda na prática", description: "Escolha um problema do dia a dia e acompanhe como um Workflow o resolve, etapa por etapa, em demonstrações guiadas com dados fictícios." },
       { href: "/wiki/workflows/triggers", title: "Triggers", description: "Flag de canal, Indicador, Agenda (calendário ou relativa ao expediente) e Manual. Chat e Avatar não são Trigger." },
       { href: "/wiki/workflows/execucao-manual", title: "Execução manual (Executar agora)", shortTitle: "Execução manual", description: "Gatilho Manual: criar, publicar e executar para um colaborador escolhido, com interação ou medição reais; acompanhamento, QA Lab e o exemplo de feedback no Avatar." },
       { href: "/wiki/workflows/nodes", title: "Nodes", description: "Todos os nodes reais do Builder, o contexto disponível em cada ponto do fluxo, Variáveis e Aguardar." },
@@ -171,8 +172,9 @@ export const WIKI_SECTIONS: WikiSection[] = [
     icon: Database,
     description: "A porta única de entrada dos dados do cliente: fontes, feeds, contratos de dados, mapeamento, cargas, quarentena, linhagem, saúde × atualidade.",
     pages: [
-      { href: "/wiki/central-de-dados", title: "Central de Dados", description: "Conceito, princípio 'sem integração por indicador', camadas, Fonte, Feed, Contrato de Dados, catálogo, mapeamento, validação, writers, cargas, quarentena, linhagem, saúde × atualidade e segurança." },
+      { href: "/wiki/central-de-dados", title: "Central de Dados", description: "Conceito, princípio 'sem integração por indicador', camadas, Fonte, Feed, Contrato de Dados, catálogo, mapeamento, validação, writers, cargas, quarentena, linhagem, saúde × atualidade, consulta de dados e segurança." },
       { href: "/wiki/central-de-dados/conectores", title: "Conectores", description: "CSV, Excel, API Pull (auth, paginação, checkpoint), API Push (endpoint, token, Idempotency-Key), SFTP (host key, padrão, dedup) e o wizard Nova fonte." },
+      { href: "/wiki/central-de-dados/banco-do-cliente", title: "Tabelas no banco do cliente", shortTitle: "Banco do cliente", description: "O que criar no banco do cliente para a INIA ler os dados: como a INIA consulta, o SQL das tabelas, o usuário de leitura e o que é cada campo." },
       { href: "/wiki/central-de-dados/guias", title: "Guias e troubleshooting", shortTitle: "Guias", description: "Como importar um CSV, conectar uma API, conectar um SFTP, entender uma carga com erros e os códigos de erro." },
     ],
   },

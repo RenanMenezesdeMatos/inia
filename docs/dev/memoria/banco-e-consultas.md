@@ -73,3 +73,43 @@ Documentos relacionados: [workflows.md](workflows.md) (worker e agenda), [experi
 - **Feed da estrutura de quem lidera muita gente.** O keyset tirou o `count(*)` e o OFFSET, mas cada página ainda lê todos os feedbacks publicados da estrutura e escolhe os mais recentes (top-N, memória fixa). São cerca de 5 ms para 30 mil feedbacks de 2.000 liderados. Um índice na ordem do feed por organização foi testado e não mudou o plano. Medições no item 4 de [../escalabilidade-consultas.md](../escalabilidade-consultas.md).
 - **Lista de Pendências.** Ainda descomprime o `node_outputs` de cada execução para extrair a decisão do nó. A saída caiu de 7,8 MB para 24 kB, mas a leitura continua. Guardar a decisão numa coluna resolve.
 - **`manual-run-proof`.** "Duplo clique simultâneo" estoura os 20 s também no commit-base 0006a474. Não tem relação com esta frente.
+
+### Auditoria de eficiência de 17/10/2026 (branch `claude/auditoria-eficiencia`)
+
+Relatório completo (achados, medições antes × depois, o que ficou de fora): [../auditoria-eficiencia-2026-10-17.md](../auditoria-eficiencia-2026-10-17.md).
+
+**Regras novas**
+
+- **Desempenho oficial sempre pela organização.** `employee_indicator_performance` e `employee_prv_performance` só têm índice
+  começando por `organization_id`. Os leitores de `indicators/application/resolve-employee-performance.ts` derivam a organização
+  das próprias pessoas (`ORGANIZATION_OF_PERSON` / `ORGANIZATIONS_OF_PEOPLE`) e resolvem o código do indicador DENTRO dela.
+  Sem isso: varredura da tabela inteira (34 ms → 0,45 ms por leitura no dev) e, com o mesmo código em duas organizações,
+  "more than one row returned by a subquery". Prova: `employee-performance-organization-proof`.
+- **`indicator_measurements` sem `indicator_definition_id` não usa índice de pessoa.** O PostgreSQL 17 não tem skip scan: filtro
+  só por `subject_id`/`period_start` lê o índice inteiro. Ponha `indicator_definition_id = any(array(select id from
+  indicator_definitions where organization_id = $org))` quando a consulta vale para qualquer indicador (read model,
+  `valid_until`: 90 mil → 4 mil buffers por lote de 250 pessoas). Não vale para `max(period_end)` da organização inteira:
+  aí a varredura paralela ganha do índice (medido) — ver a marca d'água dos reports nas pendências.
+- **Meta vigente por estrutura, não por pessoa.** `resolveGoalValue` (condition-evaluator) resolve a meta uma vez por
+  Subgrupo/Grupo distinto do conjunto e distribui às pessoas (estrutura de 2.398: 56 ms → 1,8 ms).
+- **Catálogo diário numa consulta só.** `loadIndicatorOperationalDefinition` busca por código SEM organização (pega a mais
+  antiga): quem já lê `indicator_definitions` da organização mapeia as próprias linhas com `toOperationalDefinition`
+  (`OPERATIONAL_DEFINITION_COLUMNS`). O quartil operacional aceita a `definition` pronta.
+- **Leitura por item que pega conexão do pool tem teto.** `shared/application/concurrency/map-with-concurrency.ts` é o
+  `Promise.all` com no máximo N em andamento (mesma ordem, primeira falha rejeita). Use-o em vez de `Promise.all` sobre
+  colaboradores/unidades: com o pool de 20 e `connectionTimeoutMillis` de 10 s, milhares de consultas de uma vez fazem quem
+  espera falhar — inclusive o heartbeat de outras matrículas.
+- **Competência da liderança pelo cache oficial.** `resolveAnalysisPeriod` e `periodCoveredFor` (leadership-analytics/references.ts)
+  passam por `cachedOfficial` com `membersFingerprint`: rodavam no contexto de toda mensagem e em cada ferramenta.
+- **Nunca espalhe uma coleção do tamanho dos dados em argumentos.** `Math.max(...linhas)` e `push(...linhas)` estouram a pilha do
+  V8 a partir de ~120–130 mil elementos (planilha válida virava 500/FAILED). Use laço (`tableFromMatrix`, `appendRecords`).
+- **Amostra não lê o arquivo inteiro em células.** `scanCsv` monta só o que a amostra mostra e conta o resto com a mesma
+  gramática; `totalRows` continua sendo o total do arquivo.
+- **Posse do Run da Central de Dados é renovada pelo progresso** (etapa e lote aplicado, `RUN_LEASE_SECONDS`), e cada Run
+  reivindicado em grupo confere o próprio token (compare-and-swap) antes de executar — o mesmo padrão do motor de Workflows.
+- **Matrícula por Indicador/Flag na carga em lote** usa `createEnrollmentLookups` (uma instância por lote): leituras que não
+  dependem da linha são lembradas; decisão e insert continuam por linha.
+- **Metadado de objeto bruto sem o conteúdo:** `RawObjectStore.getMeta` para quem só confere existência/checksum.
+
+**Provas desta frente:** `employee-performance-organization-proof` (nova), `analytics-read-model-proof`, `dynamic-indicator-proof`,
+`data-hub-proof` e as de Workflow/estratégia listadas no relatório.

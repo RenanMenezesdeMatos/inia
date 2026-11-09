@@ -862,4 +862,5 @@ Verificação:
 - **Não conferido:** o CI no próprio GitHub com as actions novas, que só roda depois do commit e da publicação.
 - Achado lateral: o `npm audit --omit=dev` do backend passou de 2 para 9 itens moderados. O motivo é um aviso novo do
   `minimatch` (negação de serviço por "globparts amplification") na cadeia `exceljs` → `archiver`, além do `uuid` já
-  conhecido. Não há crítica nem alta; a triagem pela política de dependências fica pendente.
+  conhecido. Não há crítica nem alta. Triado em 03/11 no R-14 de `docs/security/pendencias-e-riscos.md`: não alcançável,
+  porque a INIA só lê planilhas; não há correção nas versões usadas; rever até 01/02/2027.

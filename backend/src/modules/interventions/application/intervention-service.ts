@@ -1,3 +1,4 @@
+import { knowledgeAvailableSql } from "../../knowledge/application/live-knowledge-version.js"
 import { randomUUID } from "node:crypto"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -109,7 +110,7 @@ const SELECT = `
     left join people a on a.id = i.approver_id
     left join intervention_policies pol on pol.id = i.policy_id
     left join intervention_policy_versions pv on pv.id = i.policy_version_id
-    left join workflows w on w.id = i.workflow_id`
+    left join workflows_all w on w.id = i.workflow_id`
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
 const notFound = () => new DomainError("Intervenção não encontrada.", "INTERVENTION_NOT_FOUND", 404)
@@ -553,7 +554,7 @@ export async function updateInterventionPlan(db: Database, viewer: Viewer, inter
     const issues = validateFormValues(definition.form, formValues, { requireComplete: false })
     if (issues.length > 0) throw new DomainError(issues[0]!.message, "INTERVENTION_FORM_INVALID", 422, { issues })
     if (plan.contents?.length) {
-      const published = (await tx.query<{ id: string }>(`select d.id from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and exists (select 1 from knowledge_versions v where v.document_id = d.id and v.status = 'PUBLISHED')`, [viewer.organizationId, plan.contents.map((content) => content.documentId)])).rows
+      const published = (await tx.query<{ id: string }>(`select d.id from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and ${knowledgeAvailableSql("d.id")}`, [viewer.organizationId, plan.contents.map((content) => content.documentId)])).rows
       if (published.length !== new Set(plan.contents.map((content) => content.documentId)).size) throw new DomainError("Treinamento só usa conteúdos publicados da base de conhecimento.", "TRAINING_CONTENT_NOT_APPROVED", 422)
     }
     await bump(tx, row, `plan = $3, form_values = $4`, [JSON.stringify(plan), JSON.stringify(formValues)])
@@ -611,7 +612,7 @@ export async function listTrainingCompetencies(db: Queryable | Database, organiz
   )
   const documentIds = [...new Set(rows.rows.flatMap((row) => row.knowledge_document_ids))]
   const published = documentIds.length
-    ? new Map((await db.query<{ id: string; title: string }>(`select d.id, d.title from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and exists (select 1 from knowledge_versions v where v.document_id = d.id and v.status = 'PUBLISHED')`, [organizationId, documentIds])).rows.map((row) => [row.id, row.title]))
+    ? new Map((await db.query<{ id: string; title: string }>(`select d.id, d.title from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and ${knowledgeAvailableSql("d.id")}`, [organizationId, documentIds])).rows.map((row) => [row.id, row.title]))
     : new Map<string, string>()
   return rows.rows.map((row) => ({
     key: row.key,

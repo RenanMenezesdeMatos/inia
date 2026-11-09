@@ -1,6 +1,6 @@
 import { DATA_CONTRACTS } from "../domain/contract-registry.js"
 import { describeErrorCode, WARNING_RECORD_ERROR_CODES } from "../domain/error-codes.js"
-import type { FreshnessState } from "../domain/freshness.js"
+import { cadenceLabel, type FreshnessState } from "../domain/freshness.js"
 import type { DataHubContext } from "./data-hub-context.js"
 import { SELECT_FEED, SELECT_SOURCE, type DataFeedRow, type DataSourceRow } from "./records.js"
 import { feedFreshness } from "./run-pipeline.js"
@@ -70,9 +70,10 @@ function feedRowToIso(row: DataFeedRow): DataFeedRow {
 
 export async function listSourceSummaries(ctx: DataHubContext, organizationId: string): Promise<SourceSummary[]> {
   const now = ctx.clock.now()
-  const [sources, feeds] = await Promise.all([
+  const [sources, feeds, timeZone] = await Promise.all([
     ctx.db.query<DataSourceRow>(`${SELECT_SOURCE} where s.organization_id = $1 and s.deleted_at is null order by s.created_at`, [organizationId]),
     ctx.db.query<DataFeedRow>(`${SELECT_FEED} where f.organization_id = $1 and f.deleted_at is null order by f.created_at`, [organizationId]),
+    resolveOrganizationTimezone(ctx.db, organizationId),
   ])
   const lastRuns = await loadLastRuns(ctx, organizationId, feeds.rows.map((feed) => feed.id))
   const contractLabels = new Map(DATA_CONTRACTS.map((contract) => [contract.key, contract.label]))
@@ -82,7 +83,7 @@ export async function listSourceSummaries(ctx: DataHubContext, organizationId: s
       .filter((feed) => feed.sourceId === source.id)
       .map((feedRaw) => {
         const feed = feedRowToIso(feedRaw)
-        return { ...feed, freshness: feedFreshness(feed, now), contractLabel: contractLabels.get(feed.contractKey) ?? feed.contractKey, lastRun: lastRuns.get(feed.id) ?? null }
+        return { ...feed, freshness: feedFreshness(feed, now, timeZone), contractLabel: contractLabels.get(feed.contractKey) ?? feed.contractKey, lastRun: lastRuns.get(feed.id) ?? null }
       })
     const latest = ownFeeds.map((feed) => feed.lastRun).filter((run): run is RunSummary => run !== null).sort((a, b) => (b.finishedAt ?? "").localeCompare(a.finishedAt ?? ""))[0] ?? null
     return {
@@ -409,7 +410,7 @@ export type QualityReport = {
   /** Totais do período: erros (rejeições) × avisos (registros aplicados com ressalva). */
   totals: { errors: number; warnings: number }
   feedsWithRejections: { feedId: string; feedName: string; sourceName: string; rejected: number; received: number; rate: number }[]
-  staleFeeds: { feedId: string; feedName: string; sourceName: string; lastSuccessAt: string | null; expectedIntervalMinutes: number | null }[]
+  staleFeeds: { feedId: string; feedName: string; sourceName: string; lastSuccessAt: string | null; cadenceLabel: string }[]
   schemaChanges: { feedId: string; feedName: string; sourceName: string; schemaChangedAt: string; lastErrorMessage: string | null }[]
   recentRejections: { runId: string; feedName: string; recordNumber: number; sourceRecordKey: string | null; errorCode: string; field: string | null; message: string; createdAt: string; severity: "ERROR" | "WARNING" }[]
   /** Calendário operacional: capital preenchida, 6x1 sem calendário, horizonte terminando. */
@@ -448,7 +449,7 @@ export async function buildQualityReport(ctx: DataHubContext, organizationId: st
     topWarnings: warningRows.map((row) => ({ code: row.code, label: describeErrorCode(row.code), count: row.count })),
     totals: { errors: errorRows.reduce((sum, row) => sum + row.count, 0), warnings: warningRows.reduce((sum, row) => sum + row.count, 0) },
     feedsWithRejections: feedsWithRejections.rows.map((row) => ({ ...row, rate: row.received > 0 ? row.rejected / row.received : 0 })),
-    staleFeeds: feeds.filter(({ feed }) => feed.status === "ACTIVE" && feed.freshness === "STALE").map(({ feed, source }) => ({ feedId: feed.id, feedName: feed.name, sourceName: source.name, lastSuccessAt: feed.lastSuccessAt, expectedIntervalMinutes: feed.expectedIntervalMinutes })),
+    staleFeeds: feeds.filter(({ feed }) => feed.status === "ACTIVE" && feed.freshness === "STALE").map(({ feed, source }) => ({ feedId: feed.id, feedName: feed.name, sourceName: source.name, lastSuccessAt: feed.lastSuccessAt, cadenceLabel: cadenceLabel(feed.cadence) })),
     schemaChanges: feeds.filter(({ feed }) => feed.schemaChangedAt).map(({ feed, source }) => ({ feedId: feed.id, feedName: feed.name, sourceName: source.name, schemaChangedAt: feed.schemaChangedAt!, lastErrorMessage: feed.lastErrorMessage })),
     recentRejections: recentRejections.rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString(), severity: isWarning(row.errorCode) ? ("WARNING" as const) : ("ERROR" as const) })),
     calendar: { ...calendarQuality, horizon },

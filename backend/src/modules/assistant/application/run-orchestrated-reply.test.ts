@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { MAX_TOOL_CALLS_PER_ROUND, MAX_TOOL_CALLS_PER_TURN, runOrchestratedReply, TOOL_CALL_LIMIT_TEXT } from "./run-orchestrated-reply.js"
+import { MAX_TOOL_CALLS_PER_ROUND, MAX_TOOL_CALLS_PER_TURN, runOrchestratedReply, SPECIALIST_UNAVAILABLE_TEXT, TOOL_CALL_LIMIT_TEXT } from "./run-orchestrated-reply.js"
 import type { ResolvedOrchestrator } from "./resolve-orchestrator.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 const generateWithTools = vi.fn()
 const runSpecialistTool = vi.fn()
@@ -10,7 +11,12 @@ vi.mock("../infrastructure/gemini-function-calling-client.js", () => ({
   generateWithTools: (...args: unknown[]) => generateWithTools(...args),
 }))
 
-const fakeDb = {} as Database
+/** Banco simulado: só a conferência de ativo na hora de acionar cada especialista (PEN-070). `agentOf` = linha simulada do agente
+ * (padrão: todo agente existe e está ativo). */
+function fakeDatabase(agentOf: (agentId: string) => Record<string, unknown> | undefined = () => ({})): Database {
+  return { query: async (text: string, params?: unknown[]) => answerAgentVersionQuery(text, params, agentOf) ?? { rows: [], rowCount: 0 } } as unknown as Database
+}
+const fakeDb = fakeDatabase()
 
 function orchestrator(overrides: Partial<ResolvedOrchestrator> = {}): ResolvedOrchestrator {
   return {
@@ -470,5 +476,61 @@ describe("runOrchestratedReply — a busca do especialista considera a última p
     const synthesisTurns = generateWithTools.mock.calls[1]![0] as { functionResponses?: { response: { result: string } }[] }[]
     expect(synthesisTurns.at(-1)!.functionResponses!.map((entry) => entry.response.result)).toEqual(["resposta de agent-proc", "resposta de agent-rh"])
     expect(reply.text).toBe("Síntese dos dois.")
+  })
+})
+
+describe("runOrchestratedReply — especialista desativado depois da resolução (PEN-070) e versões registradas (PEN-002, PEN-076)", () => {
+  it("o especialista inativo na hora da chamada não roda: a síntese lê o aviso de indisponível e cada chamada registra o resultado e as versões usadas", async () => {
+    runSpecialistTool.mockReset().mockImplementation(async (_db: unknown, _organizationId: string, agentId: string) => ({ contract: "TEXT", text: `resposta de ${agentId}`, supportMaterialCandidates: [] }))
+    generateWithTools
+      .mockReset()
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "consultar_retencao", args: { query: "q1" } }, { name: "consultar_faturamento", args: { query: "q2" } }] })
+      .mockResolvedValueOnce({ kind: "text", text: "Síntese com a parte disponível." })
+    const versioned = orchestrator({
+      orchestratorVersionId: "orch-1-v3",
+      orchestratorAgentVersionId: "agent-orch-1-v2",
+      specialists: [
+        { agentId: "agent-a", agentVersionId: "agent-a-v1", toolName: "consultar_retencao" },
+        { agentId: "agent-b", agentVersionId: "agent-b-v4", toolName: "consultar_faturamento" },
+      ],
+      tools: [{ name: "consultar_retencao", description: "x", parameters: { type: "OBJECT", properties: {} } } as never, { name: "consultar_faturamento", description: "y", parameters: { type: "OBJECT", properties: {} } } as never],
+    })
+    const db = fakeDatabase((agentId) => (agentId === "agent-b" ? { active: false } : {}))
+
+    const reply = await runOrchestratedReply(db, versioned, [{ role: "user", text: "como reter e o que cobrar?" }], "", "op-1")
+
+    expect(runSpecialistTool).toHaveBeenCalledTimes(1)
+    expect(runSpecialistTool.mock.calls[0]![2]).toBe("agent-a")
+    const synthesisTurns = generateWithTools.mock.calls[1]![0] as { functionResponses?: { response: { result: string } }[] }[]
+    expect(synthesisTurns.at(-1)!.functionResponses!.map((entry) => entry.response.result)).toEqual(["resposta de agent-a", SPECIALIST_UNAVAILABLE_TEXT])
+    expect(reply.text).toBe("Síntese com a parte disponível.")
+    const orchestratorRef = { orchestratorId: "orch-1", orchestratorVersionId: "orch-1-v3", orchestratorAgentId: "agent-orch-1", orchestratorAgentVersionId: "agent-orch-1-v2" }
+    // Revisão da PEN-002/PEN-076 (03/11/2026): a versão registrada é a VIGENTE resolvida na hora da chamada (no banco simulado, a
+    // vigente de cada agente tem o id do próprio agente), não a da montagem do Orquestrador.
+    expect(reply.calls).toEqual([
+      { toolName: "consultar_retencao", query: "q1", agentId: "agent-a", agentVersionId: "agent-a", outcome: "EXECUTED", ...orchestratorRef },
+      { toolName: "consultar_faturamento", query: "q2", agentId: "agent-b", agentVersionId: "agent-b", outcome: "BLOCKED_INACTIVE", ...orchestratorRef },
+    ])
+  })
+
+  it("versão vigente não autorizada para o alcance do Orquestrador na hora da chamada: não roda e fica registrada como acesso não autorizado", async () => {
+    runSpecialistTool.mockReset().mockImplementation(async (_db: unknown, _organizationId: string, agentId: string) => ({ contract: "TEXT", text: `resposta de ${agentId}`, supportMaterialCandidates: [] }))
+    generateWithTools
+      .mockReset()
+      .mockResolvedValueOnce({ kind: "functionCalls", calls: [{ name: "consultar_retencao", args: { query: "q1" } }] })
+      .mockResolvedValueOnce({ kind: "text", text: "Essa parte está indisponível." })
+    const scoped = orchestrator({
+      orchestratorVersionId: "orch-1-v3",
+      consumerScope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null },
+      specialists: [{ agentId: "agent-a", agentVersionId: "agent-a-v1", toolName: "consultar_retencao" }],
+      tools: [{ name: "consultar_retencao", description: "x", parameters: { type: "OBJECT", properties: {} } } as never],
+    })
+    // A versão vigente nova do especialista ficou restrita a um Grupo: não cobre um Orquestrador de "Todos os grupos".
+    const db = fakeDatabase(() => ({ scope_type: "TEAM", team_id: "11111111-1111-4111-8111-111111111111" }))
+
+    const reply = await runOrchestratedReply(db, scoped, [{ role: "user", text: "como reter?" }], "", "op-1")
+
+    expect(runSpecialistTool).not.toHaveBeenCalled()
+    expect(reply.calls[0]).toMatchObject({ agentId: "agent-a", outcome: "BLOCKED_UNAUTHORIZED" })
   })
 })

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../testing/agent-version-fakes.js"
 
 const generateAgentReply = vi.fn()
 const runInvestigation = vi.fn()
@@ -27,9 +28,13 @@ const OPERATOR = "00000000-0000-4000-8000-000000000030"
 const AGENT = "00000000-0000-4000-8000-000000000ac1"
 
 function fakeDb(capabilities: string[]): Database {
+  const agentRow = { name: "Agent", objective: "obj", description: "desc", context_prompt: "p", active: true, recommend_support_materials: false, investigation_capabilities: capabilities }
   return {
-    query: vi.fn(async (text: string) => {
-      if (text.includes("from agents where id")) return { rows: [{ name: "Agent", objective: "obj", description: "desc", context_prompt: "p", active: true, recommend_support_materials: false, investigation_capabilities: capabilities }], rowCount: 1 }
+    query: vi.fn(async (text: string, params?: unknown[]) => {
+      // PEN-002: o runtime executa a versão vigente — a configuração da versão sai da mesma linha simulada.
+      const versioned = answerAgentVersionQuery(text, params, () => agentRow)
+      if (versioned) return versioned
+      if (text.includes("from agents where id")) return { rows: [agentRow], rowCount: 1 }
       if (text.includes("from people p left join teams")) return { rows: [{ name: "Camila Fonseca", team_id: "t1", team_name: "B2C", subteam_id: "s1", subteam_name: "Voz" }], rowCount: 1 }
       return { rows: [], rowCount: 0 }
     }),

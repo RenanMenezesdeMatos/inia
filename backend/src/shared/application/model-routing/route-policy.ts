@@ -11,7 +11,7 @@ import { profilesForTier } from "./model-registry.js"
  */
 export type RoutingMode = "CURRENT" | "EFFICIENCY"
 
-export type RoutePurpose = "PLANNING" | "INVESTIGATION_NOTES" | "TOOL_ARGUMENT_GENERATION" | "ANALYZE_INTERACTIONS" | "ANALYZE_PEER_PATTERNS" | "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS" | "ORCHESTRATOR_ROUTING" | "ORCHESTRATOR_SYNTHESIS" | "POST_JOIN_SYNTHESIS" | "GATING_CORRECTION" | "FEEDBACK_WRITING" | "FEEDBACK_ANALYSIS" | "INTERVENTION_WRITING" | "REPORT_ANALYSIS" | "KNOWLEDGE_CLARIFICATION" | "BEST_PRACTICE_ANALYSIS"
+export type RoutePurpose = "PLANNING" | "INVESTIGATION_NOTES" | "TOOL_ARGUMENT_GENERATION" | "ANALYZE_INTERACTIONS" | "ANALYZE_PEER_PATTERNS" | "AGENT_SYNTHESIS" | "SPECIALIST_SYNTHESIS" | "ORCHESTRATOR_ROUTING" | "ORCHESTRATOR_SYNTHESIS" | "POST_JOIN_SYNTHESIS" | "GATING_CORRECTION" | "FEEDBACK_WRITING" | "FEEDBACK_ANALYSIS" | "INTERVENTION_WRITING" | "REPORT_ANALYSIS" | "KNOWLEDGE_CLARIFICATION" | "RESPONSE_COMPLIANCE" | "BEST_PRACTICE_ANALYSIS"
 
 export type RouteSignals = {
   purpose: RoutePurpose
@@ -96,6 +96,10 @@ export function targetTier(signals: RouteSignals, mode: RoutingMode): { tier: Mo
       // Esclarecimento pelas bases (chat): decidir se pergunta, responde ou diz que falta, e redigir a resposta com as fontes.
       tier = "STANDARD"
       break
+    case "RESPONSE_COMPLIANCE":
+      // Conferência da resposta contra os assuntos proibidos e os limites (PEN-017): uma decisão curta sobre um texto pronto.
+      tier = "BASIC"
+      break
     case "BEST_PRACTICE_ANALYSIS":
       // Base de boas práticas: rota FIXA (best-practices/infrastructure/gateway-best-practice-model.ts); ramo só para a política ser total.
       tier = "STANDARD"
@@ -126,7 +130,7 @@ export function targetTier(signals: RouteSignals, mode: RoutingMode): { tier: Mo
 /** Requisitos que cada propósito impõe ao perfil. */
 export function requirementsFor(signals: RouteSignals): PhaseRequirements {
   const tools = ["PLANNING", "TOOL_ARGUMENT_GENERATION", "ORCHESTRATOR_ROUTING"].includes(signals.purpose)
-  const structuredOutput = ["ANALYZE_INTERACTIONS", "ANALYZE_PEER_PATTERNS", "AGENT_SYNTHESIS", "POST_JOIN_SYNTHESIS", "GATING_CORRECTION", "FEEDBACK_WRITING", "FEEDBACK_ANALYSIS", "INTERVENTION_WRITING", "KNOWLEDGE_CLARIFICATION", "BEST_PRACTICE_ANALYSIS"].includes(signals.purpose)
+  const structuredOutput = ["ANALYZE_INTERACTIONS", "ANALYZE_PEER_PATTERNS", "AGENT_SYNTHESIS", "POST_JOIN_SYNTHESIS", "GATING_CORRECTION", "FEEDBACK_WRITING", "FEEDBACK_ANALYSIS", "INTERVENTION_WRITING", "KNOWLEDGE_CLARIFICATION", "RESPONSE_COMPLIANCE", "BEST_PRACTICE_ANALYSIS"].includes(signals.purpose)
   return { tools, structuredOutput, ...(signals.estimatedInputTokens ? { estimatedInputTokens: signals.estimatedInputTokens } : {}) }
 }
 

@@ -58,7 +58,8 @@ export function usePublishValidation({ workflowId, revision, isDirty, localIssue
     refetchOnReconnect: false,
   })
 
-  const backendIssue: GraphIssue | null = query.data && !query.data.valid && query.data.error ? { nodeId: query.data.error.nodeId ?? "", message: query.data.error.message } : null
+  // Com alteração pendente, a resposta guardada fala de um rascunho que já mudou: mostrá-la esconderia "Alterações não salvas".
+  const backendIssue: GraphIssue | null = !isDirty && query.data && !query.data.valid && query.data.error ? { nodeId: query.data.error.nodeId ?? "", message: query.data.error.message } : null
 
   let status: PublishValidationStatus
   if (isDirty) status = "stale"

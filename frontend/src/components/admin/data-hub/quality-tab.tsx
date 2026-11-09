@@ -291,7 +291,7 @@ export function QualityTab() {
                     </div>
                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                       último sucesso {formatRelative(entry.lastSuccessAt)}
-                      {entry.expectedIntervalMinutes ? ` · esperado a cada ${entry.expectedIntervalMinutes} min` : ""}
+                      {` · esperado: ${entry.cadenceLabel.toLowerCase()}`}
                     </span>
                   </li>
                 ))}

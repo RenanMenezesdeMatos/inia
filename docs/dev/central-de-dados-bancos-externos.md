@@ -34,6 +34,9 @@ assistente) começa direto na escolha da tabela, sem redigitar servidor, usuári
 **Configuração** edita a conexão (senha em branco = manter a guardada); no conjunto de dados, a leitura pode ser
 alterada e a posição (checkpoint) pode ser zerada ("Ler tudo de novo na próxima carga").
 
+O que o time de dados do cliente precisa criar (SQL, usuário de leitura e o que é cada campo) está na Wiki, em
+`/wiki/central-de-dados/banco-do-cliente`.
+
 ## Garantias (aplicadas por código)
 
 | Tema | Regra |
@@ -43,9 +46,10 @@ alterada e a posição (checkpoint) pode ser zerada ("Ler tudo de novo na próxi
 | Identificadores | Validados (`assertIdentifier`, até 128 caracteres) e citados pelo dialeto; valores sempre como parâmetros. |
 | Limites | Tempo de conexão (15 s) e de consulta (120 s) por conexão; `LOCK_TIMEOUT` 10 s no SQL Server; `max_execution_time`/`max_statement_time` no MySQL/MariaDB; `statement_timeout` no PostgreSQL; no máximo 2 operações simultâneas por conexão; amostra de 20 linhas; até 2.000 objetos na descoberta; página 100–10.000 linhas (padrão 1.000); limite por carga 1.000–1.000.000 (padrão 50.000). |
 | Segredos | Senha cifrada com AES-256-GCM (`data_secrets`, propósito `DATABASE_PASSWORD`, chave `DATA_HUB_SECRET_KEY` fora do banco). Nunca devolvida pela API, nunca em log, nunca na auditoria; mensagens de erro do driver passam por `sanitizeDriverMessage`. |
-| Permissão e organização | Rotas sob `data_hub.manage` na organização da sessão; fonte de outra organização = 404. |
+| Permissão e organização | Rotas sob `data_hub.manage` (Administrador geral e Administrador de dados) na organização da sessão; fonte de outra organização = 404. Configurar exige também a senha da fonte, ver `docs/dev/memoria/central-de-dados-e-instalacao.md`. |
 | Teste/amostra/validação | Nunca gravam nada nos dados de negócio. A importação só acontece depois de ativar (frequência ou "Sincronizar agora"). |
 | Nada no banco do cliente | A INIA nunca cria, altera ou apaga tabela, visão, índice ou linha no banco externo. |
+| Quando a carga roda | Periodicidade por conjunto de dados, com dias e horários no fuso da operação, para cair depois das rotinas do cliente; pelo menos 15 minutos entre cargas. Wiki `/wiki/central-de-dados#periodicidade`. |
 
 ## Como a carga lê
 
@@ -65,8 +69,13 @@ alterada e a posição (checkpoint) pode ser zerada ("Ler tudo de novo na próxi
   ponto aplicado.
 - **Releitura de segurança** (`lookbackMinutes`, só cursor de data/hora): reler N minutos antes da posição — pega linhas
   gravadas com atraso; o upsert idempotente as conta como "sem mudança".
+- **Origem travada ou fora do ar** (timeout, rede): a carga volta à fila e retoma do ponto aplicado. Da agenda ou de
+  continuação: novas tentativas depois de 1, 5, 15, 30, 60 e 60 minutos (7 no total, quase 3 horas). De "Sincronizar
+  agora": depois de 1 e 5 minutos (3 no total). Durante a espera, a fonte mostra a conexão com erro, "Sincronizar agora"
+  antecipa a mesma carga em vez de recusar, e pausar a fonte ou o conjunto cancela a carga, sem nova consulta à origem.
+  Esgotadas as tentativas, a carga falha e a próxima vem na frequência do conjunto.
 - **Carga interrompida** (processo caiu): a lease vence e `recoverInterruptedRuns` devolve a carga à fila, que retoma
-  do checkpoint aplicado.
+  do checkpoint aplicado. O limite é separado: a 3ª queda na mesma carga a encerra, mesmo com tentativas sobrando.
 - **Sem campo confiável** de atualização: a tela só oferece incremental quando existe coluna de data/hora ou número;
   senão, leitura completa (com chave = em páginas, retomável; sem chave = uma consulta limitada). Linhas com o campo de
   atualização vazio não são lidas pelo incremental — a tela avisa.
@@ -78,7 +87,8 @@ alterada e a posição (checkpoint) pode ser zerada ("Ler tudo de novo na próxi
   `DATA_SOURCE_NOT_FOUND`.
 - Códigos estáveis (`domain/error-codes.ts`): `DATA_SOURCE_AUTH_FAILED`, `DATA_SOURCE_UNREACHABLE`,
   `DATA_SOURCE_TIMEOUT`, `DATA_SOURCE_TLS_FAILED`, `DATA_SOURCE_PERMISSION_DENIED`, `DATA_SOURCE_NOT_FOUND`,
-  `DATA_SOURCE_VOLUME_LIMIT`, `DATA_SCHEMA_CHANGED`. Transitórios (rede/tempo) seguem o retry com backoff de sempre.
+  `DATA_SOURCE_VOLUME_LIMIT`, `DATA_SCHEMA_CHANGED`. Transitórios (rede/tempo) seguem as novas tentativas descritas em
+  "Como a carga lê".
 
 ## Mapa do código
 
@@ -95,10 +105,10 @@ alterada e a posição (checkpoint) pode ser zerada ("Ler tudo de novo na próxi
 
 | Banco | Versão testada | Driver | Situação |
 | --- | --- | --- | --- |
-| PostgreSQL | 17.11 | `pg` | prova completa (10 cenários) + tela |
-| MariaDB | 11.4.13 | `mysql2` | prova completa (10 cenários) + tela |
-| MySQL | 8.4.11 | `mysql2` | prova completa (10 cenários) + teste de conexão pela tela |
-| SQL Server | — | `mssql` 12 / tedious | **não validado contra servidor real** (o Mac de teste não tinha Rosetta para a imagem x86); dialeto e geração de SQL cobertos por testes de domínio — rode a prova com `npm run examples:sqlserver:up` antes de usar em produção |
+| PostgreSQL | 17.11 | `pg` | prova completa (11 cenários) + tela |
+| MariaDB | 11.4.13 | `mysql2` | prova completa (11 cenários) + tela |
+| MySQL | 8.4.11 | `mysql2` | prova completa (11 cenários) + teste de conexão pela tela |
+| SQL Server | 2022 (16.0.4295.3) | `mssql` 12 / tedious | prova completa (11 cenários) em contêiner x86 com Rosetta, em 05/11/2026. O 2019 rodou as cargas do primeiro feedback na homologação da Azure |
 
 Versões mínimas declaradas na tela: SQL Server 2016, PostgreSQL 12, MariaDB 10.5, MySQL 8.0 (abaixo disso, a sintaxe de
 tempo limite/somente leitura não é garantida).
@@ -124,7 +134,8 @@ cd backend && INIA_DB_PROOF=1 INIA_EXTERNAL_DB_PROOF=1 NODE_ENV=test npx vitest 
   de exemplo, use `INIA_EXTERNAL_DB_ENGINES=POSTGRESQL,MARIADB,MYSQL`. Cenários por banco: erros do teste (senha, rede,
   servidor que não responde, TLS), criação da fonte, descoberta/colunas/permissão, colaboradores incremental, 2.500
   medições em páginas de 100 com continuação, empates sem chave, falha de rede e retomada, falha ao aplicar sem avançar,
-  carga interrompida e recuperada, mudança de esquema/permissão revogada/zerar posição, segredos e isolamento de
+  trava real na tabela (tempo esgotado, nova tentativa, termina quando a trava sai), carga interrompida e recuperada,
+  mudança de esquema/permissão revogada/zerar posição, segredos e isolamento de
   organização. Os bancos de prova são criados e apagados pela própria prova (`testing/external-database-admin.ts`).
 
 ## Limitações

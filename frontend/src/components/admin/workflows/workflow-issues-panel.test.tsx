@@ -24,7 +24,7 @@ describe("Rodapé do editor — resumo de problemas de publicação", () => {
     render(<WorkflowIssuesPanel issues={ISSUES} nodeLabelById={(id) => ({ "out-mgr": "Resumo ao Diretor", apply: "Aplicar individualmente" })[id]} onSelectIssue={() => {}} />)
     expect(screen.getByText("Não é possível publicar — 3 problemas")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Ver problemas" }))
-    const list = screen.getByRole("list", { name: "Lista de problemas do grafo" })
+    const list = screen.getByRole("list", { name: "Lista de problemas do fluxo" })
     expect(list.querySelectorAll("li")).toHaveLength(3)
     expect(screen.getByText("Resumo ao Diretor")).toBeInTheDocument()
     expect(screen.getByText(/precisa ter ao menos um nó Fim/)).toBeInTheDocument()
@@ -34,11 +34,11 @@ describe("Rodapé do editor — resumo de problemas de publicação", () => {
     const onSelectIssue = vi.fn()
     render(<WorkflowIssuesPanel issues={ISSUES} nodeLabelById={() => undefined} onSelectIssue={onSelectIssue} />)
     fireEvent.click(screen.getByRole("button", { name: "Ver problemas" }))
-    const buttons = screen.getByRole("list", { name: "Lista de problemas do grafo" }).querySelectorAll("button")
+    const buttons = screen.getByRole("list", { name: "Lista de problemas do fluxo" }).querySelectorAll("button")
     expect(buttons[2]).toBeDisabled()
     fireEvent.click(buttons[0]!)
     expect(onSelectIssue).toHaveBeenCalledWith("out-mgr")
-    expect(screen.queryByRole("list", { name: "Lista de problemas do grafo" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "Lista de problemas do fluxo" })).not.toBeInTheDocument()
   })
 
   it("singular quando há um único problema", () => {
@@ -58,7 +58,7 @@ describe("Rodapé do editor — resumo de problemas de publicação", () => {
     fireEvent.click(screen.getByRole("button", { name: /Validar de novo/ }))
     expect(revalidate).toHaveBeenCalledTimes(1)
     rerender(<WorkflowIssuesPanel issues={[]} status="ready" nodeLabelById={() => undefined} onSelectIssue={() => {}} />)
-    expect(screen.getByText(/Pronto para publicar — validação local e do servidor/)).toBeInTheDocument()
+    expect(screen.getByText(/Pronto para publicar — sem problemas na validação/)).toBeInTheDocument()
   })
 
   it("problema vindo do backend (destinatário ambíguo) entra na mesma lista e navega para o nó pelo nodeId devolvido", () => {
@@ -69,5 +69,23 @@ describe("Rodapé do editor — resumo de problemas de publicação", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ver problemas" }))
     fireEvent.click(screen.getByText(/mais de um Gerente possível/))
     expect(onSelectIssue).toHaveBeenCalledWith("output")
+  })
+
+  it("WF-26: fluxo vazio não diz \"Pronto para publicar\" e orienta o próximo passo", () => {
+    render(<WorkflowIssuesPanel issues={[]} status="ready" emptyFlow nodeLabelById={() => undefined} onSelectIssue={() => {}} />)
+    expect(screen.queryByText(/Pronto para publicar/)).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("adicione etapas")
+  })
+
+  it("WF-05: sem nada novo, diz que o rascunho já é a versão publicada", () => {
+    render(<WorkflowIssuesPanel issues={[]} status="ready" nothingToPublish nodeLabelById={() => undefined} onSelectIssue={() => {}} />)
+    expect(screen.getByRole("status")).toHaveTextContent("já é a versão publicada")
+  })
+
+  it("WF-11: recusa do servidor oferece validar de novo, pois a causa pode ter sido corrigida em outra tela", () => {
+    const onRevalidate = vi.fn()
+    render(<WorkflowIssuesPanel issues={[{ nodeId: "n", message: "Agente inativo." }]} status="invalid" nodeLabelById={() => "Análise"} onSelectIssue={() => {}} onRevalidate={onRevalidate} />)
+    fireEvent.click(screen.getByRole("button", { name: "Validar de novo" }))
+    expect(onRevalidate).toHaveBeenCalledOnce()
   })
 })

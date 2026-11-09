@@ -7,6 +7,7 @@ import {
   fetchOrchestrator,
   fetchOrchestrators,
   fetchOrchestratorsPage,
+  fetchOrchestratorVersions,
   fetchStructuredOutputUsage,
   updateOrchestrator,
   updateOrchestratorActive,
@@ -46,6 +47,15 @@ export function useStructuredOutputUsageQuery(id: string | null) {
   })
 }
 
+/** Versões publicadas (PEN-076) — só busca quando a lista é aberta. */
+export function useOrchestratorVersionsQuery(id: string | null, enabled = true) {
+  return useQuery({
+    queryKey: adminQueryKeys.assistantOrchestratorVersions(id ?? ""),
+    queryFn: () => fetchOrchestratorVersions(id!),
+    enabled: id !== null && enabled,
+  })
+}
+
 export function useCreateOrchestratorMutation() {
   return useAdminMutation({
     mutationFn: createOrchestrator,
@@ -59,8 +69,9 @@ export function useUpdateOrchestratorMutation(id: string) {
     mutationFn: (input: OrchestratorInput) => updateOrchestrator(id, input),
     invalidateKey: adminQueryKeys.assistantOrchestrator(id),
     successMessage: "Orquestrador atualizado.",
-    // O editor transforma este 409 em diálogo de confirmação (structured-output-impacts.tsx).
-    silentErrorCodes: ["STRUCTURED_OUTPUT_IN_USE_DRAFT"],
+    // O editor transforma estes 409 em diálogo de confirmação (structured-output-impacts.tsx) e no aviso de conflito de versão
+    // (outra pessoa gravou no meio — a tela guarda o que foi alterado para reaplicar).
+    silentErrorCodes: ["STRUCTURED_OUTPUT_IN_USE_DRAFT", "ORCHESTRATOR_VERSION_CONFLICT"],
   })
 }
 

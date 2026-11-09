@@ -1,0 +1,35 @@
+{
+  "labels": [
+    { "cadence": { "kind": "MANUAL" }, "label": "Manual" },
+    { "cadence": { "kind": "INTERVAL", "minutes": 15 }, "label": "A cada 15 min" },
+    { "cadence": { "kind": "INTERVAL", "minutes": 90 }, "label": "A cada 90 min" },
+    { "cadence": { "kind": "INTERVAL", "minutes": 360 }, "label": "A cada 6h" },
+    { "cadence": { "kind": "DAILY", "time": "06:00" }, "label": "Diário às 06:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["18:00", "06:00"], "frequency": { "type": "DAILY" } }, "label": "Diário às 06:00 e 18:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "EVERY_N_DAYS", "days": 1, "startDate": "2026-11-02" } }, "label": "Diário às 06:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "EVERY_N_DAYS", "days": 3, "startDate": "2026-11-02" } }, "label": "A cada 3 dias às 06:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00", "18:00"], "frequency": { "type": "WEEKLY", "weekdays": ["MON", "TUE", "WED", "THU", "FRI"] } }, "label": "Seg a sex às 06:00 e 18:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00", "12:00", "18:00"], "frequency": { "type": "WEEKLY", "weekdays": ["MON", "WED", "FRI"] } }, "label": "Seg, qua e sex às 06:00, 12:00 e 18:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["08:00"], "frequency": { "type": "WEEKLY", "weekdays": ["SAT", "SUN"] } }, "label": "Sáb e dom às 08:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["08:00"], "frequency": { "type": "WEEKLY", "weekdays": ["MON", "TUE", "WED", "FRI"] } }, "label": "Seg a qua e sex às 08:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["08:00"], "frequency": { "type": "WEEKLY", "weekdays": ["THU"] } }, "label": "Qui às 08:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["08:00"], "frequency": { "type": "WEEKLY", "weekdays": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] } }, "label": "Todos os dias às 08:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "MONTHLY", "mode": "DAY_OF_MONTH", "day": 5 } }, "label": "Todo dia 5 às 06:00" },
+    { "cadence": { "kind": "CALENDAR", "times": ["23:00"], "frequency": { "type": "MONTHLY", "mode": "LAST_DAY" } }, "label": "Último dia do mês às 23:00" }
+  ],
+  "invalid": [
+    { "cadence": { "kind": "INTERVAL", "minutes": 10 }, "message": "O intervalo mínimo entre cargas é de 15 minutos." },
+    { "cadence": { "kind": "CALENDAR", "times": [], "frequency": { "type": "DAILY" } }, "message": "Informe ao menos um horário." },
+    { "cadence": { "kind": "CALENDAR", "times": ["24:00"], "frequency": { "type": "DAILY" } }, "message": "Use o horário no formato HH:mm." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00", "06:00"], "frequency": { "type": "DAILY" } }, "message": "Há horários repetidos." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00", "06:10"], "frequency": { "type": "DAILY" } }, "message": "Deixe ao menos 15 minutos entre os horários." },
+    { "cadence": { "kind": "CALENDAR", "times": ["23:55", "00:05"], "frequency": { "type": "DAILY" } }, "message": "Deixe ao menos 15 minutos entre os horários." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "WEEKLY", "weekdays": [] } }, "message": "Escolha ao menos um dia da semana." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "WEEKLY", "weekdays": ["MON", "MON"] } }, "message": "Há dias da semana repetidos." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "EVERY_N_DAYS", "days": 0, "startDate": "2026-11-02" } }, "message": "Informe de 1 a 90 dias." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "EVERY_N_DAYS", "days": 91, "startDate": "2026-11-02" } }, "message": "Informe de 1 a 90 dias." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "EVERY_N_DAYS", "days": 3, "startDate": "2026-02-30" } }, "message": "Informe a data de início." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "MONTHLY", "mode": "DAY_OF_MONTH" } }, "message": "Informe um dia de 1 a 31." },
+    { "cadence": { "kind": "CALENDAR", "times": ["06:00"], "frequency": { "type": "MONTHLY", "mode": "DAY_OF_MONTH", "day": 32 } }, "message": "Informe um dia de 1 a 31." }
+  ]
+}

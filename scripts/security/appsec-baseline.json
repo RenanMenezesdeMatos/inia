@@ -16,6 +16,7 @@
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|797c9d2f1d3d47e5",
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|883b9f4201cad662",
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|daebd4b3aaa7e9a6",
+  "detect-non-literal-regexp|backend/src/modules/knowledge/domain/pdf-ocr/hocr.ts|c56a5db8be1f9dbe",
   "detect-non-literal-regexp|backend/src/modules/knowledge/domain/query-acronyms.ts|0e07fe610e279eb3",
   "detect-non-literal-regexp|backend/src/modules/reliable-feedback/domain/applicability-resolution.ts|b08e6f3dd13183b7",
   "detect-non-literal-regexp|backend/src/modules/reliable-feedback/domain/indicator-claims.ts|13b712df1489ea5e",
@@ -51,9 +52,10 @@
   "html-in-template-string|backend/scripts/poc-tools/benchmarks/blind-benchmark.ts|012884eee8eabc7f",
   "html-in-template-string|backend/scripts/poc-tools/holdout-v2/holdout-benchmark.ts|ac431698e3969c7c",
   "html-in-template-string|backend/src/modules/best-practices/domain/candidates.ts|c6e2b5eb99a87b69",
+  "html-in-template-string|backend/src/modules/governance/domain/response-compliance.ts|3446aa571c7e771d",
   "html-in-template-string|backend/src/modules/knowledge-clarification/domain/clarification-prompts.ts|893f07cf00b9cca4",
   "html-in-template-string|backend/src/modules/knowledge-clarification/domain/clarification-prompts.ts|cb099fbac56475f2",
-  "html-in-template-string|backend/src/modules/knowledge/infrastructure/docx-preview.ts|680af8dab4f00a92",
+  "html-in-template-string|backend/src/modules/knowledge/infrastructure/docx-preview.ts|3f50d4563f92175d",
   "html-in-template-string|frontend/src/lib/security/sanitize-document-html.ts|7356937086014e42",
   "html-in-template-string|frontend/src/lib/security/sanitize-rich-text.ts|7356937086014e42",
   "html-in-template-string|scripts/install/doctor.mjs|fba74f28eb160190",
@@ -66,7 +68,8 @@
   "prototype-pollution-loop|backend/src/modules/feedback-engine/domain/tool-result-view.ts|393f1cc21daf5db0",
   "prototype-pollution-loop|backend/src/modules/feedback-engine/domain/tool-result-view.ts|67c18162474699ab",
   "prototype-pollution-loop|backend/src/modules/workflows/application/execution-context.ts|436d643b9fdf85dd",
-  "prototype-pollution-loop|backend/src/modules/workflows/application/output-executor.ts|436d643b9fdf85dd",
+  "prototype-pollution-loop|backend/src/modules/workflows/domain/draft-graph.ts|a07725246bd94904",
+  "raw-html-format|backend/src/modules/data-hub/presentation/data-hub-router.ts|1a3757f213e0f278",
   "raw-html-join|backend/src/modules/best-practices/domain/candidates.ts|c6e2b5eb99a87b69",
   "raw-html-join|backend/src/modules/feedback-engine/application/analyze-call.ts|5e27c97a72d92a91",
   "react-href-var|frontend/src/components/admin/usability/conversations-tab.tsx|a2e47559fd070caf",
@@ -93,10 +96,16 @@
   "unsafe-dynamic-method|backend/src/shared/infrastructure/logging/logger.ts|a0717c51ccc28104",
   "unsafe-dynamic-method|backend/src/shared/infrastructure/logging/logger.ts|c4813986a9a181e7"
  ],
- "gitleaks": [],
+ "gitleaks": [
+  "generic-api-key|backend/scripts/dev/recognition-validation.ts|1da90137bb277e32",
+  "generic-api-key|backend/scripts/dev/recognition-validation.ts|6b0efa324235155d",
+  "generic-api-key|backend/scripts/dev/recognition-validation.ts|ef7ed2e61c3d1ec0",
+  "generic-api-key|backend/scripts/dev/recognition-validation.ts|f58aedeb84d2cb45"
+ ],
  "osv": [
   "backend|@vitest/mocker@3.2.7|GHSA-82fw-gwwq-j7x9",
   "backend|@vitest/mocker@3.2.7|GHSA-qxg6-89mg-rqv8",
+  "backend|minimatch@10.2.6|GHSA-g3hv-75wg-m249",
   "backend|tinypool@1.1.1|GHSA-5gmw-xhrv-c9v3",
   "backend|tinypool@1.1.1|GHSA-85c8-ppgw-ccpr",
   "backend|uuid@8.3.2|GHSA-w5hq-g745-h8pq",
@@ -133,6 +142,7 @@
   "frontend|ip-address@10.7.0|GHSA-h3mg-xc3c-68pw",
   "frontend|ip-address@10.7.0|GHSA-j6r3-76f7-8jcv",
   "frontend|ip-address@10.7.0|GHSA-rxp7-6hxx-x8q5",
+  "frontend|minimatch@10.2.5|GHSA-g3hv-75wg-m249",
   "frontend|postcss-selector-parser@7.1.4|GHSA-rj75-hqrm-r3gf",
   "frontend|proxy-addr@2.0.7|GHSA-jqcg-44mw-7w3h",
   "frontend|qs@6.16.0|GHSA-6pq8-jhm2-2vcw",
@@ -167,5 +177,5 @@
   "frontend|vitest@3.2.7|GHSA-82fw-gwwq-j7x9",
   "frontend|zod@3.25.76|GHSA-mrhx-c7xc-m3w5"
  ],
- "geradoEm": "2026-10-30"
+ "geradoEm": "2026-11-07"
 }

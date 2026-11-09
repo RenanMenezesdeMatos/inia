@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { AiCallBlockedError, createLlmTelemetryStore, runWithLlmTelemetry } from "../../../shared/application/llm-telemetry.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { runAgent } from "../../agents/application/run-agent.js"
+import { resolveAgentDraftForTest } from "../../agents/application/agent-versions.js"
 import { buildSpecialistInput } from "../../assistant/application/run-specialist-tool.js"
 import type { AgentSimulationInput, QaStep, QaTrace } from "../domain/qa-run-schema.js"
 import { getQaRun, insertQaRun, type QaRunRecord } from "./qa-run-repository.js"
@@ -30,8 +31,8 @@ export function tryParseStructured(text: string | null): Record<string, unknown>
  */
 export async function runAgentSimulation(db: Database, organizationId: string, input: AgentSimulationInput, executedBy: string): Promise<QaRunRecord> {
   const readDb = createReadOnlyDatabase(db)
-  const agentRow = await readDb.query<{ id: string; name: string; agent_type: string; objective: string; active: boolean }>(
-    `select id, name, agent_type, objective, active from agents where id = $1 and organization_id = $2`,
+  const agentRow = await readDb.query<{ id: string; name: string; agent_type: string; objective: string; active: boolean; current_version_id: string | null }>(
+    `select id, name, agent_type, objective, active, current_version_id from agents where id = $1 and organization_id = $2`,
     [input.agentId, organizationId],
   )
   const agent = agentRow.rows[0]
@@ -70,7 +71,9 @@ export async function runAgentSimulation(db: Database, organizationId: string, i
     if (!agent.active) throw new DomainError("Este agente está inativo — ative-o antes de testar.", "AGENT_INACTIVE", 422)
     // Com um operador escolhido, o Agent investiga com as Tools sobre ELE (sujeito definido pelo QA,
     // nunca pelo modelo) — exatamente como em produção.
-    const run = await runWithLlmTelemetry(store, () => runAgent(readDb, { organizationId, agentId: input.agentId, inputContext, source: "QA_SIMULATION", recorder: sink.agentRuns, subject: input.operatorId ? { operatorId: input.operatorId } : null }))
+    // Nunca publicado: o rascunho lido aqui é o que executa (a execução não relê o rascunho).
+    const target = agent.current_version_id ? { kind: "VERSION" as const } : { kind: "DRAFT" as const, config: (await resolveAgentDraftForTest(readDb, organizationId, input.agentId)).config }
+    const run = await runWithLlmTelemetry(store, () => runAgent(readDb, { organizationId, agentId: input.agentId, inputContext, source: "QA_SIMULATION", recorder: sink.agentRuns, subject: input.operatorId ? { operatorId: input.operatorId } : null, target }))
     outputText = run.outputText
     supportMaterials = run.supportMaterials ?? (run.workflowResult ? run.workflowResult.supportMaterials : undefined)
     toolTrace = run.toolTrace

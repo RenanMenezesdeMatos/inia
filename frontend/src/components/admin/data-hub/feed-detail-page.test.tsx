@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 
-const service = vi.hoisted(() => ({ fetchFeed: vi.fn(), fetchContracts: vi.fn(), deleteFeed: vi.fn(), updateFeed: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchFeed: vi.fn(), fetchContracts: vi.fn(), deleteFeed: vi.fn(), updateFeed: vi.fn(), fetchCadencePreview: vi.fn() }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }))
 vi.mock("@/services/admin/data-hub-service", async (importOriginal) => ({ ...(await importOriginal<object>()), ...service }))
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => router }))
@@ -22,6 +22,8 @@ beforeAll(() => {
     unobserve() {}
     disconnect() {}
   }
+  Element.prototype.hasPointerCapture = () => false
+  Element.prototype.scrollIntoView = () => {}
 })
 
 const FEED = {
@@ -55,6 +57,7 @@ const FEED = {
   freshness: "NEVER",
   contractLabel: "Colaboradores",
   lastRun: null,
+  configAccess: { required: false, unlocked: true, expiresAt: null, fields: [] },
   source: { id: "src-file", name: "Importação manual", kind: "FILE_UPLOAD", publicId: "f", status: "ACTIVE" },
 }
 
@@ -152,5 +155,74 @@ describe("Conjunto de dados numa versão anterior do contrato", () => {
     expect(await screen.findByRole("heading", { name: "Ausências (CSV)" })).toBeInTheDocument()
     await waitFor(() => expect(screen.getAllByText("Vigente?").length).toBeGreaterThan(0))
     expect(screen.queryByText(/lê os dados pela versão/)).not.toBeInTheDocument()
+  })
+})
+
+describe("Editar a periodicidade na tela do feed", () => {
+  const remoteFeed = (cadence: unknown, nextSyncAt: string | null = null) => ({
+    ...FEED,
+    name: "Colaboradores (API)",
+    connectorConfig: { connector: "API_PULL", api: { endpoint: "/colaboradores", extractPath: "data", pagination: { kind: "NONE" }, checkpoint: { kind: "NONE" } } },
+    source: { ...FEED.source, kind: "API_PULL" },
+    cadence,
+    nextSyncAt,
+  })
+
+  async function openSettings() {
+    renderPage()
+    expect(await screen.findByRole("heading", { name: "Colaboradores (API)" })).toBeInTheDocument()
+    const tab = screen.getByRole("tab", { name: "Conector e frequência" })
+    fireEvent.mouseDown(tab)
+    fireEvent.focus(tab)
+    return screen.findByRole("combobox", { name: "Frequência" })
+  }
+
+  beforeEach(() => {
+    Object.values(service).forEach((fn) => fn.mockReset())
+    service.fetchContracts.mockResolvedValue({ contracts: [], dependencies: [], errorCodes: { run: [], record: [] } })
+    service.fetchCadencePreview.mockResolvedValue({ label: "", timeZone: "America/Fortaleza", nextRuns: ["2026-11-09T09:00:00.000Z"] })
+    service.updateFeed.mockImplementation(async (id: string) => ({ ...remoteFeed({ kind: "MANUAL" }), id }))
+  })
+
+  it("feed diário vira agenda de dias da semana e salva pela mesma rota", async () => {
+    service.fetchFeed.mockResolvedValue(remoteFeed({ kind: "DAILY", time: "06:00" }, "2026-11-07T09:00:00.000Z"))
+    const select = await openSettings()
+    expect(select).toHaveTextContent("Diário")
+    fireEvent.click(select)
+    fireEvent.click(screen.getByRole("option", { name: "Em dias da semana" }))
+    fireEvent.click(screen.getByRole("button", { name: /Adicionar horário/ }))
+    fireEvent.change(screen.getByLabelText("Horário 2"), { target: { value: "18:00" } })
+    expect(await screen.findByTestId("cadence-next-runs")).toHaveTextContent("seg 09/11 às 06:00")
+    fireEvent.click(screen.getByRole("button", { name: /Salvar feed/ }))
+    await waitFor(() => expect(service.updateFeed).toHaveBeenCalledWith("feed-1", expect.objectContaining({ cadence: { kind: "CALENDAR", times: ["06:00", "18:00"], frequency: { type: "WEEKLY", weekdays: ["MON", "TUE", "WED", "THU", "FRI"] } } })))
+  })
+
+  it("agenda gravada volta na tela como foi salva", async () => {
+    service.fetchFeed.mockResolvedValue(remoteFeed({ kind: "CALENDAR", times: ["06:00", "18:00"], frequency: { type: "WEEKLY", weekdays: ["MON", "FRI"] } }))
+    const select = await openSettings()
+    expect(select).toHaveTextContent("Em dias da semana")
+    expect(screen.getByLabelText("Horário 2")).toHaveValue("18:00")
+    expect(screen.getByRole("button", { name: "Segunda" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Terça" })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByTestId("cadence-summary")).toHaveTextContent("Seg e sex às 06:00 e 18:00")
+    expect(screen.getAllByText(/Seg e sex às 06:00 e 18:00/).length).toBeGreaterThan(1)
+  })
+
+  it("periodicidade inválida não salva", async () => {
+    service.fetchFeed.mockResolvedValue(remoteFeed({ kind: "CALENDAR", times: ["06:00"], frequency: { type: "WEEKLY", weekdays: ["MON"] } }))
+    await openSettings()
+    fireEvent.click(screen.getByRole("button", { name: "Segunda" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Escolha ao menos um dia da semana.")
+    expect(screen.getByRole("button", { name: /Salvar feed/ })).toBeDisabled()
+  })
+
+  it("feed antigo abaixo do mínimo salva outras mudanças sem reconfigurar", async () => {
+    service.fetchFeed.mockResolvedValue(remoteFeed({ kind: "INTERVAL", minutes: 5 }))
+    await openSettings()
+    expect(screen.getByLabelText("A cada")).toHaveValue(5)
+    const save = screen.getByRole("button", { name: /Salvar feed/ })
+    expect(save).toBeEnabled()
+    fireEvent.click(save)
+    await waitFor(() => expect(service.updateFeed).toHaveBeenCalledWith("feed-1", expect.objectContaining({ cadence: { kind: "INTERVAL", minutes: 5 } })))
   })
 })

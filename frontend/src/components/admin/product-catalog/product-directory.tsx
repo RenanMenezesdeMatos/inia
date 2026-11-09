@@ -19,17 +19,18 @@ import { NodeForm } from "./node-form"
 import { treeOrder } from "./node-picker"
 import { ProductBases } from "./product-bases"
 import { ProductClues } from "./product-clues"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 function DeleteNodeDialog({ node, open, onOpenChange, onDeleted }: { node: ProductNode; open: boolean; onOpenChange: (open: boolean) => void; onDeleted: () => void }) {
   const deleteMutation = useDeleteProductNodeMutation()
-  const blocked = node.inUse || node.childCount > 0
+  const blocked = node.blocksDeletion
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {node.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            {blocked ? "Este item tem produtos dentro dele ou já é usado por bases ou indícios. Desative em vez de excluir — as análises já feitas continuam com ele." : node.kind === "FAMILY" ? "Nenhuma base ou indício usa esta categoria. A exclusão é definitiva." : "Nenhuma base ou indício usa este produto. A exclusão é definitiva."}
+            {blocked ? "Este item tem produtos dentro dele ou é usado agora por bases ou indícios. Tire-o de lá antes de excluir, ou desative — as análises já feitas continuam com ele." : node.kind === "FAMILY" ? `Nenhuma base ou indício usa esta categoria agora. ${RESTORE_NOTE}` : `Nenhuma base ou indício usa este produto agora. ${RESTORE_NOTE}`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

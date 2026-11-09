@@ -1,6 +1,7 @@
 import { apiGet, apiPost, apiSend } from "@/lib/api/api-client"
 import {
   audiencePersonSchema,
+  deletedReportSchema,
   deliveryDetailSchema,
   receivedDeliverySchema,
   reportDetailSchema,
@@ -54,6 +55,14 @@ export async function runReportNow(id: string) {
 
 export async function deleteReport(id: string) {
   await apiSend(`/api/v1/reports/${id}`, "DELETE")
+}
+
+export async function fetchDeletedReports() {
+  return z.array(deletedReportSchema).parse(await apiGet("/api/v1/reports/deleted"))
+}
+
+export async function restoreReport(id: string) {
+  await apiPost(`/api/v1/reports/${id}/restore`)
 }
 
 export async function fetchReceivedDeliveries(reportId?: string) {

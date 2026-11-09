@@ -73,7 +73,8 @@ Comparação calculada por código, com a mesma definição, escopo e filtros: c
 anterior da mesma chave e versão; período em curso, recorrência e diagnóstico → sem comparação equivalente (explicado). Semântica por
 coluna (% fora, Q4 e dispersão: menor é melhor; atingimento e PRV: maior é melhor; atingimento já vem ajustado à direção do
 indicador). A IA (caso de uso próprio `REPORT_ANALYSIS`) recebe tabela, destaques e comparação prontos e escreve o resumo; falha da IA
-preserva a entrega com "análise indisponível" e o job tenta de novo sem duplicar.
+preserva a entrega com "análise indisponível" e o job tenta de novo sem duplicar. Posse por entrega: uma chamada de IA por vez em
+qualquer processo (reivindicação antes da chamada; só a tentativa vigente grava) — ver a memória da área.
 
 ## Chat
 

@@ -298,29 +298,17 @@ export async function discardArgumentScriptDraft(db: Database, actor: ArgumentSc
   return getArgumentScript(db, actor.organizationId, scopes, id)
 }
 
-/** Argumentário NUNCA publicado (só rascunho) pode ser excluído; o publicado só é encerrado (história preservada). */
 /**
- * Alguma análise do motor já USOU o argumentário: rodada (proveniência), análise da chamada (todos os vigentes no escopo entram,
- * apliquem-se ou não) ou critério avaliado. Usado = origem de feedbacks e diagnósticos — nunca se apaga, só se desativa.
- */
-const ARGUMENT_SCRIPT_IN_USE_SQL = `select exists(select 1 from call_criterion_assessments where organization_id = $1 and argument_script_id = $2)
-    or exists(select 1 from call_assessments where organization_id = $1 and argument_scripts @> jsonb_build_array(jsonb_build_object('scriptId', $2::text)))
-    or exists(select 1 from feedback_analysis_runs where organization_id = $1 and provenance -> 'argumentScripts' @> jsonb_build_array(jsonb_build_object('scriptId', $2::text))) used`
-
-export const ARGUMENT_SCRIPT_IN_USE_MESSAGE = "Este argumentário já foi usado em análises de chamada: excluí-lo apagaria a origem de feedbacks e diagnósticos. Desative-o — ele deixa de valer e o histórico continua consultável."
-
-/**
- * EXCLUIR de vez (versões + cadastro), só enquanto nenhuma análise o usou — rascunho nunca publicado ou publicado sem uso. O
- * conteúdo da última versão vai para `audit_logs`. Com uso, 409 `ARGUMENT_SCRIPT_IN_USE`: o caminho é desativar.
+ * EXCLUIR (exclusão lógica, migration 177). Versões continuam guardadas e o conteúdo da última vai para `audit_logs`. Análise já feita não muda: os diagnósticos leem o nome em
+ * `argument_scripts_all`, e análise nova deixa de considerá-lo. Encerra antes de esconder: restaurar pela Central de Dados nunca faz o argumentário voltar a valer sozinho.
  */
 export async function deleteArgumentScript(db: Database, actor: ArgumentScriptActor, scopes: ManageableScopes, id: string) {
   const row = await requireEditable(db, actor.organizationId, scopes, id)
   await inTransaction(db, async (client) => {
     await client.query(`select 1 from argument_scripts where id = $1 for update`, [id])
-    if ((await client.query<{ used: boolean }>(ARGUMENT_SCRIPT_IN_USE_SQL, [actor.organizationId, id])).rows[0]?.used) throw new DomainError(ARGUMENT_SCRIPT_IN_USE_MESSAGE, "ARGUMENT_SCRIPT_IN_USE", 409)
     const last = (await client.query<{ version: number; status: string; content: unknown }>(`select version, status, content from argument_script_versions where script_id = $1 order by version desc limit 1`, [id])).rows[0]
-    // As versões saem pela cascata: o gatilho de imutabilidade (migration 105) só deixa apagar versão publicada por ela.
-    await client.query(`delete from argument_scripts where id = $1 and organization_id = $2`, [id, actor.organizationId])
+    await client.query(`update argument_script_versions set effective_until = greatest(effective_from + interval '1 second', now()), updated_at = now() where script_id = $1 and status = 'PUBLISHED' and (effective_until is null or effective_until > now())`, [id])
+    await client.query(`update argument_scripts_all set status = 'ARCHIVED', deleted_at = now(), deleted_by_person_id = $3, updated_by = $3, updated_at = now() where id = $1 and organization_id = $2`, [id, actor.organizationId, actor.personId])
     await audit(client, actor, "ARGUMENT_SCRIPT_DELETED", id, { name: row.name, status: row.status, lastVersion: last ?? null })
   })
 }

@@ -16,22 +16,27 @@ import { deleteMemberWindows, loadReadModelIndicatorCodes, rebuildMemberWindows 
  */
 export type AnalyticsRollupResult = { organizations: number; fullRebuilds: number; rebuiltPeople: number; removedPeople: number; marksCleared: number }
 
-export type AnalyticsRollupOptions = { clock?: Clock; batchSize?: number; timeBudgetMs?: number; organizationId?: string; forceFull?: boolean }
+/**
+ * `signal` abortado (a tarefa periódica perdeu a trava: outro processo pode começar a mesma rodada) = para entre lotes. Nada se
+ * perde: a reconstrução completa interrompida não marca o dia novo (a próxima rodada recomeça) e as marcas não lidas ficam.
+ */
+export type AnalyticsRollupOptions = { clock?: Clock; batchSize?: number; timeBudgetMs?: number; organizationId?: string; forceFull?: boolean; signal?: AbortSignal }
 
 const DEFAULT_BATCH_SIZE = 250
 const DEFAULT_TIME_BUDGET_MS = 10_000
 
-type OrganizationContext = { organizationId: string; now: Date; timeZone: string; today: string; codes: string[]; batchSize: number }
+type OrganizationContext = { organizationId: string; now: Date; timeZone: string; today: string; codes: string[]; batchSize: number; signal: AbortSignal | undefined }
 
 export async function runAnalyticsRollup(db: Database, options: AnalyticsRollupOptions = {}): Promise<AnalyticsRollupResult> {
   const clock = options.clock ?? systemClock
   const result: AnalyticsRollupResult = { organizations: 0, fullRebuilds: 0, rebuiltPeople: 0, removedPeople: 0, marksCleared: 0 }
   const organizations = await db.query<{ id: string }>(options.organizationId ? `select id from organizations where id = $1` : `select id from organizations order by id`, options.organizationId ? [options.organizationId] : [])
   for (const { id: organizationId } of organizations.rows) {
+    if (options.signal?.aborted) break
     result.organizations += 1
     const now = clock.now()
     const timeZone = await resolveOrganizationTimezone(db, organizationId)
-    const context: OrganizationContext = { organizationId, now, timeZone, today: localDateOf(now, timeZone), codes: await loadReadModelIndicatorCodes(db, organizationId), batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE }
+    const context: OrganizationContext = { organizationId, now, timeZone, today: localDateOf(now, timeZone), codes: await loadReadModelIndicatorCodes(db, organizationId), batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE, signal: options.signal }
     const [state, organizationMark] = await Promise.all([
       db.query<{ as_of_date: string | null; time_zone: string | null }>(`select as_of_date::text, time_zone from analytics_rollup_state where organization_id = $1`, [organizationId]),
       db.query(`select 1 from analytics_operational_dirty where organization_id = $1 and person_id is null limit 1`, [organizationId]),
@@ -39,8 +44,7 @@ export async function runAnalyticsRollup(db: Database, options: AnalyticsRollupO
     const current = state.rows[0]
     const needsFull = options.forceFull || !current || current.as_of_date !== context.today || current.time_zone !== timeZone || (organizationMark.rowCount ?? 0) > 0
     if (needsFull) {
-      await fullRebuild(db, context, result)
-      result.fullRebuilds += 1
+      if (await fullRebuild(db, context, result)) result.fullRebuilds += 1
     } else {
       await incremental(db, context, result, options.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS, clock)
     }
@@ -58,7 +62,8 @@ async function activeOperatorsAmong(db: Database, organizationId: string, person
   return rows.rows.map((row) => row.id)
 }
 
-async function fullRebuild(db: Database, context: OrganizationContext, result: AnalyticsRollupResult): Promise<void> {
+/** `false` = interrompida pelo `signal` (o dia novo não é marcado: a próxima rodada recomeça). */
+async function fullRebuild(db: Database, context: OrganizationContext, result: AnalyticsRollupResult): Promise<boolean> {
   const { organizationId } = context
   // Marcas visíveis AGORA: os dados delas já estão gravados, e os lotes abaixo leem depois — podem sair no fim.
   const marks = await db.query<{ id: string }>(`select id::text from analytics_operational_dirty where organization_id = $1`, [organizationId])
@@ -69,6 +74,7 @@ async function fullRebuild(db: Database, context: OrganizationContext, result: A
   )
   const operators = await activeOperatorsAmong(db, organizationId, null)
   for (let index = 0; index < operators.length; index += context.batchSize) {
+    if (context.signal?.aborted) return false
     const batch = operators.slice(index, index + context.batchSize)
     await rebuildMemberWindows(db, { organizationId, personIds: batch, now: context.now, timeZone: context.timeZone, indicatorCodes: context.codes })
     result.rebuiltPeople += batch.length
@@ -84,12 +90,13 @@ async function fullRebuild(db: Database, context: OrganizationContext, result: A
     [organizationId, context.today, context.timeZone],
   )
   result.marksCleared += await clearMarks(db, marks.rows.map((row) => row.id))
+  return true
 }
 
 async function incremental(db: Database, context: OrganizationContext, result: AnalyticsRollupResult, timeBudgetMs: number, clock: Clock): Promise<void> {
   const { organizationId } = context
   const startedAt = clock.now().getTime()
-  while (clock.now().getTime() - startedAt < timeBudgetMs) {
+  while (clock.now().getTime() - startedAt < timeBudgetMs && !context.signal?.aborted) {
     const marks = await db.query<{ id: string; person_id: string }>(`select id::text, person_id from analytics_operational_dirty where organization_id = $1 and person_id is not null order by id limit 20000`, [organizationId])
     if (marks.rows.length === 0) return
     const people = [...new Set(marks.rows.map((row) => row.person_id))].slice(0, context.batchSize)

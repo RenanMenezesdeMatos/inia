@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { isOperatorEligibleForWorkflow, loadEligibleOperator } from "./workflow-eligibility.js"
+import { createEnrollmentLookups, type EnrollmentLookups } from "./enrollment-lookups.js"
+import { isOperatorEligibleForWorkflow } from "./workflow-eligibility.js"
 
 /** Conexão/cliente com `query` — a ingestão roda dentro de uma transação (client), o restante
  * usa o pool; ambos expõem a mesma assinatura. */
@@ -20,26 +21,20 @@ export type FlagEnrollmentInput = {
  * Abrangência (ALL_TEAMS / TEAM / SUBTEAM) E pelo Filtro Populacional — a MESMA regra do checador
  * de agenda e do QA Lab (workflow-eligibility.ts). Decisão pontual por operador: nunca carrega a
  * população inteira por interação. Só matricula: quem avalia a Condition (valor da flag,
- * comparador) e roda a ação é o motor de workflow (engine.ts), em ticks periódicos.
+ * comparador) e roda a ação é o motor de workflow (engine.ts), em ticks periódicos. `lookups`: ver
+ * enrollIndicatorWorkflows (ausente = só para este evento; a carga em lote passa a do lote).
  */
-export async function enrollFlagWorkflows(db: Queryable, input: FlagEnrollmentInput): Promise<number> {
+export async function enrollFlagWorkflows(db: Queryable, input: FlagEnrollmentInput, lookups: EnrollmentLookups = createEnrollmentLookups(db)): Promise<number> {
   const isBoolean = typeof input.value === "boolean"
-  const candidates = await db.query<{ id: string; active_version_id: string; scope_type: string; team_id: string | null; subteam_id: string | null; population_filter: unknown }>(
-    `select id, active_version_id, scope_type, team_id, subteam_id, population_filter
-     from workflows
-     where organization_id = $1 and active and active_version_id is not null
-       and trigger_config->>'kind' = 'channel_flag' and trigger_config->>'channelFlagId' = $2`,
-    [input.organizationId, input.channelFlagId],
-  )
-  if (candidates.rows.length === 0) return 0
+  const candidates = await lookups.flagCandidates(input.organizationId, input.channelFlagId)
+  if (candidates.length === 0) return 0
   // Operador carregado UMA vez pra todos os candidatos deste evento (nunca N+1 na mesma pessoa).
-  const operator = await loadEligibleOperator(db as Database, input.organizationId, input.operatorId)
+  const operator = await lookups.operator(input.organizationId, input.operatorId)
   let enrolled = 0
-  for (const workflow of candidates.rows) {
+  for (const workflow of candidates) {
     const population = { scopeType: workflow.scope_type, teamId: workflow.team_id, subteamId: workflow.subteam_id, populationFilter: workflow.population_filter }
-    if (!(await isOperatorEligibleForWorkflow(db as Database, input.organizationId, population, input.operatorId, operator))) continue
-    const versionResult = await db.query<{ graph: { nodes: { id: string; type: string }[] } }>(`select graph from workflow_versions where id = $1`, [workflow.active_version_id])
-    const triggerNode = versionResult.rows[0]?.graph.nodes.find((node) => node.type === "trigger")
+    if (!(await isOperatorEligibleForWorkflow(db as Database, input.organizationId, population, input.operatorId, operator, lookups.structureMembers))) continue
+    const triggerNode = await lookups.triggerNode(workflow.active_version_id)
     if (!triggerNode) continue
     await db.query(
       `insert into workflow_enrollments(organization_id, workflow_id, version_id, interaction_id, current_node_id, matched_flag_name, matched_value_boolean, matched_value_numeric)

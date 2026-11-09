@@ -24,7 +24,12 @@ export function referencedDocumentIds(state: ClarificationState): string[] {
 }
 
 export function toClarificationView(state: ClarificationState, accessibleDocumentIds: ReadonlySet<string>): ClarificationView {
-  const view = (source: KnowledgeSourceRef): SourceView => (accessibleDocumentIds.has(source.documentId) ? { ...source, available: true } : { ...source, documentTitle: "", heading: "", available: false })
+  const view = (source: KnowledgeSourceRef): SourceView => {
+    if (accessibleDocumentIds.has(source.documentId)) return { ...source, available: true }
+    const hidden: SourceView = { ...source, documentTitle: "", heading: "", available: false }
+    delete hidden.images
+    return hidden
+  }
   return {
     ...state,
     steps: state.steps.map((step) => ({ ...step, options: step.options.map((option) => ({ ...option, evidence: option.evidence.map(view) })) })),

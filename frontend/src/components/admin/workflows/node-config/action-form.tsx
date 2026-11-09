@@ -19,18 +19,20 @@ import { IndicatorSelect } from "../indicator-select"
 import { fetchAgentPromptPreview } from "@/services/admin/agent-service"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
-import { AGENT_OUTPUT_CONTRACT_LABELS, FLAG_OUTPUT_CONTRACTS, INDICATOR_DIAGNOSIS_HINT, PERFORMANCE_OUTPUT_CONTRACT_LABELS, PRV_CLOSING_DIAGNOSIS_HINT, DIRECT_INDICATOR_DIAGNOSIS_HINT, INDICATOR_OUTPUT_CONTRACT_LABELS, PROCESS_ASSESSMENT_HINT, type FlowGraph, type FlowNode, resolveNodeContexts } from "@/schemas/admin/workflow-graph.schema"
+import { AGENT_OUTPUT_CONTRACT_LABELS, FLAG_OUTPUT_CONTRACTS, INDICATOR_DIAGNOSIS_HINT, PERFORMANCE_OUTPUT_CONTRACT_LABELS, PRV_CLOSING_DIAGNOSIS_HINT, DIRECT_INDICATOR_DIAGNOSIS_HINT, INDICATOR_OUTPUT_CONTRACT_LABELS, PROCESS_ASSESSMENT_HINT, RECOGNITION_HINT, type FlowGraph, type FlowNode, resolveNodeContexts } from "@/schemas/admin/workflow-graph.schema"
 import { triggerDataOrigin, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 import { EscalateForm } from "./escalate-form"
 import { DEFAULT_INTERACTION_SAMPLE, GenerateFeedbackForm, InteractionFeedbackForm } from "./feedback-action-forms"
 import { ScheduledDataSourceForm } from "./scheduled-data-source-form"
 import { SetVariableForm } from "./set-variable-form"
+import { AgentVersionField } from "./agent-version-field"
 
-function AgentPromptPreviewButton({ agentId }: { agentId: string }) {
+function AgentPromptPreviewButton({ agentId, versionId }: { agentId: string; versionId?: string | undefined }) {
   const [open, setOpen] = useState(false)
+  // A prévia é a da versão vigente — a que a etapa executa hoje (agente nunca publicado: o rascunho, que não roda em produção).
   const previewQuery = useQuery({
-    queryKey: ["admin", "agent-prompt-preview", agentId],
-    queryFn: () => fetchAgentPromptPreview(agentId),
+    queryKey: ["admin", "agent-prompt-preview", agentId, versionId ?? null],
+    queryFn: () => fetchAgentPromptPreview(agentId, versionId),
     enabled: open && Boolean(agentId),
   })
 
@@ -227,7 +229,12 @@ export function ActionForm({
               id={`${fieldId}-agent`}
               agents={agents}
               value={config.agentId}
-              onChange={(agentId) => onChange({ ...node, config: { ...config, actionType: "CALL_AGENT", agentId } })}
+              onChange={(agentId) => {
+                // Sem versão fixada (revisão de 03/11/2026): cada execução usa a vigente do agente. Uma referência legada some aqui.
+                const { agentVersionId: _legacy, ...rest } = config
+                void _legacy
+                onChange({ ...node, config: { ...rest, actionType: "CALL_AGENT", agentId } })
+              }}
               disabledReason={(candidate) => {
                 // Espelho do publish: pós-Join só Agent que aceita o consolidado; síntese só pós-Join.
                 const specialty = resolveAgentSpecialty(candidate)
@@ -237,7 +244,8 @@ export function ActionForm({
               }}
             />
           </div>
-          <AgentPromptPreviewButton agentId={config.agentId} />
+          <AgentVersionField agentId={config.agentId} />
+          <AgentPromptPreviewButton agentId={config.agentId} versionId={agentsById.get(config.agentId)?.currentVersionId ?? undefined} />
           {!afterJoin ? <AgentCapabilitiesRestriction agent={agentsById.get(config.agentId) ?? null} allowed={config.allowedCapabilities} onChange={(allowedCapabilities) => { const { allowedCapabilities: _previous, ...rest } = config; void _previous; onChange({ ...node, config: { ...rest, ...(allowedCapabilities ? { allowedCapabilities } : {}) } }) }} /> : null}
           {afterJoin ? (
             <div className="space-y-1.5">
@@ -308,19 +316,19 @@ export function ActionForm({
             <ScheduledDataSourceForm
               source={config.scheduledDataSource}
               // A fonte deixa de ser "Fechamentos oficiais": o diagnóstico do fechamento não se aplica mais.
-              onChange={(scheduledDataSource) => onChange({ ...node, config: { ...config, scheduledDataSource, ...(scheduledDataSource.kind !== "PERFORMANCE" && (config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS") ? { outputContract: undefined } : {}) } })}
+              onChange={(scheduledDataSource) => onChange({ ...node, config: { ...config, scheduledDataSource, ...(scheduledDataSource.kind !== "PERFORMANCE" && (config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS" || config.outputContract === "RECOGNITION") ? { outputContract: undefined } : {}) } })}
             />
           ) : null}
           {triggerDataOrigin(trigger) === "schedule" && !afterJoin && config.scheduledDataSource?.kind === "PERFORMANCE" ? (
             <div className="space-y-1.5">
               <Label>Formato da análise</Label>
               <Select
-                value={config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS" ? config.outputContract : "FEEDBACK"}
+                value={config.outputContract === "PRV_CLOSING_DIAGNOSIS" || config.outputContract === "INDICATOR_DIAGNOSIS" || config.outputContract === "RECOGNITION" ? config.outputContract : "FEEDBACK"}
                 onValueChange={(value) => {
                   const source = config.scheduledDataSource?.kind === "PERFORMANCE" ? config.scheduledDataSource : null
                   // O indicador só existe no diagnóstico direto: ao sair dele, a fonte volta a ser o fechamento inteiro.
                   const scheduledDataSource = source && value !== "INDICATOR_DIAGNOSIS" ? { kind: source.kind, closures: source.closures } : source
-                  onChange({ ...node, config: { ...config, ...(scheduledDataSource ? { scheduledDataSource } : {}), outputContract: value === "PRV_CLOSING_DIAGNOSIS" || value === "INDICATOR_DIAGNOSIS" ? value : undefined } })
+                  onChange({ ...node, config: { ...config, ...(scheduledDataSource ? { scheduledDataSource } : {}), outputContract: value === "PRV_CLOSING_DIAGNOSIS" || value === "INDICATOR_DIAGNOSIS" || value === "RECOGNITION" ? value : undefined } })
                 }}
               >
                 <SelectTrigger className="w-full" aria-label="Formato da análise">
@@ -335,7 +343,7 @@ export function ActionForm({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {config.outputContract === "PRV_CLOSING_DIAGNOSIS" ? PRV_CLOSING_DIAGNOSIS_HINT : config.outputContract === "INDICATOR_DIAGNOSIS" ? DIRECT_INDICATOR_DIAGNOSIS_HINT : "O agente comenta os números oficiais dos últimos fechamentos, sem investigar chamadas."}
+                {config.outputContract === "PRV_CLOSING_DIAGNOSIS" ? PRV_CLOSING_DIAGNOSIS_HINT : config.outputContract === "INDICATOR_DIAGNOSIS" ? DIRECT_INDICATOR_DIAGNOSIS_HINT : config.outputContract === "RECOGNITION" ? RECOGNITION_HINT : "O agente comenta os números oficiais dos últimos fechamentos, sem investigar chamadas."}
               </p>
               {config.outputContract === "INDICATOR_DIAGNOSIS" && config.scheduledDataSource?.kind === "PERFORMANCE" ? (
                 <div className="space-y-1.5">

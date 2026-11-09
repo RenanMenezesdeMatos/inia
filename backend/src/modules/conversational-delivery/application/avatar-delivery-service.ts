@@ -75,6 +75,7 @@ export async function loadRecipientInbox(db: Pick<Database, "query">, scope: Rec
       `select ${AVATAR_COLUMNS} from workflow_outputs o
        where o.organization_id = $1 and o.recipient_id = $2 and o.surface = 'AVATAR' and o.delivery_status <> 'DELIVERED' and o.speech_text is not null
          and not ${recadoCoveredByFollowUpSql("o")}
+         and not exists (select 1 from workflow_enrollments we join workflows_all wf on wf.id = we.workflow_id where we.id = o.enrollment_id and wf.deleted_at is not null)
        order by o.created_at desc, o.id desc limit 10`,
       [scope.organizationId, scope.personId],
     ),

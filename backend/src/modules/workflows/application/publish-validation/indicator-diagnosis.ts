@@ -1,8 +1,9 @@
 import type { Database } from "../../../../infrastructure/database/pool.js"
 import { loadEffectiveStrategy } from "../../../indicator-diagnosis/application/diagnostic-strategy-service.js"
-import { allowedMeasurementAggregations, isMeasurementAggregationAllowed, MEASUREMENT_AGGREGATION_LABELS, OPERATIONAL_AGGREGATION_LABELS, type MeasurementAggregation, type OperationalAggregationKind } from "../../../indicators/domain/operational-aggregation.js"
+import { isMeasurementAggregationAllowed, type OperationalAggregationKind } from "../../../indicators/domain/operational-aggregation.js"
 import { DomainError } from "../../../../shared/domain/domain-error.js"
-import { isClosingDiagnosisSource, type HistoricalQuery, type HistoricalSource } from "../../domain/graph-schema.js"
+import { findPrecedingCollectionNode, isClosingDiagnosisSource, isRecognitionRankingSelection, type HistoricalQuery } from "../../domain/graph-schema.js"
+import { collectMeasurementAggregationUses, isOperationalSource, measurementAggregationMessage, type MeasurementAggregationUse } from "../../domain/indicator-graph-compatibility.js"
 import { validateIndicatorCapabilities } from "../validate-indicator-capabilities.js"
 import type { PublishTriggerContext } from "./context.js"
 
@@ -15,23 +16,10 @@ import type { PublishTriggerContext } from "./context.js"
  * volumes diferentes por dia é matemática errada (média de médias) e SUM de TMA não significa
  * nada: o editor só oferece o permitido, e aqui um payload manual é rejeitado do mesmo jeito.
  */
-async function validateMeasurementAggregation(db: Database, organizationId: string, subject: string, indicatorCode: string | undefined, aggregation: string, errorCode: string): Promise<void> {
-  if (!indicatorCode) return
-  const result = await db.query<{ operational_aggregation: string | null }>(`select operational_aggregation from indicator_definitions where code = $1 and organization_id = $2`, [indicatorCode, organizationId])
+async function validateMeasurementAggregation(db: Database, organizationId: string, use: MeasurementAggregationUse): Promise<void> {
+  const result = await db.query<{ operational_aggregation: string | null }>(`select operational_aggregation from indicator_definitions where code = $1 and organization_id = $2`, [use.indicatorCode, organizationId])
   const kind = (result.rows[0]?.operational_aggregation ?? "AVERAGE") as OperationalAggregationKind
-  if (!isMeasurementAggregationAllowed(kind, aggregation)) {
-    const allowed = allowedMeasurementAggregations(kind).map((item) => MEASUREMENT_AGGREGATION_LABELS[item]).join(", ")
-    throw new DomainError(
-      `${subject} usa "${MEASUREMENT_AGGREGATION_LABELS[aggregation as MeasurementAggregation] ?? aggregation}" para ${indicatorCode}, cuja semântica operacional é "${OPERATIONAL_AGGREGATION_LABELS[kind]}" — agregações válidas: ${allowed}.`,
-      errorCode,
-      422,
-    )
-  }
-}
-
-/** Valor do indicador e Quartil operacional leem `indicator_measurements` — as duas fontes da camada operacional. */
-function isOperationalSource(source: HistoricalSource | undefined): boolean {
-  return source === undefined || source === "MEASUREMENT" || source === "OPERATIONAL_QUARTILE"
+  if (!isMeasurementAggregationAllowed(kind, use.aggregation)) throw new DomainError(measurementAggregationMessage(use, kind), use.errorCode, 422)
 }
 
 /** Quartil operacional exige direção oficial HIGHER/LOWER (mesma regra do Ranking por quartil — Parte 35). */
@@ -58,6 +46,24 @@ export function validatePrvClosingDiagnosis(context: PublishTriggerContext): voi
       throw new DomainError(
         `O nó "${node.label}" usa o formato "Diagnóstico do fechamento do PRV", que parte do fechamento oficial — só com gatilho por Agenda (ou Manual por colaborador) e a fonte de dados "Fechamentos oficiais".`,
         "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE",
+        422,
+        { nodeId: node.id },
+      )
+    }
+  }
+}
+
+/** Reconhecimento: o motivo vem de um ranking de "Melhores" ou "Evolução" antes do nó, e os números, dos fechamentos oficiais. */
+export function validateRecognitionSource(context: PublishTriggerContext): void {
+  const { graph, origin } = context
+  for (const node of graph.nodes) {
+    if (node.type !== "action" || node.config.actionType !== "CALL_AGENT" || node.config.outputContract !== "RECOGNITION") continue
+    const selection = findPrecedingCollectionNode(graph, node.id)
+    const ranking = selection?.config.selectionMode === "RANKING" ? selection.config.ranking : undefined
+    if (origin !== "schedule" || node.config.scheduledDataSource?.kind !== "PERFORMANCE" || !isRecognitionRankingSelection(ranking?.selection)) {
+      throw new DomainError(
+        `O nó "${node.label}" usa o formato "Reconhecimento", que precisa da fonte de dados "Fechamentos oficiais" e de um "Selecionar colaboradores" antes, por ranking de "Melhores desempenhos" ou de evolução. É dele que vem o motivo do reconhecimento.`,
+        "WORKFLOW_RECOGNITION_REQUIRES_RANKING",
         422,
         { nodeId: node.id },
       )
@@ -141,17 +147,13 @@ export async function validateIndicatorUsage(context: PublishTriggerContext): Pr
   // Melhores/Piores nem Evolução/Queda disponível nesta V1 (Parte 11 original/18 desta evolução
   // — nunca inventa, só bloqueia com mensagem clara).
   // Agregação x semântica operacional do indicador (Condition, critério e Ranking sobre medições).
+  for (const use of collectMeasurementAggregationUses(graph)) await validateMeasurementAggregation(db, organizationId, use)
   for (const node of graph.nodes) {
     if (node.type === "condition" && node.config.historicalQuery && isOperationalSource(node.config.historicalQuery.source)) {
-      await validateMeasurementAggregation(db, organizationId, `O nó de condição "${node.label}"`, node.config.historicalQuery.indicatorCode, node.config.historicalQuery.aggregation ?? "COUNT", "WORKFLOW_INVALID_CONDITION")
       await validateOperationalQuartileDirection(db, organizationId, node.label, node.config.historicalQuery, "WORKFLOW_INVALID_CONDITION")
     }
     if (node.type === "select_employees" && node.config.criterion?.historicalQuery && isOperationalSource(node.config.criterion.historicalQuery.source)) {
-      await validateMeasurementAggregation(db, organizationId, `O critério de seleção do nó "${node.label}"`, node.config.criterion.historicalQuery.indicatorCode, node.config.criterion.historicalQuery.aggregation ?? "COUNT", "WORKFLOW_INVALID_SELECTION_CRITERION")
       await validateOperationalQuartileDirection(db, organizationId, node.label, node.config.criterion.historicalQuery, "WORKFLOW_INVALID_SELECTION_CRITERION")
-    }
-    if (node.type === "select_employees" && node.config.selectionMode === "RANKING" && node.config.ranking && (node.config.ranking.source ?? "MEASUREMENT") === "MEASUREMENT" && node.config.ranking.aggregation) {
-      await validateMeasurementAggregation(db, organizationId, `A configuração de ranking do nó "${node.label}"`, node.config.ranking.indicatorCode, node.config.ranking.aggregation, "WORKFLOW_INVALID_SELECTION_RANKING")
     }
   }
 

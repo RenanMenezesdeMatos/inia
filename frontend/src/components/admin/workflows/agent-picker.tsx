@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { AGENT_TYPE_ICONS } from "@/components/admin/agents/agent-visuals"
-import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, type Agent, type AgentType } from "@/schemas/admin/agent.schema"
+import { AGENT_TYPE_COLORS, AGENT_TYPE_LABELS, agentPublicationLabel, type Agent, type AgentType } from "@/schemas/admin/agent.schema"
 import { describeSpecialty, resolveAgentSpecialty } from "@/schemas/admin/orchestrator-policy"
 import { cn } from "@/lib/utils"
 
 const TOP_PER_GROUP = 3
+const UNPUBLISHED_REASON = "Não publicado — publique o agente para usá-lo aqui (até lá, só testes)."
 
 type AgentGroup = { type: AgentType; agents: Agent[] }
 
@@ -66,7 +67,7 @@ function AgentRow({ agent, selected, disabledReason, onSelect }: { agent: Agent;
       <span className="min-w-0 flex-1">
         <span className="block truncate">{agent.name}</span>
         <span className="block truncate text-[10px] text-muted-foreground">
-          {disabledReason ?? `${describeSpecialty(resolveAgentSpecialty(agent))} · Criado por ${agent.createdByName ?? "—"} em ${formatCreatedAt(agent.createdAt)}`}
+          {disabledReason ?? `${agentPublicationLabel(agent)} · ${describeSpecialty(resolveAgentSpecialty(agent))} · Criado por ${agent.createdByName ?? "—"} em ${formatCreatedAt(agent.createdAt)}`}
         </span>
       </span>
       {selected ? <Check className="h-3.5 w-3.5 shrink-0 text-primary" /> : null}
@@ -85,7 +86,8 @@ export function AgentPicker({
   agents,
   value,
   onChange,
-  disabledReason,
+  disabledReason: extraDisabledReason,
+  allowUnpublished = false,
   id,
 }: {
   agents: Agent[]
@@ -94,9 +96,13 @@ export function AgentPicker({
   /** Agente que não pode ser escolhido aqui (ex.: especialista de outro domínio numa política de
    * Orquestrador) fica visível, desabilitado, com o motivo no lugar da linha de criação. */
   disabledReason?: (agent: Agent) => string | null
+  /** Só para testes (QA Lab): agente nunca publicado pode ser escolhido. Nos seletores de produção ele aparece como
+   * "Não publicado" e não pode ser escolhido (PEN-047, ponto decidido em 03/11/2026). */
+  allowUnpublished?: boolean
   /** Id da busca, para o `<Label htmlFor>` de quem usa o seletor. Não vai no botão do agente escolhido: lá o nome é o próprio agente. */
   id?: string
 }) {
+  const disabledReason = (agent: Agent) => (!allowUnpublished && !agent.published ? UNPUBLISHED_REASON : null) ?? extraDisabledReason?.(agent) ?? null
   const [search, setSearch] = useState("")
   const [showList, setShowList] = useState(!value)
   const selected = agents.find((agent) => agent.id === value)
@@ -172,7 +178,7 @@ export function AgentPicker({
               <div key={group.type} className="space-y-1">
                 <h4 className="px-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{AGENT_TYPE_LABELS[group.type]}</h4>
                 {group.visible.map((agent) => (
-                  <AgentRow key={agent.id} agent={agent} selected={agent.id === value} disabledReason={disabledReason?.(agent) ?? null} onSelect={() => selectAgent(agent.id)} />
+                  <AgentRow key={agent.id} agent={agent} selected={agent.id === value} disabledReason={disabledReason(agent)} onSelect={() => selectAgent(agent.id)} />
                 ))}
                 {group.extra.length > 0 ? (
                   <Accordion type="single" collapsible>
@@ -182,7 +188,7 @@ export function AgentPicker({
                       </AccordionTrigger>
                       <AccordionContent className="space-y-1 pb-0">
                         {group.extra.map((agent) => (
-                          <AgentRow key={agent.id} agent={agent} selected={agent.id === value} disabledReason={disabledReason?.(agent) ?? null} onSelect={() => selectAgent(agent.id)} />
+                          <AgentRow key={agent.id} agent={agent} selected={agent.id === value} disabledReason={disabledReason(agent)} onSelect={() => selectAgent(agent.id)} />
                         ))}
                       </AccordionContent>
                     </AccordionItem>

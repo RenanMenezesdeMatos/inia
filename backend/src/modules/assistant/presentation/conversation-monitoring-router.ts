@@ -26,6 +26,12 @@ const listSchema = z.object({
 const messagesSchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30), before: z.string().max(200).optional(), after: z.string().max(200).optional() })
 const idParam = z.string().uuid()
 
+/** Orientação de cada chamada impedida — para quem lê a conversa; o colaborador só leu que a parte estava indisponível. */
+const OUTCOME_GUIDANCE: Record<string, string> = {
+  BLOCKED_INACTIVE: "Agente inativo: a parte da resposta que dependia dele ficou indisponível. Reative ou substitua o agente no orquestrador.",
+  BLOCKED_UNAUTHORIZED: "Acesso não autorizado neste contexto: a versão vigente do agente não está autorizada para o alcance do orquestrador (alcance ou bases). A parte da resposta ficou indisponível; revise a versão vigente do agente.",
+}
+
 /**
  * Conversas com a INIA — `/api/v1/admin/assistant-conversations`. Montado atrás de `assistant_conversations.view` (em
  * qualquer escopo); o recorte concreto (quem aparece) é aplicado em CADA consulta pelo escopo das atribuições. Somente
@@ -58,6 +64,31 @@ export function createConversationMonitoringRouter(db: Database, deps: { readerC
     await recordPersonalDataAccess(db, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, subjectPersonId: result.conversation.owner.personId, dataKind: "ASSISTANT_CONVERSATION", resourceId: result.conversation.id })
     response.json({ data: result })
   })
+  /**
+   * "Ver histórico desta conversa" (PEN-071; aviso do chat confirmado em 03/11/2026): os agentes que atuaram NESTA conversa, com a
+   * versão usada e, quando a chamada foi impedida, "Agente inativo" e a orientação de reativar ou substituir — só para quem lê a
+   * conversa no alcance dele (a mesma autorização das mensagens). Nunca o cadastro nem outras conversas do agente; a dona da
+   * conversa não recebe este motivo (o chat dela só mostra a explicação da resposta).
+   */
+  router.get("/:conversationId/agent-records", async (request, response) => {
+    const viewer = viewerOf(request)
+    const conversation = await requireMonitoredConversation(db, viewer, idParam.parse(request.params.conversationId))
+    const rows = await db.query(
+      `select ia.interaction_id "interactionId", i.occurred_at "occurredAt", ia.role, ia.outcome, ia.agent_id "agentId", a.name "agentName", a.active "agentActive",
+              av.version_number "agentVersionNumber", o.name "orchestratorName", ov.version_number "orchestratorVersionNumber"
+         from assistant_interaction_agents ia
+         join assistant_interactions i on i.id = ia.interaction_id
+         join agents_all a on a.id = ia.agent_id
+         left join agent_versions av on av.id = ia.agent_version_id
+         left join assistant_orchestrators_all o on o.id = ia.orchestrator_id
+         left join assistant_orchestrator_versions ov on ov.id = ia.orchestrator_version_id
+        where i.conversation_id = $1 and ia.organization_id = $2
+        order by i.occurred_at, ia.role desc`,
+      [conversation.id, viewer.organizationId],
+    )
+    response.json({ data: rows.rows.map((row: { outcome: string }) => ({ ...row, guidance: OUTCOME_GUIDANCE[row.outcome] ?? null })) })
+  })
+
   return router
 }
 

@@ -184,7 +184,7 @@ export async function processAggregates(db: Queryable, organizationId: string, p
                     s(document_id, document_title, section_heading, kind)) sources,
             count(distinct c.criterion_key)::int rules,
             ${STATS_SQL}, ${PEOPLE_SQL("c")}
-     from ${EFFECTIVE_CRITERIA_SQL} c left join knowledge_documents d on d.id = c.document_id left join argument_scripts asx on asx.id = c.argument_script_id
+     from ${EFFECTIVE_CRITERIA_SQL} c left join knowledge_documents d on d.id = c.document_id left join argument_scripts_all asx on asx.id = c.argument_script_id
      where ${baseWhere()}
      group by c.practice_key
      having ${ASSESSED_POINT}`,
@@ -415,7 +415,7 @@ export async function assessmentList(db: Queryable, organizationId: string, pers
   const rows = (await db.query<{ id: string; call_assessment_id: string; interaction_id: string; person_id: string; person_name: string; team_name: string | null; local_date: string; subject: string | null; status: string; criterion_key: string; criterion_text: string; practice_key: string; practice_title: string | null; rationale: string | null; materiality: string | null; document_title: string; section_heading: string | null; evidence: { turn: string; speaker: string | null; quote: string }[] | null; total: number }>(
     `select c.id, c.call_assessment_id, c.interaction_id, c.person_id, p.name person_name, t.name team_name, c.local_date::text, coalesce(c.subject_canonical, c.subject_raw) subject, c.effective_status status, c.criterion_key, c.criterion_text, c.practice_key, c.point_label practice_title, c.rationale, c.materiality, coalesce(d.title, 'Argumentário: ' || asx.name) document_title,
             c.section_heading, case when jsonb_typeof(c.evidence) = 'array' then (select jsonb_agg(e) from (select e from jsonb_array_elements(c.evidence) e limit 2) x) end evidence, count(*) over ()::int total
-     from ${EFFECTIVE_CRITERIA_SQL} c join people p on p.id = c.person_id left join teams t on t.id = c.team_id left join knowledge_documents d on d.id = c.document_id left join argument_scripts asx on asx.id = c.argument_script_id
+     from ${EFFECTIVE_CRITERIA_SQL} c join people p on p.id = c.person_id left join teams t on t.id = c.team_id left join knowledge_documents d on d.id = c.document_id left join argument_scripts_all asx on asx.id = c.argument_script_id
      where ${baseWhere()} order by c.local_date desc, c.created_at desc limit $13 offset $14`,
     [...params(organizationId, personIds, filters), page.limit, page.offset],
   )).rows
@@ -434,7 +434,7 @@ export async function assessmentDetail(db: Queryable, organizationId: string, pe
   const criteria = (await db.query<{ id: string; criterion_key: string; criterion_text: string; section_heading: string | null; document_id: string; document_title: string; document_version: number; status: string; evidence_kind: string | null; evidence: { turn: string; speaker: string | null; quote: string; timestamp: string | null }[]; opportunity_turn: string | null; rationale: string | null; guidance: { moment: string; condition: string | null; action: string } | null; why_it_matters: string | null; materiality: string | null; rule_conflict: boolean; on_path: boolean; verification: Record<string, unknown>; identity_basis: string; source_kind: string; applicability: string | null; observability: string | null; execution_claim: string | null; obligation: Record<string, unknown> | null; expected: string | null; occurrence_key: string | null; occurrence_basis: string | null }>(
     `select c.id, c.criterion_key, c.criterion_text, c.section_heading, coalesce(c.document_id, c.argument_script_id) document_id, coalesce(d.title, 'Argumentário: ' || asx.name) document_title, c.document_version, c.status, c.evidence_kind, c.evidence, c.opportunity_turn, c.rationale, c.guidance, c.why_it_matters, c.materiality, c.rule_conflict, c.on_path, c.verification, c.identity_basis,
             c.source_kind, c.applicability, c.observability, c.execution_claim, c.obligation, c.expected, c.occurrence_key, c.occurrence_basis
-     from call_criterion_assessments c left join knowledge_documents d on d.id = c.document_id left join argument_scripts asx on asx.id = c.argument_script_id where c.call_assessment_id = $1
+     from call_criterion_assessments c left join knowledge_documents d on d.id = c.document_id left join argument_scripts_all asx on asx.id = c.argument_script_id where c.call_assessment_id = $1
      order by case c.status when 'NOT_MET' then 0 when 'PARTIAL' then 1 when 'MET' then 2 when 'NOT_OBSERVABLE' then 3 when 'NOT_ASSESSED' then 4 else 5 end, c.criterion_text`,
     [row.id],
   )).rows

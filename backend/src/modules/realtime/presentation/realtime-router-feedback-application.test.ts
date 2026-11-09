@@ -7,6 +7,7 @@ import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { createMemoryConversationStore } from "../../assistant/testing/memory-conversation-store.js"
 import type { VoiceSessionConfig } from "../domain/voice-session.js"
 import { createRealtimeRouter } from "./realtime-router.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 /**
  * Conversa de uma APLICAÇÃO de feedback: o contexto vem do registro congelado (nunca do navegador, que manda o indicador ATUAL
@@ -17,7 +18,8 @@ import { createRealtimeRouter } from "./realtime-router.js"
 const ORG = "00000000-0000-4000-8000-0000000000b2"
 const JOANA = "aaaaaaaa-0000-4000-8000-000000000002"
 const user: AuthTokenPayload = { sub: "acc-2", personId: JOANA, organizationId: ORG, role: "OPERATOR", name: "Joana", email: "j@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }
-const fakeDb = { query: async () => ({ rows: [], rowCount: 0 }) } as unknown as Database
+// Banco vazio, exceto a versão vigente e a autorização do especialista na hora da chamada (revisão da PEN-002/PEN-076): ativo e publicado.
+const fakeDb = { query: async (text: string, params: unknown[] = []) => answerAgentVersionQuery(text, params, () => ({ active: true })) ?? { rows: [], rowCount: 0 } } as unknown as Database
 const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
   void next
   if (error instanceof DomainError) return void res.status(error.statusCode).json({ error: { code: error.code } })

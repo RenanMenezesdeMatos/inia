@@ -2,7 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
-import { resolveOfficialClosure } from "../../indicators/application/official-closure.js"
+import { resolveOfficialClosure, type OfficialClosureContext } from "../../indicators/application/official-closure.js"
 import { buildPendingActions } from "../../pending-actions/application/build-pending-actions.js"
 import { PgPendingActionsRepository } from "../../pending-actions/application/pending-actions-repository.js"
 import { PgAnalyticsReadRepository, type AnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
@@ -68,7 +68,12 @@ export type LeadershipSession = {
  * Quem tem escopo de liderança: lidera uma estrutura (sujeito padrão é uma estrutura) OU tem `indicators.view` em algum
  * escopo. Operador e conta sem pessoa = null (o chat segue sem as ferramentas — nada muda para o operador).
  */
-export async function loadLeadershipSession(db: Database, user: AuthTokenPayload, options: { repository?: AnalyticsReadRepository; now?: Date; loadPendingActions?: PendingActionsLoader } = {}): Promise<LeadershipSession | null> {
+export async function loadLeadershipSession(
+  db: Database,
+  user: AuthTokenPayload,
+  /** `closure`: fechamento já resolvido para a organização (sessões montadas em lote — um fuso lido por lote, não por pessoa). */
+  options: { repository?: AnalyticsReadRepository; now?: Date; loadPendingActions?: PendingActionsLoader; closure?: OfficialClosureContext } = {},
+): Promise<LeadershipSession | null> {
   const repository = options.repository ?? new PgAnalyticsReadRepository(db)
   let scope: ViewerScope
   try {
@@ -80,7 +85,7 @@ export async function loadLeadershipSession(db: Database, user: AuthTokenPayload
   const ownOutcome = resolveStructureReference(scope, {})
   const own = ownOutcome.kind === "OK" ? ownOutcome.value : null
   if (!own && !hasAccessGrant(scope.access)) return null
-  const closure = await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date())
+  const closure = options.closure ?? (await resolveOfficialClosure(db, scope.organizationId, options.now ?? new Date()))
   const pendingRepository = new PgPendingActionsRepository(db)
   return {
     repository,

@@ -228,7 +228,9 @@ async function openVoice() {
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Permitir microfone" }))
   })
-  return doubles.transports[0]
+  const transport = doubles.transports[0]
+  if (!transport) throw new Error("a voz não abriu: nenhum transporte foi criado")
+  return transport
 }
 
 describe("OperatorIniaChat — avatar 3D depois do idle do navegador", () => {
@@ -460,6 +462,30 @@ describe("OperatorIniaChat — conversas", () => {
     await waitFor(() => expect(composer()).toHaveValue("minha dúvida"))
   })
 
+  it("voz, conferência depois de falado (PEN-017): a violação tira o texto da tela e avisa a pessoa; permitido, nada muda", async () => {
+    const notice = "Parte do que falei antes não deveria ter sido dita."
+    vi.mocked(transportModule.recordVoiceTurn).mockResolvedValueOnce({ conversationId: CONV, created: false, closed: false, activeConversationId: null, assistantInteractionId: "i1", responseCheck: { outcome: "VIOLATION", notice } })
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("em quem votar?"))
+    act(() => transport.events.onOutputTranscript?.("Vote no candidato X"))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    await waitFor(() => expect(screen.getByText(notice)).toBeInTheDocument())
+    expect(screen.queryByText("Vote no candidato X")).toBeNull()
+  })
+
+  it("voz com especialista: a conferência do que foi falado também avisa, em um balão à parte da resposta dele", async () => {
+    const notice = "Parte do que falei antes não deveria ter sido dita."
+    vi.mocked(transportModule.recordVoiceTurn).mockResolvedValueOnce({ conversationId: CONV, created: false, closed: false, activeConversationId: null, assistantInteractionId: null, responseCheck: { outcome: "VIOLATION", notice } })
+    const transport = await openVoice()
+    act(() => transport.events.onInputTranscript?.("qual meu TMA?"))
+    act(() => transport.events.onSpecialistResult?.("TMA 320 s", [], { conversationId: CONV, created: true, closed: false, activeConversationId: null }))
+    act(() => transport.events.onOutputTranscript?.("Vote no candidato X"))
+    await act(async () => { transport.events.onTurnComplete?.() })
+    await waitFor(() => expect(screen.getByText(notice)).toBeInTheDocument())
+    expect(screen.getByText("TMA 320 s")).toBeInTheDocument()
+    expect(screen.queryByText("Vote no candidato X")).toBeNull()
+  })
+
   it("voz com especialista: grava só a pergunta falada no fim do turno e adota a conversa da resposta", async () => {
     const transport = await openVoice()
     act(() => transport.events.onInputTranscript?.("qual meu TMA?"))
@@ -470,7 +496,8 @@ describe("OperatorIniaChat — conversas", () => {
     expect(transport.events.getToolCallContext?.()).toMatchObject({ conversationId: CONV, utterance: "qual meu TMA?" })
     act(() => transport.events.onOutputTranscript?.("Seu TMA é 320 segundos"))
     await act(async () => { transport.events.onTurnComplete?.() })
-    expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: CONV, userText: "qual meu TMA?", assistantText: undefined }))
+    // A resposta gravada é a do especialista, mas o que foi falado também vai, só para a conferência (PEN-017).
+    expect(transportModule.recordVoiceTurn).toHaveBeenCalledWith(expect.objectContaining({ conversationId: CONV, userText: "qual meu TMA?", assistantText: undefined, spokenText: "Seu TMA é 320 segundos" }))
     expect(vi.mocked(transportModule.recordVoiceTurn).mock.calls[0]![0].userSpokenAt).toEqual(expect.any(String))
     // Só um balão de resposta (o do especialista); a transcrição falada não duplica.
     expect(screen.queryByText("Seu TMA é 320 segundos")).toBeNull()
@@ -592,7 +619,9 @@ describe("OperatorIniaChat — conversas", () => {
     vi.mocked(transportModule.recordVoiceTurn).mockClear()
     act(() => transport.events.onOutputTranscript?.("Qual é a situação da troca entre empresas?"))
     await act(async () => { transport.events.onTurnComplete?.() })
-    expect(transportModule.recordVoiceTurn).not.toHaveBeenCalled()
+    // Nada novo fica na conversa; o que foi lido em voz alta só vai para a conferência (PEN-017).
+    expect(vi.mocked(transportModule.recordVoiceTurn).mock.calls).toHaveLength(1)
+    expect(vi.mocked(transportModule.recordVoiceTurn).mock.calls[0]![0]).toMatchObject({ userText: undefined, assistantText: undefined, spokenText: "Qual é a situação da troca entre empresas?" })
     expect(screen.getAllByText("Qual é a situação da troca entre empresas?")).toHaveLength(1)
   })
 

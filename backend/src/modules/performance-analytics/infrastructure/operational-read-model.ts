@@ -97,11 +97,16 @@ export async function rebuildMemberWindows(db: Database, input: { organizationId
   const components = await resolveWindowComponentsBySubject(db, { subjectIds: input.personIds, windows, indicatorCodes: input.indicatorCodes, timeZone: input.timeZone, now: input.now })
   // A janela atual termina em "agora": a primeira medição de cada pessoa que começa a partir daqui (ainda hoje) passa a
   // entrar no caminho original quando o relógio a alcançar — a linha vale até lá.
+  // Os indicadores da organização entram no filtro só para a busca usar idx_measurements_person_indicator_window
+  // (indicator_definition_id, subject_id, period_start): sem a coluna líder, o PostgreSQL (sem skip scan) lia o índice
+  // inteiro — 1,75 s e ~178 MB por lote de 250 pessoas no dev. O resultado é o mesmo: toda medição de uma pessoa pertence a
+  // um indicador da organização dela.
   const validUntil = await db.query<{ subject_id: string; valid_until: string }>(
     `select subject_id, min(period_start)::text valid_until from indicator_measurements
-      where subject_type = 'PERSON' and subject_id = any($1::uuid[]) and period_start >= $2::timestamptz and period_start < (($3::date + 1)::timestamp at time zone $4)
+      where subject_type = 'PERSON' and indicator_definition_id = any(array(select id from indicator_definitions where organization_id = $5))
+        and subject_id = any($1::uuid[]) and period_start >= $2::timestamptz and period_start < (($3::date + 1)::timestamp at time zone $4)
       group by subject_id`,
-    [input.personIds, input.now.toISOString(), localDateOf(input.now, input.timeZone), input.timeZone],
+    [input.personIds, input.now.toISOString(), localDateOf(input.now, input.timeZone), input.timeZone, input.organizationId],
   )
   const validUntilBy = new Map(validUntil.rows.map((row) => [row.subject_id, row.valid_until]))
 

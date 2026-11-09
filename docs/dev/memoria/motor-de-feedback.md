@@ -603,3 +603,6 @@ Pedido do usuário depois do TMA da Larissa: "devem ser considerados sempre os p
   - `domain/base-practices.test.ts`: produtos do caso e B-n com produto.
   - `generate-feedback.test.ts`.
 
+### Prova do motor com a conferência das respostas (2026-11-04)
+
+O motor não passa pela conferência (PEN-018). O cenário I de `feedback-engine-workflow-proof` esperava ao menos uma chamada em `INVESTIGATION_PLANNING` e recebia nenhuma, igual com `INIA_RESPONSE_CHECK=OFF`, então não vinha da PEN-017. A causa era da própria prova, não do motor: ela mudava `investigation_capabilities` por SQL, e isso não chega à versão publicada que o Workflow executa (PEN-002). Agora ela publica a mudança pelas mesmas funções da tela e fecha 16 de 16. Os outros 8 cenários que falhavam vinham de agentes criados por SQL sem versão publicada, e a prova passou a publicá-los.

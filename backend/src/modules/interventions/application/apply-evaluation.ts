@@ -1,3 +1,4 @@
+import { knowledgeAvailableSql } from "../../knowledge/application/live-knowledge-version.js"
 import { randomUUID } from "node:crypto"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -110,7 +111,7 @@ async function initialContent(tx: Queryable, evaluation: PolicyEvaluation, decis
       const documentIds = [...new Set(competencies.rows.flatMap((row) => row.knowledge_document_ids))]
       const published = documentIds.length
         ? (await tx.query<{ id: string; title: string }>(
-            `select d.id, d.title from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and exists (select 1 from knowledge_versions v where v.document_id = d.id and v.status = 'PUBLISHED') order by d.title`,
+            `select d.id, d.title from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null and ${knowledgeAvailableSql("d.id")} order by d.title`,
             [evaluation.organizationId, documentIds],
           )).rows
         : []

@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { mapWithConcurrency } from "../../../shared/application/concurrency/map-with-concurrency.js"
 import { loadIndicatorOperationalDefinition, resolveOperationalWindowBySubject, type OperationalWindowResult } from "../../indicators/application/operational-measurement-resolver.js"
 import type { MeasurementAggregation } from "../../indicators/domain/operational-aggregation.js"
 import { assignOperationalQuartiles, type OperationalQuartile } from "../../indicators/domain/operational-quartile.js"
@@ -16,6 +17,15 @@ import {
   type FlowGraph,
   type HistoricalQuery,
 } from "../domain/graph-schema.js"
+
+/**
+ * Candidatos avaliados ao mesmo tempo (critério da seleção e valores oficiais do Ranking, um a um). Cada avaliação faz as
+ * próprias consultas; com `Promise.all` sobre milhares de candidatos, o pool (20 conexões por padrão, espera máxima de 10 s)
+ * enfileirava tudo e quem passava da espera falhava — inclusive a renovação da posse das matrículas de OUTROS Workflows no
+ * mesmo processo. Com 8 avaliações por vez (cada uma ainda dispara em paralelo as leituras de dias de trabalho), a fila do pool
+ * fica em dezenas de consultas curtas em vez de milhares, e drena em milissegundos; o resultado é o mesmo, na mesma ordem.
+ */
+export const CANDIDATE_EVALUATION_CONCURRENCY = 8
 
 /** Direção oficial de desempenho do indicador (`indicator_definitions.desired_direction`) — nunca
  * inferida do nome/código. Reaproveitado por vários módulos (action-executors.ts,
@@ -156,10 +166,10 @@ export async function runEmployeeSelection(
     throw new Error(`Critério de seleção sem consulta configurada (histórico ou performance).`)
   }
   const sharedOptions: EvaluationOptions = { ...options, quartileCache: options.quartileCache ?? new Map() }
-  const evaluations = await Promise.all(
-    // `populationIds`: o critério de quartil operacional é relativo a ESTES candidatos (a
-    // população do nó), nunca à empresa — mesma população que o Ranking usaria aqui.
-    candidateIds.map((candidateId) => evaluateDataCondition(db, criterion, { operatorId: candidateId, subjectIds: [candidateId], populationIds: candidateIds }, now, sharedOptions)),
+  // `populationIds`: o critério de quartil operacional é relativo a ESTES candidatos (a
+  // população do nó), nunca à empresa — mesma população que o Ranking usaria aqui.
+  const evaluations = await mapWithConcurrency(candidateIds, CANDIDATE_EVALUATION_CONCURRENCY, (candidateId) =>
+    evaluateDataCondition(db, criterion, { operatorId: candidateId, subjectIds: [candidateId], populationIds: candidateIds }, now, sharedOptions),
   )
   const memberIds: string[] = []
   let notMatchedCount = 0
@@ -247,12 +257,10 @@ async function resolveValues(db: Database, ranking: EmployeeRankingConfig, candi
     })
   }
   const query: HistoricalQuery = { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: ranking.indicatorCode, aggregation: ranking.aggregation, source: ranking.source, period: ranking.period }
-  const resolved = await Promise.all(
-    candidateIds.map(async (employeeId) => {
-      const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
-      return { employeeId, value: result.kind === "aggregate" ? result.value : null }
-    }),
-  )
+  const resolved = await mapWithConcurrency(candidateIds, CANDIDATE_EVALUATION_CONCURRENCY, async (employeeId) => {
+    const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
+    return { employeeId, value: result.kind === "aggregate" ? result.value : null }
+  })
   return resolved.filter((row): row is ValueRow => row.value !== null)
 }
 
@@ -293,13 +301,11 @@ async function resolveChangeValues(db: Database, ranking: EmployeeRankingConfig,
     period: ranking.period,
     compareTo: { kind: "PREVIOUS_PERIOD", changeMode: "PERCENT" },
   }
-  const resolved = await Promise.all(
-    candidateIds.map(async (employeeId) => {
-      const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
-      if (result.kind !== "aggregate" || result.value === null || result.previousValue === undefined || result.comparisonValue === undefined) return null
-      return { employeeId, previousValue: result.previousValue, currentValue: result.value, change: result.comparisonValue }
-    }),
-  )
+  const resolved = await mapWithConcurrency(candidateIds, CANDIDATE_EVALUATION_CONCURRENCY, async (employeeId) => {
+    const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
+    if (result.kind !== "aggregate" || result.value === null || result.previousValue === undefined || result.comparisonValue === undefined) return null
+    return { employeeId, previousValue: result.previousValue, currentValue: result.value, change: result.comparisonValue }
+  })
   return resolved.filter((row): row is Omit<ChangeRow, "performanceChange"> => row !== null).map((row) => ({ ...row, performanceChange: row.change }))
 }
 
@@ -377,7 +383,7 @@ type PartitionKey = { id: string | null; name: string | null }
  * subgrupo" (`id` sentinela estável, nunca `null` — `null` é reservado pro caso `partitionBy:
  * "NONE"`, o balde único implícito, pra nunca confundir os dois).
  */
-const NO_PARTITION_ID = "__NO_GROUP__"
+export const NO_PARTITION_ID = "__NO_GROUP__"
 
 async function resolvePartitionKeys(db: Database, candidateIds: string[], partitionBy: EmployeeRankingPartitionBy): Promise<Map<string, PartitionKey>> {
   if (partitionBy === "NONE" || candidateIds.length === 0) {

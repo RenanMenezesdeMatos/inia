@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { populationFilterAnchorId, populationFilterSchema, type PopulationFilter } from "../domain/population-filter-schema.js"
+import type { StructureAnchor } from "../domain/structure-anchor-schema.js"
 import { resolvePopulationFilterOperatorIds, resolveStructureAnchorOperatorIds } from "./hierarchy-subjects.js"
 
 /**
@@ -48,6 +49,10 @@ export async function resolveEligibleOperatorIds(db: Database, organizationId: s
 
 export type EligibleOperatorRow = { id: string; team_id: string | null; subteam_id: string | null; reports_to_id: string | null }
 
+/** Membros (operadores) da estrutura de um Filtro Populacional — a mesma resposta de `resolveStructureAnchorOperatorIds`, quando
+ * quem chama já a tem lembrada (matrícula em lote, ver enrollment-lookups.ts). */
+export type StructureMembersResolver = (filter: StructureAnchor) => Promise<ReadonlySet<string>>
+
 /** Linha do operador como a elegibilidade precisa dela — null quando inexistente, inativo ou
  * não-OPERATOR (nunca elegível). Exposta pra quem avalia VÁRIOS Workflows candidatos pro mesmo
  * evento (ingestão por Flag/Indicador) carregar o operador uma vez e reaproveitar. */
@@ -72,13 +77,14 @@ export async function isOperatorEligibleForWorkflow(
   population: WorkflowPopulation,
   operatorId: string,
   operator?: EligibleOperatorRow | null,
+  structureMembers?: StructureMembersResolver,
 ): Promise<boolean> {
   const row = operator === undefined ? await loadEligibleOperator(db, organizationId, operatorId) : operator
   if (!row || row.id !== operatorId) return false
-  return isLoadedOperatorEligible(db, population, row)
+  return isLoadedOperatorEligible(db, population, row, structureMembers)
 }
 
-async function isLoadedOperatorEligible(db: Database, population: WorkflowPopulation, operator: EligibleOperatorRow): Promise<boolean> {
+async function isLoadedOperatorEligible(db: Database, population: WorkflowPopulation, operator: EligibleOperatorRow, structureMembers?: StructureMembersResolver): Promise<boolean> {
 
   if (!matchesScope(population, operator)) return false
 
@@ -88,6 +94,7 @@ async function isLoadedOperatorEligible(db: Database, population: WorkflowPopula
   // Estruturas: mesma resolução de membros do modo por conjunto (e do modo Consolidado) —
   // SUPERVISOR_TEAM = reporta direto ao supervisor; SUBTEAM/TEAM = pertence ao grupo;
   // Coordenador/Gerente/Gerente Sênior/Diretor = está na árvore abaixo da âncora.
+  if (structureMembers) return (await structureMembers(filter)).has(operator.id)
   const members = await resolveStructureAnchorOperatorIds(db, filter, populationFilterAnchorId(filter))
   return members.includes(operator.id)
 }

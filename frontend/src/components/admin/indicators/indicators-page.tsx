@@ -42,6 +42,7 @@ import {
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import { IndicatorCorrectionPanel } from "@/components/admin/indicators/indicator-correction-panel"
 import { IndicatorDefinitionForm } from "@/components/admin/indicators/indicator-definition-form"
 import { DiagnosticStrategyStatusBadge, IndicatorDiagnosticStrategyTab } from "@/components/admin/indicators/indicator-diagnostic-strategy-tab"
 import { STRATEGY_STATUS_LABELS } from "@/schemas/admin/indicator-diagnostic-strategy.schema"
@@ -69,6 +70,7 @@ import {
   type DesiredDirection,
   type IndicatorWithRules,
 } from "@/schemas/admin/indicator-rule.schema"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 type CalculationRule = IndicatorWithRules["calculationRules"][number]
 type IndicatorTab = "definition" | "rules" | "diagnosis" | "glossary"
@@ -93,7 +95,7 @@ function DeleteRuleButton({ rule }: { rule: CalculationRule }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir esta regra de cálculo?</AlertDialogTitle>
           <AlertDialogDescription>
-            {scopeLabel(rule)} — a regra sai da lista, mas o registro é mantido no banco para auditoria.
+            {scopeLabel(rule)} — a regra sai da lista. {RESTORE_NOTE}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -122,9 +124,11 @@ function EditIndicatorDialog({ indicator, open, onOpenChange }: { indicator: Ind
   const updateMutation = useUpdateIndicatorDefinitionMutation()
   const catalogQuery = useIndicatorCatalogQuery()
   const dependenciesQuery = useIndicatorDependenciesQuery(open ? indicator.id : null)
+  const [correcting, setCorrecting] = useState(false)
 
   function handleOpenChange(next: boolean) {
     if (next) updateMutation.reset()
+    else setCorrecting(false)
     onOpenChange(next)
   }
 
@@ -132,25 +136,34 @@ function EditIndicatorDialog({ indicator, open, onOpenChange }: { indicator: Ind
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Editar {indicator.name}</DialogTitle>
-          <DialogDescription>Nome, glossário e valores padrão podem mudar sempre. Código, unidade, direção e estratégia ficam bloqueados quando já existe histórico.</DialogDescription>
+          <DialogTitle>{correcting ? `Corrigir ${indicator.name}` : `Editar ${indicator.name}`}</DialogTitle>
+          <DialogDescription>
+            {correcting
+              ? "Corrija um cadastro errado sem perder o histórico. A prévia mostra o impacto antes de salvar."
+              : "Nome, glossário e valores padrão podem mudar sempre. Com histórico, o código fica bloqueado e unidade, direção e estratégia mudam pela correção, com prévia do impacto."}
+          </DialogDescription>
         </DialogHeader>
         {catalogQuery.data && dependenciesQuery.data ? (
-          // key: reabrir sempre parte do registro mais recente
-          <IndicatorDefinitionForm
-            key={`${indicator.id}-${open}`}
-            catalog={catalogQuery.data}
-            initial={indicator}
-            dependencies={dependenciesQuery.data}
-            pending={updateMutation.isPending}
-            error={updateMutation.isError ? (updateMutation.error as Error).message : null}
-            submitLabel="Salvar"
-            onCancel={() => onOpenChange(false)}
-            onSubmit={async (value) => {
-              await updateMutation.mutateAsync({ id: indicator.id, ...value })
-              onOpenChange(false)
-            }}
-          />
+          correcting ? (
+            <IndicatorCorrectionPanel catalog={catalogQuery.data} indicator={indicator} onCancel={() => setCorrecting(false)} onApplied={() => handleOpenChange(false)} />
+          ) : (
+            // key: reabrir sempre parte do registro mais recente
+            <IndicatorDefinitionForm
+              key={`${indicator.id}-${open}`}
+              catalog={catalogQuery.data}
+              initial={indicator}
+              dependencies={dependenciesQuery.data}
+              pending={updateMutation.isPending}
+              error={updateMutation.isError ? (updateMutation.error as Error).message : null}
+              submitLabel="Salvar"
+              onCancel={() => handleOpenChange(false)}
+              onRequestCorrection={() => setCorrecting(true)}
+              onSubmit={async (value) => {
+                await updateMutation.mutateAsync({ id: indicator.id, ...value })
+                handleOpenChange(false)
+              }}
+            />
+          )
         ) : catalogQuery.isError || dependenciesQuery.isError ? (
           <p className="text-sm text-destructive">Não foi possível carregar o catálogo de comportamentos do indicador.</p>
         ) : (
@@ -181,8 +194,8 @@ function DeleteIndicatorButton({ indicator }: { indicator: IndicatorWithRules })
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {indicator.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            As regras de cálculo e o glossário deste indicador serão excluídos junto. Se houver metas ou medições vinculadas, a exclusão será
-            bloqueada — desative o indicador nesse caso.
+            Medições, metas e fechamentos saem dos painéis e ficam guardados com ele, e a carga passa a recusar este código. {RESTORE_NOTE} Se algum Workflow ou política de acompanhamento usa este
+            indicador, ou há execução em andamento, a exclusão é barrada.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {deleteDefinitionMutation.isError ? <p className="text-sm text-destructive">{(deleteDefinitionMutation.error as Error).message}</p> : null}

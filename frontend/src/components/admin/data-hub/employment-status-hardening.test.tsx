@@ -77,6 +77,10 @@ const SOURCE: SourceDetail = {
   secrets: [{ purpose: "token", createdAt: NOW, rotatedAt: null }],
   tokens: [],
   transportWarning: null,
+  configAccess: { required: true, unlocked: true, expiresAt: NOW, fields: ["token"] },
+  createdByName: null,
+  updatedByName: null,
+  lastChangedAt: null,
 }
 
 function overview(employmentStatus: EmploymentStatusFreshness): Overview {

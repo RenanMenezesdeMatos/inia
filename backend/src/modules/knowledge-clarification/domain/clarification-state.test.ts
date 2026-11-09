@@ -103,6 +103,15 @@ describe("estado do esclarecimento — escolhas, correções e ids", () => {
     expect(view.steps[0]!.options[1]!.evidence[0]).toMatchObject({ available: false, documentTitle: "", heading: "" })
     expect(view.scenario[0]).toMatchObject({ dimension: "Assunto", origin: "QUESTION" })
   })
+
+  it("visão para quem lê: fonte de base sem acesso vai sem as imagens; com acesso, com elas", () => {
+    const images = [{ id: "a".repeat(32), page: 2, width: 800, height: 400 }]
+    const state: ClarificationState = { ...makeState([makeStep(1, "Público", ["Grupo 1", "Grupo 2"])]), sources: [{ ...source("kb-livre"), images }, { ...source("kb-fechada"), images }] }
+    const view = toClarificationView(state, new Set(["kb-livre"]))
+    expect(view.sources[0]!.images).toEqual(images)
+    expect(view.sources[1]).not.toHaveProperty("images")
+    expect(parseClarificationState(state)).not.toBeNull()
+  })
 })
 
 describe("geração dinâmica — nenhuma regra de negócio nem regra de palavras no código de produção", () => {

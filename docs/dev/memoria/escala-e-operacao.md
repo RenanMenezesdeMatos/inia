@@ -21,7 +21,7 @@ Estado novo compartilhado = tabela (UNLOGGED quando perder é inofensivo) ou `NO
 | --- | --- | --- |
 | Limites de requisição do `app.ts` (login, 1ª senha, API Push por IP, IA/voz/ações caras por conta, ciência) | `rate_limit_hits` (migration 126, UNLOGGED) — `shared/infrastructure/rate-limit/postgres-rate-limit-store.ts` | Janela fixa pelo relógio do BANCO + anterior ponderada; incremento condicional numa instrução (corrida na última vaga nunca passa duas); balde = regra + sha256 da chave (sem IP/e-mail em claro); loja fora = passa + aviso. Purga na tarefa periódica `rate-limit-purge` |
 | Vagas e pausa POR CONEXÃO DE IA (decisão do usuário em 13/10: o limite é do ACESSO — ex.: o SDK da Vivo informará "vagas por acesso" —, configurável na conexão; nada específico de provedor) | `ai_connections.max_concurrent_calls` + `ai_call_slot_leases` (135, UNLOGGED, prazo renovado) + `ai_provider_cooldowns` (127, uma linha por chave) — porta `shared/application/model-routing/provider-call-gate.ts`, implementação `shared/infrastructure/model-routing/postgres-provider-call-gate.ts`, ligada no runtime da policy por candidato (`attemptAll`) e nas rotas do ambiente (`legacy:<provedor>`, só pausa) | Chave `connection:<id>`. ¼ do teto (≥ 1) reservado à interativa; interativa espera ≤ 20 s (`AI_CAPACITY_BUSY`), lote espera (cancelável). 429/503 grava a pausa (Retry-After ou 5 s/2 s, ≤ 60 s) ANTES de o erro voltar; lote espera a pausa ou, numa FALLBACK_CHAIN com RATE_LIMIT, pula a conexão (`FALLBACK_RATE_LIMIT`). Interativa nunca pausada. **O CHAT TEM PRIORIDADE** (decisão do usuário, 21/10, depois de dois Workflows de análise derrubarem o chat com 429): o 429 de uma chamada INTERATIVA pausa os lotes por pelo menos 15 s (`INTERACTIVE_RATE_LIMIT_PAUSE_MS`; Retry-After maior vale) em todas as instâncias e no processo (`interactiveBatchPauseMs`), e a interativa insiste até 4 vezes (0,75 → 1,5 → 3 → 6 s, Retry-After como mínimo, ≤ 15 s somados; 503 = uma só nova tentativa). Só na saturação — o lote nunca é parado preventivamente a cada pergunta. Cada processo lê as pausas a cada 2 s. Banco fora = sai sem vaga (aviso). O limitador de cada processo (`ai-call-limiter.ts`) voltou a ser só local (fila/prioridade/vagas/pausa do processo) + cancelamento. O planejador já tirava da frente da cadeia por 1 min o modelo com 429 recente em `ai_usage_events` (`RATE_LIMIT_DEPRIORITIZE_MS`) — continua valendo |
-| Tarefas periódicas | trava consultiva + `periodic_job_runs` (122) | Uma rodada por intervalo no conjunto |
+| Tarefas periódicas | trava consultiva numa conexão própria por processo + `periodic_job_runs` (122) | Uma rodada por intervalo no conjunto; ver "Travas das tarefas periódicas" abaixo |
 | Fila de Workflows e da Central de Dados | posse com lease + `skip locked` | A API (papel `api`) só enfileira a carga da Central e avisa por `NOTIFY inia_data_hub_wake`; o worker escuta numa conexão própria (`shared/infrastructure/process-wake`) e processa; o tick de 15 s é a garantia |
 
 O limite por token do API Push (60/min) também conta nessa loja (`consumePushQuota`, regra `push-token`, via
@@ -157,6 +157,66 @@ IIS/Windows; o conteúdo falso do motor faz a monitoria abster-se depois da 1ª 
 medida — pela conta, monitoria real (4 chamadas, ~1–2 min) com 4 por vez dá ~1.000–2.000 por dia de 8 h por worker; para mais,
 `WORKFLOW_WORKER_CONCURRENCY` e/ou mais workers, dentro das vagas da conexão de IA.
 
+## Travas das tarefas periódicas numa conexão própria (18/10/2026)
+
+Origem: auditoria de eficiência de 17/10. Antes, cada rodada pegava uma conexão do POOL para a trava consultiva e a segurava
+até o fim: com ~9 tarefas do `server.ts` + varredor de entrega + monitoria de usabilidade, até ~11 das 20 conexões do
+processamento ficavam presas, disputando com as matrículas e heartbeats do motor de Workflow (e, no papel `all`, com a API).
+
+**Agora** (`infrastructure/jobs/job-lock-session.ts`): UMA sessão do PostgreSQL por processo, fora do pool, detém as travas de
+todas as tarefas (`pg_try_advisory_lock` de chaves diferentes na mesma sessão); o trabalho das tarefas usa o pool só pelo tempo
+de cada consulta. `periodic_job_runs` continua igual (gravado na mesma sessão, sob a trava). Ligada em `startProcessing`
+(papéis `worker` e `all`; a API pura não abre), fechada DEPOIS de `jobs.stop()` no desligamento, estado no `/health` do worker
+(`jobLocks`: `connected`, `generation`, `held`, `losses`, `leasesLost`, `lastError`).
+
+- **Sem conexão = rodada pulada** (`UNAVAILABLE` → `SKIPPED_UNAVAILABLE`, contador `skippedUnavailable`), nunca roda sem trava.
+  Conexão em abertura (subida ou reconexão): a rodada espera por ela (prazo de conexão 10 s) — a rodada inicial não se perde.
+  Reconexão com espera crescente 1 s → 30 s (padrão de `process-wake/postgres-wake-channel.ts`).
+- **Conexão perdida no meio** (banco reiniciado, rede, `pg_terminate_backend`, sem resposta): o banco solta TODAS as travas da
+  sessão. Cada abertura bem-sucedida é uma GERAÇÃO; as rodadas da geração perdida recebem `signal` abortado
+  (`JobLockLostError`, em `JobLease`), o resultado sai com `lockLost` (contador `lockLost` por tarefa) e nada é destravado na
+  sessão nova. Falha ao destravar fecha a sessão (a trava cai com ela; as outras rodadas são avisadas).
+- **Reentrância**: o PostgreSQL deixa a MESMA sessão pegar a mesma chave de novo (contador — conferido na prova). A sessão
+  devolve `BUSY` para tarefa com rodada ainda em andamento no processo; o `inFlight` do agendador e o `running` da monitoria de
+  usabilidade continuam por cima. O varredor de entrega (que não tinha guarda própria) passa a contar com essa.
+- **Sessão viva**: `select 1` a cada 10 s; prazo de 12 s por consulta (o banco cancela em 10 s por `statement_timeout`; sem
+  resposta nenhuma em 12 s = conexão perdida; a conferência final roda depois da fase de E/S, para um event loop parado por CPU
+  não derrubar a sessão à toa); `idle_session_timeout = 0`, `tcp_keepalives_idle = 30`, `tcp_keepalives_interval = 10` na
+  sessão (o banco solta as travas de uma máquina que sumiu em ~2 min, não nas 2 h do sistema operacional) e keepalive TCP do
+  Node; parâmetro desconhecido do servidor é ignorado. Uma consulta por vez no cliente (a fila interna do `pg` para consultas
+  simultâneas está obsoleta e sai no pg@9). `application_name` = o do processo + `:locks` (`inia-worker:locks`, `inia-all:locks`).
+- **Erro de SQL com a sessão de pé** (SQLSTATE fora de 08/57P — ex.: `periodic_job_runs` ausente) = falha da rodada, como
+  antes; qualquer outro erro = conexão perdida.
+- **Custo**: +1 conexão por processo com tarefas periódicas no `max_connections` (o worker já tinha +1 da escuta da Central);
+  fórmula atualizada em `docs/instalacao/dois-servidores-windows.md` (seção "PostgreSQL para várias instâncias").
+
+**Por que não posse por linha em `periodic_job_runs` com heartbeat** (a alternativa avaliada): as duas têm a mesma janela de
+posse perdida com a tarefa ainda rodando, mas a linha precisa de prazo de posse (processo morto = os outros esperam o prazo; a
+trava cai na hora com a sessão), de escrita a cada heartbeat por tarefa e de relógio para decidir vencimento; a sessão própria
+mantém a semântica, a prova e a chave de antes. Risco aceito: uma queda da conexão derruba as travas de todas as tarefas do
+processo de uma vez (na prática a queda costuma ser do banco/rede e atinge o pool também).
+
+**Idempotência tarefa a tarefa** (com a trava perdida, o outro processo só começa a mesma tarefa depois de 0,9 × o intervalo
+desde a partida daqui — `periodic_job_runs`; só rodada longa se sobrepõe):
+
+| Tarefa | Duas rodadas juntas | O que faz com o sinal |
+| --- | --- | --- |
+| `workflow-schedule` | Segura (`is distinct from`; matrícula com `on conflict do nothing` no único workflow × sujeito × horário) | Não começa a 2ª etapa (agenda) |
+| `data-hub` | Fila segura (`skip locked` + posse; já roda fora da trava pelo `kickWorker`); risco só em DUAS recuperações juntas (abaixo) | Nada: a recuperação é a 1ª etapa, ainda sob a trava |
+| `report-schedule`, `report-runs` | Seguras (CAS em `next_run_at` + `on conflict`; posse com `skip locked`) | Nada |
+| `report-analysis-retry` | Risco: sem posse por entrega, os dois chamariam a IA (paga) para as mesmas entregas | Para antes da próxima chamada de IA |
+| `analytics-rollup` | Risco: DELETE + INSERT por lote nas mesmas pessoas → 23505 ou deadlock (dado final certo) | Para entre lotes; reconstrução interrompida não marca o dia (a próxima recomeça) |
+| `data-retention`, `rate-limit-purge`, `usage-analytics-retention` | Seguras (deletes idempotentes; só o registro da rodada duplica) | Nada |
+| `calendar` | Segura (`on conflict (dedupe_key)` e reconciliação única); borda: horizonte mudando entre as leituras | Não começa a 2ª etapa (alerta de horizonte) |
+| `feedback-delivery-sweeper` | Segura (um comando com `on conflict do nothing`) | Nada |
+| `usage-analytics-activity` | Risco baixo: a mesma pessoa projetada pelos dois → 23505 e volta à fila | Não reivindica o próximo lote (o já tirado da fila vai até o fim) |
+| `usage-analytics-eligibility` | Segura (borda na 1ª rodada da organização: a rodada falha e repete) | Nada |
+
+Pendências fora deste escopo (já existiam, só aparecem com duas rodadas juntas): `recoverInterruptedRuns` da Central devolve a
+carga à fila sem conferir de novo `claimed_until < now()` no UPDATE (`run-service.ts`) — duas recuperações juntas podem rodar a
+mesma carga em dois processos; `retryPendingAnalyses` não reivindica a entrega e pode pegar uma que `report-runs` ainda analisa
+(entrega nasce com `analysis_updated_at` nulo).
+
 ## Provas
 
 - `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run multi-instance-proof` — DOIS processos de API reais (fork + HTTP + IPC):
@@ -167,6 +227,13 @@ medida — pela conta, monitoria real (4 chamadas, ~1–2 min) com 4 por vez dá
   administração, 0 × 429 com o processo acima da cota (lote 3,7 s × 8,8 s sem o portão); conexão pausada → o lote vai para o
   próximo modelo da cadeia sem chamar a pausada.
 - `postgres-provider-call-gate-proof`, `postgres-rate-limit-store-proof`, `postgres-wake-channel-proof`, `data-hub-proof`.
+- `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run periodic-jobs-lock-proof --no-file-parallelism` — duas instâncias (duas sessões
+  de travas) disputando a mesma tarefa: só uma roda, a outra pula sem esperar; 3 travas de uma instância numa conexão só
+  (`pg_locks` + `pg_stat_activity`); reentrância real do PostgreSQL na mesma sessão × `BUSY`; `pg_terminate_backend` no meio
+  da rodada → sinal abortado, a outra instância assume, reconexão numa sessão nova; banco inalcançável = `UNAVAILABLE`;
+  parâmetros da sessão (`:locks`, `idle_session_timeout` 0, keepalive 30/10, `statement_timeout` 10 s); agenda de 150 ms por
+  2 s sem sobreposição e com 1 conexão de travas por instância. Testes de unidade: `job-lock-session.test.ts` e
+  `periodic-jobs.test.ts` (banco falso em `infrastructure/jobs/testing/fake-job-lock-server.ts`).
 - Worktree sem `node_modules` próprio: o Turbopack recusa `node_modules` por symlink para fora da raiz (`next build`/`next dev`
   com `--webpack` funcionam).
 

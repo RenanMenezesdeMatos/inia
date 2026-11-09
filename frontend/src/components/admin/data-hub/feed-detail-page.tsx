@@ -17,9 +17,13 @@ import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { useDataContractsQuery, useDataFeedQuery, useDeleteFeedMutation, useSetFeedStatusMutation, useSyncFeedMutation, useUpdateFeedMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchFeedSample, previewFeedMapping } from "@/services/admin/data-hub-service"
-import { REMOTE_SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, type AvailabilityPolicy, type Cadence, type DatabaseFeedConfig, type FeedMapping, type Preview, type Sample, type SourceKind } from "@/schemas/admin/data-hub.schema"
+import { REMOTE_SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, cadenceSaveProblem, type AvailabilityPolicy, type Cadence, type DatabaseFeedConfig, type FeedMapping, type Preview, type Sample, type SourceKind } from "@/schemas/admin/data-hub.schema"
 
-import { AvailabilityPolicyField, CadenceSelect } from "./connection-form"
+import { CadenceSelect } from "./cadence-select"
+import { ConfigAccessPanel, isConfigLocked } from "./config-access/config-access-panel"
+import { ConfigUnlockCancelled, ignoreHandled, useConfigUnlockPrompt } from "./config-access/use-config-unlock-prompt"
+import { formRevision, useFormInUse, useHeldFormKey } from "./config-access/use-held-form-key"
+import { AvailabilityPolicyField } from "./connection-form"
 import { formatDateTime, formatFuture, formatRelative } from "./data-hub-format"
 import { FeedConnectorForm, connectorDraftFrom, toConnectorConfig } from "./feed-connector-form"
 import { MappingEditor } from "./mapping-editor"
@@ -27,18 +31,26 @@ import { PreviewTable } from "./preview-table"
 import { RunsTab } from "./runs-tab"
 import { FeedStatusBadge, FreshnessBadge } from "./status-badges"
 import { DatabaseCheckpointSummary, DatabaseFeedConnector, configFromSyncDraft, syncDraftFromConfig } from "./database/database-feed-settings"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 export function FeedDetailPage({ feedId }: { feedId: string }) {
   const query = useDataFeedQuery(feedId)
   if (query.isLoading) return <Skeleton className="h-96 rounded-xl" aria-hidden />
   if (query.isError || !query.data) return <ListErrorState message="Não foi possível carregar o feed." onRetry={() => query.refetch()} />
-  // Estado do editor nasce do feed carregado; uma atualização persistida (updatedAt) remonta o editor.
-  return <FeedEditor key={query.data.updatedAt} feed={query.data} />
+  return <HeldFeedEditor feed={query.data} />
 }
 
 type LoadedFeed = NonNullable<ReturnType<typeof useDataFeedQuery>["data"]>
 
-function FeedEditor({ feed }: { feed: LoadedFeed }) {
+/** Estado do editor nasce do feed carregado; uma mudança no servidor remonta o editor, desde que ninguém esteja usando o formulário. */
+function HeldFeedEditor({ feed }: { feed: LoadedFeed }) {
+  const form = useHeldFormKey(formRevision(feed))
+  // A aba fica aqui fora: liberar ou salvar relê o formulário sem tirar a pessoa de onde ela estava.
+  const [tab, setTab] = useState("mapping")
+  return <FeedEditor key={form.key} feed={feed} onHold={form.hold} tab={tab} onTabChange={setTab} />
+}
+
+function FeedEditor({ feed, onHold, tab, onTabChange }: { feed: LoadedFeed; onHold: (inUse: boolean) => void; tab: string; onTabChange: (tab: string) => void }) {
   const router = useRouter()
   const contractsQuery = useDataContractsQuery()
   const update = useUpdateFeedMutation()
@@ -56,23 +68,26 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connector, setConnector] = useState(() => connectorDraftFrom(feed.connectorConfig))
+  const prompt = useConfigUnlockPrompt()
+  const locked = isConfigLocked(feed.configAccess)
 
   const contract = contractsQuery.data?.contracts.find((entry) => entry.key === feed.contractKey)
   const kind = (feed.source?.kind ?? "FILE_UPLOAD") as SourceKind
   const remote = REMOTE_SOURCE_KINDS.includes(kind)
   const databaseConfig = kind === "DATABASE" ? (feed.connectorConfig.database as DatabaseFeedConfig) : null
   const [databaseSync, setDatabaseSync] = useState(() => (databaseConfig ? syncDraftFromConfig(databaseConfig) : null))
+  const markSaved = useFormInUse(onHold, { mapping, cadence, availabilityPolicy, authoritative, failOnAnyRejection, connector, databaseSync, sampleLoaded: sample !== null }, prompt.active)
   const columns = sample?.columns ?? feed.schemaFingerprint?.columns ?? mapping.fields.map((field) => field.source).filter((source): source is string => Boolean(source))
 
   async function loadSample() {
     setBusy(true)
     setError(null)
     try {
-      const fetched = await fetchFeedSample(feed.id)
+      const fetched = await prompt.guarded(() => fetchFeedSample(feed.id))
       setSample(fetched)
       setPreview(null)
     } catch (err) {
-      setError(err instanceof AdminApiError ? err.message : "Não foi possível buscar a amostra (fontes de arquivo/push precisam de um envio; use a importação).")
+      setError(err instanceof AdminApiError || err instanceof ConfigUnlockCancelled ? err.message : "Não foi possível buscar a amostra (fontes de arquivo/push precisam de um envio; use a importação).")
     } finally {
       setBusy(false)
     }
@@ -83,9 +98,9 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
     setBusy(true)
     setError(null)
     try {
-      setPreview(await previewFeedMapping(feed.id, { mapping, sample: { columns: sample.columns, records: sample.records } }))
+      setPreview(await prompt.guarded(() => previewFeedMapping(feed.id, { mapping, sample: { columns: sample.columns, records: sample.records } })))
     } catch (err) {
-      setError(err instanceof AdminApiError ? err.message : "Não foi possível validar.")
+      setError(err instanceof AdminApiError || err instanceof ConfigUnlockCancelled ? err.message : "Não foi possível validar.")
     } finally {
       setBusy(false)
     }
@@ -94,11 +109,12 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
   function save() {
     const connectorConfig = databaseConfig && databaseSync ? { connector: "DATABASE", database: configFromSyncDraft(databaseConfig, databaseSync) } : toConnectorConfig(kind, connector)
     // O editor mostra sempre a versão atual do contrato: salvar grava o feed nela (troca auditada no servidor).
-    update.mutate({ id: feed.id, input: { contractVersion: contract?.version, mapping, cadence, authoritative, failOnAnyRejection, availabilityPolicy, connectorConfig } })
+    ignoreHandled(prompt.guarded(() => update.mutateAsync({ id: feed.id, input: { contractVersion: contract?.version, mapping, cadence, authoritative, failOnAnyRejection, availabilityPolicy, connectorConfig } })).then(markSaved))
   }
 
   return (
     <div className="space-y-5">
+      {prompt.dialog}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <Button variant="ghost" size="sm" asChild className="-ml-2">
@@ -131,7 +147,7 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
               <Pause /> Pausar
             </Button>
           ) : (
-            <Button variant="outline" onClick={() => status.mutate({ id: feed.id, action: feed.status === "DRAFT" ? "ACTIVATE" : "RESUME" })}>
+            <Button variant="outline" onClick={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: feed.id, action: feed.status === "DRAFT" ? "ACTIVATE" : "RESUME" })))}>
               <Play /> {feed.status === "DRAFT" ? "Ativar" : "Retomar"}
             </Button>
           )}
@@ -144,7 +160,7 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Remover {feed.name}?</AlertDialogTitle>
-                <AlertDialogDescription>Este conjunto de dados sai da Central e deixa de ser sincronizado{feed.source ? ` (a conexão ${feed.source.name} e os outros conjuntos dela continuam)` : ""}. O histórico de cargas e a linhagem são preservados para auditoria. Os dados já aplicados ao domínio continuam existindo — a Central nunca apaga dado do domínio.</AlertDialogDescription>
+                <AlertDialogDescription>Este conjunto de dados sai da Central e deixa de ser sincronizado{feed.source ? ` (a conexão ${feed.source.name} e os outros conjuntos dela continuam)` : ""}. O histórico de cargas e a linhagem são preservados para auditoria. {RESTORE_NOTE} Os dados já aplicados ao domínio continuam existindo — a Central nunca apaga dado do domínio.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -163,11 +179,13 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
         <div className="rounded-lg border border-border p-3"><dt className="text-xs text-muted-foreground">Próxima sincronização</dt><dd>{formatFuture(feed.nextSyncAt)}</dd></div>
         <div className="rounded-lg border border-border p-3">
           <dt className="text-xs text-muted-foreground">{databaseConfig ? "Leitura" : "Checkpoint"}</dt>
-          <dd className={databaseConfig ? undefined : "truncate font-mono text-xs"}>{databaseConfig ? <DatabaseCheckpointSummary feedId={feed.id} checkpoint={feed.checkpoint} /> : feed.checkpoint ? JSON.stringify(feed.checkpoint) : "—"}</dd>
+          <dd className={databaseConfig ? undefined : "truncate font-mono text-xs"}>{databaseConfig ? <DatabaseCheckpointSummary feedId={feed.id} checkpoint={feed.checkpoint} locked={locked} /> : feed.checkpoint ? JSON.stringify(feed.checkpoint) : "—"}</dd>
         </div>
       </dl>
 
-      <Tabs defaultValue="mapping">
+      {feed.source ? <ConfigAccessPanel sourceId={feed.source.id} kind={feed.source.kind} access={feed.configAccess} /> : null}
+
+      <Tabs value={tab} onValueChange={onTabChange}>
         <TabsList>
           <TabsTrigger value="mapping">Mapeamento</TabsTrigger>
           <TabsTrigger value="settings">Conector e frequência</TabsTrigger>
@@ -178,12 +196,12 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 {remote ? (
-                  <Button variant="outline" size="sm" onClick={loadSample} disabled={busy}>
+                  <Button variant="outline" size="sm" onClick={loadSample} disabled={busy || locked}>
                     {busy ? <Loader2 className="animate-spin" /> : null} Buscar amostra da fonte
                   </Button>
                 ) : null}
                 {sample ? (
-                  <Button variant="outline" size="sm" onClick={runPreview} disabled={busy}>
+                  <Button variant="outline" size="sm" onClick={runPreview} disabled={busy || locked}>
                     Validar com a amostra
                   </Button>
                 ) : null}
@@ -194,7 +212,9 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
                   Este conjunto lê os dados pela versão {feed.contractVersion} do contrato. O mapeamento abaixo já é o da versão {contract.version}: ao salvar, ele passa para essa versão e os campos novos podem ser mapeados.
                 </p>
               ) : null}
-              <MappingEditor contract={contract} columns={columns} value={mapping} onChange={(next) => { setMapping(next); setPreview(null) }} suggestion={sample?.suggestedMapping ?? null} />
+              <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0" data-testid="feed-mapping-fields">
+                <MappingEditor contract={contract} columns={columns} value={mapping} onChange={(next) => { setMapping(next); setPreview(null) }} suggestion={sample?.suggestedMapping ?? null} />
+              </fieldset>
               {preview ? <PreviewTable preview={preview} contract={contract} /> : null}
             </>
           ) : (
@@ -208,7 +228,9 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
               <CardDescription>Como este conjunto de dados é buscado ou recebido.</CardDescription>
             </CardHeader>
             <CardContent>
-              {databaseConfig && databaseSync && feed.source ? <DatabaseFeedConnector sourceId={feed.source.id} config={databaseConfig} draft={databaseSync} onChange={setDatabaseSync} /> : <FeedConnectorForm kind={kind} draft={connector} onChange={setConnector} />}
+              <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0">
+                {databaseConfig && databaseSync && feed.source ? <DatabaseFeedConnector sourceId={feed.source.id} config={databaseConfig} draft={databaseSync} onChange={setDatabaseSync} locked={locked} /> : <FeedConnectorForm kind={kind} draft={connector} onChange={setConnector} />}
+              </fieldset>
             </CardContent>
           </Card>
           <Card>
@@ -216,8 +238,9 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
               <CardTitle>Frequência, disponibilidade e política</CardTitle>
               <CardDescription>A cadência define o &quot;atrasado&quot; (freshness); a disponibilidade esperada define quando o dado de um dia já deveria ter chegado (SLA D-1/D-2); a política define o que acontece com rejeições.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {remote ? <CadenceSelect value={cadence} onChange={setCadence} /> : <p className="text-sm text-muted-foreground">Feed sob demanda (arquivo ou push).</p>}
+            <CardContent>
+              <fieldset disabled={locked} className="m-0 min-w-0 space-y-4 border-0 p-0" data-testid="feed-settings-fields">
+              {remote ? <CadenceSelect value={cadence} onChange={setCadence} savedValue={feed.cadence} /> : <p className="text-sm text-muted-foreground">Feed sob demanda (arquivo ou push).</p>}
               <AvailabilityPolicyField value={availabilityPolicy} onChange={setAvailabilityPolicy} contractKey={feed.contractKey} />
               <div className="grid gap-3 sm:grid-cols-2">
                 {contract?.category === "MASTER" ? (
@@ -241,6 +264,7 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
                 <Label>Namespace de origem</Label>
                 <Input readOnly aria-label="Namespace de origem" value={feed.sourceNamespace ?? feed.source?.publicId ?? ""} className="font-mono text-xs" />
               </div>
+              </fieldset>
             </CardContent>
           </Card>
         </TabsContent>
@@ -255,7 +279,7 @@ function FeedEditor({ feed }: { feed: LoadedFeed }) {
         </p>
       ) : null}
       <div className="flex justify-end border-t pt-4">
-        <Button onClick={save} disabled={update.isPending}>
+        <Button onClick={save} disabled={update.isPending || locked || cadenceSaveProblem(cadence, feed.cadence) !== null}>
           {update.isPending ? <Loader2 className="animate-spin" /> : <Save />} Salvar feed
         </Button>
       </div>

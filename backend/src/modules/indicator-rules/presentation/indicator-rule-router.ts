@@ -17,6 +17,7 @@ import {
 import { OPERATIONAL_AGGREGATION_KINDS } from "../../indicators/domain/operational-aggregation.js"
 import { loadVisibleIndicatorDependencies } from "../../indicators/application/indicator-dependencies.js"
 import { createIndicatorDefinition, deleteIndicatorDefinition, findIndicatorDefinition, updateIndicatorDefinition } from "../../indicators/application/indicator-definition-service.js"
+import { applyIndicatorCorrection, impactForViewer, previewIndicatorCorrection } from "../../indicators/application/indicator-correction-service.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 
@@ -167,9 +168,27 @@ export function createIndicatorRuleRouter(db: Database) {
     response.json({ data: definition })
   })
 
+  /**
+   * Correção controlada de unidade, direção ou estratégia de um indicador com histórico (`indicator-correction-service.ts`).
+   * Prévia e aplicação valem para a organização inteira: `organizationOnly`. O nome dos Workflows segue o escopo de `workflows.manage`.
+   */
+  router.post("/definitions/:id/correction/preview", organizationOnly, async (request, response) => {
+    const user = sessionUser(request)
+    if (!z.uuid().safeParse(request.params.id).success) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
+    const impact = await previewIndicatorCorrection(db, user.organizationId, String(request.params.id), request.body)
+    return response.json({ data: impactForViewer(impact, await getManageableScopes(db, user, "workflows.manage")) })
+  })
+
+  router.post("/definitions/:id/correction", organizationOnly, async (request, response) => {
+    const user = sessionUser(request)
+    if (!z.uuid().safeParse(request.params.id).success) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
+    const result = await applyIndicatorCorrection(db, user.organizationId, String(request.params.id), request.body, { personId: user.personId, accountId: user.sub }, await getManageableScopes(db, user, "workflows.manage"))
+    return response.json({ data: result })
+  })
+
   router.delete("/definitions/:id", organizationOnly, async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    const deleted = await deleteIndicatorDefinition(db, organizationId, String(request.params.id))
+    const deleted = await deleteIndicatorDefinition(db, organizationId, String(request.params.id), sessionUser(request).personId ?? null)
     if (!deleted) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
     return response.status(204).send()
   })
@@ -179,6 +198,7 @@ export function createIndicatorRuleRouter(db: Database) {
     const input = ruleSchema.parse(request.body)
     const scope = await normalizeScopedTarget(db, organizationId, { scopeType: input.scopeType, teamId: input.teamId ?? null, subteamId: input.subteamId ?? null })
     if (!scope || !canManageScope(await scopesOf(request), scope)) throw RULE_SCOPE_FORBIDDEN()
+    if (!(await findIndicatorDefinition(db, organizationId, input.indicatorDefinitionId))) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
     const result = await db.query<{ id: string }>(
       `insert into indicator_calculation_rules
          (organization_id, indicator_definition_id, scope_type, team_id, subteam_id, calculation_period, calculation_method, attainment_rule)
@@ -229,8 +249,8 @@ export function createIndicatorRuleRouter(db: Database) {
     if (!(await ruleInScope(request, String(request.params.ruleId)))) return response.status(404).json({ error: { code: "RULE_NOT_FOUND", message: "Regra não encontrada." } })
     const organizationId = sessionUser(request).organizationId
     const result = await db.query(
-      `update indicator_calculation_rules set deleted_at = now() where id = $1 and organization_id = $2 and deleted_at is null returning id`,
-      [request.params.ruleId, organizationId],
+      `update indicator_calculation_rules set deleted_at = now(), deleted_by_person_id = $3 where id = $1 and organization_id = $2 and deleted_at is null returning id`,
+      [request.params.ruleId, organizationId, sessionUser(request).personId ?? null],
     )
     if (!result.rows[0]) return response.status(404).json({ error: { code: "RULE_NOT_FOUND", message: "Regra não encontrada." } })
     response.status(204).send()
@@ -239,6 +259,7 @@ export function createIndicatorRuleRouter(db: Database) {
   router.put("/glossary", organizationOnly, async (request, response) => {
     const organizationId = sessionUser(request).organizationId
     const input = glossaryUpsertSchema.parse(request.body)
+    if (!(await findIndicatorDefinition(db, organizationId, input.indicatorDefinitionId))) return response.status(404).json({ error: { code: "INDICATOR_NOT_FOUND", message: "Indicador não encontrado." } })
     await inTransaction(db, async (client) => {
       await client.query(
         `update indicator_glossary set active = false where indicator_definition_id = $1 and organization_id = $2`,

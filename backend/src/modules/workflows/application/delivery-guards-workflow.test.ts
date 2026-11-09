@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { DeliverySkip } from "../../feedback-engine/domain/delivery-guards.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { ActionConfig, FlowGraph } from "../domain/graph-schema.js"
 import { actionExecutors, type ActionExecutionContext } from "./action-executors.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
@@ -18,7 +19,12 @@ vi.mock("../../assistant/application/run-orchestrated-reply.js", async (importOr
  * Chamada já monitorada: "Chamar agente"/Orquestrador com avaliação de processo não analisam nada; mensagem que não pode sair: o
  * Output não publica por NENHUMA superfície e a execução segue com o motivo na saída do nó (não é falha).
  */
-const db = { query: vi.fn(async (sql: string) => (sql.includes("from interactions") ? { rows: [{ operator_id: "operator-1" }], rowCount: 1 } : { rows: [], rowCount: 0 })) } as unknown as Database
+// PEN-002: "Chamar agente" resolve a versão vigente do agente (ativo) antes de qualquer coisa — o agente do nó existe e está ativo.
+const db = {
+  query: vi.fn(async (sql: string, params?: unknown[]) =>
+    answerAgentVersionQuery(sql, params, (agentId) => (agentId === "agent-1" ? { id: agentId, active: true } : undefined)) ??
+    (sql.includes("from interactions") ? { rows: [{ operator_id: "operator-1" }], rowCount: 1 } : { rows: [], rowCount: 0 })),
+} as unknown as Database
 const monitored = { source: "PUBLISHED_FEEDBACK" as const, id: "feedback-earlier", deliveredAt: new Date("2026-10-03T14:00:00Z") }
 const engineMessage = { kind: "FEEDBACK_ENGINE_MESSAGE", messageId: "message-2", domain: "MONITORING", disposition: "READY", label: "Contestação", card: "c", text: "t", analysisRunIds: ["run-2"], findings: { developments: 1, strengths: 1, suppressed: 0 }, limitations: [], reused: false }
 
@@ -65,7 +71,7 @@ describe("Origem da monitoria — chamada já monitorada não é analisada de no
     const effects = createFakeEffects()
     effects.feedbackEngine.deliveredMonitoring.mockResolvedValue(monitored)
     const engine = { effects: effects as unknown as WorkflowEffectSink, organizationId: "org-1", workflowId: "wf-2", enrollmentId: "enrollment-2", nodeId: "orch", matchedFlagName: "contestacao" }
-    const result = await executeOrchestrator({ orchestratorId: "orch-1", instruction: "Avalie", specialistOutputContract: "PROCESS_ASSESSMENT" }, { db, organizationId: "org-1", inputContext: "", enrollment: { interactionId: "interaction-1", indicatorMeasurementId: null, scheduledSubjectId: null }, engine })
+    const result = await executeOrchestrator({ orchestratorId: "orch-1", instruction: "Avalie", specialistOutputContract: "PROCESS_ASSESSMENT" }, { db, organizationId: "org-1", inputContext: "", workflowScope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }, enrollment: { interactionId: "interaction-1", indicatorMeasurementId: null, scheduledSubjectId: null }, engine })
     expect(runOrchestratedReply).not.toHaveBeenCalled()
     expect(result.nodeOutput).toMatchObject({ skippedReason: "CALL_ALREADY_MONITORED", calls: [], results: [] })
   })

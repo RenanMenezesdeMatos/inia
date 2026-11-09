@@ -19,9 +19,10 @@ import type { FlowGraph } from "./graph-schema.js"
  * REGISTRADOS; o que o provider não informou é N/D (null), nunca estimado.
  */
 
-export type DispatchStatus = "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED"
+/** BLOCKED (PEN-073, P5c): alguma execução parou bloqueada, por agente ou por revisão, e nada mais está rodando. */
+export type DispatchStatus = "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED" | "BLOCKED"
 export type TriggerKind = "FLAG" | "INDICATOR" | "SCHEDULE" | "MANUAL"
-export type EnrollmentStatus = "active" | "waiting" | "completed" | "failed" | "dead"
+export type EnrollmentStatus = "active" | "waiting" | "completed" | "failed" | "dead" | "blocked"
 
 // ---------------------------------------------------------------------------------------------
 // USO DE IA
@@ -104,6 +105,7 @@ export type UsageGroupRow = {
 /** Status do disparo pelo estado de TODAS as matrículas dele (raiz + filhos). */
 export function dispatchStatusOf(statuses: readonly EnrollmentStatus[]): DispatchStatus {
   if (statuses.some((status) => status === "active" || status === "waiting")) return "RUNNING"
+  if (statuses.some((status) => status === "blocked")) return "BLOCKED"
   if (statuses.every((status) => status === "completed")) return "COMPLETED"
   if (statuses.some((status) => status === "completed")) return "PARTIAL"
   return "FAILED"
@@ -112,6 +114,7 @@ export function dispatchStatusOf(statuses: readonly EnrollmentStatus[]): Dispatc
 /** A mesma regra em SQL (filtro/paginação no banco) — `s` = coluna de status das matrículas agregadas. */
 export const DISPATCH_STATUS_SQL = (s: string) => `case
   when bool_or(${s} in ('active', 'waiting')) then 'RUNNING'
+  when bool_or(${s} = 'blocked') then 'BLOCKED'
   when bool_and(${s} = 'completed') then 'COMPLETED'
   when bool_or(${s} = 'completed') then 'PARTIAL'
   else 'FAILED' end`
@@ -326,7 +329,7 @@ export function actorOfNode(node: GraphNode | undefined, names: NameLookup): { k
 export const outputAlertDedupeKey = (enrollmentId: string, nodeId: string, recipientId: string) => `workflow_output:${enrollmentId}:${nodeId}:${recipientId}`
 
 const SENT_FEEDBACK_STATUSES = new Set(["PUBLISHED", "ACKNOWLEDGED"])
-const TERMINAL: readonly EnrollmentStatus[] = ["completed", "failed", "dead"]
+const TERMINAL: readonly EnrollmentStatus[] = ["completed", "failed", "dead", "blocked"]
 const FAILURE_EVENTS = new Set(["node_failed", "flow_dead"])
 
 function reliableFeedbackOf(row: ArtifactRow, reviews: readonly ReviewRow[], graph: FlowGraph | undefined, emission: EmissionRow | undefined): ResultFeedback {

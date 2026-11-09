@@ -51,6 +51,8 @@ function setup(options: { withOrchestrator?: boolean; db?: Database; injectGuard
       feedbackApplicationContext: async () => ({ applicationId: "app-1", instruction: HISTORICAL, consultation: CONSULTATION }),
       feedbackApplicationVoice: async () => `${HISTORICAL} voz`,
       ...(options.injectGuardrails === false ? {} : { conversationGuardrails: async (_organizationId: string, agentId: string | null) => guardrailsOf(agentId) }),
+      // A conferência da resposta tem prova própria (realtime-router-response-check.test.ts).
+      responseCheck: async () => ({ outcome: "NOT_APPLICABLE" }),
     }),
   )
   app.use(errorHandler)
@@ -121,7 +123,7 @@ describe("limites de atuação e assuntos proibidos em toda conversa com a INIA"
     } as unknown as Database
     const persona = setup({ db, injectGuardrails: false })
     await persona.send({})
-    expect(queries.map((query) => query.params)).toEqual([[ORG]])
+    expect(queries.every((query) => query.params.length === 1 && query.params[0] === ORG)).toBe(true)
     expect(persona.streamed[0]).toContain("- Política: Não opine sobre política.")
     expect(persona.streamed[0]).not.toContain("Limites de atuação")
 

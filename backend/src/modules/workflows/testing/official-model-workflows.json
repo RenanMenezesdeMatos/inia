@@ -2233,6 +2233,7 @@
           "config": {
             "agentId": "ba01f07b-c2ed-422a-9af3-d911b4f50cde",
             "actionType": "CALL_AGENT",
+            "outputContract": "RECOGNITION",
             "scheduledDataSource": {
               "kind": "PERFORMANCE",
               "closures": 1
@@ -2278,7 +2279,7 @@
           "config": {
             "agentId": "c820644d-4871-4720-b972-cbe8806a3939",
             "actionType": "CALL_AGENT",
-            "instruction": "Monte a visão consolidada dos destaques do mês (melhor PRV de cada Subgrupo): quem se destacou, o que explica o resultado e como a liderança pode reconhecer e replicar boas práticas."
+            "instruction": "Monte a visão consolidada dos destaques do mês (melhor PRV de cada Subgrupo). Todos os listados são reconhecidos pela posição, inclusive quem ficou fora da meta: diga quem se destacou, com quais números e quem ficou fora da meta. Nos próximos passos, comece reconhecendo cada pessoa listada pela posição dela. Quem aparecer como sem reconhecimento fica fora dos destaques: diga apenas que não houve comparação. Os resultados não mostram a causa: não explique por que eles aconteceram nem sugira melhoria de processo ou técnica."
           },
           "position": {
             "x": 0,
@@ -2428,6 +2429,7 @@
           "config": {
             "agentId": "ba01f07b-c2ed-422a-9af3-d911b4f50cde",
             "actionType": "CALL_AGENT",
+            "outputContract": "RECOGNITION",
             "scheduledDataSource": {
               "kind": "PERFORMANCE",
               "closures": 2

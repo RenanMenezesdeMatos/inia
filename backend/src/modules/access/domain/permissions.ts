@@ -10,10 +10,18 @@ export const PERMISSIONS = {
   "access.roles.assign": "Atribuir e revogar papéis (dentro do próprio escopo e da própria delegação)",
   "people.manage": "Administrar cadastro de pessoas (situação, jornada, capital operacional)",
   "agents.manage": "Administrar agentes e orquestradores",
+  // Agentes inativos (decisões PEN-001, PEN-068 e PEN-072 de 03/11/2026): listar, abrir o cadastro, reativar, excluir e ver o
+  // histórico de alterações com os valores completos — só administradores, além do alcance. Quais perfis da Vivo: PEN-032.
+  "agents.inactive.manage": "Listar, consultar, reativar e excluir agentes inativos e ver o histórico completo de alterações deles",
   "knowledge.manage": "Administrar bases de conhecimento",
   "workflows.manage": "Administrar workflows",
   "configuration.manage": "Administrar configurações operacionais (indicadores, regras, flags, domínios, calendário, estrutura)",
   "data_hub.manage": "Administrar a Central de Dados e cargas",
+  // Consulta visual dos dados aprovados (somente leitura) e exportação CSV: permissão SEPARADA de administrar. Só os papéis ADMINISTRADOR_GERAL e
+  // ADMINISTRADOR_DE_DADOS a têm, sempre com escopo de organização: o que ela mostra vale para a organização inteira.
+  "data_hub.explore": "Consultar e exportar, somente leitura, os dados aprovados da Central de Dados",
+  // Separada de consultar: é a única que altera dado pela consulta. O registro fica no banco e sai da lógica; a ação pede motivo e fica na auditoria.
+  "data_hub.cancel_records": "Cancelar e reativar registros importados na Central de Dados",
   "ai.view": "Ver configuração, uso e custo de IA",
   "ai.manage": "Administrar provedores, modelos, roteamento e orçamentos de IA",
   // Ranking "Quem mais usa" (IA / Modelos): nomes de líderes, Grupos e Subgrupos com o uso de IA da estrutura deles. Concessão

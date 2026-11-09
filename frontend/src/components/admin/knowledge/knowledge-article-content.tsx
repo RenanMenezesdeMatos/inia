@@ -1,6 +1,6 @@
 "use client"
 
-import { Component, type ReactNode } from "react"
+import { Component, Fragment, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -11,15 +11,18 @@ import { cn } from "@/lib/utils"
 // prática, nunca injetar HTML), mas com hierarquia real de títulos, parágrafos que respeitam a
 // quebra de linha original e tipografia de artigo. Só produz elementos React — nada de
 // dangerouslySetInnerHTML —, então o texto do banco nunca vira markup executável.
-export function KnowledgeArticleContent({ text, omitLeadingHeading, className }: { text: string; omitLeadingHeading?: string; className?: string }) {
+export function KnowledgeArticleContent({ text, omitLeadingHeading, className, inserts }: { text: string; omitLeadingHeading?: string; className?: string; inserts?: readonly ArticleInsert[] }) {
   return (
     <div className={cn("knowledge-article text-[15px] leading-7 text-foreground/90 sm:text-base", className)}>
       <ArticleErrorBoundary text={text}>
-        <RenderedArticle text={text} omitLeadingHeading={omitLeadingHeading} />
+        <RenderedArticle text={text} omitLeadingHeading={omitLeadingHeading} inserts={inserts} />
       </ArticleErrorBoundary>
     </div>
   )
 }
+
+/** O que entra no meio do texto sem fazer parte dele (ex.: imagem de um PDF). `at` é a posição no texto, no fim de uma linha ou entre dois blocos. */
+export type ArticleInsert = { at: number; key: string; node: ReactNode }
 
 // Error Boundary de verdade: um conteúdo que quebre o parser vira texto puro, nunca uma página
 // em branco (um try/catch em volta do JSX não pega nada — ele só é avaliado na reconciliação).
@@ -67,9 +70,10 @@ function splitTableRow(line: string): string[] {
   return line
     .trim()
     .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((cell) => cell.trim())
+    .replace(/(?<!\\)\|$/, "")
+    // "\|" é uma barra dentro da célula, como escreve o Markdown vindo de PDF: não separa colunas.
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.trim().replace(/\\\|/g, "|"))
 }
 
 export function parseArticle(text: string): Block[] {
@@ -172,7 +176,7 @@ export function parseArticle(text: string): Block[] {
   return blocks
 }
 
-function RenderedArticle({ text, omitLeadingHeading }: { text: string; omitLeadingHeading?: string }) {
+function ArticleBlocks({ text, omitLeadingHeading }: { text: string; omitLeadingHeading?: string | undefined }) {
   let blocks = parseArticle(text)
   // O título da base já aparece em destaque no topo da página — se o texto começa repetindo-o
   // como "# Título", não mostramos duas vezes.
@@ -181,6 +185,22 @@ function RenderedArticle({ text, omitLeadingHeading }: { text: string; omitLeadi
     blocks = blocks.slice(1)
   }
   return <>{blocks.map((block, index) => renderBlock(block, index))}</>
+}
+
+function RenderedArticle({ text, omitLeadingHeading, inserts }: { text: string; omitLeadingHeading?: string | undefined; inserts?: readonly ArticleInsert[] | undefined }) {
+  if (!inserts?.length) return <ArticleBlocks text={text} omitLeadingHeading={omitLeadingHeading} />
+  const parts: ReactNode[] = []
+  let cursor = 0
+  for (const insert of [...inserts].sort((left, right) => left.at - right.at)) {
+    const at = Math.min(Math.max(insert.at, 0), text.length)
+    if (at > cursor) {
+      parts.push(<ArticleBlocks key={`text-${cursor}`} text={text.slice(cursor, at)} omitLeadingHeading={cursor === 0 ? omitLeadingHeading : undefined} />)
+      cursor = at
+    }
+    parts.push(<Fragment key={insert.key}>{insert.node}</Fragment>)
+  }
+  if (cursor < text.length) parts.push(<ArticleBlocks key={`text-${cursor}`} text={text.slice(cursor)} omitLeadingHeading={cursor === 0 ? omitLeadingHeading : undefined} />)
+  return <>{parts}</>
 }
 
 function normalize(value: string) {

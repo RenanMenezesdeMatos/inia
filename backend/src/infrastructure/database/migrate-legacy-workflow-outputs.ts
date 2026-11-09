@@ -10,6 +10,7 @@
  * pegaram) — por isso este script nunca faz UPDATE numa versão publicada existente, sempre
  * insere uma versão nova e só então repõe `active_version_id`.
  */
+import { parseDraftGraph } from "../../modules/workflows/domain/draft-graph.js"
 import { flowGraphSchema } from "../../modules/workflows/domain/graph-schema.js"
 import { appendMissingOutputNodes } from "../../modules/workflows/application/legacy-output-migration.js"
 import { pool } from "./pool.js"
@@ -27,7 +28,7 @@ async function run(): Promise<void> {
     for (const workflow of workflows.rows) {
       await client.query("begin")
       try {
-        const draftGraph = flowGraphSchema.parse(workflow.draft_graph)
+        const draftGraph = parseDraftGraph(workflow.draft_graph)
         const draftResult = appendMissingOutputNodes(draftGraph)
         if (draftResult.changed) {
           await client.query(`update workflows set draft_graph = $1, updated_at = now() where id = $2`, [JSON.stringify(draftResult.graph), workflow.id])

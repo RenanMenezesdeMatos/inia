@@ -29,6 +29,7 @@ export const RETENTION_CATALOG: readonly RetentionTarget[] = [
   { table: "transcripts", timeColumn: "created_at", protectedVia: { column: "interaction_id", table: "interactions" } },
   { table: "interactions", timeColumn: "started_at", children: ["transcripts", "interaction_flags"], extraProtection: INTERACTION_EXTRA_PROTECTION },
   {
+    // Nome da política. O nome sem sufixo é uma visão, e a tabela real termina em `_all` (migration 174): ao desbloquear, a retenção precisa apontar para ela.
     table: "indicator_measurements",
     timeColumn: "period_start",
     extraProtection: [referencedByEvidence],
@@ -41,6 +42,7 @@ export const RETENTION_CATALOG: readonly RetentionTarget[] = [
     blockedReason: "Decisão pendente: o que acontece com saídas publicadas (feedback, recado) quando a execução que as gerou sai.",
   },
   { table: "ai_usage_events", timeColumn: "occurred_at" },
+  { table: "response_compliance_checks", timeColumn: "created_at" },
   { table: "agent_runs", timeColumn: "created_at" },
   { table: "alerts", timeColumn: "created_at", eligible: `t.status = 'RESOLVED'` },
   { table: "audit_logs", timeColumn: "created_at" },

@@ -1,5 +1,5 @@
-import { outlineSize, sectionOf, sectionsOf, type CatalogSection, type CatalogSource } from "../../knowledge/domain/knowledge-catalog.js"
-import type { ClarificationCoverage, KnowledgeSourceRef } from "./clarification-state.js"
+import { outlineSize, sectionImagesOf, sectionOf, sectionsOf, type CatalogSection, type CatalogSource } from "../../knowledge/domain/knowledge-catalog.js"
+import { MAX_SOURCE_IMAGES, type ClarificationCoverage, type KnowledgeSourceRef } from "./clarification-state.js"
 
 /**
  * O que a IA enxerga das bases numa pergunta — e só o que ELA pediu para ver. Começa pela lista das bases que a pessoa pode
@@ -27,7 +27,7 @@ export const DEFAULT_NAVIGATION_BUDGET: NavigationBudget = { maxListedBases: 120
 type ReadSection = { source: KnowledgeSourceRef; text: string }
 
 const keyOf = (source: { documentId: string; chunkIndex: number }) => `${source.documentId}#${source.chunkIndex}`
-const sourceOf = (section: CatalogSection): KnowledgeSourceRef => ({ documentId: section.documentId, documentTitle: section.documentTitle, versionId: section.versionId, heading: section.heading, chunkIndex: section.chunkIndex })
+const sourceOf = (section: CatalogSection): KnowledgeSourceRef => ({ documentId: section.documentId, documentTitle: section.documentTitle, versionId: section.versionId, heading: section.heading, chunkIndex: section.chunkIndex, ...(section.pages ? { pages: section.pages } : {}) })
 
 export type WorkspaceView = {
   /** Lista das bases (título, tipo, tamanho, começo do sumário): IGUAL em todas as mensagens da pessoa enquanto as versões não
@@ -90,7 +90,7 @@ export class KnowledgeWorkspace {
         continue
       }
       this.opened.add(document.documentId)
-      this.readSections.set(key, { source: { documentId: document.documentId, documentTitle: document.documentTitle, versionId: document.versionId, heading: section.heading, chunkIndex: wanted.chunkIndex }, text: section.text })
+      this.readSections.set(key, { source: { documentId: document.documentId, documentTitle: document.documentTitle, versionId: document.versionId, heading: section.heading, chunkIndex: wanted.chunkIndex, ...(section.pages ? { pages: section.pages } : {}) }, text: section.text })
       this.readChars += section.text.length
     }
   }
@@ -101,6 +101,13 @@ export class KnowledgeWorkspace {
     if (read) return read.text
     const document = this.byId.get(source.documentId)
     return document ? (sectionOf(document, source.chunkIndex, maxChars)?.text ?? null) : null
+  }
+
+  /** A fonte de uma resposta com as imagens da seção, para a tela. Só depois da resposta pronta: nada disso passa pelo que a IA lê. */
+  withImages(source: KnowledgeSourceRef): KnowledgeSourceRef {
+    const document = this.byId.get(source.documentId)
+    const images = document ? sectionImagesOf(document, source.chunkIndex, source.heading).slice(0, MAX_SOURCE_IMAGES) : []
+    return images.length > 0 ? { ...source, images } : source
   }
 
   /** O marcador já mostrado de uma fonte nesta pergunta (seção K-n; a base inteira, B-n), ou null. */
@@ -176,7 +183,8 @@ export class KnowledgeWorkspace {
         const ref = this.sectionRefs.get(keyOf(source)) ?? this.refOfSection({ ...source, preview: null })
         evidence.set(ref, source)
         answerable.add(ref)
-        lines.push(`[${ref}] ${source.heading ? `Seção "${source.heading}"` : `Trecho ${source.chunkIndex + 1}`}:\n${text}`)
+        const page = !source.pages ? "" : source.pages.from === source.pages.to ? ` (p. ${source.pages.from})` : ` (p. ${source.pages.from}–${source.pages.to})`
+        lines.push(`[${ref}] ${source.heading ? `Seção "${source.heading}"` : `Trecho ${source.chunkIndex + 1}`}${page}:\n${text}`)
       }
     }
     return { catalog: catalog.join("\n"), details: lines.length > 0 ? lines.join("\n") : "(nenhuma base aberta nem seção lida ainda)", evidence, answerable, readable }

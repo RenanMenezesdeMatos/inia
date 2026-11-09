@@ -296,9 +296,8 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
             <Skeleton className="h-10 w-full" />
           )}
           <p className="text-xs text-muted-foreground">
-            Em quais grupos este workflow pode atuar. Trocar a abrangência é validado contra os Orchestrators, a Estrutura Consolidada e o
-            Filtro Populacional já configurados — uma referência que ficaria fora do novo grupo bloqueia a troca, com uma mensagem
-            explicando qual.
+            Em quais grupos este workflow pode atuar. Trocar a abrangência é conferido com os Orquestradores, a Estrutura Consolidada e o
+            Filtro Populacional já configurados. Se algo ficar fora do novo grupo, a troca é recusada e a mensagem diz o quê.
           </p>
           {updateMutation.isError ? <p className="text-sm text-destructive">{(updateMutation.error as Error).message}</p> : null}
           <Button size="sm" disabled={!scopeChanged || updateMutation.isPending} onClick={handleSaveScope}>
@@ -331,8 +330,10 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           {!isSchedule ? (
             <p className="text-sm text-muted-foreground">
               {editable.trigger.kind === "channel_flag"
-                ? "Colaborador da interação (automático) — o sujeito é sempre o operador da interação que disparou este workflow."
-                : "Colaborador da medição (automático) — o sujeito é sempre o colaborador da medição que disparou este workflow."}
+                ? "Colaborador da interação (automático): sempre quem atendeu a interação que disparou este workflow."
+                : editable.trigger.kind === "manual"
+                  ? "O colaborador escolhido em Executar agora (automático)."
+                  : "Colaborador da medição (automático): sempre o dono da medição que disparou este workflow."}
             </p>
           ) : isRelativeToShift ? (
             <p className="text-sm text-muted-foreground">

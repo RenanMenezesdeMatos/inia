@@ -1,6 +1,8 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { clampToClosedReferencePeriod } from "../../indicators/domain/official-closure-policy.js"
 import type { AnalyticsReadRepository, IndicatorDefinitionRow, PersonNode } from "../../performance-analytics/application/analytics-read-repository.js"
+import { cachedOfficial } from "../../performance-analytics/application/official-analytics-cache.js"
+import { membersFingerprint } from "../../performance-analytics/infrastructure/analytics-cache.js"
 import { describeSubject, resolveDefaultSubject, resolveSubject, visibleOperators, type ResolvedSubject, type ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
 import { buildAnalyticsSubject, isStructureSubject } from "../../performance-analytics/domain/analytics-subject.js"
 import { isHierarchyRole, ROLE_LABELS, STRUCTURE_KIND_BY_ROLE } from "../../performance-analytics/domain/hierarchy-levels.js"
@@ -116,7 +118,11 @@ export async function resolveAnalysisPeriod(repository: AnalyticsReadRepository,
       // Formato inválido vindo do modelo: cai no padrão (a resposta diz qual competência foi usada).
     }
   }
-  const coverage = await repository.loadPeriodCoverage(scope.organizationId, memberIds, closure.lastClosedPeriod, PERIODS_EXAMINED)
+  // Roda no contexto de TODA mensagem do chat de liderança e de novo em cada ferramenta, sobre o histórico oficial inteiro da
+  // estrutura (diretor no dev: 83 mil linhas, 150–260 ms). Cache oficial: invalida quando a versão OFFICIAL/STRUCTURE sobe.
+  const coverage = await cachedOfficial(repository, scope, ["period-coverage", membersFingerprint(memberIds), closure.lastClosedPeriod, PERIODS_EXAMINED], 1, () =>
+    repository.loadPeriodCoverage(scope.organizationId, memberIds, closure.lastClosedPeriod, PERIODS_EXAMINED),
+  )
   const total = memberIds.length
   const adequate = coverage.find((entry) => total > 0 && entry.people / total >= LOW_COVERAGE_THRESHOLD)
   const latest = coverage[0]
@@ -134,8 +140,13 @@ export async function periodCoveredFor(repository: AnalyticsReadRepository, scop
   if (start.requested || codes.length === 0 || memberIds.length === 0) return start
   const candidates = [start.period, previousReferencePeriod(start.period), previousReferencePeriod(previousReferencePeriod(start.period))]
   const wantsPrv = codes.includes(PRV_DEFINITION.code)
-  const [rows, prv] = await Promise.all([repository.loadIndicatorPerformance(scope.organizationId, memberIds, candidates), wantsPrv ? repository.loadPrvPerformance(scope.organizationId, memberIds, candidates) : Promise.resolve([])])
-  const peopleIn = (period: string) => new Set([...rows.filter((row) => row.referencePeriod === period && codes.includes(row.indicatorCode)), ...prv.filter((row) => row.referencePeriod === period)].map((row) => row.personId)).size
+  // Pessoas com dado do pedido em cada competência candidata. Lê 3 competências inteiras da estrutura (diretor no dev: 35 mil
+  // linhas, 0,8–1,7 s) e se repete a cada ferramenta da mesma pergunta — por isso vai pelo cache oficial.
+  const counts = await cachedOfficial(repository, scope, ["period-covered-for", membersFingerprint(memberIds), [...codes].sort(), candidates], 1, async () => {
+    const [rows, prv] = await Promise.all([repository.loadIndicatorPerformance(scope.organizationId, memberIds, candidates), wantsPrv ? repository.loadPrvPerformance(scope.organizationId, memberIds, candidates) : Promise.resolve([])])
+    return candidates.map((period) => new Set([...rows.filter((row) => row.referencePeriod === period && codes.includes(row.indicatorCode)), ...prv.filter((row) => row.referencePeriod === period)].map((row) => row.personId)).size)
+  })
+  const peopleIn = (period: string) => counts[candidates.indexOf(period)] ?? 0
   const chosen = candidates.find((period) => peopleIn(period) / memberIds.length >= LOW_COVERAGE_THRESHOLD)
   if (!chosen || chosen === start.period) return start
   return { period: chosen, requested: false, note: `${longPeriodLabel(start.period)} tem dado do que foi pedido para só ${peopleIn(start.period)} de ${memberIds.length} pessoas; a análise usa ${longPeriodLabel(chosen)}, a competência mais recente completa para esse pedido.` }

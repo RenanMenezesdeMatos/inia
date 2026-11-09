@@ -92,7 +92,9 @@ export async function deliverReadyFeedbackItems(deps: DeliveryDeps, options: { l
       const outcome = await deliverFeedbackItem(deps, entry)
       if (outcome.status === "DELIVERED") summary.delivered += 1
       else if (outcome.status === "ALREADY_DELIVERED") summary.alreadyDelivered += 1
-    } catch {
+    } catch (error) {
+      // Nada foi marcado como entregue e a próxima rodada tenta de novo; o motivo fica no log (antes só a contagem existia).
+      console.error(`[interaction-feedback] entrega pelo varredor falhou (organização ${entry.organizationId}, item ${entry.itemReviewId}); será refeita na próxima rodada`, error)
       summary.failed += 1
     }
   }

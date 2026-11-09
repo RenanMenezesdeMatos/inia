@@ -172,8 +172,8 @@ export async function validateAgentReferences(context: PublishGraphContext): Pro
   // direto por um Workflow: ele não analisa nada sozinho, só coordena especialistas.
   const agentIds = [...new Set(graph.nodes.flatMap((node) => (node.type === "action" && node.config.actionType === "CALL_AGENT" ? [node.config.agentId] : [])))]
   if (agentIds.length > 0) {
-    const agentRows = await db.query<{ id: string; name: string; active: boolean; agent_type: string; specialty: string | null; specialty_kind: string | null; domain: string | null; consolidated_input: boolean | null; scope_type?: string | null; team_id?: string | null; subteam_id?: string | null }>(
-      `select id, name, active, agent_type, specialty, specialty_kind, domain, consolidated_input, scope_type, team_id, subteam_id from agents where id = any($1::uuid[]) and organization_id = $2`,
+    const agentRows = await db.query<{ id: string; name: string; active: boolean; agent_type: string; specialty: string | null; specialty_kind: string | null; domain: string | null; consolidated_input: boolean | null; scope_type?: string | null; team_id?: string | null; subteam_id?: string | null; current_version_id?: string | null }>(
+      `select id, name, active, agent_type, specialty, specialty_kind, domain, consolidated_input, scope_type, team_id, subteam_id, current_version_id from agents where id = any($1::uuid[]) and organization_id = $2`,
       [agentIds, organizationId],
     )
     const agentContexts = resolveNodeContexts(graph)
@@ -181,9 +181,16 @@ export async function validateAgentReferences(context: PublishGraphContext): Pro
       if (node.type !== "action") continue
       const config = node.config
       if (config.actionType !== "CALL_AGENT") continue
-      const found = agentRows.rows.find((candidate) => candidate.id === config.agentId)
-      if (!found) throw new DomainError(`O nó "${node.label}" referencia um agente que não existe mais.`, "WORKFLOW_AGENT_NOT_FOUND", 422, { nodeId: node.id })
-      if (found.active === false) throw new DomainError(`O nó "${node.label}" usa o agente "${found.name}", que está inativo.`, "WORKFLOW_AGENT_INACTIVE", 422, { nodeId: node.id })
+      const live = agentRows.rows.find((candidate) => candidate.id === config.agentId)
+      if (!live) throw new DomainError(`O nó "${node.label}" referencia um agente que não existe mais.`, "WORKFLOW_AGENT_NOT_FOUND", 422, { nodeId: node.id })
+      if (live.active === false) throw new DomainError(`O nó "${node.label}" usa o agente "${live.name}", que está inativo.`, "WORKFLOW_AGENT_INACTIVE", 422, { nodeId: node.id })
+      // Agente nunca publicado não executa em produção (PEN-047, ponto decidido em 03/11/2026). A etapa usa sempre a versão
+      // VIGENTE do agente (revisão da PEN-002/PEN-076): a especialidade e o alcance conferidos são os dela — e a mesma conferência
+      // de alcance se repete em cada execução, porque uma versão nova vale sem republicar o Workflow.
+      if (live.current_version_id === null) {
+        throw new DomainError(`O nó "${node.label}" usa o agente "${live.name}", que ainda não foi publicado — publique o agente antes de publicar o Workflow.`, "WORKFLOW_AGENT_NOT_PUBLISHED", 422, { nodeId: node.id })
+      }
+      const found = live
       // Mesma regra do Orquestrador (achado A-F08): um Agent exclusivo de outro Grupo — com o prompt, as bases e as Tools de
       // investigação dele — nunca roda para gente de fora do Grupo dele. Revalidado a cada publicação.
       if (found.scope_type && !(await scopesAreCompatible(db, row, { scopeType: found.scope_type, teamId: found.team_id ?? null, subteamId: found.subteam_id ?? null }))) {

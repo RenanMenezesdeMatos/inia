@@ -111,21 +111,24 @@ function OperationalQuartileConditionForm({ node, onChange }: { node: Extract<Fl
 export function IndicatorConditionForm({
   node,
   evaluationMode,
+  individualPath = false,
   onChange,
 }: {
   node: Extract<FlowNode, { type: "condition" }>
   evaluationMode?: "INDIVIDUAL" | "CONSOLIDATED"
+  /** Este nó está entre "Aplicar individualmente" e "Consolidar resultados". */
+  individualPath?: boolean
   onChange: (next: FlowNode) => void
 }) {
   const kind = indicatorAnalysisKindOf(node.config)
   const kindId = useId()
-  // Quartil (recorrente ou não) é performanceQuery, individual-only — nunca oferecido como
-  // destino em modo Consolidado (mesma regra já aplicada em Performance do colaborador antes
-  // desta reorganização, ver workflow-router.ts/workflow-validation.ts).
-  // Quartil operacional idem: é a posição de UM colaborador na população — individual-only
-  // (em Consolidado, use-o como critério de "Selecionar colaboradores", que roda como Individual).
+  // Em um Workflow consolidado, o que dá para perguntar depende de quem o motor olha neste ponto do fluxo. Entre "Aplicar individualmente"
+  // e "Consolidar resultados", o sujeito é a pessoa da execução: tudo vale, como em um Workflow individual (a mesma regra da publicação).
+  // Fora desse trecho, o sujeito é a estrutura, e quartil, que é a posição de UMA pessoa, não existe. O valor já salvo fica na lista mesmo
+  // onde não vale: campo em branco esconderia o que está configurado, e a validação aponta o problema.
+  const available = (option: IndicatorAnalysisKind) => evaluationMode !== "CONSOLIDATED" || individualPath || (option !== "QUARTILE" && option !== "PRV_QUARTILE" && option !== "OPERATIONAL_QUARTILE")
   const options: IndicatorAnalysisKind[] = (["VALUE", "ACHIEVEMENT", "PRV_ACHIEVEMENT", "QUARTILE", "OPERATIONAL_QUARTILE", "PRV_QUARTILE"] as IndicatorAnalysisKind[])
-    .filter((option) => evaluationMode !== "CONSOLIDATED" || (option !== "QUARTILE" && option !== "PRV_QUARTILE" && option !== "OPERATIONAL_QUARTILE"))
+    .filter((option) => available(option) || option === kind)
     .concat(kind === "LEGACY_PERFORMANCE" ? (["LEGACY_PERFORMANCE"] as IndicatorAnalysisKind[]) : [])
 
   return (
@@ -139,7 +142,7 @@ export function IndicatorConditionForm({
           <SelectContent>
             {options.map((option) => (
               <SelectItem key={option} value={option}>
-                {indicatorAnalysisLabel(option, evaluationMode)}
+                {indicatorAnalysisLabel(option, individualPath ? "INDIVIDUAL" : evaluationMode)}
               </SelectItem>
             ))}
           </SelectContent>

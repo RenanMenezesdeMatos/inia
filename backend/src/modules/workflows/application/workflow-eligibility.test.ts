@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { createEnrollmentLookups } from "./enrollment-lookups.js"
 import { enrollFlagWorkflows } from "./flag-enrollment.js"
 import { enrollIndicatorWorkflows } from "./indicator-enrollment.js"
 import { isOperatorEligibleForWorkflow, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
@@ -293,5 +294,43 @@ describe("Paridade Flag × Indicador × QA Lab — a elegibilidade organizaciona
         expect(byIndicator, `indicador · ${JSON.stringify(population)} · ${operatorId}`).toBe(expected)
       }
     }
+  })
+})
+
+/**
+ * Matrícula em lote (Central de Dados): as leituras que não dependem da linha — candidatos, operador, estratégia, grafo,
+ * membros da estrutura — são lembradas pelo lote inteiro. As matrículas gravadas precisam ser EXATAMENTE as do caminho evento a
+ * evento (mesmas linhas, mesma ordem), com bem menos consultas.
+ */
+describe("Matrícula em lote — leituras lembradas pelo lote, mesmas matrículas", () => {
+  const suffix = (index: number) => String(index).padStart(12, "0")
+  const workflows: WorkflowRow[] = cases.flatMap((scenario, index) => [
+    { id: `aaaaaaaa-aaaa-4aaa-8aaa-${suffix(index)}`, active_version_id: `77777777-7777-4777-8777-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, channelFlagId: FLAG },
+    { id: `bbbbbbbb-bbbb-4bbb-8bbb-${suffix(index)}`, active_version_id: `88888888-8888-4888-8888-${suffix(index)}`, active: true, scope_type: scenario.population.scopeType, team_id: scenario.population.teamId, subteam_id: scenario.population.subteamId, population_filter: scenario.population.populationFilter, indicatorCode: index % 2 === 0 ? "QUALIDADE" : "TMA" },
+  ])
+  // Um lote: cada pessoa com várias medições (dois indicadores com Workflow, um sem) e várias flags — como numa carga real.
+  const events = [0, 1, 2].flatMap((day) => [...OPERATORS, CARLOS].flatMap((operatorId) => ["QUALIDADE", "TMA", "SEM_WORKFLOW"].map((indicatorCode) => ({ day, operatorId, indicatorCode }))))
+
+  async function runBatch(shared: boolean) {
+    const fake = fakeDatabase(workflows)
+    const lookups = shared ? createEnrollmentLookups(fake.db) : undefined
+    let enrolled = 0
+    for (const [index, event] of events.entries()) {
+      const id = `mmmmmmmm-mmmm-4mmm-8mmm-${suffix(index)}`
+      enrolled += await enrollIndicatorWorkflows(fake.db, { organizationId: ORG, measurementId: id, operatorId: event.operatorId, indicatorCode: event.indicatorCode, value: event.day }, lookups)
+      enrolled += await enrollFlagWorkflows(fake.db, { organizationId: ORG, interactionId: id, operatorId: event.operatorId, channelFlagId: FLAG, flagName: "rechamada", value: event.day > 0 }, lookups)
+    }
+    const inserts = fake.log.filter((sql) => sql.startsWith("insert into workflow_enrollments")).length
+    return { enrolled, enrollments: fake.enrollments, reads: fake.log.length - inserts, inserts }
+  }
+
+  it("mesmas matrículas, na mesma ordem; cada leitura uma vez por chave no lote", async () => {
+    const perEvent = await runBatch(false)
+    const batched = await runBatch(true)
+    expect(perEvent.enrolled).toBeGreaterThan(50)
+    expect(batched.enrollments).toEqual(perEvent.enrollments)
+    expect(batched.enrolled).toBe(perEvent.enrolled)
+    expect(batched.inserts).toBe(perEvent.inserts)
+    expect(batched.reads).toBeLessThan(perEvent.reads / 5)
   })
 })

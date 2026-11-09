@@ -3,7 +3,7 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
-import { orchestratorSchema, type Orchestrator, type OrchestratorInvocationMode } from "@/schemas/admin/assistant.schema"
+import { orchestratorSchema, orchestratorVersionSchema, type Orchestrator, type OrchestratorInvocationMode, type OrchestratorVersion } from "@/schemas/admin/assistant.schema"
 import type { OutputSchema } from "@/schemas/admin/output-schema-fields"
 import { structuredOutputUsageSchema, type StructuredOutputDefinition, type StructuredOutputUsage } from "@/schemas/admin/structured-output"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
@@ -54,6 +54,8 @@ export type OrchestratorInput = {
   /** Legado (053) — mantido para compatibilidade de chamadas antigas (códigos). */
   policyKind?: OrchestratorPolicyKind | null
   policyDomains?: string[]
+  /** PEN-050: a versão do orquestrador que a edição carregou; outra gravação no meio → 409 ORCHESTRATOR_VERSION_CONFLICT. */
+  expectedVersionId?: string | null
 }
 
 function structuredOutputPayload(input: OrchestratorInput) {
@@ -61,6 +63,12 @@ function structuredOutputPayload(input: OrchestratorInput) {
     return { structuredOutput: input.structuredOutput, ...(input.acknowledgeStructuredOutputImpacts ? { acknowledgeStructuredOutputImpacts: true } : {}) }
   }
   return { outputInstructions: input.outputInstructions ?? null, outputSchema: input.outputSchema ?? null }
+}
+
+function versionPayload(input: OrchestratorInput) {
+  return {
+    ...(input.expectedVersionId !== undefined ? { expectedVersionId: input.expectedVersionId } : {}),
+  }
 }
 
 function policyPayload(input: OrchestratorInput) {
@@ -100,6 +108,7 @@ export async function updateOrchestrator(id: string, input: OrchestratorInput): 
       recommendSupportMaterials: input.recommendSupportMaterials ?? false,
       ...structuredOutputPayload(input),
       ...policyPayload(input),
+      ...versionPayload(input),
     }),
   )
 }
@@ -115,4 +124,9 @@ export async function deleteOrchestrator(id: string): Promise<void> {
 /** Onde cada path do resultado estruturado é usado em Workflows (rascunho/publicado). */
 export async function fetchStructuredOutputUsage(id: string): Promise<StructuredOutputUsage[]> {
   return z.array(structuredOutputUsageSchema).parse(await adminGet(`/api/v1/admin/assistant-orchestrators/${id}/structured-output-usage`))
+}
+
+/** Versões publicadas do orquestrador, da mais nova para a mais antiga (PEN-076) — a configuração de cada uma; versões de agente só nas antigas, como registro da época. */
+export async function fetchOrchestratorVersions(id: string): Promise<OrchestratorVersion[]> {
+  return z.array(orchestratorVersionSchema).parse(await adminGet(`/api/v1/admin/assistant-orchestrators/${id}/versions`))
 }

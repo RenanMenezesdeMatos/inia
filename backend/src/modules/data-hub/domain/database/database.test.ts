@@ -169,6 +169,7 @@ describe("erros dos drivers viram códigos estáveis, sem a senha", () => {
     expect(code({ code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND db.cliente" })).toBe("DATA_SOURCE_UNREACHABLE")
     expect(code(new Error("timeout expired"))).toBe("DATA_SOURCE_TIMEOUT")
     expect(code({ code: "57014", message: "canceling statement due to statement timeout" }, { phase: "QUERY" })).toBe("DATA_SOURCE_TIMEOUT")
+    expect(code({ number: 1222, message: "Lock request time out period exceeded." }, { engine: "SQLSERVER", phase: "QUERY" })).toBe("DATA_SOURCE_TIMEOUT")
     expect(code({ code: "DEPTH_ZERO_SELF_SIGNED_CERT", message: "self-signed certificate" })).toBe("DATA_SOURCE_TLS_FAILED")
     expect(code(new Error("The server does not support SSL connections"))).toBe("DATA_SOURCE_TLS_FAILED")
     expect(code({ code: "3D000", message: "database \"rh\" does not exist" })).toBe("DATA_SOURCE_NOT_FOUND")

@@ -1,5 +1,3 @@
-import type { Database } from "../database/pool.js"
-
 /**
  * TAREFAS PERIÓDICAS EXCLUSIVAS. Com a API e o processamento em processos separados (ou dois processamentos), cada tarefa
  * periódica (checador de agenda, Central de Dados, calendário, varredor de entrega, monitoria de usabilidade) roda UMA vez por
@@ -8,9 +6,9 @@ import type { Database } from "../database/pool.js"
  * trava, a última partida fica em `periodic_job_runs` (relógio do banco): dois processos com timers defasados não rodam a
  * mesma tarefa duas vezes no mesmo intervalo — uma rodada por intervalo no conjunto.
  *
- * A trava fica numa conexão dedicada do pool durante a tarefa (uma conexão por tarefa em andamento). Chave de DOIS inteiros
- * (namespace "INIA" + hash do nome): espaço separado das travas de um bigint (`pg_advisory_xact_lock(hashtext(...))`) que o
- * resto do código usa por registro.
+ * As travas ficam numa conexão PRÓPRIA do processo, fora do pool (`job-lock-session.ts`): nenhuma tarefa segura conexão do
+ * pool durante a rodada. Chave de DOIS inteiros (namespace "INIA" + hash do nome): espaço separado das travas de um bigint
+ * (`pg_advisory_xact_lock(hashtext(...))`) que o resto do código usa por registro.
  */
 export const JOB_LOCK_NAMESPACE = 0x494e4941
 
@@ -24,59 +22,24 @@ export function jobLockKey(name: string): number {
   return hash | 0
 }
 
-/** LOCKED = outro processo está rodando agora · RECENT = outro processo (ou este) já rodou dentro de `minIntervalMs`. */
-export type ExclusiveRunResult<T> = { ran: true; value: T } | { ran: false; reason: "LOCKED" | "RECENT" }
+/**
+ * O que a tarefa recebe: `signal` é abortado (motivo `JobLockLostError`) quando a trava cai no meio da rodada — a conexão das
+ * travas caiu e o banco soltou TODAS as travas dela; outro processo pode começar a mesma tarefa. Tarefa longa confere o sinal
+ * entre etapas e para no próximo ponto seguro.
+ */
+export type JobLease = { signal: AbortSignal }
+
+/**
+ * LOCKED = outro processo está rodando agora · RECENT = outro processo (ou este) já rodou dentro de `minIntervalMs` · BUSY = a
+ * rodada anterior DESTE processo ainda não terminou (a trava do PostgreSQL é reentrante na mesma sessão: a guarda é aqui) ·
+ * UNAVAILABLE = sem conexão das travas agora (nunca roda sem trava). `lockLost` = rodou, mas a trava caiu antes do fim.
+ */
+export type ExclusiveRunResult<T> = { ran: true; value: T; lockLost?: true } | { ran: false; reason: "LOCKED" | "RECENT" | "BUSY" | "UNAVAILABLE" }
 export type ExclusiveRunOptions = { minIntervalMs?: number }
-export type ExclusiveJobRunner = <T>(name: string, job: () => Promise<T>, options?: ExclusiveRunOptions) => Promise<ExclusiveRunResult<T>>
+export type ExclusiveJobRunner = <T>(name: string, job: (lease: JobLease) => Promise<T>, options?: ExclusiveRunOptions) => Promise<ExclusiveRunResult<T>>
 
 /** Fração do intervalo que separa duas rodadas no conjunto (folga para o atraso natural dos timers). */
 export const MIN_INTERVAL_FRACTION = 0.9
-
-/**
- * Roda `job` só se este processo pegar a trava de `name` (e, com `minIntervalMs`, se ninguém começou a mesma tarefa há menos
- * que isso); senão devolve `{ ran: false }` sem esperar.
- */
-export function createExclusiveJobRunner(db: Pick<Database, "connect">): ExclusiveJobRunner {
-  return async <T>(name: string, job: () => Promise<T>, options: ExclusiveRunOptions = {}): Promise<ExclusiveRunResult<T>> => {
-    const key = jobLockKey(name)
-    const client = await db.connect()
-    // Conexão com problema (trava/destrava falhou) é descartada — fechar a sessão solta a trava. Falha da TAREFA não é
-    // problema da conexão: a trava é solta normalmente e a conexão volta ao pool.
-    let destroy = false
-    try {
-      let locked: boolean
-      try {
-        locked = (await client.query<{ locked: boolean }>("select pg_try_advisory_lock($1, $2) as locked", [JOB_LOCK_NAMESPACE, key])).rows[0]?.locked === true
-      } catch (error) {
-        destroy = true
-        throw error
-      }
-      if (!locked) return { ran: false, reason: "LOCKED" }
-      try {
-        if (options.minIntervalMs && options.minIntervalMs > 0) {
-          // Partida marcada atomicamente com o relógio do banco: só grava se a última foi há pelo menos `minIntervalMs`.
-          const claimed = await client.query(
-            `insert into periodic_job_runs (name, last_started_at) values ($1, now())
-             on conflict (name) do update set last_started_at = excluded.last_started_at
-              where periodic_job_runs.last_started_at <= now() - ($2::double precision * interval '1 millisecond')
-             returning name`,
-            [name, options.minIntervalMs],
-          )
-          if (claimed.rowCount === 0) return { ran: false, reason: "RECENT" }
-        }
-        return { ran: true, value: await job() }
-      } finally {
-        try {
-          await client.query("select pg_advisory_unlock($1, $2)", [JOB_LOCK_NAMESPACE, key])
-        } catch {
-          destroy = true
-        }
-      }
-    } finally {
-      client.release(destroy ? true : undefined)
-    }
-  }
-}
 
 export type PeriodicJobDefinition = {
   /** Nome da tarefa = nome da trava (o mesmo em todos os processos). */
@@ -85,16 +48,19 @@ export type PeriodicJobDefinition = {
   /** Primeira rodada já na subida (senão, só depois do primeiro intervalo). */
   runOnStart?: boolean
   /** Uma vez na subida, com a MESMA trava, no lugar da rodada inicial (ex.: só a projeção da situação funcional). */
-  startup?: () => Promise<unknown>
-  run: () => Promise<unknown>
+  startup?: (lease: JobLease) => Promise<unknown>
+  run: (lease: JobLease) => Promise<unknown>
   /** Depois de cada rodada — rodou aqui, rodou em outro processo ou falhou (ex.: acordar o worker local). */
   after?: () => void
   /** Prefixo da mensagem de erro no log (a mesma de antes da separação). */
   errorLabel?: string
 }
 
-/** SKIPPED_LOCKED = outro processo rodando agora · SKIPPED_RECENT = outro processo já rodou neste intervalo · SKIPPED_BUSY = a rodada anterior deste processo ainda não terminou. */
-export type PeriodicJobOutcome = "RAN" | "SKIPPED_LOCKED" | "SKIPPED_RECENT" | "SKIPPED_BUSY" | "FAILED"
+/**
+ * SKIPPED_LOCKED = outro processo rodando agora · SKIPPED_RECENT = outro processo já rodou neste intervalo · SKIPPED_BUSY = a
+ * rodada anterior deste processo ainda não terminou · SKIPPED_UNAVAILABLE = conexão das travas fora (reconectando).
+ */
+export type PeriodicJobOutcome = "RAN" | "SKIPPED_LOCKED" | "SKIPPED_RECENT" | "SKIPPED_BUSY" | "SKIPPED_UNAVAILABLE" | "FAILED"
 
 export type PeriodicJobStatus = {
   name: string
@@ -102,6 +68,10 @@ export type PeriodicJobStatus = {
   runs: number
   /** Rodadas puladas porque outro processo rodou (agora ou dentro do intervalo). */
   skippedLocked: number
+  /** Rodadas puladas porque a conexão das travas estava fora. */
+  skippedUnavailable: number
+  /** Rodadas que perderam a trava antes de terminar (conexão das travas caiu no meio). */
+  lockLost: number
   failures: number
   lastOutcome: PeriodicJobOutcome | null
   lastStartedAt: string | null
@@ -122,9 +92,9 @@ export type PeriodicJobs = {
  */
 export function startPeriodicJobs(runner: ExclusiveJobRunner, definitions: readonly PeriodicJobDefinition[]): PeriodicJobs {
   const jobs = definitions.map((definition) => {
-    const status: PeriodicJobStatus = { name: definition.name, intervalMs: definition.intervalMs, runs: 0, skippedLocked: 0, failures: 0, lastOutcome: null, lastStartedAt: null, lastFinishedAt: null, lastError: null }
+    const status: PeriodicJobStatus = { name: definition.name, intervalMs: definition.intervalMs, runs: 0, skippedLocked: 0, skippedUnavailable: 0, lockLost: 0, failures: 0, lastOutcome: null, lastStartedAt: null, lastFinishedAt: null, lastError: null }
     let inFlight: Promise<void> | null = null
-    const tick = (body: () => Promise<unknown>) => {
+    const tick = (body: (lease: JobLease) => Promise<unknown>) => {
       if (inFlight) {
         status.lastOutcome = "SKIPPED_BUSY"
         return
@@ -136,6 +106,12 @@ export function startPeriodicJobs(runner: ExclusiveJobRunner, definitions: reado
             status.runs++
             status.lastOutcome = "RAN"
             status.lastError = null
+            if (result.lockLost) status.lockLost++
+          } else if (result.reason === "UNAVAILABLE") {
+            status.skippedUnavailable++
+            status.lastOutcome = "SKIPPED_UNAVAILABLE"
+          } else if (result.reason === "BUSY") {
+            status.lastOutcome = "SKIPPED_BUSY"
           } else {
             status.skippedLocked++
             status.lastOutcome = result.reason === "RECENT" ? "SKIPPED_RECENT" : "SKIPPED_LOCKED"

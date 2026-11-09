@@ -90,6 +90,10 @@ describe("esclarecimento pelas bases — cenários", () => {
     expect(outcome.state.questionFacts).toEqual([{ dimension: "Produto", value: "linha FWT" }])
     expect(outcome.content).toBe("Só é possível com cobertura celular no novo endereço. [1]\nO prazo é imediato depois da validação da cobertura. [2]")
     expect(outcome.state.sources.map((source) => [source.documentId, source.heading])).toEqual([["kb-fic-end-fwt", "2. Cobertura"], ["kb-fic-end-fwt", "3. Prazo"]])
+    // Para a conferência: o texto inteiro das seções em que a resposta se apoiou. Só neste turno: o estado gravado guarda referências, nunca o texto.
+    expect(outcome.groundedOn?.map((section) => section.heading)).toEqual(["2. Cobertura", "3. Prazo"])
+    expect(outcome.groundedOn?.[0]?.excerpt).toContain("só é possível se o novo endereço tiver cobertura celular")
+    expect(JSON.stringify(outcome.state)).not.toContain("só é possível se o novo endereço tiver cobertura celular")
     // Consulta DIRECIONADA: a resposta recebe o texto inteiro das seções escolhidas — e só delas.
     const answerPrompt = calls[1]!.user
     expect(answerPrompt).toContain("só é possível se o novo endereço tiver cobertura celular")

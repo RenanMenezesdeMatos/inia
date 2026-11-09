@@ -1,11 +1,15 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
 import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { FlowGraph, HierarchicalTarget } from "@/schemas/admin/workflow-graph.schema"
 
 import { HierarchicalTargetPicker } from "./hierarchical-target-picker"
+
+vi.mock("@/queries/admin/use-user-account-queries", () => ({
+  useUserAccountsQuery: () => ({ data: [{ id: "u-1", name: "Maria Fictícia", email: "maria@exemplo.invalid", role: "SUPERVISOR", teamName: "B2C", active: true }], isLoading: false, isError: false }),
+}))
 
 afterEach(cleanup)
 
@@ -24,8 +28,9 @@ describe("HierarchicalTargetPicker — rótulos associados aos campos", () => {
     expect(screen.getByRole("combobox", { name: "Revisor" })).toHaveTextContent("Cargo relativo ao operador")
   })
 
-  it("pessoa específica: 'Id da pessoa' encontra o campo de texto", () => {
+  it("pessoa específica: escolhe-se pelo nome, nunca digitando um id", () => {
     renderPicker({ type: "SPECIFIC_USER", userId: "u-1" })
-    expect(screen.getByRole("textbox", { name: "Id da pessoa" })).toHaveValue("u-1")
+    expect(screen.getByRole("combobox", { name: "Pessoa" })).toHaveTextContent("Maria Fictícia")
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 })

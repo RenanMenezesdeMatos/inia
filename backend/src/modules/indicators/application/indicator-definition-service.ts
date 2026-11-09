@@ -10,7 +10,7 @@ import {
   type IndicatorDefinitionInput,
   type IndicatorDefinitionRecord,
 } from "../domain/indicator-definition.js"
-import { describeDependencies, loadIndicatorDependencies, type IndicatorDependencies } from "./indicator-dependencies.js"
+import { describeDependencies, describeDeletionBlockers, loadIndicatorDeletionBlockers, loadIndicatorDependencies, type IndicatorDependencies } from "./indicator-dependencies.js"
 
 /**
  * Contrato ÚNICO de criação/edição/exclusão de definições de indicador — usado pela rota admin e
@@ -29,7 +29,7 @@ function toRecord(row: DefinitionRow): IndicatorDefinitionRecord {
   return { ...row, minimumCoverage: row.minimumCoverage === null ? null : Number(row.minimumCoverage) }
 }
 
-export async function findIndicatorDefinition(db: Database, organizationId: string, id: string): Promise<IndicatorDefinitionRecord | null> {
+export async function findIndicatorDefinition(db: Pick<Database, "query">, organizationId: string, id: string): Promise<IndicatorDefinitionRecord | null> {
   const result = await db.query<DefinitionRow>(`select ${DEFINITION_COLUMNS} from indicator_definitions where id = $1 and organization_id = $2`, [id, organizationId])
   return result.rows[0] ? toRecord(result.rows[0]) : null
 }
@@ -65,10 +65,11 @@ export type UpdateIndicatorDefinitionResult = { definition: IndicatorDefinitionR
 /**
  * PATCH parcial: campos ausentes mantêm o valor atual; o resultado completo passa pela mesma
  * validação da criação. Alteração SEMÂNTICA (código, unidade, direção, estratégia) ou desligar a
- * medição operacional é BLOQUEADA quando há histórico (medições, metas, fechamentos ou
- * Workflows) — estratégia "A. bloquear" do pedido, com o motivo na mensagem. Nome, glossário,
- * amostra/cobertura padrão, ligar medição operacional, fechamento oficial e status são sempre
- * seguros.
+ * medição operacional é BLOQUEADA aqui quando há histórico (medições, metas, fechamentos ou
+ * Workflows), com o motivo na mensagem. Unidade, direção e estratégia mudam só pela correção
+ * controlada (`indicator-correction-service.ts`): prévia, motivo, confirmação e auditoria. Nome,
+ * glossário, amostra/cobertura padrão, ligar medição operacional, fechamento oficial e status são
+ * sempre seguros.
  */
 export async function updateIndicatorDefinition(db: Database, organizationId: string, id: string, rawPatch: unknown): Promise<UpdateIndicatorDefinitionResult> {
   const current = await findIndicatorDefinition(db, organizationId, id)
@@ -107,8 +108,13 @@ export async function updateIndicatorDefinition(db: Database, organizationId: st
     const dependencies = await loadIndicatorDependencies(db, organizationId, current)
     if (dependencies.hasHistory) {
       const fields = [...semanticChanges.map((field) => SEMANTIC_FIELD_LABELS[field]), ...(disablingOperational ? [SEMANTIC_FIELD_LABELS.dailySupported] : [])]
+      // Unidade, direção e estratégia têm caminho próprio, com prévia do impacto. Código e desligar a medição não têm: cargas e Workflows citam o indicador.
+      const correctable = !disablingOperational && !semanticChanges.includes("code")
+      const guidance = correctable
+        ? `Use "Corrigir unidade, direção ou cálculo", que mostra o impacto antes de salvar.`
+        : "Essa mudança quebraria as cargas e os Workflows que citam o indicador — crie um novo indicador com a semântica desejada e desative este."
       throw new DomainError(
-        `Não é possível alterar ${fields.join(", ")} de "${current.name}": o indicador já tem histórico (${describeDependencies(dependencies)}). Essa mudança invalidaria o histórico e as configurações existentes — crie um novo indicador com a semântica desejada e desative este.`,
+        `Não é possível alterar ${fields.join(", ")} de "${current.name}" por aqui: o indicador já tem histórico (${describeDependencies(dependencies)}). ${guidance}`,
         "INDICATOR_SEMANTIC_LOCKED",
         409,
         { fields: [...semanticChanges, ...(disablingOperational ? ["dailySupported"] : [])], dependencies },
@@ -132,18 +138,22 @@ export async function updateIndicatorDefinition(db: Database, organizationId: st
   }
 }
 
-/** Exclusão só sem histórico algum — com histórico o caminho é desativar (status ≠ capacidade). */
-export async function deleteIndicatorDefinition(db: Database, organizationId: string, id: string): Promise<IndicatorDependencies | null> {
+/**
+ * Exclusão lógica (migration 177). Medições, metas, fechamentos, regras e glossário continuam guardados, saem dos painéis e o código fica livre para outro indicador: é a saída para um indicador
+ * cadastrado errado. Só barra o que depende dele agora: Workflow que cita o código, política de acompanhamento ou execução em andamento. Volta pela Central de Dados, desativado.
+ */
+export async function deleteIndicatorDefinition(db: Database, organizationId: string, id: string, actorPersonId: string | null = null): Promise<IndicatorDependencies | null> {
   const current = await findIndicatorDefinition(db, organizationId, id)
   if (!current) return null
   const dependencies = await loadIndicatorDependencies(db, organizationId, current)
-  if (dependencies.hasHistory) {
-    throw new DomainError(`"${current.name}" tem histórico (${describeDependencies(dependencies)}) e não pode ser excluído. Desative-o em vez disso.`, "INDICATOR_HAS_DEPENDENTS", 409, { dependencies })
-  }
+  const blockers = await loadIndicatorDeletionBlockers(db, organizationId, current)
+  const reasons = [dependencies.workflows.length > 0 ? `${dependencies.workflows.length} Workflow(s): ${dependencies.workflows.map((workflow) => workflow.name).slice(0, 3).join(", ")}${dependencies.workflows.length > 3 ? "…" : ""}` : "", describeDeletionBlockers(blockers)].filter(Boolean).join("; ")
+  if (reasons) throw new DomainError(`"${current.name}" é usado agora (${reasons}) e não pode ser excluído. Tire-o de lá ou aguarde as execuções terminarem, ou desative-o.`, "INDICATOR_HAS_DEPENDENTS", 409, { dependencies: { ...dependencies, ...blockers } })
   await inTransaction(db, async (client) => {
-    await client.query(`delete from indicator_calculation_rules where indicator_definition_id = $1 and organization_id = $2`, [id, organizationId])
-    await client.query(`delete from indicator_glossary where indicator_definition_id = $1 and organization_id = $2`, [id, organizationId])
-    await client.query(`delete from indicator_definitions where id = $1 and organization_id = $2`, [id, organizationId])
+    // Era o que a chave fazia ao apagar: a flag deixa de apontar para um indicador que não existe mais nas telas.
+    await client.query(`update channel_flags_all set related_indicator_definition_id = null where related_indicator_definition_id = $1 and organization_id = $2`, [id, organizationId])
+    await client.query(`update indicator_definitions_all set active = false, deleted_at = now(), deleted_by_person_id = $3 where id = $1 and organization_id = $2`, [id, organizationId, actorPersonId])
+    await client.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'INDICATOR_DELETED', 'indicator_definition', $3, $4)`, [organizationId, actorPersonId, id, JSON.stringify({ code: current.code, name: current.name })])
   })
   return dependencies
 }

@@ -57,3 +57,30 @@ describe("espaço de navegação da IA", () => {
     expect(view.catalog).toContain("(+1 bases não listadas por limite de tamanho)")
   })
 })
+
+describe("imagens das fontes de uma resposta", () => {
+  const IMAGE = { id: "a".repeat(32), page: 3, width: 800, height: 400, at: 0 }
+  const withImages: CatalogSource = { ...source("kb-i", "Base com imagens (fictícia)", 2) }
+  const chunks = withImages.chunks.map((chunk, index) => (index === 1 ? { ...chunk, images: [IMAGE] } : chunk))
+  const base: CatalogSource = { ...withImages, chunks }
+
+  it("a IA não recebe nada das imagens: nem no sumário, nem no texto lido", () => {
+    const workspace = new KnowledgeWorkspace([base])
+    workspace.read([{ documentId: "kb-i", chunkIndex: 1 }])
+    const view = workspace.render()
+    expect(textOf(view)).toContain("Texto da seção 2")
+    expect(textOf(view)).not.toContain(IMAGE.id)
+    expect(textOf(view).toLowerCase()).not.toContain("imagem")
+    expect([...view.evidence.values()].some((ref) => "images" in ref)).toBe(false)
+  })
+
+  it("a fonte ganha as imagens da seção só depois da resposta; fonte da base inteira ou sem imagens fica como está", () => {
+    const workspace = new KnowledgeWorkspace([base])
+    const view = workspace.render()
+    const section = [...view.evidence.values()].find((ref) => ref.chunkIndex === 1 && ref.heading !== ref.documentTitle)!
+    expect(workspace.withImages(section).images).toEqual([{ id: IMAGE.id, page: 3, width: 800, height: 400 }])
+    const first = [...view.evidence.values()].find((ref) => ref.chunkIndex === 0 && ref.heading !== ref.documentTitle)!
+    expect(workspace.withImages(first)).toEqual(first)
+    expect(workspace.withImages(view.evidence.get("B1")!)).toEqual(view.evidence.get("B1"))
+  })
+})

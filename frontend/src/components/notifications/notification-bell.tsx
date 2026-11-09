@@ -33,6 +33,8 @@ export function notificationHref(target: NotificationTarget, profileHref: string
       return "/admin/operational-calendar"
     case "ADMIN_AI_USAGE":
       return "/admin/ai"
+    case "ADMIN_WORKFLOW_EXECUTIONS":
+      return `/admin/workflows/${encodeURIComponent(target.workflowId)}?tab=enrollments`
     // Workflow Outputs V1 — o painel da INIA fica no Acompanhamento do próprio perfil: abre a conversa / destaca o convite.
     case "INIA_CONVERSATION":
       return `${profileHref}?tab=followup&iniaConversation=${encodeURIComponent(target.conversationId)}`

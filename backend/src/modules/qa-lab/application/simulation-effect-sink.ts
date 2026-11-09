@@ -228,6 +228,9 @@ export class SimulationEffectSink implements WorkflowEffectSink {
    * MOTOR DE FEEDBACK simulado. A mensagem é registrada no efeito RELIABLE_FEEDBACK (a mesma entrada que a tela do QA Lab já
    * mostra): READY = publicável; BLOCKED = abstenção, com o motivo em `reasons`. Publicação = RELIABLE_FEEDBACK_EMISSION.
    */
+  // Simulação não registra consulta: nada grava, e as versões usadas já aparecem no rastro da execução simulada.
+  async recordWorkflowKnowledgeUsage(): Promise<void> {}
+
   readonly feedbackEngine: WorkflowEffectSink["feedbackEngine"] = {
     analyzeCall: (db, request) => this.engine.analyzeCall(db, request),
     investigateIndicator: (db, request) => this.engine.investigateIndicator(db, request),

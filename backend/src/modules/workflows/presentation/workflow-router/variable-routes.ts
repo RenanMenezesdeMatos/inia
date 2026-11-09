@@ -90,7 +90,7 @@ export function registerWorkflowVariableRoutes(router: Router, db: Database): vo
       )
     }
 
-    await db.query(`delete from workflow_variables where id = $1 and workflow_id = $2`, [variableId, request.params.id])
+    await db.query(`update workflow_variables_all set deleted_at = now(), deleted_by_person_id = $3 where id = $1 and workflow_id = $2 and deleted_at is null`, [variableId, request.params.id, sessionUser(request).personId ?? null])
     response.status(204).send()
   })
 }

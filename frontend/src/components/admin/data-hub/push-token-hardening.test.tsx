@@ -44,6 +44,10 @@ function source(overrides: Partial<SourceDetail>): SourceDetail {
     secrets: [],
     tokens: [],
     transportWarning: null,
+    configAccess: { required: false, unlocked: true, expiresAt: null, fields: [] },
+    createdByName: null,
+    updatedByName: null,
+    lastChangedAt: null,
     ...overrides,
   } as SourceDetail
 }

@@ -4,7 +4,7 @@ import type { CanonicalRecord } from "../../domain/data-contract.js"
 import { OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT, OFFICIAL_INDICATOR_PERFORMANCE_CONTRACT_V1 } from "../../domain/contracts/performance-contracts.js"
 import { mapRecord } from "../../domain/mapping.js"
 import type { ValidRecord, WriteContext } from "./domain-writer.js"
-import { officialIndicatorPerformanceWriter } from "./performance-writers.js"
+import { indicatorMeasurementsWriter, officialIndicatorPerformanceWriter } from "./performance-writers.js"
 
 /**
  * Fechamento oficial com numerador e denominador (contrato @2): a regra em volta do SQL. O SQL de
@@ -20,6 +20,9 @@ const INDICATORS = [
   { id: "ind-rate", code: "TEST_RATE", unit: "PERCENT", direction: "HIGHER", aggregation: "RATE", dailySupported: false, officialClosureSupported: true, active: true },
   { id: "ind-time", code: "TEST_TIME", unit: "SECONDS", direction: "LOWER", aggregation: "WEIGHTED_AVERAGE", dailySupported: true, officialClosureSupported: true, active: true },
   { id: "ind-snapshot", code: "TEST_SNAPSHOT", unit: "CASES", direction: "LOWER", aggregation: "LATEST", dailySupported: true, officialClosureSupported: true, active: true },
+  { id: "ind-daily-rate", code: "TEST_DAILY_RATE", unit: "PERCENT", direction: "HIGHER", aggregation: "RATE", dailySupported: true, officialClosureSupported: true, active: true },
+  { id: "ind-sum", code: "TEST_SUM", unit: "COUNT", direction: "HIGHER", aggregation: "SUM", dailySupported: true, officialClosureSupported: true, active: true },
+  { id: "ind-average", code: "TEST_AVERAGE", unit: "POINTS", direction: "HIGHER", aggregation: "AVERAGE", dailySupported: true, officialClosureSupported: true, active: true },
 ]
 
 function writeContext(): WriteContext {
@@ -125,7 +128,61 @@ describe("writer do fechamento oficial — componentes validados pela ESTRATÉGI
     expect(outcome).toMatchObject({ inserted: 1, updated: 1, unchanged: 0, businessMaxEventTime: "2026-09-01T00:00:00.000Z" })
     const [{ sql, params }] = calls as [{ sql: string; params: unknown[] }]
     expect(params.slice(11)).toEqual([[380016, null], [812, null]])
-    expect(sql).toContain("numerator = case when excluded.numerator is null and excluded.value = employee_indicator_performance.value then employee_indicator_performance.numerator else excluded.numerator end")
-    expect(sql).toContain("or (excluded.numerator is not null and (employee_indicator_performance.numerator is distinct from excluded.numerator")
+    expect(sql).toContain("numerator = case when excluded.numerator is null and excluded.value = employee_indicator_performance_all.value then employee_indicator_performance_all.numerator else excluded.numerator end")
+    expect(sql).toContain("or (excluded.numerator is not null and (employee_indicator_performance_all.numerator is distinct from excluded.numerator")
+  })
+})
+
+const measurement = (indicatorCode: string, value: number, components: { numerator?: number; denominator?: number } = {}, date = "2026-09-15"): CanonicalRecord => ({
+  externalEmployeeId: "OP-1",
+  indicatorCode,
+  date,
+  periodStart: null,
+  periodEnd: null,
+  granularity: null,
+  value,
+  numerator: components.numerator ?? null,
+  denominator: components.denominator ?? null,
+  sampleCount: null,
+})
+
+describe("writer de medições — a mesma regra de componentes do fechamento oficial", () => {
+  it.each(["TEST_SUM", "TEST_AVERAGE", "TEST_SNAPSHOT"])("estratégia sem componentes (%s): numerador e denominador vão para a quarentena com a mensagem do fechamento", async (code) => {
+    const context = writeContext()
+    const measured = await indicatorMeasurementsWriter.prepare(context, [valid(measurement(code, 450, { numerator: 8100, denominator: 18 }))])
+    const closed = await officialIndicatorPerformanceWriter.prepare(context, [valid(closure(code, 450, { numerator: 8100, denominator: 18 }))])
+    expect(measured.ready).toEqual([])
+    expect(measured.rejections[0]!.error).toEqual({ code: "DATA_CONTRACT_VIOLATION", field: "numerator", message: expect.stringContaining(`do indicador "${code}" não define o valor por numerador e denominador`) })
+    expect(measured.rejections[0]!.error).toEqual(closed.rejections[0]!.error)
+  })
+
+  it("sem componentes, as mesmas estratégias aceitam a medição, e a amostra continua opcional", async () => {
+    const { ready, rejections } = await indicatorMeasurementsWriter.prepare(writeContext(), [valid(measurement("TEST_SUM", 35)), valid(measurement("TEST_AVERAGE", 4.5, {}, "2026-09-14")), valid(measurement("TEST_SNAPSHOT", 12, {}, "2026-09-13"))])
+    expect(rejections).toEqual([])
+    expect(ready.map((row) => [row.value, row.numerator, row.denominator])).toEqual([[35, null, null], [4.5, null, null], [12, null, null]])
+  })
+
+  it("Taxa e Média ponderada exigem os componentes e conferem o valor com a tolerância do fechamento", async () => {
+    const { ready, rejections } = await indicatorMeasurementsWriter.prepare(writeContext(), [
+      valid(measurement("TEST_TIME", 450)),
+      valid(measurement("TEST_TIME", 450, { numerator: 8100, denominator: 18 }, "2026-09-14")),
+      valid(measurement("TEST_TIME", 900, { numerator: 8100, denominator: 18 }, "2026-09-13")),
+      valid(measurement("TEST_DAILY_RATE", 2, { numerator: 12, denominator: 500 }, "2026-09-12")), // 2,4% informado sem casas: arredondamento
+      valid(measurement("TEST_DAILY_RATE", 90, { numerator: 9, denominator: 20 }, "2026-09-11")),
+    ])
+    expect(ready.map((row) => row.value)).toEqual([450, 2])
+    expect(rejections.map((rejection) => [rejection.error.code, rejection.error.field])).toEqual([["DATA_COMPONENT_MISSING", "numerator"], ["DATA_CONTRACT_VIOLATION", "value"], ["DATA_CONTRACT_VIOLATION", "value"]])
+    expect(rejections[1]!.error.message).toBe("Valor 900 não confere com numerador ÷ denominador (8.100 ÷ 18 = 450; tolerância ±4,5). A medição não foi gravada.")
+  })
+
+  it("dia sem elegíveis (denominador zero) não vira incoerência: a conta só existe na soma do período", async () => {
+    const { ready, rejections } = await indicatorMeasurementsWriter.prepare(writeContext(), [valid(measurement("TEST_DAILY_RATE", 0, { numerator: 0, denominator: 0 }))])
+    expect(rejections).toEqual([])
+    expect(ready).toHaveLength(1)
+  })
+
+  it("continua recusando valor fora da faixa da unidade", async () => {
+    const { rejections } = await indicatorMeasurementsWriter.prepare(writeContext(), [valid(measurement("TEST_DAILY_RATE", 150, { numerator: 150, denominator: 100 })), valid(measurement("TEST_TIME", -1, { numerator: -18, denominator: 18 }))])
+    expect(rejections.map((rejection) => rejection.error.message)).toEqual(["Percentual precisa estar entre 0 e 100.", "Tempo em segundos não pode ser negativo."])
   })
 })

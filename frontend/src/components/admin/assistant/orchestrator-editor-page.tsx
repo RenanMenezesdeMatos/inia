@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Trash2 } from "lucide-react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -39,6 +40,9 @@ import { StructuredOutputBuilder } from "./structured-output-builder"
 import type { StructuredOutputImpactDetails } from "./structured-output-impacts"
 import { StructuredOutputImpactDialog } from "./structured-output-impacts"
 import { SpecialistsTab } from "./orchestrator-editor/specialists-tab"
+import { AgentCurrentVersion, type AgentCurrentVersionState } from "./orchestrator-editor/agent-current-version"
+import { OrchestratorVersionsPopover } from "./orchestrator-editor/orchestrator-versions-popover"
+import { ReappliedNotice, VersionConflictNotice } from "./orchestrator-editor/version-conflict-notice"
 import { useAgentsQuery } from "@/queries/admin/use-agent-queries"
 import { useManageableTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { scopesAreCompatible } from "@/lib/admin/scope-compatibility"
@@ -50,15 +54,55 @@ import {
   useToggleOrchestratorActiveMutation,
   useUpdateOrchestratorMutation,
 } from "@/queries/admin/use-assistant-queries"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 const LIST_HREF = "/admin/assistant"
+
+/**
+ * PEN-047: agente nunca publicado não entra em orquestrador. O seletor já o mostra como "Não publicado" e não deixa escolher;
+ * aqui a regra entra no motivo dos especialistas para também avisar sobre um já selecionado.
+ */
+const NOT_PUBLISHED_REASON = "Não publicado — publique o agente antes de usá-lo num orquestrador."
+const unpublishedReason = (agent: Agent): string | null => (agent.published ? null : NOT_PUBLISHED_REASON)
+
+/** Tudo o que a pessoa edita no formulário — guardado para reaplicar sobre a versão atual depois de um conflito (PEN-050). */
+type OrchestratorFormSnapshot = {
+  name: string
+  orchestratorAgentId: string
+  orgScope: OrgScopeValue
+  specialistAgentIds: string[]
+  invocationMode: OrchestratorInvocationMode
+  recommendSupportMaterials: boolean
+  routing: RoutingPolicy
+  structuredEnabled: boolean
+  structuredDefinition: StructuredOutputDefinition | null
+}
+
+function snapshotOf(orchestrator: Orchestrator): OrchestratorFormSnapshot {
+  return {
+    name: orchestrator.name,
+    orchestratorAgentId: orchestrator.orchestratorAgentId,
+    orgScope: { scopeType: orchestrator.scopeType, teamId: orchestrator.teamId ?? undefined, subteamId: orchestrator.subteamId ?? undefined },
+    specialistAgentIds: orchestrator.specialists.map((specialist) => specialist.agentId),
+    invocationMode: orchestrator.invocationMode,
+    recommendSupportMaterials: orchestrator.recommendSupportMaterials,
+    routing: resolveRoutingPolicy(orchestrator),
+    structuredEnabled: orchestrator.structuredOutput !== null && orchestrator.structuredOutput.nodes.length > 0,
+    structuredDefinition: orchestrator.structuredOutput,
+  }
+}
 
 /**
  * Cadastro do Orquestrador — mesma página para criar (`/admin/assistant/new`) e editar
  * (`/admin/assistant/:id`), no padrão das demais telas de Atendimento com IA (Agentes): cabeçalho
  * com voltar, título e ações; o conteúdo em abas na própria página, nunca em pop-up.
+ *
+ * Versões (PEN-076, com a revisão aprovada de 03/11/2026): toda gravação publica uma versão nova da CONFIGURAÇÃO do orquestrador
+ * (especialistas, política, resultado estruturado). Os agentes não ficam fixados: o agente orquestrador e cada especialista rodam
+ * sempre na versão vigente, mostrada aqui. A gravação diz em qual versão a edição se baseou e, se outra pessoa gravou no meio,
+ * nada é gravado e as alterações são reaplicadas sobre a versão atual.
  */
-function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
+function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestrator; onReload?: () => Promise<{ isError: boolean }> }) {
   const router = useRouter()
   const isEditing = Boolean(orchestrator)
   const agentsQuery = useAgentsQuery()
@@ -92,8 +136,16 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
   const [structuredDefinition, setStructuredDefinition] = useState<StructuredOutputDefinition | null>(orchestrator?.structuredOutput ?? null)
   const [structuredIssues, setStructuredIssues] = useState<StructuredOutputIssue[]>([])
   const [builderKey, setBuilderKey] = useState(0)
+  // Definição com que o construtor (re)monta: a do registro, ou a da pessoa quando as alterações são reaplicadas após um conflito.
+  const [builderInitialDefinition, setBuilderInitialDefinition] = useState<StructuredOutputDefinition | null>(orchestrator?.structuredOutput ?? null)
   const [pendingImpacts, setPendingImpacts] = useState<StructuredOutputImpactDetails | null>(null)
   const usageQuery = useStructuredOutputUsageQuery(orchestrator?.id ?? null)
+  // PEN-050: outra gravação no meio (409) — o formulário continua com o que a pessoa alterou; ao atualizar, reaplica por cima.
+  const [conflict, setConflict] = useState<{ message: string; publishedByName: string | null } | null>(null)
+  const [reapply, setReapply] = useState<OrchestratorFormSnapshot | null>(null)
+  const [reapplied, setReapplied] = useState(false)
+  // 422 ORCHESTRATOR_AGENT_NOT_PUBLISHED: o agente recusado aparece marcado como "Não publicado" onde está selecionado.
+  const [notPublishedAgentId, setNotPublishedAgentId] = useState<string | null>(null)
 
   // Escopo Administrativo (Parte 10/11): criando um orquestrador novo, um admin restrito nunca
   // começa em "Todos os grupos".
@@ -105,23 +157,52 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
     }
   }
 
-  // Registro recarregado do servidor: o formulário recomeça dele e o construtor do resultado
-  // estruturado remonta — ajuste na renderização, sem render extra (na montagem os valores iniciais já vêm dele).
+  function currentSnapshot(): OrchestratorFormSnapshot {
+    return { name, orchestratorAgentId, orgScope, specialistAgentIds, invocationMode, recommendSupportMaterials, routing, structuredEnabled, structuredDefinition }
+  }
+
+  function applySnapshot(snapshot: OrchestratorFormSnapshot) {
+    setName(snapshot.name)
+    setOrchestratorAgentId(snapshot.orchestratorAgentId)
+    setOrgScope(snapshot.orgScope)
+    setSpecialistAgentIds(snapshot.specialistAgentIds)
+    setInvocationMode(snapshot.invocationMode)
+    setRecommendSupportMaterials(snapshot.recommendSupportMaterials)
+    setRouting(snapshot.routing)
+    setStructuredEnabled(snapshot.structuredEnabled)
+    setStructuredDefinition(snapshot.structuredDefinition)
+    setBuilderInitialDefinition(snapshot.structuredDefinition)
+    setStructuredIssues([])
+    setBuilderKey((current) => current + 1)
+  }
+
+  // Registro recarregado do servidor: o formulário recomeça dele (ou, depois de um conflito, das alterações guardadas da pessoa,
+  // agora sobre a versão atual) e o construtor do resultado estruturado remonta — ajuste na renderização, sem render extra (na
+  // montagem os valores iniciais já vêm dele).
   const [loadedOrchestrator, setLoadedOrchestrator] = useState(orchestrator)
   if (loadedOrchestrator !== orchestrator) {
     setLoadedOrchestrator(orchestrator)
     if (orchestrator) {
-      setName(orchestrator.name)
-      setOrchestratorAgentId(orchestrator.orchestratorAgentId)
-      setOrgScope({ scopeType: orchestrator.scopeType, teamId: orchestrator.teamId ?? undefined, subteamId: orchestrator.subteamId ?? undefined })
-      setSpecialistAgentIds(orchestrator.specialists.map((specialist) => specialist.agentId))
-      setInvocationMode(orchestrator.invocationMode)
-      setRecommendSupportMaterials(orchestrator.recommendSupportMaterials)
-      setRouting(resolveRoutingPolicy(orchestrator))
-      setStructuredEnabled(orchestrator.structuredOutput !== null && orchestrator.structuredOutput.nodes.length > 0)
-      setStructuredDefinition(orchestrator.structuredOutput)
-      setStructuredIssues([])
-      setBuilderKey((current) => current + 1)
+      applySnapshot(reapply ?? snapshotOf(orchestrator))
+      setReapplied(reapply !== null)
+      if (reapply) setConflict(null)
+      setReapply(null)
+      setNotPublishedAgentId(null)
+    }
+  }
+
+  const [reloading, setReloading] = useState(false)
+  async function reloadAndReapply() {
+    if (!onReload) return
+    // Guardado ANTES de buscar: a versão atual chega e o formulário recomeça dela com isto por cima (ajuste acima).
+    setReapply(currentSnapshot())
+    setReloading(true)
+    const result = await onReload()
+    setReloading(false)
+    if (result.isError) {
+      // Não atualizou: nada mudou na tela; o aviso continua para tentar de novo.
+      setReapply(null)
+      setConflict((current) => current && { ...current, message: "Não foi possível atualizar agora. Suas alterações continuam na tela — tente de novo." })
     }
   }
 
@@ -145,10 +226,41 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
   )
   // Política de especialistas (orchestrator-policy.ts): quem não pode entrar aparece desabilitado
   // com o motivo — o backend aplica a mesma regra na gravação (422), isto é só a antecipação.
+  // Nunca publicado também não entra (PEN-047; 422 ORCHESTRATOR_AGENT_NOT_PUBLISHED no backend).
   const specialistDisabledReason = (agent: Agent): string | null => {
+    const unpublished = unpublishedReason(agent)
+    if (unpublished) return unpublished
     const verdict = checkSpecialistAgainstRouting(routing, { name: agent.name, specialty: resolveAgentSpecialty(agent) })
     return verdict.allowed ? null : verdict.reason
   }
+
+  // Versão vigente de cada agente (revisão de 03/11/2026): a do registro gravado (vem do servidor inclusive para agente inativo, sem
+  // abrir o cadastro dele) e, para quem acabou de ser escolhido, a da lista de agentes.
+  const savedSpecialists = useMemo(() => new Map((orchestrator?.specialists ?? []).map((specialist) => [specialist.agentId, specialist])), [orchestrator])
+
+  function agentVersionState(agentId: string, saved: { versionNumber: number | null; active: boolean | null; published: boolean | null } | null): AgentCurrentVersionState {
+    const agent = agentsById.get(agentId)
+    return {
+      agentId,
+      versionNumber: saved?.versionNumber ?? agent?.currentVersionNumber ?? null,
+      active: saved?.active ?? agent?.active ?? true,
+      published: notPublishedAgentId === agentId ? false : (saved?.published ?? agent?.published ?? true),
+    }
+  }
+
+  function specialistVersionState(agentId: string): AgentCurrentVersionState {
+    const saved = savedSpecialists.get(agentId)
+    return agentVersionState(agentId, saved ? { versionNumber: saved.agentCurrentVersionNumber ?? null, active: saved.active ?? null, published: saved.published ?? null } : null)
+  }
+
+  const orchestratorAgentVersionState = orchestratorAgentId
+    ? agentVersionState(
+        orchestratorAgentId,
+        orchestrator && orchestrator.orchestratorAgentId === orchestratorAgentId
+          ? { versionNumber: orchestrator.orchestratorAgentCurrentVersionNumber ?? null, active: orchestrator.orchestratorAgentActive ?? null, published: orchestrator.orchestratorAgentPublished ?? null }
+          : null,
+      )
+    : null
   const incompatibleSelected = specialistAgentIds
     .map((agentId) => agentsById.get(agentId))
     .filter((agent): agent is Agent => Boolean(agent))
@@ -159,29 +271,42 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
   const structuredOutputPayload: StructuredOutputDefinition | null = structuredEnabled && structuredDefinition && structuredDefinition.nodes.length > 0 ? structuredDefinition : null
   const structuredBlocking = structuredEnabled && structuredIssues.length > 0
 
+  // 422 ORCHESTRATOR_AGENT_NOT_PUBLISHED: marca o agente recusado (a mensagem do backend já diz qual).
+  function markNotPublished(error: unknown) {
+    if (error instanceof AdminApiError && error.code === "ORCHESTRATOR_AGENT_NOT_PUBLISHED") {
+      setNotPublishedAgentId((error.details as { agentId?: string } | undefined)?.agentId ?? null)
+    }
+  }
+
   async function handleSave(acknowledgeStructuredOutputImpacts = false) {
+    const finalSpecialistIds = specialistAgentIds.filter((id) => id.length > 0)
     const input = {
       name,
       orgScope,
       orchestratorAgentId,
-      specialistAgentIds: specialistAgentIds.filter((id) => id.length > 0),
+      specialistAgentIds: finalSpecialistIds,
       invocationMode,
       recommendSupportMaterials,
       // Fonte única: o backend GERA a instrução para a IA e o metadado legado a partir daqui.
       structuredOutput: structuredOutputPayload,
+      // Nenhuma versão de agente vai na gravação: os agentes rodam sempre na vigente (revisão de 03/11/2026).
     }
+    setNotPublishedAgentId(null)
     if (!orchestrator) {
       try {
         const created = await createMutation.mutateAsync({ ...input, routingPolicy: routing.kind === "DOMAINS" || routing.kind === "OPEN" ? routing.kind : null, ...routingDomainPayload(routing) })
         router.push(`${LIST_HREF}/${created.id}`)
-      } catch {
+      } catch (error) {
         // já sinalizado via createMutation.isError / toast do useAdminMutation
+        markNotPublished(error)
       }
       return
     }
     try {
       await updateMutation.mutateAsync({
         ...input,
+        // A versão que esta edição carregou (PEN-050): outra gravação no meio → 409, nada gravado.
+        expectedVersionId: orchestrator.currentVersionId,
         ...(acknowledgeStructuredOutputImpacts ? { acknowledgeStructuredOutputImpacts: true } : {}),
         // Forma nova quando o admin escolheu uma das duas respostas; legado intacto caso contrário.
         ...(routing.kind === "DOMAINS" || routing.kind === "OPEN"
@@ -198,7 +323,15 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
         setPendingImpacts({ message: error.message, impacts: (error.details as { impacts?: StructuredOutputImpactDetails["impacts"] } | undefined)?.impacts ?? [] })
         return
       }
+      // Outra pessoa gravou depois que a tela abriu: nada foi gravado e o formulário continua como está.
+      if (error instanceof AdminApiError && error.code === "ORCHESTRATOR_VERSION_CONFLICT") {
+        setPendingImpacts(null)
+        setReapplied(false)
+        setConflict({ message: error.message, publishedByName: (error.details as { publishedByName?: string | null } | undefined)?.publishedByName ?? null })
+        return
+      }
       // demais erros já sinalizados via updateMutation.isError / toast do useAdminMutation
+      markNotPublished(error)
     }
   }
 
@@ -213,6 +346,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
   // salvando a política) — o switch de ativo fica travado com o motivo.
   const legacyWithoutPolicy = orchestrator ? !orchestrator.active && orchestrator.policyKind === null : false
   const saveBlockedReason = [
+    conflict ? "Outra pessoa gravou este orquestrador: atualize antes de salvar — suas alterações são reaplicadas." : null,
     name.trim().length > 1 ? null : "Informe o nome.",
     orchestratorAgentId ? null : "Escolha o agente orquestrador.",
     policyProblem,
@@ -221,6 +355,8 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
     .filter(Boolean)
     .join(" ")
   const saveLabel = isEditing ? "Salvar alterações" : "Criar orquestrador"
+  // O conflito de versão tem aviso próprio (com a ação de atualizar); a mensagem genérica de erro não o repete.
+  const showMutationError = mutation.isError && !(mutation.error instanceof AdminApiError && mutation.error.code === "ORCHESTRATOR_VERSION_CONFLICT")
 
   return (
     <div className="space-y-5">
@@ -230,6 +366,12 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
             <ArrowLeft className="h-3.5 w-3.5" /> Orquestrador da INIA
           </Link>
           <h1 className="mt-1 truncate text-xl">{orchestrator ? orchestrator.name || "Editar orquestrador" : "Novo orquestrador"}</h1>
+          {orchestrator ? (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {orchestrator.currentVersionNumber ? <Badge variant="outline">Versão {orchestrator.currentVersionNumber} em uso</Badge> : null}
+              <OrchestratorVersionsPopover orchestratorId={orchestrator.id} />
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {orchestrator ? (
@@ -253,7 +395,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
                 <AlertDialogContent>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Excluir {orchestrator.name}?</AlertDialogTitle>
-                    <AlertDialogDescription>Essa ação não pode ser desfeita. Operadores no escopo dele voltam a receber a resposta genérica da INIA.</AlertDialogDescription>
+                    <AlertDialogDescription>Operadores no escopo dele voltam a receber a resposta genérica da INIA. {RESTORE_NOTE}</AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -293,7 +435,9 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
       </div>
 
       <StructuredOutputImpactDialog details={pendingImpacts} pending={updateMutation.isPending} onCancel={() => setPendingImpacts(null)} onConfirm={() => handleSave(true)} />
-      {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+      {showMutationError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+      {conflict ? <VersionConflictNotice message={conflict.message} publishedByName={conflict.publishedByName} pending={reloading} onReload={() => void reloadAndReapply()} /> : null}
+      {reapplied && !conflict ? <ReappliedNotice versionNumber={orchestrator?.currentVersionNumber ?? null} onDismiss={() => setReapplied(false)} /> : null}
 
       <Tabs defaultValue="config">
         <div className="overflow-x-auto">
@@ -331,6 +475,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
                 ) : (
                   <AgentPicker id="orchestrator-agent" agents={orchestratorAgents} value={orchestratorAgentId} onChange={setOrchestratorAgentId} />
                 )}
+                {orchestratorAgentVersionState ? <AgentCurrentVersion state={orchestratorAgentVersionState} /> : null}
               </div>
               <div className="space-y-1.5">
                 <Label>Grupo</Label>
@@ -416,6 +561,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
             specialistAgents={specialistAgents}
             disabledReason={specialistDisabledReason}
             incompatibleSelected={incompatibleSelected}
+            renderAgentVersion={(agentId) => <AgentCurrentVersion state={specialistVersionState(agentId)} />}
           />
         </TabsContent>
 
@@ -425,7 +571,7 @@ function OrchestratorForm({ orchestrator }: { orchestrator?: Orchestrator }) {
             <CardContent className="space-y-2">
               <StructuredOutputBuilder
                 key={builderKey}
-                initialDefinition={orchestrator?.structuredOutput ?? null}
+                initialDefinition={builderInitialDefinition}
                 enabled={structuredEnabled}
                 onEnabledChange={setStructuredEnabled}
                 onChange={handleStructuredChange}
@@ -456,9 +602,10 @@ export function OrchestratorEditorPage({ orchestratorId }: { orchestratorId: str
   const orchestratorQuery = useOrchestratorQuery(orchestratorId)
 
   if (orchestratorQuery.isLoading) return <Skeleton className="h-96 w-full" />
-  if (orchestratorQuery.isError || !orchestratorQuery.data) {
+  // Uma atualização que falha com o registro já carregado não desmonta o formulário (perderia o que não foi salvo).
+  if (!orchestratorQuery.data) {
     return <p className="text-sm text-destructive">Não foi possível carregar o orquestrador.</p>
   }
 
-  return <OrchestratorForm orchestrator={orchestratorQuery.data} />
+  return <OrchestratorForm orchestrator={orchestratorQuery.data} onReload={() => orchestratorQuery.refetch()} />
 }

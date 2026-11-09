@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { knowledgeDocumentTypeSchema, knowledgeSourceTypeSchema } from "@/schemas/admin/knowledge.schema"
+import { knowledgeDocumentTypeSchema, knowledgeSourceTypeSchema, pdfExtractionSchema } from "@/schemas/admin/knowledge.schema"
 
 /**
  * Material da Base de Conhecimento como o LEITOR comum recebe (`GET /api/v1/knowledge-materials/:id`):
@@ -18,6 +18,10 @@ export const knowledgeMaterialSchema = z.object({
   updatedAt: z.string(),
   content: z.string(),
   version: z.number(),
+  /** A versão vigente: quem chega por uma citação confere se a página citada é desta versão. */
+  versionId: z.string().optional(),
+  /** Registro da conversão do PDF: páginas e imagens no texto. */
+  extraction: pdfExtractionSchema.nullish().catch(null),
 })
 
 export type KnowledgeMaterial = z.infer<typeof knowledgeMaterialSchema>

@@ -11,12 +11,14 @@ import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin
 import { useDataSourcesQuery, useSetSourceStatusMutation, useSyncFeedMutation, useTestConnectionMutation } from "@/queries/admin/use-data-hub-queries"
 import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type SourceSummary } from "@/schemas/admin/data-hub.schema"
 
+import { ignoreHandled, useConfigUnlockPrompt } from "./config-access/use-config-unlock-prompt"
 import { formatCount, formatFuture, formatRelative } from "./data-hub-format"
 import { ConnectionHealthBadge, FreshnessBadge, SourceStatusBadge } from "./status-badges"
 
 export function SourceActionsMenu({ source }: { source: SourceSummary }) {
   const test = useTestConnectionMutation()
   const status = useSetSourceStatusMutation()
+  const prompt = useConfigUnlockPrompt()
   const sync = useSyncFeedMutation()
   const remote = REMOTE_SOURCE_KINDS.includes(source.kind)
   const syncable = source.feeds.filter((feed) => feed.status === "ACTIVE" || feed.status === "DEGRADED")
@@ -32,6 +34,8 @@ export function SourceActionsMenu({ source }: { source: SourceSummary }) {
   }
 
   return (
+    <>
+    {prompt.dialog}
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button size="icon" variant="ghost" aria-label={`Ações da fonte ${source.name}`}>
@@ -61,12 +65,12 @@ export function SourceActionsMenu({ source }: { source: SourceSummary }) {
           </DropdownMenuItem>
         ) : null}
         {source.status === "PAUSED" || source.status === "ERROR" ? (
-          <DropdownMenuItem onSelect={() => status.mutate({ id: source.id, action: "RESUME" })}>
+          <DropdownMenuItem onSelect={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: source.id, action: "RESUME" })))}>
             <Play /> Retomar
           </DropdownMenuItem>
         ) : null}
         {source.status === "DRAFT" ? (
-          <DropdownMenuItem onSelect={() => status.mutate({ id: source.id, action: "ACTIVATE" })}>
+          <DropdownMenuItem onSelect={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: source.id, action: "ACTIVATE" })))}>
             <Play /> Ativar
           </DropdownMenuItem>
         ) : null}
@@ -76,6 +80,7 @@ export function SourceActionsMenu({ source }: { source: SourceSummary }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   )
 }
 

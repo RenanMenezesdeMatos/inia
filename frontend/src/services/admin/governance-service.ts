@@ -2,7 +2,15 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type PageResult } from "@/lib/admin/list-query"
-import { glossaryTermSchema, prohibitedTopicSchema, type GlossaryTerm, type ProhibitedTopic } from "@/schemas/admin/governance.schema"
+import { glossaryTermSchema, prohibitedTopicSchema, responseCheckEventSchema, responseCheckSummarySchema, type GlossaryTerm, type ProhibitedTopic, type ResponseCheckEvent, type ResponseCheckSummary } from "@/schemas/admin/governance.schema"
+
+export async function fetchResponseCheckSummary(): Promise<ResponseCheckSummary> {
+  return responseCheckSummarySchema.parse(await adminGet("/api/v1/admin/response-checks/summary"))
+}
+
+export async function fetchResponseChecksPage(params: ListParams): Promise<PageResult<ResponseCheckEvent>> {
+  return pageResultSchema(responseCheckEventSchema).parse(await adminGet(`/api/v1/admin/response-checks${toQueryString(params)}`))
+}
 
 export async function fetchProhibitedTopics(): Promise<ProhibitedTopic[]> {
   return z.array(prohibitedTopicSchema).parse(await adminGet("/api/v1/admin/prohibited-topics"))

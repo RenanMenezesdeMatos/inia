@@ -40,7 +40,7 @@ export function toReactFlow(graph: FlowGraph): { nodes: RFNode[]; edges: RFEdge[
  * com id "branchId::left" / "branchId::right" só para o React Flow não confundir
  * os dois pontos de saída com o mesmo id. Ao persistir, volta pro id canônico.
  */
-function canonicalHandle(handleId: string | null | undefined): string {
+export function canonicalHandle(handleId: string | null | undefined): string {
   if (!handleId) return "always"
   const separatorIndex = handleId.indexOf("::")
   return separatorIndex === -1 ? handleId : handleId.slice(0, separatorIndex)

@@ -8,7 +8,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
  */
 export const DEFAULT_ORGANIZATION_TIMEZONE = "America/Fortaleza"
 
-export async function resolveOrganizationTimezone(db: Database, organizationId: string): Promise<string> {
+export async function resolveOrganizationTimezone(db: Pick<Database, "query">, organizationId: string): Promise<string> {
   const result = await db.query<{ timezone: string }>(
     `select timezone from operations where organization_id = $1 order by created_at limit 1`,
     [organizationId],

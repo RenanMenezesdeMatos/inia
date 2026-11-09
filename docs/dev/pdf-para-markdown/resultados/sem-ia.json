@@ -1,0 +1,1657 @@
+{
+  "generatedAt": "2026-11-06T17:35:47.432Z",
+  "budget": {
+    "maxChunks": 8,
+    "maxTotalChars": 9000,
+    "minRelativeScore": 0.2
+  },
+  "retrieval": {
+    "antes": {
+      "n": 36,
+      "top3": 33,
+      "inBudget": 36,
+      "existsInOneChunk": 36,
+      "pageRight": 0,
+      "singlePage": 0,
+      "medianHitChars": 1209,
+      "medianPromptChars": 8135
+    },
+    "depois": {
+      "n": 36,
+      "top3": 34,
+      "inBudget": 36,
+      "existsInOneChunk": 36,
+      "pageRight": 36,
+      "singlePage": 31,
+      "medianHitChars": 651,
+      "medianPromptChars": 4744
+    },
+    "rows": [
+      {
+        "id": "S1",
+        "doc": "simples",
+        "kind": "simples",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "S2",
+        "doc": "simples",
+        "kind": "simples",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "S3",
+        "doc": "simples",
+        "kind": "simples",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "S4",
+        "doc": "simples",
+        "kind": "simples",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T1",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T2",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T3",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T4",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 4,
+            "to": 4
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T5",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 4,
+            "to": 4
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T6",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 5,
+            "to": 6
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "T7",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 5,
+            "to": 6
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "C1",
+        "doc": "duas-colunas-linha",
+        "kind": "colunas",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "C2",
+        "doc": "duas-colunas-linha",
+        "kind": "colunas",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "C3",
+        "doc": "duas-colunas-linha",
+        "kind": "colunas",
+        "antes": {
+          "rank": 4,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 4,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "C4",
+        "doc": "duas-colunas-coluna",
+        "kind": "colunas",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "M1",
+        "doc": "misto",
+        "kind": "misto",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "M2",
+        "doc": "misto",
+        "kind": "misto",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "M3",
+        "doc": "misto",
+        "kind": "misto",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 5,
+            "to": 5
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H1",
+        "doc": "manual-chrome-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H2",
+        "doc": "manual-chrome-tags",
+        "kind": "colunas",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H3",
+        "doc": "manual-chrome-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H4",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H5",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "colunas",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "H6",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "W1",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "W2",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "W3",
+        "doc": "manual-chrome-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 2,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "W4",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "X1",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 5,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 3,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "X2",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 1,
+            "to": 1
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "X3",
+        "doc": "manual-tabelas",
+        "kind": "tabela",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "X4",
+        "doc": "manual-chrome-sem-tags",
+        "kind": "colunas",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 2,
+            "to": 2
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "R1",
+        "doc": "it-013",
+        "kind": "manual-real",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 4,
+            "to": 4
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "R2",
+        "doc": "it-013",
+        "kind": "manual-real",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 4,
+            "to": 4
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "R3",
+        "doc": "it-008",
+        "kind": "manual-real",
+        "antes": {
+          "rank": 6,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 7,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 3,
+            "to": 3
+          },
+          "pageRight": true
+        }
+      },
+      {
+        "id": "R4",
+        "doc": "it-008",
+        "kind": "manual-real",
+        "antes": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true
+        },
+        "depois": {
+          "rank": 1,
+          "inBudget": true,
+          "one": true,
+          "pages": {
+            "from": 64,
+            "to": 64
+          },
+          "pageRight": true
+        }
+      }
+    ]
+  },
+  "relations": {
+    "n": 17,
+    "beforeSameLine": 11,
+    "afterColumn": 17,
+    "beforeHeaderInChunk": 15,
+    "afterHeaderInChunk": 17,
+    "rows": [
+      {
+        "doc": "manual-tabelas",
+        "row": "Banda Larga Fibra",
+        "header": "Prazo de reparo",
+        "value": "24 horas",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Banda Larga Cabo",
+        "header": "Taxa de visita",
+        "value": "R$ 35,00",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "IP Dedicado",
+        "header": "Canal de abertura",
+        "value": "Gerente de contas",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Reincidência em 30 dias",
+        "header": "Responsável",
+        "value": "Qualidade de Rede",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Troca de equipamento",
+        "header": "Prazo de análise",
+        "value": "5 dias úteis",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "De 24 a 72 horas",
+        "header": "Limite mensal",
+        "value": "R$ 75,00",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Até 24 horas",
+        "header": "Crédito",
+        "value": "R$ 10,00",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "row": "Preço",
+        "header": "Oferta permitida",
+        "value": "Desconto de 15% por 6 meses",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "row": "Débito em conta",
+        "header": "Prazo de devolução",
+        "value": "10 dias úteis",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-sem-tags",
+        "row": "Falha técnica recorrente",
+        "header": "Prazo para concluir",
+        "value": "3 dias úteis",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-sem-tags",
+        "row": "Boleto",
+        "header": "Observação",
+        "value": "Conta informada pelo titular",
+        "beforeSameLine": true,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Sinal intermitente",
+        "header": "Encaminhamento",
+        "value": "Abrir visita técnica em até 24 horas e avisar o cliente pelo aplicativo",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "row": "Equipamento sem energia",
+        "header": "Como identificar",
+        "value": "Luzes apagadas mesmo com a tomada testada pelo cliente durante a ligação",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "row": "Dispensa de multa",
+        "header": "Quem decide e como registrar",
+        "value": "O supervisor decide no mesmo dia e registra o número dos três protocolos na observação do pedido",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "manual-chrome-sem-tags",
+        "row": "Devolução em dobro",
+        "header": "Quando se aplica",
+        "value": "Cobrança feita depois da data de cancelamento já registrada no sistema, sem contestação anterior",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": false,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "it-008",
+        "row": "Quarentena",
+        "header": "O que é",
+        "value": "Onde ficam as linhas recusadas, com o motivo (linha, campo, código). Nunca entram \"pela metade\".",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": true,
+        "afterHeaderInChunk": true
+      },
+      {
+        "doc": "it-013",
+        "row": "Proxy de internet",
+        "header": "Situação",
+        "value": "Não executado de ponta a ponta. Só partes isoladas, fora do Windows, em 04/11/2026: o Node 24 e o build passam pelo proxy",
+        "beforeSameLine": false,
+        "afterColumn": true,
+        "beforeHeaderInChunk": false,
+        "afterHeaderInChunk": true
+      }
+    ]
+  },
+  "eventLoop": [
+    {
+      "doc": "it-008",
+      "antes": {
+        "totalMs": 2156,
+        "longestStallMs": 2156
+      },
+      "depois": {
+        "totalMs": 4719,
+        "longestStallMs": 364
+      },
+      "depoisComImagens": {
+        "totalMs": 29328,
+        "longestStallMs": 1177
+      }
+    },
+    {
+      "doc": "escaneado-40-paginas",
+      "antes": {
+        "totalMs": 5,
+        "longestStallMs": 5
+      },
+      "depois": {
+        "totalMs": 23,
+        "longestStallMs": 5
+      },
+      "depoisComImagens": {
+        "totalMs": 6548,
+        "longestStallMs": 548
+      }
+    },
+    {
+      "doc": "manual-tabelas",
+      "antes": {
+        "totalMs": 21,
+        "longestStallMs": 21
+      },
+      "depois": {
+        "totalMs": 292,
+        "longestStallMs": 217
+      },
+      "depoisComImagens": {
+        "totalMs": 51,
+        "longestStallMs": 15
+      }
+    }
+  ],
+  "sentences": {
+    "n": 18,
+    "before": 12,
+    "after": 18,
+    "rows": [
+      {
+        "doc": "duas-colunas-linha",
+        "text": "O desconto de fidelidade de 20% é oferecido a clientes com mais de 24 meses de casa que pedem o cancelamento por preço",
+        "before": false,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-linha",
+        "text": "A multa de cancelamento antecipado é proporcional aos meses que faltam para o fim da fidelização e nunca passa de R$ 300,00 por linha",
+        "before": false,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-linha",
+        "text": "Clientes em área sem cobertura de fibra são isentos da multa quando apresentam o protocolo de inviabilidade técnica",
+        "before": false,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-linha",
+        "text": "A portabilidade para outra operadora é concluída em até 3 dias úteis depois do pedido do cliente",
+        "before": false,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-linha",
+        "text": "O cancelamento por falecimento do titular é isento de multa em qualquer caso e exige a certidão de óbito",
+        "before": false,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-coluna",
+        "text": "A multa de cancelamento antecipado é proporcional aos meses que faltam para o fim da fidelização e nunca passa de R$ 300,00 por linha",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "duas-colunas-coluna",
+        "text": "Pedidos de cancelamento feitos em até 7 dias depois da contratação pela internet ou por telefone seguem o direito de arrependimento",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "text": "Na Regional Norte, a retirada do modem é feita pelos Correios: o cliente recebe um código de postagem válido por 30 dias corridos",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-chrome-sem-tags",
+        "text": "Na Regional Sudeste, clientes com mais de 60 meses de casa podem pedir a dispensa da multa diretamente ao supervisor",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "text": "Quedas repetidas no mesmo dia, confirmadas pelo teste remoto da linha e pelo relato do cliente",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-tabelas",
+        "text": "Registrar as medições e enviar para Engenharia de Capacidade em até 2 dias úteis",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "text": "Cliente com falha técnica comprovada em pelo menos três protocolos abertos nos últimos 60 dias corridos",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-chrome-tags",
+        "text": "A Ouvidoria decide em até 10 dias úteis e comunica o cliente por carta registrada",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "manual-chrome-sem-tags",
+        "text": "Pedido anterior comprovado por protocolo, sem atendimento dentro do prazo informado ao cliente",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "it-008",
+        "text": "Onde ficam as linhas recusadas, com o motivo (linha, campo, código). Nunca entram \"pela metade\".",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "it-008",
+        "text": "A porta única por onde os dados do cliente entram na INIA. Nada entra \"por fora\".",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "it-013",
+        "text": "Não executado de ponta a ponta. Só partes isoladas, fora do Windows, em 04/11/2026: o Node 24 e o build passam pelo proxy",
+        "before": true,
+        "after": true
+      },
+      {
+        "doc": "simples",
+        "text": "Durante o atendimento, confirme o endereço cadastrado",
+        "before": false,
+        "after": true
+      }
+    ]
+  },
+  "imageParity": [
+    {
+      "doc": "duas-colunas-coluna",
+      "pages": 2,
+      "differentPages": []
+    },
+    {
+      "doc": "duas-colunas-linha",
+      "pages": 2,
+      "differentPages": []
+    },
+    {
+      "doc": "escaneado-40-paginas",
+      "pages": 40,
+      "differentPages": []
+    },
+    {
+      "doc": "escaneado",
+      "pages": 1,
+      "differentPages": []
+    },
+    {
+      "doc": "it-008",
+      "pages": 74,
+      "differentPages": []
+    },
+    {
+      "doc": "it-013",
+      "pages": 39,
+      "differentPages": []
+    },
+    {
+      "doc": "manual-chrome-sem-tags",
+      "pages": 3,
+      "differentPages": []
+    },
+    {
+      "doc": "manual-chrome-tags",
+      "pages": 3,
+      "differentPages": []
+    },
+    {
+      "doc": "manual-tabelas",
+      "pages": 6,
+      "differentPages": []
+    },
+    {
+      "doc": "misto",
+      "pages": 5,
+      "differentPages": []
+    },
+    {
+      "doc": "simples",
+      "pages": 3,
+      "differentPages": []
+    }
+  ],
+  "headings": [
+    {
+      "doc": "simples",
+      "expected": 7,
+      "before": 0,
+      "after": 7,
+      "missingAfter": []
+    },
+    {
+      "doc": "manual-tabelas",
+      "expected": 7,
+      "before": 0,
+      "after": 7,
+      "missingAfter": []
+    },
+    {
+      "doc": "duas-colunas-linha",
+      "expected": 1,
+      "before": 0,
+      "after": 1,
+      "missingAfter": []
+    },
+    {
+      "doc": "duas-colunas-coluna",
+      "expected": 1,
+      "before": 0,
+      "after": 1,
+      "missingAfter": []
+    },
+    {
+      "doc": "misto",
+      "expected": 4,
+      "before": 0,
+      "after": 4,
+      "missingAfter": []
+    },
+    {
+      "doc": "manual-chrome-tags",
+      "expected": 6,
+      "before": 0,
+      "after": 6,
+      "missingAfter": []
+    },
+    {
+      "doc": "manual-chrome-sem-tags",
+      "expected": 6,
+      "before": 0,
+      "after": 6,
+      "missingAfter": []
+    }
+  ],
+  "preservation": [
+    {
+      "doc": "duas-colunas-coluna",
+      "wordsBefore": 261,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 2
+    },
+    {
+      "doc": "duas-colunas-linha",
+      "wordsBefore": 261,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 2
+    },
+    {
+      "doc": "escaneado-40-paginas",
+      "wordsBefore": 0,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 0
+    },
+    {
+      "doc": "escaneado",
+      "wordsBefore": 0,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 0
+    },
+    {
+      "doc": "it-008",
+      "wordsBefore": 19587,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 148
+    },
+    {
+      "doc": "it-013",
+      "wordsBefore": 9965,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 78
+    },
+    {
+      "doc": "manual-chrome-sem-tags",
+      "wordsBefore": 459,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 0
+    },
+    {
+      "doc": "manual-chrome-tags",
+      "wordsBefore": 459,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 0
+    },
+    {
+      "doc": "manual-tabelas",
+      "wordsBefore": 577,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 11
+    },
+    {
+      "doc": "misto",
+      "wordsBefore": 170,
+      "missing": 2,
+      "missingWords": [
+        "2",
+        "4"
+      ],
+      "repeatedLinesRemoved": 7
+    },
+    {
+      "doc": "simples",
+      "wordsBefore": 215,
+      "missing": 0,
+      "missingWords": [],
+      "repeatedLinesRemoved": 5
+    }
+  ],
+  "pageCoverage": [
+    {
+      "doc": "duas-colunas-coluna",
+      "pages": 2,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 2
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 2,
+      "tables": 0,
+      "headings": 1,
+      "charsBefore": 1629,
+      "charsAfter": 1613,
+      "chunksBefore": 2,
+      "chunksAfter": 3
+    },
+    {
+      "doc": "duas-colunas-linha",
+      "pages": 2,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 2
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 2,
+      "tables": 0,
+      "headings": 1,
+      "charsBefore": 1629,
+      "charsAfter": 1613,
+      "chunksBefore": 2,
+      "chunksAfter": 3
+    },
+    {
+      "doc": "escaneado-40-paginas",
+      "pages": 40,
+      "tagged": 0,
+      "statuses": {
+        "NO_TEXT": 40
+      },
+      "noTextPages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "partialPages": [],
+      "beforePagesWithText": 0,
+      "tables": 0,
+      "headings": 0,
+      "charsBefore": 0,
+      "charsAfter": 0,
+      "chunksBefore": 0,
+      "chunksAfter": 0
+    },
+    {
+      "doc": "escaneado",
+      "pages": 1,
+      "tagged": 0,
+      "statuses": {
+        "NO_TEXT": 1
+      },
+      "noTextPages": [
+        1
+      ],
+      "partialPages": [],
+      "beforePagesWithText": 0,
+      "tables": 0,
+      "headings": 0,
+      "charsBefore": 0,
+      "charsAfter": 0,
+      "chunksBefore": 0,
+      "chunksAfter": 0
+    },
+    {
+      "doc": "it-008",
+      "pages": 74,
+      "tagged": 74,
+      "statuses": {
+        "TEXT": 42,
+        "PARTIAL": 32
+      },
+      "noTextPages": [],
+      "partialPages": [
+        8,
+        9,
+        13,
+        18,
+        20,
+        23,
+        24,
+        25,
+        32,
+        33,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        44,
+        48,
+        50,
+        51,
+        52,
+        53,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        68
+      ],
+      "beforePagesWithText": 74,
+      "tables": 124,
+      "headings": 54,
+      "charsBefore": 131151,
+      "charsAfter": 127652,
+      "chunksBefore": 127,
+      "chunksAfter": 136
+    },
+    {
+      "doc": "it-013",
+      "pages": 39,
+      "tagged": 38,
+      "statuses": {
+        "TEXT": 30,
+        "PARTIAL": 9
+      },
+      "noTextPages": [],
+      "partialPages": [
+        12,
+        17,
+        21,
+        22,
+        24,
+        28,
+        32,
+        34,
+        36
+      ],
+      "beforePagesWithText": 39,
+      "tables": 53,
+      "headings": 61,
+      "charsBefore": 69936,
+      "charsAfter": 62522,
+      "chunksBefore": 65,
+      "chunksAfter": 77
+    },
+    {
+      "doc": "manual-chrome-sem-tags",
+      "pages": 3,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 3
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 3,
+      "tables": 3,
+      "headings": 6,
+      "charsBefore": 2776,
+      "charsAfter": 2951,
+      "chunksBefore": 2,
+      "chunksAfter": 6
+    },
+    {
+      "doc": "manual-chrome-tags",
+      "pages": 3,
+      "tagged": 3,
+      "statuses": {
+        "TEXT": 3
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 3,
+      "tables": 3,
+      "headings": 6,
+      "charsBefore": 2776,
+      "charsAfter": 2957,
+      "chunksBefore": 2,
+      "chunksAfter": 6
+    },
+    {
+      "doc": "manual-tabelas",
+      "pages": 6,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 6
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 6,
+      "tables": 5,
+      "headings": 7,
+      "charsBefore": 4154,
+      "charsAfter": 4448,
+      "chunksBefore": 4,
+      "chunksAfter": 8
+    },
+    {
+      "doc": "misto",
+      "pages": 5,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 2,
+        "NO_TEXT": 2,
+        "PARTIAL": 1
+      },
+      "noTextPages": [
+        2,
+        4
+      ],
+      "partialPages": [
+        3
+      ],
+      "beforePagesWithText": 5,
+      "tables": 0,
+      "headings": 4,
+      "charsBefore": 1209,
+      "charsAfter": 1099,
+      "chunksBefore": 1,
+      "chunksAfter": 4
+    },
+    {
+      "doc": "simples",
+      "pages": 3,
+      "tagged": 0,
+      "statuses": {
+        "TEXT": 3
+      },
+      "noTextPages": [],
+      "partialPages": [],
+      "beforePagesWithText": 3,
+      "tables": 0,
+      "headings": 7,
+      "charsBefore": 1944,
+      "charsAfter": 1851,
+      "chunksBefore": 2,
+      "chunksAfter": 7
+    }
+  ],
+  "timing": [
+    {
+      "doc": "duas-colunas-coluna",
+      "pages": 2,
+      "sizeBytes": 2376,
+      "beforeMs": 5,
+      "afterMs": 21,
+      "addedMs": 16
+    },
+    {
+      "doc": "duas-colunas-linha",
+      "pages": 2,
+      "sizeBytes": 2384,
+      "beforeMs": 3,
+      "afterMs": 4,
+      "addedMs": 1
+    },
+    {
+      "doc": "escaneado-40-paginas",
+      "pages": 40,
+      "sizeBytes": 2352887,
+      "beforeMs": 23,
+      "afterMs": 22,
+      "addedMs": -1
+    },
+    {
+      "doc": "escaneado",
+      "pages": 1,
+      "sizeBytes": 35600,
+      "beforeMs": 0,
+      "afterMs": 0,
+      "addedMs": 0
+    },
+    {
+      "doc": "it-008",
+      "pages": 74,
+      "sizeBytes": 10790082,
+      "beforeMs": 1603,
+      "afterMs": 3935,
+      "addedMs": 2332
+    },
+    {
+      "doc": "it-013",
+      "pages": 39,
+      "sizeBytes": 3667121,
+      "beforeMs": 771,
+      "afterMs": 2127,
+      "addedMs": 1356
+    },
+    {
+      "doc": "manual-chrome-sem-tags",
+      "pages": 3,
+      "sizeBytes": 83965,
+      "beforeMs": 48,
+      "afterMs": 83,
+      "addedMs": 35
+    },
+    {
+      "doc": "manual-chrome-tags",
+      "pages": 3,
+      "sizeBytes": 102182,
+      "beforeMs": 20,
+      "afterMs": 136,
+      "addedMs": 116
+    },
+    {
+      "doc": "manual-tabelas",
+      "pages": 6,
+      "sizeBytes": 6259,
+      "beforeMs": 16,
+      "afterMs": 51,
+      "addedMs": 35
+    },
+    {
+      "doc": "misto",
+      "pages": 5,
+      "sizeBytes": 38214,
+      "beforeMs": 5,
+      "afterMs": 17,
+      "addedMs": 12
+    },
+    {
+      "doc": "simples",
+      "pages": 3,
+      "sizeBytes": 3031,
+      "beforeMs": 4,
+      "afterMs": 9,
+      "addedMs": 5
+    }
+  ]
+}

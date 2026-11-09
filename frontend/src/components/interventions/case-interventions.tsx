@@ -1,7 +1,7 @@
 "use client"
 
 import { ListChecks, Lock } from "lucide-react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,6 @@ import { InterventionPanel } from "./intervention-panel"
  */
 export function CaseInterventions({ caseId }: { caseId: string }) {
   const query = useCaseInterventionsQuery(caseId)
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   if (query.isPending) return <TableSkeleton rows={3} />
@@ -36,7 +35,10 @@ export function CaseInterventions({ caseId }: { caseId: string }) {
   const select = (id: string) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set("intervention", id)
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    // Só a seleção muda: `history.replaceState` é integrado ao App Router (useSearchParams acompanha) e NÃO refaz a
+    // renderização do servidor — `router.replace` buscava o caso de novo no backend e a lista esperava por isso. A página do
+    // caso não lê `?intervention=` no servidor.
+    window.history.replaceState(null, "", `${pathname}?${params.toString()}`)
   }
   return (
     <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">

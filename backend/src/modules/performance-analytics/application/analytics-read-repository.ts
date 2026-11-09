@@ -468,6 +468,8 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
            -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
            and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
            and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert}
+           -- Aviso de execução bloqueada é só do sino: Acompanhamento é conteúdo para ler (D1, docs/qa/workflows/propostas.md).
+           and a.alert_type <> 'WORKFLOW_EXECUTION_BLOCKED'
          union all
          -- Reports recorrentes: entregas e avisos de "não encaminhado" endereçados a QUEM LÊ (cada um com a versão do escopo dele).
          select r.delivery_id, 'REPORT', r.created_at

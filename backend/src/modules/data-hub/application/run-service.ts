@@ -2,7 +2,7 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { nextSyncAt } from "../domain/freshness.js"
-import { MAX_RUN_ATTEMPTS, RUN_ACTIVE_STATUSES, type RunTriggerKind } from "../domain/run-status.js"
+import { canResumeInterruptedRun, RUN_ACTIVE_STATUSES, RUN_LEASE_SECONDS, type RunStage, type RunTriggerKind } from "../domain/run-status.js"
 import { REMOTE_SOURCE_KINDS } from "../domain/source-config.js"
 import type { DataHubContext } from "./data-hub-context.js"
 import { findRun, recordAudit, requireFeed, requireRun, requireSource, type DataFeedRow, type DataRunRow } from "./records.js"
@@ -15,7 +15,8 @@ import { executeRun } from "./run-pipeline.js"
  * parcial em data_ingestion_runs).
  */
 const CLAIM_LIMIT = 5
-const LEASE_SECONDS = 15 * 60
+/** Token da posse = o próprio `claimed_until`, em texto com microssegundos (o Date do JS perderia a precisão do compare-and-swap). */
+const LEASE_TOKEN_SQL = `to_char(claimed_until at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 
 export type EnqueueInput = {
   organizationId: string
@@ -66,8 +67,14 @@ export async function requestManualSync(ctx: DataHubContext, organizationId: str
   const source = await requireSource(ctx.db, organizationId, feed.sourceId)
   if (!REMOTE_SOURCE_KINDS.includes(source.kind)) throw new DomainError("Só fontes que a INIA consulta (API Pull, SFTP e banco de dados) podem ser sincronizadas pela INIA; arquivos e push chegam do cliente.", "DATA_SOURCE_NOT_SYNCABLE", 422)
   if (feed.status === "DRAFT") throw new DomainError("Ative o feed antes de sincronizar (o mapeamento precisa estar completo).", "DATA_FEED_INACTIVE", 422)
-  const { run } = await enqueueRun(ctx, { organizationId, feed, triggerKind: "MANUAL", requestedBy: actorId })
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SYNC_REQUESTED", entityType: "data_feed", entityId: feed.id, payload: { runId: run.id } })
+  // Carga esperando a próxima tentativa (a espera chega a 1 h): quem sabe que a origem voltou não precisa aguardar. Antecipa essa carga, que segue do ponto aplicado.
+  const waiting = await ctx.db.query<{ id: string }>(
+    `update data_ingestion_runs set next_attempt_at = now() where organization_id = $1 and feed_id = $2 and status = 'QUEUED' and attempts > 0 and next_attempt_at > now() returning id`,
+    [organizationId, feed.id],
+  )
+  const waitingRunId = waiting.rows[0]?.id
+  const run = waitingRunId ? await requireRun(ctx.db, organizationId, waitingRunId) : (await enqueueRun(ctx, { organizationId, feed, triggerKind: "MANUAL", requestedBy: actorId })).run
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SYNC_REQUESTED", entityType: "data_feed", entityId: feed.id, payload: { sourceId: feed.sourceId, name: feed.name, runId: run.id, ...(waitingRunId ? { anticipatedRetry: true } : {}) } })
   return run
 }
 
@@ -75,7 +82,8 @@ export async function requestManualSync(ctx: DataHubContext, organizationId: str
 export async function requestReprocess(ctx: DataHubContext, organizationId: string, runId: string, actorId: string | null): Promise<DataRunRow> {
   const original = await requireRun(ctx.db, organizationId, runId)
   if (!original.rawObjectId) throw new DomainError("Esta carga não tem conteúdo bruto retido para reprocessar.", "DATA_RAW_EXPIRED", 422)
-  const raw = await ctx.rawObjects.get(original.rawObjectId)
+  // Só confere que o conteúdo ainda existe — quem lê o conteúdo é o Run, no processamento.
+  const raw = await ctx.rawObjects.getMeta(original.rawObjectId)
   if (!raw) throw new DomainError("O conteúdo bruto desta carga já foi descartado pela retenção.", "DATA_RAW_EXPIRED", 422)
   const feed = await requireFeed(ctx.db, organizationId, original.feedId)
   const { run } = await enqueueRun(ctx, { organizationId, feed, triggerKind: "REPROCESS", requestedBy: actorId, rawObjectId: original.rawObjectId, reprocessOfRunId: original.id })
@@ -132,8 +140,23 @@ export async function cancelOrphanRuns(db: Pick<DataHubContext["db"], "query">, 
   return result.rowCount ?? 0
 }
 
+/**
+ * Pausar faz a INIA parar de consultar a origem por conta própria, inclusive na carga que esperava a próxima tentativa (espera de até 1 h).
+ * Carga ainda não tentada (`attempts = 0`) fica: no API Push o conteúdo já foi entregue, e numa fonte pausada a pessoa ainda pode pedir a sincronização.
+ */
+export async function cancelWaitingRetries(db: Pick<DataHubContext["db"], "query">, target: { organizationId: string; feedId: string } | { organizationId: string; sourceId: string }): Promise<number> {
+  const [column, id] = "feedId" in target ? ["feed_id", target.feedId] : ["source_id", target.sourceId]
+  const result = await db.query(
+    `update data_ingestion_runs set status = 'CANCELLED', finished_at = now(), claimed_until = null, error_code = 'DATA_FEED_INACTIVE', error_message = 'A fonte ou o conjunto de dados foi pausado enquanto a carga esperava a próxima tentativa.'
+     where organization_id = $1 and ${column} = $2 and status = 'QUEUED' and attempts > 0`,
+    [target.organizationId, id],
+  )
+  return result.rowCount ?? 0
+}
+
 /** Reivindica Runs na fila (skip locked + lease) e executa em sequência. */
 export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT): Promise<{ processed: number }> {
+  let tokens = new Map<string, string>()
   const claimed = await inTransaction(ctx.db, async (client) => {
     const due = await client.query<{ id: string }>(
       `select id from data_ingestion_runs
@@ -142,12 +165,26 @@ export async function processQueuedRuns(ctx: DataHubContext, limit = CLAIM_LIMIT
       [limit],
     )
     if (due.rows.length > 0) {
-      await client.query(`update data_ingestion_runs set claimed_until = now() + make_interval(secs => $2) where id = any($1::uuid[])`, [due.rows.map((row) => row.id), LEASE_SECONDS])
+      const leased = await client.query<{ id: string; token: string }>(
+        `update data_ingestion_runs set claimed_until = now() + make_interval(secs => $2) where id = any($1::uuid[]) returning id, ${LEASE_TOKEN_SQL} token`,
+        [due.rows.map((row) => row.id), RUN_LEASE_SECONDS],
+      )
+      tokens = new Map(leased.rows.map((row) => [row.id, row.token]))
     }
     return due.rows.map((row) => row.id)
   })
   let processed = 0
   for (const runId of claimed) {
+    // Reivindicadas juntas, executadas em sequência: enquanto as anteriores rodam, a posse desta pode vencer e outro worker
+    // reivindicá-la (e executá-la). Só segue se a posse ainda é a deste claim — compare-and-swap no token, já renovando.
+    const kept = await ctx.db.query(
+      `update data_ingestion_runs set claimed_until = now() + make_interval(secs => $3) where id = $1 and status = 'QUEUED' and claimed_until = $2::timestamptz`,
+      [runId, tokens.get(runId) ?? null, RUN_LEASE_SECONDS],
+    )
+    if (!kept.rowCount) {
+      ctx.logger.warn({ runId }, "data-hub run skipped: claim taken by another worker or run cancelled")
+      continue
+    }
     try {
       const finished = await executeRun(ctx, runId)
       if (finished) await enqueueContinuation(ctx, finished)
@@ -189,25 +226,32 @@ export async function enqueueContinuation(ctx: DataHubContext, run: DataRunRow):
  * Carga interrompida (processo caiu/reiniciou no meio): ficou num estado "em andamento" com a posse vencida. Volta
  * para a fila e é retomada — no banco externo em páginas, do último checkpoint confirmado; nos demais, do começo
  * (aplicação idempotente). Esgotadas as tentativas, FALHOU com motivo.
+ *
+ * Cada gravação é um compare-and-swap na posse vencida (`claimed_until < now`, a mesma condição da leitura) e conta pelo
+ * `rowCount`: com duas recuperações juntas (dois processos), a que leu antes não devolve à fila uma carga que a outra já
+ * recuperou e outro worker já reivindicou — nem uma carga viva que renovou a posse entre a leitura e a gravação.
  */
 export async function recoverInterruptedRuns(ctx: DataHubContext, now: Date = ctx.clock.now()): Promise<{ requeued: number; failed: number }> {
-  const stale = await ctx.db.query<{ id: string; attempts: number; stages: unknown }>(
-    `select id, attempts, stages from data_ingestion_runs where status = any($1::text[]) and claimed_until is not null and claimed_until < $2`,
+  const stale = await ctx.db.query<{ id: string; stages: unknown }>(
+    `select id, stages from data_ingestion_runs where status = any($1::text[]) and claimed_until is not null and claimed_until < $2`,
     [RUN_ACTIVE_STATUSES, now],
   )
   let requeued = 0
   let failed = 0
   for (const row of stale.rows) {
-    const stages = Array.isArray(row.stages) ? [...row.stages] : []
-    const last = stages[stages.length - 1] as { finishedAt?: string | null; detail?: string | null } | undefined
+    const stages: RunStage[] = Array.isArray(row.stages) ? [...row.stages] : []
+    const last = stages[stages.length - 1]
     if (last && !last.finishedAt) last.finishedAt = now.toISOString()
-    if (row.attempts < MAX_RUN_ATTEMPTS) {
-      if (last) last.detail = `${last.detail ? `${last.detail} · ` : ""}interrompida (processo reiniciado) — retomada automática`
-      await ctx.db.query(`update data_ingestion_runs set status = 'QUEUED', claimed_until = null, next_attempt_at = $2, stages = $3 where id = $1 and status = any($4::text[])`, [row.id, now, JSON.stringify(stages), RUN_ACTIVE_STATUSES])
-      requeued += 1
+    if (canResumeInterruptedRun(stages)) {
+      if (last) {
+        last.detail = `${last.detail ? `${last.detail} · ` : ""}interrompida (processo reiniciado) — retomada automática`
+        last.interrupted = true
+      }
+      const result = await ctx.db.query(`update data_ingestion_runs set status = 'QUEUED', claimed_until = null, next_attempt_at = $2, stages = $3 where id = $1 and status = any($4::text[]) and claimed_until is not null and claimed_until < $2`, [row.id, now, JSON.stringify(stages), RUN_ACTIVE_STATUSES])
+      requeued += result.rowCount ?? 0
     } else {
-      await ctx.db.query(`update data_ingestion_runs set status = 'FAILED', claimed_until = null, finished_at = $2, stages = $3, error_code = 'DATA_INTERNAL_ERROR', error_message = 'Carga interrompida várias vezes (processo reiniciado no meio) — sincronize de novo.' where id = $1 and status = any($4::text[])`, [row.id, now, JSON.stringify(stages), RUN_ACTIVE_STATUSES])
-      failed += 1
+      const result = await ctx.db.query(`update data_ingestion_runs set status = 'FAILED', claimed_until = null, finished_at = $2, stages = $3, error_code = 'DATA_INTERNAL_ERROR', error_message = 'Carga interrompida várias vezes (processo reiniciado no meio) — sincronize de novo.' where id = $1 and status = any($4::text[]) and claimed_until is not null and claimed_until < $2`, [row.id, now, JSON.stringify(stages), RUN_ACTIVE_STATUSES])
+      failed += result.rowCount ?? 0
     }
   }
   if (requeued || failed) ctx.logger.warn({ requeued, failed }, "data-hub interrupted runs recovered")
@@ -220,7 +264,7 @@ export async function resetFeedCheckpoint(ctx: DataHubContext, organizationId: s
   const inFlight = await ctx.db.query(`select 1 from data_ingestion_runs where feed_id = $1 and status in ('QUEUED','CONNECTING','FETCHING','PARSING','MAPPING','VALIDATING','APPLYING') limit 1`, [feed.id])
   if (inFlight.rowCount) throw new DomainError("Espere a carga em andamento terminar (ou cancele a que está na fila) antes de reiniciar a leitura.", "DATA_RUN_ALREADY_QUEUED", 409)
   await ctx.db.query(`update data_feeds set checkpoint = null, updated_by = $2, updated_at = now() where id = $1`, [feed.id, actorId])
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_CHECKPOINT_RESET", entityType: "data_feed", entityId: feed.id, payload: { previous: feed.checkpoint } })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_CHECKPOINT_RESET", entityType: "data_feed", entityId: feed.id, payload: { sourceId: feed.sourceId, name: feed.name, hadPosition: feed.checkpoint !== null } })
   return requireFeed(ctx.db, organizationId, feed.id)
 }
 

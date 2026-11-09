@@ -240,6 +240,7 @@ async function runNodeLoop(
           interaction_id: null,
           indicator_measurement_id: null,
           parent_enrollment_id: enrollmentBase.id,
+          parent_node_outputs: state.nodeOutputs,
         }
         await runNodeLoop(readDb, sink, store, graph, workflow, inputContext, employeeEnrollment, employeeState, employeeSteps, options, employeeRuns)
         employeeRuns.push({ employeeId, fanOutNodeId: outcome.fanOutNodeId, state: employeeState, steps: employeeSteps })
@@ -376,6 +377,7 @@ export async function runEmployeeNodeLoop(db: Database, session: SimulationSessi
       interaction_id: null,
       indicator_measurement_id: null,
       parent_enrollment_id: session.enrollment.id,
+      parent_node_outputs: session.state.nodeOutputs,
     }
     await runNodeLoop(readDb, sink, store, session.graph, session.workflow, session.inputContext, employeeEnrollment, employeeRun.state, employeeRun.steps, options, session.employeeRuns ?? [])
   })
@@ -416,7 +418,7 @@ function pendingReviewForState(graph: FlowGraph, effects: QaEffect[], state: Wor
   const reviewerIds = effects
     .filter((effect): effect is Extract<QaEffect, { kind: "ALERT" }> => effect.kind === "ALERT" && effect.nodeId === node.id && effect.alertType === "WORKFLOW_HUMAN_REVIEW")
     .map((effect) => effect.recipientId)
-  const content = node.config.contentSource ? resolveSource(state.nodeOutputs, node.config.contentSource) : undefined
+  const content = node.config.contentSource ? resolveSource(state.nodeOutputs, node.config.contentSource, state.variables) : undefined
   return { nodeId: node.id, reviewerIds: [...new Set(reviewerIds)], instruction: node.config.instruction ?? null, content: content ?? null, presentation: buildReviewPresentation(content) }
 }
 

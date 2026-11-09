@@ -24,6 +24,7 @@ export const MIN_CLARIFICATION_OPTIONS = 2
 export const MAX_CLARIFICATION_OPTIONS = 30
 export const MAX_OPTION_EVIDENCE = 6
 export const MAX_ANSWER_SOURCES = 12
+export const MAX_SOURCE_IMAGES = 24
 export const MAX_QUESTION_FACTS = 6
 
 const OPTION_ID = /^opt_[a-f0-9]{10}$/
@@ -36,6 +37,10 @@ export const knowledgeSourceRefSchema = z.object({
   versionId: z.string().max(64),
   heading: z.string().max(300),
   chunkIndex: z.number().int().min(0),
+  /** Páginas do PDF de origem. Vêm do registro da conversão, nunca da IA; estado gravado antes disso não tem. */
+  pages: z.object({ from: z.number().int().min(1), to: z.number().int().min(1) }).optional(),
+  /** Imagens da seção no arquivo, só nas fontes de uma resposta e só para a tela: vêm do registro da conversão e a IA não as recebe. */
+  images: z.array(z.object({ id: z.string().max(64), page: z.number().int().min(1), width: z.number().int().min(1), height: z.number().int().min(1) })).max(MAX_SOURCE_IMAGES).optional(),
 })
 export type KnowledgeSourceRef = z.infer<typeof knowledgeSourceRefSchema>
 

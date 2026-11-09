@@ -274,7 +274,7 @@ async function loadEnrollmentBirth(db: Queryable, organizationId: string, enroll
        join chain c on p.id = c.parent_enrollment_id where p.organization_id = $2 and c.depth < 8
      )
      select (select created_at from chain order by depth desc limit 1) born_at, e.indicator_diagnostic_strategy_version_id pinned, m.indicator_definition_id measurement_indicator
-     from workflow_enrollments e left join indicator_measurements m on m.id = e.indicator_measurement_id and m.organization_id = e.organization_id
+     from workflow_enrollments e left join indicator_measurements_all m on m.id = e.indicator_measurement_id and m.organization_id = e.organization_id
      where e.id = $1 and e.organization_id = $2`,
     [enrollmentId, organizationId],
   )).rows[0]

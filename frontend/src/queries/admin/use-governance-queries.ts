@@ -9,6 +9,8 @@ import {
   fetchGlossaryTermsPage,
   fetchProhibitedTopics,
   fetchProhibitedTopicsPage,
+  fetchResponseCheckSummary,
+  fetchResponseChecksPage,
   setGlossaryTermActive,
   setProhibitedTopicActive,
   updateGlossaryTerm,
@@ -17,6 +19,14 @@ import {
 } from "@/services/admin/governance-service"
 
 import { adminQueryKeys } from "./admin-query-keys"
+
+export function useResponseCheckSummaryQuery() {
+  return useQuery({ queryKey: [...adminQueryKeys.all, "response-checks", "summary"], queryFn: fetchResponseCheckSummary, retry: false })
+}
+
+export function useResponseChecksQuery(params: { page: number; pageSize: number }) {
+  return useQuery({ queryKey: [...adminQueryKeys.all, "response-checks", "list", params], queryFn: () => fetchResponseChecksPage(params), placeholderData: keepPreviousData, retry: false })
+}
 
 export function useProhibitedTopicsQuery() {
   return useQuery({ queryKey: adminQueryKeys.prohibitedTopics(), queryFn: fetchProhibitedTopics })

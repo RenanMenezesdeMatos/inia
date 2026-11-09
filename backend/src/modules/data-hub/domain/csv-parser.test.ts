@@ -93,3 +93,59 @@ describe("csv-parser", () => {
     expect(() => parseCsv(new Uint8Array(), { encoding: "utf-8", delimiter: "auto", hasHeader: true, skipRows: 0 })).toThrow(/vazio/)
   })
 })
+
+/**
+ * A amostra (`limit`) só monta as linhas que devolve e conta o resto: o resultado precisa ser EXATAMENTE o da leitura completa
+ * cortada em `limit` — colunas, linhas, separador e total —, inclusive com aspas, quebras dentro de aspas, linhas só de espaço
+ * ou de separadores, CRLF, aspas sem fim e arquivos só com linhas vazias depois de `skipRows`.
+ */
+describe("csv-parser — amostra idêntica à leitura completa", () => {
+  const pieces = ["a", "b", " ", "\t", ";", ",", '"', '""', '"x;y"', '"l1\nl2"', '" "', "\n", "\r\n", "\r", "\n\n", "  \n", ";;\n", "é", "1"]
+  // Gerador determinístico (sem Math.random): a mesma sequência a cada execução.
+  let seed = 7
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed
+  }
+  const texts = Array.from({ length: 250 }, () => Array.from({ length: 1 + (next() % 40) }, () => pieces[next() % pieces.length]).join(""))
+
+  it("todas as combinações de cabeçalho, linhas puladas e limite devolvem o corte da leitura completa", () => {
+    let compared = 0
+    for (const text of texts) {
+      const bytes = new TextEncoder().encode(text)
+      for (const hasHeader of [true, false]) {
+        for (const skipRows of [0, 1, 3]) {
+          for (const delimiter of [";", ","] as const) {
+            const options = { encoding: "utf-8" as const, delimiter, hasHeader, skipRows }
+            let full: ReturnType<typeof parseCsv> | null = null
+            try {
+              full = parseCsv(bytes, options)
+            } catch {
+              full = null
+            }
+            for (const limit of [0, 1, 2, 5, 20]) {
+              if (full === null) {
+                expect(() => parseCsv(bytes, options, limit)).toThrow(/vazio/)
+                continue
+              }
+              expect(parseCsv(bytes, options, limit)).toEqual({ ...full, rows: full.rows.slice(0, limit) })
+              compared += 1
+            }
+          }
+        }
+      }
+    }
+    expect(compared).toBeGreaterThan(1000)
+  })
+
+  it("arquivo grande: a amostra devolve as primeiras linhas e o total do arquivo inteiro (250 mil linhas)", () => {
+    const lines = ["matricula;valor"]
+    for (let index = 0; index < 250_000; index += 1) lines.push(index % 1000 === 0 ? `M${index};${index}\r\n;;` : `M${index};${index}`)
+    const bytes = new TextEncoder().encode(lines.join("\n"))
+    const sample = parseCsv(bytes, { encoding: "utf-8", delimiter: "auto", hasHeader: true, skipRows: 0 }, 3)
+    expect(sample.delimiter).toBe(";")
+    expect(sample.columns).toEqual(["matricula", "valor"])
+    expect(sample.rows).toEqual([{ matricula: "M0", valor: "0" }, { matricula: "M1", valor: "1" }, { matricula: "M2", valor: "2" }])
+    expect(sample.totalRows).toBe(250_000)
+  })
+})

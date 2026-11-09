@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button"
 import type { GoLiveImpact } from "@/schemas/admin/workflow.schema"
 
 import type { ConfigurationChangeSummary } from "./workflow-configuration-summary"
+import type { WorkflowSummary } from "./workflow-summary"
+import { WorkflowSummaryView } from "./workflow-summary-view"
 
 function formatDateTime(iso: string, timeZone: string): string {
   return new Date(iso).toLocaleString("pt-BR", { timeZone, dateStyle: "short", timeStyle: "short" })
@@ -34,6 +36,14 @@ function ImpactSummary({ impact }: { impact: GoLiveImpact }) {
   const schedule = impact.schedule
   const action = impact.reason === "PUBLISH" ? "publicar" : "ativar"
   if (!schedule) {
+    // Desativado, nenhum gatilho põe nada para rodar: dizer que "as próximas interações passam a usar" seria falso.
+    if (!impact.goesLive) {
+      return (
+        <p className="text-sm text-muted-foreground" data-testid="go-live-impact-inactive">
+          O workflow está desativado: nada roda ao {action}. A nova versão só passa a valer quando ele for ativado{impact.triggerKind === "schedule" ? ", e aí o impacto da agenda é calculado e mostrado de novo" : ""}.
+        </p>
+      )
+    }
     if (impact.triggerKind === "schedule") {
       return <p className="text-sm text-muted-foreground">O workflow está desativado: nada roda ao {action}. Ao ativar, o impacto da agenda é calculado e mostrado de novo.</p>
     }
@@ -102,6 +112,7 @@ export function GoLiveImpactDialog({
   onOpenChange,
   impact,
   changes = [],
+  summary = null,
   pending,
   impactChanged = false,
   onConfirm,
@@ -110,6 +121,8 @@ export function GoLiveImpactDialog({
   onOpenChange: (open: boolean) => void
   impact: GoLiveImpact | null
   changes?: ConfigurationChangeSummary[]
+  /** Como o fluxo vai funcionar (quando começa, para quem, quem recebe) — o que a pessoa precisa conferir antes de pôr no ar. */
+  summary?: WorkflowSummary | null
   pending: boolean
   /** O backend recusou porque o impacto mudou desde a prévia — avisa que os números foram atualizados. */
   impactChanged?: boolean
@@ -124,7 +137,7 @@ export function GoLiveImpactDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="sm:max-w-lg">
+      <AlertDialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>{verb} workflow</AlertDialogTitle>
           <AlertDialogDescription>
@@ -147,6 +160,12 @@ export function GoLiveImpactDialog({
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+            {summary ? (
+              <div className="space-y-1.5 rounded-md border p-3">
+                <p className="text-sm font-medium">Confira como o fluxo vai funcionar</p>
+                <WorkflowSummaryView summary={summary} />
               </div>
             ) : null}
             <div className="space-y-1.5">

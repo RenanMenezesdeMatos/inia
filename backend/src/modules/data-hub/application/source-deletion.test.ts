@@ -23,7 +23,7 @@ function trackingDatabase(options: { failOn?: string } = {}) {
   const db = {
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
       statements.push({ via: "pool", sql, params })
-      if (sql.includes("from data_sources s")) return { rows: [{ id: SOURCE_ID, organizationId: "org-1", kind: "DATABASE", status: "ACTIVE", config: {} }], rowCount: 1 }
+      if (sql.includes("from data_sources s")) return { rows: [{ id: SOURCE_ID, organizationId: "org-1", name: "RH", kind: "FILE_UPLOAD", status: "ACTIVE", config: { kind: "FILE_UPLOAD" } }], rowCount: 1 }
       return { rows: [], rowCount: 0 }
     }),
     connect: vi.fn(async () => client),
@@ -37,7 +37,7 @@ describe("remover fonte", () => {
     await deleteSource(createDataHubContext(db), "org-1", "actor-1", SOURCE_ID)
 
     const inTransaction = statements.filter((entry) => entry.via === "client").map((entry) => entry.sql.trim().split(/\s+/).slice(0, 2).join(" "))
-    expect(inTransaction).toEqual(["begin", "update data_feeds", "update data_sources", "update data_push_tokens", "update data_ingestion_runs", "update data_secrets", "insert into", "commit"])
+    expect(inTransaction).toEqual(["begin", "update data_feeds", "update data_sources", "update data_push_tokens", "update data_ingestion_runs", "update data_secrets", "update data_source_config_unlocks", "insert into", "commit"])
     // Cargas ainda na fila da fonte terminam na mesma transação (achado C07 da 4ª auditoria).
     const orphans = statements.find((entry) => entry.sql.includes("update data_ingestion_runs"))!
     expect(orphans.sql).toMatch(/status = 'CANCELLED'.*error_code = 'DATA_FEED_INACTIVE'.*where organization_id = \$1 and source_id = \$2 and status = 'QUEUED'/s)
@@ -46,7 +46,7 @@ describe("remover fonte", () => {
     expect(secrets.sql).toMatch(/set revoked_at = now\(\) where source_id = \$1 and revoked_at is null/)
     expect(secrets.params).toEqual([SOURCE_ID])
     const audit = statements.find((entry) => entry.sql.includes("insert into audit_logs"))!
-    expect(JSON.parse(String(audit.params[5]))).toEqual({ secretsRevoked: ["DATABASE_PASSWORD"] })
+    expect(JSON.parse(String(audit.params[5]))).toEqual({ sourceId: SOURCE_ID, name: "RH", kind: "FILE_UPLOAD", target: {}, secretsRevoked: ["DATABASE_PASSWORD"] })
     // Fora da transação, só a leitura que confere se a fonte existe.
     expect(statements.filter((entry) => entry.via === "pool").every((entry) => entry.sql.trimStart().startsWith("select"))).toBe(true)
     expect(client.release).toHaveBeenCalledTimes(1)

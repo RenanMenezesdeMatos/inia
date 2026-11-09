@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from "../../../shared/application/concurrency/map-with-concurrency.js"
 import { formatIndicatorValue } from "../../indicators/domain/indicator-definition.js"
 import type { AnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import type { ViewerScope } from "../../performance-analytics/application/viewer-scope.js"
@@ -10,6 +11,12 @@ import { buildCard as card, finish, groupCell, groupsFor, num, type IndicatorQue
  * `loadStructureOperationalSummary`, read model). Sem meta oficial: dentro/fora da meta é sempre do fechamento oficial.
  */
 export const MAX_OPERATIONAL_GROUPS = 15
+/**
+ * Resumos de unidade lidos ao mesmo tempo. Cada um pode abrir uma conexão própria com transação REPEATABLE READ
+ * (`readStructureWindows`) e recalcular membros "vivos" dentro dela: com as 15 unidades de uma vez, uma pergunta segurava
+ * 15 das 20 conexões do pool, e duas lideranças juntas já deixavam o resto da API na fila.
+ */
+const OPERATIONAL_SUMMARY_CONCURRENCY = 3
 
 const TREND_LABELS = { IMPROVED: "melhorou", DECLINED: "piorou", STABLE: "estável" } as const
 
@@ -19,7 +26,7 @@ export async function operationalQuery(repository: AnalyticsReadRepository, scop
   const { groups: allGroups, label } = groupsFor(scope, input, limitations)
   const groups = allGroups.filter((group) => group.members.length > 0).slice(0, MAX_OPERATIONAL_GROUPS)
   if (allGroups.length > groups.length) limitations.push(`Mostro as primeiras ${MAX_OPERATIONAL_GROUPS} unidades.`)
-  const summaries = await Promise.all(groups.map((group) => repository.loadStructureOperationalSummary(scope.organizationId, group.members.map((member) => member.id), input.now, input.window)))
+  const summaries = await mapWithConcurrency(groups, OPERATIONAL_SUMMARY_CONCURRENCY, (group) => repository.loadStructureOperationalSummary(scope.organizationId, group.members.map((member) => member.id), input.now, input.window))
   const wanted = new Set(input.indicators.map((definition) => definition.code))
   const reference = summaries.find((summary) => summary !== null) ?? null
   const columns: QueryTableColumn[] = [

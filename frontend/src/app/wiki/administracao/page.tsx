@@ -24,12 +24,12 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Dados", area: "Indicadores", configures: "Código, Unidade, Nome, Direção desejada; Regras de cálculo por Grupo/Subgrupo; Glossário do indicador.", href: "/wiki/indicadores#configuracao" },
   { menu: "Dados", area: "Flags de canal", configures: "Catálogo de flags por canal: Canal, Nome da flag, Tipo de valor (Verdadeiro/falso ou Numérico), Descrição.", href: "/wiki/workflows/triggers#flag" },
   { menu: "Atendimento com IA", area: "Agentes", configures: "Agents: Nome, Tipo, Objetivo, Descrição, Grupo, Contexto (prompt), Bases consultadas, Restrições; abas Teste, Execuções, Histórico.", href: "/wiki/agents" },
-  { menu: "Atendimento com IA › Agentes", area: "Base de conhecimento", configures: "Documentos autorizados (Título, Tipo, conteúdo colado ou arquivo, Alcance por grupo/assunto, Vale para — todos os produtos ou só alguns —, Status); Publicar/Arquivar; versões; coluna Produtos na lista.", href: "/wiki/bases-conhecimento" },
+  { menu: "Atendimento com IA › Agentes", area: "Base de conhecimento", configures: "Documentos autorizados (Título, Tipo, conteúdo colado ou arquivo, Alcance por grupo/assunto, Vale para — todos os produtos ou só alguns); rascunho, Publicar, Arquivar e Reativar; histórico de versões com comparação e reversão; coluna Produtos na lista.", href: "/wiki/bases-conhecimento" },
   { menu: "Atendimento com IA › Agentes", area: "Produtos", configures: "Uma tela só: lista de produtos por categoria (seta para recolher) e, no produto, Editar (Nome, Categoria — opcional, criada no próprio seletor —, Como o cliente e a operação chamam) e o menu ⋯ (Desativar/Ativar, Excluir); Bases de conhecimento que valem para ele (só dele, compartilhadas ou pela categoria — Adicionar base / Tirar); Como reconhecer na chamada: indícios em um passo (O que aparece na chamada, Confirma o produto quando… × Apenas sugere, De onde vem; Mais detalhes: outros produtos, situação, exceções, documento, nome na lista, início) com Salvar e usar (nunca retroativo) ou Salvar como rascunho; Encerrar/Reativar e versões. Para quais produtos uma base vale também se escolhe no editor da base e do argumentário (Vale para). Sem produtos cadastrados, nada muda.", href: "/wiki/bases-conhecimento#produtos" },
   { menu: "Atendimento com IA › Agentes", area: "Domínios de negócio", configures: "Catálogo administrável de áreas de conhecimento: Nome, Código, Descrição, Status; contadores de Agents/Orchestrators; dependências; bloqueio de exclusão em uso.", href: "/wiki/agents/dominios-negocio" },
   { menu: "Atendimento com IA", area: "Orquestrador da INIA", configures: "Orchestrators: Nome, Agente orquestrador, Grupo, Onde pode ser acionado, Resultado estruturado, Especialistas.", href: "/wiki/orchestrators" },
   { menu: "Atendimento com IA", area: "Argumentários", configures: "O que se espera do operador numa situação da chamada, por Área responsável e escopo (Grupo/Subgrupo) — e, com produtos cadastrados, Vale para (todos os produtos ou só alguns, vigência própria, fora do rascunho): Condição ou gatilho, Quando não se aplica, Orientação ao operador (Deve/Pode), Pontos obrigatórios na fala (todos ou alternativas, com condição por item), Condutas ou promessas a evitar, Argumentário sugerido (exemplo, nunca texto obrigatório), Referência para a monitoria e Procedimento de origem. Rascunho → Publicar com início de vigência (nunca retroativo) → Desativar/Reativar (interruptor na lista); versões publicadas não mudam. Excluir de vez só enquanto nenhuma análise de chamada usou o argumentário — depois disso, desative. Substitui as antigas Regras de chamada.", href: "/wiki/agents#tipos" },
-  { menu: "Atendimento com IA › Governança", area: "Assuntos proibidos · Glossário geral", configures: "Guardrails globais da IA (Assunto, Comportamento esperado) e termos gerais (Termo, Definição e aplicação no feedback).", href: "/wiki/seguranca#ia" },
+  { menu: "Atendimento com IA › Governança", area: "Assuntos proibidos · Glossário geral · Conferência das respostas", configures: "Guardrails globais da IA (Assunto, Comportamento esperado), termos gerais (Termo, Definição e aplicação no feedback) e o registro do que foi conferido nas respostas.", href: "/wiki/seguranca#ia" },
   { menu: "Atendimento com IA", area: "IA / Modelos", configures: "Conexões com providers de IA (API key criptografada, modelo local), modelos e preços versionados, roteamento por função da INIA (fixo, fallback, automático), uso, custos, orçamentos e saúde.", href: "/wiki/administracao/ia-modelos" },
   { menu: "Automação", area: "Workflows", configures: "Criação, editor (canvas, Configurações do workflow, Salvar rascunho, Publicar), Execuções.", href: "/wiki/workflows/criacao" },
   { menu: "Automação", area: "Políticas de acompanhamento", configures: "Tipos de intervenção (capacidades, responsável, prazo, evidências, aprovação, formulário, conclusão, incompatíveis), competências (diagnóstico → conteúdo aprovado → atividades) e políticas versionadas (regras com prioridade, condições, ações, dados insuficientes, simulação, publicação com vigência, auditoria e reavaliação).", href: "/wiki/administracao/politicas-de-acompanhamento" },
@@ -87,9 +87,14 @@ export default function AdministrationPage() {
           grupo ou assunto. O motor de feedback (“Gerar feedback”) usa regras próprias e não lê assuntos proibidos nem limites de atuação.
         </p>
         <p>
+          A aba <strong className="font-medium text-foreground">Conferência das respostas</strong> mostra o que foi bloqueado antes da entrega, o que só
+          foi detectado depois dela e quando a conferência falhou, com um resumo dos últimos 30 dias. Ela usa as regras já cadastradas aqui e nos Agents:
+          nada se cadastra de novo. Só quem tem alcance de organização vê esse registro. Ver{" "}
+          <WikiLink href="/wiki/seguranca#ia">IA e segurança</WikiLink>.
+        </p>
+        <p>
           Cada item tem um interruptor: <strong className="font-medium text-foreground">desativado</strong>, fica guardado mas a IA deixa de recebê-lo
-          (religar não exige redigitar). <strong className="font-medium text-foreground">Excluir</strong> apaga de vez, depois de uma confirmação; o
-          texto apagado fica no registro de auditoria. Só quem administra a organização inteira altera esses itens.
+          (religar não exige redigitar). <strong className="font-medium text-foreground">Excluir</strong> tira da lista e da IA, depois de uma confirmação, sem apagar: o item volta por <WikiLink href="/wiki/central-de-dados#itens-excluidos">Itens excluídos</WikiLink>, desligado. Só quem administra a organização inteira altera esses itens.
         </p>
       </WikiSection>
 
@@ -99,11 +104,14 @@ export default function AdministrationPage() {
           hierárquico, grupo, subgrupo, gestor, situação) — vem da base do cliente e <strong className="font-medium text-foreground">nunca</strong> dá
           acesso ao INIA: importar ou promover alguém (Assistente → Supervisor) não concede nada. <strong className="font-medium text-foreground">Acessos</strong>{" "}
           lista as contas de login: cada conta pode estar vinculada a um colaborador e recebe <strong className="font-medium text-foreground">papéis</strong>{" "}
-          (Administrador geral, Administrador, Administrador de acessos, QA de feedback), cada um com um{" "}
+          (Administrador geral, Administrador, Administrador de acessos, Administrador de dados, QA de feedback), cada um com um{" "}
           <strong className="font-medium text-foreground">escopo</strong> (organização, Grupo, Subgrupo ou a estrutura da pessoa).{" "}
           <strong className="font-medium text-foreground">Papéis</strong> mostra as permissões de cada papel. Um administrador só concede papéis que o
           próprio papel dele permite delegar, dentro do escopo dele, e nunca a si mesmo; toda concessão e revogação fica auditada. Ver{" "}
-          <WikiLink href="/wiki/introducao/papeis#admin">escopo administrativo</WikiLink>. A edição da pessoa mostra ainda a jornada prevista, a situação
+          <WikiLink href="/wiki/introducao/papeis#admin">escopo administrativo</WikiLink>. O <strong className="font-medium text-foreground">Administrador de dados</strong>{" "}
+          abre só a <WikiLink href="/wiki/central-de-dados#configurar-com-senha">Central de Dados</WikiLink>, sempre na organização inteira, sem delegar a ninguém, e
+          só o Administrador geral concede esse papel; a Central fica só com esses dois. Indicadores, Flags de canal e Calendário operacional são outra permissão e não
+          vêm com o papel. A edição da pessoa mostra ainda a jornada prevista, a situação
           funcional, a escala e a <strong className="font-medium text-foreground">Capital operacional</strong> (jurisdição de feriados).
         </p>
         <p>

@@ -50,6 +50,7 @@ import {
 import { INIA_SCENE_BLUR, INIA_SCENE_DIM, INIA_SCENE_IMAGE_RULES, INIA_SCENE_IMAGES, type IniaScene, type IniaSceneImage, type IniaScenesOverview } from "@/schemas/inia-scenes/inia-scene.schema"
 import { sceneImageSrc } from "@/services/inia-scenes/inia-scene-service"
 import { publicAsset } from "@/lib/assets/public-asset"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /**
  * CENÁRIO DA INIA — o fundo atrás dela no palco da aplicação de feedback e no painel do Acompanhamento (call center, Natal,
@@ -748,7 +749,7 @@ export function IniaScenesPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir o cenário “{deleting?.name}”?</AlertDialogTitle>
-            <AlertDialogDescription>{deleting?.isDefault ? "Ele é o cenário padrão: sem ele, os colaboradores voltam a ver o palco roxo de sempre (fora dos períodos agendados)." : "As imagens e o período deste cenário são apagados."}</AlertDialogDescription>
+            <AlertDialogDescription>{deleting?.isDefault ? `Ele é o cenário padrão: sem ele, os colaboradores voltam a ver o palco roxo de sempre (fora dos períodos agendados). ${RESTORE_NOTE}` : `O cenário sai das telas, e as imagens ficam guardadas. ${RESTORE_NOTE}`}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>

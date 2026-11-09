@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -35,6 +35,7 @@ const PUBLISHED_MANUAL: Workflow = {
   published: true,
   trigger: { kind: "manual", context: "COLLABORATOR" },
   activeEnrollments: 0,
+  blockedEnrollments: 0,
   consolidatedStructure: null,
   populationFilter: null,
   draftConfiguration: {
@@ -155,6 +156,8 @@ describe("publicação com impacto", () => {
   it("quando abrir o diálogo", () => {
     const quiet: GoLiveImpact = { ...INCIDENT_IMPACT, configurationChanges: [], schedule: null, requiresConfirmation: false, reasons: [] }
     expect(publishNeedsDialog(quiet)).toBe(false)
+    // WF-04: a primeira publicação sempre mostra o que começa a valer, também por Flag, Indicador e Manual (sem agenda).
+    expect(publishNeedsDialog({ ...quiet, firstPublication: true, triggerKind: "channel_flag", schedule: null })).toBe(true)
     expect(publishNeedsDialog({ ...quiet, configurationChanges: ["SCOPE"] })).toBe(true) // configuração vai mudar: mostra o que muda
     expect(publishNeedsDialog({ ...quiet, firstPublication: true, schedule: { ...INCIDENT_IMPACT.schedule!, firesImmediately: false } })).toBe(true) // 1ª Agenda: quando dispara
     expect(publishNeedsDialog({ ...quiet, requiresConfirmation: true })).toBe(true)
@@ -168,5 +171,19 @@ describe("publicação com impacto", () => {
     expect(dialog).toHaveTextContent("O workflow está desativado: nada roda ao publicar")
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument()
     expect(within(dialog).getByRole("button", { name: "Publicar" })).toBeEnabled()
+  })
+
+  it("WF-30: workflow desativado nunca promete que as próximas interações passam a usar a configuração", () => {
+    render(
+      <GoLiveImpactDialog
+        open
+        onOpenChange={() => {}}
+        impact={{ ...INCIDENT_IMPACT, triggerKind: "channel_flag", goesLive: false, schedule: null, requiresConfirmation: false, reasons: [] }}
+        pending={false}
+        onConfirm={() => {}}
+      />,
+    )
+    expect(screen.getByTestId("go-live-impact-inactive")).toHaveTextContent("está desativado: nada roda")
+    expect(screen.queryByText(/próximas interações/)).not.toBeInTheDocument()
   })
 })

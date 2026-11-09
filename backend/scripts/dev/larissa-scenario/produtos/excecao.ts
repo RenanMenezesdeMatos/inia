@@ -71,7 +71,9 @@ async function configure(ctx: Context) {
     if (!id) throw new Error(`Categoria ${code} não cadastrada.`)
     return id
   })
-  await call("PUT", `/admin/product-catalog/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`, { nodeIds })
+  // Os produtos de uma base ficam no rascunho: só valem depois de publicar (PEN-008).
+  const scope = await call<{ pending: { version: number } | null }>("PUT", `/admin/product-catalog/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`, { nodeIds })
+  if (scope.pending) await call("POST", `/admin/knowledge/${documentId}/publish`, {})
   console.log(`Base: ${EXCECAO_DOCUMENT.title} → ${EXCECAO_DOCUMENT.products.join(", ")}`)
   if (!(await existing("agents", "name", EXCECAO_AGENT.name, ctx.org))) {
     await call("POST", "/admin/agents", {

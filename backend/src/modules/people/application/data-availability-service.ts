@@ -1,6 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { availabilityPolicySchema, type AvailabilityPolicy } from "../../data-hub/domain/data-availability.js"
-import { computeFreshness, expectedIntervalMinutes, type Cadence } from "../../data-hub/domain/freshness.js"
+import { computeFeedFreshness, type Cadence } from "../../data-hub/domain/freshness.js"
 import { EMPLOYMENT_STATUS_CONTRACTS } from "./employment-status-freshness.js"
 import type { WorkActivityEvidenceSources } from "../domain/work-activity-evidence.js"
 import { resolveWorkdayDataAvailability, type AvailabilitySourceInput, type WorkdayDataAvailability } from "../domain/workday-data-availability.js"
@@ -71,7 +71,7 @@ export async function loadDataAvailabilityContext(db: Queryable, organizationId:
       policy: parseAvailabilityPolicy(row.availability_policy),
       lastSuccessAt: row.last_success_at,
       lastDataAt: row.last_data_at,
-      freshness: computeFreshness(row.last_success_at, row.expected_interval_minutes ?? expectedIntervalMinutes(row.cadence), now),
+      freshness: computeFeedFreshness({ lastSuccessAt: row.last_success_at, cadence: row.cadence, expectedIntervalMinutes: row.expected_interval_minutes }, now, timeZone),
       lastErrorCode: row.last_error_code,
     })),
     indicatorOverrides: new Map(overrides.rows.map((row) => [row.code, parseAvailabilityPolicy(row.availability_policy)])),

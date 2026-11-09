@@ -63,7 +63,8 @@ export type ManualRunInteraction = z.infer<typeof manualRunInteractionSchema>
 export const manualRunMeasurementSchema = z.object({ id: z.string(), periodStart: z.coerce.string(), periodEnd: z.coerce.string(), value: z.number(), source: z.string() })
 export type ManualRunMeasurement = z.infer<typeof manualRunMeasurementSchema>
 
-export const manualRunStageSchema = z.enum(["QUEUED", "PROCESSING", "RETRYING", "WAITING", "COMPLETED", "FAILED"])
+/** BLOCKED = parou numa etapa, por agente (PEN-070/073) ou por revisão sem revisor ou sem conteúdo (P5c) — terminal até alguém pedir nova tentativa. */
+export const manualRunStageSchema = z.enum(["QUEUED", "PROCESSING", "RETRYING", "WAITING", "COMPLETED", "FAILED", "BLOCKED"])
 export type ManualRunStage = z.infer<typeof manualRunStageSchema>
 
 export const manualRunDeliverySchema = z.object({
@@ -92,6 +93,10 @@ export const manualRunSchema = z.object({
     enrollmentId: z.string(),
     status: z.string(),
     stage: manualRunStageSchema,
+    /** Motivo de "blocked" (agente inativo, acesso não autorizado, revisão sem revisor ou sem conteúdo); null nos demais estados. */
+    blockedReason: z.string().nullable().catch(null).default(null),
+    /** Só nos bloqueios de Revisão humana: por que não há revisor ou conteúdo. */
+    blockedCause: z.string().nullable().catch(null).default(null),
     currentNodeId: z.string(),
     currentNodeLabel: z.string().nullable(),
     waitingFor: z.enum(["HUMAN_REVIEW", "FEEDBACK_QA", "WAIT"]).nullable(),
@@ -114,6 +119,8 @@ export const MANUAL_RUN_STAGE_LABELS: Record<ManualRunStage, string> = {
   WAITING: "Aguardando",
   COMPLETED: "Concluída",
   FAILED: "Falhou",
+  // O motivo aparece logo abaixo, no diálogo.
+  BLOCKED: "Bloqueada",
 }
 
 export const MANUAL_RUN_WAITING_LABELS: Record<NonNullable<ManualRun["execution"]["waitingFor"]>, string> = {

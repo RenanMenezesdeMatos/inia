@@ -61,13 +61,14 @@ const EVENT_COLUMNS = `event_id, event_name, occurred_at, usage_session_id, acco
 
 export type ProjectionResult = { processed: number; failed: number; maxLagMs: number }
 
-export async function runActivityProjection(db: Database, options: { now?: Date; batchSize?: number; maxBatches?: number } = {}): Promise<ProjectionResult> {
+/** `signal` abortado (a tarefa perdeu a trava) = não reivindica o próximo lote; o lote já tirado da fila vai até o fim. */
+export async function runActivityProjection(db: Database, options: { now?: Date; batchSize?: number; maxBatches?: number; signal?: AbortSignal } = {}): Promise<ProjectionResult> {
   const now = options.now ?? new Date()
   const startedAt = new Date()
   let processed = 0
   let failed = 0
   let maxLagMs = 0
-  for (let batch = 0; batch < (options.maxBatches ?? 5); batch += 1) {
+  for (let batch = 0; batch < (options.maxBatches ?? 5) && !options.signal?.aborted; batch += 1) {
     const claimed = await db.query<{ organization_id: string; person_id: string; local_date: string; marked_at: Date; attempts: number }>(
       `delete from usage_projection_dirty where (organization_id, person_id, local_date) in (
          select organization_id, person_id, local_date from usage_projection_dirty order by marked_at limit $1 for update skip locked)

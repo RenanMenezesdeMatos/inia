@@ -127,7 +127,7 @@ export async function usageDashboard(context: AiAdminContext, organizationId: st
       .map((row) => ({ key: row.dim ?? "—", ...label(row), ...metricsOf(row, costs.filter((item) => item.dim === row.dim)) }))
       .sort((left, right) => right.requests - left.requests)
   const modelIds = model.rows.map((row) => row.dim).filter((dim): dim is string => Boolean(dim) && !dim!.startsWith("legacy:"))
-  const modelNames = modelIds.length > 0 ? await context.db.query<{ id: string; display_name: string; connection_name: string }>(`select m.id, m.display_name, c.name connection_name from ai_models m join ai_connections c on c.id = m.connection_id where m.organization_id = $1 and m.id = any($2::uuid[])`, [organizationId, modelIds]) : { rows: [] }
+  const modelNames = modelIds.length > 0 ? await context.db.query<{ id: string; display_name: string; connection_name: string }>(`select m.id, m.display_name, c.name connection_name from ai_models_all m join ai_connections_all c on c.id = m.connection_id where m.organization_id = $1 and m.id = any($2::uuid[])`, [organizationId, modelIds]) : { rows: [] }
   const modelLabel = new Map(modelNames.rows.map((row) => [row.id, row]))
   const dailyCosts = new Map<string, Record<string, string>>()
   for (const row of dailyCost.rows) dailyCosts.set(row.day_key, { ...(dailyCosts.get(row.day_key) ?? {}), [row.currency]: formatDecimal(parseDecimal(row.amount), 6) })

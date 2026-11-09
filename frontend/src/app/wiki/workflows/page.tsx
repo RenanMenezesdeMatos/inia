@@ -38,6 +38,9 @@ export default function WorkflowEngineOverviewPage() {
           Esta área documenta exatamente o que está implementado hoje — com os 10 Workflows operacionais reais criados, publicados e executados como
           prova, e os 20 modelos práticos configurados em rascunho (ver <WikiLink href="/wiki/casos-praticos/workflows">Casos práticos › Modelos de Workflow</WikiLink>).
         </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-foreground/80">
+          Prefere aprender por um problema concreto? Em <WikiLink href="/wiki/workflows/exemplos">Aprenda na prática</WikiLink> você acompanha jornadas completas, etapa por etapa, em demonstrações com dados fictícios.
+        </p>
         <div className="flex flex-wrap gap-2 pt-2">
           <CapabilityBadge label="Flag de canal" />
           <CapabilityBadge label="Indicador" />
@@ -218,7 +221,8 @@ export default function WorkflowEngineOverviewPage() {
         <p>
           Em modo Consolidado, <strong className="font-medium text-foreground">Performance do colaborador nunca é uma Condition válida</strong> (não
           existe um colaborador individual como sujeito), e o Output <strong className="font-medium text-foreground">&quot;O próprio operador&quot;
-          também não</strong> — nem a lista de opções oferece essas duas escolhas, nem uma tentativa direta passa da validação do backend. A
+          também não</strong>, exceto no caminho individual, entre &quot;Aplicar individualmente&quot; e &quot;Consolidar resultados&quot;. Fora desse
+          caminho, a lista de destinatários não oferece essa opção e uma tentativa direta não passa da validação do backend. A
           validação roda em três momentos: ao trocar o Alvo da avaliação pra Consolidado (bloqueia antes de trocar, dizendo qual nó precisa mudar
           primeiro), ao publicar, e — simetricamente — ao trocar só o Gatilho de um Workflow que já está Consolidado pra um Trigger que não
           suporta esse modo (Flag, Indicador, ou Agenda relativa). Para analisar cada pessoa da estrutura separadamente dentro de um Workflow
@@ -324,9 +328,10 @@ export default function WorkflowEngineOverviewPage() {
       <WikiSection id="mapa" title="Mapa desta área" eyebrow="Onde está cada assunto">
         <SeeAlso
           links={[
+            { href: "/wiki/workflows/exemplos", label: "Aprenda na prática", hint: "demonstrações guiadas com dados fictícios" },
             { href: "/wiki/workflows/criacao", label: "Como criar um Workflow", hint: "passo a passo no editor real" },
             { href: "/wiki/workflows/triggers", label: "Triggers", hint: "Flag, Indicador, Agenda" },
-            { href: "/wiki/workflows/nodes", label: "Nodes", hint: "todos os 11, contexto, Variáveis, Aguardar" },
+            { href: "/wiki/workflows/nodes", label: "Nodes", hint: "todos os 12, contexto, Variáveis, Aguardar" },
             { href: "/wiki/workflows/conditions", label: "Conditions", hint: "TRUE/FALSE/SEM DADOS, períodos, histórico" },
             { href: "/wiki/workflows/ranking", label: "Selecionar colaboradores e Ranking" },
             { href: "/wiki/workflows/fan-out-fan-in", label: "Fan-out e Fan-in" },

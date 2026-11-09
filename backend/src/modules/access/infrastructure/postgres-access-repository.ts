@@ -29,6 +29,23 @@ const toAccount = (row: AccountRow): AccountSummary => ({
   collaborator: { personId: row.person_id, name: row.name, jobTitle: row.job_title, level: row.level, active: row.person_active, team: row.team_id ? { id: row.team_id, name: row.team_name! } : null, subteam: row.subteam_id ? { id: row.subteam_id, name: row.subteam_name! } : null },
 })
 
+/**
+ * `loadContext` de várias contas em duas consultas (ex.: os destinatários de um report), com a MESMA regra: só conta ATIVA de
+ * pessoa ATIVA tem atribuições; as outras recebem o contexto vazio. Uma entrada por conta pedida.
+ */
+export async function loadAccessContexts(db: Queryable, organizationId: string, accountIds: readonly string[]): Promise<Map<string, AccessContext>> {
+  const ids = [...new Set(accountIds)]
+  const contexts = new Map<string, AccessContext>(ids.map((accountId) => [accountId, { organizationId, accountId, personId: "", assignments: [] }]))
+  if (ids.length === 0) return contexts
+  const accounts = await db.query<{ id: string; person_id: string }>(`select ua.id, ua.person_id from user_accounts ua join people p on p.id = ua.person_id where ua.organization_id = $1 and ua.id = any($2::uuid[]) and ua.active and p.active`, [organizationId, ids])
+  if (accounts.rows.length === 0) return contexts
+  const assignments = await db.query<AssignmentRow>(`${ASSIGNMENT_SELECT} where a.organization_id = $1 and a.user_account_id = any($2::uuid[]) and a.revoked_at is null order by a.granted_at`, [organizationId, accounts.rows.map((row) => row.id)])
+  const byAccount = new Map<string, AccessAssignment[]>(accounts.rows.map((row) => [row.id, []]))
+  for (const entry of assignments.rows) byAccount.get(entry.user_account_id)?.push({ id: entry.id, roleCode: entry.role_code, scope: toScope(entry) })
+  for (const row of accounts.rows) contexts.set(row.id, { organizationId, accountId: row.id, personId: row.person_id, assignments: byAccount.get(row.id)! })
+  return contexts
+}
+
 /** Modelo de acesso (migration 081). */
 export function createPostgresAccessRepository(db: Queryable): AccessRepository {
   const contextFor = async (organizationId: string, where: string, value: string): Promise<AccessContext> => {

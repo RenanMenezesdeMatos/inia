@@ -1,3 +1,4 @@
+import { findPrecedingCollectionNode, isRecognitionRankingSelection } from "../workflow-graph.schema"
 import { triggerDataOrigin } from "../workflow.schema"
 import type { ValidationContext } from "./types"
 
@@ -11,6 +12,16 @@ export function validateDiagnosisSources(context: ValidationContext): void {
   for (const node of graph.nodes) {
     if (node.type === "action" && node.config.actionType === "CALL_AGENT" && node.config.outputContract === "PRV_CLOSING_DIAGNOSIS" && (triggerDataOrigin(trigger) !== "schedule" || node.config.scheduledDataSource?.kind !== "PERFORMANCE")) {
       issues.push({ nodeId: node.id, code: "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE", message: "\"Diagnóstico do fechamento do PRV\" parte do fechamento oficial — só com gatilho por Agenda e a fonte de dados \"Fechamentos oficiais\"." })
+    }
+  }
+
+  // Reconhecimento: o motivo vem de um ranking de "Melhores" ou de evolução antes do nó; os números, dos fechamentos oficiais. Mesma regra do backend.
+  for (const node of graph.nodes) {
+    if (node.type !== "action" || node.config.actionType !== "CALL_AGENT" || node.config.outputContract !== "RECOGNITION") continue
+    const selection = findPrecedingCollectionNode(graph, node.id)
+    const ranking = selection?.config.selectionMode === "RANKING" ? selection.config.ranking : undefined
+    if (triggerDataOrigin(trigger) !== "schedule" || node.config.scheduledDataSource?.kind !== "PERFORMANCE" || !isRecognitionRankingSelection(ranking?.selection)) {
+      issues.push({ nodeId: node.id, code: "WORKFLOW_RECOGNITION_REQUIRES_RANKING", message: "\"Reconhecimento\" precisa da fonte de dados \"Fechamentos oficiais\" e de um \"Selecionar colaboradores\" antes, por ranking de \"Melhores desempenhos\" ou de evolução. É dele que vem o motivo do reconhecimento." })
     }
   }
 

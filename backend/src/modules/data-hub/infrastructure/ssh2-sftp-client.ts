@@ -3,7 +3,7 @@ import { Client, type ConnectConfig, type SFTPWrapper } from "ssh2"
 import { outboundPolicy } from "../../../config/outbound-policy.js"
 import { assertOutboundDestination, OutboundDestinationDenied } from "../../../shared/infrastructure/outbound-destination-policy.js"
 import type { SftpClient, SftpConnection, SftpFileEntry } from "../application/ports.js"
-import { DataRunError } from "../domain/error-codes.js"
+import { DataRunError, NOT_A_CREDENTIAL_REFUSAL } from "../domain/error-codes.js"
 
 /** Teto de um arquivo baixado por SFTP (ele vai inteiro para a memória e para o armazenamento bruto). */
 export const MAX_SFTP_DOWNLOAD_BYTES = 200 * 1024 * 1024
@@ -66,7 +66,7 @@ async function withSftp<T>(connection: SftpConnection, work: (sftp: SFTPWrapper)
     })
     client.on("error", (error: Error & { level?: string }) => {
       if (error.level === "client-authentication") return fail(new DataRunError("DATA_SOURCE_AUTH_FAILED", "Usuário, senha ou chave privada recusados pelo servidor SFTP."))
-      if (/host.*verif|hostVerifier/i.test(error.message)) return fail(new DataRunError("DATA_SOURCE_AUTH_FAILED", "A host key do servidor não confere com a fingerprint configurada."))
+      if (/host.*verif|hostVerifier/i.test(error.message)) return fail(new DataRunError("DATA_SOURCE_AUTH_FAILED", "A host key do servidor não confere com a fingerprint configurada.", NOT_A_CREDENTIAL_REFUSAL))
       if (/timeout/i.test(error.message)) return fail(new DataRunError("DATA_SOURCE_TIMEOUT", `O servidor SFTP não respondeu em ${connection.timeoutMs} ms.`))
       fail(new DataRunError("DATA_SOURCE_UNREACHABLE", `Não foi possível conectar ao SFTP (${error.message}).`))
     })

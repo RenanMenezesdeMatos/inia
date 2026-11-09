@@ -6,7 +6,7 @@ Documentação de referência do motor de Workflows da INIA — como ele é mode
 
 Um Workflow é um **grafo dirigido** (`nodes` + `edges`), com exatamente um nó `trigger` e um ou mais nós `end`. Cada Workflow tem:
 
-- **`draft_graph`**: o grafo em edição (`PUT /admin/workflows/:id/draft`), nunca executado.
+- **`draft_graph`**: o grafo em edição (`PUT /admin/workflows/:id/draft`), nunca executado. Aceita em branco o que a pessoa ainda vai preencher, como agente, conteúdo ou destino (`domain/draft-graph.ts`); só a publicação, o dry-run e o QA Lab exigem o grafo completo, e a recusa aponta a etapa.
 - **`workflow_versions`**: cada `Publicar` congela o `draft_graph` numa nova versão (`workflow_versions.graph`) e aponta `workflows.active_version_id` pra ela. **Uma execução (`workflow_enrollment`) fica presa à versão em que ela começou** — editar e republicar o Workflow depois não afeta execuções já em andamento (elas terminam na versão antiga; só novas execuções usam a versão nova).
 - **Configuração em rascunho × publicada** (migration 144): Gatilho, Abrangência e Modo de avaliação (Estrutura Consolidada / Filtro Populacional) também são rascunho — o editor grava `draft_trigger_config`, `draft_scope_type`… e o runtime (agendador, ingestão por Flag/Indicador, Executar agora, motor) só lê a configuração publicada (`trigger_config`, `scope_type`…). Editar um Workflow ativo nunca cria matrícula; `Publicar` copia rascunho → publicada junto com o grafo, na mesma transação, e registra a configuração na própria versão. Antes de pôr uma Agenda no ar (publicar um Workflow ativo ou ativar um publicado), a prévia de impacto (`GET /admin/workflows/:id/publish-impact`) mostra a população, o catch-up de hoje (horários de hoje já vencidos disparam na 1ª rodada do agendador) e o primeiro disparo; catch-up imediato ou mais de 50 pessoas com configuração nova exigem confirmação explícita (o pedido leva o `fingerprint` do impacto, senão 409).
 - **População elegível (modo Individual)**: `Abrangência (ALL_TEAMS / TEAM / SUBTEAM) ∩ Filtro Populacional`. Todos os Triggers individuais — Agenda, Flag de canal, Indicador e Manual — e o QA Lab usam a MESMA regra (`workflow-eligibility.ts`): o Trigger muda como a execução começa, nunca quem pertence à população do Workflow.
@@ -38,6 +38,12 @@ O motor roda como um **worker contínuo** (`workflow-worker.ts`, iniciado em `se
 ### Resolução hierárquica (Human Review e Escalonar)
 
 Ambos usam o mesmo `HierarchicalTarget`: cargo relativo ao operador da ocorrência, cargo relativo a quem decidiu uma Revisão Humana anterior no mesmo fluxo, ou uma pessoa específica. A navegação sobe `people.reports_to_id` a partir do ponto de partida escolhido.
+
+Só pessoa ativa recebe. O cargo vem do primeiro da cadeia: quem está inativo não passa a vez para quem está acima.
+
+**Sem revisor ou sem conteúdo** (`human-review-executor.ts`, `domain/execution-block.ts`): a Revisão Humana não entra em espera. A matrícula fica `blocked`, com `blocked_reason` `HUMAN_REVIEW_NO_REVIEWER` ou `HUMAN_REVIEW_CONTENT_MISSING` e o caso em `blocked_details.cause`, sem nome de pessoa, e só continua por nova tentativa confirmada (`workflow-retry.ts`), cuja prévia confere a causa de novo. Quem publicou a versão vigente recebe um aviso no sino (`blocked-execution-notice.ts`, tipo `WORKFLOW_EXECUTION_BLOCKED`), um por workflow, etapa e dia, se ainda tiver `workflows.manage` no alcance do workflow, mesmo sendo o colaborador da execução. A linha gravada é genérica; workflow e etapa entram na leitura, conferidos com a permissão daquele momento. A mesma regra vale para a lista e para a contagem de não lidos, sem depender do limite da lista, e nenhum aviso é marcado como lido por isso: quem perde o acesso deixa de ver e de contar; ao recuperar, o aviso volta como estava (migration 170, `notifications-repository.ts`).
+
+**Conteúdo de Output e Escalonar:** origem ausente encerra a matrícula com falha e o motivo (`WORKFLOW_CONTENT_MISSING`), sem entrega. A publicação recusa origem que não existe ou que não vem antes (`publish-validation/node-references.ts`). Origem em variável é lida com `resolveContextValue`, e texto, número e verdadeiro/falso viram texto legível.
 
 ### Escalonar × Output × Revisão Humana
 
@@ -127,9 +133,9 @@ Essa política já existia implicitamente na implementação original (era só n
 
 ### Publicar, editar e desativar
 
-- **Editar/republicar a Agenda** tem efeito imediato — o checador sempre lê `trigger_config` direto da linha vigente do Workflow (nunca uma cópia congelada), então não existe risco de "duas agendas ativas ao mesmo tempo": ao salvar um novo horário, o horário antigo simplesmente deixa de existir.
-- **Desativar** (`active = false`) ou **despublicar** um Workflow tira ele da lista de elegíveis do checador imediatamente — a query já filtra `w.active and w.active_version_id is not null`. Desativar também PARA as execuções em andamento: o motor não reivindica matrícula de Workflow desativado; elas ficam no nó em que estavam e seguem quando ele for reativado (C06).
-- **Excluir** um Workflow remove em cascata todas as suas matrículas (FK `on delete cascade`).
+- **Editar a Agenda** fica no rascunho (`draft_trigger_config`) e não muda nada em execução. **Publicar** copia o rascunho para `trigger_config`, que é o que o checador lê: só existe uma agenda ativa, e o horário antigo deixa de valer nesse momento.
+- **Desativar** (`active = false`) tira o Workflow da lista de elegíveis do checador imediatamente — a query já filtra `w.active and w.active_version_id is not null`. Não existe "despublicar" na interface nem na API. Desativar também PARA as execuções em andamento: o motor não reivindica matrícula de Workflow desativado; elas ficam no nó em que estavam e seguem quando ele for reativado (C06).
+- **Excluir** um Workflow remove em cascata versões, matrículas de qualquer estado, eventos, variáveis e disparos manuais, sem conferir o que está em andamento. Artefatos e mensagens do motor de feedback ficam com a referência nula, e os feedbacks já entregues permanecem. Exceção conhecida: `interaction_feedback_generations.workflow_id` não tem `on delete` — quem já rodou o feedback direto legado recebe erro ao excluir (ver `docs/qa/workflows/achados.md`, WF-06).
 - **Testar antes de publicar:** Workflows podem ser testados em rascunho no QA Lab (`/admin/simulate`, exclusivo do administrador global) antes da publicação — o QA Lab executa o rascunho atual (ou, explicitamente, a versão publicada) com a mesma engine, congelando um snapshot da configuração testada em cada execução. Execuções QA não ativam o checador de agenda, não criam matrícula em `workflow_enrollments` nem geram efeitos operacionais (alertas, feedbacks, outputs, `agent_runs`): publicar continua sendo a única forma de colocar um Workflow em operação.
 
 ### Validações (mensagens sempre amigáveis, nunca erro técnico de schema)

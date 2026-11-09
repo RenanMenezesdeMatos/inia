@@ -3,6 +3,7 @@ import {
   COMPARATOR_LABELS,
   ESCALATION_ROLE_LABELS,
   HISTORICAL_AGGREGATION_LABELS,
+  NODE_TYPE_LABELS,
   OUTPUT_SURFACE_LABELS,
   OUTPUT_TARGET_LABELS,
   PERFORMANCE_METRIC_LABELS,
@@ -90,6 +91,26 @@ export const NODE_COLORS: Record<FlowNodeType, { icon: string; iconBg: string; r
   end: { icon: "text-slate-600 dark:text-slate-300", iconBg: "bg-slate-100 dark:bg-slate-800", ring: "border-slate-400 ring-slate-400/30" },
 }
 
+/** Nome de cada ação na tela — o mesmo da paleta, da Wiki e das mensagens de validação. */
+export const ACTION_TYPE_LABELS: Record<Extract<FlowNode, { type: "action" }>["config"]["actionType"], string> = {
+  CALL_AGENT: "Chamar agente",
+  GENERATE_FEEDBACK: "Gerar feedback",
+  GENERATE_INTERACTION_FEEDBACK: "Feedback direto de atendimento",
+  ESCALATE: "Escalonar",
+  SET_VARIABLE: "Definir variável",
+  SET_CONFIG_VALUE: "Definir configuração",
+}
+
+/** O que a etapa é: "Condição", "Chamar agente"… — nunca o genérico "Ação". */
+export function nodeKindLabel(node: FlowNode): string {
+  return node.type === "action" ? ACTION_TYPE_LABELS[node.config.actionType] : NODE_TYPE_LABELS[node.type]
+}
+
+/** Como a etapa é chamada na tela: o nome dado, senão o que ela é. Nunca vazio, nunca o id técnico. */
+export function nodeDisplayName(node: FlowNode): string {
+  return node.label.trim() || nodeKindLabel(node)
+}
+
 export type NodeDescribeContext = {
   triggerLabel?: string
   /** Só usado pra decidir a FRASE do card do Trigger — "Todos os dias às 09:00" (Agenda) nunca
@@ -102,6 +123,8 @@ export type NodeDescribeContext = {
    * engine sobre os PRVs individuais dos membros, nunca um PRV oficial da estrutura. Ausente =
    * Individual, comportamento de sempre. */
   isConsolidatedMode?: boolean
+  /** Nós entre "Aplicar individualmente" e "Consolidar resultados": mesmo em Workflow consolidado, o sujeito ali é a pessoa da execução. */
+  individualNodeIds?: ReadonlySet<string>
   getAgentName?: (agentId: string) => string | undefined
   getOrchestratorName?: (orchestratorId: string) => string | undefined
   /** Nome da política de acompanhamento (resumo publicado) — o card nunca mostra id. */
@@ -373,7 +396,7 @@ export function describeNodeConfig(node: FlowNode, context: NodeDescribeContext)
         return node.config.group.rules.map((rule) => describeConditionRule(rule, context)).join(joiner)
       }
       if (node.config.historicalQuery) {
-        return describeHistoricalSummary(node.config.historicalQuery, node.config, context.isConsolidatedMode)
+        return describeHistoricalSummary(node.config.historicalQuery, node.config, context.isConsolidatedMode && !context.individualNodeIds?.has(node.id))
       }
       if (node.config.performanceQuery) {
         return describePerformanceSummary(node.config.performanceQuery, node.config)
@@ -405,6 +428,7 @@ export function describeNodeConfig(node: FlowNode, context: NodeDescribeContext)
       return "Aguarda as execuções de \"Aplicar individualmente\""
     case "action":
       if (node.config.actionType === "CALL_AGENT") {
+        if (!node.config.agentId) return "Agente ainda não escolhido"
         return `Chamar ${context.getAgentName?.(node.config.agentId) ?? "agente"}`
       }
       if (node.config.actionType === "ESCALATE") {
@@ -419,7 +443,7 @@ export function describeNodeConfig(node: FlowNode, context: NodeDescribeContext)
               : `${ESCALATION_ROLE_LABELS[target.role]} de quem decidiu em "${context.getNodeLabel?.(target.previousReviewNodeId) ?? "revisão anterior"}"`
         const surfaces = node.config.surfaces.map((surface) => OUTPUT_SURFACE_LABELS[surface]).join(" + ")
         const reason = node.config.reason ? ` — "${node.config.reason}"` : ""
-        return `Escalonar → ${targetLabel} · ${surfaces || "sem superfície"}${reason}`
+        return `Escalonar → ${targetLabel} · ${surfaces || "sem destino"}${reason}`
       }
       if (node.config.actionType === "SET_VARIABLE") {
         const variable = context.getVariable?.(node.config.variableId)
@@ -462,7 +486,9 @@ export function describeNodeConfig(node: FlowNode, context: NodeDescribeContext)
     }
     case "output": {
       const surfaces = node.config.surfaces.map((surface) => OUTPUT_SURFACE_LABELS[surface]).join(" + ")
-      return `${OUTPUT_TARGET_LABELS[node.config.target.type]} — ${surfaces || "sem superfície"}`
+      // "Cargo específico" sozinho não responde quem recebe: mostra o cargo escolhido.
+      const recipient = node.config.target.type === "ROLE" ? ESCALATION_ROLE_LABELS[node.config.target.role] : OUTPUT_TARGET_LABELS[node.config.target.type]
+      return `${recipient} — ${surfaces || "sem destino"}`
     }
     case "end":
       return "Fim do fluxo"

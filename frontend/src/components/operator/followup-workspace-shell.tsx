@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Bot } from "lucide-react"
 import { usePanelRef } from "react-resizable-panels"
 
@@ -37,7 +37,7 @@ function useWorkspaceLayout(): "desktop" | "mobile" | null {
   return useSyncExternalStore(subscribeLayout, layoutSnapshot, () => null)
 }
 
-/** Elemento visível (o feed existe nos dois layouts, um deles escondido por CSS). */
+/** Elemento visível (antes de o layout ser conhecido o feed existe nos dois layouts, um deles escondido por CSS). */
 const isVisible = (element: HTMLElement) => element.getClientRects().length > 0
 
 /**
@@ -52,6 +52,10 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
   const reducedMotion = usePrefersReducedMotion()
   // O motor de voz vive aqui (não no chat): o clique no feed libera o áudio dentro do gesto.
   const [voice] = useState(createIniaVoiceEngine)
+  // O AudioContext nasce no clique (`prime()`) e só a desconexão da voz ao vivo o fechava: recado ou apresentação de feedback
+  // sem conversa por voz deixavam um contexto aberto a cada visita ao Acompanhamento. Fechar não é terminal — um novo
+  // `prime()` cria outro contexto —, então o StrictMode (desmonta e monta de novo) continua seguro.
+  useEffect(() => () => void voice.playback.close(), [voice])
   const [pendingRequest, setPendingRequest] = useState<FeedbackOpenRequest | null>(null)
   const [activeSourceKey, setActiveSourceKey] = useState<string | null>(null)
   const [readTarget, setReadTarget] = useState<{ key: string; nonce: number } | null>(null)
@@ -129,7 +133,9 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
     <div className="w-full">
       <div className="sticky top-[7.5rem] hidden h-[calc(100dvh-8.5rem)] overflow-hidden rounded-xl bg-card md:block">
         <ResizablePanelGroup orientation="horizontal">
-          <ResizablePanel defaultSize="58%" minSize="38%">{feed}</ResizablePanel>
+          {/* O feed segue o chat: com o layout conhecido só a cópia visível existe (antes eram duas árvores completas, uma
+              escondida por CSS). Sem layout (servidor e hidratação) as duas continuam, como sempre; a que fica não remonta. */}
+          <ResizablePanel defaultSize="58%" minSize="38%">{layout === "mobile" ? null : feed}</ResizablePanel>
           <ResizableHandle withHandle/>
           <ResizablePanel panelRef={chatRef} defaultSize="42%" minSize="300px" collapsedSize="64px" collapsible onResize={(size) => setCollapsed(size.inPixels < 120)}>
             {collapsed
@@ -147,7 +153,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
         </ResizablePanelGroup>
       </div>
       <div className="space-y-4 md:hidden">
-        <div ref={mobileFeedRef} className="h-[65dvh] scroll-mt-28 overflow-hidden rounded-xl bg-card">{feed}</div>
+        <div ref={mobileFeedRef} className="h-[65dvh] scroll-mt-28 overflow-hidden rounded-xl bg-card">{layout === "desktop" ? null : feed}</div>
         <div ref={mobileChatRef} className="h-[80dvh] scroll-mt-28 overflow-hidden rounded-xl bg-card">
           {layout === "mobile" ? renderChat({}) : <div className="space-y-3 p-5" aria-hidden><Skeleton className="h-64 w-full rounded-2xl"/><Skeleton className="h-10 w-3/4 rounded-2xl"/></div>}
         </div>

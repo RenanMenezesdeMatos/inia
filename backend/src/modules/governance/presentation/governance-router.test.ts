@@ -32,12 +32,14 @@ describe("Governança — exclusão de assunto proibido e termo do glossário", 
   it.each([
     ["/admin/prohibited-topics", "prohibited_topics", "prohibited_topic"],
     ["/admin/glossary", "glossary_terms", "glossary_term"],
-  ])("DELETE %s apaga só na organização da sessão e grava o texto apagado em audit_logs na mesma instrução", async (path, table, entityType) => {
+  ])("DELETE %s exclui sem apagar, só na organização da sessão, e grava o texto em audit_logs na mesma instrução", async (path, table, entityType) => {
     const { app, queries } = appWith([{ entity_id: TOPIC }])
     const response = await request(app).delete(`${path}/${TOPIC}`)
     expect(response.status).toBe(204)
     expect(queries).toHaveLength(1)
-    expect(queries[0]!.sql).toContain(`delete from ${table} where id=$1 and organization_id=$2`)
+    expect(queries[0]!.sql).toContain(`update ${table}_all set active=false, deleted_at=now()`)
+    expect(queries[0]!.sql).toContain("where id=$1 and organization_id=$2 and deleted_at is null")
+    expect(queries[0]!.sql).not.toContain("delete from")
     expect(queries[0]!.sql).toContain("insert into audit_logs")
     expect(queries[0]!.sql).toContain(`'${entityType}'`)
     expect(queries[0]!.params).toEqual([TOPIC, ORG, ADMIN])

@@ -121,6 +121,17 @@ describe("Formulário de indicador — seções dirigidas pelo catálogo de comp
     expect(screen.getByLabelText("Amostra mínima (opcional)")).toBeEnabled()
   })
 
+  it("com histórico, oferece a correção de unidade, direção ou cálculo; sem histórico, os campos já são editáveis e o botão não aparece", () => {
+    const onRequestCorrection = vi.fn()
+    const { unmount } = render(<IndicatorDefinitionForm catalog={CATALOG} initial={indicator()} dependencies={WITH_HISTORY} pending={false} error={null} submitLabel="Salvar" onSubmit={vi.fn()} onCancel={vi.fn()} onRequestCorrection={onRequestCorrection} />)
+    expect(screen.getByLabelText(/Código/)).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Corrigir unidade, direção ou cálculo" }))
+    expect(onRequestCorrection).toHaveBeenCalledTimes(1)
+    unmount()
+    render(<IndicatorDefinitionForm catalog={CATALOG} initial={indicator()} dependencies={NO_HISTORY} pending={false} error={null} submitLabel="Salvar" onSubmit={vi.fn()} onCancel={vi.fn()} onRequestCorrection={onRequestCorrection} />)
+    expect(screen.queryByRole("button", { name: "Corrigir unidade, direção ou cálculo" })).not.toBeInTheDocument()
+  })
+
   it("Workflows de outros Grupos entram só pela contagem, nunca pelo nome (lote 2 da 4ª auditoria)", () => {
     const { unmount } = render(<IndicatorDefinitionForm catalog={CATALOG} initial={indicator()} dependencies={{ ...WITH_HISTORY, workflowsOutOfScope: 2 }} pending={false} error={null} submitLabel="Salvar" onSubmit={vi.fn()} onCancel={vi.fn()} />)
     expect(screen.getByText(/3 Workflow\(s\): Modelo · 07 \+ 2 de outros Grupos/)).toBeInTheDocument()

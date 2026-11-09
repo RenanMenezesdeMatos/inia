@@ -1,7 +1,9 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
+import type { IndicatorCorrectionFields } from "@/schemas/admin/indicator-definition.schema"
 import {
+  applyIndicatorCorrection,
   createIndicatorDefinition,
   deleteIndicatorDefinition,
   deleteIndicatorRule,
@@ -9,6 +11,7 @@ import {
   fetchIndicatorDependencies,
   fetchIndicatorsWithRules,
   fetchIndicatorsWithRulesPage,
+  previewIndicatorCorrection,
   saveIndicatorGlossary,
   saveIndicatorRule,
   setIndicatorDefinitionActive,
@@ -31,6 +34,29 @@ export function useIndicatorCatalogQuery() {
 /** O que já depende do indicador — decide quais campos ficam bloqueados na edição. */
 export function useIndicatorDependenciesQuery(id: string | null) {
   return useQuery({ queryKey: [...adminQueryKeys.indicatorRules(), "dependencies", id], queryFn: () => fetchIndicatorDependencies(id!), enabled: id !== null })
+}
+
+/** Prévia do impacto da correção: sempre lida de novo no servidor, porque medições e Workflows mudam enquanto a tela está aberta. */
+export function useIndicatorCorrectionPreviewQuery(id: string, fields: IndicatorCorrectionFields | null) {
+  return useQuery({
+    queryKey: [...adminQueryKeys.indicatorRules(), "correction-preview", id, fields],
+    queryFn: () => previewIndicatorCorrection(id, fields!),
+    enabled: fields !== null,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useApplyIndicatorCorrectionMutation() {
+  return useAdminMutation({
+    mutationFn: applyIndicatorCorrection,
+    invalidateKey: adminQueryKeys.indicatorRules(),
+    successMessage: "Indicador corrigido. Os resultados já seguem a regra nova.",
+    // A tela mostra o motivo junto do formulário, e recarrega a prévia.
+    silentErrorCodes: ["INDICATOR_CORRECTION_BLOCKED", "INDICATOR_CORRECTION_CONFIRMATION_MISMATCH"],
+  })
 }
 
 export function useIndicatorsWithRulesPageQuery(params: IndicatorListParams) {

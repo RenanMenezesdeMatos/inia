@@ -3,6 +3,7 @@ import { ZodError } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { resolveEffectiveStructuredOutput, type StructuredOutputDefinition } from "../../assistant/domain/structured-output-definition.js"
+import { fakeAgentConfig } from "../../agents/testing/agent-version-fakes.js"
 import { emptyStrategyConfig } from "../../indicator-diagnosis/domain/diagnostic-strategy.js"
 import type { OperationalAggregationKind } from "../../indicators/domain/operational-aggregation.js"
 import { normalizeManualTrigger, validateScheduleTrigger, validateWorkflowForPublish, type PublishValidationRow } from "../application/validate-workflow-for-publish.js"
@@ -59,6 +60,10 @@ export type ParityDbFacts = {
   person: (personId: string) => Row | null
   /** Política de acompanhamento do nó "Avaliar política"; `null` = não existe nesta organização. */
   interventionPolicy: (policyId: string) => Row | null
+  /** Versão do agente fixada na etapa (PEN-002); `null` = não existe ou não é do agente da etapa. */
+  agentVersion: (versionId: string) => Row | null
+  /** Versão do Orquestrador fixada na etapa (PEN-076); `null` = não existe ou não é do Orquestrador da etapa. */
+  orchestratorVersion: (versionId: string) => Row | null
 }
 
 export type ParityVariable = { id: string; type: "BOOLEAN" | "NUMERIC" | "TEXT"; name: string }
@@ -89,7 +94,7 @@ export type BackendVerdict = { code: string; nodeId: string | null; message: str
 /** Um problema do editor. */
 export type EditorIssue = { nodeId: string; code: string; message: string }
 
-/** Esquema do rascunho: o router recusa salvar (`PUT /:id/draft`) um grafo que não passa no `flowGraphSchema` — 400 com este código. */
+/** Etapa incompleta ou inválida: a publicação recusa antes das demais regras, apontando o nó (`parseCompleteGraph`), com este código. */
 export const SCHEMA_ERROR_CODE = "VALIDATION_ERROR"
 
 function defaultAgent(agentId: string): Row {
@@ -131,6 +136,16 @@ function fakeDb(setup: ParitySetup): Database {
   const businessDomain = facts.businessDomain ?? ((domainId: string): Row => ({ id: domainId, name: "Domínio", active: true, specialists: 1 }))
   const person = facts.person ?? ((personId: string): Row => ({ id: personId }))
   const interventionPolicy = facts.interventionPolicy ?? ((policyId: string): Row => ({ id: policyId, name: "Política", active: true, scope_type: "ORGANIZATION", team_id: null, subteam_id: null, subteam_team_id: null, published: 1 }))
+  // Versão fixada: por padrão é do agente da etapa que a referencia, com a configuração da linha dele (mesmas regras de especialidade).
+  const graphNodes = ((setup.graph as { nodes?: { config?: { agentId?: string; agentVersionId?: string } }[] } | null)?.nodes ?? [])
+  const agentVersion =
+    facts.agentVersion ??
+    ((versionId: string): Row | null => {
+      const agentId = graphNodes.find((candidate) => candidate.config?.agentVersionId === versionId)?.config?.agentId
+      const row = agentId ? agent(agentId) : null
+      return agentId && row ? { id: versionId, agent_id: agentId, version_number: 1, config: fakeAgentConfig(row) } : null
+    })
+  const orchestratorVersion = facts.orchestratorVersion ?? ((versionId: string): Row => ({ id: versionId }))
 
   const present = (row: Row | null): Row[] => (row ? [row] : [])
   async function query(sql: string, params: unknown[] = []): Promise<{ rows: Row[]; rowCount: number }> {
@@ -146,6 +161,8 @@ function fakeDb(setup: ParitySetup): Database {
       if (sql.includes("from business_domains bd where bd.id = any")) return (params[0] as string[]).flatMap((id) => present(businessDomain(id)))
       if (sql.includes("from people where id = any")) return (params[0] as string[]).flatMap((id) => present(person(id)))
       if (sql.includes("from intervention_policies p")) return (params[1] as string[]).flatMap((id) => present(interventionPolicy(id)))
+      if (sql.includes("from agent_versions where id = any")) return (params[0] as string[]).flatMap((id) => present(agentVersion(id)))
+      if (sql.includes("from assistant_orchestrator_versions where id = $1")) return present(orchestratorVersion(String(params[0])))
       throw new Error(`Consulta não prevista pelo banco falso da paridade: ${sql.trim().slice(0, 120)}`)
     })()
     return { rows, rowCount: rows.length }

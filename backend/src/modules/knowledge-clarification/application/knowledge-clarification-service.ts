@@ -108,9 +108,13 @@ export type ClarificationTrace = {
   calls?: string[]
 }
 
+/**
+ * `groundedOn`: o texto das seções em que uma resposta (ANSWERED) se apoiou, para a conferência (PEN-017) saber o que veio da base. Só neste turno: o estado
+ * gravado guarda referências, nunca o texto.
+ */
 export type ClarificationOutcome =
   | { kind: "PASS"; reason: ClarificationPassReason; trace: ClarificationTrace }
-  | { kind: "REPLY"; content: string; state: ClarificationState; trace: ClarificationTrace }
+  | { kind: "REPLY"; content: string; state: ClarificationState; trace: ClarificationTrace; groundedOn?: { documentTitle: string; heading: string; excerpt: string }[] }
 
 export const CLARIFICATION_UNAVAILABLE_MESSAGE = "Não consegui continuar o esclarecimento agora. Sua escolha ficou registrada — envie de novo em instantes."
 
@@ -309,8 +313,8 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
     if (result.decision !== "ANSWER") return null
     const answer = await composeAnswer(request, record, state, result, navigation)
     if (!answer) return null
-    const next: ClarificationState = { ...state, status: "ANSWERED", coverage, sources: answer.sources, conflicts: result.conflicts.map((conflict) => ({ description: conflict.description, sources: conflict.sources })), notice: answer.limitations, updatedAt: at }
-    return { kind: "REPLY", content: answer.text, state: next, trace: record }
+    const next: ClarificationState = { ...state, status: "ANSWERED", coverage, sources: answer.sources.map((source) => navigation.workspace.withImages(source)), conflicts: result.conflicts.map((conflict) => ({ description: conflict.description, sources: conflict.sources })), notice: answer.limitations, updatedAt: at }
+    return { kind: "REPLY", content: answer.text, state: next, trace: record, groundedOn: answer.sections.map((section) => ({ documentTitle: section.source.documentTitle, heading: section.source.heading, excerpt: section.text })) }
   }
 
   /** Leitura do texto inteiro das seções escolhidas (na versão desta pergunta) + resposta com marcadores, com UMA correção. */
@@ -369,7 +373,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
         noteCall(record, `ANSWER(fix) ${validation.ok ? "OK" : "INVALID"}`)
         if (!validation.ok) record.issues.push(...validation.issues)
       }
-      return validation.ok ? validation : null
+      return validation.ok ? { ...validation, sections } : null
     } catch (error) {
       rethrowIfCancelled(error)
       logFailure("answer", error)

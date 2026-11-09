@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { composeInteractionFeedback, INTERNAL_REF_PATTERN, type ProceduralLineage } from "../../investigation/domain/interaction-feedback.js"
 import type { FeedbackWriterInputV1 } from "../../investigation/domain/interaction-feedback-writer.js"
 import type { InteractionFinding, InteractionSemanticFrame, SemanticObservation } from "../../investigation/domain/interaction-semantic-frame.js"
@@ -178,5 +178,21 @@ describe("V1.5.6 — o que o colaborador vê e a ciência", () => {
     const first = await acknowledgeFeedbackDelivery(s.deps, { organizationId: ORG, personId: COLLABORATOR }, delivery.id)
     expect(await acknowledgeFeedbackDelivery(s.deps, { organizationId: ORG, personId: COLLABORATOR }, delivery.id)).toEqual(first)
     expect((await listMyFeedbackDeliveries(s.deps, { organizationId: ORG, personId: COLLABORATOR }))[0]!.acknowledgedAt).toBe(first.acknowledgedAt)
+  })
+})
+
+describe("V1.5.6 — falha técnica no varredor", () => {
+  it("o item que falhou é contado e o motivo vai para o log; a rodada seguinte entrega (nada ficou marcado)", async () => {
+    const s = await scenario({ policy: AUTONOMY, feedback: compose(frame([action], [finding("STRENGTH", [action])])) })
+    const failure = new Error("connection timeout")
+    const flaky = { ...s.deps.deliveries, recordDelivery: async () => { throw failure } }
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      expect(await deliverReadyFeedbackItems({ ...s.deps, deliveries: flaky })).toEqual({ delivered: 0, alreadyDelivered: 0, failed: 1 })
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining(s.reviewOf("STRENGTH").id), failure)
+    } finally {
+      logged.mockRestore()
+    }
+    expect(await deliverReadyFeedbackItems(s.deps)).toEqual({ delivered: 1, alreadyDelivered: 0, failed: 0 })
   })
 })

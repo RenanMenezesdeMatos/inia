@@ -29,7 +29,7 @@ import { useSubjectsQuery, useTeamsQuery } from "@/queries/admin/use-org-structu
 import type { KnowledgeListParams } from "@/services/admin/knowledge-service"
 import {
   DOCUMENT_TYPE_LABELS,
-  KNOWLEDGE_STATUS_LABELS,
+  KNOWLEDGE_STATUS_FILTER_LABELS,
   SOURCE_TYPE_LABELS,
   type KnowledgeDocument,
 } from "@/schemas/admin/knowledge.schema"
@@ -37,7 +37,7 @@ import {
 import { useProductScopeLabels } from "@/components/admin/product-catalog/product-scope-field"
 
 import { KnowledgeDocumentMenu } from "./knowledge-document-actions"
-import { AuthorLine, DocumentTypeLabel, ScopeTags, SourceTypeIcon, StatusBadge, formatDateOnly } from "./knowledge-meta"
+import { AuthorLine, DocumentTypeLabel, KnowledgeVersionBadges, ScopeTags, SourceTypeIcon, formatDateOnly } from "./knowledge-meta"
 import { orgScopeLabel, subjectScopeLabel } from "./knowledge-visuals"
 
 // O resumo vem do texto bruto (que pode ter markdown leve) — tira os marcadores para o card não
@@ -89,7 +89,7 @@ function KnowledgeCard({ document, products }: { document: KnowledgeDocument; pr
         <ScopeTags document={document} products={products} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <AuthorLine document={document} />
-          <StatusBadge status={document.status} />
+          <KnowledgeVersionBadges document={document} />
         </div>
       </div>
     </article>
@@ -133,13 +133,18 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{orgScopeLabel(document.orgScopes[0])}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{subjectScopeLabel(document.subjectScopes[0])}</TableCell>
-              {productScope.available ? <TableCell className="text-sm text-muted-foreground">{productScope.labelsOf(document.id).join(", ") || "Todos"}</TableCell> : null}
+              {productScope.available ? (
+                <TableCell className="text-sm text-muted-foreground">
+                  {productScope.labelsOf(document.id).join(", ") || "Todos"}
+                  {productScope.pendingOf(document.id) ? <p className="text-xs">{productScope.pendingOf(document.id)}</p> : null}
+                </TableCell>
+              ) : null}
               <TableCell className="text-sm text-muted-foreground">{document.authorName ?? <span className="italic">Não informado</span>}</TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 <time dateTime={document.createdAt}>{formatDateOnly(document.createdAt)}</time>
               </TableCell>
               <TableCell>
-                <StatusBadge status={document.status} />
+                <KnowledgeVersionBadges document={document} />
               </TableCell>
               <TableCell className="text-right">
                 <KnowledgeDocumentMenu document={document} />
@@ -164,7 +169,7 @@ const DEFAULT_FILTERS: KnowledgeFilters = {
 
 const DOCUMENT_TYPE_OPTIONS = optionsFromLabels(DOCUMENT_TYPE_LABELS)
 const SOURCE_TYPE_OPTIONS = optionsFromLabels(SOURCE_TYPE_LABELS)
-const STATUS_OPTIONS = optionsFromLabels(KNOWLEDGE_STATUS_LABELS)
+const STATUS_OPTIONS = optionsFromLabels(KNOWLEDGE_STATUS_FILTER_LABELS)
 
 export function KnowledgePage() {
   const router = useRouter()
@@ -189,7 +194,7 @@ export function KnowledgePage() {
           <div>
             <CardTitle>Base de conhecimento</CardTitle>
             <CardDescription>
-              Textos e arquivos (PDF, DOCX, TXT, JSON) que orientam os agentes de IA, com alcance por grupo/subgrupo e assunto.
+              Textos e arquivos (PDF, DOCX, TXT, JSON) que orientam os agentes de IA, com alcance por grupo/subgrupo e assunto. O status é o da versão em uso pela IA.
             </CardDescription>
           </div>
           <Button asChild>

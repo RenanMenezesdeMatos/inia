@@ -6,6 +6,8 @@ import { displayIconKeySchema } from "../../../shared/domain/display-icon.js"
 import { booleanParam, dateParam, listParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { callOutcomeSchema, type CallOutcome } from "../domain/call-outcome.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { loadPoliciesCiting } from "../../interventions/application/policy-references.js"
+import { loadWorkflowsCitingFlag } from "../../workflows/application/workflow-node-references.js"
 
 
 // Nome de exibição e ícone (migration 115): como a flag aparece para o colaborador no motivo do feedback ("Monitoria · Rechamada").
@@ -148,23 +150,21 @@ export function createChannelFlagRouter(db: Database) {
 
   router.delete("/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
-    try {
-      const result = await db.query<{ id: string }>(
-        `delete from channel_flags where id = $1 and organization_id = $2 returning id`,
-        [request.params.id, organizationId],
-      )
-      if (!result.rows[0]) return response.status(404).json({ error: { code: "CHANNEL_FLAG_NOT_FOUND", message: "Flag não encontrada." } })
-      response.status(204).send()
-    } catch (error) {
-      if ((error as { code?: string }).code === "23503") {
-        throw new DomainError(
-          "Já chegaram interações com essa flag. Desative-a em vez de excluir para manter o histórico consultável.",
-          "CHANNEL_FLAG_HAS_DEPENDENTS",
-          409,
-        )
-      }
-      throw error
+    // Exclusão lógica (migration 177): interações já recebidas continuam guardadas e mostram o nome dela, porque o histórico lê `channel_flags_all`. Só barra o que depende dela agora.
+    const current = (await db.query<{ flag_name: string }>(`select flag_name from channel_flags where id = $1 and organization_id = $2`, [request.params.id, organizationId])).rows[0]
+    if (current) {
+      const [workflows, policies] = await Promise.all([loadWorkflowsCitingFlag(db, organizationId, request.params.id!), loadPoliciesCiting(db, organizationId, { key: "flagName", value: current.flag_name })])
+      const users = [...workflows.map((name) => `Workflow "${name}"`), ...policies.map((name) => `política "${name}"`)]
+      if (users.length > 0) throw new DomainError(`Esta flag é usada por ${users.slice(0, 3).join(", ")}${users.length > 3 ? ` e mais ${users.length - 3}` : ""}. Tire-a de lá antes de excluir, ou desative-a.`, "CHANNEL_FLAG_IN_USE", 409, { workflows, policies })
     }
+    const result = await db.query<{ id: string }>(
+      `with deleted as (update channel_flags_all set active = false, deleted_at = now(), deleted_by_person_id = $3 where id = $1 and organization_id = $2 and deleted_at is null returning id, channel, flag_name),
+            logged as (insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) select $2, $3, 'CHANNEL_FLAG_DELETED', 'channel_flag', id, jsonb_build_object('channel', channel, 'flagName', flag_name) from deleted)
+       select id from deleted`,
+      [request.params.id, organizationId, sessionUser(request).personId ?? null],
+    )
+    if (!result.rows[0]) return response.status(404).json({ error: { code: "CHANNEL_FLAG_NOT_FOUND", message: "Flag não encontrada." } })
+    response.status(204).send()
   })
 
   return router

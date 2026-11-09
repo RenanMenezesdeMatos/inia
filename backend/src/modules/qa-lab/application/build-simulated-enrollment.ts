@@ -8,7 +8,7 @@ import { localDateParts } from "../../workflows/application/schedule-recurrence.
 import { resolveRelativeInstant, resolveShiftWindow } from "../../workflows/application/shift-schedule.js"
 import { consolidatedStructureAnchorId, consolidatedStructureSchema, type ConsolidatedStructure } from "../../workflows/domain/consolidated-structure-schema.js"
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
-import { flowGraphSchema } from "../../workflows/domain/graph-schema.js"
+import { parseCompleteGraph } from "../../workflows/domain/draft-graph.js"
 import { triggerConfigSchema, triggerIndicatorCodeOf, type TriggerConfig } from "../../workflows/domain/trigger-config-schema.js"
 import type { WorkflowSnapshot, WorkflowState, WorkflowSubject } from "../domain/qa-run-schema.js"
 import { assertOperatorEligible, resolveInteractionEvidence, type InteractionEvidence } from "./interaction-evidence.js"
@@ -69,7 +69,8 @@ export function resolveSimulationGraph(row: QaWorkflowRow, source: WorkflowState
   if (effective === "PUBLISHED" && !row.published_graph) {
     throw new DomainError("Este workflow ainda não tem versão publicada — teste o rascunho.", "QA_WORKFLOW_NOT_PUBLISHED", 422)
   }
-  return { graph: flowGraphSchema.parse(effective === "PUBLISHED" ? row.published_graph : row.draft_graph), source: effective }
+  // Rascunho incompleto não simula: a recusa diz qual etapa falta preencher, como ao publicar.
+  return { graph: parseCompleteGraph(effective === "PUBLISHED" ? row.published_graph : row.draft_graph), source: effective }
 }
 
 export function graphChecksum(graph: unknown): string {

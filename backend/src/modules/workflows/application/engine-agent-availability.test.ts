@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { ActionConfig, FlowGraph } from "../domain/graph-schema.js"
 import { actionExecutors, type ActionExecutionContext } from "./action-executors.js"
 import { createFakeEffects } from "../testing/fake-effect-sink.js"
@@ -14,8 +15,11 @@ type AgentRow = { active: boolean; updated_at: Date | null } | null
 function fakeDb(agent: AgentRow) {
   const queries: string[] = []
   const db = {
-    query: async (sql: string) => {
+    query: async (sql: string, params?: unknown[]) => {
       queries.push(sql)
+      // PEN-002: a etapa resolve a versão do agente (e confere se ele está ativo) antes de começar.
+      const versioned = answerAgentVersionQuery(sql, params, () => agent ?? undefined)
+      if (versioned) return versioned
       if (sql.includes("from interactions")) return { rows: [{ operator_id: "operator-1" }], rowCount: 1 }
       if (sql.includes("from agents")) return { rows: agent ? [agent] : [], rowCount: agent ? 1 : 0 }
       if (sql.includes("from indicator_measurements")) return { rows: [{ subject_id: "operator-1" }], rowCount: 1 }

@@ -154,6 +154,9 @@ export default function DataHubConnectorsPage() {
           conexão e <strong>Testar conexão</strong> (obrigatório), tabela ou visão, conjunto de dados da INIA e como ler, amostra e mapeamento, validação e ativação.
           A conexão parte do servidor da INIA, não do navegador — bancos em rede privada precisam estar acessíveis a partir dele.
         </p>
+        <p>
+          O SQL das tabelas que o cliente precisa criar e o significado de cada campo estão em <WikiLink href="/wiki/central-de-dados/banco-do-cliente">Tabelas no banco do cliente</WikiLink>.
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <ExampleCard title="Incremental — só o que mudou">
             Um campo de data/hora (ou número) que muda sempre que a linha muda, mais uma chave de desempate (já vem a chave primária). Cada carga lê só o que vem

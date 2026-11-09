@@ -12,6 +12,10 @@ export const clarificationSourceSchema = z.object({
   versionId: z.string(),
   heading: z.string(),
   chunkIndex: z.number(),
+  /** Páginas do PDF de origem, vindas do registro da conversão. Ausente em base que não é PDF convertido e em respostas anteriores. */
+  pages: z.object({ from: z.number(), to: z.number() }).optional(),
+  /** Imagens da seção no arquivo, para consulta. A IA não as recebe. Ausente nas respostas anteriores a isso e em base sem imagens. */
+  images: z.array(z.object({ id: z.string(), page: z.number(), width: z.number(), height: z.number() })).optional(),
   available: z.boolean(),
 })
 
@@ -142,6 +146,12 @@ export function sectionLabelOf(source: ClarificationSource): string | null {
 export function sourcePartLabel(source: ClarificationSource): string {
   if (!source.available) return "seção indisponível"
   return sectionLabelOf(source) ?? (source.heading.trim() ? "abertura do documento" : `trecho ${source.chunkIndex + 1}`)
+}
+
+/** "p. 3" ou "p. 3–4" da fonte; sem registro de páginas, nada. */
+export function sourcePageLabel(source: ClarificationSource): string | null {
+  if (!source.available || !source.pages) return null
+  return source.pages.from === source.pages.to ? `p. ${source.pages.from}` : `p. ${source.pages.from}–${source.pages.to}`
 }
 
 /** "Base › Seção" de uma fonte (indisponível = aviso neutro). */

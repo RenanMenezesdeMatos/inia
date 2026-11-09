@@ -53,6 +53,7 @@ import { FLAG_VALUE_TYPE_LABELS, type ChannelFlag, type FlagValueType } from "@/
 import { DisplayIconSelect } from "@/components/admin/shared/display-icon-select"
 import { CallOutcomeFields, callOutcomeDraftOf, callOutcomeOfDraft } from "./call-outcome-fields"
 import { DISPLAY_ICONS, DisplayIcon, flagDefaultIconKey, isDisplayIconKey, type DisplayIconKey } from "@/lib/display-icons"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /** Ícone da flag no Acompanhamento: o configurado, senão o padrão pelo tipo de valor. */
 const flagIconKeyOf = (flag: Pick<ChannelFlag, "iconKey" | "valueType">): DisplayIconKey => (isDisplayIconKey(flag.iconKey) ? flag.iconKey : flagDefaultIconKey(flag.valueType))
@@ -72,7 +73,7 @@ function DeleteChannelFlagButton({ flag }: { flag: ChannelFlag }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {flag.flagName}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Se já chegaram interações com essa flag, a exclusão será bloqueada — desative-a nesse caso para manter o histórico consultável.
+            As interações já recebidas continuam guardadas, mas a carga passa a recusar esta flag. {RESTORE_NOTE} Se algum Workflow ou política de acompanhamento usa esta flag, a exclusão é barrada.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {deleteMutation.isError ? <p className="text-sm text-destructive">{(deleteMutation.error as Error).message}</p> : null}

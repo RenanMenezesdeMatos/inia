@@ -1,12 +1,18 @@
-import ExcelJS from "exceljs"
-import { inspectZip } from "../../../shared/infrastructure/zip-guard.js"
 import { z } from "zod"
+import { createIsolatedParser, IsolatedParserError, siblingModule, type IsolatedParserLimits } from "../../../shared/infrastructure/isolated-parser/isolated-parser.js"
+import { inspectZip } from "../../../shared/infrastructure/zip-guard.js"
 import type { ParsedTable } from "../domain/csv-parser.js"
 import { DataRunError } from "../domain/error-codes.js"
+import type { XlsxCell, XlsxParseJob, XlsxParseResult } from "./xlsx-parser-job.js"
 
 /**
  * Leitura de .xlsx via exceljs — SOMENTE leitura de células. Macros (.xlsm) e fórmulas nunca são
  * executadas: uma célula com fórmula entra pelo valor já calculado (cache do arquivo) ou vazia.
+ *
+ * O exceljs roda num processo filho com teto de memória e de tempo (R-24; job em `xlsx-parser-job.ts`): ele monta a pasta
+ * inteira na memória, e uma planilha que passa pela guarda de ZIP (até 300 MB descompactados) ainda pode pedir gigabytes. Estourou,
+ * travou ou o filho morreu: a carga recebe `DATA_FILE_INVALID` com o motivo, e o processo da carga (ou da API, no upload e na
+ * amostra) segue de pé.
  */
 export const excelOptionsSchema = z.object({
   sheet: z.string().min(1).optional(),
@@ -15,64 +21,57 @@ export const excelOptionsSchema = z.object({
 })
 export type ExcelOptions = z.infer<typeof excelOptionsSchema>
 
-function cellToValue(value: ExcelJS.CellValue): string | number | boolean | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value
-  if (value instanceof Date) return value.toISOString()
-  if (typeof value === "object") {
-    if ("richText" in value) return value.richText.map((part) => part.text).join("")
-    if ("result" in value) return cellToValue(value.result as ExcelJS.CellValue)
-    if ("text" in value) return String(value.text)
-    if ("error" in value) return null
+/**
+ * Teto próprio da planilha (o de PDF/DOCX é 768 MB): o exceljs guarda cada célula como objeto, ~650 bytes por célula no pico.
+ * Medido no filho (18/10/2026, macOS, Node 24, aba de 10 colunas): 20 mil linhas ≈ 310 MB e 0,5 s; 200 mil ≈ 1,3–1,4 GB e
+ * 2,8 s; 380 mil ≈ 1,9 GB e 5,6 s — perto do máximo (~3,5 milhões de células). 820 mil linhas (47 MB, 302 MB descompactados:
+ * passa no limite do upload e na guarda de ZIP) é recusada em ~10 s. Heap abaixo da residente de propósito: com os dois em
+ * 2.048 MB o GC deixa a residente subir e 380 mil linhas já não passam; com heap de 768 MB nem 200 mil passam.
+ */
+export const XLSX_PARSER_LIMITS: IsolatedParserLimits = { heapMb: 1_536, rssMb: 2_048, timeoutMs: 60_000 }
+
+const XLSX_PARSER_JOB = siblingModule(import.meta.url, "xlsx-parser-job")
+
+/**
+ * Um filho por vez neste processo (cada um pode chegar ao teto) e fila curta: no upload e na amostra, a API; na carga, o
+ * processamento. Além da fila, `DATA_FILE_READER_BUSY` (transitório: a carga é tentada de novo).
+ */
+const runXlsxIsolated = createIsolatedParser({ maxRunning: 1, maxWaiting: 4 })
+
+/** Falha do processo de leitura → erro da carga, com o que fazer escrito para quem enviou a planilha. */
+export function xlsxReadFailure(error: IsolatedParserError, limits: IsolatedParserLimits): DataRunError {
+  switch (error.reason) {
+    case "MEMORY":
+      return new DataRunError("DATA_FILE_INVALID", `A planilha é grande demais para ser lida com segurança: a leitura passou do teto de ${limits.rssMb} MB de memória. Divida o arquivo em partes menores ou envie em CSV.`)
+    case "TIMEOUT":
+      return new DataRunError("DATA_FILE_INVALID", `A leitura da planilha passou do prazo de ${Math.max(1, Math.round(limits.timeoutMs / 1000))} s. Divida o arquivo em partes menores ou envie em CSV.`)
+    case "CRASHED":
+      // O V8 às vezes aborta o processo inteiro ao bater o teto de heap (em vez de avisar): grande demais ou corrompido.
+      return new DataRunError("DATA_FILE_INVALID", "A leitura da planilha foi interrompida antes do fim — o arquivo é grande demais ou está corrompido. Divida o arquivo em partes menores ou envie em CSV.", { reason: error.message })
+    case "BUSY":
+      return new DataRunError("DATA_FILE_READER_BUSY", "Há muitas planilhas sendo lidas neste momento. Tente de novo em instantes.")
+    case "FAILED":
+      return new DataRunError("DATA_FILE_INVALID", "A planilha não pôde ser lida.", { reason: error.message })
   }
-  return String(value)
 }
 
-async function loadWorkbook(bytes: Uint8Array): Promise<ExcelJS.Workbook> {
-  // XLSX é ZIP: o diretório central é conferido ANTES de descompactar (zip bomb derrubaria o processo).
-  const zip = inspectZip(bytes)
+export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit?: number, limits: IsolatedParserLimits = XLSX_PARSER_LIMITS): Promise<ParsedTable & { sheets: string[] }> {
+  // XLSX é ZIP: o diretório central é conferido ANTES de descompactar — zip bomb é recusada aqui, sem abrir processo de leitura.
+  const zip = await inspectZip(bytes)
   if (!zip.ok) throw new DataRunError("DATA_FILE_INVALID", `O arquivo não é um .xlsx aceitável (${zip.reason}).`)
-  const workbook = new ExcelJS.Workbook()
+
+  const cells: XlsxCell[][] = []
+  let result: XlsxParseResult
   try {
-    await workbook.xlsx.load(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) as unknown as ArrayBuffer)
-  } catch {
-    throw new DataRunError("DATA_FILE_INVALID", "O arquivo não é um .xlsx válido.")
+    result = await runXlsxIsolated<XlsxParseResult>(XLSX_PARSER_JOB, { data: bytes, options, limit } satisfies XlsxParseJob, limits, (batch) => {
+      for (const row of batch as XlsxCell[][]) cells.push(row)
+    })
+  } catch (error) {
+    if (error instanceof IsolatedParserError) throw xlsxReadFailure(error, limits)
+    throw error
   }
-  if (workbook.worksheets.length === 0) throw new DataRunError("DATA_FILE_INVALID", "A planilha não tem nenhuma aba.")
-  return workbook
-}
-
-export async function parseExcel(bytes: Uint8Array, options: ExcelOptions, limit?: number): Promise<ParsedTable & { sheets: string[] }> {
-  const workbook = await loadWorkbook(bytes)
-  const sheets = workbook.worksheets.map((sheet) => sheet.name)
-  const sheet = options.sheet ? workbook.getWorksheet(options.sheet) : workbook.worksheets[0]
-  if (!sheet) throw new DataRunError("DATA_FILE_INVALID", `Aba "${options.sheet}" não existe. Abas: ${sheets.join(", ")}.`)
-
-  // Com `limit` (prévia), só as linhas puladas, o cabeçalho e as `limit` primeiras viram valores; das outras, só a largura e a
-  // contagem (antes, uma segunda cópia da aba inteira — lote 3 da 4ª auditoria). Largura linha a linha: `Math.max(...linhas)`
-  // estourava a pilha a partir de ~100 mil linhas.
-  const keep = limit === undefined ? Number.POSITIVE_INFINITY : options.skipRows + Math.max((options.hasHeader ? 1 : 0) + limit, 1)
-  const matrix: (string | number | boolean | null)[][] = []
-  let seen = 0
-  let width = 0
-  sheet.eachRow({ includeEmpty: false }, (row) => {
-    const cells = row.values as ExcelJS.CellValue[]
-    seen += 1
-    if (seen > options.skipRows && cells.length - 1 > width) width = cells.length - 1
-    if (matrix.length >= keep) return
-    const values: (string | number | boolean | null)[] = []
-    for (let index = 1; index < cells.length; index += 1) values[index - 1] = cellToValue(cells[index] ?? null)
-    matrix.push(values)
-  })
-  const all = matrix.slice(options.skipRows)
-  if (all.length === 0) throw new DataRunError("DATA_FILE_INVALID", "A aba selecionada está vazia.")
-  const columns = Array.from({ length: width }, (_, index) => {
-    const header = options.hasHeader ? all[0]![index] : null
-    const text = header === null || header === undefined ? "" : String(header).trim()
-    return text.length ? text : `coluna_${index + 1}`
-  })
-  const body = options.hasHeader ? all.slice(1) : all
-  const selected = limit === undefined ? body : body.slice(0, limit)
-  const rows = selected.map((cells) => Object.fromEntries(columns.map((column, index) => [column, cells[index] ?? null])))
-  return { columns, rows, delimiter: "", totalRows: seen - options.skipRows - (options.hasHeader ? 1 : 0), sheets }
+  if (!result.ok) throw new DataRunError("DATA_FILE_INVALID", result.message)
+  const { columns } = result
+  const rows = cells.map((row) => Object.fromEntries(columns.map((column, index) => [column, row[index] ?? null])))
+  return { columns, rows, delimiter: "", totalRows: result.totalRows, sheets: result.sheets }
 }

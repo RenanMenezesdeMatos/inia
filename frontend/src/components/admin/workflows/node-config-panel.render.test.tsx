@@ -57,11 +57,11 @@ describe("NodeConfigPanel — acessibilidade", () => {
   it.each([
     ["output", DEFAULT_CONFIG.output],
     ["action", { actionType: "ESCALATE", target: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" }, surfaces: ["FOLLOW_UP"] }],
-  ] as const)("Superfícies (%s): a toolbar do ToggleGroup tem o nome do rótulo", (type, config) => {
+  ] as const)("Onde entregar (%s): a toolbar do ToggleGroup tem o nome do rótulo", (type, config) => {
     const trigger = { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} } as unknown as FlowNode
     const node = { id: "node", type, label: `Nó ${type}`, position: { x: 0, y: 0 }, config } as unknown as FlowNode
     renderPanel(node, { nodes: [trigger, node], edges: [{ id: "e1", source: "trigger", target: "node", sourceHandle: "always" }] } as unknown as FlowGraph)
-    expect(screen.getByRole("toolbar", { name: "Superfícies" })).toBeInTheDocument()
+    expect(screen.getByRole("toolbar", { name: "Onde entregar" })).toBeInTheDocument()
   })
 })
 
@@ -72,7 +72,8 @@ describe("NodeConfigPanel — cada tipo de nó monta o seu formulário", () => {
       const node = { id: "node", type, label: `Nó ${type}`, position: { x: 0, y: 0 }, config: DEFAULT_CONFIG[type] } as unknown as FlowNode
       const graph = { nodes: type === "trigger" ? [node] : [trigger, node], edges: type === "trigger" ? [] : [{ id: "e1", source: "trigger", target: "node", sourceHandle: "always" }] } as unknown as FlowGraph
       renderPanel(type === "trigger" ? { ...node, id: "trigger" } : node, graph)
-      expect(screen.getAllByText(NODE_TYPE_LABELS[type]).length).toBeGreaterThan(0)
+      // "Ação" genérica deu lugar ao nome da ação; os demais tipos mantêm o nome de sempre.
+      expect(screen.getAllByText(type === "action" ? "Chamar agente" : NODE_TYPE_LABELS[type]).length).toBeGreaterThan(0)
       expect(screen.getByRole("button", { name: "Fechar painel" })).toBeInTheDocument()
     })
   }

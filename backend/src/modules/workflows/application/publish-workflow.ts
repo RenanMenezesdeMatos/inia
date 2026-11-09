@@ -6,6 +6,7 @@ import { assertGoLiveConfirmed, computeGoLiveImpact, type GoLiveImpact } from ".
 import { validateWorkflowForPublish } from "./validate-workflow-for-publish.js"
 import { loadWorkflowConfigurationRow, type WorkflowConfigurationRow } from "./workflow-configuration-store.js"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
+import { pinGraphReferences } from "./workflow-agent-version.js"
 
 type Queryable = Pick<Database, "query">
 
@@ -42,7 +43,7 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
       throw new DomainError("Você não tem permissão para publicar este workflow na Abrangência do rascunho.", "WORKFLOW_SCOPE_FORBIDDEN", 403)
     }
 
-    const graph = await validateWorkflowForPublish(tx as Database, input.organizationId, input.workflowId, row)
+    const graph = await pinGraphReferences(tx, input.organizationId, await validateWorkflowForPublish(tx as Database, input.organizationId, input.workflowId, row))
     const draft = draftConfigurationOf(row)
     const impact = await computeGoLiveImpact(tx as Database, input.organizationId, {
       workflowId: input.workflowId,
@@ -70,6 +71,11 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
       ],
     )
     const versionId = version.rows[0]!.id
+    // O rascunho passa a mostrar as mesmas versões fixadas na publicação (só preenche referências que ainda não tinham versão).
+    await tx.query(
+      `update workflows set draft_graph = $3 where id = $1 and organization_id = $2 and draft_graph is not null`,
+      [input.workflowId, input.organizationId, JSON.stringify(await pinGraphReferences(tx, input.organizationId, (row.draftGraph ?? { nodes: [] }) as { nodes: unknown[] }))],
+    )
     await tx.query(
       `update workflows set
          active_version_id = $1,

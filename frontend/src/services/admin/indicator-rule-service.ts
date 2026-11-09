@@ -4,8 +4,11 @@ import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type OrgScopeFilter, type PageResult } from "@/lib/admin/list-query"
 import {
   indicatorCatalogSchema,
+  indicatorCorrectionImpactSchema,
   indicatorDependenciesSchema,
   type IndicatorCatalog,
+  type IndicatorCorrectionFields,
+  type IndicatorCorrectionImpact,
   type IndicatorDependencies,
   type IndicatorUnit,
   type OperationalAggregationKind,
@@ -63,6 +66,16 @@ export async function fetchIndicatorCatalog(): Promise<IndicatorCatalog> {
 
 export async function fetchIndicatorDependencies(id: string): Promise<IndicatorDependencies> {
   return indicatorDependenciesSchema.parse(await adminGet(`/api/v1/admin/indicator-rules/definitions/${id}/dependencies`))
+}
+
+export async function previewIndicatorCorrection(id: string, fields: IndicatorCorrectionFields): Promise<IndicatorCorrectionImpact> {
+  return indicatorCorrectionImpactSchema.parse(await adminSend(`/api/v1/admin/indicator-rules/definitions/${id}/correction/preview`, "POST", fields))
+}
+
+export type ApplyIndicatorCorrectionInput = { id: string; fields: IndicatorCorrectionFields; reason: string; confirmation: string }
+
+export async function applyIndicatorCorrection({ id, fields, reason, confirmation }: ApplyIndicatorCorrectionInput): Promise<void> {
+  await adminSend(`/api/v1/admin/indicator-rules/definitions/${id}/correction`, "POST", { ...fields, reason, confirmation })
 }
 
 export async function setIndicatorDefinitionActive(id: string, active: boolean): Promise<void> {

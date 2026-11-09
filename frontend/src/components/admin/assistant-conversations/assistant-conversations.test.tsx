@@ -12,7 +12,7 @@ import type { MonitoredConversation } from "@/services/admin/assistant-conversat
 import { AssistantConversationsPage } from "./assistant-conversations-page"
 import { ConversationThread, THREAD_POLL_INTERVAL_MS } from "./conversation-thread"
 
-const service = vi.hoisted(() => ({ fetchMonitoredConversations: vi.fn(), fetchMonitoredMessages: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchMonitoredConversations: vi.fn(), fetchMonitoredMessages: vi.fn(), fetchConversationAgentRecords: vi.fn() }))
 vi.mock("@/services/admin/assistant-conversations-service", async (original) => ({ ...(await original<object>()), ...service }))
 const navigation = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn() }))
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/conversations", useSearchParams: () => navigation.params, useRouter: () => ({ replace: navigation.replace, push: vi.fn(), refresh: vi.fn() }) }))
@@ -55,8 +55,12 @@ describe("Conversas com a INIA — lista", () => {
     // Cabeçalhos de dia: hoje e a data da conversa mais antiga.
     expect(screen.getByRole("heading", { name: "Hoje" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "20 de setembro de 2026" })).toBeInTheDocument()
+    const replaceState = vi.spyOn(window.history, "replaceState").mockImplementation(() => {})
     fireEvent.click(rows[0]!)
-    expect(navigation.replace).toHaveBeenCalledWith("/admin/conversations?conversation=c1", { scroll: false })
+    // Só a seleção muda: a URL troca sem refazer a renderização do servidor (nunca `router.replace`).
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/admin/conversations?conversation=c1")
+    expect(navigation.replace).not.toHaveBeenCalled()
+    replaceState.mockRestore()
   })
 
   it("filtros vão para o backend (busca por colaborador ou assunto, tipo, estado)", async () => {
@@ -123,6 +127,27 @@ describe("Conversas com a INIA — leitura da conversa", () => {
     expect(screen.queryByRole("button", { name: /Resposta útil|não foi útil/ })).toBeNull()
   })
 
+  it("conferência da resposta: quem audita vê o que aconteceu, a regra e o texto original, dizendo se foi antes ou depois da entrega", async () => {
+    service.fetchMonitoredMessages.mockResolvedValue({
+      conversation: conversation("c1"),
+      messages: [
+        message("Não posso tratar disso por aqui.", "assistant", "1", { responseCheck: { outcome: "VIOLATION", control: "PREVENTIVE", action: "BLOCKED", rules: [{ kind: "PROHIBITED_TOPIC", name: "Política" }], reason: "Opinou sobre política.", flaggedContent: "Vote no candidato X." } }),
+        message("Desconsidere essa resposta.", "assistant", "2", { channel: "voice", responseCheck: { outcome: "VIOLATION", control: "DETECTIVE", action: "RECORDED", rules: [{ kind: "PROHIBITED_TOPIC", name: "Política" }], reason: null, flaggedContent: "Falei demais." } }),
+        message("Tente de novo.", "assistant", "3", { responseCheck: { outcome: "CHECK_FAILED", control: "PREVENTIVE", action: "BLOCKED", rules: [], reason: "O provedor não concluiu.", flaggedContent: "Texto não conferido." } }),
+        message("Tudo certo.", "assistant", "4"),
+      ],
+      hasMore: false,
+    })
+    renderWithQuery(<ConversationThread conversationId="c1" />)
+    const bubbles = await screen.findAllByTestId("monitored-message")
+    expect(within(bubbles[0]!).getByTestId("response-check-audit")).toHaveTextContent("Bloqueada antes da entrega")
+    expect(within(bubbles[0]!).getByTestId("response-check-audit")).toHaveTextContent("Regra: Política")
+    expect(within(bubbles[0]!).getByText("Vote no candidato X.")).toBeInTheDocument()
+    expect(within(bubbles[1]!).getByTestId("response-check-audit")).toHaveTextContent("Detectada depois da entrega")
+    expect(within(bubbles[2]!).getByTestId("response-check-audit")).toHaveTextContent("A conferência falhou: a resposta não foi entregue")
+    expect(within(bubbles[3]!).queryByTestId("response-check-audit")).toBeNull()
+  })
+
   it("cabeçalho diz o tipo, o assunto, quem conversou e quantas mensagens; a apresentação do feedback vem marcada", async () => {
     service.fetchMonitoredMessages.mockResolvedValue({
       conversation: conversation("c1", { origin: "FEEDBACK", title: "Troca de titularidade", messageCount: 3, voiceMessageCount: 1 }),
@@ -165,6 +190,39 @@ describe("Conversas com a INIA — leitura da conversa", () => {
     expect(await screen.findByText("nova resposta")).toBeInTheDocument()
     expect(scroller.scrollTop).toBe(100)
     expect(screen.getByRole("button", { name: "1 nova mensagem" })).toBeInTheDocument()
+  })
+
+  it("Ver histórico desta conversa: agentes com versão, chamada impedida com a orientação e nenhum link para o cadastro", async () => {
+    service.fetchMonitoredMessages.mockResolvedValue({ conversation: conversation("c1"), messages: [message("Qual o prazo?", "user", "1")], hasMore: false })
+    service.fetchConversationAgentRecords.mockResolvedValue([
+      { interactionId: "i1", occurredAt: "2026-11-03T13:00:00.000Z", role: "SPECIALIST", outcome: "BLOCKED_INACTIVE", agentId: "a-fat", agentName: "Especialista de Faturamento", agentActive: false, agentVersionNumber: 2, orchestratorName: "INIA — Contas", orchestratorVersionNumber: 4, guidance: "Agente inativo: a parte da resposta que dependia dele ficou indisponível. Reative ou substitua o agente no orquestrador." },
+      { interactionId: "i1", occurredAt: "2026-11-03T13:00:00.000Z", role: "ORCHESTRATOR_AGENT", outcome: "EXECUTED", agentId: "a-orq", agentName: "Coordenação · Contas", agentActive: true, agentVersionNumber: 3, orchestratorName: "INIA — Contas", orchestratorVersionNumber: 4, guidance: null },
+      // Revisão de 03/11/2026: a versão vigente não cobre o alcance do orquestrador — a chamada é impedida com a orientação do backend.
+      { interactionId: "i2", occurredAt: "2026-11-03T13:05:00.000Z", role: "SPECIALIST", outcome: "BLOCKED_UNAUTHORIZED", agentId: "a-ret", agentName: "Especialista de Retenção", agentActive: true, agentVersionNumber: 5, orchestratorName: "INIA — Contas", orchestratorVersionNumber: 4, guidance: "Acesso não autorizado neste contexto: a versão vigente do agente não está autorizada para o alcance deste orquestrador." },
+    ])
+    renderWithQuery(<ConversationThread conversationId="c1" />)
+    await screen.findByText("Qual o prazo?")
+    // Só busca ao abrir.
+    expect(service.fetchConversationAgentRecords).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Ver histórico desta conversa" }))
+    const records = await screen.findAllByTestId("conversation-agent-record")
+    expect(service.fetchConversationAgentRecords).toHaveBeenCalledWith("c1")
+    // Orquestrador antes dos especialistas na mesma resposta.
+    expect(records.map((record) => record.getAttribute("data-outcome"))).toEqual(["EXECUTED", "BLOCKED_INACTIVE", "BLOCKED_UNAUTHORIZED"])
+    expect(within(records[0]!).getByText(/Agente orquestrador · Versão 3/)).toBeInTheDocument()
+    const blocked = records[1]!
+    expect(within(blocked).getByText("Especialista de Faturamento")).toBeInTheDocument()
+    expect(within(blocked).getByText(/Especialista · Versão 2/)).toBeInTheDocument()
+    expect(within(blocked).getByText("Chamada impedida — agente inativo")).toBeInTheDocument()
+    expect(within(blocked).getByText("Agente inativo")).toBeInTheDocument()
+    expect(within(blocked).getByText(/Reative ou substitua o agente no orquestrador\./)).toBeInTheDocument()
+    const unauthorized = records[2]!
+    expect(within(unauthorized).getByText("Chamada impedida — acesso não autorizado")).toBeInTheDocument()
+    expect(within(unauthorized).getByText(/Especialista · Versão 5/)).toBeInTheDocument()
+    expect(within(unauthorized).getByText(/a versão vigente do agente não está autorizada para o alcance deste orquestrador/)).toBeInTheDocument()
+    expect(within(unauthorized).queryByText("Agente inativo")).toBeNull()
+    expect(screen.getAllByText(/INIA — Contas \(Versão 4\)/)).toHaveLength(2)
+    expect(within(blocked.closest("[data-slot=popover-content]") as HTMLElement).queryByRole("link")).toBeNull()
   })
 
   it("conversa fora do escopo (404) mostra indisponível, sem distinguir de inexistente", async () => {

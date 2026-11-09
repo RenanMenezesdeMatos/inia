@@ -41,7 +41,7 @@ export async function loadWorkflowOrchestrators(context: PublishTriggerContext):
 
 /** Orquestrador de cada nó: existe, ativo, habilitado para Workflows e, no roteamento declarado, um especialista por domínio. */
 export async function validateOrchestratorReferences(context: PublishCatalogContext): Promise<void> {
-  const { db, organizationId, graph, orchestratorRowsById } = context
+  const { db, organizationId, graph, row, orchestratorRowsById } = context
   // Referência que não resolve (Orchestrator excluído/de outra organização), inativo ou que
   // não aceita invocação por Workflow (`invocation_mode` INTERACTIVE) falhava só em runtime
   // (orchestrator-executor.ts) — um Workflow publicado que nunca produziria o resultado. Bug de
@@ -54,6 +54,25 @@ export async function validateOrchestratorReferences(context: PublishCatalogCont
     }
     if (found.active === false) {
       throw new DomainError(`O nó "${node.label}" usa o Orquestrador "${found.name}", que está inativo.`, "WORKFLOW_ORCHESTRATOR_INACTIVE", 422, { nodeId: node.id })
+    }
+    // PEN-076: a versão fixada na etapa precisa ser deste Orquestrador. E o alcance DELA precisa servir ao Grupo do Workflow: a execução
+    // tira o alcance e os especialistas da versão fixada (resolve-orchestrator.ts), e a versão vem do rascunho enviado pelo cliente.
+    // Conferir só o Orquestrador de hoje (loadWorkflowOrchestrators) deixaria fixar a versão de quando ele era de outro Grupo.
+    if (node.config.orchestratorVersionId) {
+      const version = (await db.query<{ scopeType: string | null; teamId: string | null; subteamId: string | null }>(
+        `select config->>'scopeType' "scopeType", config->>'teamId' "teamId", config->>'subteamId' "subteamId" from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2`,
+        [node.config.orchestratorVersionId, node.config.orchestratorId],
+      )).rows[0]
+      if (!version) throw new DomainError(`O nó "${node.label}" referencia uma versão que não é do Orquestrador "${found.name}".`, "WORKFLOW_ORCHESTRATOR_VERSION_NOT_FOUND", 422, { nodeId: node.id })
+      // Versão sem alcance gravado: a execução usa o do Orquestrador de hoje, já conferido acima.
+      if (version.scopeType && !(await scopesAreCompatible(db, row, { scopeType: version.scopeType, teamId: version.teamId ?? null, subteamId: version.subteamId ?? null }))) {
+        throw new DomainError(
+          `O nó "${node.label}" fixa uma versão do Orquestrador "${found.name}" que não está disponível para o grupo deste workflow — use a versão atual.`,
+          "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
+          422,
+          { nodeId: node.id },
+        )
+      }
     }
     if (found.invocation_mode === "INTERACTIVE") {
       throw new DomainError(

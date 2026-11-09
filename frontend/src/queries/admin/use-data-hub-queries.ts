@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
-import { RUN_ACTIVE_STATUSES } from "@/schemas/admin/data-hub.schema"
+import { RUN_ACTIVE_STATUSES, type Cadence } from "@/schemas/admin/data-hub.schema"
 import {
   cancelRun,
   createFeed,
@@ -9,6 +9,7 @@ import {
   createSource,
   deleteFeed,
   deleteSource,
+  fetchAuditEventsPage,
   fetchContract,
   fetchContracts,
   fetchDatabaseColumns,
@@ -32,8 +33,11 @@ import {
   setSourceStatus,
   syncFeedNow,
   testSourceConnection,
+  unlockSourceConfiguration,
   updateFeed,
+  fetchCadencePreview,
   updateSource,
+  type AuditEventListParams,
   type FeedInput,
   type PushTokenInput,
   type RunListParams,
@@ -86,6 +90,10 @@ export function useDataRunsPageQuery(params: RunListParams) {
   })
 }
 
+export function useAuditEventsPageQuery(params: AuditEventListParams) {
+  return useQuery({ queryKey: adminQueryKeys.dataHubAuditEvents(params), queryFn: () => fetchAuditEventsPage(params), placeholderData: keepPreviousData })
+}
+
 export function useDataRunQuery(id: string) {
   return useQuery({
     queryKey: adminQueryKeys.dataHubRun(id),
@@ -112,12 +120,20 @@ export function useDatabaseColumnsQuery(sourceId: string | null, object: { schem
 }
 
 // ---- Mutações ---------------------------------------------------------------------------------
+/** Sem liberação, a tela pede a senha e tenta de novo (`useConfigUnlockPrompt`): sem aviso duplicado. */
+const LOCK_HANDLED_BY_SCREEN = ["DATA_SOURCE_CONFIG_LOCKED"]
+
+export function useUnlockConfigurationMutation() {
+  // O formulário mostra o erro ao lado do campo.
+  return useAdminMutation({ mutationFn: ({ id, secrets }: { id: string; secrets: Record<string, string | undefined> }) => unlockSourceConfiguration(id, secrets), invalidateKey: adminQueryKeys.dataHub(), silentErrors: true })
+}
+
 export function useCreateSourceMutation() {
   return useAdminMutation({ mutationFn: (input: SourceInput) => createSource(input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Fonte criada." })
 }
 
 export function useUpdateSourceMutation() {
-  return useAdminMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<SourceInput> }) => updateSource(id, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Fonte atualizada." })
+  return useAdminMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<SourceInput> }) => updateSource(id, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Fonte atualizada.", silentErrorCodes: LOCK_HANDLED_BY_SCREEN })
 }
 
 export function useDeleteSourceMutation() {
@@ -129,11 +145,11 @@ export function useTestConnectionMutation() {
 }
 
 export function useSetSourceStatusMutation() {
-  return useAdminMutation({ mutationFn: ({ id, action }: { id: string; action: "ACTIVATE" | "PAUSE" | "RESUME" }) => setSourceStatus(id, action), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Status da fonte atualizado." })
+  return useAdminMutation({ mutationFn: ({ id, action }: { id: string; action: "ACTIVATE" | "PAUSE" | "RESUME" }) => setSourceStatus(id, action), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Status da fonte atualizado.", silentErrorCodes: LOCK_HANDLED_BY_SCREEN })
 }
 
-export function useRotateSecretsMutation() {
-  return useAdminMutation({ mutationFn: ({ id, secrets }: { id: string; secrets: Record<string, string | undefined> }) => rotateSourceSecrets(id, secrets), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Credencial rotacionada." })
+export function useRotateSecretsMutation(options: { errorsInline?: boolean } = {}) {
+  return useAdminMutation({ mutationFn: ({ id, secrets }: { id: string; secrets: Record<string, string | undefined> }) => rotateSourceSecrets(id, secrets), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Credencial testada e trocada.", silentErrors: options.errorsInline === true })
 }
 
 export function useCreatePushTokenMutation() {
@@ -149,11 +165,15 @@ export function useRotatePushTokenMutation() {
 }
 
 export function useCreateFeedMutation() {
-  return useAdminMutation({ mutationFn: ({ sourceId, input }: { sourceId: string; input: FeedInput }) => createFeed(sourceId, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Feed criado." })
+  return useAdminMutation({ mutationFn: ({ sourceId, input }: { sourceId: string; input: FeedInput }) => createFeed(sourceId, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Feed criado.", silentErrorCodes: LOCK_HANDLED_BY_SCREEN })
+}
+
+export function useCadencePreviewQuery(cadence: Cadence, enabled: boolean) {
+  return useQuery({ queryKey: adminQueryKeys.dataHubCadencePreview(cadence), queryFn: () => fetchCadencePreview(cadence), enabled, staleTime: 60_000, retry: false, placeholderData: keepPreviousData })
 }
 
 export function useUpdateFeedMutation() {
-  return useAdminMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<FeedInput> }) => updateFeed(id, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Feed atualizado." })
+  return useAdminMutation({ mutationFn: ({ id, input }: { id: string; input: Partial<FeedInput> }) => updateFeed(id, input), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Feed atualizado.", silentErrorCodes: LOCK_HANDLED_BY_SCREEN })
 }
 
 export function useDeleteFeedMutation() {
@@ -161,7 +181,7 @@ export function useDeleteFeedMutation() {
 }
 
 export function useSetFeedStatusMutation() {
-  return useAdminMutation({ mutationFn: ({ id, action }: { id: string; action: "ACTIVATE" | "PAUSE" | "RESUME" }) => setFeedStatus(id, action), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Status do feed atualizado." })
+  return useAdminMutation({ mutationFn: ({ id, action }: { id: string; action: "ACTIVATE" | "PAUSE" | "RESUME" }) => setFeedStatus(id, action), invalidateKey: adminQueryKeys.dataHub(), successMessage: "Status do feed atualizado.", silentErrorCodes: LOCK_HANDLED_BY_SCREEN })
 }
 
 export function useSyncFeedMutation() {

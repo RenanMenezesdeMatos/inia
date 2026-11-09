@@ -126,7 +126,7 @@ const GROUPS: NavGroup[] = [
   {
     label: "Plataforma",
     entries: [
-      { href: "/admin/users", label: "Usuários e acessos", icon: Users, capability: "canAccessAdministration" },
+      { href: "/admin/users", label: "Usuários e acessos", icon: Users, capability: "canOpenUsersAndAccess" },
       // Cenário atrás do avatar (padrão e sazonais) — só o Administrador geral.
       { href: "/admin/inia-scenes", label: "Cenário da INIA", icon: ImageIcon, capability: "canManageIniaScenes" },
     ],

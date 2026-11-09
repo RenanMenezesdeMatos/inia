@@ -50,7 +50,7 @@ Navegador ──HTTPS/HTTP──▶ IIS (ARR, endereço único) ──▶ Interf
 | Motor de Workflow (`workflow-worker`) | contínuo (2 s) | matrículas | Organização da matrícula; destinatário fixo restrito à organização; Agents/Orquestradores validados na publicação |
 | Checador de agenda | 1 min | Workflows publicados | Escopo da abrangência do Workflow |
 | Projeção de situação funcional | 1 min | dados de pessoas | Sem entrada externa direta |
-| Central de Dados (`runDataHubTick`) | 15 s | feeds vencidos, fila, retenção | Política de destinos, guarda de ZIP, limites de volume |
+| Central de Dados (`runDataHubTick`) | 15 s | feeds vencidos, fila, retenção | Política de destinos, guarda de ZIP, XLSX em processo filho com teto, limites de volume |
 | Reconciliação de calendário e alerta de horizonte | 5 min | escala/presença | Determinístico, sem IA |
 | Entrega de feedback de atendimento | contínuo (com a flag) | itens prontos | Idempotente |
 | Monitoria de usabilidade | contínuo (com a flag) | eventos de uso | Ator sempre da sessão na ingestão |
@@ -83,7 +83,10 @@ Legenda: ✅ revisado sem achado aberto · 🔧 achado corrigido nesta auditoria
 | ai-management | provedores, conexões, modelos, roteamento, orçamento, uso | `ai.view`/`ai.manage` de organização para escrita | 🔧 SEC-27, 28 | `ai-providers-proof.test.ts`, `outbound-destination-policy.test.ts` |
 | governance, business-domains, channel-flags, indicator-rules, diagnostic-strategy, employee-performance, argument-scripts, call-expectations | catálogos e configurações | `configuration.manage`; escrita de catálogo = organização | 🔧 SEC-17, 18 | `scoped-admin-security.test.ts` |
 | inia-scenes | cenário | `inia_experience.manage` de organização | ✅ | existentes |
-| data-hub | fontes, feeds, cargas, segredos, tokens, uploads, testes, amostras | `data_hub.manage` de organização | 🔧 SEC-04, 05, 13, 14, 22, 29, 30, 31 · ⚠️ R-03, R-08, R-09, R-10, R-12, R-18 | `secret-binding.test.ts`, `data-hub-proof.test.ts` |
+| data-hub | fontes, feeds, cargas, segredos, tokens, uploads, testes, amostras, registro | `data_hub.manage` de organização; configurar fonte com credencial guardada exige também a senha dela (`configGuard`, 05/11/2026) | 🔧 SEC-04, 05, 13, 14, 22, 29, 30, 31 · ⚠️ R-03, R-08, R-09, R-10, R-12, R-18 | `secret-binding.test.ts`, `data-hub-proof.test.ts` |
+| data-explorer | consulta visual, contagem e CSV dos dados aprovados da Central (`/api/v1/admin/data-explorer`), somente leitura | `data_hub.explore` de organização (Administrador geral e Administrador de dados); lista permitida em código, parâmetros, transação `READ ONLY`, limites de tempo, volume, concorrência e frequência, auditoria sem valores (`docs/dev/central-de-dados-consulta.md`) | Novo em 06/11/2026 · ⚠️ R-42 | `data-explorer-proof.test.ts`, `explorer-*.test.ts` |
+| data-explorer (cancelamento) | cancelar e reativar registros importados (`/api/v1/admin/data-explorer/cancellations`): medições, metas, fechamentos e PRV | `data_hub.cancel_records` de organização, além de `data_hub.explore`; alcance por chaves ou filtro validados; confirmação trava as linhas | Novo em 06/11/2026 | `record-cancellation-proof.test.ts`, `record-cancellation-guards.test.ts` |
+| data-explorer (itens excluídos) | listar e restaurar objetos excluídos logicamente (`/api/v1/admin/data-explorer/deleted-items`) | `data_hub.explore` de organização e, por tipo, a permissão de quem gerencia o objeto, também de organização; Report só de quem criou; 404 para o resto; restaura desligado, sem devolver credencial revogada | | `deleted-items-proof.test.ts` |
 | data-ingestion (API Push) | `POST /:source/:feed` | token de push (hash SHA-256), limite por IP e por token | 🔧 SEC-22 | `http-security.test.ts` |
 | ingestion (legada) | medições, interações | `data_hub.manage` de organização | 🔧 SEC-23 | `scoped-admin-security.test.ts` |
 | realtime (chat e voz) | sessão de voz, mensagens, ferramentas, turnos de voz, conversas | sessão + dono da conversa; teto por conta | 🔧 SEC-15, 10 · ⚠️ R-04, R-13 | `realtime-router*.test.ts` |
@@ -131,12 +134,12 @@ Legenda como na seção 5. A tabela rota a rota de cada frente está nos anexos 
 | leadership-analytics (rotas e ferramentas do chat) | Completo | ✅ escopo da sessão · 🔧 AI-01 (consulta de processo), AI-04, DATA-13 (Markdown) | `run-orchestrated-reply`, `management-metrics`, `leadership-tools-v3`, `query-table-markdown` |
 | assistant (orquestradores, monitoramento de conversas) | Completo | 🔧 SCOPE-01/AI-03, AI-01 | `conversation-monitoring`, `assistant-conversations-proof` |
 | realtime (chat SSE, voz, `/tool-call`, conversas) | Completo | ✅ dono da conversa; R-04 resolvido · 🔧 AI-09 · ⚠️ R-13, R-30 | `realtime-router`, `http-security` |
-| agents, knowledge (recuperação, upload, prévia, leitor) | Completo | 🔧 AI-05, AI-07, DATA-1, DATA-13 (nome do arquivo) · ⚠️ R-24 | `agent-knowledge-scope-proof`, `zip-guard`, `pdf-guard`, `run-agent` |
+| agents, knowledge (recuperação, upload, prévia, leitor) | Completo | 🔧 AI-05, AI-07, DATA-1, DATA-13 (nome do arquivo), R-24 (parser em processo filho) | `agent-knowledge-scope-proof`, `zip-guard`, `pdf-guard`, `isolated-parser`, `text-extractor`, `knowledge-router.security`, `run-agent` |
 | feedbacks (Orquestrador) e políticas (evidência) | Caminho Output → feedback → política | 🔧 AI-02 | `create-orchestrator-feedback.evidence`, `create-feedback-records` |
 | indicator-diagnosis ("Testar diagnóstico") | Rotas | 🔧 AI-06 | `diagnostic-strategy-proof` |
 | workflows, qa-lab, investigation, feedback-engine, reliable-feedback | Motor, nós, publicação, revisão humana, tools | ✅ sem `eval`/`vm`; tools só leitura presas ao sujeito; destinatário da configuração | existentes |
 | ai-management e gateway de modelos | Adapters, destinos, segredos, limites | ✅ política de destinos, chave em cabeçalho, erro redigido · ⚠️ R-31 | existentes |
-| data-hub (41 rotas, API Push, HTTP, SFTP, bancos, segredos, tokens, writers) | Completo, 1.373 interpolações de SQL varridas | 🔧 DATA-1…6, 9, 10, 11, AUTH-7, AUTH-13 · ⚠️ R-03, R-08, R-09, R-28, R-29, R-18 | `secret-binding`, `glob`, `api-pull-volume`, `outbound-destination-policy`, `person-identity-proof`, `data-hub-proof` |
+| data-hub (41 rotas, API Push, HTTP, SFTP, bancos, segredos, tokens, writers) | Completo, 1.373 interpolações de SQL varridas | 🔧 DATA-1…6, 9, 10, 11, AUTH-7, AUTH-13, R-24 (XLSX em processo filho) · ⚠️ R-03, R-08, R-09, R-28, R-29, R-18 | `secret-binding`, `glob`, `api-pull-volume`, `outbound-destination-policy`, `xlsx-parser`, `person-identity-proof`, `data-hub-proof` |
 | SQL dinâmico (todo o backend) | Varredura + revisão manual dos casos de risco | ✅ nenhum valor de requisição/integração interpolado; identificadores dos bancos externos citados por dialeto | existentes |
 | Interface (Next.js: proxy/CSP, renderização de conteúdo, links) | `rich-content`, `dangerouslySetInnerHTML`, rotas `route.ts`, laboratório do avatar | 🔧 AI-08 · ⚠️ R-07, R-23 | `rich-content`, `follow-up-entry` |
 | Instalação (env-init, doctor, Docker, IIS, serviços Windows) | Scripts e `web.config` | 🔧 INFRA-2 (parcial), INFRA-3 · ⚠️ R-32 | sem Windows/PowerShell aqui |

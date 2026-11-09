@@ -1,25 +1,19 @@
 "use client"
 
-import { useId } from "react"
+import { useId, useMemo } from "react"
 
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { decodeSourcePath } from "../content-sources"
 import { StructuredContentPicker } from "../structured-content-picker"
+import { PersonPicker } from "./person-picker"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
-import { AVATAR_INTERACTION_MODE_LABELS, ESCALATION_ROLE_LABELS, OUTPUT_SURFACE_LABELS, OUTPUT_TARGET_LABELS, VISIBLE_OUTPUT_SURFACES, type AvatarInteractionMode, type EscalationRole, type FlowGraph, type FlowNode, type OutputSurface, type OutputTargetType, RELIABLE_FEEDBACK_SURFACES, findNode } from "@/schemas/admin/workflow-graph.schema"
+import { AVATAR_INTERACTION_MODE_LABELS, ESCALATION_ROLE_LABELS, OUTPUT_SURFACE_LABELS, OUTPUT_TARGET_LABELS, VISIBLE_OUTPUT_SURFACES, type AvatarInteractionMode, type EscalationRole, type FlowGraph, type FlowNode, type OutputSurface, type OutputTargetType, RELIABLE_FEEDBACK_SURFACES, findNode, resolveNodeContexts } from "@/schemas/admin/workflow-graph.schema"
 import { triggerDataOrigin, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
 
-/** "O próprio operador" só faz sentido com um colaborador individual como sujeito — some do
- * Select em modo Consolidado (o backend também rejeita, mesmo com um payload manual, ver
- * workflow-router.ts) e ganha um rótulo mais concreto em modo Individual (Parte 38 do pedido). */
-function outputTargetLabels(evaluationMode?: "INDIVIDUAL" | "CONSOLIDATED"): Record<OutputTargetType, string> {
-  if (evaluationMode === "CONSOLIDATED") return OUTPUT_TARGET_LABELS
-  return { ...OUTPUT_TARGET_LABELS, CURRENT_OPERATOR: "O próprio colaborador" }
-}
+const OUTPUT_TARGET_OPTIONS: Record<OutputTargetType, string> = { ...OUTPUT_TARGET_LABELS, CURRENT_OPERATOR: "O próprio colaborador" }
 
 export function OutputForm({
   node,
@@ -41,6 +35,12 @@ export function OutputForm({
   onChange: (next: FlowNode) => void
 }) {
   const config = node.config
+  // "O próprio colaborador" exige um colaborador individual naquele ponto do fluxo: em um Workflow consolidado, só no caminho entre
+  // "Aplicar individualmente" e "Consolidar resultados" (a mesma regra da publicação, `workflow-validation/fan-out.ts`), nunca pelo modo
+  // do Workflow inteiro. O valor já salvo fica na lista mesmo onde não vale: campo em branco esconderia o que está configurado, e quem
+  // aponta o problema é a validação do painel.
+  const nodeContext = useMemo(() => resolveNodeContexts(graph).get(node.id), [graph, node.id])
+  const offersCurrentOperator = evaluationMode !== "CONSOLIDATED" || nodeContext === "EMPLOYEE" || config.target.type === "CURRENT_OPERATOR"
   // V1.5.12: feedback OFICIAL (gatilho por Flag/Indicador, modo Individual) no Acompanhamento do operador só sai de um
   // "Gerar feedback" — o resultado do Agent/Orquestrador direto não é oferecido para essa combinação.
   const officialFeedbackTarget = evaluationMode !== "CONSOLIDATED" && Boolean(trigger) && triggerDataOrigin(trigger!) !== "schedule" && config.surfaces.includes("FOLLOW_UP") && config.target.type === "CURRENT_OPERATOR"
@@ -69,8 +69,8 @@ export function OutputForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {Object.entries(outputTargetLabels(evaluationMode))
-              .filter(([value]) => evaluationMode !== "CONSOLIDATED" || value !== "CURRENT_OPERATOR")
+            {Object.entries(OUTPUT_TARGET_OPTIONS)
+              .filter(([value]) => offersCurrentOperator || value !== "CURRENT_OPERATOR")
               .map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {label}
@@ -103,17 +103,13 @@ export function OutputForm({
 
       {config.target.type === "USER" ? (
         <div className="space-y-1.5">
-          <Label htmlFor={`${fieldId}-user`}>Id da pessoa</Label>
-          <Input
-            id={`${fieldId}-user`}
-            value={config.target.userId}
-            onChange={(event) => onChange({ ...node, config: { ...config, target: { type: "USER", userId: event.target.value } } })}
-          />
+          <Label htmlFor={`${fieldId}-user`}>Pessoa</Label>
+          <PersonPicker id={`${fieldId}-user`} value={config.target.userId} onChange={(userId) => onChange({ ...node, config: { ...config, target: { type: "USER", userId } } })} />
         </div>
       ) : null}
 
       <div className="space-y-1.5">
-        <Label id={`${fieldId}-surfaces`}>Superfícies</Label>
+        <Label id={`${fieldId}-surfaces`}>Onde entregar</Label>
         <ToggleGroup
           type="multiple"
           aria-labelledby={`${fieldId}-surfaces`}
@@ -121,7 +117,8 @@ export function OutputForm({
           onValueChange={(value) => onChange({ ...node, config: { ...config, surfaces: value as OutputSurface[] } })}
           className="flex-wrap justify-start"
         >
-          {VISIBLE_OUTPUT_SURFACES.map((surface) => (
+          {/* "Pendências" não tem tela que leia: só continua aparecendo onde já estava escolhida, para poder tirar. */}
+          {VISIBLE_OUTPUT_SURFACES.filter((surface) => surface !== "INBOX" || config.surfaces.includes("INBOX")).map((surface) => (
             <ToggleGroupItem key={surface} value={surface} className="text-xs" disabled={reliableSource && !RELIABLE_FEEDBACK_SURFACES.includes(surface) && !config.surfaces.includes(surface)}>
               {OUTPUT_SURFACE_LABELS[surface]}
             </ToggleGroupItem>
@@ -131,8 +128,9 @@ export function OutputForm({
             Pendências ainda só grava um registro — nenhuma tela o lê. */}
         <p className="text-xs text-muted-foreground" data-testid="surfaces-without-consumer">
           {reliableSource
-            ? "Feedback confiável sai por Acompanhamento, Notificação, Chat ou Avatar (Chat/Avatar só para o próprio operador). Pendências ainda não tem consumidor real."
-            : "Chat abre uma conversa nova da INIA com o conteúdo; Avatar deixa um recado de voz que só é falado quando a pessoa aceitar ouvir. Pendências ainda não tem consumidor real."}
+            ? "Este feedback pode ir para Acompanhamento, Notificação, Chat ou Avatar. Chat e Avatar só valem para o próprio colaborador."
+            : "Chat abre uma conversa nova com a INIA. Avatar deixa um recado de voz, falado só quando a pessoa aceitar ouvir."}
+          {config.surfaces.includes("INBOX") ? " Pendências não tem tela que mostre este conteúdo: troque por outro destino." : ""}
         </p>
       </div>
 

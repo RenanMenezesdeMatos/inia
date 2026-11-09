@@ -4,16 +4,12 @@ import { Suspense, useState } from "react"
 import { Building2 } from "lucide-react"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
-import { IndicatorsView } from "@/components/analytics/indicators-view"
 import { StructureFollowUpFeed, type LocalNotice } from "@/components/follow-up/structure-follow-up-feed"
 import { FollowupWorkspaceShell } from "@/components/operator/followup-workspace-shell"
 import { OperatorFollowupWorkspace } from "@/components/operator/operator-followup-workspace"
 import { OperatorIniaChat } from "@/components/operator/operator-inia-chat"
 import { PendingActionsView } from "@/components/pending/pending-actions-view"
 import { ProfileHeader, type ProfileHeaderPerson } from "@/components/profile/profile-header"
-import { PersonStructureView } from "@/components/structure/person-structure-view"
-import { TeamCalendarView } from "@/components/team-calendar/team-calendar-view"
-import { TeamView } from "@/components/team/team-view"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { useAnalyticsUrlState, type ProfileTab } from "@/hooks/use-analytics-url-state"
@@ -28,6 +24,9 @@ import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from
 import { WhereToActCard } from "@/components/leadership/where-to-act-card"
 
 import { SupervisorBroadcastDialog, type BroadcastDraft } from "./broadcast/supervisor-broadcast-dialog"
+// Abas fora da entrada (Indicadores, Equipe, Calendário, Estrutura) chegam sob demanda; o Acompanhamento — aba de entrada, com o
+// avatar — continua importado direto.
+import { IndicatorsView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
 import { ProfileTabsList, profileTabsFor } from "./profile-tabs"
 
 /** Dados da Surface Acompanhamento do PRÓPRIO operador (feed + contexto do chat) — só existem no

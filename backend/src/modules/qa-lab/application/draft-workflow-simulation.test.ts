@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
 import type { QaRunRecord } from "./qa-run-repository.js"
 
@@ -124,7 +125,13 @@ function fakeDatabase(table: WorkflowTable) {
   const enrollments: unknown[][] = []
   async function query(sql: string, params: unknown[] = []) {
     const text = sql.replace(/\s+/g, " ").trim()
+    if (text.includes("from people where id = any($1::uuid[]) and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: (params?.[0] as string[]).length }
     if (!isReadOnlySql(text)) writes.push(text)
+    // Versão do agente (migration 164): o "Agente URA" publicado, versão vigente v1.
+    const versioned = answerAgentVersionQuery(sql, params, (agentId) =>
+      agentId === AGENT_ID ? { id: AGENT_ID, name: "Agente URA", objective: "obj", description: "d", context_prompt: "p", active: true } : undefined,
+    )
+    if (versioned) return versioned
 
     if (text.startsWith("insert into qa_runs")) {
       const id = `run-${runs.size + 1}`

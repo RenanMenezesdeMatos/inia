@@ -40,7 +40,7 @@ export async function findLegacyHolds(db: Pick<Database, "query">, organizationI
        from reliable_feedback_artifacts a
        join reliable_feedback_item_reviews r on r.artifact_id = a.id and r.organization_id = a.organization_id
        left join workflow_enrollments e on e.id = a.enrollment_id
-       left join workflows w on w.id = e.workflow_id
+       left join workflows_all w on w.id = e.workflow_id
        left join people p on p.id = a.collaborator_id
       where a.status = 'COMPLETED' and a.disposition = 'HOLD_FOR_QA' and a.qa_resolved_at is null and a.superseded_at is null
         and ($1::uuid is null or a.organization_id = $1)

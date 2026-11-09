@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { Activity, CalendarClock, ChevronDown, ChevronRight, Hand, ListOrdered } from "lucide-react"
+import { useCallback, useState } from "react"
+import { Activity, CalendarClock, ChevronDown, ChevronRight, Hand, ListOrdered, RotateCcw } from "lucide-react"
 
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,53 +11,98 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { ListDateRangeFilter, ListMultiSelectFilter, ListSearchInput, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
+import { ListDateRangeFilter, ListMultiSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
+import { cn } from "@/lib/utils"
 import { decodeSourcePath } from "./content-sources"
 import { useSubmitHumanReviewDecisionMutation, useWorkflowEnrollmentsPageQuery } from "@/queries/admin/use-workflow-queries"
 import { useWorkflowVariablesQuery } from "@/queries/admin/use-workflow-variable-queries"
 import { ESCALATION_ROLE_LABELS, OUTPUT_SURFACE_LABELS, type EscalationRole, type FlowGraph, type OutputSurface } from "@/schemas/admin/workflow-graph.schema"
-import { ENROLLMENT_STATUS_LABELS, type WorkflowEnrollment, type WorkflowEnrollmentEvent } from "@/schemas/admin/workflow.schema"
+import { ENROLLMENT_STATUS_LABELS, enrollmentStatusLabelOf, type WorkflowEnrollment, type WorkflowEnrollmentEvent, type WorkflowEnrollmentStatus } from "@/schemas/admin/workflow.schema"
 import { failureFromEventPayload } from "@/schemas/admin/execution-failure.schema"
 import { ExecutionFailureDetail } from "./execution-failure"
+import { describeRetryEvent, enrollmentEventLabel, stepNameOf } from "./enrollments/enrollment-format"
+import { blockedGuidanceOf, BlockedReason, blockedStepText, ExecutionLinks, RetryLinkNote, retryLinkText } from "./enrollments/execution-links"
+import { RetryExecutionButton } from "./enrollments/retry-dialog"
 import type { WorkflowVariable } from "@/schemas/admin/workflow-variable.schema"
 import type { HumanReviewDecision, WorkflowEnrollmentListParams } from "@/services/admin/workflow-service"
 
 const DECISION_LABELS: Record<HumanReviewDecision, string> = { approved: "Aprovar", rejected: "Reprovar", escalated: "Escalar" }
 
-const STATUS_VARIANT: Record<WorkflowEnrollment["status"], "default" | "outline" | "destructive" | "secondary"> = {
+const DECISION_EFFECTS: Record<HumanReviewDecision, string> = {
+  approved: 'O fluxo segue pelo caminho "Aprovado". Isso pode entregar conteúdo ao colaborador.',
+  rejected: 'O fluxo segue pelo caminho "Reprovado".',
+  escalated: 'O fluxo segue pelo caminho "Escalar", que costuma encaminhar o caso à liderança.',
+}
+
+/** Execução terminada não tem "próxima etapa". */
+const TERMINAL_STATUSES: readonly WorkflowEnrollmentStatus[] = ["completed", "failed", "dead"]
+
+const STATUS_VARIANT: Record<WorkflowEnrollmentStatus, "default" | "outline" | "destructive" | "secondary"> = {
   active: "default",
   waiting: "secondary",
   completed: "outline",
   failed: "destructive",
   dead: "destructive",
+  blocked: "outline",
 }
 
-const STATUS_TONE: Record<WorkflowEnrollment["status"], string> = {
+const STATUS_TONE: Record<WorkflowEnrollmentStatus, string> = {
   active: "bg-primary/10 text-primary",
   waiting: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   completed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   failed: "bg-red-500/10 text-red-600 dark:text-red-400",
   dead: "bg-muted text-muted-foreground",
+  blocked: "bg-amber-500/10 text-amber-800 dark:text-amber-300",
 }
 
-function HumanReviewDecisionButtons({ workflowId, enrollment }: { workflowId: string; enrollment: WorkflowEnrollment }) {
+/** Bloqueada não é falha: pede uma ação de alguém (reativar, substituir ou ajustar o agente e pedir nova tentativa). */
+const STATUS_BADGE_CLASS: Partial<Record<WorkflowEnrollmentStatus, string>> = { blocked: "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300" }
+
+/** Status da execução — bloqueada mostra o motivo ("— agente inativo" / "— acesso não autorizado"). */
+function StatusBadge({ enrollment }: { enrollment: WorkflowEnrollment }) {
+  return (
+    <Badge variant={STATUS_VARIANT[enrollment.status]} className={STATUS_BADGE_CLASS[enrollment.status]}>
+      {enrollmentStatusLabelOf(enrollment)}
+    </Badge>
+  )
+}
+
+type RetriedHandler = (retryEnrollmentId: string) => void
+
+/** A primeira decisão vale e não pode ser desfeita, por isso nunca sai de um clique só. */
+function HumanReviewDecisionButtons({ workflowId, enrollment, graph }: { workflowId: string; enrollment: WorkflowEnrollment; graph: FlowGraph | null }) {
   const decisionMutation = useSubmitHumanReviewDecisionMutation(workflowId)
+  const [pending, setPending] = useState<HumanReviewDecision | null>(null)
 
   return (
     <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
       {(Object.entries(DECISION_LABELS) as [HumanReviewDecision, string][]).map(([decision, label]) => (
-        <Button
-          key={decision}
-          size="sm"
-          variant={decision === "approved" ? "default" : "outline"}
-          disabled={decisionMutation.isPending}
-          onClick={() => decisionMutation.mutate({ enrollmentId: enrollment.id, nodeId: enrollment.currentNodeId, decision })}
-        >
+        <Button key={decision} size="sm" variant={decision === "approved" ? "default" : "outline"} disabled={decisionMutation.isPending} onClick={() => setPending(decision)}>
           {label}
         </Button>
       ))}
+      <AlertDialog open={pending !== null} onOpenChange={(open) => !open && setPending(null)}>
+        <AlertDialogContent onClick={(event) => event.stopPropagation()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pending ? `${DECISION_LABELS[pending]} a etapa "${stepNameOf(graph, enrollment.currentNodeId)}"?` : ""}</AlertDialogTitle>
+            <AlertDialogDescription>{pending ? DECISION_EFFECTS[pending] : ""} Esta decisão não pode ser desfeita. Quem foi designado como revisor costuma decidir em Pendências, onde vê o conteúdo.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={decisionMutation.isPending}>Voltar</AlertDialogCancel>
+            <Button
+              disabled={decisionMutation.isPending || pending === null}
+              onClick={() => {
+                if (!pending) return
+                decisionMutation.mutate({ enrollmentId: enrollment.id, nodeId: enrollment.currentNodeId, decision: pending }, { onSettled: () => setPending(null) })
+              }}
+            >
+              {pending ? DECISION_LABELS[pending] : ""}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -139,18 +185,20 @@ function EventList({ enrollment, graph, workflowId }: { enrollment: WorkflowEnro
         const setVariableDetail = describeSetVariableEvent(event, graph, variables)
         const escalateDetail = describeEscalateEvent(event, graph)
         const policyDetail = describePolicyEvent(event)
+        const retryDetail = describeRetryEvent(event)
         // V1.7.1c — falha classificada: categoria, tentativa, campo inválido e decisão de retry (sem conteúdo da resposta).
         const failure = event.eventType === "node_failed" || event.eventType === "flow_dead" ? failureFromEventPayload(event.payload) : null
         return (
           <li key={index} className="text-muted-foreground">
             <div className="flex items-center gap-2">
               <span className="text-xs">{new Date(event.createdAt).toLocaleTimeString("pt-BR")}</span>
-              <span className="font-medium text-foreground">{event.nodeId}</span>
-              <span>· {event.eventType}</span>
+              <span className="font-medium text-foreground">{stepNameOf(graph, event.nodeId)}</span>
+              <span>· {enrollmentEventLabel(event.eventType)}</span>
             </div>
             {setVariableDetail ? <p className="pl-[4.75rem] text-xs">{setVariableDetail}</p> : null}
             {escalateDetail ? <p className="pl-[4.75rem] text-xs">{escalateDetail}</p> : null}
             {policyDetail ? <p className="pl-[4.75rem] text-xs">{policyDetail}</p> : null}
+            {retryDetail ? <p className="pl-[4.75rem] text-xs">{retryDetail}</p> : null}
             {failure ? <div className="pl-[4.75rem] pt-1"><ExecutionFailureDetail failure={failure} /></div> : null}
           </li>
         )
@@ -170,12 +218,25 @@ function ManualOriginNote({ manualRun }: { manualRun: NonNullable<WorkflowEnroll
   )
 }
 
-function EnrollmentRow({ workflowId, enrollment, graph }: { workflowId: string; enrollment: WorkflowEnrollment; graph: FlowGraph | null }) {
+type EnrollmentItemProps = { workflowId: string; enrollment: WorkflowEnrollment; graph: FlowGraph | null; highlighted: boolean; onRetried: RetriedHandler }
+
+/** Detalhe aberto: vínculos/versões/agentes da execução + a linha do tempo de eventos (etapas concluídas mantêm os resultados). */
+function EnrollmentDetails({ workflowId, enrollment, graph }: { workflowId: string; enrollment: WorkflowEnrollment; graph: FlowGraph | null }) {
+  return (
+    <>
+      <ExecutionLinks workflowId={workflowId} enrollment={enrollment} graph={graph} />
+      <EventList enrollment={enrollment} graph={graph} workflowId={workflowId} />
+    </>
+  )
+}
+
+function EnrollmentRow({ workflowId, enrollment, graph, highlighted, onRetried }: EnrollmentItemProps) {
   const [open, setOpen] = useState(false)
+  const blocked = enrollment.status === "blocked"
 
   return (
     <>
-      <TableRow className="cursor-pointer" onClick={() => setOpen((value) => !value)}>
+      <TableRow className={cn("cursor-pointer", highlighted && "bg-primary/5")} data-highlighted={highlighted || undefined} onClick={() => setOpen((value) => !value)}>
         <TableCell className="w-8">
           {/* A linha expande pelo clique; este botão é o mesmo acesso pelo teclado e diz o estado ao leitor de tela. */}
           <button type="button" aria-expanded={open} aria-label={open ? "Ocultar eventos da execução" : "Mostrar eventos da execução"} onClick={(event) => { event.stopPropagation(); setOpen((value) => !value) }}>
@@ -183,16 +244,24 @@ function EnrollmentRow({ workflowId, enrollment, graph }: { workflowId: string; 
           </button>
         </TableCell>
         <TableCell>
-          <Badge variant={STATUS_VARIANT[enrollment.status]}>{ENROLLMENT_STATUS_LABELS[enrollment.status]}</Badge>
+          <StatusBadge enrollment={enrollment} />
         </TableCell>
-        <TableCell className="text-sm text-muted-foreground">{enrollment.currentNodeId}</TableCell>
+        <TableCell className="max-w-sm text-sm text-muted-foreground">
+          {stepNameOf(graph, enrollment.currentNodeId)}
+          {blocked ? <BlockedReason enrollment={enrollment} graph={graph} /> : null}
+        </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {new Date(enrollment.createdAt).toLocaleString("pt-BR")}
           {enrollment.manualRun ? <ManualOriginNote manualRun={enrollment.manualRun} /> : null}
+          <RetryLinkNote enrollment={enrollment} />
         </TableCell>
         <TableCell className="text-sm text-muted-foreground">
           {isPendingHumanReview(enrollment, graph) ? (
-            <HumanReviewDecisionButtons workflowId={workflowId} enrollment={enrollment} />
+            <HumanReviewDecisionButtons workflowId={workflowId} enrollment={enrollment} graph={graph} />
+          ) : blocked ? (
+            <RetryExecutionButton workflowId={workflowId} enrollmentId={enrollment.id} blockedReason={enrollment.blockedReason} onRetried={onRetried} />
+          ) : TERMINAL_STATUSES.includes(enrollment.status) ? (
+            "—"
           ) : (
             new Date(enrollment.nextEvalAt).toLocaleString("pt-BR")
           )}
@@ -200,8 +269,8 @@ function EnrollmentRow({ workflowId, enrollment, graph }: { workflowId: string; 
       </TableRow>
       {open ? (
         <TableRow>
-          <TableCell colSpan={5} className="bg-muted/40">
-            <EventList enrollment={enrollment} graph={graph} workflowId={workflowId} />
+          <TableCell colSpan={5} className="bg-muted/40 whitespace-normal">
+            <EnrollmentDetails enrollment={enrollment} graph={graph} workflowId={workflowId} />
           </TableCell>
         </TableRow>
       ) : null}
@@ -209,32 +278,36 @@ function EnrollmentRow({ workflowId, enrollment, graph }: { workflowId: string; 
   )
 }
 
-function EnrollmentCard({ workflowId, enrollment, graph }: { workflowId: string; enrollment: WorkflowEnrollment; graph: FlowGraph | null }) {
+function EnrollmentCard({ workflowId, enrollment, graph, highlighted, onRetried }: EnrollmentItemProps) {
   const [open, setOpen] = useState(false)
   const lastEvent = enrollment.events[enrollment.events.length - 1]
   const pendingReview = isPendingHumanReview(enrollment, graph)
+  const blocked = enrollment.status === "blocked"
+  const retryLink = retryLinkText(enrollment)
 
   return (
     <EntityCard
+      className={cn(highlighted && "ring-2 ring-primary/40")}
       icon={<EntityCardIcon icon={Activity} className={STATUS_TONE[enrollment.status]} />}
       kicker={
         <>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{ENROLLMENT_STATUS_LABELS[enrollment.status]}</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{enrollmentStatusLabelOf(enrollment)}</span>
           <span aria-hidden>·</span>
-          <span>nó {enrollment.currentNodeId}</span>
+          <span>{stepNameOf(graph, enrollment.currentNodeId)}</span>
         </>
       }
       title={`Iniciada em ${new Date(enrollment.createdAt).toLocaleString("pt-BR")}`}
       onOpen={() => setOpen((value) => !value)}
-      description={lastEvent ? `Último evento: ${lastEvent.nodeId} · ${lastEvent.eventType}` : null}
+      description={blocked ? `${blockedStepText(enrollment, graph)} ${blockedGuidanceOf(enrollment)}` : lastEvent ? `Último evento: ${stepNameOf(graph, lastEvent.nodeId)} · ${enrollmentEventLabel(lastEvent.eventType)}` : null}
       descriptionFallback="Nenhum evento registrado ainda."
       tags={
         <>
           <EntityCardTag icon={ListOrdered}>
             {enrollment.events.length} {enrollment.events.length === 1 ? "evento" : "eventos"}
           </EntityCardTag>
-          {!pendingReview ? <EntityCardTag icon={CalendarClock}>Próxima avaliação {new Date(enrollment.nextEvalAt).toLocaleString("pt-BR")}</EntityCardTag> : null}
+          {!pendingReview && !blocked && !TERMINAL_STATUSES.includes(enrollment.status) ? <EntityCardTag icon={CalendarClock}>Próxima etapa em {new Date(enrollment.nextEvalAt).toLocaleString("pt-BR")}</EntityCardTag> : null}
           {enrollment.manualRun ? <EntityCardTag icon={Hand}>Manual · {enrollment.manualRun.collaboratorName} · por {enrollment.manualRun.requestedByName}</EntityCardTag> : null}
+          {retryLink ? <EntityCardTag icon={RotateCcw}>{retryLink}</EntityCardTag> : null}
         </>
       }
       footerStart={
@@ -242,11 +315,19 @@ function EnrollmentCard({ workflowId, enrollment, graph }: { workflowId: string;
           {open ? <ChevronDown /> : <ChevronRight />} {open ? "Ocultar eventos" : "Ver eventos"}
         </Button>
       }
-      footerEnd={pendingReview ? <HumanReviewDecisionButtons workflowId={workflowId} enrollment={enrollment} /> : <Badge variant={STATUS_VARIANT[enrollment.status]}>{ENROLLMENT_STATUS_LABELS[enrollment.status]}</Badge>}
+      footerEnd={
+        pendingReview ? (
+          <HumanReviewDecisionButtons workflowId={workflowId} enrollment={enrollment} graph={graph} />
+        ) : blocked ? (
+          <RetryExecutionButton workflowId={workflowId} enrollmentId={enrollment.id} blockedReason={enrollment.blockedReason} onRetried={onRetried} />
+        ) : (
+          <StatusBadge enrollment={enrollment} />
+        )
+      }
     >
       {open ? (
         <div className="rounded-md bg-muted/40 px-3">
-          <EventList enrollment={enrollment} graph={graph} workflowId={workflowId} />
+          <EnrollmentDetails enrollment={enrollment} graph={graph} workflowId={workflowId} />
         </div>
       ) : null}
     </EntityCard>
@@ -258,22 +339,33 @@ type EnrollmentFilters = Omit<WorkflowEnrollmentListParams, "page" | "pageSize" 
 const DEFAULT_FILTERS: EnrollmentFilters = { search: "", status: [], createdAt: {} }
 const STATUS_OPTIONS = optionsFromLabels(ENROLLMENT_STATUS_LABELS)
 
-export function WorkflowEnrollmentsTab({ workflowId, graph }: { workflowId: string; graph: FlowGraph | null }) {
+/** O próximo passo depende do estado do workflow: "nenhuma execução" sem publicação não é o mesmo que no ar e sem disparos. */
+function emptyExecutionsText(workflow: { published: boolean; active: boolean } | undefined): { title: string; description?: string } {
+  if (!workflow) return { title: "Nenhuma execução ainda" }
+  if (!workflow.published) return { title: "Nenhuma execução ainda", description: "Só depois de publicar o workflow começa a rodar." }
+  if (!workflow.active) return { title: "Nenhuma execução ainda", description: "Este workflow está desativado: ative-o na lista de workflows para ele voltar a rodar." }
+  return { title: "Nenhuma execução ainda", description: "As execuções aparecem aqui assim que o gatilho disparar." }
+}
+
+export function WorkflowEnrollmentsTab({ workflowId, graph, workflow }: { workflowId: string; graph: FlowGraph | null; workflow?: { published: boolean; active: boolean } }) {
   const list = useAdminListState({ storageKey: "workflow-enrollments", defaultFilters: DEFAULT_FILTERS })
   const enrollmentsQuery = useWorkflowEnrollmentsPageQuery(workflowId, list.params)
+  // Nova tentativa criada: volta à primeira página sem filtros (as execuções vêm da mais recente) e destaca a tentativa.
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const { resetFilters } = list
+  const handleRetried = useCallback(
+    (retryEnrollmentId: string) => {
+      resetFilters()
+      setHighlightedId(retryEnrollmentId)
+    },
+    [resetFilters],
+  )
 
   return (
     <div className="space-y-4">
       <ListToolbar
-        search={
-          <ListSearchInput
-            value={list.filters.search}
-            onChange={(value) => list.setFilter("search", value)}
-            placeholder="Buscar pelo nó atual"
-            ariaLabel="Buscar execução"
-            pending={list.isSearchPending}
-          />
-        }
+        // O servidor só busca pelo id técnico da etapa: um campo de busca aqui nunca encontraria o que a pessoa digita (proposta P5).
+        search={null}
         viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
         hasActiveFilters={list.hasActiveFilters}
         onClearFilters={list.resetFilters}
@@ -286,7 +378,7 @@ export function WorkflowEnrollmentsTab({ workflowId, graph }: { workflowId: stri
         state={list}
         query={enrollmentsQuery}
         errorMessage="Não foi possível carregar as execuções."
-        empty={{ icon: Activity, title: "Nenhuma interação matriculou neste workflow ainda" }}
+        empty={{ icon: Activity, ...emptyExecutionsText(workflow) }}
         noResultsTitle="Nenhuma execução corresponde à busca ou aos filtros"
         itemLabel={["execução", "execuções"]}
         renderList={(enrollments) => (
@@ -296,14 +388,14 @@ export function WorkflowEnrollmentsTab({ workflowId, graph }: { workflowId: stri
                 <TableRow>
                   <TableHead />
                   <TableHead>Status</TableHead>
-                  <TableHead>Nó atual</TableHead>
+                  <TableHead>Etapa atual</TableHead>
                   <TableHead>Iniciado em</TableHead>
-                  <TableHead>Próxima avaliação</TableHead>
+                  <TableHead>Próxima etapa em</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {enrollments.map((enrollment) => (
-                  <EnrollmentRow key={enrollment.id} workflowId={workflowId} enrollment={enrollment} graph={graph} />
+                  <EnrollmentRow key={enrollment.id} workflowId={workflowId} enrollment={enrollment} graph={graph} highlighted={enrollment.id === highlightedId} onRetried={handleRetried} />
                 ))}
               </TableBody>
             </Table>
@@ -312,7 +404,7 @@ export function WorkflowEnrollmentsTab({ workflowId, graph }: { workflowId: stri
         renderCards={(enrollments) => (
           <ListCardGrid>
             {enrollments.map((enrollment) => (
-              <EnrollmentCard key={enrollment.id} workflowId={workflowId} enrollment={enrollment} graph={graph} />
+              <EnrollmentCard key={enrollment.id} workflowId={workflowId} enrollment={enrollment} graph={graph} highlighted={enrollment.id === highlightedId} onRetried={handleRetried} />
             ))}
           </ListCardGrid>
         )}

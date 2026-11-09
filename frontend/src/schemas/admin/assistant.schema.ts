@@ -25,6 +25,14 @@ const orchestratorSpecialistSchema = z.object({
   businessDomainId: z.string().nullable().catch(null),
   businessDomain: businessDomainRefSchema.nullable().catch(null),
   capability: z.string().nullable().catch(null),
+  /**
+   * Versão VIGENTE do agente (revisão aprovada da PEN-002/PEN-076, 03/11/2026): o orquestrador não fixa versão de agente — cada
+   * execução usa a vigente de cada especialista no momento em que começa. Opcionais no tipo: payloads anteriores à revisão.
+   */
+  active: z.boolean().catch(true).optional(),
+  published: z.boolean().catch(true).optional(),
+  agentCurrentVersionId: z.string().nullable().catch(null).optional(),
+  agentCurrentVersionNumber: z.number().nullable().catch(null).optional(),
 })
 export type OrchestratorSpecialist = z.infer<typeof orchestratorSpecialistSchema>
 
@@ -49,6 +57,17 @@ export const orchestratorSchema = z.object({
   subteamName: z.string().nullable(),
   orchestratorAgentId: z.string(),
   orchestratorAgentName: z.string(),
+  /** Agente orquestrador: ativo, publicado e a versão VIGENTE — com que toda execução roda (mesma regra dos especialistas). */
+  orchestratorAgentActive: z.boolean().catch(true).optional(),
+  orchestratorAgentPublished: z.boolean().catch(true).optional(),
+  orchestratorAgentCurrentVersionId: z.string().nullable().catch(null).optional(),
+  orchestratorAgentCurrentVersionNumber: z.number().nullable().catch(null).optional(),
+  /**
+   * Versão da CONFIGURAÇÃO do orquestrador em uso (especialistas, política, resultado estruturado): toda gravação publica uma nova;
+   * a edição devolve esta em `expectedVersionId` (PEN-050).
+   */
+  currentVersionId: z.string().nullable().catch(null).optional(),
+  currentVersionNumber: z.number().nullable().catch(null).optional(),
   specialists: z.array(orchestratorSpecialistSchema),
   invocationMode: orchestratorInvocationModeSchema,
   /** Legado (034/035) — ainda devolvidos; com `structuredOutput` presente são GERADOS pelo backend. */
@@ -72,3 +91,27 @@ export const orchestratorSchema = z.object({
   recommendSupportMaterials: z.boolean().catch(false),
 })
 export type Orchestrator = z.infer<typeof orchestratorSchema>
+
+/**
+ * Versão publicada do orquestrador (PEN-076): guarda a configuração. `orchestratorAgentVersionNumber` e
+ * `specialists[].agentVersionNumber` só existem nas versões gravadas antes da revisão de 03/11/2026 — registro HISTÓRICO da época,
+ * nunca a versão com que os agentes rodam hoje (sempre a vigente de cada um).
+ */
+export const orchestratorVersionSchema = z.object({
+  id: z.string(),
+  number: z.number(),
+  origin: z.enum(["MIGRATION", "PUBLISH"]).catch("PUBLISH"),
+  publishedAt: z.coerce.string(),
+  publishedByName: z.string().nullable().catch(null),
+  current: z.boolean(),
+  orchestratorAgentVersionNumber: z.number().nullable().catch(null),
+  specialists: z
+    .array(z.object({ agentId: z.string(), agentName: z.string().nullable().catch(null), agentVersionId: z.string().nullable().catch(null), agentVersionNumber: z.number().nullable().catch(null) }))
+    .catch([]),
+})
+export type OrchestratorVersion = z.infer<typeof orchestratorVersionSchema>
+
+export const ORCHESTRATOR_VERSION_ORIGIN_LABELS: Record<OrchestratorVersion["origin"], string> = {
+  MIGRATION: "Configuração em uso antes do versionamento",
+  PUBLISH: "Gravada no editor",
+}

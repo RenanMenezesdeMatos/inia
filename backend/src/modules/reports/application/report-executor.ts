@@ -7,7 +7,7 @@ import { compareCards, compareFirstAndLastMonth, notComparable, type ReportCompa
 import { cardFingerprint, decideDelivery, type DeliveryBaseline } from "../domain/delivery-decision.js"
 import { describePeriod, toToolCall, type ReportDefinition } from "../domain/report-definition.js"
 import { buildVisualizationData } from "../domain/visualization.js"
-import type { RecipientContext, ReportRuntime } from "./report-runtime.js"
+import type { RecipientContext, RecipientLookup, ReportRuntime } from "./report-runtime.js"
 import type { DeliveryRecord, Recipient, ReportRecord, ReportStore, RunRecord, RunStatus } from "./report-store.js"
 
 /**
@@ -126,21 +126,23 @@ export async function executeReportRun(deps: ExecutorDeps, run: RunRecord): Prom
   } else {
     recipients = [{ personId: owner.personId, accountId: owner.accountId, name: owner.name }]
   }
+  // Contas, acessos, grafo e fechamento do responsável (estrutura fixa) e de todos os destinatários: uma carga para a execução.
+  const contexts = await deps.runtime.contextsFor(report.organizationId, [...(definition.structure.mode === "FIXED" ? [report.ownerAccountId] : []), ...recipients.map((recipient) => recipient.accountId)])
+  let ownerLookup: RecipientLookup | null = null
   if (definition.structure.mode === "FIXED") {
-    const ownerContext = await deps.runtime.contextFor(report.organizationId, report.ownerAccountId)
-    if (!ownerContext || !ownerContext.resolveFixed(definition.structure.subjectKind, definition.structure.subjectId)) return { status: "BLOCKED", outcome: { reason: "STRUCTURE_OUT_OF_SCOPE", message: "A estrutura do report saiu do escopo do responsável." } }
+    ownerLookup = await contexts.lookup(report.ownerAccountId)
+    if (!ownerLookup.context || !ownerLookup.context.resolveFixed(definition.structure.subjectKind, definition.structure.subjectId)) return { status: "BLOCKED", outcome: { reason: "STRUCTURE_OUT_OF_SCOPE", message: "A estrutura do report saiu do escopo do responsável." } }
   }
   if (recipients.length === 0) return { status: "NOT_FORWARDED", outcome: { reason: "NO_RECIPIENTS", message: "Nenhum destinatário elegível no público configurado." } }
 
-  // Destinatários agrupados pela chave de escopo — cada um só com o que o escopo DELE alcança.
+  // Destinatários agrupados pela chave de escopo — cada um só com o que o escopo DELE alcança; a ferramenta roda uma vez por chave.
   const groups = new Map<string, ScopeGroup>()
   const denied: RecipientOutcome[] = []
   for (const recipient of recipients) {
-    const context = await deps.runtime.contextFor(report.organizationId, recipient.accountId)
+    const { account, context } = ownerLookup && recipient.accountId === report.ownerAccountId ? ownerLookup : await contexts.lookup(recipient.accountId)
     if (!context) {
       // Conta/pessoa inativa × ativa sem escopo de liderança (não lidera ninguém nem tem acesso ampliado).
-      const active = await deps.runtime.account(report.organizationId, recipient.accountId)
-      denied.push({ personId: recipient.personId, name: recipient.name, reason: !active ? "INACTIVE" : definition.structure.mode === "RECIPIENT" ? "NO_STRUCTURE" : "ACCESS_DENIED" })
+      denied.push({ personId: recipient.personId, name: recipient.name, reason: !account ? "INACTIVE" : definition.structure.mode === "RECIPIENT" ? "NO_STRUCTURE" : "ACCESS_DENIED" })
       continue
     }
     const structure = definition.structure.mode === "RECIPIENT" ? context.ownStructure : context.resolveFixed(definition.structure.subjectKind, definition.structure.subjectId)

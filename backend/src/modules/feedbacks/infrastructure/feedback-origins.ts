@@ -39,22 +39,22 @@ export async function loadFeedbackOrigins(db: Queryable, input: { organizationId
        left join supervision_cases c on c.id = f.case_id
        left join lateral (select em.enrollment_id from workflow_output_emissions em where em.feedback_id = f.id order by em.created_at limit 1) em on true
        left join workflow_enrollments e on e.id = em.enrollment_id
-       left join workflows w on w.id = e.workflow_id
+       left join workflows_all w on w.id = e.workflow_id
        left join lateral (
-         select label, icon_key, value_type from channel_flags
+         select label, icon_key, value_type from channel_flags_all
           where organization_id = f.organization_id and flag_name = e.matched_flag_name
-          order by active desc, created_at limit 1
+          order by (deleted_at is null) desc, active desc, created_at limit 1
        ) cf on e.matched_flag_name is not null
        left join lateral (
          select d.unit, d.icon_key
            from jsonb_array_elements_text(coalesce(f.context_snapshot->'feedbackEngine'->'analysisRunIds', '[]'::jsonb)) rid
            join feedback_analysis_runs r on r.id::text = rid
-           join indicator_definitions d on d.id = r.indicator_definition_id
+           join indicator_definitions_all d on d.id = r.indicator_definition_id
           limit 1
        ) d_run on f.feedback_kind = 'INDICATOR'
-       left join indicator_measurements m on m.id = e.indicator_measurement_id
-       left join indicator_definitions d_meas on d_meas.id = m.indicator_definition_id
-       left join indicator_definitions d_case on d_case.organization_id = f.organization_id and d_case.code = c.indicator_code
+       left join indicator_measurements_all m on m.id = e.indicator_measurement_id
+       left join indicator_definitions_all d_meas on d_meas.id = m.indicator_definition_id
+       left join lateral (select x.* from indicator_definitions_all x where x.organization_id = f.organization_id and x.code = c.indicator_code order by (x.deleted_at is null) desc, x.created_at desc limit 1) d_case on true
       where f.id = any($1::uuid[]) and f.organization_id = $2`,
     [input.feedbackIds, input.organizationId],
   )

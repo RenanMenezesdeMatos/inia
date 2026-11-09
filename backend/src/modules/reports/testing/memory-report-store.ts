@@ -3,16 +3,35 @@ import type { ResolvedStructure } from "../../leadership-analytics/application/r
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import type { SourceState } from "../domain/delivery-decision.js"
 import type { AccountInfo, DistributionScope, RecipientCandidate, RecipientContext, ReportRuntime } from "../application/report-runtime.js"
-import type { DeliveryRecord, ReportRecord, ReportStore, RunRecord } from "../application/report-store.js"
+import { ABANDONED_ANALYSIS_ERROR, ANALYSIS_CLAIM_SECONDS, ANALYSIS_RECOVERY_DAYS, MAX_ANALYSIS_ATTEMPTS, type DeliveryRecord, type ReportRecord, type ReportStore, type RunRecord } from "../application/report-store.js"
 
-/** Armazenamento em memória com as MESMAS chaves únicas do banco (report × horário, execução × escopo, execução × pessoa). */
-export function createMemoryReportStore() {
+/**
+ * Armazenamento em memória com as MESMAS chaves únicas do banco (report × horário, execução × escopo, execução × pessoa) e a
+ * MESMA posse da análise (reivindicação e gravação síncronas entre dois `await`, como o UPDATE condicional no banco). `now` é o
+ * relógio do prazo da posse; por padrão, o das marcas de tempo do próprio armazenamento.
+ */
+export function createMemoryReportStore(options: { now?: () => Date } = {}) {
   const reports = new Map<string, ReportRecord>()
   const runs = new Map<string, RunRecord>()
   const deliveries: DeliveryRecord[] = []
   const recipients: { deliveryId: string; runId: string; personId: string; accountId: string | null }[] = []
   let tick = 0
   const stamp = () => new Date(Date.UTC(2026, 9, 16, 12, 0, tick++)).toISOString()
+  const now = options.now ?? (() => new Date(Date.UTC(2026, 9, 16, 12, 0, tick)))
+  /** `analysis_updated_at` (fora do registro, como no banco). */
+  const analysisTouchedAt = new Map<string, number>()
+  const leaseFree = (delivery: DeliveryRecord) => {
+    const touched = analysisTouchedAt.get(delivery.id)
+    return touched === undefined || touched < now().getTime() - ANALYSIS_CLAIM_SECONDS * 1000
+  }
+  const claimable = (delivery: DeliveryRecord) => delivery.kind === "DELIVERY" && (delivery.analysisStatus === "PENDING" || delivery.analysisStatus === "FAILED") && delivery.analysisAttempts < MAX_ANALYSIS_ATTEMPTS && leaseFree(delivery)
+  const recent = (delivery: DeliveryRecord) => Date.parse(delivery.createdAt) > now().getTime() - ANALYSIS_RECOVERY_DAYS * 86_400_000
+  const claim = (index: number) => {
+    const current = deliveries[index]!
+    deliveries[index] = { ...current, analysisStatus: "PENDING", analysisAttempts: current.analysisAttempts + 1 }
+    analysisTouchedAt.set(current.id, now().getTime())
+    return deliveries[index]!
+  }
 
   const store: ReportStore = {
     async createReport(input) {
@@ -35,6 +54,15 @@ export function createMemoryReportStore() {
     },
     async listReports(organizationId, ownerAccountId) {
       return [...reports.values()].filter((report) => report.organizationId === organizationId && report.ownerAccountId === ownerAccountId && !report.deletedAt)
+    },
+    async listDeletedReports(organizationId, ownerAccountId) {
+      return [...reports.values()].filter((report) => report.organizationId === organizationId && report.ownerAccountId === ownerAccountId && report.deletedAt).map((report) => ({ id: report.id, name: report.name, deletedAt: report.deletedAt! }))
+    },
+    async restoreReport(id, organizationId, ownerAccountId) {
+      const report = reports.get(id)
+      if (!report || report.organizationId !== organizationId || report.ownerAccountId !== ownerAccountId || !report.deletedAt) return false
+      reports.set(id, { ...report, deletedAt: null })
+      return true
     },
     async softDeleteReport(id, organizationId) {
       const report = reports.get(id)
@@ -90,10 +118,35 @@ export function createMemoryReportStore() {
       }
       return added
     },
-    async setAnalysis(deliveryId, status, text, error) {
+    async claimAnalysis(deliveryId, mode) {
       const index = deliveries.findIndex((delivery) => delivery.id === deliveryId)
-      const current = deliveries[index]!
-      deliveries[index] = { ...current, analysisStatus: status, analysisText: text ?? current.analysisText, analysisError: error, analysisAttempts: current.analysisAttempts + (status === "READY" || status === "FAILED" ? 1 : 0) }
+      const current = deliveries[index]
+      if (!current) return null
+      return (mode === "MANUAL" ? current.kind === "DELIVERY" && current.analysisStatus === "FAILED" : claimable(current)) ? claim(index) : null
+    },
+    async claimNextAnalysis() {
+      const candidates = deliveries.map((delivery, index) => ({ delivery, index })).filter(({ delivery }) => claimable(delivery) && recent(delivery))
+      candidates.sort((left, right) => left.delivery.createdAt.localeCompare(right.delivery.createdAt))
+      return candidates[0] ? claim(candidates[0].index) : null
+    },
+    async finishAnalysis(deliveryId, attempt, status, text, error) {
+      const index = deliveries.findIndex((delivery) => delivery.id === deliveryId)
+      const current = deliveries[index]
+      if (!current || current.analysisAttempts !== attempt || current.analysisStatus !== "PENDING") return false
+      deliveries[index] = { ...current, analysisStatus: status, analysisText: text ?? current.analysisText, analysisError: error }
+      analysisTouchedAt.set(deliveryId, now().getTime())
+      return true
+    },
+    async closeAbandonedAnalyses() {
+      let closed = 0
+      deliveries.forEach((delivery, index) => {
+        if (delivery.kind !== "DELIVERY" || delivery.analysisStatus !== "PENDING" || !leaseFree(delivery)) return
+        if (delivery.analysisAttempts < MAX_ANALYSIS_ATTEMPTS && recent(delivery)) return
+        deliveries[index] = { ...delivery, analysisStatus: "FAILED", analysisError: ABANDONED_ANALYSIS_ERROR }
+        analysisTouchedAt.set(delivery.id, now().getTime())
+        closed += 1
+      })
+      return closed
     },
     async getDelivery(id, organizationId) {
       return deliveries.find((delivery) => delivery.id === id && delivery.organizationId === organizationId) ?? null
@@ -129,6 +182,9 @@ export type FakePerson = AccountInfo & {
 /** Adaptador falso: pessoas, escopos, cartões por estrutura e estado das bases — tudo mutável entre execuções. */
 export function createFakeRuntime(options: { people: FakePerson[]; card: (structureLabel: string, args: Record<string, unknown>) => QueryTableCard | null; sources?: () => SourceState[]; coverage?: () => number | null }) {
   const calls: { account: string; name: string; args: Record<string, unknown> }[] = []
+  /** Lotes pedidos por execução (contas) e contextos montados a partir deles. */
+  const batches: string[][] = []
+  const lookups: string[] = []
   const state = { people: options.people, sources: options.sources ?? (() => [{ source: "OFFICIAL_INDICATOR_PERFORMANCE" as const, label: "Fechamento oficial", watermark: "official:1", lastUpdatedAt: "2026-10-01T00:00:00.000Z", stale: false, detail: null }]), coverage: options.coverage ?? (() => 1) }
   const find = (accountId: string) => state.people.find((person) => person.accountId === accountId) ?? null
   const runtime: ReportRuntime = {
@@ -160,6 +216,16 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
       }
       return context
     },
+    async contextsFor(organizationId, accountIds) {
+      batches.push([...accountIds])
+      return {
+        lookup: async (accountId) => {
+          if (!accountIds.includes(accountId)) throw new Error(`Conta fora do lote: ${accountId}`)
+          lookups.push(accountId)
+          return { account: await runtime.account(organizationId, accountId), context: await runtime.contextFor(organizationId, accountId) }
+        },
+      }
+    },
     async distributionScope(_organizationId, accountId) {
       return find(accountId)?.distribution ?? null
     },
@@ -181,5 +247,5 @@ export function createFakeRuntime(options: { people: FakePerson[]; card: (struct
       return state.people.filter((person) => (ids && ids.length > 0 ? ids.includes(person.personId) : person.name.toLowerCase().includes(query.toLowerCase()))).map((person) => ({ personId: person.personId, name: person.name, role: person.role, jobTitle: null }))
     },
   }
-  return { runtime, calls, state }
+  return { runtime, calls, batches, lookups, state }
 }

@@ -1,3 +1,6 @@
+import { ApplicationInvariantError } from "../../../shared/domain/execution-failure.js"
+import { MISSING_CONTENT_MESSAGES, missingContentCauseOf } from "../domain/execution-block.js"
+import { isAbsentContent } from "./execution-context.js"
 import type { ActionConfig } from "../domain/graph-schema.js"
 import type { WorkflowEffectSink } from "./effect-sink.js"
 import { resolveEnrollmentOperatorId, type EnrollmentSubjectContext } from "./enrollment-subject.js"
@@ -13,6 +16,8 @@ export type EscalateExecutionContext = EnrollmentSubjectContext & {
   /** Execution Context acumulado até agora — de onde `config.contentSource` lê o conteúdo a
    * escalonar, mesma convenção de Condition/Output/Human Review. */
   nodeOutputs: Record<string, unknown>
+  /** Workflow Variables: a tela oferece variável como origem do conteúdo (WF-41). */
+  variables?: Record<string, unknown>
   effects: WorkflowEffectSink
 }
 
@@ -58,7 +63,11 @@ export async function executeEscalation(config: EscalateActionConfig, context: E
     context.db.query<{ name: string }>(`select name from people where id = $1`, [operatorId]),
   ])
   const operatorName = operatorRow.rows[0]?.name ?? "um operador"
-  const content = config.contentSource ? resolveSource(context.nodeOutputs, config.contentSource) : undefined
+  const content = config.contentSource ? resolveSource(context.nodeOutputs, config.contentSource, context.variables) : undefined
+  // Conteúdo configurado e ausente nunca escala sem ele (D2): a versão é fixa, então repetir não resolve.
+  if (config.contentSource && isAbsentContent(content)) {
+    throw new ApplicationInvariantError(`O conteúdo escalonado não está disponível: ${MISSING_CONTENT_MESSAGES[missingContentCauseOf(config.contentSource)]}. Nada foi escalonado.`, "WORKFLOW_CONTENT_MISSING")
+  }
 
   for (const surface of config.surfaces) {
     if (surface === "FOLLOW_UP" || surface === "NOTIFICATION") {

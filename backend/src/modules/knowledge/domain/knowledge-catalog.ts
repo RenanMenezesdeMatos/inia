@@ -11,7 +11,7 @@ export const KNOWLEDGE_CATALOG_VERSION = "KNOWLEDGE_CATALOG_V1" as const
 export type CatalogSource = { documentId: string; documentTitle: string; versionId: string; documentType: string | null; chunks: readonly KnowledgeChunk[] }
 
 /** Uma entrada do sumário: a seção (pela primeira parte dela) ou, num documento sem títulos, um trecho com o começo do texto. */
-export type CatalogSection = { documentId: string; documentTitle: string; versionId: string; heading: string; chunkIndex: number; preview: string | null }
+export type CatalogSection = { documentId: string; documentTitle: string; versionId: string; heading: string; chunkIndex: number; preview: string | null; pages?: { from: number; to: number } | undefined }
 
 export const SECTION_PREVIEW_CHARS = 140
 
@@ -21,7 +21,7 @@ export function sectionsOf(source: CatalogSource, previewChars = SECTION_PREVIEW
   const sections: CatalogSection[] = []
   let previousHeading: string | null = null
   for (const chunk of [...source.chunks].sort((left, right) => left.index - right.index)) {
-    const base = { documentId: source.documentId, documentTitle: source.documentTitle, versionId: source.versionId, chunkIndex: chunk.index }
+    const base = { documentId: source.documentId, documentTitle: source.documentTitle, versionId: source.versionId, chunkIndex: chunk.index, ...(chunk.pages ? { pages: chunk.pages } : {}) }
     if (chunk.heading) {
       if (chunk.heading === previousHeading) continue
       previousHeading = chunk.heading
@@ -41,15 +41,34 @@ export function outlineSize(source: CatalogSource): number {
 }
 
 /**
+ * As imagens do arquivo na seção de um trecho (as partes seguidas com o mesmo título), cada uma uma vez e na ordem do documento. Não entra no sumário
+ * nem no texto da seção: é o que a tela mostra junto das fontes de uma resposta, e a IA não recebe.
+ */
+export function sectionImagesOf(source: CatalogSource, chunkIndex: number, heading: string): { id: string; page: number; width: number; height: number }[] {
+  const sorted = [...source.chunks].sort((left, right) => left.index - right.index)
+  const position = sorted.findIndex((chunk) => chunk.index === chunkIndex)
+  const anchor = sorted[position]
+  // Fonte que cita a base inteira aponta para o primeiro trecho, mas não é aquela seção.
+  if (!anchor || anchor.heading !== heading) return []
+  let start = position
+  if (anchor.heading) while (start > 0 && sorted[start - 1]!.heading === anchor.heading) start -= 1
+  const found = new Map<string, { id: string; page: number; width: number; height: number }>()
+  for (let index = start; index < sorted.length && (index === position || (anchor.heading !== "" && sorted[index]!.heading === anchor.heading)); index += 1) {
+    for (const image of sorted[index]!.images ?? []) if (!found.has(image.id)) found.set(image.id, { id: image.id, page: image.page, width: image.width, height: image.height })
+  }
+  return [...found.values()]
+}
+
+/**
  * CONSULTA DIRECIONADA: o texto inteiro da seção de um trecho (as partes seguidas com o mesmo título), limitado. Seção sem título
  * = só o próprio trecho. null = o trecho não existe nesta versão da base.
  */
-export function sectionOf(source: CatalogSource, chunkIndex: number, maxChars = 6_000): { heading: string; text: string; chunkIndexes: number[] } | null {
+export function sectionOf(source: CatalogSource, chunkIndex: number, maxChars = 6_000): { heading: string; text: string; chunkIndexes: number[]; pages?: { from: number; to: number } } | null {
   const sorted = [...source.chunks].sort((left, right) => left.index - right.index)
   const position = sorted.findIndex((chunk) => chunk.index === chunkIndex)
   if (position === -1) return null
   const anchor = sorted[position]!
-  if (!anchor.heading) return { heading: "", text: anchor.text.slice(0, maxChars), chunkIndexes: [anchor.index] }
+  if (!anchor.heading) return { heading: "", text: anchor.text.slice(0, maxChars), chunkIndexes: [anchor.index], ...(anchor.pages ? { pages: anchor.pages } : {}) }
   let start = position
   while (start > 0 && sorted[start - 1]!.heading === anchor.heading) start -= 1
   const parts: KnowledgeChunk[] = []
@@ -60,5 +79,6 @@ export function sectionOf(source: CatalogSource, chunkIndex: number, maxChars = 
     parts.push(chunk)
     chars += chunk.text.length
   }
-  return { heading: anchor.heading, text: parts.map((chunk) => chunk.text).join("\n\n").slice(0, maxChars), chunkIndexes: parts.map((chunk) => chunk.index) }
+  const withPages = parts.flatMap((chunk) => (chunk.pages ? [chunk.pages] : []))
+  return { heading: anchor.heading, text: parts.map((chunk) => chunk.text).join("\n\n").slice(0, maxChars), chunkIndexes: parts.map((chunk) => chunk.index), ...(withPages.length > 0 ? { pages: { from: Math.min(...withPages.map((pages) => pages.from)), to: Math.max(...withPages.map((pages) => pages.to)) } } : {}) }
 }

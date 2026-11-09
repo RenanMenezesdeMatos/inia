@@ -60,7 +60,7 @@ function inMemoryDatabase(passwordHash: string, seed: { domains: DomainRow[]; ag
       Object.assign(row, { code, name, description, active, updated_at: new Date() })
       return { rows: [], rowCount: 1 }
     }
-    if (sql.trim().startsWith("delete from business_domains")) {
+    if (sql.trim().startsWith("update business_domains_all set active = false, deleted_at")) {
       const index = domains.findIndex((row) => row.id === params[0])
       if (index >= 0) domains.splice(index, 1)
       return { rows: [], rowCount: index >= 0 ? 1 : 0 }

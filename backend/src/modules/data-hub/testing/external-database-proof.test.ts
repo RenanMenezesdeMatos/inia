@@ -10,12 +10,12 @@ import { createIndicatorDefinition, deleteIndicatorDefinition } from "../../indi
 import { createDataHubContext, type DataHubContext } from "../application/data-hub-context.js"
 import type { ExternalDatabaseConnector, ExternalDatabaseSession } from "../application/ports.js"
 import { findFeed, type DataRunRow } from "../application/records.js"
-import { processQueuedRuns, recoverInterruptedRuns } from "../application/run-service.js"
+import { enqueueRun, processQueuedRuns, recoverInterruptedRuns } from "../application/run-service.js"
 import { DATABASE_ENGINES, type DatabaseEngine, type ResolvedDatabaseConnection } from "../domain/database/database-engine.js"
 import { PgAesSecretStore } from "../infrastructure/aes-secret-store.js"
 import { DriverExternalDatabaseConnector } from "../infrastructure/external-databases/external-database-connector.js"
 import { createDataHubRouter } from "../presentation/data-hub-router.js"
-import { adminExec, adminTargets, insertRows, resetProofArea, table, types, type ProofTarget } from "./external-database-admin.js"
+import { adminExec, adminTargets, insertRows, openAdmin, resetProofArea, table, types, type ProofTarget } from "./external-database-admin.js"
 import { CapturingLogger } from "./fakes.js"
 
 /**
@@ -29,7 +29,8 @@ import { CapturingLogger } from "./fakes.js"
  * inexistente, TLS) → criar a conexão → descobrir tabelas/visões → colunas → amostra → mapeamento sugerido → prévia
  * → ativar → sincronizar → sincronizar de novo (nada duplica) → incremental (só o novo) → páginas + continuação →
  * empates na ordenação (com e sem chave) → falha de rede no meio (retoma do checkpoint) → falha ao aplicar
- * (checkpoint não avança, página inteira desfeita) → carga interrompida (retomada automática) → mudança de esquema →
+ * (checkpoint não avança, página inteira desfeita) → trava real na origem (tempo esgotado, nova tentativa, termina quando a
+ * trava sai) → carga interrompida (retomada automática) → mudança de esquema →
  * permissão revogada → reiniciar leitura → isolamento entre organizações → senha em lugar nenhum.
  */
 const ENABLED = process.env.INIA_DB_PROOF === "1" && process.env.INIA_EXTERNAL_DB_PROOF === "1"
@@ -84,7 +85,8 @@ function appFor(organizationId: string): express.Express {
   const instance = express()
   instance.use(express.json())
   instance.use((req, _res, next) => {
-    req.user = { sub: "x", personId: actorPersonId, organizationId, role: "ADMIN", name: "Admin", email: "a@b", avatarUrl: null, jobTitle: null, teamId: null, teamName: null } as never
+    // Sessão identificada: quem cria a conexão pelas rotas digitou a senha e fica liberado para configurá-la.
+    req.user = { sub: "x", jti: "prova-bancos-externos", personId: actorPersonId, organizationId, role: "ADMIN", name: "Admin", email: "a@b", avatarUrl: null, jobTitle: null, teamId: null, teamName: null } as never
     next()
   })
   instance.use("/api/v1/admin/data-hub", createDataHubRouter(db, { logger, databases: flaky, secrets: new PgAesSecretStore(db) }))
@@ -424,6 +426,43 @@ describe.skipIf(!ENABLED)("Central de Dados — bancos externos reais (prova de 
       runs = await drain(measurementsFeedId)
       expect(runs.at(-1)).toMatchObject({ status: "COMPLETED", recordsReceived: 200, recordsInserted: 200, recordsUnchanged: 0 })
       expect(await measurementCount(prefix, SUM_INDICATOR)).toBe(OPERATORS * DAYS + 700)
+    }, 180_000)
+
+    it("trava real na origem: a carga agendada esgota o tempo sem avançar, espera a próxima tentativa e termina quando a trava sai", async () => {
+      const connectionHealth = async () => (await db.query<{ connection_health: string }>(`select connection_health from data_sources where id = $1`, [sourceId])).rows[0]!.connection_health
+      const before = await measurementCount(prefix, SUM_INDICATOR)
+      // Como o job do cliente: segura a tabela inteira até terminar.
+      const lockTable = target.engine === "POSTGRESQL" ? `begin; lock table ${table(target, "medicoes")} in access exclusive mode` : target.engine === "SQLSERVER" ? `begin tran; select top 1 id from ${table(target, "medicoes")} with (tablockx, holdlock)` : `lock tables ${table(target, "medicoes")} write`
+      const unlockTable = target.engine === "POSTGRESQL" ? "rollback" : target.engine === "SQLSERVER" ? "if @@trancount > 0 rollback" : "unlock tables"
+      const job = await openAdmin(target, target.database)
+      const rows: (string | number | null)[][] = []
+      for (let index = 1; index <= 10; index += 1) rows.push([30_000 + index, `${prefix}-${String(index + 1).padStart(4, "0")}`, SUM_INDICATOR, dayText(500), 1, laterInstant("2026-12-04", index)])
+      await insertRows(job, target, "medicoes", ["id", "matricula", "indicador", "data_referencia", "valor", "atualizado_em"], rows)
+      const checkpoint = (await findFeed(db, ORG, measurementsFeedId))!.checkpoint
+      // Tempo-limite curto só para a prova ser rápida. No SQL Server fica acima dos 10 s de LOCK_TIMEOUT: a falha vem do bloqueio (erro 1222), não do cliente.
+      const setQueryTimeout = (milliseconds: number) => db.query(`update data_sources set config = jsonb_set(config, '{database,queryTimeoutMs}', to_jsonb($2::int)) where id = $1`, [sourceId, milliseconds])
+      await setQueryTimeout(target.engine === "SQLSERVER" ? 20_000 : 2_000)
+      await job.exec(lockTable)
+      try {
+        const feed = (await findFeed(db, ORG, measurementsFeedId))!
+        const { run } = await enqueueRun(ctx, { organizationId: ORG, feed, triggerKind: "SCHEDULE", requestedBy: null })
+        await processQueuedRuns(ctx, 10)
+        const waiting = await db.query<{ status: string; attempts: number; error_code: string; seconds: number }>(`select status, attempts, error_code, extract(epoch from next_attempt_at - now())::float8 seconds from data_ingestion_runs where id = $1`, [run.id])
+        expect(waiting.rows[0]).toMatchObject({ status: "QUEUED", attempts: 1, error_code: "DATA_SOURCE_TIMEOUT" })
+        expect(waiting.rows[0]!.seconds).toBeGreaterThan(0)
+        expect(await connectionHealth()).toBe("ERROR")
+        expect((await findFeed(db, ORG, measurementsFeedId))!.checkpoint).toEqual(checkpoint)
+        expect(await measurementCount(prefix, SUM_INDICATOR)).toBe(before)
+      } finally {
+        await job.exec(unlockTable)
+        await job.close()
+        await setQueryTimeout(baseConfig().queryTimeoutMs)
+      }
+      await db.query(`update data_ingestion_runs set next_attempt_at = now() where feed_id = $1 and status = 'QUEUED'`, [measurementsFeedId])
+      const runs = await drain(measurementsFeedId)
+      expect(runs.at(-1)).toMatchObject({ status: "COMPLETED", triggerKind: "SCHEDULE", recordsReceived: 10, recordsInserted: 10 })
+      expect(await measurementCount(prefix, SUM_INDICATOR)).toBe(before + 10)
+      expect(await connectionHealth()).toBe("HEALTHY")
     }, 180_000)
 
     it("carga interrompida (processo caiu): a posse vence e o tick devolve a carga para a fila, que termina", async () => {

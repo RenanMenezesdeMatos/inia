@@ -80,6 +80,10 @@
 - **Coordenação**: implementado em paralelo com a sessão "Base de boas práticas" (linguagem simples) na mesma pasta — ela ficou com composição
   V21/prompt V25/verificação V23; estas mudanças com V22/V26/V24.
 
+### "Vale para" de base segue a versão (2026-11-04, PEN-008, migration 168)
+
+Numa base de conhecimento, alterar produtos grava no rascunho; `product_scope_assignments` só muda na transição da versão (`applyProductScopeAssignment`), na mesma transação. O motor de feedback continua lendo por data e não mudou. Argumentário continua valendo a partir de agora. Fazer a mudança valer também exige alcance de organização (aprovado na PEN-077). Roteiros de dev que gravam produtos precisam publicar depois. Detalhes em [bases-de-conhecimento-versoes.md](../bases-de-conhecimento-versoes.md).
+
 ### Produto em todo feedback (2026-10-22, `PRODUCT_IN_FEEDBACK_V1`)
 
 O que a análise da chamada estabelece sobre o produto agora chega a todo lugar que usa o feedback:

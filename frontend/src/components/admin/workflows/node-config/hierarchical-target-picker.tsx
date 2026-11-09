@@ -2,11 +2,11 @@
 
 import { useId } from "react"
 
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { resolveHumanReviewAncestors } from "../content-sources"
 import { ESCALATION_ROLE_LABELS, type EscalationRole, type FlowGraph, type HierarchicalTarget } from "@/schemas/admin/workflow-graph.schema"
+import { PersonPicker } from "./person-picker"
 
 type HierarchicalTargetKind = "operator" | "previous" | "specific"
 
@@ -73,12 +73,8 @@ export function HierarchicalTargetPicker({
 
       {kind === "specific" ? (
         <div className="space-y-1.5">
-          <Label htmlFor={`${fieldId}-user`}>Id da pessoa</Label>
-          <Input
-            id={`${fieldId}-user`}
-            value={target.type === "SPECIFIC_USER" ? target.userId : ""}
-            onChange={(event) => onChange({ type: "SPECIFIC_USER", userId: event.target.value })}
-          />
+          <Label htmlFor={`${fieldId}-user`}>Pessoa</Label>
+          <PersonPicker id={`${fieldId}-user`} value={target.type === "SPECIFIC_USER" ? target.userId : ""} onChange={(userId) => onChange({ type: "SPECIFIC_USER", userId })} />
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2">

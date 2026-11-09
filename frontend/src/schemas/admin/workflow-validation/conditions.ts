@@ -1,6 +1,6 @@
 import type { Orchestrator } from "../assistant.schema"
 import { QUARTILE_VALUES } from "../employee-performance.schema"
-import { COMPARATORS_BY_FIELD_TYPE, type Comparator, type FlowGraph, type FlowNode } from "../workflow-graph.schema"
+import { COMPARATORS_BY_FIELD_TYPE, HISTORICAL_AGGREGATION_LABELS, type Comparator, type FlowGraph, type FlowNode } from "../workflow-graph.schema"
 import { triggerProvidesValue } from "../workflow.schema"
 import type { ValidationContext, ValidationIssue, VariableInfo } from "./types"
 import { decodeSourcePathLocal, findField, structuredFieldsOf } from "./source-paths"
@@ -65,6 +65,8 @@ function validateSourcePathRule(
     return
   }
   const parsed = decodeSourcePathLocal(rule.sourcePath)
+  // Etapa removida: quem aponta o problema é validateNodeReferences (node-references.ts). Aqui só não há o que tipar.
+  if (parsed?.kind === "node" && !graph.nodes.some((candidate) => candidate.id === parsed.nodeId)) return
   if (parsed?.kind === "variable") {
     const variable = variablesById.get(parsed.variableId)
     if (!variable) {
@@ -134,7 +136,7 @@ export function validateDataCondition(subject: string, config: DataConditionLike
     }
     // Agregações da camada operacional (média ponderada, soma, último) só existem pra medições.
     if ((aggregation === "WEIGHTED_AVERAGE" || aggregation === "SUM" || aggregation === "LATEST") && official) {
-      push(`${subject} usa uma agregação operacional (${aggregation}) com uma fonte oficial — Atingimento/PRV só aceitam Média, Mínimo ou Máximo entre fechamentos.`)
+      push(`${subject} usa uma agregação operacional (${HISTORICAL_AGGREGATION_LABELS[aggregation]}) com uma fonte oficial — Atingimento/PRV só aceitam Média, Mínimo ou Máximo entre fechamentos.`)
     }
     // Fonte oficial só existe por fechamento mensal: dias (< 28) ou semana/dia civil não têm significado.
     if (official && query.period && ((query.period.kind === "ROLLING_DAYS" && query.period.days < 28) || (query.period.kind === "CALENDAR" && (query.period.unit === "DAY" || query.period.unit === "WEEK")))) {

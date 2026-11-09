@@ -44,6 +44,7 @@ import {
 } from "@/queries/admin/use-business-domain-queries"
 import type { BusinessDomainListParams } from "@/services/admin/business-domain-service"
 import { BUSINESS_DOMAIN_CODE_PATTERN, normalizeBusinessDomainCode, type BusinessDomain } from "@/schemas/admin/business-domain.schema"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /**
  * Catálogo ADMINISTRÁVEL de Domínios de negócio (migration 060). Um domínio novo (Logística,
@@ -132,7 +133,7 @@ function DeleteBusinessDomainButton({ domain }: { domain: BusinessDomain }) {
           <AlertDialogDescription>
             {blocked
               ? `Este domínio é utilizado por ${domain.agentCount} Agent(s) e ${domain.orchestratorCount} Orchestrator(s). A exclusão é bloqueada enquanto houver dependências — desative-o em vez de excluir.`
-              : "Nenhum Agent ou Orchestrator usa este domínio. A exclusão é definitiva."}
+              : `Nenhum Agent ou Orchestrator usa este domínio. ${RESTORE_NOTE}`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {deleteMutation.isError ? <p className="text-sm text-destructive">{(deleteMutation.error as Error).message}</p> : null}

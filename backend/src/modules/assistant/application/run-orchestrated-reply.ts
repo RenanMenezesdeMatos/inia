@@ -27,11 +27,15 @@ import {
 import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
 import type { InvestigationOutcomeFields } from "../../agents/application/run-agent.js"
 import type { SpecialistToolOptions } from "./run-specialist-tool.js"
+import { withAgentSnapshots } from "../../agents/application/agent-runtime-context.js"
+import { specialistAtCall } from "./specialist-availability.js"
 
 export type OrchestratedReply = {
   text: string
   agentId: string | null
-  calls: { toolName: string; query: string }[]
+  /** Cada especialista acionado, com a versão usada e o resultado da autorização (PEN-002, PEN-070, PEN-076) — gravado com a
+   * mensagem (`assistant_interaction_agents`). Ferramentas do backend não têm agente. */
+  calls: { toolName: string; query: string; agentId?: string | null; agentVersionId?: string | null; outcome?: SpecialistOutcome; orchestratorId?: string; orchestratorVersionId?: string | null; orchestratorAgentId?: string; orchestratorAgentVersionId?: string | null }[]
   // Resposta crua de cada especialista acionado, antes da síntese final — descartada pelo
   // caminho interativo (o chat só mostra `text`), mas é exatamente o que um node Orchestrator
   // de workflow precisa gravar no Execution Context pra Conditions/Outputs posteriores lerem.
@@ -160,10 +164,23 @@ function agenticRoundHint(round: number): string {
   return `Os resultados das ferramentas já acionadas estão acima. Se precisar aprofundar (ex.: diagnosticar os piores encontrados, abrir uma unidade, comparar meses), acione mais ferramentas — ${left === 1 ? "esta é a última rodada" : `restam ${left} rodadas`}. Se já tem o suficiente, escreva agora a resposta final completa, sem acionar ferramentas.`
 }
 
+/**
+ * Resultado da autorização na hora em que a execução do especialista vai começar: "Agente inativo" (PEN-070) ou versão vigente não
+ * autorizada para o alcance do Orquestrador (condição de segurança da revisão de 03/11/2026). Impedido, ele não roda nem é chamado
+ * de novo; o colaborador lê só que a parte está indisponível.
+ */
+export type SpecialistOutcome = "EXECUTED" | "BLOCKED_INACTIVE" | "BLOCKED_UNAUTHORIZED"
+
+/** O que o colaborador lê no lugar da parte indisponível — sem o nome do especialista nem instruções administrativas. */
+export const SPECIALIST_UNAVAILABLE_TEXT =
+  "[Esta parte do pedido está indisponível no momento e não foi consultada. Diga ao colaborador, em linguagem simples, que essa parte da resposta está indisponível agora — sem citar nomes de agentes, especialistas ou configurações e sem orientações administrativas — e responda normalmente às outras partes.]"
+
 /** Resultado de UMA ferramenta acionada no turno: especialista (agente) ou ferramenta direta do backend (`direct`). */
 type TurnResult = {
   toolName: string
   agentId: string | null
+  agentVersionId?: string | null
+  outcome?: SpecialistOutcome
   query: string
   periodDays: number | undefined
   text: string
@@ -268,7 +285,25 @@ export function extractValidatedStructuredResult(
  * `tools`, forçando texto), o suficiente pro caso de uso real (uma pergunta, um ou mais
  * especialistas, uma resposta só).
  */
-export async function runOrchestratedReply(
+/** Registro da chamada com as versões usadas (gravado com a mensagem; a resposta ao colaborador nunca mostra isso). */
+function participationOf(orchestrator: ResolvedOrchestrator, result: TurnResult): OrchestratedReply["calls"][number] {
+  return {
+    toolName: result.toolName,
+    query: result.query,
+    ...(result.agentId ? { agentId: result.agentId, agentVersionId: result.agentVersionId ?? null, outcome: result.outcome ?? "EXECUTED" } : {}),
+    orchestratorId: orchestrator.orchestratorId,
+    orchestratorVersionId: orchestrator.orchestratorVersionId ?? null,
+    orchestratorAgentId: orchestrator.orchestratorAgentId,
+    orchestratorAgentVersionId: orchestrator.orchestratorAgentVersionId ?? null,
+  }
+}
+
+/** Roda a resposta dentro das versões resolvidas do Orquestrador e dos especialistas (PEN-002, PEN-076). */
+export async function runOrchestratedReply(...args: Parameters<typeof runOrchestratedReplyInVersions>): Promise<OrchestratedReply> {
+  return withAgentSnapshots(args[1].agentSnapshots ?? [], () => runOrchestratedReplyInVersions(...args))
+}
+
+async function runOrchestratedReplyInVersions(
   db: Database,
   orchestrator: ResolvedOrchestrator,
   history: { role: "user" | "model"; text: string }[],
@@ -334,18 +369,27 @@ export async function runOrchestratedReply(
       return { toolName: call.name, agentId: null, query: JSON.stringify(call.args), periodDays: undefined, text: outcome.text, contract: "TEXT" as const, direct: { args: call.args, card: outcome.card, ...(outcome.trace ? { trace: outcome.trace } : {}) } }
     }
     const agentId = findSpecialistByToolName(orchestrator, call.name)
+    const agentVersionId = orchestrator.specialists.find((specialist) => specialist.toolName === call.name)?.agentVersionId ?? null
     const query = typeof call.args.query === "string" ? call.args.query : JSON.stringify(call.args)
     const periodDays = typeof call.args.periodDays === "number" ? call.args.periodDays : undefined
+    // Na hora em que a execução do especialista vai começar: versão VIGENTE de agora (uma publicação no meio da resposta já vale,
+    // revisão da PEN-002/PEN-076) e autorização de novo — desativado (PEN-070) ou não autorizado para o alcance, não roda.
+    const atCall = agentId ? await specialistAtCall(db, orchestrator, agentId) : null
+    if (agentId && atCall && "outcome" in atCall) {
+      return { toolName: call.name, agentId, agentVersionId: atCall.versionId ?? agentVersionId, outcome: atCall.outcome, query, periodDays, text: SPECIALIST_UNAVAILABLE_TEXT, contract: "TEXT" as const }
+    }
+    const callSnapshot = atCall && "snapshot" in atCall ? atCall.snapshot : null
     const engineAnalysis = agentId && specialistOptions.analyzeCall ? await specialistOptions.analyzeCall(agentId) : null
     const specialist = engineAnalysis
       // A referência da análise do motor viaja no lugar do resultado estruturado (lida por `callAnalysisRefOf` no "Gerar feedback").
       ? ({ contract: "FEEDBACK", text: engineAnalysis.text, structured: engineAnalysis.structured as StructuredMonitoringFeedback } as const)
       : agentId
-        ? await traceChatTool(call.name, "SPECIALIST", () => withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistToolOptions)))
+        ? await traceChatTool(call.name, "SPECIALIST", () => withAgentSnapshots(callSnapshot ? [callSnapshot] : [], () => withLlmScope({ role: "specialist", agentId }, () => runSpecialistTool(db, orchestrator.organizationId, agentId, query, operatorId, periodDays, extraContext || undefined, specialistToolOptions))))
         : ({ contract: "TEXT", text: "Especialista não encontrado para esse pedido." } as const)
     return {
       toolName: call.name,
       agentId,
+      ...(agentId ? { agentVersionId: callSnapshot?.versionId ?? agentVersionId, outcome: "EXECUTED" as const } : {}),
       query,
       periodDays,
       text: specialist.text,
@@ -423,7 +467,7 @@ export async function runOrchestratedReply(
     return {
       text: single.text,
       agentId: single.agentId,
-      calls: [{ toolName: single.toolName, query: single.query }],
+      calls: [participationOf(orchestrator, single)],
       results: [{
         agentId: single.agentId,
         toolName: single.toolName,
@@ -545,7 +589,7 @@ export async function runOrchestratedReply(
     ...(orchestratorSynthesis ? { synthesis: orchestratorSynthesis } : {}),
     text: finalText,
     agentId: uniqueAgentIds.length === 1 ? uniqueAgentIds[0]! : null,
-    calls: results.map((result) => ({ toolName: result.toolName, query: result.query })),
+    calls: results.map((result) => participationOf(orchestrator, result)),
     results: results.map((result) => ({
       agentId: result.agentId,
       toolName: result.toolName,

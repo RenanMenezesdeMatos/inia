@@ -1050,14 +1050,23 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     // Depois de fechar este turno (o que a INIA falou é gravado antes da resposta escrita), pela versão ATUAL do envio.
     if (pendingChoice) setTimeout(() => void sendForTextReplyRef.current?.(pendingChoice.text, { existingBubbleId: pendingChoice.bubbleId, clarification: pendingChoice.answer, speak: true }), 0)
     const recordedUserText = pendingChoice ? "" : userText
-    if (!recordedUserText && !replyText) return
+    // Turno com especialista: a resposta gravada é a dele, mas o que foi falado também é conferido (PEN-017). A fala vem do provedor direto para cá:
+    // o servidor só a vê agora, depois de ouvida.
+    const spokenText = assistantText && specialistAnswered ? assistantText : undefined
+    if (!recordedUserText && !replyText && !spokenText) return
     const generation = viewGenerationRef.current
     // Turno sobre uma aplicação: o backend decide a conversa (a da aplicação ou a complementar) — nunca a conversa geral.
-    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: recordedUserText || undefined, userChannel, userSpokenAt, assistantText: replyText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => {
+    void recordVoiceTurn({ conversationId: conversationIdRef.current, turnId, userText: recordedUserText || undefined, userChannel, userSpokenAt, assistantText: replyText, spokenText, feedbackApplicationId: feedbackSessionRef.current?.application.id ?? null }).then((result) => {
       applyVoiceConversationResult(result, generation, localIds)
       // A resposta falada gravada: o curtir/descurtir do balão passa a ser gravado nela.
       const interactionId = result?.assistantInteractionId
       if (interactionId && replyBubbleId !== null) setMessages((current) => current.map((message) => (message.id === replyBubbleId ? { ...message, interactionId } : message)))
+      // A conferência achou violação no que já foi falado: o texto sai da tela, e a pessoa fica sabendo. A fala em si não tem como voltar atrás.
+      const notice = result?.responseCheck?.notice
+      if (notice && generation === viewGenerationRef.current) {
+        if (replyBubbleId !== null) setMessages((current) => current.map((message) => (message.id === replyBubbleId ? { ...message, text: notice } : message)))
+        else setMessages((current) => [...current, { id: nextMessageId(), sender: "assistant", text: notice, time: nowTime(), occurredAt: new Date().toISOString(), channel: "voice" }])
+      }
     })
   }
 

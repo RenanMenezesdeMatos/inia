@@ -236,6 +236,16 @@ describe("Intervenções do caso — acesso", () => {
     expect(await screen.findByText("Intervenções não disponíveis para o seu acesso")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Tentar/ })).not.toBeInTheDocument()
   })
+
+  it("escolher outra intervenção só troca a URL — sem refazer a página do caso no servidor", async () => {
+    service.fetchCaseInterventions.mockResolvedValue({ interventions: [DETAIL, { ...DETAIL, id: "int-2", status: "COMPLETED", statusLabel: "Concluída", type: { ...DETAIL.type, name: "Orientar" } }], reports: [] })
+    service.fetchIntervention.mockResolvedValue(DETAIL)
+    const replaceState = vi.spyOn(window.history, "replaceState").mockImplementation(() => {})
+    renderWithQuery(<CaseInterventions caseId="case-1" />)
+    fireEvent.click(await screen.findByRole("button", { name: /^Orientar/ }))
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/supervisor/cases/case-1?intervention=int-2")
+    replaceState.mockRestore()
+  })
 })
 
 describe("Treinamento — competência, conteúdos aprovados e atividades (sem IA)", () => {

@@ -81,7 +81,7 @@ export default function ConditionsPage() {
                 <li><strong className="font-medium text-foreground">Atingimento consolidado do PRV</strong> — igual ao anterior, mas sobre o PRV (não depende de escolher um indicador).</li>
                 <li><strong className="font-medium text-foreground">Quartil do indicador</strong> / <strong className="font-medium text-foreground">Quartil do PRV</strong> — o quartil mais recente (Q1 melhor → Q4 pior), ou, com Recorrência, quantos dos últimos N fechamentos bateram um quartil-alvo.</li>
               </ul>
-              <p>Individual-only: Quartil do indicador/PRV não aparece como opção quando o Workflow está em Modo de avaliação Consolidado (não existe um colaborador individual como sujeito) — Valor/Atingimento continuam disponíveis, agregados sobre a estrutura inteira.</p>
+              <p>Individual-only: em Workflow Consolidado, Quartil do indicador/PRV só aparece entre &quot;Aplicar individualmente&quot; e &quot;Consolidar resultados&quot;, onde há um colaborador como sujeito. Fora desse trecho, Valor/Atingimento continuam disponíveis, agregados sobre a estrutura inteira.</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
@@ -316,6 +316,11 @@ export default function ConditionsPage() {
           <strong className="font-medium text-foreground">&quot;Atingimento do PRV da estrutura&quot;</strong> (mesmo padrão pra Atingimento do
           indicador) — deixa claro que é uma MÉDIA calculada pela engine sobre os PRVs individuais dos membros, nunca um PRV oficial da estrutura
           (que não existe na fonte hoje). Os dois nomes nunca devem ser confundidos.
+        </p>
+        <p>
+          O que define é quem está sendo avaliado naquele ponto do fluxo, não o modo do Workflow. Em um Workflow Consolidado, uma Condition entre
+          &quot;Aplicar individualmente&quot; e &quot;Consolidar resultados&quot; olha só a pessoa daquela execução: o rótulo e o cálculo são os do
+          colaborador. O quartil operacional, nesse trecho, compara a pessoa com a coleção selecionada.
         </p>
       </WikiSection>
 

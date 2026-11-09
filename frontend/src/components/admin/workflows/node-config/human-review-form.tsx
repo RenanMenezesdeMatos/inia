@@ -37,7 +37,7 @@ export function HumanReviewForm({
       />
 
       <p className="text-xs text-muted-foreground">
-        O workflow fica parado — sem prazo — até essa pessoa aprovar, reprovar ou escalar na aba Execuções.
+        Esta etapa para o fluxo, sem prazo, até essa pessoa aprovar, reprovar ou escalar em Pendências. Ligue as três saídas no próximo passo, abaixo.
       </p>
 
       <StructuredContentPicker

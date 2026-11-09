@@ -41,6 +41,7 @@ import {
 import type { AiConnection, AiProvider, ConnectionTestResult } from "@/schemas/admin/ai-management.schema"
 
 import { ConnectionTestResultView, ConnectionTestStatusBadge, EnabledBadge, InfoCallout, ProviderIcon } from "./ai-shared"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /**
  * Conexões de IA. O formulário é montado pela METADATA do provider (`/providers`): credencial
@@ -318,7 +319,7 @@ function DeleteConnectionButton({ connection }: { connection: AiConnection }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {connection.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            A conexão e os modelos dela serão removidos. O histórico de uso continua (guarda provider e modelo por nome). Se a conexão estiver em uma política de roteamento, a exclusão é bloqueada — prefira desabilitar.
+            A conexão e os modelos dela saem das telas e do roteamento, e a credencial é revogada. O histórico de uso continua. {RESTORE_NOTE} Se a conexão estiver em uma política de roteamento, a exclusão é bloqueada — prefira desabilitar.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {remove.isError ? (

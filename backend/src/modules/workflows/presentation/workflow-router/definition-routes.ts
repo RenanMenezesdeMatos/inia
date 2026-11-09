@@ -13,6 +13,7 @@ import { consolidatedStructureAnchorId } from "../../domain/consolidated-structu
 import { populationFilterAnchorId, populationFilterGroupRef } from "../../domain/population-filter-schema.js"
 import { structureAnchorGroupRef } from "../../domain/structure-anchor-schema.js"
 import { assertGoLiveConfirmed, computeGoLiveImpact } from "../../application/go-live-impact.js"
+import { assertPublishedWorkflowMatchesIndicatorCatalog } from "../../application/indicator-graph-guard.js"
 import { writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
@@ -224,7 +225,8 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     if (scopeIsChanging) {
       const referencedOrchestratorIds = new Set<string>()
       for (const node of (current.draftGraph as FlowGraph | null)?.nodes ?? []) {
-        if (node.type === "orchestrator") referencedOrchestratorIds.add(node.config.orchestratorId)
+        // Etapa de rascunho ainda sem orquestrador escolhido não tem o que conferir.
+        if (node.type === "orchestrator" && node.config.orchestratorId) referencedOrchestratorIds.add(node.config.orchestratorId)
       }
       const nextScope = { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId }
       if (referencedOrchestratorIds.size > 0) {
@@ -303,6 +305,8 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
     // horários de hoje já vencidos ou atingir uma população grande: exige a confirmação do impacto,
     // como a publicação (go-live-impact.ts). Desativar nunca precisa.
     if (input.active === true && !current.active && current.published) {
+      // A estratégia de um indicador pode ter sido corrigida enquanto o Workflow estava pausado: a versão publicada não muda sozinha.
+      await assertPublishedWorkflowMatchesIndicatorCatalog(db, organizationId, request.params.id!)
       const impact = await computeGoLiveImpact(db, organizationId, {
         workflowId: request.params.id!,
         reason: "ACTIVATE",

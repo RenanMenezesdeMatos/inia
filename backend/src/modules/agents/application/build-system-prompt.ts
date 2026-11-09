@@ -3,6 +3,7 @@ import { attachKnowledgeTrace } from "../../../shared/application/llm-telemetry.
 import { renderAcronymContext } from "../../knowledge/domain/query-acronyms.js"
 import { loadArgumentScriptPromptLines, type ArgumentScriptAudience } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import { retrieveKnowledgeForAgent, type KnowledgeCoverageRequest, type KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
+import { agentSnapshotFor } from "./agent-runtime-context.js"
 import { loadAgentGuardrails, renderAgentGuardrails } from "./agent-guardrails.js"
 
 
@@ -108,6 +109,13 @@ async function argumentAudienceOf(db: Database, organizationId: string, agentId:
   if (subjectPersonId) {
     const person = (await db.query<{ team_id: string | null; subteam_id: string | null }>(`select team_id, subteam_id from people where id = $1 and organization_id = $2`, [subjectPersonId, organizationId])).rows[0]
     if (person) return { teamId: person.team_id, subteamId: person.subteam_id }
+  }
+  const snapshot = agentSnapshotFor(agentId)
+  if (snapshot) {
+    const { scopeType, teamId, subteamId } = snapshot.config
+    if (scopeType !== "SUBTEAM") return { teamId: scopeType === "TEAM" ? teamId : null, subteamId: null }
+    const subteam = (await db.query<{ team_id: string }>(`select team_id from subteams where id = $1`, [subteamId])).rows[0]
+    return { teamId: subteam?.team_id ?? null, subteamId }
   }
   const agent = (await db.query<{ team_id: string | null; subteam_id: string | null }>(
     `select case when a.scope_type = 'SUBTEAM' then st.team_id else a.team_id end team_id, a.subteam_id from agents a left join subteams st on st.id = a.subteam_id where a.id = $1 and a.organization_id = $2`,

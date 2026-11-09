@@ -43,7 +43,8 @@ const artifact = (disposition: ReliableFeedbackNodeOutput["disposition"], overri
 const AGENT_RESULT = { kind: "monitoring", input: { organizationId: ORG, operatorId: OPERATOR, interactionId: INTERACTION, structured: { evidenceFound: "Vou verificar aqui." } } }
 
 function fakeDb() {
-  const query = vi.fn(async (sql: string) => {
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes("from people where id = any($1::uuid[]) and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: 1 }
     if (sql.includes("select operator_id from interactions")) return { rows: [{ operator_id: OPERATOR }], rowCount: 1 }
     if (sql.includes("select subject_id from indicator_measurements")) return { rows: [{ subject_id: OPERATOR }], rowCount: 1 }
     if (sql.includes("select id, name, role from people")) return { rows: [{ id: OPERATOR, name: "Operadora", role: "OPERATOR" }], rowCount: 1 }

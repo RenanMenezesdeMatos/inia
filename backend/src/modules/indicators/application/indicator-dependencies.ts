@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { loadPoliciesCiting } from "../../interventions/application/policy-references.js"
 
 /**
  * O que já depende de um indicador — base da proteção de alteração semântica e da exclusão.
@@ -17,7 +18,7 @@ export type IndicatorDependencies = {
   hasHistory: boolean
 }
 
-async function queryDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<Omit<IndicatorDependencies, "workflows"> & { workflows: ({ id: string; name: string } & ScopedTarget)[] }> {
+async function queryDependencies(db: Pick<Database, "query">, organizationId: string, definition: { id: string; code: string }): Promise<Omit<IndicatorDependencies, "workflows"> & { workflows: ({ id: string; name: string } & ScopedTarget)[] }> {
   const counts = await db.query<{ measurements: string; goals: string; official_closures: string }>(
     `select
        (select count(*) from indicator_measurements where indicator_definition_id = $1)::text measurements,
@@ -44,7 +45,7 @@ async function queryDependencies(db: Database, organizationId: string, definitio
 }
 
 /** Todas as dependências — trava semântica e exclusão (escritas que já exigem a organização inteira). */
-export async function loadIndicatorDependencies(db: Database, organizationId: string, definition: { id: string; code: string }): Promise<IndicatorDependencies> {
+export async function loadIndicatorDependencies(db: Pick<Database, "query">, organizationId: string, definition: { id: string; code: string }): Promise<IndicatorDependencies> {
   const dependencies = await queryDependencies(db, organizationId, definition)
   return { ...dependencies, workflows: dependencies.workflows.map(({ id, name }) => ({ id, name })) }
 }
@@ -58,6 +59,31 @@ export async function loadVisibleIndicatorDependencies(db: Database, organizatio
   const dependencies = await queryDependencies(db, organizationId, definition)
   const visible = dependencies.workflows.filter((workflow) => canManageScope(scopes, workflow))
   return { ...dependencies, workflows: visible.map(({ id, name }) => ({ id, name })), workflowsOutOfScope: dependencies.workflows.length - visible.length }
+}
+
+/**
+ * O que impede a EXCLUSÃO: só o que depende do indicador agora. Medição, meta, fechamento, investigação e diagnóstico são histórico: continuam guardados, saem dos painéis e voltam se o
+ * indicador for restaurado. Workflow que cita o código está em `IndicatorDependencies.workflows`. Execução em andamento leria o indicador durante a execução.
+ */
+export type IndicatorDeletionBlockers = { runningExecutions: number; policies: string[] }
+
+export async function loadIndicatorDeletionBlockers(db: Pick<Database, "query">, organizationId: string, indicator: { id: string; code: string }): Promise<IndicatorDeletionBlockers> {
+  const running = await db.query<{ total: number }>(
+    `select count(distinct e.id)::int total from workflow_enrollments e
+       left join indicator_measurements_all m on m.id = e.indicator_measurement_id
+       left join indicator_diagnostic_strategy_versions v on v.id = e.indicator_diagnostic_strategy_version_id
+       left join indicator_diagnostic_strategies s on s.id = v.strategy_id
+      where e.organization_id = $1 and e.status in ('active', 'waiting') and (m.indicator_definition_id = $2 or s.indicator_definition_id = $2)`,
+    [organizationId, indicator.id],
+  )
+  return { runningExecutions: running.rows[0]?.total ?? 0, policies: await loadPoliciesCiting(db, organizationId, { key: "indicatorCode", value: indicator.code }) }
+}
+
+export function describeDeletionBlockers({ runningExecutions, policies }: IndicatorDeletionBlockers): string {
+  const parts: string[] = []
+  if (runningExecutions > 0) parts.push(`${runningExecutions} execução(ões) de Workflow em andamento`)
+  if (policies.length > 0) parts.push(`política(s) de acompanhamento: ${policies.slice(0, 3).join(", ")}${policies.length > 3 ? "…" : ""}`)
+  return parts.join("; ")
 }
 
 export function describeDependencies(dependencies: IndicatorDependencies): string {

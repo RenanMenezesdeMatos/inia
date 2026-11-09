@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import type { DataContract, DatabaseObjectDescription, Preview } from "@/schemas/admin/data-hub.schema"
 
 const service = vi.hoisted(() => ({
+  fetchCadencePreview: vi.fn(),
   fetchSource: vi.fn(),
   fetchContracts: vi.fn(),
   fetchDatabaseObjects: vi.fn(),
@@ -79,7 +80,7 @@ function currentStep(): string | null {
 describe("Adicionar conjunto de dados a uma conexão de banco existente", () => {
   beforeEach(() => {
     Object.values(service).forEach((fn) => fn.mockReset())
-    service.fetchSource.mockResolvedValue({ id: "src-1", publicId: "abc", name: "RH", description: null, kind: "DATABASE", status: "ACTIVE", config: {}, connectionHealth: "HEALTHY", connectionCheckedAt: "2026-10-15T10:00:00Z", connectionError: null, createdAt: "", updatedAt: "", feedCount: 0, activeFeedCount: 0, freshness: "NEVER", lastRunAt: null, lastSuccessAt: null, lastDataAt: null, nextSyncAt: null, lastRecordsReceived: null, lastRecordsRejected: null, feeds: [], secrets: [], tokens: [] })
+    service.fetchSource.mockResolvedValue({ id: "src-1", publicId: "abc", name: "RH", description: null, kind: "DATABASE", status: "ACTIVE", configAccess: { required: true, unlocked: true, expiresAt: "2026-11-05T15:30:00.000Z", fields: ["password"] }, config: {}, connectionHealth: "HEALTHY", connectionCheckedAt: "2026-10-15T10:00:00Z", connectionError: null, createdAt: "", updatedAt: "", feedCount: 0, activeFeedCount: 0, freshness: "NEVER", lastRunAt: null, lastSuccessAt: null, lastDataAt: null, nextSyncAt: null, lastRecordsReceived: null, lastRecordsRejected: null, feeds: [], secrets: [], tokens: [] })
     service.fetchContracts.mockResolvedValue({ contracts: [CONTRACT], dependencies: [], errorCodes: { run: [], record: [] } })
     service.fetchDatabaseObjects.mockResolvedValue({ objects: [{ schema: "dbo", name: "colaboradores", kind: "TABLE", estimatedRows: 30 }], truncated: false })
     service.fetchDatabaseColumns.mockResolvedValue(DESCRIPTION)
@@ -88,6 +89,7 @@ describe("Adicionar conjunto de dados a uma conexão de banco existente", () => 
     service.createFeed.mockResolvedValue({ id: "feed-1" })
     service.setFeedStatus.mockResolvedValue({ id: "feed-1" })
     service.syncFeedNow.mockResolvedValue({ id: "run-1" })
+    service.fetchCadencePreview.mockResolvedValue({ label: "", timeZone: "America/Fortaleza", nextRuns: [] })
   })
 
   it("'Adicionar outro conjunto desta conexão' recomeça o assistente em 'Tabela ou visão' (antes: mesmo endereço, nada acontecia)", async () => {
@@ -130,5 +132,42 @@ describe("Adicionar conjunto de dados a uma conexão de banco existente", () => 
     // Nada da rodada anterior: nenhuma tabela escolhida, então ainda não dá para continuar.
     expect(await screen.findByRole("option", { name: /colaboradores/ })).toHaveAttribute("aria-selected", "false")
     expect(next()).toBeDisabled()
+  })
+
+  it("periodicidade personalizada: o assistente grava seg a sex às 06:00 e 18:00 e não ativa enquanto estiver inválida", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <SourceWizard />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    )
+    const next = () => screen.getByRole("button", { name: /Continuar/ })
+    fireEvent.click(await screen.findByRole("option", { name: /colaboradores/ }))
+    await waitFor(() => expect(next()).toBeEnabled())
+    fireEvent.click(next())
+    fireEvent.click(screen.getByRole("combobox", { name: /Qual conjunto de dados da INIA/ }))
+    fireEvent.click(screen.getByRole("option", { name: /Colaboradores/ }))
+    fireEvent.click(next())
+    const reviewed = await screen.findByRole("switch", { name: "Conferi os campos obrigatórios" })
+    await waitFor(() => expect(reviewed).toBeEnabled())
+    fireEvent.click(reviewed)
+    fireEvent.click(next())
+
+    const activate = await screen.findByRole("button", { name: /Ativar/ })
+    await waitFor(() => expect(activate).toBeEnabled())
+    fireEvent.click(screen.getByRole("combobox", { name: "Frequência" }))
+    fireEvent.click(screen.getByRole("option", { name: "Em dias da semana" }))
+    fireEvent.click(screen.getByRole("button", { name: /Adicionar horário/ }))
+    fireEvent.change(screen.getByLabelText("Horário 2"), { target: { value: "06:00" } })
+    expect(screen.getByRole("alert")).toHaveTextContent("Há horários repetidos.")
+    expect(activate).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Horário 2"), { target: { value: "18:00" } })
+    await waitFor(() => expect(activate).toBeEnabled())
+    expect(screen.getByText("Seg a sex às 06:00 e 18:00", { selector: "dd" })).toBeInTheDocument()
+    fireEvent.click(activate)
+    expect(await screen.findByText("Conjunto de dados ativado")).toBeInTheDocument()
+    expect(service.createFeed).toHaveBeenCalledWith("src-1", expect.objectContaining({ cadence: { kind: "CALENDAR", times: ["06:00", "18:00"], frequency: { type: "WEEKLY", weekdays: ["MON", "TUE", "WED", "THU", "FRI"] } } }))
   })
 })

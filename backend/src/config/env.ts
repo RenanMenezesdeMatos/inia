@@ -97,6 +97,24 @@ export const envSchema = z.object({
   DATA_HUB_SECRET_KEY_PREVIOUS: z.string().optional(),
   /** Retenção dos objetos brutos (arquivos/payloads) em dias — metadados do Run ficam para sempre. */
   DATA_HUB_RAW_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /**
+   * Consulta de dados da Central: limites impostos pelo servidor (`data-explorer/domain/explorer-limits.ts`, docs/dev/central-de-dados-consulta.md). O teto de cada
+   * variável impede configurar "sem limite".
+   */
+  DATA_EXPLORER_DEFAULT_PAGE_SIZE: z.coerce.number().int().min(10).max(100).default(25),
+  DATA_EXPLORER_MAX_PAGE_SIZE: z.coerce.number().int().min(25).max(200).default(100),
+  DATA_EXPLORER_QUERY_TIMEOUT_MS: z.coerce.number().int().min(500).max(15_000).default(5_000),
+  DATA_EXPLORER_COUNT_CAP: z.coerce.number().int().min(1_000).max(100_000).default(10_000),
+  DATA_EXPLORER_EXPORT_MAX_ROWS: z.coerce.number().int().min(1_000).max(100_000).default(20_000),
+  DATA_EXPLORER_EXPORT_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(104_857_600).default(20_971_520),
+  DATA_EXPLORER_EXPORT_MAX_DURATION_MS: z.coerce.number().int().min(10_000).max(300_000).default(60_000),
+  DATA_EXPLORER_QUERIES_PER_MINUTE: z.coerce.number().int().min(1).max(300).default(30),
+  DATA_EXPLORER_QUERIES_PER_MINUTE_ORGANIZATION: z.coerce.number().int().min(1).max(1_200).default(120),
+  DATA_EXPLORER_EXPORTS_PER_10_MINUTES: z.coerce.number().int().min(1).max(60).default(5),
+  DATA_EXPLORER_EXPORTS_PER_10_MINUTES_ORGANIZATION: z.coerce.number().int().min(1).max(200).default(15),
+  DATA_EXPLORER_CANCEL_MAX_ROWS: z.coerce.number().int().min(100).max(100_000).default(10_000),
+  DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
+  DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES_ORGANIZATION: z.coerce.number().int().min(1).max(200).default(30),
   /** Token Budget da investigação (V1.1): limiares de AVISO por execução (nunca teto cego). 0 desliga o limiar. */
   INVESTIGATION_TOKEN_WARNING_TOTAL: z.coerce.number().int().min(0).default(60_000),
   INVESTIGATION_TOKEN_WARNING_INPUT: z.coerce.number().int().min(0).default(50_000),

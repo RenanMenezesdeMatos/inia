@@ -35,6 +35,7 @@ const WORKFLOW = {
   published: true,
   trigger: { kind: "manual", context: "INTERACTION" },
   activeEnrollments: 0,
+  blockedEnrollments: 0,
   draftGraph: { nodes: [], edges: [] },
   publishedGraph: { nodes: [{ id: "out", type: "output", label: "Avatar", position: { x: 0, y: 0 }, config: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["AVATAR"], source: "nodeOutputs.gen" } }], edges: [] },
 } as unknown as WorkflowDetail
@@ -53,7 +54,7 @@ const run = (stage: ManualRun["execution"]["stage"], deliveries: ManualRun["deli
   collaborator: { id: "op-1", name: "Larissa Monteiro", matricula: "DEMO-OP-0001" },
   interaction: { id: "call-1", subject: "Contestação de conta", startedAt: "2026-09-29T13:00:00Z" },
   measurement: null,
-  execution: { enrollmentId: "enr-1", status: stage === "COMPLETED" ? "completed" : "active", stage, currentNodeId: "agent", currentNodeLabel: "Monitoria", waitingFor: null, lastError: null, nextRetryAt: null, updatedAt: "2026-09-30T10:05:00Z", events: [] },
+  execution: { enrollmentId: "enr-1", status: stage === "COMPLETED" ? "completed" : "active", stage, blockedReason: null, blockedCause: null, currentNodeId: "agent", currentNodeLabel: "Monitoria", waitingFor: null, lastError: null, nextRetryAt: null, updatedAt: "2026-09-30T10:05:00Z", events: [] },
   deliveries,
   interventions: [],
 })
@@ -107,5 +108,49 @@ describe("ManualRunDialog", () => {
     expect(await screen.findByText("Concluída", {}, { timeout: 4000 })).toBeInTheDocument()
     expect(screen.getByText(/recado disponível para Larissa Monteiro/)).toBeInTheDocument()
     expect(screen.getByText(/só conta como entregue depois que Larissa Monteiro aceitar/)).toBeInTheDocument()
+  })
+
+  it("revisão sem revisor: mostra o motivo real, sem falar em agente (P5c)", async () => {
+    service.fetchManualRunInfo.mockResolvedValue(INFO)
+    service.fetchManualRunCollaborators.mockResolvedValue({ items: [{ id: "op-1", name: "Larissa Monteiro", matricula: "DEMO-OP-0001", jobTitle: "Operadora", teamName: "B2C", subteamName: null }], total: 1 })
+    service.fetchManualRunInteractions.mockResolvedValue([{ id: "call-1", externalId: "CALL-1", subject: "Contestação de conta", channel: "VOICE", startedAt: "2026-09-29T13:00:00Z", endedAt: "2026-09-29T13:09:00Z", durationSeconds: 540, flags: [] }])
+    const blocked = run("BLOCKED")
+    service.requestManualRun.mockResolvedValue({ created: true, run: blocked })
+    service.fetchManualRun.mockResolvedValue({ ...blocked, execution: { ...blocked.execution, status: "blocked", blockedReason: "HUMAN_REVIEW_NO_REVIEWER", blockedCause: "NO_ONE_IN_CHAIN" } })
+    renderDialog()
+
+    fireEvent.click(await screen.findByRole("option", { name: /Larissa Monteiro/ }))
+    fireEvent.click(await screen.findByRole("option", { name: /Contestação de conta/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Executar agora/ }))
+
+    const blockedText = await screen.findByTestId("manual-run-blocked")
+    await waitFor(() => expect(blockedText).toHaveTextContent("não tem o cargo pedido na hierarquia"))
+    expect(blockedText).toHaveTextContent("Ajuste a hierarquia ou o revisor da etapa")
+    expect(blockedText).not.toHaveTextContent(/agente/i)
+  })
+
+  it("etapa do agente bloqueada (inativo ou acesso não autorizado): aparece Bloqueada, com a orientação, sem 'processando' para sempre (PEN-070/073)", async () => {
+    service.fetchManualRunInfo.mockResolvedValue(INFO)
+    service.fetchManualRunCollaborators.mockResolvedValue({ items: [{ id: "op-1", name: "Larissa Monteiro", matricula: "DEMO-OP-0001", jobTitle: "Operadora", teamName: "B2C", subteamName: null }], total: 1 })
+    service.fetchManualRunInteractions.mockResolvedValue([{ id: "call-1", externalId: "CALL-1", subject: "Contestação de conta", channel: "VOICE", startedAt: "2026-09-29T13:00:00Z", endedAt: "2026-09-29T13:09:00Z", durationSeconds: 540, flags: [] }])
+    const blocked = run("BLOCKED")
+    service.requestManualRun.mockResolvedValue({ created: true, run: blocked })
+    service.fetchManualRun.mockResolvedValue({ ...blocked, execution: { ...blocked.execution, status: "blocked", blockedReason: "AGENT_ACCESS_NOT_AUTHORIZED" } })
+    renderDialog()
+
+    fireEvent.click(await screen.findByRole("option", { name: /Larissa Monteiro/ }))
+    fireEvent.click(await screen.findByRole("option", { name: /Contestação de conta/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Executar agora/ }))
+
+    // O motivo vem da execução: acesso não autorizado, com a orientação de ajustar o agente (sem nada do que é restrito).
+    expect(await screen.findByText("Bloqueada")).toBeInTheDocument()
+    expect(await screen.findByText(/a versão vigente dele não está autorizada para este Workflow/)).toBeInTheDocument()
+    expect(screen.getByTestId("manual-run-blocked")).toHaveTextContent("Ajuste o agente (alcance ou bases da versão vigente) ou substitua-o e solicite uma nova tentativa.")
+    expect(screen.getByTestId("manual-run-blocked")).not.toHaveTextContent("inativo")
+    expect(screen.getByText(/Nada foi entregue — a execução parou antes da entrega\./)).toBeInTheDocument()
+    // Estado terminal: o polling para (sem nova busca depois da primeira).
+    const calls = service.fetchManualRun.mock.calls.length
+    await new Promise((resolve) => setTimeout(resolve, 2300))
+    expect(service.fetchManualRun.mock.calls.length).toBe(calls)
   })
 })

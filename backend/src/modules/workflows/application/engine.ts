@@ -1,3 +1,4 @@
+import { HumanReviewBlockedError, TRIGGERING_RECORD_CANCELLED } from "../domain/execution-block.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { runWithAiWorkflowCorrelation } from "../../../shared/application/model-routing/ai-runtime.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
@@ -10,6 +11,8 @@ import { productionEffects } from "./effect-sink.js"
 import { classifyExecutionError, EXECUTION_ERROR_CATEGORY_LABELS, type ExecutionFailure } from "../../../shared/domain/execution-failure.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
 import { decideNodeRetry } from "../domain/node-retry-policy.js"
+import { AgentInactiveError } from "../../agents/domain/agent-inactive-error.js"
+import { AgentAccessBlockedError } from "../../agents/application/agent-execution-authorization.js"
 import { loadLatestTranscriptForModel } from "./transcript.js"
 import { processNode, type EnrollmentRow, type NodeOutcome } from "./node-handlers.js"
 
@@ -104,7 +107,7 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
        select we.id, we.organization_id, we.workflow_id, we.version_id, we.interaction_id, we.indicator_measurement_id,
               we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
               we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision,
-              we.node_outputs, we.variables, we.parent_enrollment_id,
+              we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
               w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter
        from workflow_enrollments we
        join workflows w on w.id = we.workflow_id
@@ -247,8 +250,22 @@ export async function processEnrollment(db: Database, row: ClaimedRow): Promise<
   return runWithAiWorkflowCorrelation(row.organization_id, correlation, () => processEnrollmentInOrganization(db, row))
 }
 
+/**
+ * Medição cancelada na Central de Dados: a execução que nasceu dela não continua. Conferido aqui, antes de qualquer etapa, porque cada uma reagiria de um jeito: a Saída falha, mas a
+ * Revisão humana ficaria esperando sem ninguém avisado e a Condição seguiria com o valor guardado. Bloqueada só anda com uma nova tentativa confirmada, e a tentativa exige que a
+ * medição tenha voltado a valer. Só existe em Workflow pausado que voltou, em nova tentativa e em intervalo curto de execução manual: com Workflow rodando, o cancelamento é recusado.
+ */
+async function isTriggeringRecordCancelled(db: Database, row: ClaimedRow): Promise<boolean> {
+  if (!row.indicator_measurement_id) return false
+  const result = await db.query(`select 1 from indicator_measurements_all where id = $1 and cancelled_at is not null`, [row.indicator_measurement_id])
+  return (result.rowCount ?? 0) > 0
+}
+
 async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): Promise<void> {
   try {
+    if (await isTriggeringRecordCancelled(db, row)) {
+      return markBlocked(db, row, { reason: TRIGGERING_RECORD_CANCELLED, message: "A medição que iniciou esta execução foi cancelada na Central de Dados. Nada mais roda por ela. Se a medição voltar a valer, solicite uma nova tentativa.", details: {} })
+    }
     const versionResult = await db.query<{ graph: unknown }>(`select graph from workflow_versions where id = $1`, [row.version_id])
     const graph = flowGraphSchema.parse(versionResult.rows[0]?.graph)
     const node = findNode(graph, row.current_node_id)
@@ -294,8 +311,38 @@ async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): P
 
     await applyOutcome(db, row, outcome)
   } catch (error) {
+    if (error instanceof AgentInactiveError || error instanceof AgentAccessBlockedError) return markBlocked(db, row, agentBlockOf(error))
+    if (error instanceof HumanReviewBlockedError) return markBlocked(db, row, { reason: error.reason, message: error.message, details: { cause: error.blockCause } })
     await markFailed(db, row, classifyExecutionError(error), await contractDiagnosticsOf(db, row, error))
   }
+}
+
+type ExecutionBlock = { reason: string; message: string; details: Record<string, unknown> }
+
+function agentBlockOf(error: AgentInactiveError | AgentAccessBlockedError): ExecutionBlock {
+  // Acesso não autorizado (revisão de 03/11/2026): a versão vigente do agente não cobre o alcance do Workflow ou usa base não
+  // autorizada. O motivo é genérico — nada do que é restrito vai para o registro.
+  const details = { agentId: error.agentId, agentName: error.agentName, agentVersionId: error.agentVersionId, agentVersionNumber: error.agentVersionNumber, ...(error instanceof AgentAccessBlockedError ? { denial: error.reason } : {}) }
+  return error instanceof AgentAccessBlockedError
+    ? { reason: "AGENT_ACCESS_NOT_AUTHORIZED", details, message: `${error.message} Ajuste o agente (alcance ou bases da versão vigente) e solicite uma nova tentativa.` }
+    : { reason: "AGENT_INACTIVE", details, message: "Agente inativo. Reative ou substitua o agente e solicite uma nova tentativa." }
+}
+
+/**
+ * Agente inativo (PEN-070, PEN-073) ou revisão sem revisor ou sem conteúdo (P5c, D2): a execução fica bloqueada na etapa, sem nova
+ * tentativa automática — nem ao corrigir a causa, nem ao republicar ou religar o Workflow. As etapas já concluídas mantêm os
+ * resultados; nada é entregue por ela. Só uma nova tentativa confirmada por alguém continua o trabalho (workflow-retry.ts).
+ */
+async function markBlocked(db: Database, row: ClaimedRow, block: ExecutionBlock): Promise<void> {
+  const { reason, message, details } = block
+  await recordEvent(db, row, "node_blocked", { reason, message, ...details })
+  await db.query(
+    `update workflow_enrollments
+     set status = 'blocked', blocked_at = now(), blocked_node_id = current_node_id, blocked_reason = $4, blocked_details = $3,
+         claimed_until = null, revision = revision + 1, updated_at = now()
+     where id = $1 and revision = $2`,
+    [row.id, row.revision, JSON.stringify(details), reason],
+  )
 }
 
 /** Violações mostradas no evento (caminho + código; nunca conteúdo) — as primeiras, com o total. */
@@ -388,11 +435,12 @@ export async function applyOutcome(db: Database, row: ClaimedRow, outcome: NodeO
     // Fan-out (Parte 16-24 do pedido de EMPLOYEE_COLLECTION) — 1 único INSERT...SELECT a partir
     // de unnest($memberIds) é atômico por natureza (nunca "criei João, falhei no Maria" — Parte
     // 22/60): a linha inteira aplica ou nenhuma aplica. `on conflict do nothing` (unique index
-    // de 049_workflow_fan_out.sql) garante que um RETRY do mesmo fan-out nunca duplica filho
+    // de 049_workflow_fan_out.sql, refeito na 166 sem as novas tentativas) garante que um RETRY do mesmo fan-out nunca duplica filho
     // nenhum (Parte 21/62) — funciona igual com 0 membros (unnest de array vazio = 0 linhas,
     // sem tratamento especial). Filhos herdam workflow_id/version_id/organization_id do PAI, tal
     // como estavam nesta execução — nunca reconsultados —, garantindo a mesma versão publicada
-    // (Parte 19/71). `scheduled_subject_id` é o colaborador (mesma coluna que schedule-check.ts
+    // (Parte 19/71). O índice é PARCIAL: o `on conflict` repete a condição dele, senão o Postgres não o reconhece (sem ela, o
+    // INSERT falhava contra o banco real — defeito encontrado em 03/11/2026). `scheduled_subject_id` é o colaborador (mesma coluna que schedule-check.ts
     // já usa pra "carregador técnico" em modo Individual) — por isso `resolveEnrollmentOperatorId`
     // resolve o filho corretamente sem nenhuma mudança em enrollment-subject.ts.
     await db.query(
@@ -400,7 +448,7 @@ export async function applyOutcome(db: Database, row: ClaimedRow, outcome: NodeO
          (organization_id, workflow_id, version_id, current_node_id, status, next_eval_at, parent_enrollment_id, fan_out_node_id, scheduled_subject_id)
        select $1, $2, $3, $4, 'active', now(), $5, $6, member_id
        from unnest($7::uuid[]) as member_id
-       on conflict (parent_enrollment_id, fan_out_node_id, scheduled_subject_id) do nothing`,
+       on conflict (parent_enrollment_id, fan_out_node_id, scheduled_subject_id) where parent_enrollment_id is not null and fan_out_node_id is not null and retry_of_enrollment_id is null do nothing`,
       [row.organization_id, row.workflow_id, row.version_id, outcome.nextNodeId, row.id, outcome.fanOutNodeId, outcome.memberIds],
     )
     await recordEvent(db, row, "fan_out_completed", { childCount: outcome.memberIds.length, memberIds: outcome.memberIds, fanOutNodeId: outcome.fanOutNodeId })

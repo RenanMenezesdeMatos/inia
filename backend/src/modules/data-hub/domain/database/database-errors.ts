@@ -1,4 +1,4 @@
-import { DataRunError, type DataRunErrorCode } from "../error-codes.js"
+import { DataRunError, NOT_A_CREDENTIAL_REFUSAL, type DataRunErrorCode } from "../error-codes.js"
 import { DATABASE_ENGINE_LABELS, type DatabaseEngine } from "./database-engine.js"
 
 /**
@@ -59,7 +59,7 @@ export function classifyDatabaseError(error: unknown, context: DatabaseErrorCont
   const engine = DATABASE_ENGINE_LABELS[context.engine]
   const where = context.engine === "SQLSERVER" && context.instanceName ? `${context.host}\\${context.instanceName}` : `${context.host}${context.port ? `:${context.port}` : ""}`
   const detail = sanitizeDriverMessage(message || String(error), [...(context.secrets ?? [])])
-  const make = (code: DataRunErrorCode, text: string) => new DataRunError(code, `${text}${detail ? ` (detalhe: ${detail})` : ""}`)
+  const make = (code: DataRunErrorCode, text: string, details?: unknown) => new DataRunError(code, `${text}${detail ? ` (detalhe: ${detail})` : ""}`, details)
 
   // --- TLS / certificado -----------------------------------------------------------------------
   if ([...codes].some((code) => TLS_CODES.has(code)) || /self[- ]signed certificate|certificate has expired|unable to verify the first certificate|altnames|does not support ssl|does not support secure|ssl is required|\bcertificate\b|\btls\b|handshake failed|wrong version number/.test(lower)) {
@@ -86,7 +86,7 @@ export function classifyDatabaseError(error: unknown, context: DatabaseErrorCont
     return make("DATA_SOURCE_PERMISSION_DENIED", `O servidor ${engine} não aceita conexões desta origem para o usuário "${context.username}" (pg_hba.conf). Peça ao administrador do banco para liberar o IP do servidor da INIA.`)
   }
   if (numbers.has(1251) || codes.has("ER_NOT_SUPPORTED_AUTH_MODE")) {
-    return make("DATA_SOURCE_AUTH_FAILED", `O método de autenticação do usuário "${context.username}" não é suportado. Use um usuário com autenticação por senha padrão do ${engine}.`)
+    return make("DATA_SOURCE_AUTH_FAILED", `O método de autenticação do usuário "${context.username}" não é suportado. Use um usuário com autenticação por senha padrão do ${engine}.`, NOT_A_CREDENTIAL_REFUSAL)
   }
 
   // --- Banco / instância inexistente ----------------------------------------------------------------

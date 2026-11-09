@@ -16,6 +16,7 @@ import {
   useDiscardArgumentScriptDraftMutation,
   useReactivateArgumentScriptMutation,
 } from "@/queries/admin/use-argument-script-queries"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 export type ArgumentScriptLifecycleAction = "discard" | "archive" | "reactivate" | "delete"
 
@@ -70,7 +71,7 @@ export function ArgumentScriptLifecycleDialog({
     delete: {
       title: `Excluir "${target.name}"?`,
       description:
-        "A exclusão é definitiva. Se alguma análise de chamada já usou este argumentário, ela é bloqueada — desative-o nesse caso: ele deixa de valer e a origem dos feedbacks continua consultável.",
+        `Ele deixa de valer e sai das telas. Análises já feitas continuam mostrando a origem delas. ${RESTORE_NOTE}`,
       confirm: "Excluir",
       pending: "Excluindo...",
       destructive: true,

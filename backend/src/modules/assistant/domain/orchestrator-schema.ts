@@ -48,6 +48,8 @@ export const updateOrchestratorSchema = z.object({
   subteamId: z.string().uuid().nullable().optional(),
   orchestratorAgentId: z.string().uuid().optional(),
   specialistAgentIds: z.array(z.string().uuid()).optional(),
+  /** PEN-050: versão do Orquestrador em que a edição se baseou. Outra gravação no meio = 409, nada gravado. */
+  expectedVersionId: z.string().uuid().nullable().optional(),
   active: z.boolean().optional(),
   invocationMode: orchestratorInvocationModeSchema.optional(),
   outputInstructions: z.string().trim().min(1).nullable().optional(),

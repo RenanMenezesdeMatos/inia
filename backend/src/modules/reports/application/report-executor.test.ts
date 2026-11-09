@@ -176,6 +176,22 @@ describe("execução — papel Report (distribuição)", () => {
     expect(memory.recipients.filter((row) => row.personId === "p-sara")).toHaveLength(1)
   })
 
+  it("um lote por execução: responsável da estrutura fixa e destinatários carregados juntos; o responsável que também recebe é montado uma vez", async () => {
+    const fixedId = "00000000-0000-4000-8000-000000000778"
+    const shared = testStructure(fixedId, "Equipe da Sara", ["op1", "op2"])
+    const people = [person("sara", "Sara", { own: SARA, reachable: { [fixedId]: shared } }), person("coord", "Coord", { reachable: { [fixedId]: shared } }), person("saulo", "Saulo", { own: SAULO })]
+    people[0]!.distribution = { organizationWide: true, teamIds: [], subteamIds: [] }
+    const { memory, fake, run } = await setup({ people, owner: "sara", structure: { mode: "FIXED", subjectKind: "SUPERVISOR_TEAM", subjectId: fixedId, label: "Equipe da Sara" }, audience: { mode: "DISTRIBUTION", everyone: true, levels: [], jobTitles: [], teamIds: [], subteamIds: [], personIds: [] } })
+    const { result } = await run()
+    expect(fake.batches).toEqual([["acc-sara", "acc-sara", "acc-coord", "acc-saulo"]])
+    expect(fake.lookups).toEqual(["acc-sara", "acc-coord", "acc-saulo"])
+    // Mesma chave de escopo para quem vê a mesma equipe: uma consulta (e a de referência da comparação), uma entrega.
+    expect(fake.calls.map((call) => call.account)).toEqual(["acc-sara", "acc-sara"])
+    expect(memory.deliveries).toHaveLength(1)
+    expect(memory.recipients.map((row) => row.personId).sort()).toEqual(["p-coord", "p-sara"])
+    expect(result.outcome.denied).toEqual([{ personId: "p-saulo", name: "Saulo", reason: "ACCESS_DENIED" }])
+  })
+
   it("papel Report revogado: a execução é bloqueada e nada é entregue", async () => {
     const people = [{ ...reporter(), distribution: null }, person("sara", "Sara", { own: SARA })]
     const { memory, run } = await setup({ people, owner: "rh", audience: { mode: "DISTRIBUTION", everyone: true, levels: [], jobTitles: [], teamIds: [], subteamIds: [], personIds: [] } })
@@ -205,7 +221,7 @@ describe("sem duplicidade e falhas", () => {
 
   it("falha técnica volta para a fila e, depois das tentativas, fica FAILED (sem entrega)", async () => {
     const { memory, fake, report } = await setup({ people: [person("sara", "Sara", { own: SARA })], owner: "sara" })
-    const broken = { ...fake.runtime, contextFor: async () => { throw new Error("banco indisponível") } }
+    const broken = { ...fake.runtime, contextsFor: async () => { throw new Error("banco indisponível") } }
     const deps = { store: memory.store, runtime: broken, now: () => new Date("2026-10-16T12:00:00Z") }
     const queued = (await memory.store.enqueueRun({ organizationId: ORG, reportId: report.id, scheduledFor: "2026-10-16T11:00:00.000Z", triggerKind: "SCHEDULE", configVersion: 1 }))!
     expect(await processRun(deps, { ...queued, attempts: 1 })).toBe("QUEUED")
@@ -230,7 +246,7 @@ describe("sem duplicidade e falhas", () => {
     const delivery = memory.deliveries[0]!
     await analyzeDelivery(memory.store, async () => { throw new Error("429") }, delivery, report)
     expect(memory.deliveries[0]).toMatchObject({ kind: "DELIVERY", analysisStatus: "FAILED", analysisAttempts: 1 })
-    await analyzeDelivery(memory.store, async (input) => (input.user.includes("melhora") ? "**Resumo** TMA melhorou." : ""), memory.deliveries[0]!, report)
+    await analyzeDelivery(memory.store, async (input) => (input.user.includes("melhora") ? "**Resumo** TMA melhorou." : ""), memory.deliveries[0]!, report, "MANUAL")
     expect(memory.deliveries).toHaveLength(1)
     expect(memory.deliveries[0]).toMatchObject({ analysisStatus: "READY", analysisText: "**Resumo** TMA melhorou." })
   })

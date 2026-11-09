@@ -14,6 +14,8 @@ import { loadAssistantSupportMaterials, persistAssistantSupportMaterials } from 
 import { listInteractiveOrchestratorScopes, resolveOrchestratorById, resolveOrchestratorForSubject, findSpecialistByToolName, type InteractiveOrchestratorScope, type OrchestratorInvocationContext, type ResolvedOrchestrator } from "../../assistant/application/resolve-orchestrator.js"
 import { runOrchestratedReply, type DirectToolset, type OrchestratedReply, type OrchestrationProgress, type OrchestrationStream } from "../../assistant/application/run-orchestrated-reply.js"
 import { runSpecialistTool } from "../../assistant/application/run-specialist-tool.js"
+import { configuredSpecialistOf, specialistAtCall, SPECIALIST_UNAVAILABLE_DISPLAY_TEXT } from "../../assistant/application/specialist-availability.js"
+import { withAgentSnapshots } from "../../agents/application/agent-runtime-context.js"
 import { buildOperatorIdentity } from "../../assistant/application/build-operator-context.js"
 import { renderAskingPersonProfile } from "../../assistant/domain/asking-person-profile.js"
 import type { EphemeralRealtimeSession } from "../infrastructure/gemini-realtime-client.js"
@@ -25,7 +27,10 @@ import { loadApplicationInstructionByConversation, loadApplicationVoiceInstructi
 import { consultationRelationFor } from "../../feedback-application/application/session-consultation.js"
 import { FEEDBACK_SESSION_EXCLUDED_CAPABILITIES, FEEDBACK_SESSION_VOICE_ADDENDUM, renderSpecialistFrame, type FeedbackConsultation } from "../../feedback-application/domain/session-consultation.js"
 import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowledge.js"
-import { loadAgentGuardrails, renderConversationGuardrails } from "../../agents/application/agent-guardrails.js"
+import { continueVoiceTurnConsultation, knowledgeConsultationScope, markPinnedDocumentsUsed } from "../../knowledge/application/knowledge-consultation-context.js"
+import { loadAgentGuardrails, renderConversationGuardrails, type AgentGuardrails } from "../../agents/application/agent-guardrails.js"
+import { checkResponse, recordResponseCheck, responseCheckToolCall, type ResponseCheck, type ResponseCheckResult } from "../../governance/application/response-compliance.js"
+import { complianceRulesOf, complianceSourcesOfExcerpts, priorAnswerSources, replyComplianceSources, RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, responseCheckMode, SPOKEN_VIOLATION_NOTICE, type ComplianceSource } from "../../governance/domain/response-compliance.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { buildLeadershipChatContext, loadLeadershipSession, visibleCards, type LeadershipChatContext } from "../../leadership-analytics/application/leadership-context.js"
 import { isLeadershipTool, LEADERSHIP_ASK_DECLARATION, LEADERSHIP_ASK_TOOL, summarizeLeadershipCard } from "../../leadership-analytics/application/leadership-toolset.js"
@@ -121,9 +126,11 @@ const voiceTurnSchema = z
     // Transcrição do que a INIA falou na sessão Live (o áudio não passa pelo backend): só o navegador a conhece. Limitada; é
     // registro da conversa, nunca evidência (ver docs/security/pendencias-e-riscos.md).
     assistantText: z.string().trim().min(1).max(20_000).optional(),
+    /** O que a INIA falou num turno com especialista: a resposta gravada é a dele, e isto só serve para conferir a fala (PEN-017). */
+    spokenText: z.string().trim().min(1).max(20_000).optional(),
     feedbackApplicationId: feedbackApplicationIdSchema,
   })
-  .refine((value) => value.userText || value.assistantText, { message: "Informe a fala do usuário ou a resposta." })
+  .refine((value) => value.userText || value.assistantText || value.spokenText, { message: "Informe a fala do usuário ou a resposta." })
 
 const listSchema = z.object({ page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20) })
 const messagesQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30), before: z.string().max(200).optional(), after: z.string().max(200).optional() })
@@ -134,6 +141,12 @@ const idParam = z.string().uuid()
 /** Instrução determinística anexada a TODO resultado de especialista na VOZ. O texto completo já
  * aparece na tela (fonte fiel); a fala é esse mesmo conteúdo, inteiro, em voz natural — não um
  * resumo nem uma segunda versão — e sem ler estrutura visual (títulos, marcadores). */
+/** Depois de uma resposta barrada, o que dependia dela não vai para a tela (cartões, formulário, materiais, oferta de report). */
+const EVENTS_AFTER_BLOCKED_REPLY = new Set(["analytics", "support_materials", "knowledge_clarification", "report_offer", "navigate"])
+/** O texto fixo no lugar de uma resposta barrada: a voz diz só isso. */
+const BLOCKED_VOICE_INSTRUCTION = "\n\n[Instrução para a resposta falada: fale exatamente o texto acima, sem acrescentar nada sobre o assunto.]"
+const flaggedTextOf = (result: ResponseCheckResult) => (result.outcome === "CHECK_FAILED" ? RESPONSE_CHECK_UNAVAILABLE_TEXT : RESPONSE_BLOCKED_TEXT)
+
 const VOICE_SPEECH_INSTRUCTION =
   "\n\n[Instrução para a resposta falada: o conteúdo acima já foi exibido completo na tela do colaborador. Fale esse MESMO conteúdo em voz natural e fluida, fielmente: não acrescente, não omita nem altere fatos, números, prazos ou passos. Não leia títulos, marcadores, símbolos de formatação nem diga \"tópico\" ou \"lista\". Fale o conteúdo INTEIRO, do começo ao fim, sem resumir nem pular partes: listas e passos viram frases faladas em sequência (\"primeiro…, depois…\"). Só uma tabela com muitas colunas pode ser falada de forma resumida, avisando que o detalhe está na tela.]"
 
@@ -200,8 +213,13 @@ type StoredClarification = NonNullable<ClarificationRequest["previous"]> & { sco
 
 /** Entrada de `tool_calls` com o estado do esclarecimento (+ o rastro auditável e, na consulta de processo ou na sessão de feedback, onde foi feito). */
 export function clarificationToolCall(outcome: ClarificationReply, scope?: ProcessClarificationScope | FeedbackSessionClarificationScope) {
+  // As bases que o esclarecimento citou contam como usadas, na versão fixada pela consulta (PEN-008).
+  markPinnedDocumentsUsed(null, referencedDocumentIds(outcome.state))
   return { toolName: CLARIFICATION_TOOL_NAME, state: outcome.state, trace: outcome.trace, ...(scope ? { scope } : {}) }
 }
+
+/** As seções da base em que uma resposta do esclarecimento se apoiou, para a conferência (PEN-017). Pergunta e opções não têm seção. */
+const clarificationSources = (outcome: ClarificationReply) => complianceSourcesOfExcerpts(outcome.groundedOn ?? [])
 
 /**
  * Texto da resposta de quem lidera quando uma consulta de processo foi respondida pelo esclarecimento: o texto do esclarecimento
@@ -310,6 +328,8 @@ export function createRealtimeRouter(
     /** Limites de uma conversa cuja instrução NÃO é o prompt de um Agent (aplicação de feedback, chat/voz sem Orquestrador):
      * os limites de atuação do Agente do Orquestrador, quando há, + os assuntos proibidos. Vazio = instrução inalterada. */
     conversationGuardrails?: (organizationId: string, agentId: string | null) => Promise<string>
+    /** Conferência da resposta contra as mesmas regras (PEN-017). */
+    responseCheck?: ResponseCheck
     /** Intervalo do batimento do SSE (testes encurtam). */
     sseHeartbeatMs?: number
     /** Ferramentas e contexto da liderança para quem conversa (null = sem escopo de liderança: o chat segue como sempre). */
@@ -360,6 +380,23 @@ export function createRealtimeRouter(
     return { requestedId: target.conversationId, created: target.created }
   }
   const conversationGuardrails = deps.conversationGuardrails ?? (async (organizationId, agentId) => renderConversationGuardrails(await loadAgentGuardrails(db, organizationId, agentId)))
+  const responseCheck = deps.responseCheck ?? checkResponse
+
+  /**
+   * Resposta da voz que passa pelo servidor, antes de chegar ao modelo de voz e à tela (PREVENTIVA para o que vem do servidor). O que o modelo de
+   * voz gera sozinho só é conferido depois de falado: ver `/voice-turn`. `blocked` = entregar o texto fixo no lugar.
+   */
+  const guardVoiceText = async (input: { organizationId: string; conversationId: string; text: string; question: string; agentId: string | null; sources: readonly ComplianceSource[] }) => {
+    const mode = responseCheckMode()
+    if (mode === "OFF") return { blocked: false as const, record: async () => undefined }
+    const result = await responseCheck(db, { organizationId: input.organizationId, text: input.text, question: input.question, agentId: input.agentId, source: "VOICE", sources: input.sources })
+    if (result.outcome === "NOT_APPLICABLE") return { blocked: false as const, record: async () => undefined }
+    const enforcing = mode === "ENFORCE"
+    const flagged = result.outcome !== "ALLOWED"
+    const record = (interactionId: string | null) => recordResponseCheck(db, { organizationId: input.organizationId, surface: "VOICE_TOOL", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : enforcing ? "BLOCKED" : "RECORDED", result, text: input.text, conversationId: input.conversationId, interactionId, agentId: input.agentId })
+    if (!enforcing || !flagged) return { blocked: false as const, record }
+    return { blocked: true as const, record, text: flaggedTextOf(result), toolCall: responseCheckToolCall(result, "PREVENTIVE") }
+  }
   const processOrchestrators = deps.processOrchestrators ?? ((organizationId: string) => listInteractiveOrchestratorScopes(db, organizationId))
   const orchestratorById = deps.orchestratorById ?? ((organizationId: string, orchestratorId: string, query: string) => resolveOrchestratorById(db, organizationId, orchestratorId, "INTERACTIVE", query))
   /**
@@ -385,6 +422,8 @@ export function createRealtimeRouter(
   const leadershipReply = async (input: { organizationId: string; personId: string; leadership: LeadershipChatContext; history: { role: "user" | "model"; text: string }[]; instruction: string; clarification?: { conversationId: string } | null; literal?: string | null; stream?: OrchestrationStream }) => {
     const materials: ProcessMaterials[] = []
     const clarifications: ProcessClarification[] = []
+    // O que as consultas de processo deste turno consultaram, para a conferência (PEN-017): o texto final é escrito pelo modelo da liderança.
+    const sources: ComplianceSource[] = []
     // A vaga do esclarecimento deste turno: as consultas de uma mesma rodada rodam em paralelo e só uma pode virar formulário.
     let clarifying = false
     let latest: Promise<StoredClarification | null> | null = null
@@ -435,7 +474,10 @@ export function createRealtimeRouter(
             if (!resolved) return null
             const scope: ProcessClarificationScope = { kind: "LEADERSHIP_PROCESS", orchestratorId: resolved.orchestratorId, orchestratorName: orchestrator.name, groupNames }
             const clarified = await clarify(resolved, scope, question)
-            if (clarified) return { text: clarified.content, clarification: true, trace: { knowledgeClarification: clarified.state.status } }
+            if (clarified) {
+              sources.push(...clarificationSources(clarified))
+              return { text: clarified.content, clarification: true, trace: { knowledgeClarification: clarified.state.status } }
+            }
             const frame = processConsultationFrame(groupNames)
             // O contexto vai no prompt do Orquestrador, NUNCA como contexto extra: o contexto extra chega aos especialistas como
             // material de análise (transcrição), e especialista de domínio passaria a exigir citação literal dele (mesmo cuidado da
@@ -443,6 +485,7 @@ export function createRealtimeRouter(
             const session = { ...resolved, systemPrompt: `${resolved.systemPrompt}${await askingPersonProfile(input.organizationId, input.personId, { processConsultation: true })}\n\n${frame}` }
             const reply = await orchestratedReply(db, session, [{ role: "user", text: question }], "", input.personId, { collaboratorConversation: true, conversationFrame: frame })
             if (reply.supportMaterials && reply.supportMaterials.length > 0) materials.push({ orchestratorId: resolved.orchestratorId, recommendations: reply.supportMaterials })
+            sources.push(...replyComplianceSources(reply, resolved))
             return { text: reply.text, trace: { specialists: reply.calls.map((call) => call.toolName), agentId: reply.agentId } }
           },
         })
@@ -453,7 +496,7 @@ export function createRealtimeRouter(
     // (`leadershipTextWithClarification`) e o do modelo não vai para a tela antes da hora.
     const stream = input.stream ? { ...input.stream, allow: () => clarifications.length === 0 } : undefined
     const reply = await orchestratedReply(db, top, input.history, "", input.personId, { collaboratorConversation: true }, {}, { directTools, toleratesToolFailure: true, ...(stream ? { stream } : {}) })
-    return { reply, materials, clarification: clarifications[0] ?? null }
+    return { reply, materials, clarification: clarifications[0] ?? null, sources }
   }
 
   /**
@@ -668,6 +711,16 @@ export function createRealtimeRouter(
     return { conversationId: resolved.conversationId, created: false, closed: true, activeConversationId: active?.id ?? null }
   }
 
+  /** A resposta barrada na voz: grava o texto fixo, registra a conferência e devolve só isso ao modelo de voz e à tela. */
+  const blockedVoiceAnswer = async (
+    request: { user?: AuthTokenPayload },
+    input: { guard: { record: (interactionId: string | null) => Promise<void>; text: string; toolCall: unknown }; scope: ReturnType<typeof scopeOf>; writable: ResolvedConversation; personId: string; clientMessageId: string; participants?: unknown[] | undefined },
+  ) => {
+    const saved = await conversations.append({ conversationId: input.writable.conversationId, organizationId: input.scope.organizationId, ownerPersonId: input.personId, channel: "voice", role: "assistant", content: input.guard.text, occurredAt: now(), toolCalls: [...(input.participants ?? []), input.guard.toolCall], clientMessageId: input.clientMessageId })
+    await input.guard.record(saved.id)
+    return { text: input.guard.text, modelText: `${input.guard.text}${BLOCKED_VOICE_INSTRUCTION}`, supportMaterials: [], analytics: [], interactionId: saved.id, ...(await conversationPayload(request, input.writable)) }
+  }
+
   /**
    * Pergunta encaminhada pela VOZ (`leadership_ask` de quem lidera, `self_ask` do operador): a MESMA orquestração do chat de
    * texto — Orquestrador do chat + especialistas + as ferramentas de dados da sessão —, com a conversa gravada (e o contexto de
@@ -684,6 +737,7 @@ export function createRealtimeRouter(
     const scope = scopeOf(request)
     const personId = scope.ownerPersonId
     const writable = await conversations.resolveForWrite(scope, input.conversationId, now(), { allowClosed: true })
+    await continueVoiceTurnConsultation(db, { organizationId: scope.organizationId, conversationId: writable.conversationId, turnId: input.turnId })
     const clientMessageId = `${input.turnId}:${ask.keyTag}:${input.callId}`
     const existing = await conversations.findByClientMessageId(writable.conversationId, clientMessageId)
     if (existing) {
@@ -704,6 +758,7 @@ export function createRealtimeRouter(
       ]),
     )
     const history = [...turns, { role: "user" as const, text: input.query }]
+    const priorAnswers = priorAnswerSources(turns)
     const clarifies = clarificationOn(conversationRecord.origin)
     // O esclarecimento parte das palavras da pessoa; a orquestração de sempre continua com a `query` do modelo de voz (a busca dos
     // especialistas une a seleção das palavras dela à da pergunta do roteamento — `askerQuestion`).
@@ -750,7 +805,10 @@ export function createRealtimeRouter(
         speculation?.discard()
         speculative.abort()
         trace?.setPath("VOICE_CLARIFICATION")
+        const clarificationGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: outcome.content, question: spoken, agentId: askOrchestrator.orchestratorAgentId || null, sources: [...clarificationSources(outcome), ...priorAnswers] })
+        if (clarificationGuard.blocked) return blockedVoiceAnswer(request, { guard: clarificationGuard, scope, writable, personId, clientMessageId })
         const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(outcome)], clientMessageId })
+        await clarificationGuard.record(saved.id)
         const [view] = await clarificationViewsFor(scope.organizationId, personId, [outcome.state])
         return { text: outcome.content, modelText: `${outcome.content}${renderClarificationVoiceInstruction(outcome.state, { tool: input.toolName })}`, supportMaterials: [], analytics: [], interactionId: saved.id, clarification: view, ...(await conversationPayload(request, writable)) }
       }
@@ -762,7 +820,10 @@ export function createRealtimeRouter(
       // foi feito, exatamente como no chat de texto (sem o modelo da liderança e antes da oferta de report — o rótulo "Sim" de uma
       // opção nunca vira aceite); a fala só leva a pergunta seguinte ou a resposta.
       const continued = await continueProcessClarification({ organizationId: scope.organizationId, personId, leadership: ask.leadership, conversationId: writable.conversationId, answer: input.clarification, text: spoken, recentTurns: history.slice(0, -1) })
+      const continuedGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: continued.outcome.content, question: spoken, agentId: null, sources: [...clarificationSources(continued.outcome), ...priorAnswers] })
+      if (continuedGuard.blocked) return blockedVoiceAnswer(request, { guard: continuedGuard, scope, writable, personId, clientMessageId })
       const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: continued.outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(continued.outcome, continued.scope)], clientMessageId })
+      await continuedGuard.record(saved.id)
       const [view] = await clarificationViewsFor(scope.organizationId, personId, [continued.outcome.state])
       return { text: continued.outcome.content, modelText: `${continued.outcome.content}${renderClarificationVoiceInstruction(continued.outcome.state, { tool: input.toolName })}`, supportMaterials: [], analytics: [], interactionId: saved.id, clarification: view, ...(await conversationPayload(request, writable)) }
     }
@@ -781,8 +842,11 @@ export function createRealtimeRouter(
     const composed = clarified ? leadershipTextWithClarification(reply, clarified.outcome.content) : null
     const baseText = composed?.text ?? reply.text
     const replyText = offer ? `${baseText}${REPORT_OFFER_LINE}` : baseText
+    const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
+    if (replyGuard.blocked) return blockedVoiceAnswer(request, { guard: replyGuard, scope, writable, personId, clientMessageId, participants: orchestratedToolCalls(reply) })
     const toolCalls = [...(orchestratedToolCalls(reply) ?? []), ...(clarified ? [clarificationToolCall(clarified.outcome, clarified.scope)] : [])]
     const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: replyText, occurredAt: now(), agentId: reply.agentId, ...(toolCalls.length > 0 ? { toolCalls } : {}), clientMessageId })
+    await replyGuard.record(saved.id)
     if (offer) await reportProposals.attach(offer.id, saved.id)
     const supportMaterials = leaderAnswer
       ? await persistProcessMaterials(scope.organizationId, saved.id, personId, leaderAnswer.materials)
@@ -802,7 +866,7 @@ export function createRealtimeRouter(
   // volta pela mesma WebSocket. A resposta do especialista é gravada na conversa
   // da sessão de voz (mesmo encerrada nesse meio-tempo: é a resposta à pergunta
   // feita ali) — nunca em outra.
-  router.post("/tool-call", async (request, response) => {
+  router.post("/tool-call", knowledgeConsultationScope, async (request, response) => {
     // A pessoa fechou a página ou a conexão caiu: a orquestração desta fala (especialistas, liderança) para de chamar a IA e a vaga
     // volta para os outros — mesmo cuidado do SSE do chat (achado AI-09 da auditoria de 17/10/2026).
     const cancellation = new AbortController()
@@ -884,7 +948,13 @@ export function createRealtimeRouter(
       trace.setPath("VOICE_SPECIALIST")
       const orchestrator = await resolveOrchestrator(request.user!.organizationId, request.user!.personId, "INTERACTIVE")
       const agentId = orchestrator ? findSpecialistByToolName(orchestrator, input.toolName) : null
-      if (!agentId) throw new DomainError("Especialista não encontrado para essa tool.", "SPECIALIST_TOOL_NOT_FOUND", 404)
+      // Especialista configurado no Orquestrador, mas indisponível na resolução de agora (desativado depois de a sessão de voz
+      // começar, ou versão vigente não autorizada): a parte fica indisponível, como no chat de texto (PEN-070; revisão de 03/11/2026).
+      const configured = !agentId && orchestrator ? await configuredSpecialistOf(db, orchestrator, input.toolName) : null
+      if (!agentId && !configured) throw new DomainError("Especialista não encontrado para essa tool.", "SPECIALIST_TOOL_NOT_FOUND", 404)
+      const specialistAgentId = (agentId ?? configured)!
+      // Versão vigente e autorização na hora em que a execução do especialista vai começar.
+      const atCall = await specialistAtCall(db, orchestrator!, specialistAgentId)
       // Consulta de dentro de uma SESSÃO DE FEEDBACK: o backend decide a conversa (a da aplicação ou a complementar — nunca a
       // original de uma aplicação concluída) e emoldura o especialista com o registro congelado (sessão de outra pessoa = 404).
       const feedbackApplicationId = input.feedbackApplicationId ?? undefined
@@ -899,19 +969,53 @@ export function createRealtimeRouter(
       // ligado no Orquestrador da sessão, a seleção (mesmas regras/validação) acontece na resposta
       // deste especialista, que é o conteúdo final desta tool (ver run-specialist-tool.ts).
       const operatorId = request.user!.personId
+      await continueVoiceTurnConsultation(db, { organizationId: scope.organizationId, conversationId: resolved.conversationId, turnId: input.turnId })
       const clientMessageId = `${input.turnId}:specialist:${input.callId}`
       const existing = await conversations.findByClientMessageId(resolved.conversationId, clientMessageId)
       let text: string
       let interactionId: string
       let recommendations: Parameters<typeof persistAssistantSupportMaterials>[1]["recommendations"] = []
       let knowledge: KnowledgeTrace | undefined
+      // Chamada impedida (especialista inativo agora, ou desativado entre a resolução e o início da execução dele): grava só a
+      // explicação ao colaborador e a participação "Agente inativo" (o motivo fica no registro, para quem lê a conversa).
+      const recordUnavailable = async (blockedAgentId: string, agentVersionId: string | null, outcome: "BLOCKED_INACTIVE" | "BLOCKED_UNAUTHORIZED") =>
+        (await conversations.append({
+          conversationId: resolved.conversationId,
+          organizationId: scope.organizationId,
+          ownerPersonId: operatorId,
+          channel: "voice",
+          role: "assistant",
+          content: SPECIALIST_UNAVAILABLE_DISPLAY_TEXT,
+          occurredAt: now(),
+          toolCalls: [{ toolName: input.toolName, query: input.query, agentId: blockedAgentId, agentVersionId, outcome, orchestratorId: orchestrator!.orchestratorId, orchestratorVersionId: orchestrator!.orchestratorVersionId ?? null }],
+          clientMessageId,
+        })).id
       if (existing) {
         // Retentativa da mesma tool-call: devolve a resposta já gravada, sem rodar o especialista de novo.
         text = existing.content
         interactionId = existing.id
+      } else if ("outcome" in atCall) {
+        text = SPECIALIST_UNAVAILABLE_DISPLAY_TEXT
+        interactionId = await recordUnavailable(specialistAgentId, atCall.versionId, atCall.outcome)
       } else {
-        const specialist = await specialistTool(db, scope.organizationId, agentId, input.query, operatorId, input.periodDays, undefined, { selectSupportMaterials: orchestrator!.recommendSupportMaterials, collaboratorConversation: true, ...(input.utterance ? { askerQuestion: input.utterance } : {}), ...(consultation ? feedbackSpecialistOptions(consultation) : {}) })
+        const specialist = await withAgentSnapshots([atCall.snapshot], () => specialistTool(db, scope.organizationId, specialistAgentId, input.query, operatorId, input.periodDays, undefined, { selectSupportMaterials: orchestrator!.recommendSupportMaterials, collaboratorConversation: true, ...(input.utterance ? { askerQuestion: input.utterance } : {}), ...(consultation ? feedbackSpecialistOptions(consultation) : {}) })).catch(async (error: unknown) => {
+          // Desativado entre a conferência e o início (corrida): o mesmo tratamento.
+          if (error instanceof DomainError && error.code === "SPECIALIST_AGENT_INACTIVE") return null
+          throw error
+        })
+        if (!specialist) {
+          text = SPECIALIST_UNAVAILABLE_DISPLAY_TEXT
+          interactionId = await recordUnavailable(specialistAgentId, atCall.snapshot.versionId, "BLOCKED_INACTIVE")
+          response.json({ data: { text, modelText: `${text}${VOICE_SPEECH_INSTRUCTION}`, supportMaterials: [], interactionId, ...(await conversationPayload(request, resolved)) } })
+          return
+        }
         knowledge = specialist.knowledge
+        const specialistGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: resolved.conversationId, text: specialist.text, question: input.utterance || input.query, agentId: orchestrator!.orchestratorAgentId || specialistAgentId, sources: complianceSourcesOfExcerpts([...(orchestrator!.knowledge?.retrieved ?? []), ...(specialist.knowledge?.retrieved ?? [])]) })
+        if (specialistGuard.blocked) {
+          const blocked = await blockedVoiceAnswer(request, { guard: specialistGuard, scope, writable: resolved, personId: operatorId, clientMessageId })
+          response.json({ data: blocked })
+          return
+        }
         const saved = await conversations.append({
           conversationId: resolved.conversationId,
           organizationId: scope.organizationId,
@@ -920,10 +1024,11 @@ export function createRealtimeRouter(
           role: "assistant",
           content: specialist.text,
           occurredAt: now(),
-          agentId,
-          toolCalls: [{ toolName: input.toolName, query: input.query, toolTrace: specialist.toolTrace ?? [] }],
+          agentId: specialistAgentId,
+          toolCalls: [{ toolName: input.toolName, query: input.query, toolTrace: specialist.toolTrace ?? [], agentId: specialistAgentId, agentVersionId: atCall.snapshot.versionId, outcome: "EXECUTED", orchestratorId: orchestrator!.orchestratorId, orchestratorVersionId: orchestrator!.orchestratorVersionId ?? null }],
           clientMessageId,
         })
+        await specialistGuard.record(saved.id)
         text = specialist.text
         interactionId = saved.id
         recommendations = specialist.supportMaterials
@@ -1048,12 +1153,24 @@ export function createRealtimeRouter(
     const resolved = target.created ? { ...writable, created: true } : writable
     const base = { conversationId: resolved.conversationId, organizationId: scope.organizationId, ownerPersonId: scope.ownerPersonId, channel: "voice" as const }
     if (input.userText) await conversations.append({ ...base, channel: input.userChannel, role: "user", content: input.userText, occurredAt: clampOccurredAt(input.userSpokenAt ? new Date(input.userSpokenAt) : null, at), clientMessageId: `${input.turnId}:user` })
+    // A FALA JÁ FOI OUVIDA: o áudio vai do provedor direto ao navegador, e este é o primeiro momento em que o servidor vê o texto. Aqui a conferência
+    // é só DETECÇÃO (nunca prevenção): registra e tira o texto da conversa, para ele não voltar ao histórico nem ao contexto da IA.
+    const spoken = input.assistantText ?? input.spokenText ?? null
+    const mode = responseCheckMode()
+    const agentId = spoken && mode !== "OFF" ? await resolveOrchestrator(scope.organizationId, scope.ownerPersonId, "INTERACTIVE").then((orchestrator) => orchestrator?.orchestratorAgentId || null, () => null) : null
+    // A voz fala o que o servidor entregou a ela nesta conversa, e isso já passou pela conferência: repetir não é criar. Sem conseguir ler, vai sem fonte.
+    const spokenSources = spoken && mode !== "OFF" ? priorAnswerSources(await conversations.contextTurns({ organizationId: scope.organizationId, conversationId: resolved.conversationId }).catch(() => [])) : []
+    const spokenCheck: ResponseCheckResult = spoken && mode !== "OFF" ? await responseCheck(db, { organizationId: scope.organizationId, text: spoken, question: input.userText, agentId, source: "VOICE", sources: spokenSources }) : { outcome: "NOT_APPLICABLE" }
+    const violation = spokenCheck.outcome === "VIOLATION"
     // O id da resposta gravada vai de volta: a tela liga a ela o curtir/descurtir da resposta falada.
-    const assistant = input.assistantText ? await conversations.append({ ...base, role: "assistant", content: input.assistantText, occurredAt: at, clientMessageId: `${input.turnId}:assistant` }) : null
-    response.json({ data: { ...(await conversationPayload(request, resolved)), assistantInteractionId: assistant?.id ?? null } })
+    const assistant = input.assistantText
+      ? await conversations.append({ ...base, role: "assistant", content: violation ? SPOKEN_VIOLATION_NOTICE : input.assistantText, occurredAt: at, clientMessageId: `${input.turnId}:assistant`, ...(violation ? { toolCalls: [responseCheckToolCall(spokenCheck, "DETECTIVE")] } : {}) })
+      : null
+    if (spoken && spokenCheck.outcome !== "NOT_APPLICABLE") await recordResponseCheck(db, { organizationId: scope.organizationId, surface: "VOICE_SPOKEN", control: "DETECTIVE", action: spokenCheck.outcome === "ALLOWED" ? "DELIVERED" : "RECORDED", result: spokenCheck, text: spoken, conversationId: resolved.conversationId, interactionId: assistant?.id ?? null, agentId })
+    response.json({ data: { ...(await conversationPayload(request, resolved)), assistantInteractionId: assistant?.id ?? null, ...(violation ? { responseCheck: { outcome: "VIOLATION", notice: SPOKEN_VIOLATION_NOTICE } } : {}) } })
   })
 
-  router.post("/messages", async (request, response) => {
+  router.post("/messages", knowledgeConsultationScope, async (request, response) => {
     const input = messageSchema.parse(request.body)
     const scope = scopeOf(request)
     const operatorId = request.user!.personId
@@ -1104,23 +1221,91 @@ export function createRealtimeRouter(
       if (!response.writableEnded && !response.destroyed) response.write(": ping\n\n")
     }, deps.sseHeartbeatMs ?? SSE_HEARTBEAT_MS)
     heartbeat.unref?.()
-    const send = (event: string, data: unknown) => {
+    const deliver = (event: string, data: unknown) => {
       if (response.writableEnded || response.destroyed) return
       // O primeiro pedaço de TEXTO da resposta é o "primeiro conteúdo útil" do turno (o progresso não conta).
       if (event === "chunk" && typeof (data as { text?: unknown }).text === "string" && (data as { text: string }).text.trim()) trace.firstContent()
       response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
     }
+    // CONFERÊNCIA DA RESPOSTA (PEN-017). Em ENFORCE, com regra cadastrada, o texto da IA fica aqui até ser conferido: nada da resposta chega à tela
+    // antes disso, e a pessoa acompanha pelo progresso. Sem regra, nada muda e o texto vai em fluxo. Em AUDIT, entrega primeiro e confere depois.
+    const checkMode = responseCheckMode()
+    let holding = checkMode === "ENFORCE"
+    let held: { event: string; data: unknown }[] = []
+    let blockedReply = false
+    let turnAgentId: string | null = null
+    let turnGuardrails: AgentGuardrails | null = null
+    let turnSources: readonly ComplianceSource[] = []
+    const releaseHeld = () => {
+      holding = false
+      for (const item of held) deliver(item.event, item.data)
+      held = []
+    }
+    const send = (event: string, data: unknown) => {
+      if (blockedReply && EVENTS_AFTER_BLOCKED_REPLY.has(event)) return
+      if (holding && event === "retract") {
+        held = []
+        return
+      }
+      if (holding && event === "chunk") {
+        held.push({ event, data })
+        return
+      }
+      deliver(event, data)
+    }
+    /** As regras deste turno, as mesmas da instrução. Sem nenhuma, solta o fluxo. Falha na leitura: fica segurando, e a conferência responde pela falha. */
+    const prepareResponseCheck = async (agentId: string | null, sources: readonly ComplianceSource[]) => {
+      turnAgentId = agentId
+      turnSources = sources
+      if (checkMode === "OFF") return
+      try {
+        turnGuardrails = await loadAgentGuardrails(db, scope.organizationId, agentId)
+      } catch {
+        turnGuardrails = null
+        return
+      }
+      if (complianceRulesOf(turnGuardrails).length === 0) releaseHeld()
+    }
     send("conversation", { conversationId: resolved.conversationId, created: resolved.created, rotatedFrom: resolved.rotatedFrom, userMessageId: userMessage.id })
 
     // Persiste a resposta EXIBIDA. Falha ao salvar depois de a resposta já ter aparecido → evento próprio: o cliente
     // mostra que aquela resposta não foi salva, em vez de aparentar sucesso.
-    const persistReply = async (content: string, extra: { agentId?: string | null; toolCalls?: unknown } = {}) => {
+    const persistReply = async (generated: string, generatedExtra: { agentId?: string | null; toolCalls?: unknown } = {}, options: { deterministic?: boolean; sources?: readonly ComplianceSource[] } = {}) => {
+      // Texto escrito pelo sistema (não pela IA) não passa pela conferência.
+      let check: ResponseCheckResult = { outcome: "NOT_APPLICABLE" }
+      if (checkMode !== "OFF" && !options.deterministic) {
+        if (holding) send("status", { stage: "RESPONSE_CHECK", label: "Conferindo a resposta…" })
+        check = await trace.span("response_check", () => responseCheck(db, { organizationId: scope.organizationId, text: generated, question: input.text, agentId: turnAgentId, guardrails: turnGuardrails, source: "CHAT", sources: [...(options.sources ?? []), ...turnSources] }))
+      }
+      const enforcing = checkMode === "ENFORCE"
+      const flagged = check.outcome === "VIOLATION" || check.outcome === "CHECK_FAILED"
+      // Em ENFORCE, barrada = nada do texto saiu. Em AUDIT, só a violação tira o texto da tela; a falha da conferência fica no registro.
+      const replaced = flagged && (enforcing || check.outcome === "VIOLATION")
+      const content = !replaced ? generated : enforcing ? flaggedTextOf(check) : SPOKEN_VIOLATION_NOTICE
+      if (replaced) {
+        held = []
+        holding = false
+        if (!enforcing) deliver("retract", {})
+        deliver("chunk", { text: content })
+        blockedReply = true
+      } else {
+        releaseHeld()
+      }
+      // Quem foi acionado continua no registro; o que dependia da resposta (cartões, formulário) sai junto com ela.
+      const participants = Array.isArray(generatedExtra.toolCalls) ? generatedExtra.toolCalls.filter((call: { agentId?: unknown; analytics?: unknown; state?: unknown }) => call.agentId && !call.analytics && !call.state) : []
+      const extra = replaced && check.outcome !== "NOT_APPLICABLE" && check.outcome !== "ALLOWED"
+        ? { agentId: generatedExtra.agentId ?? null, toolCalls: [...participants, responseCheckToolCall(check, enforcing ? "PREVENTIVE" : "DETECTIVE")] }
+        : generatedExtra
+      const recordCheck = (interactionId: string | null) => (check.outcome === "NOT_APPLICABLE" ? undefined : recordResponseCheck(db, { organizationId: scope.organizationId, surface: "CHAT", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : replaced && enforcing ? "BLOCKED" : "RECORDED", result: check, text: generated, conversationId: resolved.conversationId, interactionId, agentId: generatedExtra.agentId ?? turnAgentId }))
       try {
         const saved = await conversations.append({ conversationId: resolved.conversationId, organizationId: scope.organizationId, ownerPersonId: operatorId, channel: "chat", role: "assistant", content, occurredAt: now(), clientMessageId: replyKey, ...extra })
+        await recordCheck(saved.id)
         send("persisted", { interactionId: saved.id })
-        return saved.id
+        // Resposta barrada: quem chama não anexa nada a ela (materiais, oferta de report).
+        return replaced ? null : saved.id
       } catch (error) {
         console.error(JSON.stringify({ event: "assistant_reply_persist_failed", conversationId: resolved.conversationId, message: (error as Error).message }))
+        await recordCheck(null)
         send("persist_error", { message: "Esta resposta não pôde ser salva no histórico." })
         return null
       }
@@ -1173,6 +1358,8 @@ export function createRealtimeRouter(
         const previous = userMessage.duplicate ? await conversations.findByClientMessageId(resolved.conversationId, replyKey) : null
         if (previous) {
           trace.setPath("REPLAY")
+          // Já conferida quando foi gravada.
+          releaseHeld()
           send("chunk", { text: previous.content })
           send("persisted", { interactionId: previous.id })
           const stored = await loadAssistantSupportMaterials(db, { organizationId: scope.organizationId, viewer: { personId: operatorId }, interactionIds: [previous.id] })
@@ -1209,7 +1396,7 @@ export function createRealtimeRouter(
         // Resposta do Orquestrador: o texto final vai em fluxo (`liveStream`) quando pode ser mostrado antes do fim; o que não foi
         // mostrado em fluxo (ou mudou no fim — ver `reconcileShownText`) sai aqui, gravado com os especialistas acionados e os
         // materiais. `extraToolCalls`: o que mais fica gravado com a resposta (ex.: o estado de um esclarecimento da consulta de processo).
-        const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string, processMaterials?: ProcessMaterials[], extraToolCalls: unknown[] = []) => {
+        const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string, processMaterials?: ProcessMaterials[], extraToolCalls: unknown[] = [], extraSources: readonly ComplianceSource[] = []) => {
           const pending = reconcileShownText(reply.streamedText ?? "", reply.text)
           if (pending.retract) liveStream.retract()
           if (pending.append) send("chunk", { text: pending.append })
@@ -1220,7 +1407,7 @@ export function createRealtimeRouter(
             // Especialistas acionados + o trace SEGURO das ferramentas de investigação que cada um usou (investigation/domain/
             // tool-trace.ts) — auditável, nunca prompt/raciocínio; ferramentas do backend (liderança) com argumentos e cartão.
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-          })
+          }, { sources: [...replyComplianceSources(reply), ...extraSources] })
           if (cards.length > 0) send("analytics", { interactionId, cards })
           // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
           // especialistas): persistidos junto da resposta e revalidados contra o DESTINATÁRIO (o
@@ -1254,6 +1441,7 @@ export function createRealtimeRouter(
           // A instrução da aplicação substitui o prompt do Orquestrador: os limites de atuação dele e os assuntos proibidos entram aqui.
           const instruction = application.instruction + addressing + guardrails
           const consultation = application.consultation
+          await prepareResponseCheck(sessionOrchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, sessionOrchestrator), ...priorAnswerSources(history)])
           // PRODUTO NÃO ESTABELECIDO PELA GRAVAÇÃO (`PRODUCT_APPLICABILITY_V1`): a sessão usa o MESMO esclarecimento pelas bases do chat — a IA
           // decide se a pergunta depende do produto e, se sim, pergunta (curto, sem pedir número completo). A escolha fica gravada com
           // procedência `CHAT_CONFIRMATION` (nunca evidência da gravação; nada volta para a análise). Sem produto pendente, nada muda.
@@ -1279,7 +1467,7 @@ export function createRealtimeRouter(
             if (outcome.kind === "REPLY") {
               trace.setPath("FEEDBACK_SESSION_CLARIFICATION")
               showClarification(outcome.content)
-              const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, feedbackScope)] })
+              const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, feedbackScope)] }, { sources: clarificationSources(outcome) })
               send("knowledge_clarification", { interactionId, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [outcome.state]))[0] })
               send("done", {})
               return
@@ -1322,6 +1510,7 @@ export function createRealtimeRouter(
         if (dataTools) isDataTool = (name) => dataTools.handles(name)
         const systemInstruction = INIA_CHAT_PERSONA + renderClientContext(input.contextHint) + addressing + profile + originContext + (leadership ? `\n\n${leadership.instructions}` : self ? `\n\n${self.instructions}` : "")
         trace.note("instructionChars", systemInstruction.length + (orchestrator?.systemPrompt.length ?? 0))
+        await prepareResponseCheck(orchestrator?.orchestratorAgentId || null, [...replyComplianceSources({}, orchestrator), ...priorAnswerSources(history)])
 
         // ESCLARECIMENTO PELAS BASES (quem atende, na conversa dela, com Orquestrador): antes da orquestração, a IA navega pelas bases
         // que a pessoa pode ler. Se um cenário muda a resposta, a INIA pergunta com opções das fontes; se já dá para
@@ -1333,7 +1522,7 @@ export function createRealtimeRouter(
         if (input.clarification && !(leadership ? clarifies : clarificationApplies)) throw new DomainError("Este esclarecimento não está mais disponível. Faça a pergunta de novo.", "KNOWLEDGE_CLARIFICATION_UNAVAILABLE", 409)
         const sendClarification = async (outcome: ClarificationReply, processScope?: ProcessClarificationScope) => {
           showClarification(outcome.content)
-          const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, processScope)] })
+          const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, processScope)] }, { sources: clarificationSources(outcome) })
           send("knowledge_clarification", { interactionId, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [outcome.state]))[0] })
           send("done", {})
         }
@@ -1352,17 +1541,17 @@ export function createRealtimeRouter(
           if (decided) {
             trace.setPath("REPORT_PROPOSAL")
             send("chunk", { text: decided.text })
-            const interactionId = await persistReply(decided.text, { toolCalls: [{ toolName: "report_proposal", proposalId: decided.proposalId, decision: decided.kind }] })
+            const interactionId = await persistReply(decided.text, { toolCalls: [{ toolName: "report_proposal", proposalId: decided.proposalId, decision: decided.kind }] }, { deterministic: true })
             if (decided.href) send("navigate", { href: decided.href, proposalId: decided.proposalId, interactionId })
             send("done", {})
             return
           }
-          const { reply, materials, clarification } = await trace.span("orchestration", () => leadershipReply({ organizationId: scope.organizationId, personId: operatorId, leadership, history, instruction: systemInstruction, clarification: clarifies ? { conversationId: resolved.conversationId } : null, stream: liveStream }))
+          const { reply, materials, clarification, sources: consultedSources } = await trace.span("orchestration", () => leadershipReply({ organizationId: scope.organizationId, personId: operatorId, leadership, history, instruction: systemInstruction, clarification: clarifies ? { conversationId: resolved.conversationId } : null, stream: liveStream }))
           const offer = await reportOfferFor({ organizationId: scope.organizationId, accountId: request.user!.sub, personId: operatorId, conversationId: resolved.conversationId, reply, question: input.text })
           // Consulta de processo respondida pelo esclarecimento: o texto dele entra como saiu e o formulário (ou as fontes) acompanha a
           // resposta, junto dos cartões das outras ferramentas (ver `leadershipTextWithClarification`).
           const text = clarification ? leadershipTextWithClarification(reply, clarification.outcome.content).text : reply.text
-          const interactionId = await sendOrchestratedReply({ ...reply, text: offer ? `${text}${REPORT_OFFER_LINE}` : text }, "", materials, clarification ? [clarificationToolCall(clarification.outcome, clarification.scope)] : [])
+          const interactionId = await sendOrchestratedReply({ ...reply, text: offer ? `${text}${REPORT_OFFER_LINE}` : text }, "", materials, clarification ? [clarificationToolCall(clarification.outcome, clarification.scope)] : [], consultedSources)
           if (clarification) send("knowledge_clarification", { interactionId, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [clarification.outcome.state]))[0] })
           if (offer && interactionId) {
             await reportProposals.attach(offer.id, interactionId)

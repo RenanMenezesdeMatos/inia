@@ -1,5 +1,6 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
 import { businessDomainInputSchema, businessDomainPatchSchema, type BusinessDomainInput, type BusinessDomainRecord } from "../domain/business-domain.js"
 
@@ -172,15 +173,27 @@ export async function setBusinessDomainActive(db: Queryable, actor: BusinessDoma
   return updateBusinessDomain(db, actor, id, { active })
 }
 
-/** Exclusão só com ZERO dependências; nunca cascade. Com dependências o caminho é desativar. */
-export async function deleteBusinessDomain(db: Queryable, actor: BusinessDomainActor, id: string): Promise<boolean> {
-  const current = await findBusinessDomain(db, actor.organizationId, id)
-  if (!current) return false
-  const dependencies = await loadBusinessDomainDependencies(db, actor.organizationId, current)
-  if (dependencies.total > 0) {
-    throw new DomainError(`"${current.name}" ainda é utilizado por Agents ou Orchestrators e não pode ser excluído. Desative-o em vez de excluir.`, "BUSINESS_DOMAIN_IN_USE", 409, { dependencies })
-  }
-  await db.query(`delete from business_domains where id = $1 and organization_id = $2`, [id, actor.organizationId])
-  await recordDomainAudit(db, { ...actor, action: "BUSINESS_DOMAIN_DELETED", domainId: id, payload: { code: current.code, name: current.name } })
-  return true
+/** Exclusão lógica (migration 177), só com ZERO dependências: um Argumentário ou checkpoint apontando para domínio escondido perderia a área. Com dependências o caminho é desativar. */
+export async function deleteBusinessDomain(database: Database, actor: BusinessDomainActor, id: string): Promise<boolean> {
+  // A linha fica travada durante a conferência: sem apagar, a chave estrangeira não barra mais um Agent restaurado neste domínio ao mesmo tempo.
+  return inTransaction(database, async (db) => {
+    await db.query(`select 1 from business_domains where id = $1 and organization_id = $2 for update`, [id, actor.organizationId])
+    const current = await findBusinessDomain(db, actor.organizationId, id)
+    if (!current) return false
+    const dependencies = await loadBusinessDomainDependencies(db, actor.organizationId, current)
+    if (dependencies.total > 0) {
+      throw new DomainError(`"${current.name}" ainda é utilizado por Agents ou Orchestrators e não pode ser excluído. Desative-o em vez de excluir.`, "BUSINESS_DOMAIN_IN_USE", 409, { dependencies })
+    }
+    const others = (await db.query<{ argumentScripts: number; checkpoints: number }>(
+      `select (select count(*)::int from argument_scripts where organization_id = $1 and business_domain_id = $2) "argumentScripts",
+              (select count(distinct definition_id)::int from checkpoint_scopes where organization_id = $1 and business_domain_id = $2) "checkpoints"`,
+      [actor.organizationId, id],
+    )).rows[0]
+    if ((others?.argumentScripts ?? 0) + (others?.checkpoints ?? 0) > 0) {
+      throw new DomainError(`"${current.name}" ainda é utilizado por Argumentários ou checkpoints e não pode ser excluído. Desative-o em vez de excluir.`, "BUSINESS_DOMAIN_IN_USE", 409, { dependencies: { ...dependencies, ...others } })
+    }
+    await db.query(`update business_domains_all set active = false, deleted_at = now(), deleted_by_person_id = $3, updated_at = now() where id = $1 and organization_id = $2`, [id, actor.organizationId, actor.actorId])
+    await recordDomainAudit(db, { ...actor, action: "BUSINESS_DOMAIN_DELETED", domainId: id, payload: { code: current.code, name: current.name } })
+    return true
+  })
 }

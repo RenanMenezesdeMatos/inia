@@ -18,6 +18,7 @@ const TOC: WikiTocEntry[] = [
   { id: "exemplo", label: "Exemplo: Taxa de Resolução Digital" },
   { id: "onde-aparece", label: "Onde o indicador passa a existir" },
   { id: "edicao", label: "Edição e proteção do histórico" },
+  { id: "correcao", label: "Corrigir um cadastro errado" },
   { id: "quando-exige-codigo", label: "Quando exige desenvolvimento" },
   { id: "novo-grupo", label: "Novo Grupo" },
   { id: "central-de-dados", label: "Central de Dados — evolução futura" },
@@ -191,11 +192,64 @@ export default function ConfiguracaoIndicadoresPage() {
 
       <WikiSection id="edicao" title="Edição e proteção do histórico" eyebrow="Bloquear, com o motivo">
         <p>
-          Nome, glossário, amostra/cobertura padrão, ligar a medição operacional, fechamento oficial e status podem mudar sempre. Código, unidade, direção, estratégia e
-          desligar a medição operacional ficam <strong className="font-medium text-foreground">bloqueados quando o indicador já tem histórico</strong> — medições, metas,
-          fechamentos oficiais ou Workflows que o referenciam. A tela mostra o que depende dele (Workflows de Grupos que você não administra aparecem só na contagem,
-          &quot;+ 2 de outros Grupos&quot;) e o backend recusa a alteração com o mesmo motivo. Para uma semântica
-          diferente, crie um novo indicador e desative este. Exclusão só existe sem histórico algum.
+          Nome, glossário, amostra/cobertura padrão, ligar a medição operacional, fechamento oficial e status podem mudar sempre. Código e desligar a medição operacional ficam{" "}
+          <strong className="font-medium text-foreground">bloqueados quando o indicador já tem histórico</strong> — medições, metas, fechamentos oficiais ou Workflows que o referenciam —,
+          porque as cargas do cliente e os Workflows citam o indicador pelo código. Para isso, crie um novo indicador e desative este. A tela mostra o que depende dele (Workflows de Grupos que
+          você não administra aparecem só na contagem, &quot;+ 2 de outros Grupos&quot;) e o backend recusa a alteração com o mesmo motivo. Unidade, direção e estratégia também não mudam pelo
+          formulário: têm a <a href="#correcao" className="underline underline-offset-2">correção controlada</a>. Exclusão só existe sem histórico algum.
+        </p>
+      </WikiSection>
+
+      <WikiSection id="correcao" title="Corrigir um cadastro errado" eyebrow="Unidade, direção e cálculo, com o histórico">
+        <p>
+          Em <strong className="font-medium text-foreground">Editar › Corrigir unidade, direção ou cálculo</strong>, quem administra a organização inteira corrige um indicador cadastrado errado sem
+          perder o que já foi carregado. A escolha mostra o impacto antes de salvar, calculado no servidor pela mesma função que o salvamento usa de novo.
+        </p>
+        <WikiTable caption="O que acontece ao corrigir">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>O quê</TableHead>
+                <TableHead>O que acontece</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Resultado do período, em todas as telas</TableCell>
+                <TableCell>Passa a seguir a regra nova, em períodos passados e futuros. O valor é sempre calculado na leitura a partir das medições, então muda na hora.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Medições, metas e fechamentos</TableCell>
+                <TableCell>Nada é alterado. A unidade nova não converte números: uma meta continua com o mesmo valor.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Fechamento oficial</TableCell>
+                <TableCell>Nunca é recalculado: valor, meta, atingimento, quartil e peso ficam como a fonte mandou.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Feedbacks e conteúdo já publicados</TableCell>
+                <TableCell>Ficam como estão. Só o que for gerado depois usa a regra nova.</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Próximas cargas</TableCell>
+                <TableCell>Validadas pela regra nova: Taxa e Média ponderada exigem numerador e denominador; Soma, Média simples e Último valor recusam os dois.</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </WikiTable>
+        <p>
+          <strong className="font-medium text-foreground">O que impede de salvar:</strong> medições sem o numerador e o denominador que a estratégia nova exige (o período ficaria errado, porque essas
+          linhas entrariam com peso 1); medições cujo valor não confere com numerador ÷ denominador; valores fora do que a unidade aceita; Taxa fora de Percentual; e Workflow ativo que depende de algo
+          que a regra nova não aceita. A tela diz quantas são, dá exemplos e como resolver. Se a estratégia atual não aceita componentes, a carga não consegue completar essas linhas: elas precisam ser
+          removidas pela equipe técnica antes da correção.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Workflows:</strong> a versão publicada não muda sozinha, e a soma de tempos comparada com um limite daria um número sem erro nenhum. Por isso um
+          Workflow ativo com agregação incompatível bloqueia a correção: pause, corrija o indicador, ajuste o nó e publique de novo. Um Workflow pausado não volta a rodar (ativar é recusado até publicar
+          ajustado), um rascunho não publica até ajustar, e uma execução em andamento para com o motivo ao chegar naquele passo, em vez de seguir o ramo errado.
+        </p>
+        <p>
+          Para salvar, a pessoa escreve o motivo e digita o código do indicador. A auditoria guarda o antes, o depois, o motivo, quem fez e o impacto.
         </p>
       </WikiSection>
 

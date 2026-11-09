@@ -29,6 +29,7 @@ import { DESIRED_DIRECTION_LABELS, type DesiredDirection, type IndicatorWithRule
  * básicas → Comportamento → Medição operacional → Fechamento oficial. Na edição, os campos
  * SEMÂNTICOS (código, unidade, direção, estratégia, desligar medição operacional) ficam bloqueados
  * quando o indicador já tem histórico — a mesma regra que o backend aplica (INDICATOR_SEMANTIC_LOCKED).
+ * Unidade, direção e estratégia têm caminho próprio, com prévia do impacto: `onRequestCorrection`.
  */
 export type IndicatorDefinitionFormProps = {
   catalog: IndicatorCatalog
@@ -40,6 +41,8 @@ export type IndicatorDefinitionFormProps = {
   submitLabel: string
   onSubmit: (value: IndicatorDefinitionInput) => Promise<void> | void
   onCancel: () => void
+  /** Abre a correção controlada de unidade, direção e cálculo. Só aparece quando o indicador tem histórico. */
+  onRequestCorrection?: () => void
 }
 
 function describeDependencies(dependencies: IndicatorDependencies): string {
@@ -77,7 +80,7 @@ function LockedHint({ locked }: { locked: boolean }) {
   )
 }
 
-export function IndicatorDefinitionForm({ catalog, initial, dependencies, pending, error, submitLabel, onSubmit, onCancel }: IndicatorDefinitionFormProps) {
+export function IndicatorDefinitionForm({ catalog, initial, dependencies, pending, error, submitLabel, onSubmit, onCancel, onRequestCorrection }: IndicatorDefinitionFormProps) {
   const [code, setCode] = useState(initial?.code ?? "")
   const [name, setName] = useState(initial?.name ?? "")
   const [unit, setUnit] = useState<IndicatorUnit | "">((initial?.unit as IndicatorUnit | undefined) ?? "")
@@ -150,10 +153,17 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
   return (
     <div className="max-w-2xl space-y-4">
       {initial && dependencies?.hasHistory ? (
-        <p className="rounded-md border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100">
-          <strong>Este indicador já tem histórico</strong> ({describeDependencies(dependencies)}). Código, unidade, direção, estratégia de consolidação e desligar a medição operacional
-          ficam bloqueados — mudar isso invalidaria o histórico e as configurações existentes. Para uma semântica diferente, crie um novo indicador e desative este.
-        </p>
+        <div className="space-y-2 rounded-md border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-100">
+          <p>
+            <strong>Este indicador já tem histórico</strong> ({describeDependencies(dependencies)}). Código e desligar a medição operacional ficam bloqueados: as cargas e os Workflows citam o indicador pelo código.
+            Unidade, direção e estratégia de consolidação não mudam por este formulário: use a correção, que mostra o impacto antes de salvar.
+          </p>
+          {onRequestCorrection ? (
+            <Button type="button" variant="outline" size="sm" onClick={onRequestCorrection}>
+              Corrigir unidade, direção ou cálculo
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       <Section title="Informações básicas" description="Identidade e apresentação. O código identifica o indicador em medições, metas e Workflows; a unidade decide como os valores são formatados.">

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { ChevronLeft, ChevronRight, Lock, MessagesSquare, Mic, SearchX } from "lucide-react"
 
 import { ListDateRangeFilter, ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
@@ -41,7 +41,6 @@ const DEFAULT_FILTERS: Filters = { search: "", origin: undefined, status: undefi
  * quem aparece é do backend (escopo das atribuições); esta tela só filtra dentro dele.
  */
 export function AssistantConversationsPage() {
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const selectedId = searchParams.get("conversation")
@@ -75,7 +74,9 @@ export function AssistantConversationsPage() {
     const next = new URLSearchParams(searchParams.toString())
     if (id) next.set("conversation", id)
     else next.delete("conversation")
-    router.replace(`${pathname}${next.size > 0 ? `?${next}` : ""}`, { scroll: false })
+    // Só a seleção muda: `history.replaceState` é integrado ao App Router (useSearchParams acompanha) e não refaz a
+    // renderização do servidor como `router.replace` — a página não lê `?conversation=` no servidor.
+    window.history.replaceState(null, "", `${pathname}${next.size > 0 ? `?${next}` : ""}`)
   }
 
   const options = query.data?.filterOptions

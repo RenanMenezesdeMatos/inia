@@ -361,3 +361,17 @@ describe("executeOutput — destinatário de gestão resolvido pela ESTRUTURA (m
     expect(calls.some((call) => call.sql.includes("insert into alerts"))).toBe(false)
   })
 })
+
+describe("executeOutput — reconhecimento sem motivo", () => {
+  const skipped = { kind: "RECOGNITION_SKIPPED", personId: "noa", reason: "NO_COMPARISON_AND_TARGET_NOT_MET", text: "Sem reconhecimento: não houve comparação nem meta batida." }
+
+  it.each([["ao próprio colaborador", { type: "CURRENT_OPERATOR" }], ["a uma pessoa fixa", { type: "USER", userId: "chefe" }]] as const)("nada é entregue %s, e a execução segue com o motivo na saída do nó", async (_name, target) => {
+    const { db, calls } = fakeDb([{ match: (sql) => sql.includes("reports_to_id") || sql.includes("from people"), rows: [{ id: "noa", name: "Noa", role: "SUPERVISOR", reports_to_id: null }] }])
+    const config = { target, surfaces: ["FOLLOW_UP", "NOTIFICATION", "CHAT"], source: "nodeOutputs.agent" } as unknown as OutputNodeConfig
+
+    const result = await executeOutput(config, baseContext(db, { nodeOutputs: { agent: skipped }, enrollment: { interactionId: null, indicatorMeasurementId: null, scheduledSubjectId: "noa" } }))
+
+    expect(result.nodeOutput).toMatchObject({ caseId: null, feedbackId: null, notPublished: { reason: "NO_COMPARISON_AND_TARGET_NOT_MET", text: skipped.text } })
+    expect(calls.filter(({ sql }) => /insert into/i.test(sql))).toEqual([])
+  })
+})

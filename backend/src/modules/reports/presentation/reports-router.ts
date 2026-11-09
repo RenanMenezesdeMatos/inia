@@ -5,7 +5,7 @@ import { gatewayAnalysisWriter } from "../application/report-analysis.js"
 import { listReceivedDeliveries, loadDeliveryDetail, markDeliveryRead } from "../application/report-deliveries-reader.js"
 import { createPostgresProposalStore } from "../application/report-proposals.js"
 import { createPostgresReportRuntime } from "../application/report-runtime.js"
-import { createReport, deleteReport, getReportDetail, listReports, loadReportAccess, openProposal, previewReport, reportOptions, retryDeliveryAnalysis, runReportNow, searchAudiencePeople, setReportStatus, updateReport, type ReportActor, type ReportServiceDeps } from "../application/report-service.js"
+import { createReport, deleteReport, getReportDetail, listDeletedReports, listReports, loadReportAccess, openProposal, previewReport, reportOptions, restoreDeletedReport, retryDeliveryAnalysis, runReportNow, searchAudiencePeople, setReportStatus, updateReport, type ReportActor, type ReportServiceDeps } from "../application/report-service.js"
 import { createPostgresReportStore } from "../application/report-store.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -35,6 +35,7 @@ export function createReportsRouter(db: Database, overrides: Partial<ReportServi
     const access = await loadReportAccess(deps, actorOf(request))
     response.json({ data: { canUse: access.canUse, canCreateForSelf: access.canCreateForSelf, canDistribute: access.canDistribute, timeZone: access.timeZone } })
   })
+  router.get("/deleted", async (request, response) => response.json({ data: await listDeletedReports(deps, actorOf(request)) }))
   router.get("/options", async (request, response) => response.json({ data: await reportOptions(deps, actorOf(request)) }))
   router.get("/audience/people", async (request, response) => response.json({ data: await searchAudiencePeople(deps, actorOf(request), String(request.query.q ?? "")) }))
   router.post("/preview", async (request, response) => response.json({ data: await previewReport(deps, actorOf(request), previewSchema.parse(request.body ?? {})) }))
@@ -58,6 +59,10 @@ export function createReportsRouter(db: Database, overrides: Partial<ReportServi
   router.get("/:reportId", async (request, response) => response.json({ data: await getReportDetail(deps, actorOf(request), idParam.parse(request.params.reportId)) }))
   router.put("/:reportId", async (request, response) => response.json({ data: await updateReport(deps, actorOf(request), idParam.parse(request.params.reportId), updateSchema.parse(request.body ?? {})) }))
   router.post("/:reportId/status", async (request, response) => response.json({ data: await setReportStatus(deps, actorOf(request), idParam.parse(request.params.reportId), statusSchema.parse(request.body ?? {})) }))
+  router.post("/:reportId/restore", async (request, response) => {
+    await restoreDeletedReport(deps, actorOf(request), idParam.parse(request.params.reportId))
+    response.status(204).end()
+  })
   router.post("/:reportId/run", async (request, response) => response.status(202).json({ data: await runReportNow(deps, actorOf(request), idParam.parse(request.params.reportId)) }))
   router.delete("/:reportId", async (request, response) => {
     await deleteReport(deps, actorOf(request), idParam.parse(request.params.reportId))

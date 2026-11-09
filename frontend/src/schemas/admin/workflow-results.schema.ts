@@ -1,13 +1,14 @@
 import { z } from "zod"
 import { executionFailureSchema } from "@/schemas/admin/execution-failure.schema"
+import { workflowEnrollmentStatusSchema } from "@/schemas/admin/workflow.schema"
 
 /**
  * V1.5.13 — aba "Resultados" do Workflow (read model do backend: workflows/application/workflow-results-reader.ts).
  * DISPARO = matrícula raiz (fan-out = 1 disparo, N pessoas). Tokens/custo são os REGISTRADOS pelo provider; null = N/D.
  */
-export const DISPATCH_STATUSES = ["RUNNING", "COMPLETED", "PARTIAL", "FAILED"] as const
+export const DISPATCH_STATUSES = ["RUNNING", "COMPLETED", "PARTIAL", "FAILED", "BLOCKED"] as const
 export type DispatchStatus = (typeof DISPATCH_STATUSES)[number]
-export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = { RUNNING: "Em andamento", COMPLETED: "Concluído", PARTIAL: "Concluído com falhas", FAILED: "Falhou" }
+export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = { RUNNING: "Em andamento", COMPLETED: "Concluído", PARTIAL: "Concluído com falhas", FAILED: "Falhou", BLOCKED: "Bloqueada" }
 
 export const RESULT_TRIGGER_KINDS = ["FLAG", "INDICATOR", "SCHEDULE", "MANUAL"] as const
 export type ResultTriggerKind = (typeof RESULT_TRIGGER_KINDS)[number]
@@ -105,7 +106,7 @@ export type ResultAiCall = z.infer<typeof aiCallSchema>
 export const personResultSchema = z.object({
   enrollmentId: z.string(),
   person: z.object({ id: z.string(), name: z.string(), teamName: z.string().nullable(), subteamName: z.string().nullable() }),
-  status: z.enum(["active", "waiting", "completed", "failed", "dead"]),
+  status: workflowEnrollmentStatusSchema,
   waitingForQa: z.boolean(),
   agents: z.array(z.object({ nodeId: z.string(), name: z.string() })),
   /** V1.7.1 — roteamento DETERMINISTIC|MODEL e síntese PASSTHROUGH|MODEL|NONE (null = não informado, execuções anteriores). */

@@ -42,10 +42,10 @@ export function createIngestionRouter(db: Database) {
         const row = context.rows[0]
         if (!row) throw new Error(`Indicador ou colaborador inválido: ${item.indicatorCode}`)
         const measurement = await client.query<{ id: string }>(
-          `insert into indicator_measurements(organization_id,indicator_definition_id,subject_type,subject_id,value,period_start,period_end,source)
+          `insert into indicator_measurements_all(organization_id,indicator_definition_id,subject_type,subject_id,value,period_start,period_end,source)
            values($1,$2,'PERSON',$3,$4,$5,$6,$7)
            on conflict (organization_id, indicator_definition_id, subject_type, subject_id, period_start, period_end, source)
-           do update set value = excluded.value
+           do update set value = excluded.value, cancelled_at = null, cancellation_id = null
            returning id`,
           [organizationId, row.indicator_id, item.operatorId, item.value, item.periodStart, item.periodEnd, item.source],
         )

@@ -369,7 +369,7 @@ achado, encontrado por duas frentes.
 | AUTH-5 | Delegação concede papéis com permissões que quem concede não tem; com a senha temporária, vira conta-fantoche (R-05 ampliado) | Média | Confirmada (desenho) | Pendente — decisão de produto |
 | SCOPE-01 / AI-03 | Monitoramento de conversas mostrava respostas e cartões da liderança com pessoas fora do escopo de quem lê | Média | Confirmada | Corrigido |
 | SCOPE-02 | Simulação de política, avaliações gravadas e o caso de supervisão revelavam intervenções (inclusive avaliação de continuidade) a quem não pode vê-las | Média | Confirmada | Corrigido |
-| DATA-1 | Guarda de ZIP confiava no tamanho declarado (XLSX de 389 KB → 400 MB; imagem-bomba no DOCX a cada prévia); PDF sem guarda | Média | Confirmada | Corrigido (PDF: mitigado — ver R-24) |
+| DATA-1 | Guarda de ZIP confiava no tamanho declarado (XLSX de 389 KB → 400 MB; imagem-bomba no DOCX a cada prévia); PDF sem guarda | Média | Confirmada | Corrigido (PDF, DOCX e XLSX lidos em processo filho com teto — R-24, 18/10) |
 | DATA-4 | MySQL/MariaDB "validando o certificado" não conferia o nome do servidor | Média | Confirmada | Corrigido |
 | DATA-5 | Fonte de banco nova nascia com TLS sem validar certificado (SQL Server incluso) | Média | Confirmada | Corrigido (fontes novas) |
 | AI-01 | Chamadas de ferramenta por rodada sem teto (uma pergunta → dezenas de especialistas/Orquestradores em paralelo) | Média | Confirmada | Corrigido |
@@ -545,8 +545,29 @@ achado, encontrado por duas frentes.
   passa do declarado, tem tamanho real diferente, é cifrada ou usa método desconhecido recusa o pacote — antes de exceljs/mammoth
   (upload, SFTP, importação e cada prévia DOCX). PDF: `pdf-guard.ts` mede cada fluxo FlateDecode fora da thread principal antes
   do pdf-parse (32 MB por fluxo de conteúdo, 64 MB por imagem, 512 MB no total, taxa > 200:1 recusada fora das imagens).
-- **Teste**: `zip-guard.test.ts` e `pdf-guard.test.ts` (bombas montadas no teste); as bombas da frente A3 recusadas; XLSX de 20 mil
-  linhas, manuais .docx/.pdf do repositório (até 198 MB descompactados) aceitos.
+  **18/10 (R-24)**: pdf-parse e mammoth (texto do upload e prévia DOCX) rodam num processo filho
+  (`shared/infrastructure/isolated-parser/`): parser numa worker thread, com a thread principal do filho vigiando a memória
+  residente do processo inteiro (768 MB) — o pdf.js descompacta em ArrayBuffers fora do heap, que `--max-old-space-size` (512 MB)
+  não limita —, prazo de 30 s com `SIGKILL`, ambiente sem os segredos da API, 2 filhos simultâneos e fila de 8. Estouro, prazo ou
+  morte do filho: 422 `KNOWLEDGE_FILE_TYPE_MISMATCH`; erro do parser: 422 `KNOWLEDGE_EXTRACTION_FAILED`; fila cheia: 503.
+  **18/10 (R-24, XLSX)**: o exceljs da Central de Dados (upload, amostra, carga de arquivo e SFTP) roda no mesmo processo filho
+  (job `data-hub/infrastructure/xlsx-parser-job.ts`), com teto próprio medido — heap 1.536 MB, residente 2.048 MB, 60 s, 1 filho por
+  processo e fila de 4 — e as linhas voltando em lotes de 2 mil pelo IPC (a tabela nunca é copiada inteira de uma vez). Estouro,
+  prazo ou morte do filho: `DATA_FILE_INVALID` com o motivo; fila cheia: `DATA_FILE_READER_BUSY` (transitório). No upload e na
+  amostra, erro de leitura de arquivo vira 422/503 com o código (antes, 500). **19/10**: a guarda de ZIP confere cada entrada em
+  fluxo, só contando os bytes (blocos de 64 KB descartados, zlib no pool de threads): conferir a planilha de 820 mil linhas (302 MB
+  descompactados) passou de +0,5 GB e 270 ms de laço travado para ~+70 MB e laço livre, com os mesmos motivos de recusa.
+- **Teste**: `zip-guard.test.ts` (inclusive entrada legítima de 200 MB conferida sem a memória subir — a versão anterior subia
+  +393 MB e falha nesse teste) e `pdf-guard.test.ts` (bombas montadas no teste); as bombas da frente A3 recusadas; XLSX de 20 mil
+  linhas, manuais .docx/.pdf do repositório (até 198 MB descompactados) aceitos. `isolated-parser.test.ts` (prazo, memória dentro e
+  fora do heap, erro, fila, ambiente sem segredos), `text-extractor.test.ts` (PDF gerado e manual real idênticos ao parser no
+  processo; bomba `[/FlateDecode /RunLengthDecode]` de 35 KB — passa na pré-varredura; a de 23 KB já levava o processo a 2,4 GB —
+  recusada sem a memória do teste subir) e `knowledge-router.security.test.ts` (422 sem gravar nada). Os 20 manuais de `docs/manuais`
+  conferidos pelo `dist/` compilado (texto e prévia idênticos; 0,2–0,4 s por arquivo). `xlsx-parser.test.ts` (planilha variada — datas, fórmulas,
+  texto rico, link, erro, célula mesclada, segunda aba — e 20 mil linhas idênticas ao exceljs no processo, com e sem amostra;
+  mensagens de antes; guarda de ZIP antes; teto de memória e prazo recusados sem a memória do teste subir; BUSY transitório) e a
+  prova opcional `INIA_XLSX_PROOF=1 npx vitest run xlsx-limits-proof` (tetos reais: 200 mil linhas lidas; 820 mil linhas, 47 MB,
+  recusadas em ~10 s).
 
 ### DATA-4 / DATA-5 / DATA-6 — TLS e credencial dos bancos e do SFTP
 - **Correção**: MySQL/MariaDB com validação passa `verifyIdentity: true` (`mysql-session.ts`). Fonte de banco NOVA sem modo

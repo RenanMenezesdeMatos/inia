@@ -59,6 +59,7 @@ export async function loadPracticeRows(db: Queryable, input: { organizationId: s
        left join channel_flags cf on cf.id = p.channel_flag_id
        left join best_practice_pattern_versions v on v.id = p.current_version_id
       where p.organization_id = $1 and ($2::uuid is null or p.indicator_definition_id = $2) and ($4::uuid is null or p.channel_flag_id = $4)
+        and (p.indicator_definition_id is null or i.id is not null) and (p.channel_flag_id is null or cf.id is not null)
         and ${input.source.origin === "REAL" ? `p.data_origin = 'REAL' and ($3::uuid is null or p.team_id = $3)` : `p.data_origin = 'SYNTHETIC' and p.synthetic_dataset_id = $3`}
       order by p.updated_at desc, p.id`,
     [input.organizationId, input.indicatorId, input.source.origin === "REAL" ? input.source.teamId : input.source.datasetId, input.channelFlagId ?? null],

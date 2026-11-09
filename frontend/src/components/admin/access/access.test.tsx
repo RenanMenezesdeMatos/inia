@@ -170,7 +170,7 @@ describe("Usuários e acessos — o que cada um enxerga vem das capabilities (de
 
   it("menu da Administração: sem capability não aparece; QA Lab só com canUseQaLab; supervisor sem papel não vê 'Administração'", () => {
     const sidebar = (capabilities: AccessCapabilities) => renderWithQuery(<SidebarProvider><AdminSidebar capabilities={capabilities} /></SidebarProvider>)
-    const accessAdmin = sidebar(caps({ canAccessAdministration: true, canViewUsers: true }))
+    const accessAdmin = sidebar(caps({ canAccessAdministration: true, canOpenUsersAndAccess: true, canViewUsers: true }))
     expect(screen.getByText("Usuários e acessos")).toBeInTheDocument()
     expect(screen.queryByText("Workflows")).not.toBeInTheDocument()
     expect(screen.queryByText("Agentes")).not.toBeInTheDocument()

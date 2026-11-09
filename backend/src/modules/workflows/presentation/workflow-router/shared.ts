@@ -45,6 +45,7 @@ export const WORKFLOW_LIST_SELECT = `
     w.consolidated_structure "consolidatedStructure", w.population_filter "populationFilter",
     ${triggerJsonSql("w.trigger_config", "cf", "idef")} "trigger",
     (select count(*) from workflow_enrollments we where we.workflow_id = w.id and we.status in ('active', 'waiting'))::int "activeEnrollments",
+    (select count(*) from workflow_enrollments we where we.workflow_id = w.id and we.status = 'blocked')::int "blockedEnrollments",
     -- Configuração do RASCUNHO (o que o editor edita; só vale no runtime depois de Publicar) e o que
     -- difere da publicada. Sem versão publicada as duas são a mesma (lista vazia).
     jsonb_build_object(

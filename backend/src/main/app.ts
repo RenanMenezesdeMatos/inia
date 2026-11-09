@@ -8,6 +8,7 @@ import { pool, type Database } from "../infrastructure/database/pool.js"
 import { PgCaseRepository } from "../modules/supervision-cases/infrastructure/pg-case-repository.js"
 import { createCaseRouter } from "../modules/supervision-cases/presentation/case-router.js"
 import { loadCaseVisibility } from "../modules/supervision-cases/application/case-visibility.js"
+import { loadCaseAgentRecords } from "../modules/agents/application/agent-context-records.js"
 import { createFeedbackRouter } from "../modules/feedbacks/presentation/feedback-router.js"
 import { createGovernanceRouter } from "../modules/governance/presentation/governance-router.js"
 import { createInterventionAdminRouter } from "../modules/interventions/presentation/intervention-admin-router.js"
@@ -65,6 +66,9 @@ import { createFeedbackReviewRouter } from "../modules/interaction-feedback/pres
 import { createFeedbackDeliveryRouter } from "../modules/interaction-feedback/presentation/feedback-delivery-router.js"
 import { createNotificationsRouter } from "../modules/notifications/presentation/notifications-router.js"
 import { createDataHubRouter } from "../modules/data-hub/presentation/data-hub-router.js"
+import { recordExplorerDenied } from "../modules/data-explorer/application/explorer-audit.js"
+import { explorerLimitsFrom, type ExplorerLimits } from "../modules/data-explorer/domain/explorer-limits.js"
+import { createDataExplorerRouter } from "../modules/data-explorer/presentation/data-explorer-router.js"
 import { createDataIngestionRouter } from "../modules/data-hub/presentation/data-ingestion-router.js"
 import { DomainError } from "../shared/domain/domain-error.js"
 import { currentRequestId } from "../shared/application/observability/request-context.js"
@@ -88,6 +92,8 @@ import { createUsabilityRouter } from "../modules/usage-analytics/presentation/u
 import { mountUsageServerTaps } from "../modules/usage-analytics/presentation/server-fact-taps.js"
 
 export type CreateAppOptions = {
+  /** false = as bases só ficam prontas pela varredura ou pela própria prova, que controla o instante da transição (PEN-008). */
+  knowledgeInlineProcessing?: boolean
   /** true só no servidor real: o gateway de IA passa a consultar a policy/uso/orçamento da organização
    * (testes e scripts ficam no caminho legado — exatamente o comportamento anterior). */
   registerAiRuntime?: boolean
@@ -105,6 +111,8 @@ export type CreateAppOptions = {
   /** Central de Dados com o processamento em OUTRO processo (papel `api`): a carga enfileirada só avisa o worker. Ausente =
    * processa aqui mesmo, fora do request (papel `all`, testes). */
   dataHubWakeWorker?: () => void
+  /** Limites da consulta de dados. Padrão = `.env`; as provas passam valores pequenos para vê-los agir. */
+  dataExplorerLimits?: Partial<ExplorerLimits>
   /** Prontidão para o balanceador (`/ready`): o servidor passa a dele (desligamento → 503). Ausente = confere só o banco. */
   readiness?: Readiness
   /** Métricas do processo: mede cada request e expõe `GET /internal/metrics` (só da própria máquina, nunca pelo proxy). */
@@ -151,6 +159,16 @@ export type RateLimitSettings = {
    * o teto da IA.
    */
   heavyReadsPerAccount: number
+  /** Consulta de dados da Central: listar e descrever conjuntos, por conta, por minuto. */
+  dataExplorerMetadataPerAccount: number
+  /** Consultas e contagens, por conta e por organização, por minuto. */
+  dataExplorerQueriesPerAccount: number
+  dataExplorerQueriesPerOrganization: number
+  /** Exportações CSV, por conta e por organização, a cada 10 minutos. */
+  dataExplorerExportsPerAccount: number
+  dataExplorerExportsPerOrganization: number
+  dataExplorerCancellationsPerAccount: number
+  dataExplorerCancellationsPerOrganization: number
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
@@ -168,6 +186,13 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   profileWritesPerAccount: 20,
   knowledgePreviewsPerAccount: 30,
   heavyReadsPerAccount: 20,
+  dataExplorerMetadataPerAccount: 120,
+  dataExplorerQueriesPerAccount: env.DATA_EXPLORER_QUERIES_PER_MINUTE,
+  dataExplorerQueriesPerOrganization: env.DATA_EXPLORER_QUERIES_PER_MINUTE_ORGANIZATION,
+  dataExplorerExportsPerAccount: env.DATA_EXPLORER_EXPORTS_PER_10_MINUTES,
+  dataExplorerExportsPerOrganization: env.DATA_EXPLORER_EXPORTS_PER_10_MINUTES_ORGANIZATION,
+  dataExplorerCancellationsPerAccount: env.DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES,
+  dataExplorerCancellationsPerOrganization: env.DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES_ORGANIZATION,
 }
 
 const httpLog = createLogger("http")
@@ -256,6 +281,40 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Leituras pesadas fora do chat (liderança, exportação do diagnóstico): um balde só por conta.
   const heavyReadPerAccount = limit({ name: "heavy-read-account", windowMs: 60_000, max: "heavyReadsPerAccount", key: accountKey, message: "Muitas consultas pesadas em pouco tempo. Aguarde um instante." })
   const heavyReads = (method: "GET" | "POST", pattern: RegExp): express.RequestHandler => (request, response, next) => (request.method === method && pattern.test(routePath(request)) ? heavyReadPerAccount(request, response, next) : next())
+  // Consulta de dados: consulta e exportação com teto por conta e por organização (a mesma organização não derruba o banco com várias contas).
+  const organizationKey = (request: express.Request) => request.user?.organizationId ?? null
+  const explorerMetadata = limit({ name: "data-explorer-metadata", windowMs: 60_000, max: "dataExplorerMetadataPerAccount", key: accountKey, message: "Muitas leituras em pouco tempo. Aguarde um instante." })
+  const explorerQueriesAccount = limit({ name: "data-explorer-query-account", windowMs: 60_000, max: "dataExplorerQueriesPerAccount", key: accountKey, message: "Muitas consultas em pouco tempo. Aguarde um instante e tente de novo." })
+  const explorerQueriesOrganization = limit({ name: "data-explorer-query-organization", windowMs: 60_000, max: "dataExplorerQueriesPerOrganization", key: organizationKey, message: "Muitas consultas nesta organização em pouco tempo. Aguarde um instante e tente de novo." })
+  const explorerExportsAccount = limit({ name: "data-explorer-export-account", windowMs: 10 * 60_000, max: "dataExplorerExportsPerAccount", key: accountKey, message: "Muitas exportações em pouco tempo. Aguarde alguns minutos e tente de novo." })
+  const explorerExportsOrganization = limit({ name: "data-explorer-export-organization", windowMs: 10 * 60_000, max: "dataExplorerExportsPerOrganization", key: organizationKey, message: "Muitas exportações nesta organização em pouco tempo. Aguarde alguns minutos e tente de novo." })
+  const explorerCancellationsAccount = limit({ name: "data-explorer-cancellation-account", windowMs: 10 * 60_000, max: "dataExplorerCancellationsPerAccount", key: accountKey, message: "Muitos cancelamentos em pouco tempo. Aguarde alguns minutos e tente de novo." })
+  const explorerCancellationsOrganization = limit({ name: "data-explorer-cancellation-organization", windowMs: 10 * 60_000, max: "dataExplorerCancellationsPerOrganization", key: organizationKey, message: "Muitos cancelamentos nesta organização em pouco tempo. Aguarde alguns minutos e tente de novo." })
+  /** Prévia e lista são consultas ao banco, com limite por organização. Só a confirmação, de cancelar ou reativar, gasta o limite de escrita. */
+  const explorerRouteKind = (request: express.Request): "EXPORT" | "QUERY" | "CANCELLATION" | "METADATA" => {
+    const path = routePath(request)
+    if (path === "/export") return "EXPORT"
+    if (path === "/query" || path === "/count" || path === "/cancellations/preview") return "QUERY"
+    if (path === "/cancellations" || /^\/cancellations\/[^/]+\/reactivation$/.test(path)) return request.method === "POST" ? "CANCELLATION" : "QUERY"
+    if (path === "/deleted-items") return "QUERY"
+    if (/^\/deleted-items\/[^/]+\/[^/]+\/restoration$/.test(path)) return request.method === "POST" ? "CANCELLATION" : "QUERY"
+    return "METADATA"
+  }
+  // Por conta ANTES do guard: a tentativa negada também conta. Por organização DEPOIS dele: conta sem permissão não pode esgotar o limite de quem tem.
+  const explorerAccountLimiter: express.RequestHandler = (request, response, next) => {
+    const kind = explorerRouteKind(request)
+    if (kind === "EXPORT") return explorerExportsAccount(request, response, next)
+    if (kind === "QUERY") return explorerQueriesAccount(request, response, next)
+    if (kind === "CANCELLATION") return explorerCancellationsAccount(request, response, next)
+    return explorerMetadata(request, response, next)
+  }
+  const explorerOrganizationLimiter: express.RequestHandler = (request, response, next) => {
+    const kind = explorerRouteKind(request)
+    if (kind === "EXPORT") return explorerExportsOrganization(request, response, next)
+    if (kind === "QUERY") return explorerQueriesOrganization(request, response, next)
+    if (kind === "CANCELLATION") return explorerCancellationsOrganization(request, response, next)
+    return next()
+  }
   const readConfirmationFailures = limit({ name: "read-confirmation-account", windowMs: 15 * 60_000, max: "readConfirmationFailuresPerAccount", key: accountKey, countOnlyFailures: true, message: "Muitas tentativas de confirmação. Aguarde alguns minutos e tente novamente." })
   // Monitoria de usabilidade: fatos de servidor observados na RESPOSTA 2xx das rotas existentes (login, voz, aplicação,
   // notificação) — montados antes delas e só com a coleta ligada; nunca alteram a resposta.
@@ -295,10 +354,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/profile-images", requireAuth, createProfileImageRouter(database))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
-  app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!)))
+  app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))
   app.use("/api/v1/feedbacks", requireAuth, createFeedbackRouter(database))
   app.use("/api/v1/admin/access", requireAuth, createAccessRouter(database))
-  app.use("/api/v1/admin/knowledge", can("knowledge.manage"), previews, createKnowledgeRouter(database))
+  app.use("/api/v1/admin/knowledge", can("knowledge.manage"), previews, createKnowledgeRouter(database, options.knowledgeInlineProcessing === undefined ? {} : { inlineProcessing: options.knowledgeInlineProcessing }))
   // Checkpoint Registry — checkpoints derivados da Base de Conhecimento (carregam o literal da base). LER também exige a
   // organização inteira: a rota de Bases só mostra uma base a quem alcança o Grupo dela (SEC-03) e a tela "Checkpoints da
   // operação" saiu em 07/10 — nenhum fluxo precisa da leitura escopada (achado C03 da 4ª auditoria).
@@ -347,7 +406,15 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // carregam credenciais dos sistemas do cliente: só quem tem `data_hub.manage` com escopo de ORGANIZAÇÃO (achado I-F1).
   // Teto das ações caras: teste de conexão, amostras e listagem do SFTP (abrem conexão com o destino) e criação de conjunto (o de
   // banco conecta para validar) — achado DATA-9.
-  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources\/[^/]+\/(test-connection|preview|sample|sftp-files|feeds)|feeds\/[^/]+\/(preview|sample))$/), createDataHubRouter(database, dataHubOverrides))
+  app.use("/api/v1/admin/data-hub", can("data_hub.manage", { organizationWide: true }), costly(/^\/(database\/test|sources|sources\/[^/]+\/(test-connection|preview|sample|sftp-files|feeds|secrets|unlock-configuration)|feeds\/[^/]+\/(preview|sample))$/), createDataHubRouter(database, dataHubOverrides))
+  // Consulta de dados da Central: somente leitura, conjuntos e colunas de uma lista permitida, só com escopo de organização. Montada ANTES da governança.
+  const explorerLimits: ExplorerLimits = { ...explorerLimitsFrom(env), ...options.dataExplorerLimits }
+  const auditExplorerDenied = async (request: express.Request) => {
+    const user = request.user
+    if (!user) return
+    await recordExplorerDenied(database, { organizationId: user.organizationId, personId: user.personId ?? null, accountId: user.sub })
+  }
+  app.use("/api/v1/admin/data-explorer", requireAuth, explorerAccountLimiter, can("data_hub.explore", { organizationWide: true, onDenied: auditExplorerDenied }), explorerOrganizationLimiter, createDataExplorerRouter(database, explorerLimits))
   // Políticas de acompanhamento e intervenções — permissões próprias (editar/simular/publicar/auditar; `workflows.manage` lê o
   // resumo publicado para o nó do Workflow e simula). Cada rota confere a permissão e o escopo. Montada ANTES da governança.
   app.use("/api/v1/admin/intervention-policies", requireAuth, costly(/\/simulate$/), createInterventionAdminRouter(database))

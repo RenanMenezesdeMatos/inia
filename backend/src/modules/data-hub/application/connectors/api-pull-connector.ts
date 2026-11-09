@@ -1,4 +1,5 @@
 import type { z } from "zod"
+import { maskUrl } from "../../domain/config-mask.js"
 import { DataRunError } from "../../domain/error-codes.js"
 import { extractPath, type SourceRecord } from "../../domain/mapping.js"
 import { columnsFromRecords } from "../../domain/schema-fingerprint.js"
@@ -94,7 +95,66 @@ export async function testApiConnection(ctx: DataHubContext, source: DataSourceR
   const response = await ctx.http.send({ url: api.baseUrl, method: "GET", headers, timeoutMs: api.timeoutMs })
   if (response.status === 401 || response.status === 403) throw new DataRunError("DATA_SOURCE_AUTH_FAILED", `A fonte recusou a credencial (HTTP ${response.status}).`)
   if (response.status >= 500) throw new DataRunError("DATA_SOURCE_UNREACHABLE", `A fonte respondeu HTTP ${response.status}.`)
-  return { ok: true, detail: `HTTP ${response.status} em ${api.baseUrl}` }
+  // Testar é livre, sem a senha da fonte: o texto não pode levar o que vem depois do "?" na URL.
+  return { ok: true, detail: `HTTP ${response.status} em ${maskUrl(api.baseUrl)}` }
+}
+
+/** Até quantos conjuntos de dados a prova de uma credencial experimenta, depois do endereço base. */
+const MAX_PROOF_FEEDS = 3
+export type CredentialProof = "PROVEN" | "UNPROVEN"
+
+function proofTargets(api: ApiPullConfig, feeds: DataFeedRow[]): { url: string; headers: Record<string, string> }[] {
+  const targets: { url: string; headers: Record<string, string> }[] = [{ url: api.baseUrl, headers: {} }]
+  for (const feed of feeds) {
+    if (targets.length > MAX_PROOF_FEEDS) break
+    if (feed.connectorConfig.connector !== "API_PULL") continue
+    const config: ApiFeedConfig = apiPullFeedConfigSchema.parse(feed.connectorConfig.api)
+    if (config.method !== "GET") continue
+    // Para a API não montar uma resposta enorme só para dizer se aceita a credencial; o corpo nunca é baixado (`statusOnly`).
+    const params = { ...config.queryParams }
+    if (config.pagination.kind === "PAGE_NUMBER") {
+      params[config.pagination.pageParam] = String(config.pagination.startPage)
+      if (config.pagination.sizeParam) params[config.pagination.sizeParam] = "1"
+    } else if (config.pagination.kind === "OFFSET") {
+      params[config.pagination.offsetParam] = "0"
+      params[config.pagination.limitParam] = "1"
+    }
+    try {
+      targets.push({ url: buildUrl(api.baseUrl, config.endpoint, params), headers: config.headers })
+    } catch {
+      // Endpoint de outro servidor nunca recebe a credencial.
+    }
+  }
+  return targets
+}
+
+/**
+ * A credencial digitada funciona de verdade? O teste de conexão só recusa 401, 403 e 5xx, então um endereço que responde 404 ou 200 para
+ * qualquer um aceitaria qualquer token. Aqui, cada endereço é chamado com e sem a credencial: só é prova se a API recusar sem ela e não
+ * recusar com ela. Primeiro o endereço base, depois os conjuntos de dados da fonte. Só o status interessa, então o corpo nunca é baixado.
+ * Endereço fora do ar não encerra a prova: os seguintes ainda podem decidir. Em OAuth2, quem julga é o servidor de token.
+ */
+export async function proveApiCredential(ctx: DataHubContext, source: DataSourceRow, feeds: DataFeedRow[]): Promise<CredentialProof> {
+  const api = apiConfigOf(source)
+  const credential = await resolveAuthHeaders(ctx, source, api)
+  if (api.auth.kind === "OAUTH2_CLIENT_CREDENTIALS") return "PROVEN"
+  let unavailable: DataRunError | null = null
+  for (const target of proofTargets(api, feeds)) {
+    const headers = { accept: "application/json", ...api.headers, ...target.headers }
+    const probe = (probeHeaders: Record<string, string>) => ctx.http.send({ url: target.url, method: "GET", headers: probeHeaders, timeoutMs: api.timeoutMs, statusOnly: true })
+    try {
+      const typed = await probe({ ...headers, ...credential })
+      if (typed.status === 401 || typed.status === 403) throw new DataRunError("DATA_SOURCE_AUTH_FAILED", `A fonte recusou a credencial (HTTP ${typed.status}).`)
+      if (typed.status === 429 || typed.status >= 500) throw new DataRunError("DATA_SOURCE_UNREACHABLE", `A fonte respondeu HTTP ${typed.status}.`)
+      const anonymous = await probe(headers)
+      if (anonymous.status === 401 || anonymous.status === 403) return "PROVEN"
+    } catch (error) {
+      if (!(error instanceof DataRunError) || error.code === "DATA_SOURCE_AUTH_FAILED") throw error
+      unavailable = error
+    }
+  }
+  if (unavailable) throw unavailable
+  return "UNPROVEN"
 }
 
 /** Busca todos os registros (paginando) ou uma amostra (`limit`). Checkpoint só é DEVOLVIDO — quem avança é o Run, após aplicar. */

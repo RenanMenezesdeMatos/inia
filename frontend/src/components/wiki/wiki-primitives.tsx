@@ -75,6 +75,7 @@ export function WarningCallout({ title, children, kind = "warning" }: { title: s
 }
 
 export function NodeReference({
+  id,
   icon: Icon,
   iconClass,
   iconBgClass,
@@ -82,6 +83,7 @@ export function NodeReference({
   summary,
   children,
 }: {
+  id?: string
   icon: React.ComponentType<{ className?: string }>
   iconClass: string
   iconBgClass: string
@@ -90,7 +92,7 @@ export function NodeReference({
   children: ReactNode
 }) {
   return (
-    <Card>
+    <Card id={id} className="scroll-mt-24">
       <CardHeader className="flex-row items-start gap-3 space-y-0">
         <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", iconBgClass)}>
           <Icon className={cn("size-4.5", iconClass)} />

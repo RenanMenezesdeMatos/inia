@@ -1,0 +1,950 @@
+{
+  "canvas-nota-ura-baixa": {
+    "id": "canvas-nota-ura-baixa",
+    "src": "/wiki-capturas/workflows/canvas-nota-ura-baixa.webp",
+    "width": 1290,
+    "height": 2056,
+    "alt": "Canvas do editor com o fluxo de feedback por nota URA baixa",
+    "caption": "O fluxo no editor, com as saídas Sim e Não da Condição",
+    "kind": "print",
+    "markers": []
+  },
+  "agenda-dois-horarios": {
+    "id": "agenda-dois-horarios",
+    "src": "/wiki-capturas/workflows/agenda-dois-horarios.webp",
+    "width": 718,
+    "height": 1538,
+    "alt": "Painel do Gatilho: Por agenda, Horário/calendário, Diariamente, horários 09:00 e 15:00",
+    "caption": "Gatilho por agenda com dois horários",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 34.2,
+        "y": 18.5,
+        "text": "Escolha \"Por agenda\"."
+      },
+      {
+        "n": 2,
+        "x": 27.5,
+        "y": 50.5,
+        "text": "A frequência vale para todos os horários."
+      },
+      {
+        "n": 3,
+        "x": 22.9,
+        "y": 58.8,
+        "text": "Cada horário da lista é um disparo independente."
+      },
+      {
+        "n": 4,
+        "x": 43.3,
+        "y": 70.8,
+        "text": "A prévia mostra os próximos disparos."
+      }
+    ]
+  },
+  "canvas-dois-momentos-do-dia": {
+    "id": "canvas-dois-momentos-do-dia",
+    "src": "/wiki-capturas/workflows/canvas-dois-momentos-do-dia.webp",
+    "width": 1290,
+    "height": 1296,
+    "alt": "Canvas do editor com o fluxo de orientação em dois momentos do dia",
+    "caption": "O fluxo no editor: Gatilho, Chamar agente, Output e Fim",
+    "kind": "print",
+    "markers": []
+  },
+  "canvas-orientar-e-reavaliar": {
+    "id": "canvas-orientar-e-reavaliar",
+    "src": "/wiki-capturas/workflows/canvas-orientar-e-reavaliar.webp",
+    "width": 1290,
+    "height": 3576,
+    "alt": "Canvas do editor com o fluxo de orientar e reavaliar",
+    "caption": "O fluxo no editor, com a espera e a reavaliação",
+    "kind": "print",
+    "markers": []
+  },
+  "canvas-revisao-antes-da-entrega": {
+    "id": "canvas-revisao-antes-da-entrega",
+    "src": "/wiki-capturas/workflows/canvas-revisao-antes-da-entrega.webp",
+    "width": 1290,
+    "height": 2436,
+    "alt": "Canvas do editor com o fluxo de revisão humana antes da entrega",
+    "caption": "O fluxo no editor, com as três saídas da Revisão humana",
+    "kind": "print",
+    "markers": []
+  },
+  "canvas-destaques-do-mes": {
+    "id": "canvas-destaques-do-mes",
+    "src": "/wiki-capturas/workflows/canvas-destaques-do-mes.webp",
+    "width": 1290,
+    "height": 3196,
+    "alt": "Canvas do editor com o fluxo de destaques do mês",
+    "caption": "O fluxo no editor: selecionar, aplicar, consolidar e entregar",
+    "kind": "print",
+    "markers": []
+  },
+  "canvas-politica-de-acompanhamento": {
+    "id": "canvas-politica-de-acompanhamento",
+    "src": "/wiki-capturas/workflows/canvas-politica-de-acompanhamento.webp",
+    "width": 1290,
+    "height": 2056,
+    "alt": "Canvas do editor com o fluxo de política de acompanhamento",
+    "caption": "O fluxo no editor, com o nó de política",
+    "kind": "print",
+    "markers": []
+  },
+  "agente-amostra-monitoria": {
+    "id": "agente-amostra-monitoria",
+    "src": "/wiki-capturas/workflows/agente-amostra-monitoria.webp",
+    "width": 718,
+    "height": 1326,
+    "alt": "Painel do Chamar agente com a Fonte de dados: amostra de chamadas, 1 chamada, período Hoje",
+    "caption": "Fonte de dados do \"Chamar agente\" numa agenda",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 20.5,
+        "y": 29.3,
+        "text": "Quem analisa."
+      },
+      {
+        "n": 2,
+        "x": 34.5,
+        "y": 56,
+        "text": "De onde vêm os dados: uma amostra de chamadas."
+      },
+      {
+        "n": 3,
+        "x": 61.1,
+        "y": 65.7,
+        "text": "Só o resultado da última segue adiante."
+      },
+      {
+        "n": 4,
+        "x": 40.5,
+        "y": 75.3,
+        "text": "O período é diferente do momento do disparo."
+      }
+    ]
+  },
+  "output-acompanhamento": {
+    "id": "output-acompanhamento",
+    "src": "/wiki-capturas/workflows/output-acompanhamento.webp",
+    "width": 718,
+    "height": 1302,
+    "alt": "Painel do Output: O próprio colaborador, Acompanhamento, conteúdo a publicar",
+    "caption": "Output: quem recebe, onde aparece e o que entregar",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.3,
+        "y": 13.9,
+        "text": "Quem recebe."
+      },
+      {
+        "n": 2,
+        "x": 33.1,
+        "y": 23.7,
+        "text": "Onde aparece."
+      },
+      {
+        "n": 3,
+        "x": 42.9,
+        "y": 63.1,
+        "text": "O que é entregue."
+      }
+    ]
+  },
+  "flag-nota-ura": {
+    "id": "flag-nota-ura",
+    "src": "/wiki-capturas/workflows/flag-nota-ura.webp",
+    "width": 718,
+    "height": 950,
+    "alt": "Painel do Gatilho: Flag de canal, flag VOICE nota_ura",
+    "caption": "Gatilho por Flag de canal",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 34.2,
+        "y": 30,
+        "text": "Escolha \"Flag de canal\"."
+      },
+      {
+        "n": 2,
+        "x": 31.3,
+        "y": 68.3,
+        "text": "A flag que dispara a jornada."
+      }
+    ]
+  },
+  "condicao-nota-ura": {
+    "id": "condicao-nota-ura",
+    "src": "/wiki-capturas/workflows/condicao-nota-ura.webp",
+    "width": 718,
+    "height": 762,
+    "alt": "Painel da Condição: valor do gatilho, é menor ou igual a 2",
+    "caption": "Condição: é aqui que fica o limite",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.5,
+        "y": 23.8,
+        "text": "Compara o valor que veio no gatilho."
+      },
+      {
+        "n": 2,
+        "x": 24.5,
+        "y": 40.6,
+        "text": "A comparação."
+      },
+      {
+        "n": 3,
+        "x": 63.6,
+        "y": 40.6,
+        "text": "O limite. O 2 é só um exemplo."
+      }
+    ]
+  },
+  "agente-avaliacao-processo": {
+    "id": "agente-avaliacao-processo",
+    "src": "/wiki-capturas/workflows/agente-avaliacao-processo.webp",
+    "width": 718,
+    "height": 1118,
+    "alt": "Painel do Chamar agente com o formato Avaliação de processo",
+    "caption": "Chamar agente com Avaliação de processo",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 20.5,
+        "y": 27.6,
+        "text": "Quem analisa a chamada."
+      },
+      {
+        "n": 2,
+        "x": 41.2,
+        "y": 52,
+        "text": "Só disponível com a chamada no gatilho."
+      }
+    ]
+  },
+  "gerar-feedback": {
+    "id": "gerar-feedback",
+    "src": "/wiki-capturas/workflows/gerar-feedback.webp",
+    "width": 718,
+    "height": 954,
+    "alt": "Painel do Gerar feedback com a origem e o tipo Monitoria",
+    "caption": "Gerar feedback: origem e tipo",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.1,
+        "y": 32.4,
+        "text": "De qual análise o feedback nasce."
+      },
+      {
+        "n": 2,
+        "x": 16,
+        "y": 45.8,
+        "text": "Monitoria ou Indicador."
+      }
+    ]
+  },
+  "gatilho-indicador": {
+    "id": "gatilho-indicador",
+    "src": "/wiki-capturas/workflows/gatilho-indicador.webp",
+    "width": 718,
+    "height": 950,
+    "alt": "Painel do Gatilho: Indicador, TMA",
+    "caption": "Gatilho por Indicador",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 34.2,
+        "y": 30,
+        "text": "Escolha \"Indicador\"."
+      },
+      {
+        "n": 2,
+        "x": 25,
+        "y": 68.3,
+        "text": "Cada medição nova inicia uma execução."
+      }
+    ]
+  },
+  "condicao-indicador": {
+    "id": "condicao-indicador",
+    "src": "/wiki-capturas/workflows/condicao-indicador.webp",
+    "width": 718,
+    "height": 2304,
+    "alt": "Painel da Condição: valor do indicador, média ponderada, últimos 7 dias, meta vigente",
+    "caption": "Condição sobre indicador: período e referência",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 47.5,
+        "y": 13.4,
+        "text": "Valor, atingimento, PRV ou quartil."
+      },
+      {
+        "n": 2,
+        "x": 25.7,
+        "y": 27.6,
+        "text": "Como somar as medições do período."
+      },
+      {
+        "n": 3,
+        "x": 25.3,
+        "y": 33.1,
+        "text": "Quais dias entram, não importa quando disparou."
+      },
+      {
+        "n": 4,
+        "x": 57.7,
+        "y": 65.3,
+        "text": "Meta vigente, valor fixo ou período anterior."
+      }
+    ]
+  },
+  "agente-indicador": {
+    "id": "agente-indicador",
+    "src": "/wiki-capturas/workflows/agente-indicador.webp",
+    "width": 718,
+    "height": 990,
+    "alt": "Painel do Chamar agente com o formato de feedback do indicador",
+    "caption": "Chamar agente com gatilho por Indicador",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 41.2,
+        "y": 58.7,
+        "text": "Só o resultado oficial, ou o diagnóstico."
+      }
+    ]
+  },
+  "aguardar": {
+    "id": "aguardar",
+    "src": "/wiki-capturas/workflows/aguardar.webp",
+    "width": 718,
+    "height": 482,
+    "alt": "Painel do Aguardar: duração 7, unidade Dias",
+    "caption": "Aguardar: uma pausa de tempo fixo",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 22.5,
+        "y": 37.6,
+        "text": "Quanto tempo."
+      },
+      {
+        "n": 2,
+        "x": 69.4,
+        "y": 37.6,
+        "text": "Minutos, horas ou dias."
+      }
+    ]
+  },
+  "escalonar": {
+    "id": "escalonar",
+    "src": "/wiki-capturas/workflows/escalonar.webp",
+    "width": 718,
+    "height": 1520,
+    "alt": "Painel do Escalonar: destino, cargo, conteúdo, onde entregar, motivo e depois",
+    "caption": "Escalonar: encaminha e não espera",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.5,
+        "y": 20.3,
+        "text": "Para quem sobe, pela hierarquia."
+      },
+      {
+        "n": 2,
+        "x": 33.1,
+        "y": 69,
+        "text": "Onde aparece."
+      },
+      {
+        "n": 3,
+        "x": 34.6,
+        "y": 91.9,
+        "text": "Continua o fluxo ou encerra o caminho."
+      }
+    ]
+  },
+  "orquestrador": {
+    "id": "orquestrador",
+    "src": "/wiki-capturas/workflows/orquestrador.webp",
+    "width": 718,
+    "height": 1350,
+    "alt": "Painel do Orquestrador: orquestrador, instrução e roteamento",
+    "caption": "Orquestrador: a IA coordena os especialistas",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 31,
+        "y": 13.4,
+        "text": "Só os publicados para workflows."
+      },
+      {
+        "n": 2,
+        "x": 24.7,
+        "y": 37.1,
+        "text": "O que este nó pede."
+      },
+      {
+        "n": 3,
+        "x": 29.1,
+        "y": 72.1,
+        "text": "A IA escolhe, ou os domínios são fixos."
+      }
+    ]
+  },
+  "revisao-humana": {
+    "id": "revisao-humana",
+    "src": "/wiki-capturas/workflows/revisao-humana.webp",
+    "width": 718,
+    "height": 1490,
+    "alt": "Painel da Revisão humana: revisor, cargo, conteúdo e instrução",
+    "caption": "Revisão humana: para o fluxo até a decisão",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21,
+        "y": 12.1,
+        "text": "Quem decide."
+      },
+      {
+        "n": 2,
+        "x": 58.6,
+        "y": 43.3,
+        "text": "O que a pessoa lê antes de decidir."
+      },
+      {
+        "n": 3,
+        "x": 67.3,
+        "y": 61.8,
+        "text": "O que conferir."
+      }
+    ]
+  },
+  "configuracoes-consolidado": {
+    "id": "configuracoes-consolidado",
+    "src": "/wiki-capturas/workflows/configuracoes-consolidado.webp",
+    "width": 768,
+    "height": 3360,
+    "alt": "Configurações do workflow com o Alvo da avaliação em uma estrutura consolidada",
+    "caption": "Configurações do workflow: uma estrutura consolidada",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 36.8,
+        "y": 10,
+        "text": "Onde o Workflow pode atuar."
+      },
+      {
+        "n": 2,
+        "x": 45.5,
+        "y": 67.8,
+        "text": "Colaboradores individualmente, ou uma estrutura."
+      },
+      {
+        "n": 3,
+        "x": 52.8,
+        "y": 80,
+        "text": "Qual estrutura será analisada."
+      }
+    ]
+  },
+  "selecionar-ranking": {
+    "id": "selecionar-ranking",
+    "src": "/wiki-capturas/workflows/selecionar-ranking.webp",
+    "width": 718,
+    "height": 1918,
+    "alt": "Painel do Selecionar colaboradores: por ranking, valor, atingimento do PRV, melhores desempenhos por Subgrupo",
+    "caption": "Selecionar colaboradores por ranking",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 37.6,
+        "y": 9.4,
+        "text": "Por critério ou por ranking."
+      },
+      {
+        "n": 2,
+        "x": 30.1,
+        "y": 65.5,
+        "text": "Quantos entram."
+      },
+      {
+        "n": 3,
+        "x": 45.8,
+        "y": 72.2,
+        "text": "A quantidade vale para cada parte."
+      }
+    ]
+  },
+  "agente-fechamentos": {
+    "id": "agente-fechamentos",
+    "src": "/wiki-capturas/workflows/agente-fechamentos.webp",
+    "width": 718,
+    "height": 1694,
+    "alt": "Painel do Chamar agente: fechamentos oficiais, quantos fechamentos e formato",
+    "caption": "Chamar agente com a fonte de fechamentos oficiais",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 34.5,
+        "y": 43.9,
+        "text": "O fechamento oficial, lido pronto."
+      },
+      {
+        "n": 2,
+        "x": 76.9,
+        "y": 51.4,
+        "text": "Quantos meses."
+      },
+      {
+        "n": 3,
+        "x": 41.2,
+        "y": 68.3,
+        "text": "O sistema informa a posição e a meta; o agente só escreve."
+      }
+    ]
+  },
+  "output-gestao": {
+    "id": "output-gestao",
+    "src": "/wiki-capturas/workflows/output-gestao.webp",
+    "width": 718,
+    "height": 1106,
+    "alt": "Painel do Output: cargo específico, Diretor, Acompanhamento",
+    "caption": "Output depois de consolidar: destinatário da gestão",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.3,
+        "y": 16.4,
+        "text": "Aqui não existe \"O próprio colaborador\"."
+      },
+      {
+        "n": 2,
+        "x": 18.6,
+        "y": 27.9,
+        "text": "Resolvido pela estrutura: exatamente uma pessoa."
+      }
+    ]
+  },
+  "politica": {
+    "id": "politica",
+    "src": "/wiki-capturas/workflows/politica.webp",
+    "width": 718,
+    "height": 2040,
+    "alt": "Painel do nó de política: política, modo e referências",
+    "caption": "Avaliar política de acompanhamento",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 58.4,
+        "y": 10.4,
+        "text": "Só as publicadas no seu escopo."
+      },
+      {
+        "n": 2,
+        "x": 18,
+        "y": 44.1,
+        "text": "Recomendar, ou abrir conforme a política."
+      },
+      {
+        "n": 3,
+        "x": 65.1,
+        "y": 59,
+        "text": "Nós anteriores usados como fonte."
+      }
+    ]
+  },
+  "condicao-politica": {
+    "id": "condicao-politica",
+    "src": "/wiki-capturas/workflows/condicao-politica.webp",
+    "width": 718,
+    "height": 1126,
+    "alt": "Painel da Condição: resultado de um nó anterior, campo Ficou inconclusiva",
+    "caption": "Condição sobre o resultado da política",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.5,
+        "y": 16.1,
+        "text": "Lê o resultado de um nó anterior."
+      },
+      {
+        "n": 2,
+        "x": 24.2,
+        "y": 46.1,
+        "text": "Os campos da política aparecem na lista."
+      }
+    ]
+  },
+  "acompanhamento-colaborador": {
+    "id": "acompanhamento-colaborador",
+    "src": "/wiki-capturas/workflows/acompanhamento-colaborador.webp",
+    "width": 1260,
+    "height": 1062,
+    "alt": "Acompanhamento do colaborador com um feedback de monitoria fictício",
+    "caption": "O que o colaborador vê no Acompanhamento",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 62.6,
+        "y": 21.3,
+        "text": "A orientação começa pelo contexto da chamada."
+      },
+      {
+        "n": 2,
+        "x": 32.2,
+        "y": 71,
+        "text": "Os detalhes abrem aqui: a fala, a regra e o que fazer."
+      },
+      {
+        "n": 3,
+        "x": 27.2,
+        "y": 85.4,
+        "text": "A pessoa confirma que leu, com login e senha."
+      }
+    ]
+  },
+  "output-feedback": {
+    "id": "output-feedback",
+    "src": "/wiki-capturas/workflows/output-feedback.webp",
+    "width": 718,
+    "height": 1334,
+    "alt": "Painel do Output com o conteúdo Feedback confiável: Gerar feedback",
+    "caption": "Output do feedback gerado",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.3,
+        "y": 13.6,
+        "text": "Quem recebe."
+      },
+      {
+        "n": 2,
+        "x": 33.1,
+        "y": 23.2,
+        "text": "Onde aparece."
+      },
+      {
+        "n": 3,
+        "x": 42.9,
+        "y": 63.9,
+        "text": "Com gatilho por Flag, só o que passou por \"Gerar feedback\"."
+      }
+    ]
+  },
+  "gerar-feedback-indicador": {
+    "id": "gerar-feedback-indicador",
+    "src": "/wiki-capturas/workflows/gerar-feedback-indicador.webp",
+    "width": 718,
+    "height": 954,
+    "alt": "Painel do Gerar feedback com o tipo Indicador",
+    "caption": "Gerar feedback do tipo Indicador",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.1,
+        "y": 32.4,
+        "text": "De qual análise o feedback nasce."
+      },
+      {
+        "n": 2,
+        "x": 16,
+        "y": 45.8,
+        "text": "Indicador usa os dados oficiais do sistema."
+      }
+    ]
+  },
+  "definir-variavel": {
+    "id": "definir-variavel",
+    "src": "/wiki-capturas/workflows/definir-variavel.webp",
+    "width": 718,
+    "height": 850,
+    "alt": "Painel do Definir variável: variável, origem do valor e valor",
+    "caption": "Definir variável com valor fixo",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.7,
+        "y": 36.4,
+        "text": "A variável criada para este Workflow."
+      },
+      {
+        "n": 2,
+        "x": 35.8,
+        "y": 50.5,
+        "text": "Fixo ou dinâmico."
+      }
+    ]
+  },
+  "output-lider": {
+    "id": "output-lider",
+    "src": "/wiki-capturas/workflows/output-lider.webp",
+    "width": 718,
+    "height": 946,
+    "alt": "Painel do Output: Supervisor do operador, Notificação, conteúdo em variável",
+    "caption": "Output para a liderança, com uma variável como conteúdo",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.3,
+        "y": 19.1,
+        "text": "A liderança da pessoa."
+      },
+      {
+        "n": 2,
+        "x": 42.9,
+        "y": 55.9,
+        "text": "A variável definida antes."
+      }
+    ]
+  },
+  "flag-contestacao": {
+    "id": "flag-contestacao",
+    "src": "/wiki-capturas/workflows/flag-contestacao.webp",
+    "width": 718,
+    "height": 950,
+    "alt": "Painel do Gatilho: Flag de canal, flag VOICE contestacao",
+    "caption": "Gatilho por Flag de canal",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 31.3,
+        "y": 68.3,
+        "text": "A flag que dispara a jornada."
+      }
+    ]
+  },
+  "condicao-contestacao": {
+    "id": "condicao-contestacao",
+    "src": "/wiki-capturas/workflows/condicao-contestacao.webp",
+    "width": 718,
+    "height": 762,
+    "alt": "Painel da Condição: valor do gatilho, quando a flag vier verdadeira",
+    "caption": "Condição sobre uma flag de verdadeiro ou falso",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 39.8,
+        "y": 40.6,
+        "text": "Aqui não há limite: só verdadeira ou falsa."
+      }
+    ]
+  },
+  "gerar-feedback-orquestrador": {
+    "id": "gerar-feedback-orquestrador",
+    "src": "/wiki-capturas/workflows/gerar-feedback-orquestrador.webp",
+    "width": 718,
+    "height": 954,
+    "alt": "Painel do Gerar feedback com o Orquestrador como origem",
+    "caption": "Gerar feedback a partir do Orquestrador",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.1,
+        "y": 32.4,
+        "text": "O resultado do Orquestrador."
+      }
+    ]
+  },
+  "output-feedback-aprovado": {
+    "id": "output-feedback-aprovado",
+    "src": "/wiki-capturas/workflows/output-feedback-aprovado.webp",
+    "width": 718,
+    "height": 1334,
+    "alt": "Painel do Output com o conteúdo do Gerar feedback",
+    "caption": "Output na saída Aprovado",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 42.9,
+        "y": 63.9,
+        "text": "O mesmo conteúdo que o Supervisor revisou."
+      }
+    ]
+  },
+  "escalonar-gerente": {
+    "id": "escalonar-gerente",
+    "src": "/wiki-capturas/workflows/escalonar-gerente.webp",
+    "width": 718,
+    "height": 1520,
+    "alt": "Painel do Escalonar: cargo Gerente, conteúdo do Orquestrador, encerrar este branch",
+    "caption": "Escalonar na saída Escalar",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 21.5,
+        "y": 20.3,
+        "text": "Para quem sobe, pela hierarquia."
+      },
+      {
+        "n": 2,
+        "x": 34.6,
+        "y": 91.9,
+        "text": "Aqui, o caminho termina."
+      }
+    ]
+  },
+  "aplicar": {
+    "id": "aplicar",
+    "src": "/wiki-capturas/workflows/aplicar.webp",
+    "width": 718,
+    "height": 810,
+    "alt": "Painel do Aplicar individualmente com a origem e o comportamento",
+    "caption": "Aplicar individualmente: sem configuração própria",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 25.8,
+        "y": 38.8,
+        "text": "A coleção criada pela seleção."
+      }
+    ]
+  },
+  "output-reconhecimento": {
+    "id": "output-reconhecimento",
+    "src": "/wiki-capturas/workflows/output-reconhecimento.webp",
+    "width": 718,
+    "height": 1302,
+    "alt": "Painel do Output: o próprio colaborador, Acompanhamento, resultado do Especialista de Reconhecimento",
+    "caption": "Output do reconhecimento",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29,
+        "y": 13.9,
+        "text": "Só existe entre \"Aplicar individualmente\" e \"Consolidar resultados\"."
+      },
+      {
+        "n": 2,
+        "x": 43,
+        "y": 63.1,
+        "text": "O resultado do agente desta pessoa."
+      }
+    ]
+  },
+  "consolidar": {
+    "id": "consolidar",
+    "src": "/wiki-capturas/workflows/consolidar.webp",
+    "width": 718,
+    "height": 810,
+    "alt": "Painel do Consolidar resultados com a origem e a espera",
+    "caption": "Consolidar resultados: espera todas as execuções",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 25.8,
+        "y": 38.8,
+        "text": "O \"Aplicar individualmente\" correspondente."
+      },
+      {
+        "n": 2,
+        "x": 30.5,
+        "y": 63,
+        "text": "Segue só quando todas terminam."
+      }
+    ]
+  },
+  "sintese": {
+    "id": "sintese",
+    "src": "/wiki-capturas/workflows/sintese.webp",
+    "width": 718,
+    "height": 1196,
+    "alt": "Painel do Chamar agente com a missão da síntese",
+    "caption": "Agente de síntese, depois de consolidar",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 39.2,
+        "y": 56.6,
+        "text": "O que a liderança precisa saber."
+      }
+    ]
+  },
+  "agenda-mensal": {
+    "id": "agenda-mensal",
+    "src": "/wiki-capturas/workflows/agenda-mensal.webp",
+    "width": 718,
+    "height": 1522,
+    "alt": "Painel do Gatilho: Por agenda, Mensalmente, dia 5 às 09:00",
+    "caption": "Gatilho por agenda mensal",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 27.5,
+        "y": 51.1,
+        "text": "Mensalmente."
+      },
+      {
+        "n": 2,
+        "x": 60.8,
+        "y": 71.6,
+        "text": "O dia do mês."
+      }
+    ]
+  },
+  "output-aviso": {
+    "id": "output-aviso",
+    "src": "/wiki-capturas/workflows/output-aviso.webp",
+    "width": 718,
+    "height": 946,
+    "alt": "Painel do Output: Supervisor do operador, Notificação, conteúdo em variável",
+    "caption": "Output do aviso de dados insuficientes",
+    "kind": "print",
+    "markers": [
+      {
+        "n": 1,
+        "x": 29.3,
+        "y": 19.1,
+        "text": "A liderança da pessoa."
+      },
+      {
+        "n": 2,
+        "x": 33.1,
+        "y": 32.7,
+        "text": "No sino."
+      }
+    ]
+  }
+}

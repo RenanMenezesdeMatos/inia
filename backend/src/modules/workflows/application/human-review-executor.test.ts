@@ -12,6 +12,7 @@ function baseContext(db: Database, overrides: Partial<Parameters<typeof notifyHu
   return {
     db,
     organizationId: "org-1",
+    workflowId: "workflow-1",
     enrollmentId: "enrollment-1",
     nodeId: "review-2",
     nodeOutputs: {},
@@ -26,6 +27,7 @@ function fakeDb(overrides: (sql: string, params?: unknown[]) => { rows: unknown[
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       const result = overrides(sql, params)
       if (result) return result
+      if (sql.includes("and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: 1 }
       if (sql.includes("from interactions")) return { rows: [{ operator_id: "operator-1" }], rowCount: 1 }
       if (sql.includes("select name from people")) return { rows: [{ name: "Ana Operadora" }], rowCount: 1 }
       return { rows: [], rowCount: 0 }
@@ -40,7 +42,8 @@ describe("notifyHumanReviewPending", () => {
     // supervisor — mesma navegação de sempre (resolveByRoleChain), sem mudança de comportamento.
     let call = 0
     const db: Database = {
-      query: vi.fn(async (sql: string) => {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes("and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: 1 }
         if (sql.includes("from interactions")) return { rows: [{ operator_id: "operator-1" }], rowCount: 1 }
         if (sql.includes("select name from people where id")) return { rows: [{ name: "Ana Operadora" }], rowCount: 1 }
         if (sql.includes("select id, role, reports_to_id from people where id")) {
@@ -61,7 +64,8 @@ describe("notifyHumanReviewPending", () => {
     dispatchAlert.mockClear()
     let call = 0
     const db: Database = {
-      query: vi.fn(async (sql: string) => {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes("and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: 1 }
         if (sql.includes("from interactions")) return { rows: [{ operator_id: "operator-1" }], rowCount: 1 }
         if (sql.includes("select name from people where id")) return { rows: [{ name: "Ana Operadora" }], rowCount: 1 }
         if (sql.includes("select id, role, reports_to_id from people where id")) {
@@ -84,13 +88,13 @@ describe("notifyHumanReviewPending", () => {
     expect(dispatchAlert.mock.calls[0]![1]).toMatchObject({ recipientId: "manager-1" })
   })
 
-  it("ROLE_OF_PREVIOUS_REVIEWER sem decisão anterior ainda registrada não notifica ninguém (best-effort)", async () => {
+  it("ROLE_OF_PREVIOUS_REVIEWER sem decisão anterior bloqueia com o motivo, em vez de esperar sem avisar ninguém (P5c)", async () => {
     dispatchAlert.mockClear()
     const db = fakeDb(() => undefined)
     const config: HumanReviewNodeConfig = {
       reviewTarget: { type: "ROLE_OF_PREVIOUS_REVIEWER", role: "MANAGER", previousReviewNodeId: "review-1" },
     }
-    await notifyHumanReviewPending(config, baseContext(db, { nodeOutputs: {} }))
+    await expect(notifyHumanReviewPending(config, baseContext(db, { nodeOutputs: {} }))).rejects.toMatchObject({ reason: "HUMAN_REVIEW_NO_REVIEWER", blockCause: "PREVIOUS_REVIEW_NOT_DECIDED" })
     expect(dispatchAlert).not.toHaveBeenCalled()
   })
 

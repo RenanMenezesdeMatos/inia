@@ -128,12 +128,12 @@ export type RealtimeTransportOptions = {
  * persistido). Chamado uma vez por turno completo, depois que o turno já foi commitado na UI.
  */
 /** Conversa em que o backend gravou um turno de voz (o chat adota o id; `closed` = a conversa foi encerrada no meio). */
-export type VoiceConversationResult = { conversationId: string; created: boolean; closed: boolean; activeConversationId: string | null; /** Resposta falada gravada neste turno (sem resposta = null). */ assistantInteractionId?: string | null }
+export type VoiceConversationResult = { conversationId: string; created: boolean; closed: boolean; activeConversationId: string | null; /** Resposta falada gravada neste turno (sem resposta = null). */ assistantInteractionId?: string | null; /** A conferência achou violação no que já foi falado (PEN-017): a tela troca o texto pelo aviso. */ responseCheck?: { outcome: "VIOLATION"; notice: string } }
 
 /** `feedbackApplicationId`: o turno é sobre uma aplicação de feedback — o backend decide a conversa (a da aplicação ou a complementar). */
 /** `userChannel`: a pergunta foi falada (padrão) ou DIGITADA e respondida por voz — o histórico mostra a origem. */
-export async function recordVoiceTurn(input: { conversationId: string | null; turnId: string; userText?: string; userChannel?: "chat" | "voice"; userSpokenAt?: string; assistantText?: string; feedbackApplicationId?: string | null }): Promise<VoiceConversationResult | null> {
-  if (!input.userText && !input.assistantText) return null
+export async function recordVoiceTurn(input: { conversationId: string | null; turnId: string; userText?: string; userChannel?: "chat" | "voice"; userSpokenAt?: string; assistantText?: string; /** O que a INIA falou num turno com especialista: só para a conferência (PEN-017); a resposta gravada é a dele. */ spokenText?: string; feedbackApplicationId?: string | null }): Promise<VoiceConversationResult | null> {
+  if (!input.userText && !input.assistantText && !input.spokenText) return null
   // A pessoa está conversando por voz sem tocar na tela: conta como uso para o encerramento por inatividade.
   if (input.userText) signalUserActivity()
   try {
@@ -141,7 +141,7 @@ export async function recordVoiceTurn(input: { conversationId: string | null; tu
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: input.conversationId, turnId: input.turnId, userText: input.userText || undefined, userChannel: input.userText ? input.userChannel : undefined, userSpokenAt: input.userSpokenAt, assistantText: input.assistantText || undefined, feedbackApplicationId: input.feedbackApplicationId ?? undefined }),
+      body: JSON.stringify({ conversationId: input.conversationId, turnId: input.turnId, userText: input.userText || undefined, userChannel: input.userText ? input.userChannel : undefined, userSpokenAt: input.userSpokenAt, assistantText: input.assistantText || undefined, spokenText: input.spokenText || undefined, feedbackApplicationId: input.feedbackApplicationId ?? undefined }),
     })
     if (!response.ok) return null
     return ((await response.json()) as { data: VoiceConversationResult }).data

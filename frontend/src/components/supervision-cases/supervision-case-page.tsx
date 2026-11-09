@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Target } from "lucide-react"
 import { Suspense } from "react"
 import { CaseInterventions } from "@/components/interventions/case-interventions"
+import { CaseAgentHistory } from "@/components/supervision-cases/case-agent-history"
 import { CaseFeedbackFields } from "@/components/supervision-cases/case-feedback-fields"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -58,6 +59,7 @@ export function SupervisionCasePage({ caseId, item }: Props) {
               <CardTitle className="text-xl">{item.title}</CardTitle>
               <CardDescription>{item.operator.name} · {item.team.name}</CardDescription>
             </div>
+            <CaseAgentHistory caseId={item.id} />
           </div>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-3">

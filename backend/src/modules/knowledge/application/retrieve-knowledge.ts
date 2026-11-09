@@ -1,5 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { chunkKnowledgeDocument, type KnowledgeChunk } from "../domain/knowledge-chunking.js"
+import { withChunkPages } from "../domain/pdf-markdown/page-map.js"
+import type { PdfExtraction } from "../domain/pdf-markdown/layout.js"
+import { parseKnowledgeExtraction } from "./knowledge-versions.js"
 import { canonicalSubjectSql, rawSubjectSql } from "../../interactions/domain/interaction-subject.js"
 import { selectPrimaryProcessDocument, type PrimaryProcessSelection } from "../domain/primary-process.js"
 import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRolesOf, type ClosingSectionRole, type SectionProcessRole } from "../domain/section-roles.js"
@@ -8,6 +11,8 @@ import { loadCheckpointGovernance } from "../../checkpoint-registry/application/
 import { DEFAULT_RETRIEVAL_BUDGET, acronymsKeyOf, buildKnowledgeIndex, documentAnchors, estimateTokens, queryStandsAlone, complementSelection, rankChunks, selectWithinBudget, tokenize, wordsSharedWith, type KnowledgeIndex, type RankedChunk, type RetrievalBudget, type TokenizeOptions } from "../domain/lexical-retrieval.js"
 import { expandAcronyms, type AcronymExpansion, type GlossaryAcronym } from "../domain/query-acronyms.js"
 import { liveKnowledgeVersion } from "./live-knowledge-version.js"
+import { currentKnowledgeConsultation, markKnowledgeVersionsUsed } from "./knowledge-consultation-context.js"
+import { agentCacheKey, agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
 
 
 /**
@@ -20,7 +25,7 @@ import { liveKnowledgeVersion } from "./live-knowledge-version.js"
  * publicados, não excluídos e da organização — uma base que existe no sistema mas não foi
  * autorizada para o agente é invisível aqui, independentemente do que o modelo peça.
  */
-export type AuthorizedKnowledgeDocument = { id: string; title: string; chars: number }
+export type AuthorizedKnowledgeDocument = { id: string; title: string; chars: number; /** Versão vigente lida (PEN-008). */ versionId?: string; version?: number }
 
 export type RetrievedKnowledgeExcerpt = {
   documentId: string
@@ -30,6 +35,11 @@ export type RetrievedKnowledgeExcerpt = {
   score: number
   /** V1.7.1d — posição do trecho no documento (proveniência por trecho; ausente em rastros anteriores). */
   chunkIndex?: number
+  /** PEN-008 — versão da base de onde o trecho saiu (ausente em rastros anteriores). */
+  versionId?: string
+  version?: number
+  /** Páginas do PDF de origem (só em base convertida com registro de páginas). */
+  pages?: { from: number; to: number }
 }
 
 export type KnowledgeRetrievalMode =
@@ -135,9 +145,9 @@ export type KnowledgeRetrievalResult = {
 
 /** `organizationId`: a organização do Agent (do registro) — a base só entra quando é da mesma organização dele. `versionId`: a
  * versão publicada de onde veio o texto (`knowledge_versions.id`) — identidade estável de uma fonte citada. */
-type PublishedDocumentRow = { id: string; title: string; content: string; version: number; versionId: string; documentType: string; organizationId: string }
+type PublishedDocumentRow = { id: string; title: string; content: string; extraction: PdfExtraction | null; version: number; versionId: string; documentType: string; organizationId: string }
 /** O que identifica o conteúdo sem trazê-lo: a versão publicada (`knowledge_versions.id`) nunca tem o texto alterado. */
-type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content">
+type PublishedDocumentHeader = Omit<PublishedDocumentRow, "content" | "extraction">
 
 /**
  * BASES DO AGENT EM CACHE, por processo. Antes, cada busca (chat, voz, ferramentas de investigação, prompt do especialista e
@@ -159,12 +169,32 @@ const MAX_INDEXES_PER_AGENT = 4
 const snapshotsByAgent = new Map<string, AgentKnowledgeSnapshot>()
 
 async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Promise<PublishedDocumentHeader[]> {
+  // Versão em execução (PEN-002): as bases e o alcance são os da versão, com a mesma regra de compatibilidade conferida a cada busca.
+  const snapshot = agentSnapshotFor(agentId)
+  if (snapshot) {
+    const { knowledgeDocumentIds, scopeType, teamId, subteamId } = snapshot.config
+    if (knowledgeDocumentIds.length === 0) return []
+    const versioned = await db.query<PublishedDocumentHeader>(
+      `with agent_scope as (select $3::text scope_type, case when $3 = 'SUBTEAM' then (select st.team_id from subteams st where st.id = $5::uuid) else $4::uuid end team_id)
+       select kd.id, coalesce(kv.config->>'title', kd.title) title, kd.document_type "documentType", kv.id "versionId", kv.version, kd.organization_id "organizationId"
+       from knowledge_documents kd
+       cross join agent_scope a
+       join lateral (${liveKnowledgeVersion("kd.id", "id, version, config")}) kv on true
+       where kd.id = any($1::uuid[]) and kd.organization_id = $2 and kd.deleted_at is null and kv.status = 'PUBLISHED'
+         and (a.scope_type = 'ALL_TEAMS' or exists (
+           select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
+            where os.knowledge_document_id = kd.id and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = a.team_id)))
+       order by kd.title`,
+      [knowledgeDocumentIds, snapshot.organizationId, scopeType, teamId, subteamId],
+    )
+    return versioned.rows
+  }
   const result = await db.query<PublishedDocumentHeader>(
-    `select kd.id, kd.title, kd.document_type "documentType", kv.id "versionId", kv.version, a.organization_id "organizationId"
+    `select kd.id, coalesce(kv.config->>'title', kd.title) title, kd.document_type "documentType", kv.id "versionId", kv.version, a.organization_id "organizationId"
      from agent_knowledge_documents akd
      join knowledge_documents kd on kd.id = akd.knowledge_document_id
      join agents a on a.id = akd.agent_id
-     join lateral (${liveKnowledgeVersion("kd.id", "id, version")}) kv on true
+     join lateral (${liveKnowledgeVersion("kd.id", "id, version, config")}) kv on true
      where akd.agent_id = $1 and kd.organization_id = a.organization_id and kd.deleted_at is null and kv.status = 'PUBLISHED'
        -- Mesma regra do cadastro do Agent (assertKnowledgeDocumentsCompatible), conferida a CADA busca: base que passou a valer
        -- só para outro Grupo sai da recuperação na hora, sem esperar alguém salvar o Agent (achado AI-05 da auditoria de 17/10/2026).
@@ -178,36 +208,59 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
   return result.rows
 }
 
+/**
+ * Dentro de uma consulta, a primeira leitura de cada base fixa a versão; as seguintes usam essa, mesmo com uma atualização pronta no
+ * meio (PEN-008): a consulta nunca mistura versões da mesma base. A autorização continua sendo a de agora: base que saiu da lista não volta.
+ */
+async function withConsultationVersions(db: Database, headers: PublishedDocumentHeader[]): Promise<PublishedDocumentHeader[]> {
+  const consultation = currentKnowledgeConsultation()
+  if (!consultation) return headers
+  const pinned = headers.flatMap((header) => {
+    const pin = consultation.pins.get(header.id)
+    return pin && pin.versionId !== header.versionId ? [pin.versionId] : []
+  })
+  const titles = pinned.length === 0 ? new Map<string, string | null>() : new Map((await db.query<{ id: string; title: string | null }>(`select id, config->>'title' title from knowledge_versions where id = any($1::uuid[])`, [pinned])).rows.map((row) => [row.id, row.title]))
+  return headers.map((header) => {
+    const pin = consultation.pins.get(header.id)
+    if (!pin) {
+      consultation.pins.set(header.id, { versionId: header.versionId, version: header.version })
+      return header
+    }
+    return pin.versionId === header.versionId ? header : { ...header, versionId: pin.versionId, version: pin.version, title: titles.get(pin.versionId) ?? header.title }
+  })
+}
+
 /** Bases publicadas e autorizadas de UM Agent, montadas (trechos + papéis) e em cache pela versão — também usada pelo catálogo do
  * esclarecimento (`knowledge-catalog.ts`), que une as bases de vários especialistas. */
 export async function loadAgentKnowledgeSnapshot(db: Database, agentId: string): Promise<AgentKnowledgeSnapshot> {
-  const headers = await loadAuthorizedDocumentHeaders(db, agentId)
+  const headers = await withConsultationVersions(db, await loadAuthorizedDocumentHeaders(db, agentId))
   const key = headers.map((header) => `${header.organizationId}|${header.id}|${header.versionId}|${header.title}`).join("\n")
-  const cached = snapshotsByAgent.get(agentId)
+  const cacheKey = agentCacheKey(agentId)
+  const cached = snapshotsByAgent.get(cacheKey)
   if (cached && cached.key === key) {
-    snapshotsByAgent.delete(agentId)
-    snapshotsByAgent.set(agentId, cached)
+    snapshotsByAgent.delete(cacheKey)
+    snapshotsByAgent.set(cacheKey, cached)
     return cached
   }
   const contents = headers.length === 0
-    ? new Map<string, string>()
-    : new Map((await db.query<{ id: string; content: string }>(`select id, content from knowledge_versions where id = any($1::uuid[])`, [headers.map((header) => header.versionId)])).rows.map((row) => [row.id, row.content]))
+    ? new Map<string, { content: string; extraction: PdfExtraction | null }>()
+    : new Map((await db.query<{ id: string; content: string; extraction?: unknown }>(`select id, content, extraction from knowledge_versions where id = any($1::uuid[])`, [headers.map((header) => header.versionId)])).rows.map((row) => [row.id, { content: row.content, extraction: parseKnowledgeExtraction(row.extraction) }]))
   const documents = headers.flatMap((header) => {
-    const content = contents.get(header.versionId)
-    return content === undefined ? [] : [{ ...header, content }]
+    const version = contents.get(header.versionId)
+    return version === undefined ? [] : [{ ...header, content: version.content, extraction: version.extraction }]
   })
   const snapshot: AgentKnowledgeSnapshot = {
     key,
     documents,
-    chunks: documents.flatMap((document) => chunkKnowledgeDocument(document)),
+    chunks: documents.flatMap((document) => withChunkPages(chunkKnowledgeDocument(document), document.content, document.extraction)),
     rolesByDocument: new Map(documents.map((document) => [document.id, sectionProcessRolesOf(document.content, document.title)])),
     indexes: new Map(),
   }
   // Versão trocada entre as duas consultas (publicação no meio): o conteúdo veio pelas versões da chave, mas a lista pode
   // ter ficado incompleta — não guarda, a próxima busca monta de novo.
   if (documents.length === headers.length) {
-    snapshotsByAgent.delete(agentId)
-    snapshotsByAgent.set(agentId, snapshot)
+    snapshotsByAgent.delete(cacheKey)
+    snapshotsByAgent.set(cacheKey, snapshot)
     while (snapshotsByAgent.size > MAX_CACHED_AGENTS) snapshotsByAgent.delete(snapshotsByAgent.keys().next().value!)
   }
   return snapshot
@@ -247,9 +300,13 @@ const CONTEXT_ROLE_LABEL: Partial<Record<SectionProcessRole, string>> = {
 export type KnowledgePresentationOptions = { markProcessRoles?: boolean; governanceSubjectPersonId?: string | null; askerQuestion?: string | null }
 
 type CheckpointMarks = ReturnType<typeof buildProcessCheckpointCatalog>
+/** A página de origem como dado do trecho, só em PDF com registro de páginas: as demais bases saem no prompt exatamente como antes. */
+const pageLabel = (pages: { from: number; to: number } | undefined) => (!pages ? "" : pages.from === pages.to ? `p. ${pages.from}` : `p. ${pages.from}–${pages.to}`)
+
 function formatExcerpt(chunk: RankedChunk, role: SectionProcessRole | null = null, marks: CheckpointMarks | null = null): string {
   const context = role && !isExecutableSectionRole(role) ? ` · CONTEXTO DO PROCEDIMENTO (${CONTEXT_ROLE_LABEL[role]}) — explica o processo, não é etapa avaliável` : ""
-  const section = chunk.heading ? `[Seção: ${chunk.heading}${context}]\n` : context ? `[${context.slice(3)}]\n` : ""
+  const page = pageLabel(chunk.pages)
+  const section = chunk.heading ? `[Seção: ${chunk.heading}${page ? ` · ${page}` : ""}${context}]\n` : context ? `[${page ? `${page}${context}` : context.slice(3)}]\n` : page ? `[${page}]\n` : ""
   // V1.7.1n — etapas avaliáveis marcadas no próprio trecho ("[CP-…] - [ ] Forneci protocolo?"): a identidade é do sistema.
   const text = marks ? renderExcerptWithCheckpoints({ documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, chunkIndex: chunk.index }, marks) : chunk.text
   return `${section}${text}`
@@ -283,7 +340,16 @@ export async function retrieveKnowledgeForAgent(
   const snapshot = await loadAgentKnowledgeSnapshot(db, agentId)
   const { documents, rolesByDocument } = snapshot
   const roleOf = presentation.markProcessRoles ? (chunk: RankedChunk) => rolesByDocument.get(chunk.documentId)?.(chunk.heading) ?? "UNKNOWN" : null
-  const authorizedDocuments = documents.map((document) => ({ id: document.id, title: document.title, chars: document.content.length }))
+  const authorizedDocuments = documents.map((document) => ({ id: document.id, title: document.title, chars: document.content.length, versionId: document.versionId, version: document.version }))
+  const versionOf = new Map(documents.map((document) => [document.id, { versionId: document.versionId, version: document.version }]))
+  /** Trechos de saída com a versão de onde vieram, e as versões marcadas como usadas pela consulta (PEN-008). */
+  const usedExcerpts = (selected: readonly RankedChunk[]) => {
+    markKnowledgeVersionsUsed(agentId, [...new Set(selected.map((chunk) => chunk.documentId))].flatMap((documentId) => {
+      const version = versionOf.get(documentId)
+      return version ? [{ ...version, documentId }] : []
+    }))
+    return selected.map((chunk) => ({ ...toExcerpt(chunk), ...versionOf.get(chunk.documentId) }))
+  }
   const authorizedChars = authorizedDocuments.reduce((sum, document) => sum + document.chars, 0)
   const baseTrace = { authorizedDocuments, authorizedChars, budget }
 
@@ -311,7 +377,7 @@ export async function retrieveKnowledgeForAgent(
     const marks = catalogOf(full)
     return {
       promptBlock: formatPromptBlock(full, roleOf, marks),
-      trace: { ...baseTrace, mode: "FULL", retrieved: full.map(toExcerpt), injectedChars: authorizedChars, estimatedTokens: estimateTokens(authorizedChars), ...(marks ? { checkpointCatalog: publicCatalogOf(marks) } : {}), ...governanceTrace },
+      trace: { ...baseTrace, mode: "FULL", retrieved: usedExcerpts(full), injectedChars: authorizedChars, estimatedTokens: estimateTokens(authorizedChars), ...(marks ? { checkpointCatalog: publicCatalogOf(marks) } : {}), ...governanceTrace },
     }
   }
 
@@ -349,7 +415,7 @@ export async function retrieveKnowledgeForAgent(
     trace: {
       ...baseTrace,
       mode: selected.length > 0 ? "RETRIEVAL" : "NO_MATCH",
-      retrieved: selected.map(toExcerpt),
+      retrieved: usedExcerpts(selected),
       injectedChars,
       estimatedTokens: estimateTokens(injectedChars),
       ...(expansions.length > 0 ? { queryExpansion: expansions } : {}),
@@ -432,7 +498,7 @@ export function withoutCheckpointCatalog(trace: KnowledgeTrace): KnowledgeTrace 
 }
 
 function toExcerpt(chunk: RankedChunk): RetrievedKnowledgeExcerpt {
-  return { documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, score: Number(chunk.score.toFixed(3)), chunkIndex: chunk.index }
+  return { documentId: chunk.documentId, documentTitle: chunk.documentTitle, heading: chunk.heading, excerpt: chunk.text, score: Number(chunk.score.toFixed(3)), chunkIndex: chunk.index, ...(chunk.pages ? { pages: chunk.pages } : {}) }
 }
 
 /**

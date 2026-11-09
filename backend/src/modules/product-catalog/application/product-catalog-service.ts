@@ -14,6 +14,8 @@ import {
 } from "../domain/product-catalog.js"
 import { z } from "zod"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
+import { lockKnowledgeDocument, saveKnowledgeDraft } from "../../knowledge/application/knowledge-versions.js"
+import { applyProductScopeAssignment, assertProductNodesActive, normalizedProductNodeIds, sameProductNodeIds } from "./product-scope-assignments.js"
 
 /**
  * Contrato ÚNICO do cadastro de produtos (`PRODUCT_APPLICABILITY_V1`) — rota admin e prova de banco usam o mesmo serviço.
@@ -39,13 +41,14 @@ const inTransaction = transactionRunner("product_catalog_tx")
 // Itens do catálogo
 // ---------------------------------------------------------------------------------------------
 const NODE_USAGE = `
-  (select count(*) from product_identification_criterion_versions v where v.organization_id = n.organization_id and v.status in ('APPROVED','SUPERSEDED') and n.id = any(v.target_node_ids))::int "criteriaCount",
+  (select count(*) from product_identification_criterion_versions v join product_identification_criteria c on c.id = v.criterion_id where v.organization_id = n.organization_id and v.status in ('APPROVED','SUPERSEDED') and n.id = any(v.target_node_ids))::int "criteriaCount",
   (select count(*) from product_scope_assignments s where s.organization_id = n.organization_id and n.id = any(s.node_ids))::int "scopeCount",
   (select count(*) from product_scope_assignments s where s.organization_id = n.organization_id and s.effective_until is null and n.id = any(s.node_ids))::int "openScopeCount",
-  (select count(*) from product_catalog_nodes c where c.parent_id = n.id)::int "childCount"`
-type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number }
-export type ProductNodeListItem = ProductNodeRecord & { criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean }
-const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0 })
+  (select count(*) from product_catalog_nodes c where c.parent_id = n.id)::int "childCount",
+  (select count(*) from product_identification_criterion_versions v join product_identification_criteria c on c.id = v.criterion_id where v.organization_id = n.organization_id and n.id = any(v.target_node_ids) and (v.status = 'DRAFT' or (v.status = 'APPROVED' and (v.effective_until is null or v.effective_until > now()))))::int "liveCriteriaCount"`
+type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number; liveCriteriaCount: number }
+export type ProductNodeListItem = ProductNodeRecord & { criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean; blocksDeletion: boolean }
+const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0, blocksDeletion: row.openScopeCount > 0 || row.liveCriteriaCount > 0 || row.childCount > 0 })
 
 export async function listProductNodes(db: Queryable, organizationId: string): Promise<ProductNodeListItem[]> {
   const rows = (await db.query<NodeRow>(
@@ -118,12 +121,17 @@ export async function setProductNodeActive(db: Queryable, actor: ProductCatalogA
   return requireNode(db, actor.organizationId, id)
 }
 
-export async function deleteProductNode(db: Queryable, actor: ProductCatalogActor, id: string): Promise<void> {
-  const current = await requireNode(db, actor.organizationId, id)
-  const drafts = (await db.query<{ count: number }>(`select count(*)::int count from product_identification_criterion_versions where organization_id = $1 and $2 = any(target_node_ids)`, [actor.organizationId, id])).rows[0]!.count
-  if (current.inUse || current.childCount > 0 || drafts > 0) throw new DomainError("Este item já é usado (por bases, indícios ou produtos dentro dele): desative em vez de excluir.", "PRODUCT_NODE_IN_USE", 409, { criteria: current.criteriaCount, scopes: current.scopeCount, children: current.childCount, drafts })
-  await db.query(`delete from product_catalog_nodes where id = $1 and organization_id = $2`, [id, actor.organizationId])
-  await audit(db, actor, "product_catalog_node", "PRODUCT_NODE_DELETED", id, { code: current.code, name: current.name, kind: current.kind })
+export async function deleteProductNode(database: Database, actor: ProductCatalogActor, id: string): Promise<void> {
+  // A linha fica travada durante a conferência: sem apagar, a chave estrangeira não barra mais um produto restaurado dentro desta categoria ao mesmo tempo.
+  await inTransaction(database, async (db) => {
+    await db.query(`select 1 from product_catalog_nodes where id = $1 and organization_id = $2 for update`, [id, actor.organizationId])
+    const current = await requireNode(db, actor.organizationId, id)
+    // Só barra o que usa o item agora. Abrangência encerrada e versão antiga de indício são histórico, e continuam mostrando a análise da época.
+    if (current.blocksDeletion) throw new DomainError("Este item é usado agora por bases, indícios ou produtos dentro dele: tire-o de lá antes de excluir, ou desative.", "PRODUCT_NODE_IN_USE", 409, { criteria: current.criteriaCount, scopes: current.scopeCount, children: current.childCount })
+    // Exclusão lógica (migration 177): volta pela Central de Dados, desativado.
+    await db.query(`update product_catalog_nodes_all set active = false, archived_at = coalesce(archived_at, now()), deleted_at = now(), deleted_by_person_id = $3, updated_by = $3, updated_at = now() where id = $1 and organization_id = $2`, [id, actor.organizationId, actor.personId])
+    await audit(db, actor, "product_catalog_node", "PRODUCT_NODE_DELETED", id, { code: current.code, name: current.name, kind: current.kind })
+  })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -312,13 +320,13 @@ export async function reactivateIdentificationCriterion(db: Database, actor: Pro
   return getIdentificationCriterion(db, actor.organizationId, id)
 }
 
-/** EXCLUIR: só se nenhuma análise usou o critério (a fotografia de uma análise é histórico). Usado → encerrar. */
+/** EXCLUIR (exclusão lógica, migration 177). A fotografia de uma análise já feita não muda, e análise nova deixa de considerá-lo. Encerra antes de esconder: restaurar nunca faz o indício voltar a valer sozinho. */
 export async function deleteIdentificationCriterion(db: Database, actor: ProductCatalogActor, id: string) {
   const criterion = await getIdentificationCriterion(db, actor.organizationId, id)
-  if (criterion.usedByAnalyses) throw new DomainError("Este indício já foi usado na análise de chamadas: encerre-o em vez de excluir.", "PRODUCT_CRITERION_IN_USE", 409)
   await inTransaction(db, async (client) => {
     await audit(client, actor, "product_identification_criterion", "PRODUCT_CRITERION_DELETED", id, { title: criterion.title, lastVersion: criterion.versions[0] ?? null })
-    await client.query(`delete from product_identification_criteria where id = $1 and organization_id = $2`, [id, actor.organizationId])
+    await client.query(`update product_identification_criterion_versions set effective_until = greatest(effective_from + interval '1 second', now()), updated_at = now() where criterion_id = $1 and status = 'APPROVED' and (effective_until is null or effective_until > now())`, [id])
+    await client.query(`update product_identification_criteria_all set status = 'ARCHIVED', deleted_at = now(), deleted_by_person_id = $3, updated_by = $3, updated_at = now() where id = $1 and organization_id = $2`, [id, actor.organizationId, actor.personId])
   })
 }
 
@@ -329,20 +337,31 @@ export const SOURCE_KINDS = ["KNOWLEDGE_DOCUMENT", "ARGUMENT_SCRIPT"] as const
 export type SourceKind = (typeof SOURCE_KINDS)[number]
 const scopeInputSchema = z.object({ nodeIds: z.array(z.string().uuid()).max(40) })
 
-/** Fontes (documentos da base e argumentários) com a abrangência por produto vigente agora. */
+/**
+ * Fontes (documentos da base e argumentários) com a abrangência por produto vigente agora (`scope`) e, nas bases, a que está numa versão
+ * ainda fora de uso e que mudaria isso (`pendingScope`: sem efeito até a versão entrar em uso).
+ */
 export async function listProductScopeSources(db: Queryable, organizationId: string) {
-  const rows = (await db.query<{ source_kind: SourceKind; source_id: string; title: string; status: string | null; assignment_id: string | null; node_ids: string[] | null; effective_from: Date | null }>(
-    `select src.source_kind, src.source_id, src.title, src.status, s.id assignment_id, s.node_ids, s.effective_from
+  const rows = (await db.query<{ source_kind: SourceKind; source_id: string; title: string; status: string | null; assignment_id: string | null; node_ids: string[] | null; effective_from: Date | null; pending_version: number | null; pending_status: string | null; pending_node_ids: string[] | null }>(
+    `select src.source_kind, src.source_id, src.title, src.status, s.id assignment_id, s.node_ids, s.effective_from,
+            pending.version pending_version, pending.status pending_status, pending.node_ids pending_node_ids
        from (
          select 'KNOWLEDGE_DOCUMENT'::text source_kind, d.id source_id, d.title, null::text status from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null
          union all
          select 'ARGUMENT_SCRIPT'::text, a.id, a.name, a.status from argument_scripts a where a.organization_id = $1
        ) src
        left join product_scope_assignments s on s.organization_id = $1 and s.source_id = src.source_id and s.effective_until is null
+       left join lateral (
+         select v.version, v.status, array(select jsonb_array_elements_text(coalesce(v.config->'productNodeIds', '[]'::jsonb))) node_ids
+           from knowledge_versions v
+          where src.source_kind = 'KNOWLEDGE_DOCUMENT' and v.document_id = src.source_id and v.status in ('DRAFT', 'APPROVED', 'PROCESSING', 'FAILED') and v.config is not null
+            and v.version > coalesce((select max(live.version) from knowledge_versions live where live.document_id = src.source_id and live.status in ('PUBLISHED', 'ARCHIVED')), 0)
+          order by v.version desc limit 1
+       ) pending on true
       order by src.source_kind, src.title`,
     [organizationId],
   )).rows
-  return rows.map((row) => ({ sourceKind: row.source_kind, sourceId: row.source_id, title: row.title, status: row.status, scope: row.assignment_id ? { assignmentId: row.assignment_id, nodeIds: row.node_ids ?? [], since: new Date(row.effective_from!).toISOString() } : null }))
+  return rows.map((row) => ({ sourceKind: row.source_kind, sourceId: row.source_id, title: row.title, status: row.status, scope: row.assignment_id ? { assignmentId: row.assignment_id, nodeIds: row.node_ids ?? [], since: new Date(row.effective_from!).toISOString() } : null, pendingScope: row.pending_version !== null && !sameProductNodeIds(row.pending_node_ids ?? [], row.node_ids ?? []) ? { version: row.pending_version, status: row.pending_status!, nodeIds: row.pending_node_ids ?? [] } : null }))
 }
 
 async function requireSource(db: Queryable, organizationId: string, kind: SourceKind, id: string): Promise<string> {
@@ -364,26 +383,30 @@ export async function productScopeHistory(db: Queryable, organizationId: string,
 }
 
 /**
- * Define a abrangência da fonte A PARTIR DE AGORA (lista vazia = vale para qualquer produto). A anterior termina agora — nunca é apagada
- * nem reescrita: a análise de uma chamada anterior usa a que valia na data da chamada.
+ * Define para quais produtos a fonte vale (lista vazia = qualquer produto).
+ * - Argumentário: A PARTIR DE AGORA. A anterior termina agora e nunca é apagada nem reescrita: a análise de uma chamada anterior usa a que
+ *   valia na data da chamada.
+ * - Base de conhecimento (PEN-008): grava NO RASCUNHO e não muda nada em produção; passa a valer quando a versão entra em uso, com a mesma
+ *   regra de vigência. Base sem mudança não ganha rascunho.
  */
 export async function setProductScope(db: Database, actor: ProductCatalogActor, kind: SourceKind, id: string, body: unknown, now: Date = new Date()) {
   const input = scopeInputSchema.parse(body)
   await requireSource(db, actor.organizationId, kind, id)
-  const nodeIds = [...new Set(input.nodeIds)].sort()
-  if (nodeIds.length > 0) {
-    const active = (await db.query<{ id: string }>(`select id from product_catalog_nodes where organization_id = $1 and active and id = any($2::uuid[])`, [actor.organizationId, nodeIds])).rows
-    if (active.length !== nodeIds.length) throw new DomainError("Escolha só produtos ou categorias ativos.", "PRODUCT_SCOPE_TARGET_INVALID", 422)
+  const nodeIds = normalizedProductNodeIds(input.nodeIds)
+  await assertProductNodesActive(db, actor.organizationId, nodeIds)
+  if (kind === "KNOWLEDGE_DOCUMENT") {
+    const name = actor.personId ? ((await db.query<{ name: string }>(`select name from people where id = $1 and organization_id = $2`, [actor.personId, actor.organizationId])).rows[0]?.name ?? null) : null
+    const saved = await inTransaction(db, async (client) => {
+      if (!(await lockKnowledgeDocument(client, actor.organizationId, id))) throw new DomainError("Base não encontrada nesta organização.", "PRODUCT_SCOPE_SOURCE_NOT_FOUND", 404)
+      const draft = await saveKnowledgeDraft(client, actor.organizationId, id, { productNodeIds: nodeIds }, { organizationId: actor.organizationId, personId: actor.personId, name })
+      if (draft?.changed) await audit(client, actor, "knowledge_document", "PRODUCT_SCOPE_DRAFTED", id, { sourceKind: kind, sourceId: id, versionId: draft.versionId, version: draft.version, after: nodeIds })
+      return draft
+    })
+    return { ...(await productScopeHistory(db, actor.organizationId, kind, id)), pending: saved ? { version: saved.version, nodeIds } : null }
   }
   await inTransaction(db, async (client) => {
-    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [`product-scope:${id}`])
-    const open = (await client.query<{ id: string; node_ids: string[] }>(`select id, node_ids from product_scope_assignments where organization_id = $1 and source_kind = $2 and source_id = $3 and effective_until is null`, [actor.organizationId, kind, id])).rows[0]
-    if (open && [...open.node_ids].sort().join(",") === nodeIds.join(",")) return
-    if (!open && nodeIds.length === 0) return
-    if (open) await client.query(`update product_scope_assignments set effective_until = $2, ended_by = $3 where id = $1`, [open.id, now, actor.personId])
-    let assignmentId: string | null = null
-    if (nodeIds.length > 0) assignmentId = (await client.query<{ id: string }>(`insert into product_scope_assignments (organization_id, source_kind, source_id, node_ids, effective_from, created_by) values ($1,$2,$3,$4,$5,$6) returning id`, [actor.organizationId, kind, id, nodeIds, now, actor.personId])).rows[0]!.id
-    await audit(client, actor, "product_scope_assignment", "PRODUCT_SCOPE_SET", assignmentId ?? open!.id, { sourceKind: kind, sourceId: id, before: open?.node_ids ?? [], after: nodeIds, at: now.toISOString() })
+    const applied = await applyProductScopeAssignment(client, { organizationId: actor.organizationId, kind, sourceId: id, nodeIds, actorPersonId: actor.personId, at: now })
+    if (applied.changed) await audit(client, actor, "product_scope_assignment", "PRODUCT_SCOPE_SET", applied.assignmentId, { sourceKind: kind, sourceId: id, before: applied.before, after: applied.after, at: now.toISOString() })
   })
-  return productScopeHistory(db, actor.organizationId, kind, id)
+  return { ...(await productScopeHistory(db, actor.organizationId, kind, id)), pending: null }
 }

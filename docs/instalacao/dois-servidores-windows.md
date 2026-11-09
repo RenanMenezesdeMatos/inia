@@ -6,6 +6,7 @@ ficam). É a mesma arquitetura de produção — só muda onde cada peça está.
 > Versão para imprimir e distribuir às áreas, com figuras: **IT-INIA-003** em
 > [docs/manuais](../manuais/) (`.docx` e `.pdf`). Este arquivo é o resumo técnico do mesmo procedimento.
 > Ensaio desta montagem em duas VMs da Azure (conta gratuita): [homologacao-azure.md](homologacao-azure.md).
+> Roteiro com as telas para a VM da empresa: **IT-INIA-013**, também em [docs/manuais](../manuais/).
 
 | Peça | Onde | Porta | Quem cuida |
 | --- | --- | --- | --- |
@@ -29,7 +30,8 @@ feitos ao mesmo tempo.
 interna) login e telas funcionam, mas o navegador **bloqueia o microfone** e nada é criptografado.
 
 **Firewall:** usuários → porta pública do servidor da aplicação; servidor da aplicação → 5432 e 1433 da área de dados;
-servidor da aplicação → internet 443 (`generativelanguage.googleapis.com`, `registry.npmjs.org`, `github.com`);
+servidor da aplicação → internet 443 (`generativelanguage.googleapis.com`, `registry.npmjs.org`, `github.com` e, porque o
+`npm run build` baixa as fontes da interface e para com erro sem elas, `fonts.googleapis.com` e `fonts.gstatic.com`);
 navegador dos usuários → `generativelanguage.googleapis.com` 443 (voz). **Não abra 3000, 3333 nem 3334** (nem as portas
 das instâncias extras: tudo escuta só em endereços 127.0.0.x).
 
@@ -304,9 +306,10 @@ powershell -ExecutionPolicy Bypass -File C:\inia\deploy\windows\iis\configurar-i
 ### PostgreSQL para várias instâncias
 
 **Conexões.** Cada instância tem o próprio pool (`DATABASE_POOL_MAX`, padrão 20; `-PoolApi`/`-PoolProcessamento` no
-instalador). O processamento usa até `WORKFLOW_WORKER_CONCURRENCY` (8) conexões nas execuções, uma por tarefa periódica em
-andamento (até 6, a trava fica na conexão) e mais 1 fora do pool para ouvir os avisos da Central de Dados. A API usa conexões
-por requisição (curtas) — no teste de 08/10 um processo único com 100 usuários chegou a 43 conexões (teto 40).
+instalador). O processamento usa até `WORKFLOW_WORKER_CONCURRENCY` (8) conexões nas execuções e, nas tarefas periódicas, só
+o tempo de cada consulta; fora do pool, mais 2: uma para as travas de todas as tarefas periódicas (`inia-worker:locks` em
+`pg_stat_activity`) e uma para ouvir os avisos da Central de Dados. A API usa conexões por requisição (curtas) — no teste de
+08/10 um processo único com 100 usuários chegou a 43 conexões (teto 40).
 
 | Papel | `DATABASE_POOL_MAX` sugerido | Observação |
 | --- | --- | --- |
@@ -314,8 +317,9 @@ por requisição (curtas) — no teste de 08/10 um processo único com 100 usuá
 | Processamento (cada instância) | 25 | ≥ `WORKFLOW_WORKER_CONCURRENCY` + 8 |
 | Interface | — | Não conecta ao banco |
 
-`max_connections` ≥ soma dos pools + 1 por processamento (aviso da Central) + ~15 de manutenção (backup, psql,
-`superuser_reserved_connections`). Exemplo com 3 APIs e 2 processamentos: 3 × 25 + 2 × 25 + 2 + 15 = 142 → **200**.
+`max_connections` ≥ soma dos pools + 2 por processamento (travas das tarefas periódicas e aviso da Central; num processo
+único, papel `all`, só a das travas) + ~15 de manutenção (backup, psql, `superuser_reserved_connections`). Exemplo com 3 APIs e
+2 processamentos: 3 × 25 + 2 × 25 + 4 + 15 = 144 → **200**.
 Acima de ~300 conexões, considere um PgBouncer (modo *session*: a INIA usa `LISTEN` e travas consultivas de sessão).
 
 **Memória** (exemplo: servidor de dados com 16 GB, SSD, só PostgreSQL; reinício do serviço para `max_connections` e

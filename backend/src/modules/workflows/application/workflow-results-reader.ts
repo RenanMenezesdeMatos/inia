@@ -144,7 +144,7 @@ function dispatchCte(rootClause: string, selection = "select d.* from keys d", c
       -- Busca pela chave, uma por execução (LATERAL com limit: o planejador não a transforma de volta num join e não troca o
       -- índice por varrer as medições inteiras — 1,6 milhão de linhas no dev — com hash join).
       left join lateral (select i.operator_id from interactions i where i.id = t.interaction_id and i.organization_id = $1 limit 1) i on true
-      left join lateral (select m.subject_id from indicator_measurements m where m.id = t.indicator_measurement_id and m.subject_type = 'PERSON' limit 1) m on true
+      left join lateral (select m.subject_id from indicator_measurements_all m where m.id = t.indicator_measurement_id and m.subject_type = 'PERSON' limit 1) m on true
       join people p on p.id = coalesce(t.scheduled_subject_id, i.operator_id, m.subject_id) and p.organization_id = $1
      where t.parent_enrollment_id is not null or not wf.consolidated
   ),
@@ -243,8 +243,8 @@ function dispatchCte(rootClause: string, selection = "select d.* from keys d", c
       from selected s
       left join version_numbers vn on vn.id = s.version_id
       left join lateral (select 'por ' || rb.name requested_by_label from workflow_manual_runs wmr join people rb on rb.id = wmr.requested_by where wmr.id = s.manual_run_id) mr on true
-      left join indicator_measurements im on im.id = s.indicator_measurement_id
-      left join indicator_definitions idef on idef.id = im.indicator_definition_id
+      left join indicator_measurements_all im on im.id = s.indicator_measurement_id
+      left join indicator_definitions_all idef on idef.id = im.indicator_definition_id
       left join artifact_stats ast on ast.root_id = s.root_id
       left join engine_stats es on es.root_id = s.root_id
       left join feedback_stats fs on fs.root_id = s.root_id
@@ -537,10 +537,10 @@ export async function loadDispatchDetail(
     alertKeys.length === 0
       ? Promise.resolve({ rows: [] as AlertRow[] })
       : db.query<AlertRow>(`select dedupe_key "dedupeKey", created_at "createdAt" from alerts where organization_id = $1 and dedupe_key = any($2::text[])`, [organizationId, alertKeys]),
-    agentIds.size === 0 ? Promise.resolve({ rows: [] as { id: string; name: string }[] }) : db.query<{ id: string; name: string }>(`select id, name from agents where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...agentIds]]),
+    agentIds.size === 0 ? Promise.resolve({ rows: [] as { id: string; name: string }[] }) : db.query<{ id: string; name: string }>(`select id, name from agents_all where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...agentIds]]),
     orchestratorIds.size === 0
       ? Promise.resolve({ rows: [] as { id: string; name: string }[] })
-      : db.query<{ id: string; name: string }>(`select id, name from assistant_orchestrators where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...orchestratorIds]]),
+      : db.query<{ id: string; name: string }>(`select id, name from assistant_orchestrators_all where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...orchestratorIds]]),
     // Feedback publicado por um Output legado (Agent/Orquestrador → Output direto): o feedbackId que o próprio nó Output
     // gravou na saída dele — conferido contra "feedbacks" (mesma organização, destinatário = o colaborador da matrícula).
     people.length === 0

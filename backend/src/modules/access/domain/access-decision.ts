@@ -69,17 +69,22 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
   const org = (permission: Permission) => canOrganizationWide(access, permission, catalog)
   return {
     canAccessAdministration: ["access.users.view", "access.roles.view", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "qa_lab.use", "inia_experience.manage", "intervention_policies.edit", "intervention_policies.simulate", "intervention_policies.publish", "intervention_policies.audit"].some((permission) => any(permission as Permission)),
+    // A tela tem abas de acessos, pessoas e papéis: quem não alcança nenhuma (só a Central de Dados, por exemplo) não vê a entrada.
+    canOpenUsersAndAccess: ["access.users.view", "access.roles.view", "people.manage"].some((permission) => any(permission as Permission)),
     canManageUsers: any("access.users.manage"),
     canViewUsers: any("access.users.view"),
     canViewRoles: any("access.roles.view"),
     canAssignRoles: any("access.roles.assign"),
     canManagePeople: any("people.manage"),
     canManageAgents: any("agents.manage"),
+    canManageInactiveAgents: any("agents.inactive.manage"),
     canManageKnowledge: any("knowledge.manage"),
     canManageWorkflows: any("workflows.manage"),
     canManageConfiguration: any("configuration.manage"),
     // Central de Dados: dados e credenciais da organização inteira — só com escopo de organização (igual ao guard da rota).
     canManageDataHub: org("data_hub.manage"),
+    // Consulta de dados: como a rota, só com escopo de organização.
+    canExploreData: org("data_hub.explore"),
     canViewAi: any("ai.view"),
     canUseQaLab: org("qa_lab.use"),
     canReviewFeedback: any("feedback_quality_review.view"),

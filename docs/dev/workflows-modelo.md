@@ -18,7 +18,9 @@ concordar.
 
 `backend/src/modules/workflows/testing/official-model-workflows.json` é uma exportação literal dos
 22 rascunhos (id, nome, trigger, abrangência, estrutura, grafo). É a única fonte que os testes de
-catálogo consomem:
+catálogo consomem. Exceção temporária: nos Modelos 11 e 12, o formato "Reconhecimento" está no JSON
+antes de estar nos rascunhos do banco; aplique-o no banco antes de reexportar (ver a seção do formato
+"Reconhecimento" em `docs/dev/memoria/workflows.md`). Os testes:
 
 - `backend/.../testing/official-model-workflows.test.ts` — schema, validação de publicação inteira,
   toda saída com aresta, destinatário × contexto, Revisão humana (3 decisões com destino), fan-out/

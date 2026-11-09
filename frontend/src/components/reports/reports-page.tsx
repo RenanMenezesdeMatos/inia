@@ -17,11 +17,12 @@ import { formatDateTime } from "@/lib/format/date"
 import { reportKeys, useReceivedDeliveriesQuery, useReportsQuery } from "@/queries/reports/use-reports"
 import type { ReportSummary } from "@/schemas/reports/reports.schema"
 import { deleteReport, setReportStatus } from "@/services/reports/reports-service"
+import { DeletedReportsList } from "./deleted-reports-list"
 import { NOT_FORWARDED_TEXT, RUN_STATUS_LABELS } from "./report-labels"
 
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
 
-/** Tela de Reports: os que a pessoa criou (gestão) e os que ela recebeu (entregas e avisos). */
+/** Tela de Reports: os que a pessoa criou (gestão), os que ela recebeu (entregas e avisos) e os que ela excluiu, que voltam daqui. */
 export function ReportsPage() {
   const query = useReportsQuery()
   const received = useReceivedDeliveriesQuery()
@@ -53,6 +54,7 @@ export function ReportsPage() {
         <TabsList>
           <TabsTrigger value="mine">Meus reports</TabsTrigger>
           <TabsTrigger value="received">Recebidos</TabsTrigger>
+          <TabsTrigger value="deleted">Excluídos</TabsTrigger>
         </TabsList>
         <TabsContent value="mine" className="space-y-3">
           <ListToolbar
@@ -105,7 +107,7 @@ export function ReportsPage() {
                           <AlertDialogContent>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Excluir o report “{report.name}”?</AlertDialogTitle>
-                              <AlertDialogDescription>As próximas execuções são canceladas. As entregas já feitas continuam no histórico de quem recebeu, para auditoria.</AlertDialogDescription>
+                              <AlertDialogDescription>As próximas execuções são canceladas. As entregas já feitas continuam no histórico de quem recebeu. Dá para restaurar na aba Excluídos.</AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -120,6 +122,9 @@ export function ReportsPage() {
               ))}
             </ul>
           )}
+        </TabsContent>
+        <TabsContent value="deleted">
+          <DeletedReportsList />
         </TabsContent>
         <TabsContent value="received" className="space-y-2">
           {received.isLoading ? (

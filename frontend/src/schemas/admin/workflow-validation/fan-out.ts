@@ -75,7 +75,7 @@ function validateFanOutConvergence(graph: FlowGraph): ValidationIssue[] {
   for (const [applyId, joins] of applyToJoins) {
     if (joins.size > 1) {
       const applyNode = findNode(graph, applyId)
-      issues.push({ nodeId: applyId, code: "WORKFLOW_APPLY_INDIVIDUALLY_MULTIPLE_JOINS", message: `"${applyNode?.label ?? applyId}" ("Aplicar individualmente") alcança mais de um "Consolidar resultados" diferente — só um Join é permitido por fan-out.` })
+      issues.push({ nodeId: applyId, code: "WORKFLOW_APPLY_INDIVIDUALLY_MULTIPLE_JOINS", message: `"${applyNode?.label ?? applyId}" ("Aplicar individualmente") alcança mais de um "Consolidar resultados" diferente — ligue todos os caminhos individuais ao mesmo "Consolidar resultados".` })
     }
   }
 

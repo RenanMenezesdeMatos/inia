@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
+import { ResponseChecksPanel } from "./response-checks-panel"
 import { EntityCard, EntityCardIcon } from "@/components/admin/shared/list/entity-card"
 import { ListBooleanFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
@@ -44,6 +45,7 @@ import {
 } from "@/queries/admin/use-governance-queries"
 import type { GovernanceListParams } from "@/services/admin/governance-service"
 import type { GlossaryTerm, ProhibitedTopic } from "@/schemas/admin/governance.schema"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 type GovernanceFilters = Omit<GovernanceListParams, "page" | "pageSize" | "search"> & { search: string }
 
@@ -72,7 +74,7 @@ function ActiveSwitch({ id, active, label, mutation }: { id: string; active: boo
   )
 }
 
-/** Exclusão definitiva, com confirmação; o texto apagado fica no registro de auditoria. */
+/** Exclusão lógica, com confirmação: sai das telas e da IA, e o texto continua guardado. */
 function DeleteButton({ id, title, description, ariaLabel, mutation }: { id: string; title: string; description: string; ariaLabel: string; mutation: DeleteMutation }) {
   const [open, setOpen] = useState(false)
   return (
@@ -167,7 +169,7 @@ function ProhibitedTopicsPanel() {
       <DeleteButton
         id={topic.id}
         title={`Excluir "${topic.name}"?`}
-        description="A IA deixa de receber esta restrição em todos os Agents e conversas, e o assunto some da lista. Para suspender sem perder o texto, desative-o."
+        description={`A IA deixa de receber esta restrição em todos os Agents e conversas, e o assunto some da lista. ${RESTORE_NOTE} Para só suspender, desative-o.`}
         ariaLabel="Excluir assunto"
         mutation={deleteMutation}
       />
@@ -346,7 +348,7 @@ function GlossaryPanel() {
       <DeleteButton
         id={item.id}
         title={`Excluir "${item.term}"?`}
-        description="A IA deixa de usar este termo e ele some da lista. Para suspender sem perder a definição, desative-o."
+        description={`A IA deixa de usar este termo e ele some da lista. ${RESTORE_NOTE} Para só suspender, desative-o.`}
         ariaLabel="Excluir termo"
         mutation={deleteMutation}
       />
@@ -482,8 +484,9 @@ export function GovernancePage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
-  const urlTab = searchParams.get("tab") === "glossary" ? "glossary" : "prohibited"
-  const [tab, setTab] = useState(urlTab)
+  const requestedTab = searchParams.get("tab")
+  const urlTab = requestedTab === "glossary" || requestedTab === "response-checks" ? requestedTab : "prohibited"
+  const [tab, setTab] = useState<string>(urlTab)
   // A aba acompanha a URL quando ela muda (ajuste na renderização, sem render extra); a troca pela tela grava a URL.
   const [syncedUrlTab, setSyncedUrlTab] = useState(urlTab)
   if (syncedUrlTab !== urlTab) {
@@ -507,6 +510,7 @@ export function GovernancePage() {
           <TabsList>
             <TabsTrigger value="prohibited">Assuntos proibidos</TabsTrigger>
             <TabsTrigger value="glossary">Glossário geral</TabsTrigger>
+            <TabsTrigger value="response-checks">Conferência das respostas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="prohibited" className="mt-4">
@@ -515,6 +519,10 @@ export function GovernancePage() {
 
           <TabsContent value="glossary" className="mt-4">
             <GlossaryPanel />
+          </TabsContent>
+
+          <TabsContent value="response-checks" className="mt-4">
+            <ResponseChecksPanel />
           </TabsContent>
         </Tabs>
       </CardContent>

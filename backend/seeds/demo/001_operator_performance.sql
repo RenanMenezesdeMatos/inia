@@ -16,7 +16,7 @@
 -- fallback do motor) nunca entram — o mês corrente é acompanhamento operacional, não fechamento.
 -- Peso: divisão igual entre os indicadores do grupo (o programa real define isso).
 
-insert into employee_indicator_performance (organization_id, person_id, indicator_definition_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, source)
+insert into employee_indicator_performance_all (organization_id, person_id, indicator_definition_id, reference_period, value, target_value, achievement_percent, weight_percent, quartile, source)
 select '00000000-0000-4000-8000-000000000001', v.person_id::uuid, idef.id, v.reference_period, v.value, v.target_value, v.achievement_percent, v.weight_percent, v.quartile, 'DEMO_SEED'
 from (values
   ('00000000-0000-4000-8000-000000000030', 'ADERENCIA', '2026-07', 103.14::numeric, 91.0::numeric, 113.3::numeric, 13::numeric, 'Q1'),  -- Ana Lima
@@ -279,11 +279,11 @@ join indicator_definitions idef on idef.code = v.indicator_code and idef.organiz
 join people p on p.id = v.person_id::uuid
 where v.reference_period < to_char(now() at time zone 'America/Fortaleza', 'YYYY-MM')
   and not exists (
-  select 1 from employee_indicator_performance eip
+  select 1 from employee_indicator_performance_all eip
   where eip.person_id = v.person_id::uuid and eip.indicator_definition_id = idef.id and eip.reference_period = v.reference_period
 );
 
-insert into employee_prv_performance (organization_id, person_id, reference_period, achievement_percent, quartile, source)
+insert into employee_prv_performance_all (organization_id, person_id, reference_period, achievement_percent, quartile, source)
 select '00000000-0000-4000-8000-000000000001', v.person_id::uuid, v.reference_period, v.achievement_percent, v.quartile, 'DEMO_SEED'
 from (values
   ('00000000-0000-4000-8000-000000000030', '2026-07', 98.4::numeric, 'Q3'),  -- Ana Lima
@@ -322,4 +322,4 @@ from (values
 ) as v(person_id, reference_period, achievement_percent, quartile)
 join people p on p.id = v.person_id::uuid
 where v.reference_period < to_char(now() at time zone 'America/Fortaleza', 'YYYY-MM')
-  and not exists (select 1 from employee_prv_performance epp where epp.person_id = v.person_id::uuid and epp.reference_period = v.reference_period);
+  and not exists (select 1 from employee_prv_performance_all epp where epp.person_id = v.person_id::uuid and epp.reference_period = v.reference_period);

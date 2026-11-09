@@ -171,7 +171,7 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
       select e.id enrollment_id, coalesce(e.scheduled_subject_id, i.operator_id, m.subject_id) person_id
         from workflow_enrollments e
         left join interactions i on i.id = e.interaction_id
-        left join indicator_measurements m on m.id = e.indicator_measurement_id and m.subject_type = 'PERSON'
+        left join indicator_measurements_all m on m.id = e.indicator_measurement_id and m.subject_type = 'PERSON'
        where e.organization_id = ${org} and e.id in (select enrollment_id from keys where enrollment_id is not null)
     ),
     attributed as (

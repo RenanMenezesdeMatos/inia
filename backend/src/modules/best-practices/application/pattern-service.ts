@@ -31,8 +31,8 @@ const SELECT_PATTERNS = `
          ${AVAILABLE_SQL} "available",
          case when p.review_status = 'PENDING_REVIEW' then 0 when p.review_status = 'APPROVED' then 1 when p.review_status = 'INACTIVE' then 2 else 3 end "statusOrder"
     from best_practice_patterns p
-    left join indicator_definitions i on i.id = p.indicator_definition_id
-    left join channel_flags cf on cf.id = p.channel_flag_id
+    left join indicator_definitions_all i on i.id = p.indicator_definition_id
+    left join channel_flags_all cf on cf.id = p.channel_flag_id
     left join teams t on t.id = p.team_id
     left join subteams st on st.id = p.subteam_id
     left join best_practice_synthetic_datasets sd on sd.id = p.synthetic_dataset_id

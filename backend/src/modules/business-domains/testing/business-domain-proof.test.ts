@@ -33,7 +33,7 @@ async function counts() {
     `select (select count(*) from business_domains where organization_id = $1)::text domains,
             (select count(*) from agents where organization_id = $1)::text agents,
             (select count(*) from assistant_orchestrators where organization_id = $1)::text orchestrators,
-            (select count(*) from assistant_orchestrator_domains)::text relations`,
+            (select count(*) from assistant_orchestrator_domains od join assistant_orchestrators o on o.id = od.orchestrator_id)::text relations`,
     [ORG],
   )
   const row = result.rows[0]!
@@ -41,9 +41,10 @@ async function counts() {
 }
 
 async function cleanup() {
-  await pool.query(`delete from assistant_orchestrators where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
-  await pool.query(`delete from agents where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
-  await pool.query(`delete from business_domains where organization_id = $1 and code = $2`, [ORG, CODE])
+  // Na tabela real: excluir pela rota é lógico, e `delete` pela visão não alcança o que ficou guardado.
+  await pool.query(`delete from assistant_orchestrators_all where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
+  await pool.query(`delete from agents_all where organization_id = $1 and name like $2`, [ORG, `${PREFIX}%`])
+  await pool.query(`delete from business_domains_all where organization_id = $1 and code = $2`, [ORG, CODE])
 }
 
 function listSourceFiles(directory: string): string[] {
@@ -63,6 +64,19 @@ const agentBody = (name: string, extra: Record<string, unknown>) => ({
   scopeType: "ALL_TEAMS",
   ...extra,
 })
+
+/** Orquestrador só aceita agente publicado (PEN-047). */
+async function publishAgent(id: string) {
+  const published = await api.post(`/api/v1/admin/agents/${id}/publish`).send({})
+  expect(published.status, JSON.stringify(published.body)).toBe(201)
+}
+
+async function createPublishedAgent(name: string, extra: Record<string, unknown>) {
+  const created = await api.post("/api/v1/admin/agents").send(agentBody(name, extra))
+  expect(created.status, JSON.stringify(created.body)).toBe(201)
+  await publishAgent(created.body.data.id as string)
+  return created.body.data.id as string
+}
 
 describe.skipIf(!ENABLED)("Domínio de negócio dinâmico — LOGISTICA_QA sem hardcode (banco de teste real)", () => {
   beforeAll(async () => {
@@ -119,12 +133,11 @@ describe.skipIf(!ENABLED)("Domínio de negócio dinâmico — LOGISTICA_QA sem h
     expect(reopened.body.data).toMatchObject({ specialtyKind: "DOMAIN", domain: CODE, specialty: CODE, businessDomainId: domainId, businessDomain: { id: domainId, code: CODE, name: "Logística QA", active: true } })
     const row = await pool.query<{ specialty: string; domain: string; business_domain_id: string }>(`select specialty, domain, business_domain_id from agents where id = $1`, [entregasId])
     expect(row.rows[0]).toEqual({ specialty: CODE, domain: CODE, business_domain_id: domainId })
-    const faturamento = await api.post("/api/v1/admin/agents").send(agentBody("Faturamento QA", { specialtyKind: "DOMAIN", businessDomainId: faturamentoId }))
-    expect(faturamento.status).toBe(201)
-    faturamentoAgentId = faturamento.body.data.id
-    const coordinator = await api.post("/api/v1/admin/agents").send(agentBody("Coordenação QA", { agentType: "ORCHESTRATOR" }))
-    expect(coordinator.status).toBe(201)
-    coordinatorId = coordinator.body.data.id
+    await publishAgent(entregasId)
+    const published = await api.get(`/api/v1/admin/agents/${entregasId}`)
+    expect(published.body.data).toMatchObject({ specialtyKind: "DOMAIN", domain: CODE, businessDomainId: domainId })
+    faturamentoAgentId = await createPublishedAgent("Faturamento QA", { specialtyKind: "DOMAIN", businessDomainId: faturamentoId })
+    coordinatorId = await createPublishedAgent("Coordenação QA", { agentType: "ORCHESTRATOR" })
   })
 
   it("Orquestrador DOMAINS [LOGISTICA_QA] aceita o Agent Entregas QA, bloqueia o de Faturamento (422 com o motivo) e passa a aceitá-lo ao adicionar FATURAMENTO", async () => {
@@ -194,7 +207,7 @@ describe.skipIf(!ENABLED)("Domínio de negócio dinâmico — LOGISTICA_QA sem h
     expect(reactivate.body.data.active).toBe(true)
   })
 
-  it("audit trail registra criação/edição/desativação/ativação; limpeza remove Agents/Orquestrador temporários e o domínio, e o banco volta ao estado anterior", async () => {
+  it("audit trail registra criação/edição/desativação/ativação; limpeza exclui Agents/Orquestrador temporários e o domínio, e o que está vivo volta ao estado anterior", async () => {
     const audit = await pool.query<{ action: string }>(`select action from audit_logs where entity_type = 'business_domain' and entity_id = $1 order by created_at`, [domainId])
     expect(audit.rows.map((row) => row.action)).toEqual(["BUSINESS_DOMAIN_CREATED", "BUSINESS_DOMAIN_UPDATED", "BUSINESS_DOMAIN_DEACTIVATED", "BUSINESS_DOMAIN_ACTIVATED"])
     expect((await api.delete(`/api/v1/admin/assistant-orchestrators/${orchestratorId}`)).status).toBe(204)

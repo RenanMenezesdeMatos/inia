@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { API_AUTH_KINDS, API_AUTH_LABELS, AVAILABILITY_RELEVANT_CONTRACTS, availabilityPolicyLabel, type ApiAuthKind, type AvailabilityPolicy, type Cadence, type SourceKind } from "@/schemas/admin/data-hub.schema"
+import { API_AUTH_KINDS, API_AUTH_LABELS, AVAILABILITY_RELEVANT_CONTRACTS, availabilityPolicyLabel, type ApiAuthKind, type AvailabilityPolicy, type SourceKind } from "@/schemas/admin/data-hub.schema"
 
 /**
  * Formulários de conexão por tipo de fonte. O estado é "flat" (ConnectionDraft) e vira
@@ -263,7 +263,7 @@ export function ConnectionForm({ kind, draft, onChange, secretsMode }: { kind: S
               ) : null}
             </div>
           ) : null}
-          <Field id="api-headers" label="Headers adicionais (opcional)" hint="Um por linha, no formato Nome: valor. Nunca coloque credenciais aqui — use a autenticação acima.">
+          <Field id="api-headers" label="Headers adicionais (opcional)" hint="Um por linha, no formato Nome: valor. Nunca coloque credenciais aqui — use a autenticação acima. Sem liberar a configuração, os valores aparecem ocultos; deixar oculto mantém o valor atual.">
             <Textarea id="api-headers" rows={2} value={draft.headersText} onChange={(event) => set("headersText", event.target.value)} placeholder="Accept: application/json" />
           </Field>
         </div>
@@ -311,7 +311,7 @@ export function ConnectionForm({ kind, draft, onChange, secretsMode }: { kind: S
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field id="sftp-key" label="Chave privada (PEM)" hint={secretHint}>
-                  <Textarea id="sftp-key" rows={4} value={draft.privateKey} onChange={(event) => set("privateKey", event.target.value)} className="font-mono text-xs" />
+                  <Textarea id="sftp-key" rows={4} spellCheck={false} autoComplete="off" value={draft.privateKey} onChange={(event) => set("privateKey", event.target.value)} className="font-mono text-xs [-webkit-text-security:disc]" />
                 </Field>
                 <Field id="sftp-passphrase" label="Passphrase (opcional)">
                   <Input id="sftp-passphrase" type="password" autoComplete="off" value={draft.passphrase} onChange={(event) => set("passphrase", event.target.value)} />
@@ -324,43 +324,6 @@ export function ConnectionForm({ kind, draft, onChange, secretsMode }: { kind: S
 
       {kind === "API_PUSH" ? <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Ao ativar, a INIA gera o endpoint e um token de push para cada feed. O cliente envia os dados em JSON com <code className="font-mono">Authorization: Bearer</code> e <code className="font-mono">Idempotency-Key</code>.</p> : null}
       {kind === "FILE_UPLOAD" ? <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Fonte manual: cada feed define o contrato e o mapeamento; os arquivos (.csv/.xlsx) são enviados pela tela Importar arquivo.</p> : null}
-    </div>
-  )
-}
-
-export function CadenceSelect({ value, onChange, disabled }: { value: Cadence; onChange: (next: Cadence) => void; disabled?: boolean }) {
-  const preset = value.kind === "MANUAL" ? "MANUAL" : value.kind === "DAILY" ? "DAILY" : `INTERVAL:${value.minutes}`
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <div className="space-y-1.5">
-        <Label htmlFor="cadence">Frequência</Label>
-        <Select
-          value={preset}
-          disabled={disabled}
-          onValueChange={(next) => {
-            if (next === "MANUAL") onChange({ kind: "MANUAL" })
-            else if (next === "DAILY") onChange({ kind: "DAILY", time: value.kind === "DAILY" ? value.time : "06:00" })
-            else onChange({ kind: "INTERVAL", minutes: Number(next.split(":")[1]) })
-          }}
-        >
-          <SelectTrigger id="cadence" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="MANUAL">Manual (só quando eu pedir)</SelectItem>
-            <SelectItem value="INTERVAL:15">A cada 15 min</SelectItem>
-            <SelectItem value="INTERVAL:60">A cada 1 h</SelectItem>
-            <SelectItem value="INTERVAL:360">A cada 6 h</SelectItem>
-            <SelectItem value="DAILY">Diário, em um horário</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {value.kind === "DAILY" ? (
-        <div className="space-y-1.5">
-          <Label htmlFor="cadence-time">Horário (fuso da operação)</Label>
-          <Input id="cadence-time" type="time" value={value.time} onChange={(event) => onChange({ kind: "DAILY", time: event.target.value || "06:00" })} disabled={disabled} />
-        </div>
-      ) : null}
     </div>
   )
 }

@@ -117,7 +117,7 @@ export function createBestPracticesRouter(db: Database, deps: { repository?: Ana
               a.reference_periods "referencePeriods", a.context_level "contextLevel", a.comparison, a.model_mode "modelMode", a.status, a.outcome, a.error_code "errorCode", a.error_message "errorMessage",
               a.report->>'summary' summary, (a.provenance->'usage'->>'calls')::int "modelCalls", (a.provenance->'usage'->>'costUsd')::float "costUsd",
               a.created_at "createdAt", a.started_at "startedAt", a.finished_at "finishedAt", pe.name "requestedBy"
-         from best_practice_analyses a left join indicator_definitions i on i.id = a.indicator_definition_id left join channel_flags cf on cf.id = a.channel_flag_id
+         from best_practice_analyses a left join indicator_definitions_all i on i.id = a.indicator_definition_id left join channel_flags_all cf on cf.id = a.channel_flag_id
          left join teams t on t.id = a.team_id left join subteams st on st.id = a.subteam_id left join best_practice_synthetic_datasets sd on sd.id = a.synthetic_dataset_id left join people pe on pe.id = a.requested_by_person_id
         where a.organization_id = $1 order by a.created_at desc limit 50`,
       [reader.actor.organizationId],

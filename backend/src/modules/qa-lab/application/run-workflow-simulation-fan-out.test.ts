@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { EnrollmentRow, WorkflowScope } from "../../workflows/application/node-handlers.js"
 import type { FlowGraph } from "../../workflows/domain/graph-schema.js"
 import { pendingReviewForState, runEmployeeNodeLoop, runSimulationLoop, type SimulationOptions, type SimulationSession } from "./run-workflow-simulation.js"
@@ -21,6 +22,7 @@ vi.mock("../../../config/env.js", async (importOriginal) => {
 })
 
 const SUPERVISOR_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+const REVIEW_SUPERVISOR = "5e000000-0000-4000-8000-000000000001"
 const OP_1 = "11111111-1111-4111-8111-111111111111"
 const OP_2 = "22222222-2222-4222-8222-222222222222"
 const OP_3 = "33333333-3333-4333-8333-333333333333"
@@ -117,8 +119,21 @@ const ORCHESTRATOR_AGENT_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
 function fakeDb(overrides: { avgByOperator?: Record<string, number> } = {}): Database {
   const avgByOperator = overrides.avgByOperator ?? { [OP_1]: 90, [OP_2]: 90, [OP_3]: 90 }
+  // Agentes publicados (versão vigente v1, migration 164): o de análise (por colaborador) e o agente do Orchestrator pós-JOIN.
+  const agents: Record<string, Record<string, unknown>> = {
+    [AGENT_ID]: { id: AGENT_ID, name: "Agente de Análise", objective: "Analisar", description: "desc", context_prompt: "prompt", active: true },
+    [ORCHESTRATOR_AGENT_ID]: { id: ORCHESTRATOR_AGENT_ID, name: "Resumo Executivo", objective: "Sintetizar", description: "desc", context_prompt: "prompt", active: true },
+  }
   async function query(sql: string, params?: unknown[]) {
+    const versioned = answerAgentVersionQuery(sql, params, (agentId) => agents[agentId])
+    if (versioned) return versioned
     const text = sql.replace(/\s+/g, " ").trim()
+    if (text.includes("from people where id = any($1::uuid[]) and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: (params?.[0] as string[]).length }
+    // Toda revisão tem supervisor na cadeia: sem revisor, a etapa bloqueia em vez de pausar (P5c).
+    if (text.startsWith("select id, role, reports_to_id from people where id = $1")) {
+      const id = params?.[0] as string
+      return { rows: [id === REVIEW_SUPERVISOR ? { id, role: "SUPERVISOR", reports_to_id: null } : { id, role: "OPERATOR", reports_to_id: REVIEW_SUPERVISOR }], rowCount: 1 }
+    }
     // Estrutura (Equipe do Supervisor) — resolveStructureAnchorOperatorIds.
     if (text.includes("reports_to_id = $1 and role = 'OPERATOR'")) return { rows: [{ id: OP_1 }, { id: OP_2 }, { id: OP_3 }], rowCount: 3 }
     // Abrangência/elegibilidade (ALL_TEAMS) — resolveEligibleOperatorIds.
@@ -200,6 +215,43 @@ function baseState(): WorkflowSimulationState {
 function baseSession(graph: FlowGraph): SimulationSession {
   return { graph, workflow, enrollment: baseEnrollment(), inputContext: "", state: baseState(), effects: [], aiCalls: [], steps: [] }
 }
+
+describe("QA Lab — Condição depois de \"Aplicar individualmente\"", () => {
+  function graphWithOperationalQuartile(): FlowGraph {
+    const base = collectionGraph()
+    return {
+      nodes: [
+        ...base.nodes.filter((node) => node.id !== "agent" && node.id !== "end"),
+        { id: "condicao", type: "condition", label: "Está no Q4?", position: { x: 0, y: 3 }, config: { comparator: "EQUALS", thresholdText: "Q4", historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", source: "OPERATIONAL_QUARTILE", indicatorCode: "QUALIDADE", aggregation: "AVERAGE", period: { kind: "ROLLING_DAYS", days: 30 } } } },
+        { id: "end", type: "end", label: "Fim", position: { x: 0, y: 4 }, config: {} },
+      ],
+      edges: [
+        { id: "e1", source: "trigger", sourceHandle: "always", target: "select" },
+        { id: "e2", source: "select", sourceHandle: "always", target: "apply" },
+        { id: "e3", source: "apply", sourceHandle: "always", target: "condicao" },
+        { id: "e4", source: "condicao", sourceHandle: "true", target: "end" },
+        { id: "e5", source: "condicao", sourceHandle: "false", target: "end" },
+        { id: "e6", source: "condicao", sourceHandle: "no_data", target: "end" },
+      ],
+    }
+  }
+
+  it("a população vem da coleção simulada, sem procurar no banco uma execução principal que não existe", async () => {
+    const base = fakeDb()
+    const sqls: string[] = []
+    const query = (sql: string, params?: unknown[]) => {
+      sqls.push(sql)
+      return base.query(sql, params as never)
+    }
+    const db = { query, connect: async () => ({ query, release: () => {} }) } as unknown as Database
+    const session = baseSession(graphWithOperationalQuartile())
+    await runSimulationLoop(db, session, { mode: "RUN_ALL", untilNodeId: null, aiPolicy: "REAL", maxAiCalls: null })
+
+    expect(session.employeeRuns?.length).toBeGreaterThan(0)
+    for (const run of session.employeeRuns ?? []) expect(run.steps[0]?.nodeId).toBe("condicao")
+    expect(sqls.some((sql) => sql.includes("node_outputs ->"))).toBe(false)
+  })
+})
 
 describe("QA Lab — fan-out simulado (Aplicar individualmente, EMPLOYEE_COLLECTION)", () => {
   it("cria 1 employeeRun por colaborador selecionado, cada um começando no PRÓXIMO node (nunca no Trigger)", async () => {
@@ -525,6 +577,12 @@ function fakePartitionedFanOutDb(): Database {
   }
   async function query(sql: string, params?: unknown[]) {
     const text = sql.replace(/\s+/g, " ").trim()
+    if (text.includes("from people where id = any($1::uuid[]) and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: (params?.[0] as string[]).length }
+    // Toda revisão tem supervisor na cadeia: sem revisor, a etapa bloqueia em vez de pausar (P5c).
+    if (text.startsWith("select id, role, reports_to_id from people where id = $1")) {
+      const id = params?.[0] as string
+      return { rows: [id === REVIEW_SUPERVISOR ? { id, role: "SUPERVISOR", reports_to_id: null } : { id, role: "OPERATOR", reports_to_id: REVIEW_SUPERVISOR }], rowCount: 1 }
+    }
     if (text.includes("reports_to_id = $1 and role = 'OPERATOR'")) return { rows: [OP_1, OP_2, OP_3, OP_4, OP_5, OP_6].map((id) => ({ id })), rowCount: 6 }
     if (text.includes("role = 'OPERATOR' and active")) return { rows: [OP_1, OP_2, OP_3, OP_4, OP_5, OP_6].map((id) => ({ id })), rowCount: 6 }
     if (text.includes("from indicator_measurements") && text.includes("avg(m.value)")) {

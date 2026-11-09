@@ -20,7 +20,7 @@ async function enrollScheduledSlots(db: Database, input: { organizationId: strin
     `insert into workflow_enrollments(organization_id, workflow_id, version_id, scheduled_subject_id, scheduled_for, current_node_id)
      select $1, $2, $3, slot.subject_id, slot.scheduled_for, $4
      from unnest($5::uuid[], $6::timestamptz[]) as slot(subject_id, scheduled_for)
-     on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null do nothing`,
+     on conflict (workflow_id, scheduled_subject_id, scheduled_for) where scheduled_subject_id is not null and retry_of_enrollment_id is null do nothing`,
     [input.organizationId, input.workflowId, input.versionId, input.triggerNodeId, input.slots.map((slot) => slot.subjectId), input.slots.map((slot) => slot.scheduledFor)],
   )
   return result.rowCount ?? 0

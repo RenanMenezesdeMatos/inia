@@ -20,6 +20,7 @@ import { SOURCE_KIND_LABEL, type ProductNode, type ProductScopeSource } from "@/
 
 import { basesOf, scopeKindOf } from "./catalog-relations"
 import { nodeLabel } from "./node-picker"
+import { editableProductIds, pendingScopeLabel } from "./product-scope-field"
 
 export const sourceKey = (source: Pick<ProductScopeSource, "sourceKind" | "sourceId">) => `${source.sourceKind}:${source.sourceId}`
 
@@ -52,7 +53,7 @@ function AddBasePanel({ node, nodes, sources, onDone }: { node: ProductNode; nod
           Fechar
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Ao adicionar, a base passa a valer {node.kind === "FAMILY" ? "para os produtos desta categoria" : "para este produto"}. Uma base que hoje é geral deixa de valer para todos e fica só com os produtos marcados. Vale a partir de agora: chamadas anteriores continuam com o que valia na época.</p>
+      <p className="text-xs text-muted-foreground">Ao adicionar, a base passa a valer {node.kind === "FAMILY" ? "para os produtos desta categoria" : "para este produto"}. Uma base que hoje é geral deixa de valer para todos e fica só com os produtos marcados. Na base de conhecimento, a escolha fica no rascunho e só vale quando a versão entrar em uso; no argumentário, vale a partir de agora. Chamadas anteriores continuam com o que valia na época.</p>
       <ul className="max-h-72 divide-y overflow-y-auto rounded-md border bg-background">
         {candidates.length === 0 ? <li className="p-3 text-sm text-muted-foreground">Nenhuma base encontrada.</li> : null}
         {candidates.map((source) => (
@@ -63,13 +64,14 @@ function AddBasePanel({ node, nodes, sources, onDone }: { node: ProductNode; nod
               <p className="truncate text-xs text-muted-foreground">
                 {SOURCE_KIND_LABEL[source.sourceKind]} · hoje: {scopeSummaryOf(source, nodes)}
               </p>
+              {source.pendingScope?.nodeIds.includes(node.id) ? <p className="truncate text-xs text-muted-foreground">{pendingScopeLabel(source.pendingScope)}: já inclui este item, ainda sem efeito</p> : null}
             </div>
             <Button
               size="sm"
               variant="outline"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || Boolean(source.pendingScope?.nodeIds.includes(node.id))}
               aria-label={`Adicionar ${source.title}`}
-              onClick={() => mutation.mutate({ kind: source.sourceKind, id: source.sourceId, nodeIds: [...(source.scope?.nodeIds ?? []), node.id] })}
+              onClick={() => mutation.mutate({ kind: source.sourceKind, id: source.sourceId, nodeIds: [...editableProductIds(source), node.id] })}
             >
               Adicionar
             </Button>
@@ -90,7 +92,10 @@ export function ProductBases({ node, nodes, sources }: { node: ProductNode; node
   const [confirmGeneral, setConfirmGeneral] = useState<ProductScopeSource | null>(null)
   const bases = basesOf(nodes, sources, node.id)
   const generalCount = sources.filter((source) => scopeKindOf(source) === "GENERAL").length
-  const remove = (source: ProductScopeSource) => mutation.mutate({ kind: source.sourceKind, id: source.sourceId, nodeIds: (source.scope?.nodeIds ?? []).filter((id) => id !== node.id) })
+  const remove = (source: ProductScopeSource) => mutation.mutate({ kind: source.sourceKind, id: source.sourceId, nodeIds: editableProductIds(source).filter((id) => id !== node.id) })
+  // Bases com este item numa versão ainda fora de uso: aparecem à parte, porque ainda não valem para ele.
+  const showing = new Set(bases.map(({ source }) => sourceKey(source)))
+  const upcoming = sources.filter((source) => !showing.has(sourceKey(source)) && source.pendingScope?.nodeIds.includes(node.id))
   return (
     <section className="space-y-3" aria-label="Bases de conhecimento" data-testid="product-bases">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -118,16 +123,36 @@ export function ProductBases({ node, nodes, sources }: { node: ProductNode; node
                 {via ? ` · vale para a categoria ${via.name}` : ""}
               </p>
               {others.length > 0 ? <p className="text-xs text-muted-foreground">Também vale para: {others.map((id) => nodeLabel(nodes, id)).join(", ")}</p> : null}
+              {!via && source.pendingScope && !source.pendingScope.nodeIds.includes(node.id) ? <p className="text-xs text-muted-foreground">{pendingScopeLabel(source.pendingScope)}: sai deste item, mas ainda vale até a versão entrar em uso.</p> : null}
             </div>
             {via ? <Badge variant="outline">Pela categoria</Badge> : others.length === 0 ? <Badge variant="secondary">{node.kind === "FAMILY" ? "Só desta categoria" : "Só deste produto"}</Badge> : <Badge variant="outline">Compartilhada</Badge>}
             {via ? null : (
-              <Button size="icon" variant="ghost" aria-label={`Tirar ${source.title} deste item`} disabled={mutation.isPending} onClick={() => (others.length === 0 ? setConfirmGeneral(source) : remove(source))}>
+              <Button size="icon" variant="ghost" aria-label={`Tirar ${source.title} deste item`} disabled={mutation.isPending} onClick={() => (editableProductIds(source).every((id) => id === node.id) ? setConfirmGeneral(source) : remove(source))}>
                 <X className="size-4" />
               </Button>
             )}
           </li>
         ))}
       </ul>
+      {upcoming.length > 0 ? (
+        <div className="space-y-2" data-testid="product-bases-upcoming">
+          <h4 className="text-xs font-medium text-muted-foreground">Ainda sem efeito: entram quando a versão entrar em uso</h4>
+          <ul className="space-y-2">
+            {upcoming.map((source) => (
+              <li key={sourceKey(source)} className="flex flex-wrap items-center gap-3 rounded-md border border-dashed p-3">
+                <SourceIcon source={source} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm">{source.title}</p>
+                  <p className="text-xs text-muted-foreground">{pendingScopeLabel(source.pendingScope!)}</p>
+                </div>
+                <Button size="icon" variant="ghost" aria-label={`Tirar ${source.title} do rascunho deste item`} disabled={mutation.isPending} onClick={() => remove(source)}>
+                  <X className="size-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         {generalCount > 0 ? `Além destas, ${generalCount === 1 ? "1 base geral vale" : `${generalCount} bases gerais valem`} para todos os produtos. ` : ""}
         Também dá para escolher no editor de cada base e de cada argumentário, em “Vale para”.
@@ -136,7 +161,7 @@ export function ProductBases({ node, nodes, sources }: { node: ProductNode; node
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Tirar a base deste produto?</AlertDialogTitle>
-            <AlertDialogDescription>“{confirmGeneral?.title}” não vale para nenhum outro produto. Sem nenhum produto marcado, ela volta a ser geral — vale para todos os produtos a partir de agora.</AlertDialogDescription>
+            <AlertDialogDescription>“{confirmGeneral?.title}” não vale para nenhum outro produto. Sem nenhum produto marcado, ela volta a ser geral: vale para todos os produtos {confirmGeneral?.sourceKind === "KNOWLEDGE_DOCUMENT" ? "quando a versão entrar em uso. Até lá, fica no rascunho, e nada muda" : "a partir de agora"}.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>

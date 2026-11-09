@@ -4,6 +4,8 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { legacyAccessQuery } from "../../access/testing/legacy-admin-fixture.js"
+import { answerOrchestratorVersionQuery, fakeOrchestratorVersionIdOf } from "../../agents/testing/agent-version-fakes.js"
+import { toolNameForAgent } from "../domain/orchestrator-schema.js"
 
 // Escopo Administrativo + validação cross-group (Parte 32/34 do pedido): assistant-router.ts já
 // tinha canManageScope em todas as rotas antes desta task — o que faltava testar era exatamente
@@ -20,6 +22,7 @@ const SPECIALIST_RETENCAO_A = "77777777-7777-4777-8777-777777777777" // especial
 const SYNTHESIS_AGENT_A = "99999999-9999-4999-8999-999999999999" // Agent de síntese (SYNTHESIS), escopo TEAM_A
 const SPECIALIST_EXPERIENCIA_A = "88888888-8888-4888-8888-888888888888" // transversal, escopo TEAM_A
 const SPECIALIST_LOGISTICA_A = "12121212-1212-4121-8121-121212121212" // especialista de um domínio criado pelo catálogo (LOGISTICA), escopo TEAM_A
+const SPECIALIST_UNPUBLISHED_A = "13131313-1313-4131-8131-131313131313" // especialista nunca publicado (só rascunho), escopo TEAM_A
 const ORCHESTRATOR_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const ORCHESTRATOR_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 /** Legado desativado pela migration 054: sem política, inativo, modo BOTH. */
@@ -38,7 +41,7 @@ const ACCOUNT = {
   team_name: null,
 }
 
-const AGENTS_BY_ID: Record<string, { agent_type: string; scopeType: string; teamId: string | null; subteamId: string | null; name: string; specialty: string | null }> = {
+const AGENTS_BY_ID: Record<string, { agent_type: string; scopeType: string; teamId: string | null; subteamId: string | null; name: string; specialty: string | null; current_version_id?: string | null }> = {
   [ORCH_AGENT_A]: { agent_type: "ORCHESTRATOR", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Agente Orquestrador A", specialty: null },
   [SPECIALIST_AGENT_B]: { agent_type: "DIAGNOSTICS", scopeType: "TEAM", teamId: TEAM_B, subteamId: null, name: "Especialista B", specialty: null },
   [ORCH_AGENT_B]: { agent_type: "ORCHESTRATOR", scopeType: "TEAM", teamId: TEAM_B, subteamId: null, name: "Agente Orquestrador B", specialty: null },
@@ -47,6 +50,7 @@ const AGENTS_BY_ID: Record<string, { agent_type: string; scopeType: string; team
   [SPECIALIST_EXPERIENCIA_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista de Experiência", specialty: "CROSS_CUTTING" },
   [SYNTHESIS_AGENT_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Síntese Gerencial", specialty: "SYNTHESIS" },
   [SPECIALIST_LOGISTICA_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Agent · Entregas QA", specialty: "LOGISTICA" },
+  [SPECIALIST_UNPUBLISHED_A]: { agent_type: "CUSTOM", scopeType: "TEAM", teamId: TEAM_A, subteamId: null, name: "Especialista em rascunho", specialty: "FATURAMENTO", current_version_id: null },
 }
 
 /** Catálogo de domínios de negócio (migration 060) — DADOS: a regra do router não conhece código nenhum. */
@@ -65,6 +69,8 @@ const ORCHESTRATORS_BY_ID: Record<string, { scopeType: string; teamId: string | 
   [ORCHESTRATOR_B]: { scopeType: "TEAM", teamId: TEAM_B, subteamId: null },
   [ORCHESTRATOR_LEGACY]: { scopeType: "TEAM", teamId: TEAM_A, subteamId: null },
 }
+/** Agente orquestrador gravado em cada Orquestrador — lido ao fixar a versão dele (PEN-076). */
+const ORCHESTRATOR_AGENT_BY_ID: Record<string, string> = { [ORCHESTRATOR_A]: ORCH_AGENT_A, [ORCHESTRATOR_B]: ORCH_AGENT_B, [ORCHESTRATOR_LEGACY]: ORCH_AGENT_A }
 
 function fakeDatabase(
   roleAssignmentRows: unknown[],
@@ -74,6 +80,9 @@ function fakeDatabase(
   async function routedQuery(sql: string, params?: unknown[]) {
     const extraResult = extra?.(sql, params)
     if (extraResult) return extraResult
+    // Gravação do Orquestrador (PEN-076): versão fixada de cada agente (nos fakes, a vigente = id do agente) e versão nova publicada.
+    const versioning = answerOrchestratorVersionQuery(sql, params, { agentOf: (id) => AGENTS_BY_ID[id], orchestratorAgentOf: (id) => ORCHESTRATOR_AGENT_BY_ID[id] })
+    if (versioning) return versioning
     if (sql.includes("from user_accounts ua")) {
       return { rows: [{ ...ACCOUNT, password_hash: passwordHash, active: true }], rowCount: 1 }
     }
@@ -418,5 +427,39 @@ describe("assistant-router — domínio de negócio como DADO do catálogo (migr
     expect(none.body.error.code).toBe("ORCHESTRATOR_POLICY_INVALID")
     const open = await agent.post("/api/v1/admin/assistant-orchestrators").send({ name: "Chat", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, invocationMode: "INTERACTIVE", routingPolicy: "OPEN", specialistAgentIds: [SPECIALIST_LOGISTICA_A, SPECIALIST_FATURAMENTO_A, SPECIALIST_EXPERIENCIA_A] })
     expect(open.status).toBe(201)
+  })
+})
+
+describe("assistant-router — toda gravação publica uma versão da configuração do Orquestrador (PEN-076, revisão de 03/11/2026)", () => {
+  it("criar grava os especialistas SEM fixar versão de agente (rodam na vigente) e publica a versão; especialista nunca publicado → 422 sem publicar nada", async () => {
+    const passwordHash = await hashPassword("Inia@123")
+    const writes: { sql: string; params: unknown[] }[] = []
+    const agent = await loginAgent(
+      fakeDatabase([], passwordHash, (sql, params) => {
+        const normalized = sql.replace(/\s+/g, " ").trim()
+        if (/^(insert into assistant_orchestrator_specialists|update assistant_orchestrators set orchestrator_agent_version_id|insert into assistant_orchestrator_versions|update assistant_orchestrators set current_version_id)/.test(normalized)) writes.push({ sql: normalized, params: params ?? [] })
+        if (normalized.startsWith("insert into assistant_orchestrators(")) return { rows: [{ id: ORCHESTRATOR_A }], rowCount: 1 }
+        if (sql.includes("from assistant_orchestrators o") && sql.includes("join agents oa")) return { rows: [{ id: ORCHESTRATOR_A, specialists: [] }], rowCount: 1 }
+        return undefined
+      }),
+    )
+    const body = { name: "Assistente", scopeType: "TEAM", teamId: TEAM_A, orchestratorAgentId: ORCH_AGENT_A, routingPolicy: "OPEN", invocationMode: "INTERACTIVE" }
+
+    const created = await agent.post("/api/v1/admin/assistant-orchestrators").send({ ...body, specialistAgentIds: [SPECIALIST_FATURAMENTO_A, SPECIALIST_RETENCAO_A] })
+    expect(created.status).toBe(201)
+    expect(writes.map((write) => write.params)).toEqual([
+      [ORCHESTRATOR_A, SPECIALIST_FATURAMENTO_A, toolNameForAgent(SPECIALIST_FATURAMENTO_A)],
+      [ORCHESTRATOR_A, SPECIALIST_RETENCAO_A, toolNameForAgent(SPECIALIST_RETENCAO_A)],
+      [ORCHESTRATOR_A, ACCOUNT.organization_id, ACCOUNT.person_id, ACCOUNT.name],
+      [ORCHESTRATOR_A, fakeOrchestratorVersionIdOf(ORCHESTRATOR_A)],
+    ])
+    expect(writes.at(-1)!.sql).toContain("set current_version_id")
+
+    writes.length = 0
+    const unpublished = await agent.post("/api/v1/admin/assistant-orchestrators").send({ ...body, specialistAgentIds: [SPECIALIST_FATURAMENTO_A, SPECIALIST_UNPUBLISHED_A] })
+    expect(unpublished.status).toBe(422)
+    expect(unpublished.body.error.code).toBe("ORCHESTRATOR_AGENT_NOT_PUBLISHED")
+    expect(unpublished.body.error.details).toEqual({ agentId: SPECIALIST_UNPUBLISHED_A })
+    expect(writes).toEqual([])
   })
 })

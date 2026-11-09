@@ -30,6 +30,7 @@ export const AI_USE_CASE_KEYS = [
   "INTERVENTION_WRITER",
   "REPORT_ANALYST",
   "KNOWLEDGE_CLARIFICATION",
+  "RESPONSE_COMPLIANCE",
   "BEST_PRACTICE_ANALYSIS",
   "CHAT",
   "VOICE_REALTIME",
@@ -76,6 +77,7 @@ export const AI_USE_CASES: readonly AiUseCaseDefinition[] = [
   { key: "INTERVENTION_WRITER", label: "Relatório e rascunho de intervenção", description: "Narrativa do relatório de inteligência de uma avaliação de política de acompanhamento e rascunho de treinamento ou plano de ação — sempre a partir dos fatos e fontes já verificados, citando cada um; nunca muda o resultado das regras.", group: "RESPONSE", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, purposes: ["INTERVENTION_WRITING"], notes: "Etapas pela tag stage:REPORT_NARRATIVE e stage:INTERVENTION_DRAFT. Falha nunca apaga o fundamento estruturado: fica registrada e pode ser tentada de novo." },
   { key: "REPORT_ANALYST", label: "Análise de report recorrente", description: "Resumo e comparação de cada entrega de um report recorrente — a IA interpreta a tabela, os destaques e a comparação já calculados pela aplicação; nunca calcula nem inventa número.", group: "RESPONSE", requiredCapabilities: [], preferredCapabilities: [], routable: true, internal: false, purposes: ["REPORT_ANALYSIS"], notes: "Falha da IA preserva a entrega (dados válidos) com \"análise indisponível\"; o worker tenta de novo sem duplicar a entrega." },
   { key: "KNOWLEDGE_CLARIFICATION", label: "Esclarecimento pelas bases", description: "Chat: decide, a partir dos trechos e seções das bases de conhecimento que a pessoa pode consultar, se a pergunta precisa de esclarecimento (pergunta e opções fundamentadas nas fontes), se já pode ser respondida ou se as bases não a cobrem — e redige a resposta final citando as seções usadas.", group: "INTERACTIVE", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, purposes: ["KNOWLEDGE_CLARIFICATION"], notes: "Etapas pela tag stage:PLANNER (decisão e opções) e stage:ANSWER (resposta com fontes). A saída é JSON validado por código: opção sem evidência é rejeitada e marcador inexistente invalida a resposta." },
+  { key: "RESPONSE_COMPLIANCE", label: "Conferência das respostas", description: "Confere se uma resposta pronta viola os assuntos proibidos da Governança ou os limites de atuação do agente, antes de ela seguir. Decide pelo sentido e só é chamada quando há regra cadastrada.", group: "INTERACTIVE", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, purposes: ["RESPONSE_COMPLIANCE"] },
   { key: "BEST_PRACTICE_ANALYSIS", label: "Base de boas práticas", description: "Análise comparativa das chamadas dos operadores com melhores resultados × grupo de referência: levanta hipóteses de comportamento opcional, codifica cada chamada sem saber o grupo (com trecho literal conferido) e confere se o comportamento é obrigação do processo. Os números e a força da evidência são calculados pela aplicação.", group: "INVESTIGATION", requiredCapabilities: ["STRUCTURED_OUTPUT"], preferredCapabilities: [], routable: true, internal: false, purposes: ["BEST_PRACTICE_ANALYSIS"], notes: "Etapas pela tag stage:BEST_PRACTICE_DISCOVERY, stage:BEST_PRACTICE_CODING e stage:BEST_PRACTICE_OBLIGATION. Sem policy da organização: modelo fixo gemini-3.8-flash, sem fallback nem escalação." },
   { key: "CHAT", label: "Chat de texto", description: "Resposta do chat quando não há Orquestrador ativo (streaming).", group: "INTERACTIVE", requiredCapabilities: [], preferredCapabilities: ["STREAMING"], routable: true, internal: false, purposes: ["CHAT_STREAM"] },
   { key: "VOICE_REALTIME", label: "Voz em tempo real", description: "Sessão de voz do avatar (sessão própria do provider no navegador).", group: "INTERACTIVE", requiredCapabilities: ["AUDIO", "STREAMING"], preferredCapabilities: [], routable: false, internal: false, purposes: ["VOICE_SESSION"], notes: "V1: usa a configuração legada por ambiente; o uso aparece no dashboard (sessão iniciada, tokens não informados)." },
@@ -131,6 +133,8 @@ export function useCaseForPurpose(purpose: RoutePurpose | string, classification
       return "REPORT_ANALYST"
     case "KNOWLEDGE_CLARIFICATION":
       return "KNOWLEDGE_CLARIFICATION"
+    case "RESPONSE_COMPLIANCE":
+      return "RESPONSE_COMPLIANCE"
     case "BEST_PRACTICE_ANALYSIS":
       return "BEST_PRACTICE_ANALYSIS"
     case "GATING_CORRECTION":

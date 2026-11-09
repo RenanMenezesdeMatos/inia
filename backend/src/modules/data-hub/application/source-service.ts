@@ -1,18 +1,29 @@
 import { createHash, randomBytes } from "node:crypto"
 import { isIP } from "node:net"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
-import { DataRunError } from "../domain/error-codes.js"
+import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
+import { DataRunError, isCredentialRefusal } from "../domain/error-codes.js"
+import { CREDENTIAL_CHANGED, feedHasHiddenValues, ORIGIN_CHANGED, restoreMaskedSourceConfig, sameApiOrigin, sourceHiddenValues } from "../domain/config-mask.js"
+import { describeSourceTarget, sourceChanges } from "../domain/config-unlock.js"
+import { syncAtSourceResume, type Cadence } from "../domain/freshness.js"
 import { insecureCredentialTransportWarning, sourceConfigSchema, sourceInputSchema, sourceSecretsSchema, type SecretPurpose, type SourceConfig, type SourceInput, type SourceSecrets } from "../domain/source-config.js"
+import { credentialFields, requiredSecretPurposes, secretTargetOf } from "../domain/source-credentials.js"
 import { z } from "zod"
 import { databaseConfigSchema, NEW_SOURCE_TLS_MODE, resolveDatabaseConnection, describeDatabaseConnection } from "../domain/database/database-engine.js"
 import { testApiConnection } from "./connectors/api-pull-connector.js"
 import { databaseConfigOf, describeTestDetail, resolveSourceConnection, testDatabaseConnection, type DatabaseConnectionReport } from "./connectors/database-connector.js"
 import { testSftpConnection } from "./connectors/sftp-connector.js"
+import { assertConfigStillUnlocked, attemptOwnerOf, blockedAfterRefusal, configLockedError, identifiedSession, readConfigAccess, refuseRejectedCredential, reserveCredentialAttempt, resetUnlocksAfterCredentialChange, revokeConfigUnlocks, settleCredentialAttempt, verifyNewCredential, type ConfigSession } from "./config-unlock-service.js"
 import type { DataHubContext } from "./data-hub-context.js"
 import type { SecretWriteOptions } from "./ports.js"
-import { findSource, recordAudit, requireSource, type DataSourceRow } from "./records.js"
-import { cancelOrphanRuns } from "./run-service.js"
+import { findSource, listFeedsOfSource, lockSource, recordAudit, requireSource, type DataSourceRow } from "./records.js"
+import { cancelOrphanRuns, cancelWaitingRetries } from "./run-service.js"
+
+export { requiredSecretPurposes, secretTargetOf } from "../domain/source-credentials.js"
+
+type Queryable = Pick<Database, "query">
 
 /**
  * Fontes: CRUD, teste de conexão, pausar/retomar, rotação de credencial e tokens de push.
@@ -20,64 +31,6 @@ import { cancelOrphanRuns } from "./run-service.js"
  */
 function publicId(): string {
   return randomBytes(6).toString("base64url").replace(/[^a-z0-9]/gi, "").slice(0, 8).toLowerCase() || randomBytes(4).toString("hex")
-}
-
-/** Quais segredos a configuração exige e onde guardar cada um. */
-export function requiredSecretPurposes(config: SourceConfig): { purpose: SecretPurpose; field: keyof SourceSecrets; required: boolean }[] {
-  if (config.kind === "API_PULL") {
-    switch (config.api.auth.kind) {
-      case "NONE":
-        return []
-      case "BEARER":
-        return [{ purpose: "API_AUTH", field: "token", required: true }]
-      case "API_KEY":
-        return [{ purpose: "API_AUTH", field: "apiKey", required: true }]
-      case "BASIC":
-        return [{ purpose: "API_AUTH", field: "password", required: true }]
-      case "OAUTH2_CLIENT_CREDENTIALS":
-        return [{ purpose: "API_AUTH", field: "clientSecret", required: true }]
-    }
-  }
-  if (config.kind === "DATABASE") return [{ purpose: "DATABASE_PASSWORD", field: "password", required: true }]
-  if (config.kind === "SFTP") {
-    return config.sftp.authKind === "PASSWORD"
-      ? [{ purpose: "SFTP_PASSWORD", field: "password", required: true }]
-      : [
-          { purpose: "SFTP_PRIVATE_KEY", field: "privateKey", required: true },
-          { purpose: "SFTP_PASSPHRASE", field: "passphrase", required: false },
-        ]
-  }
-  return []
-}
-
-/**
- * DESTINO A QUE UMA CREDENCIAL GUARDADA PERTENCE (achado I-F2). Segredo nunca volta pela API — mas, se bastasse trocar o
- * host/usuário/URL e manter a senha guardada, um administrador apontaria a fonte para um servidor próprio e a receberia em
- * claro na próxima conexão. Por isso, quando este destino muda, as credenciais precisam ser digitadas de novo.
- * Inclui o modo de TLS: rebaixar a criptografia também exige a senha de novo.
- */
-export function secretTargetOf(config: SourceConfig): string | null {
-  if (config.kind === "API_PULL") {
-    const auth = config.api.auth
-    return JSON.stringify({ origin: safeOrigin(config.api.baseUrl), auth: auth.kind, tokenUrl: auth.kind === "OAUTH2_CLIENT_CREDENTIALS" ? auth.tokenUrl : null, headerName: auth.kind === "API_KEY" ? auth.headerName.toLowerCase() : null, username: auth.kind === "BASIC" ? auth.username : null })
-  }
-  if (config.kind === "DATABASE") {
-    const database = config.database
-    // A CA também: trocar a autoridade que valida o servidor é trocar quem pode se passar por ele (achado DATA-6).
-    const ca = database.tls?.caCertificate ? createHash("sha256").update(database.tls.caCertificate.trim()).digest("hex") : null
-    return JSON.stringify({ engine: database.engine, host: database.host.trim().toLowerCase(), port: database.port ?? null, instance: database.instanceName?.toLowerCase() ?? null, username: database.username, tls: database.tls?.mode ?? null, ca })
-  }
-  // A chave do servidor SFTP também: apagá-la ou trocá-la faria a próxima conexão aceitar qualquer servidor com a senha guardada.
-  if (config.kind === "SFTP") return JSON.stringify({ host: config.sftp.host.trim().toLowerCase(), port: config.sftp.port, username: config.sftp.username, auth: config.sftp.authKind, hostKey: config.sftp.hostKeyFingerprint?.trim() ?? null })
-  return null
-}
-
-function safeOrigin(value: string): string {
-  try {
-    return new URL(value).origin
-  } catch {
-    return value
-  }
 }
 
 async function storeSecrets(ctx: DataHubContext, source: { id: string; organizationId: string }, config: SourceConfig, secrets: SourceSecrets | undefined, actorId: string | null, requireAll: boolean, options: SecretWriteOptions = {}): Promise<string[]> {
@@ -107,8 +60,12 @@ export function withNewSourceDefaults(input: SourceInput): SourceInput {
   return { ...input, config: { ...input.config, database: { ...input.config.database, tls: { mode: NEW_SOURCE_TLS_MODE } } } }
 }
 
-export async function createSource(ctx: DataHubContext, organizationId: string, actorId: string | null, rawInput: unknown): Promise<SourceView> {
-  const input = withNewSourceDefaults(sourceInputSchema.parse(rawInput))
+export async function createSource(ctx: DataHubContext, organizationId: string, actorId: string | null, rawInput: unknown, session: ConfigSession | null = null): Promise<SourceView> {
+  const parsed = withNewSourceDefaults(sourceInputSchema.parse(rawInput))
+  const input = { ...parsed, config: restoreMaskedSourceConfig(parsed.config, null) }
+  const missing = credentialFields(input.config).filter((field) => !input.secrets?.[field])
+  if (missing.length > 0) throw new DomainError(`Informe a credencial "${missing[0]}" para este tipo de autenticação.`, "DATA_SOURCE_SECRET_REQUIRED", 422, { fields: missing })
+  if (credentialFields(input.config).length > 0) await refuseRejectedCredential(ctx, { organizationId, name: input.name, config: input.config, secrets: input.secrets!, session })
   const result = await ctx.db.query<{ id: string }>(
     `insert into data_sources (organization_id, public_id, name, description, kind, status, config, created_by, updated_by)
      values ($1, $2, $3, $4, $5, 'DRAFT', $6, $7, $7) returning id`,
@@ -116,31 +73,110 @@ export async function createSource(ctx: DataHubContext, organizationId: string, 
   )
   const source = (await findSource(ctx.db, organizationId, result.rows[0]!.id))!
   const stored = await storeSecrets(ctx, source, input.config, input.secrets, actorId, true)
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SOURCE_CREATED", entityType: "data_source", entityId: source.id, payload: { kind: source.kind, secretsConfigured: stored } })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SOURCE_CREATED", entityType: "data_source", entityId: source.id, payload: { sourceId: source.id, name: source.name, kind: source.kind, target: describeSourceTarget(input.config), secretsConfigured: stored } })
   return describeSource(ctx, source)
 }
 
-export async function updateSource(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: unknown): Promise<SourceView> {
+/**
+ * Os conjuntos de uma API Pull chamam o servidor da fonte com os próprios cabeçalhos, parâmetros fixos e endpoint, que saem escondidos
+ * para quem não liberou a configuração (numa fonte sem autenticação, para todo mundo). Levar a Base URL para outra origem os mandaria a
+ * um servidor escolhido por quem nunca os viu. A gravação da fonte não traz os conjuntos para redigitar, então a troca é recusada
+ * enquanto algum conjunto guardar valor escondido. Quem está liberado vê esses valores (a regra de `configVisible`), e a troca segue.
+ */
+async function refuseHiddenFeedValuesOnNewOrigin(ctx: DataHubContext, current: DataSourceRow, next: SourceConfig, session: ConfigSession | null): Promise<void> {
+  const previous = current.config as SourceConfig
+  if (previous.kind !== "API_PULL" || next.kind !== "API_PULL" || sameApiOrigin(next.api.baseUrl, previous.api.baseUrl)) return
+  const access = await readConfigAccess(ctx, current, session ?? { personId: null, sessionId: null })
+  if (access.required && access.unlocked) return
+  const hidden = (await listFeedsOfSource(ctx.db, current.organizationId, current.id)).filter((feed) => feedHasHiddenValues(feed.connectorConfig))
+  if (hidden.length === 0) return
+  const names = hidden.map((feed) => `"${feed.name}"`).join(", ")
+  throw new DomainError(
+    `A Base URL agora aponta para outro servidor, e ${hidden.length === 1 ? `o conjunto ${names} guarda` : `os conjuntos ${names} guardam`} valores ocultos (cabeçalhos, parâmetros fixos ou o que vem depois do "?" no endpoint), que iriam junto para ele. Tire esses valores dos conjuntos antes de trocar o servidor e digite-os de novo depois, ou cadastre outra fonte para o servidor novo.`,
+    "DATA_SOURCE_MASKED_VALUE",
+    422,
+    { reason: ORIGIN_CHANGED, feeds: hidden.map((feed) => ({ id: feed.id, name: feed.name })) },
+  )
+}
+
+/**
+ * Trocar a credencial libera a configuração para quem trocou (`resetUnlocksAfterCredentialChange`), e a liberação mostra os valores
+ * ocultos da fonte e dos conjuntos. A prova da credencial nova diz só que ela vale no destino: numa API Pull com token, um token
+ * PRÓPRIO válido da mesma API passa, e quem trocou veria valores que nunca soube. Tirar a liberação automática não resolve, porque
+ * liberar depois com a nova (que é dele) daria o mesmo. Então, sem liberação viva (sem ter provado a credencial atual), a troca é
+ * recusada enquanto a fonte ou algum conjunto guardar outro valor oculto, antes de qualquer conexão e de gravar. `next` é a
+ * configuração que vai valer; da fonte, contam só os valores que seguem iguais aos guardados. Banco e SFTP não têm valor oculto
+ * além da credencial (`maskConfigsInResponse` só esconde API Pull): a troca segue como antes.
+ * Devolve se a troca depende de não haver valor oculto (quem troca não está liberado): aí a conferência se repete na transação de
+ * escrita (`recheckHiddenValuesUnderLock`).
+ */
+async function refuseCredentialChangeOverHiddenValues(ctx: DataHubContext, current: DataSourceRow, next: SourceConfig, session: ConfigSession | null): Promise<boolean> {
+  if (next.kind !== "API_PULL") return false
+  const access = await readConfigAccess(ctx, current, session ?? { personId: null, sessionId: null })
+  if (access.required && access.unlocked) return false
+  await refuseOtherHiddenValues(ctx.db, current, sourceHiddenValues(next, current.config as SourceConfig))
+  return true
+}
+
+/**
+ * Entre a conferência de antes e o commit, outra pessoa liberada pode gravar um valor oculto novo (cabeçalho da fonte, conjunto novo
+ * ou alterado). Na transação de escrita, com a linha da fonte travada (`locked`, o primeiro comando dela; toda gravação de fonte ou
+ * conjunto trava a mesma linha antes, em `assertConfigStillUnlocked`), confere de novo com o que está gravado agora. `next` nulo = só
+ * a credencial muda, e vale a configuração gravada agora; senão o PATCH grava `next` por cima, e da fonte contam os valores que ele mantém.
+ */
+async function recheckHiddenValuesUnderLock(client: Queryable, current: DataSourceRow, next: SourceConfig | null, locked: DataSourceRow): Promise<void> {
+  const stored = locked.config as SourceConfig
+  await refuseOtherHiddenValues(client, current, next ? sourceHiddenValues(next, current.config as SourceConfig) : sourceHiddenValues(stored))
+}
+
+async function refuseOtherHiddenValues(db: Queryable, current: DataSourceRow, fields: string[]): Promise<void> {
+  const feeds = (await listFeedsOfSource(db, current.organizationId, current.id)).filter((feed) => feedHasHiddenValues(feed.connectorConfig))
+  if (fields.length === 0 && feeds.length === 0) return
+  const where = [
+    ...(fields.length > 0 ? [`na fonte (${fields.join(", ")})`] : []),
+    ...(feeds.length > 0 ? [`${feeds.length === 1 ? "no conjunto" : "nos conjuntos"} ${feeds.map((feed) => `"${feed.name}"`).join(", ")}`] : []),
+  ].join(" e ")
+  throw new DomainError(
+    `Esta fonte guarda valores ocultos além da credencial ${where}, e quem troca a credencial passa a vê-los. Libere a configuração com a credencial atual e troque em seguida. Sem a credencial atual, tire esses valores, troque a credencial e digite-os de novo.`,
+    "DATA_SOURCE_MASKED_VALUE",
+    422,
+    { reason: CREDENTIAL_CHANGED, fields, feeds: feeds.map((feed) => ({ id: feed.id, name: feed.name })) },
+  )
+}
+
+export async function updateSource(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: unknown, session: ConfigSession | null = null): Promise<SourceView> {
   const current = await requireSource(ctx.db, organizationId, sourceId)
   const input = sourceInputSchema.partial({ config: true }).parse(rawInput)
-  const config = input.config ? sourceConfigSchema.parse(input.config) : current.config
+  const config = input.config ? restoreMaskedSourceConfig(sourceConfigSchema.parse(input.config), current.config as SourceConfig) : current.config
   if (config.kind !== current.kind) throw new DomainError("O tipo da conexão não pode ser alterado depois de criada — crie outra fonte.", "DATA_SOURCE_KIND_IMMUTABLE", 422)
+  // Antes de qualquer conexão: a prova da credencial nova, logo abaixo, já chama os conjuntos no servidor novo.
+  await refuseHiddenFeedValuesOnNewOrigin(ctx, current, config, session)
   // Destino da credencial mudou: todas as credenciais exigidas precisam vir NESTA requisição (nunca reaproveitar a guardada).
   const targetChanged = secretTargetOf(config) !== secretTargetOf(current.config as SourceConfig)
   if (targetChanged) {
     const missing = requiredSecretPurposes(config).filter((entry) => entry.required && !input.secrets?.[entry.field])
     if (missing.length > 0) {
-      throw new DomainError("O servidor, o usuário ou a forma de autenticação mudou: informe a credencial de novo (a guardada vale só para o destino original).", "DATA_SOURCE_SECRET_REENTRY_REQUIRED", 422, { fields: missing.map((entry) => entry.field) })
+      throw new DomainError("O servidor, o banco, o usuário ou a forma de autenticação mudou: informe a credencial de novo (a guardada vale só para o destino original).", "DATA_SOURCE_SECRET_REENTRY_REQUIRED", 422, { fields: missing.map((entry) => entry.field) })
     }
   }
+  // Credencial digitada: precisa funcionar no destino que vai valer ANTES de gravar qualquer coisa. Antes do teste, a recusa de quem
+  // passaria a ver valores ocultos que nunca soube (sem autenticação → token próprio, sem liberação a pedir).
+  const credentialTyped = requiredSecretPurposes(config).some((entry) => input.secrets?.[entry.field])
+  const identified = identifiedSession(session)
+  const recheckHiddenValues = credentialTyped && (await refuseCredentialChangeOverHiddenValues(ctx, current, config, session))
+  if (credentialTyped) await verifyNewCredential(ctx, current, config, input.secrets!, identified)
+  const nextName = input.name ?? current.name
+  const nextDescription = input.description ?? current.description
   // Configuração, credenciais e auditoria num commit só (achado N01 da 4ª auditoria): com commits separados, o destino novo ficava
   // gravado enquanto a credencial antiga continuava ativa — um "Testar conexão" (ou uma carga) nesse meio-tempo mandava a credencial
   // guardada para o destino novo, e uma falha na troca deixava os dois assim, sem registro. Quem lê vê o par antigo ou o novo.
   await inTransaction(ctx.db, async (client) => {
+    const locked = await assertConfigStillUnlocked(ctx, client, { organizationId, sourceId, session, route: "PATCH /sources/:id" })
+    if (recheckHiddenValues) await recheckHiddenValuesUnderLock(client, current, config, locked)
     await client.query(`update data_sources set name = $2, description = $3, config = $4, updated_by = $5, updated_at = now(), connection_health = case when $6 then 'UNKNOWN' else connection_health end where id = $1`, [
       sourceId,
-      input.name ?? current.name,
-      input.description ?? current.description,
+      nextName,
+      nextDescription,
       JSON.stringify(config),
       actorId,
       Boolean(input.config),
@@ -152,18 +188,41 @@ export async function updateSource(ctx: DataHubContext, organizationId: string, 
         if (!stored.includes(entry.purpose)) await ctx.secrets.revoke({ sourceId, purpose: entry.purpose }, { db: client })
       }
     }
-    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_UPDATED", entityType: "data_source", entityId: sourceId, payload: { configChanged: Boolean(input.config), secretsRotated: stored, secretTargetChanged: targetChanged } })
+    if (stored.length > 0 || targetChanged) await resetUnlocksAfterCredentialChange(client, { organizationId, sourceId, session: identified, now: ctx.clock.now() })
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_UPDATED", entityType: "data_source", entityId: sourceId, payload: { sourceId, name: nextName, ...sourceChanges({ name: current.name, description: current.description, config: current.config as SourceConfig }, { name: nextName, description: nextDescription, config }), secretsRotated: stored, secretTargetChanged: targetChanged } })
   })
   return describeSource(ctx, (await findSource(ctx.db, organizationId, sourceId))!)
 }
 
-export async function rotateSourceSecrets(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawSecrets: unknown): Promise<SourceView> {
+/**
+ * Troca de credencial no MESMO destino: não exige a antiga, porque o caso normal é ela ter mudado no servidor; exige a nova funcionando
+ * de verdade. Assim quem não conhece a senha não derruba as cargas gravando outra. Quem foi liberado com a anterior volta a precisar
+ * de senha, e quem trocou fica liberado. Por isso, sem liberação viva, a troca é recusada enquanto a fonte ou algum conjunto guardar
+ * outro valor oculto (`refuseCredentialChangeOverHiddenValues`).
+ */
+export async function rotateSourceSecrets(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawSecrets: unknown, session: ConfigSession | null = null): Promise<SourceView> {
   const source = await requireSource(ctx.db, organizationId, sourceId)
   const secrets = sourceSecretsSchema.parse(rawSecrets)
-  const stored = await storeSecrets(ctx, source, source.config, secrets, actorId, false)
-  if (stored.length === 0) throw new DomainError("Nenhuma credencial informada para rotacionar.", "DATA_SOURCE_SECRET_REQUIRED", 422)
-  await ctx.db.query(`update data_sources set connection_health = 'UNKNOWN', connection_error = null, status = case when status = 'ERROR' then 'ACTIVE' else status end, updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_SECRET_ROTATED", entityType: "data_source", entityId: sourceId, payload: { purposes: stored } })
+  const config = source.config as SourceConfig
+  const entries = requiredSecretPurposes(config)
+  if (!entries.some((entry) => secrets[entry.field])) throw new DomainError("Nenhuma credencial informada para rotacionar.", "DATA_SOURCE_SECRET_REQUIRED", 422)
+  const identified = identifiedSession(session)
+  if (session && !identified) throw configLockedError(source)
+  const recheckHiddenValues = await refuseCredentialChangeOverHiddenValues(ctx, source, config, session)
+  const proof = await verifyNewCredential(ctx, source, config, secrets, identified)
+  await inTransaction(ctx.db, async (client) => {
+    if (recheckHiddenValues) await recheckHiddenValuesUnderLock(client, source, null, await lockSource(client, organizationId, sourceId))
+    const stored = await storeSecrets(ctx, source, config, secrets, actorId, false, { db: client })
+    // A credencial testada é a que vale inteira: uma frase-senha antiga não acompanha a chave nova.
+    for (const entry of entries) {
+      if (!stored.includes(entry.purpose)) await ctx.secrets.revoke({ sourceId, purpose: entry.purpose }, { db: client })
+    }
+    // O teste acima acabou de conectar com esta credencial, e é esse o estado da conexão. Sem prova (API que responde igual com e sem credencial), segue não testada.
+    const proven = proof === "PROVEN"
+    await client.query(`update data_sources set connection_health = $3, connection_checked_at = coalesce($4, connection_checked_at), connection_error = null, status = case when status = 'ERROR' then 'ACTIVE' else status end, updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId, proven ? "HEALTHY" : "UNKNOWN", proven ? ctx.clock.now() : null])
+    await resetUnlocksAfterCredentialChange(client, { organizationId, sourceId, session: identified, now: ctx.clock.now() })
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SECRET_ROTATED", entityType: "data_source", entityId: sourceId, payload: { sourceId, name: source.name, purposes: stored } })
+  })
   return describeSource(ctx, (await findSource(ctx.db, organizationId, sourceId))!)
 }
 
@@ -186,7 +245,7 @@ export async function testSourceConnection(ctx: DataHubContext, organizationId: 
     result = { health: "ERROR", detail: runError.message, errorCode: runError.code, checkedAt: checkedAt.toISOString() }
   }
   await ctx.db.query(`update data_sources set connection_health = $2, connection_checked_at = $3, connection_error = $4, updated_at = now() where id = $1`, [sourceId, result.health, checkedAt, result.health === "ERROR" ? result.detail : null])
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_CONNECTION_TESTED", entityType: "data_source", entityId: sourceId, payload: { health: result.health, errorCode: result.errorCode } })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_CONNECTION_TESTED", entityType: "data_source", entityId: sourceId, payload: { sourceId, name: source.name, health: result.health, errorCode: result.errorCode } })
   return result
 }
 
@@ -198,24 +257,30 @@ export async function setSourceStatus(ctx: DataHubContext, organizationId: strin
   await ctx.db.query(`update data_sources set status = $2, updated_by = $3, updated_at = now() where id = $1`, [sourceId, next, actorId])
   // Feeds ativos de uma fonte pausada não são agendados (o agendador filtra pela fonte); ao retomar, recalcula a próxima execução.
   if (next === "ACTIVE") {
-    await ctx.db.query(`update data_feeds set next_sync_at = case when cadence->>'kind' = 'MANUAL' then null else now() end where source_id = $1 and status = 'ACTIVE' and deleted_at is null`, [sourceId])
+    const feeds = await ctx.db.query<{ id: string; cadence: Cadence }>(`select id, cadence from data_feeds where source_id = $1 and status = 'ACTIVE' and deleted_at is null`, [sourceId])
+    if (feeds.rows.length > 0) {
+      const timeZone = await resolveOrganizationTimezone(ctx.db, organizationId)
+      for (const feed of feeds.rows) await ctx.db.query(`update data_feeds set next_sync_at = $2 where id = $1`, [feed.id, syncAtSourceResume(feed.cadence, ctx.clock.now(), timeZone)])
+    }
   }
-  await recordAudit(ctx.db, { organizationId, actorId, action: `DATA_HUB_SOURCE_${action}D`, entityType: "data_source", entityId: sourceId })
+  const cancelledRuns = action === "PAUSE" ? await cancelWaitingRetries(ctx.db, { organizationId, sourceId }) : 0
+  await recordAudit(ctx.db, { organizationId, actorId, action: `DATA_HUB_SOURCE_${action}D`, entityType: "data_source", entityId: sourceId, payload: { sourceId, name: source.name, ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
   return describeSource(ctx, (await findSource(ctx.db, organizationId, sourceId))!)
 }
 
 export async function deleteSource(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string): Promise<void> {
-  await requireSource(ctx.db, organizationId, sourceId)
+  const source = await requireSource(ctx.db, organizationId, sourceId)
   // Uma operação só: fonte removida nunca fica com feed agendado, token de push ou credencial ainda válidos.
   await inTransaction(ctx.db, async (client) => {
-    await client.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId])
-    await client.query(`update data_sources set deleted_at = now(), status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1`, [sourceId, actorId])
+    await client.query(`update data_feeds set deleted_at = now(), deleted_by_person_id = $2, status = 'PAUSED', next_sync_at = null where source_id = $1 and deleted_at is null`, [sourceId, actorId])
+    await client.query(`update data_sources set deleted_at = now(), deleted_by_person_id = $2, status = 'PAUSED', updated_by = $2, updated_at = now() where id = $1 and deleted_at is null`, [sourceId, actorId])
     await client.query(`update data_push_tokens set revoked_at = now() where source_id = $1 and revoked_at is null`, [sourceId])
     // Cargas ainda na fila de qualquer feed da fonte terminam aqui (nunca ficam órfãs ocupando a fila de todas as organizações).
     const cancelledRuns = await cancelOrphanRuns(client, { organizationId, sourceId })
     // A credencial continua cifrada para auditoria, mas revogada: nenhuma leitura do SecretStore a devolve mais.
     const revoked = await client.query<{ purpose: SecretPurpose }>(`update data_secrets set revoked_at = now() where source_id = $1 and revoked_at is null returning purpose`, [sourceId])
-    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { secretsRevoked: revoked.rows.map((row) => row.purpose), ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
+    await revokeConfigUnlocks(client, sourceId, ctx.clock.now())
+    await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_SOURCE_DELETED", entityType: "data_source", entityId: sourceId, payload: { sourceId, name: source.name, kind: source.kind, target: describeSourceTarget(source.config as SourceConfig), secretsRevoked: revoked.rows.map((row) => row.purpose), ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
   })
 }
 
@@ -229,32 +294,46 @@ export const databaseDraftTestSchema = z.object({
   sourceId: z.string().uuid().optional(),
 })
 
-export async function testDatabaseDraft(ctx: DataHubContext, organizationId: string, actorId: string | null, rawInput: unknown): Promise<ConnectionTestResult> {
+export async function testDatabaseDraft(ctx: DataHubContext, organizationId: string, actorId: string | null, rawInput: unknown, session: ConfigSession | null = null): Promise<ConnectionTestResult> {
   const input = databaseDraftTestSchema.parse(rawInput)
   const checkedAt = ctx.clock.now()
   let password = input.password ?? null
+  // Fonte citada existe nesta organização: o registro nunca aponta para uma fonte que a pessoa só digitou.
+  const source = input.sourceId ? await requireSource(ctx.db, organizationId, input.sourceId) : null
   if (!password) {
-    if (!input.sourceId) throw new DomainError("Informe a senha do banco para testar a conexão.", "DATA_SOURCE_SECRET_REQUIRED", 422)
-    const source = await requireSource(ctx.db, organizationId, input.sourceId)
+    if (!source) throw new DomainError("Informe a senha do banco para testar a conexão.", "DATA_SOURCE_SECRET_REQUIRED", 422)
     if (source.kind !== "DATABASE") throw new DomainError("A fonte informada não é um banco de dados.", "DATA_FEED_CONNECTOR_MISMATCH", 422)
     databaseConfigOf(source)
-    // A senha guardada só testa o MESMO destino (servidor, porta, usuário, TLS); outro destino = digitar a senha (achado I-F2).
+    // A senha guardada só testa o MESMO destino (servidor, porta, banco, usuário, TLS); outro destino = digitar a senha (achado I-F2).
     if (secretTargetOf({ kind: "DATABASE", database: input.config }) !== secretTargetOf(source.config as SourceConfig)) {
-      throw new DomainError("O servidor, o usuário ou a criptografia mudou: informe a senha para testar este destino.", "DATA_SOURCE_SECRET_REENTRY_REQUIRED", 422, { fields: ["password"] })
+      throw new DomainError("O servidor, o banco, o usuário ou a criptografia mudou: informe a senha para testar este destino.", "DATA_SOURCE_SECRET_REENTRY_REQUIRED", 422, { fields: ["password"] })
     }
     password = await ctx.secrets.get({ sourceId: source.id, purpose: "DATABASE_PASSWORD" })
     if (!password) throw new DomainError("Esta conexão não tem senha guardada — informe a senha.", "DATA_SOURCE_SECRET_REQUIRED", 422)
   }
+  // Senha digitada é uma tentativa, e conta no limite por pessoa + servidor + usuário. A guardada não é palpite de ninguém: testar com ela é livre.
+  const owner = input.password ? attemptOwnerOf(session, { organizationId, config: { kind: "DATABASE", database: input.config }, sourceId: source?.id ?? null, name: source?.name ?? null }) : null
+  const attempt = owner ? await reserveCredentialAttempt(ctx, owner) : null
   const connection = resolveDatabaseConnection(input.config, password)
   let result: ConnectionTestResult
+  let passwordRefused = false
   try {
     const report = await testDatabaseConnection(ctx, connection, input.sourceId ?? `draft:${organizationId}:${input.config.engine}:${input.config.host}:${input.config.database}:${input.config.username}`)
     result = { health: "HEALTHY", detail: describeTestDetail(report), errorCode: null, checkedAt: checkedAt.toISOString(), database: report }
   } catch (error) {
     const runError = error instanceof DataRunError ? error : new DataRunError("DATA_SOURCE_UNREACHABLE", error instanceof Error ? error.message : "Falha ao testar a conexão.")
+    passwordRefused = isCredentialRefusal(runError)
     result = { health: "ERROR", detail: runError.message, errorCode: runError.code, checkedAt: checkedAt.toISOString(), database: null }
   }
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_DATABASE_TESTED", entityType: "data_source", entityId: input.sourceId ?? organizationId, payload: { target: describeDatabaseConnection(input.config), health: result.health, errorCode: result.errorCode } })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_DATABASE_TESTED", entityType: "data_source", entityId: input.sourceId ?? organizationId, payload: { ...(source ? { sourceId: source.id, name: source.name, usedStoredPassword: !input.password } : {}), target: describeDatabaseConnection(input.config), health: result.health, errorCode: result.errorCode } })
+  if (attempt && owner) {
+    if (passwordRefused) {
+      const blocked = await blockedAfterRefusal(ctx, owner, attempt)
+      if (blocked) throw blocked
+    } else {
+      await settleCredentialAttempt(ctx, attempt.id, result.health === "HEALTHY" ? "SUCCEEDED" : "REFUSED")
+    }
+  }
   return result
 }
 

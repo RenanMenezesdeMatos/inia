@@ -5,6 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ExampleCard, FieldRow, NodeReference, SeeAlso, WarningCallout, WikiArticle, WikiFlow, WikiLink, WikiPageHeader, WikiSection, WikiTable } from "@/components/wiki/wiki-primitives"
 import type { WikiTocEntry } from "@/components/wiki/wiki-toc"
 import { NODE_CONTEXT_LABELS, WIKI_NODES, WIKI_NODE_ORDER, type NodeContext } from "@/components/wiki/wiki-reference"
+import { examplesTeachingAction, examplesTeachingNode, examplesTeachingTrigger } from "@/components/wiki/workflow-demo/demo-catalog"
+import { NodeGuidePanel } from "@/components/wiki/workflow-demo/node-guide-panel"
+import { ACTION_GUIDES, NODE_GUIDES, TRIGGER_GUIDES, TRIGGER_MODALITY_LABELS, type TriggerModality } from "@/components/wiki/workflow-demo/node-guides"
 
 export const metadata: Metadata = {
   title: "Nodes",
@@ -15,6 +18,7 @@ const TOC: WikiTocEntry[] = [
   { id: "visao-geral", label: "Visão geral" },
   { id: "contexto", label: "Contexto dos nodes" },
   { id: "catalogo", label: "Os 12 nodes" },
+  { id: "gatilho-modalidades", label: "Gatilho: as modalidades" },
   { id: "compatibilidade", label: "Compatibilidade por contexto" },
   { id: "acao-tipos", label: "Ação: os tipos" },
   { id: "diagnostico-indicador", label: "Diagnóstico do indicador" },
@@ -25,16 +29,20 @@ const TOC: WikiTocEntry[] = [
 
 const CONTEXT_ORDER: NodeContext[] = ["STRUCTURE", "EMPLOYEE_COLLECTION", "EMPLOYEE", "CONSOLIDATED_RESULT"]
 
+const TRIGGER_MODALITIES = Object.keys(TRIGGER_GUIDES) as TriggerModality[]
+const triggerKindOf = (modality: TriggerModality) => (modality === "schedule_relative" ? null : modality)
+
 export default function NodesPage() {
   return (
     <WikiArticle toc={TOC}>
       <WikiPageHeader
         eyebrow="05 · Workflow Engine"
         title="Nodes"
-        lead="As peças do fluxo. Onze nodes existem hoje no canvas — oito sempre disponíveis e três exclusivos do modo Consolidado. Agent não é um node: é chamado por dentro de uma Ação (Chamar agente) ou de um Orquestrador."
+        lead="As peças do fluxo. Doze nodes existem hoje no canvas: o Gatilho, oito sempre disponíveis para adicionar e três exclusivos do modo Consolidado. Agent não é um node: é chamado por dentro de uma Ação (Chamar agente) ou de um Orquestrador."
       >
         <p className="text-sm text-muted-foreground">
-          Esta lista é gerada do mesmo catálogo de tipos que o editor usa — um node novo no produto obrigatoriamente entra aqui.
+          Esta lista é gerada do mesmo catálogo de tipos que o editor usa — um node novo no produto obrigatoriamente entra aqui. Prefere começar por um
+          problema concreto? Veja <WikiLink href="/wiki/workflows/exemplos">Aprenda na prática</WikiLink>.
         </p>
       </WikiPageHeader>
 
@@ -66,7 +74,7 @@ export default function NodesPage() {
           {WIKI_NODE_ORDER.map((type) => {
             const node = WIKI_NODES[type]
             return (
-              <NodeReference key={type} icon={node.icon} iconClass={node.iconClass} iconBgClass={node.iconBgClass} name={node.label} summary={node.summary}>
+              <NodeReference key={type} id={`no-${type}`} icon={node.icon} iconClass={node.iconClass} iconBgClass={node.iconBgClass} name={node.label} summary={node.summary}>
                 <FieldRow label="Finalidade" value={node.purpose} />
                 <FieldRow label="Quando usar" value={node.whenToUse} />
                 <FieldRow label="Entrada" value={node.input} />
@@ -95,7 +103,25 @@ export default function NodesPage() {
                 ) : null}
                 <FieldRow label="Exemplo" value={<span className="font-mono text-xs">{node.example}</span>} />
                 <FieldRow label="Contextos" value={`${node.acceptedIn.map((context) => NODE_CONTEXT_LABELS[context]).join(" · ")}${node.consolidatedOnly ? " — só aparece na paleta em modo Consolidado" : ""}`} />
+                <NodeGuidePanel name={node.label} guide={NODE_GUIDES[type]} uses={examplesTeachingNode(type)} />
               </NodeReference>
+            )
+          })}
+        </div>
+      </WikiSection>
+
+      <WikiSection id="gatilho-modalidades" title="Gatilho: as modalidades" eyebrow="O que inicia a jornada">
+        <p>
+          Um Workflow tem um Gatilho só, e a modalidade define que dados cada execução traz. A referência completa está em <WikiLink href="/wiki/workflows/triggers">Triggers</WikiLink>.
+        </p>
+        <div className="grid grid-cols-1 gap-3">
+          {TRIGGER_MODALITIES.map((modality) => {
+            const kind = triggerKindOf(modality)
+            return (
+              <div key={modality} id={`gatilho-${modality}`} className="scroll-mt-24 space-y-2">
+                <p className="font-medium text-foreground">{TRIGGER_MODALITY_LABELS[modality]}</p>
+                <NodeGuidePanel name={TRIGGER_MODALITY_LABELS[modality]} guide={TRIGGER_GUIDES[modality]} uses={kind ? examplesTeachingTrigger(kind) : []} />
+              </div>
             )
           })}
         </div>
@@ -142,7 +168,8 @@ export default function NodesPage() {
 
       <WikiSection id="acao-tipos" title="Ação: os tipos" eyebrow="Um node, quatro comportamentos (e dois legados)">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <ExampleCard title="Chamar agente">
+          <div id="acao-CALL_AGENT" className="scroll-mt-24 space-y-2">
+            <ExampleCard title="Chamar agente">
             Aciona um Agent especialista diretamente, com uma instrução e o <strong>Formato da análise</strong>: Feedback de monitoria (padrão) ou
             Conformidade de processo ou Avaliação de processo (feedback com base, para &quot;Gerar feedback&quot;). Os dois só aceitam gatilho por Flag de canal (ver <WikiLink href="/wiki/bases-conhecimento#process-audit">Conformidade e avaliação de processo</WikiLink>). Ver <WikiLink href="/wiki/agents#agent-direto">Agent direto</WikiLink>. Se o
             Agent tem <strong>Ferramentas de investigação</strong>, o painel mostra &quot;Ferramentas nesta execução&quot;: as capacidades do Agent, que o
@@ -151,27 +178,38 @@ export default function NodesPage() {
             formato pode ser <strong>Diagnóstico do indicador (feedback com base)</strong>: ver{" "}
             <WikiLink href="/wiki/workflows/nodes#diagnostico-indicador">Diagnóstico do indicador</WikiLink>.
           </ExampleCard>
-          <ExampleCard title="Gerar feedback">
+            <NodeGuidePanel name="Chamar agente" guide={ACTION_GUIDES.CALL_AGENT} uses={examplesTeachingAction("CALL_AGENT")} />
+          </div>
+          <div id="acao-GENERATE_FEEDBACK" className="scroll-mt-24 space-y-2">
+            <ExampleCard title="Gerar feedback">
             Transforma o resultado de um <strong>Chamar agente</strong> ou <strong>Orquestrador</strong> anterior (a Origem, escolhida no painel) em
             feedback oficial de <strong>monitoria</strong> (gatilho por Flag) ou de <strong>indicador</strong> (gatilho por Indicador, com Chamar
             agente). Não analisa a interação de novo: confere a citação do Agent na transcrição real (monitoria) ou usa os dados oficiais do sistema
             — valor, meta, período — (indicador), valida o texto e a privacidade. Liberado, o Workflow segue (Revisão humana opcional, Output);
-            retido, a execução espera o QA de feedback e retoma quando ele decidir; bloqueado, nunca é emitido. Este nó não entrega nada: quem entrega
-            é o Output. Feedback oficial no Acompanhamento do operador sempre passa por aqui. Só aparece quando o módulo de feedback está ligado.
+            sem feedback publicável, a análise fica registrada e nada é emitido, sem esperar decisão humana. Este nó não entrega nada: quem entrega
+            é o Output. Feedback oficial no Acompanhamento do operador sempre passa por aqui. Está sempre disponível.
           </ExampleCard>
+            <NodeGuidePanel name="Gerar feedback" guide={ACTION_GUIDES.GENERATE_FEEDBACK} uses={examplesTeachingAction("GENERATE_FEEDBACK")} />
+          </div>
           <ExampleCard title="Feedback direto de atendimento (legado)">
             A versão anterior, que analisava a interação por conta própria e entregava fora do Output. Não é oferecida para nós novos; Workflows
             publicados com ela continuam executando.
           </ExampleCard>
-          <ExampleCard title="Definir variável">Guarda um valor (fixo ou vindo do gatilho, de um node anterior ou de outra variável) na memória desta execução.</ExampleCard>
+          <div id="acao-SET_VARIABLE" className="scroll-mt-24 space-y-2">
+            <ExampleCard title="Definir variável">Guarda um valor (fixo ou vindo do gatilho, de um node anterior ou de outra variável) na memória desta execução.</ExampleCard>
+            <NodeGuidePanel name="Definir variável" guide={ACTION_GUIDES.SET_VARIABLE} uses={examplesTeachingAction("SET_VARIABLE")} />
+          </div>
           <ExampleCard title="Definir configuração (legado)">
             Não pode mais ser criado pelo Builder. Um node já existente desse tipo (Workflows publicados antes da mudança) continua funcionando e
             editável, por compatibilidade.
           </ExampleCard>
-          <ExampleCard title="Escalonar">
+          <div id="acao-ESCALATE" className="scroll-mt-24 space-y-2">
+            <ExampleCard title="Escalonar">
             Transfere responsabilidade a um cargo da hierarquia, com o conteúdo, em uma ou mais superfícies; pode Continuar o fluxo ou Encerrar o
             branch. Ver <WikiLink href="/wiki/workflows/human-review#escalonar">Escalonar</WikiLink>.
           </ExampleCard>
+            <NodeGuidePanel name="Escalonar" guide={ACTION_GUIDES.ESCALATE} uses={examplesTeachingAction("ESCALATE")} />
+          </div>
         </div>
       </WikiSection>
 

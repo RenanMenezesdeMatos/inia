@@ -370,11 +370,12 @@ export async function updateScene(db: Database, actor: SceneActor, sceneId: stri
   })
 }
 
-/** Excluir o cenário padrão volta o padrão para "nenhum" (o palco de sempre). As imagens saem junto. */
+/** Exclusão lógica (migration 177): as imagens continuam guardadas e o cenário volta pela Central de Dados, sem período agendado. Excluir o cenário padrão volta o padrão para "nenhum" (o palco de sempre). */
 export async function deleteScene(db: Database, actor: SceneActor, sceneId: string): Promise<void> {
   await inTransaction(db, async (client) => {
-    const deleted = await client.query<{ name: string }>(`delete from inia_scenes where organization_id = $1 and id = $2 returning name`, [actor.organizationId, sceneId])
+    const deleted = await client.query<{ name: string }>(`update inia_scenes_all set deleted_at = now(), deleted_by_person_id = $3, updated_at = now(), updated_by_person_id = $3 where organization_id = $1 and id = $2 and deleted_at is null returning name`, [actor.organizationId, sceneId, actor.personId])
     if (!deleted.rows[0]) throw notFound()
+    await client.query(`update inia_scene_settings set default_scene_id = null, updated_at = now(), updated_by_person_id = $3 where organization_id = $1 and default_scene_id = $2`, [actor.organizationId, sceneId, actor.personId])
     await audit(client, actor, "INIA_SCENE_DELETED", sceneId, { name: deleted.rows[0].name })
   })
 }
@@ -398,12 +399,12 @@ export async function setDefaultScene(db: Database, actor: SceneActor, sceneId: 
 type ImageFile = { mimeType: string; data: Buffer; sha256: string }
 /** UMA imagem de cenário da MESMA organização (é um fundo decorativo: qualquer pessoa autenticada da organização pode ver). */
 export async function loadSceneImage(db: Queryable, organizationId: string, imageId: string): Promise<ImageFile | null> {
-  const row = (await db.query<{ mime_type: string; data: Buffer; sha256: string }>(`select mime_type, data, sha256 from inia_scene_images where organization_id = $1 and id = $2`, [organizationId, imageId])).rows[0]
+  const row = (await db.query<{ mime_type: string; data: Buffer; sha256: string }>(`select i.mime_type, i.data, i.sha256 from inia_scene_images i join inia_scenes s on s.id = i.scene_id where i.organization_id = $1 and i.id = $2`, [organizationId, imageId])).rows[0]
   return row ? { mimeType: row.mime_type, data: row.data, sha256: row.sha256 } : null
 }
 
 /** Endereço antigo (`/:sceneId/image`): a imagem PRINCIPAL do cenário. */
 export async function loadScenePrimaryImage(db: Queryable, organizationId: string, sceneId: string): Promise<ImageFile | null> {
-  const row = (await db.query<{ mime_type: string; data: Buffer; sha256: string }>(`select mime_type, data, sha256 from inia_scene_images where organization_id = $1 and scene_id = $2 and is_primary`, [organizationId, sceneId])).rows[0]
+  const row = (await db.query<{ mime_type: string; data: Buffer; sha256: string }>(`select i.mime_type, i.data, i.sha256 from inia_scene_images i join inia_scenes s on s.id = i.scene_id where i.organization_id = $1 and i.scene_id = $2 and i.is_primary`, [organizationId, sceneId])).rows[0]
   return row ? { mimeType: row.mime_type, data: row.data, sha256: row.sha256 } : null
 }

@@ -5,10 +5,13 @@ import {
   changedSemanticFields,
   checkComponentCoherence,
   componentValueScale,
+  componentsNotDefinedMessage,
+  componentsProblem,
   describeAggregationStrategy,
   formatIndicatorValue,
   indicatorDefinitionInputSchema,
   normalizeIndicatorCode,
+  unitValueProblem,
   validateIndicatorDefinition,
   valueFromComponents,
 } from "./indicator-definition.js"
@@ -104,5 +107,27 @@ describe("definição de indicador — catálogo metadata-driven", () => {
     const current = base()
     expect(changedSemanticFields(current, { ...current, name: "Outro nome" })).toEqual([])
     expect(changedSemanticFields(current, { ...current, unit: "COUNT", desiredDirection: "LOWER" })).toEqual(["unit", "desiredDirection"])
+  })
+})
+
+describe("regra única de numerador e denominador em uma linha", () => {
+  it("estratégia sem componentes recusa os dois; com componentes confere; denominador zero não é incoerência", () => {
+    for (const kind of ["SUM", "AVERAGE", "LATEST"] as const) expect(componentsProblem(kind, 450, 8100, 18)).toEqual({ kind: "NOT_DEFINED_BY_COMPONENTS" })
+    expect(componentsProblem("WEIGHTED_AVERAGE", 450, 8100, 18)).toBeNull()
+    expect(componentsProblem("RATE", 85, 17, 20)).toBeNull()
+    expect(componentsProblem("RATE", 0, 0, 0)).toBeNull()
+    expect(componentsProblem("WEIGHTED_AVERAGE", 900, 8100, 18)).toEqual({ kind: "INCOHERENT", expected: 450, tolerance: 4.5 })
+  })
+
+  it("a mensagem fala da estratégia e do indicador", () => {
+    expect(componentsNotDefinedMessage("SUM", "QUALQUER")).toBe('A estratégia "Soma" do indicador "QUALQUER" não define o valor por numerador e denominador. Envie a linha sem os componentes ou revise a estratégia no catálogo — nada foi gravado.')
+  })
+
+  it("faixa de valor vem da unidade", () => {
+    expect(unitValueProblem("PERCENT", 100)).toBeNull()
+    expect(unitValueProblem("PERCENT", 100.1)).toMatch(/entre 0 e 100/)
+    expect(unitValueProblem("PERCENT", -1)).toMatch(/entre 0 e 100/)
+    expect(unitValueProblem("SECONDS", -1)).toMatch(/negativo/)
+    expect(unitValueProblem("COUNT", -1)).toBeNull()
   })
 })

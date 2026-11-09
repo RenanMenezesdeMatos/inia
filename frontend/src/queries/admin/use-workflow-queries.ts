@@ -1,13 +1,16 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import {
+  confirmWorkflowRetry,
   createWorkflow,
   deleteWorkflow,
   discardWorkflowConfiguration,
   fetchSchedulePreview,
   fetchWorkflow,
   fetchWorkflowEnrollmentsPage,
+  fetchWorkflowExecutionAgentRecords,
+  fetchWorkflowRetryPreview,
   fetchWorkflows,
   fetchWorkflowsPage,
   publishWorkflow,
@@ -23,6 +26,7 @@ import {
 } from "@/services/admin/workflow-service"
 import type { FlowGraph } from "@/schemas/admin/workflow-graph.schema"
 import { GO_LIVE_CONFIRMATION_CODES, type Workflow } from "@/schemas/admin/workflow.schema"
+import { WORKFLOW_RETRY_HANDLED_CODES } from "@/schemas/admin/workflow-retry.schema"
 
 import { adminQueryKeys } from "./admin-query-keys"
 
@@ -96,6 +100,8 @@ export function useSaveWorkflowDraftMutation(id: string) {
     mutationFn: (graph: FlowGraph) => saveWorkflowDraft(id, graph),
     invalidateKey: adminQueryKeys.workflow(id),
     successMessage: "Rascunho salvo.",
+    // "Dados inválidos." não diz o que corrigir: o editor mostra a etapa e o campo (save-draft-error.ts).
+    silentErrorCodes: ["VALIDATION_ERROR"],
   })
 }
 
@@ -122,6 +128,43 @@ export function useSubmitHumanReviewDecisionMutation(workflowId: string) {
       submitHumanReviewDecision(workflowId, enrollmentId, nodeId, decision),
     invalidateKey: adminQueryKeys.workflowEnrollments(workflowId),
     successMessage: "Decisão registrada.",
+  })
+}
+
+/**
+ * Prévia da nova tentativa — buscada a cada abertura do diálogo (sem cache entre aberturas: `gcTime: 0` e o corpo do
+ * diálogo só existe aberto), porque o que vale é o estado atual do Workflow e dos agentes.
+ */
+export function useWorkflowRetryPreviewQuery(workflowId: string, enrollmentId: string) {
+  return useQuery({
+    queryKey: adminQueryKeys.workflowEnrollmentRetryPreview(workflowId, enrollmentId),
+    queryFn: () => fetchWorkflowRetryPreview(workflowId, enrollmentId),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * Confirma a nova tentativa. As recusas conhecidas (dados mudaram, Workflow desligado, agente inativo, tentativa em
+ * andamento…) aparecem no próprio diálogo — nunca como toast. Sucesso atualiza Execuções e Resultados.
+ */
+export function useConfirmWorkflowRetryMutation(workflowId: string) {
+  const queryClient = useQueryClient()
+  return useAdminMutation({
+    mutationFn: ({ enrollmentId, fingerprint }: { enrollmentId: string; fingerprint: string }) => confirmWorkflowRetry(workflowId, enrollmentId, fingerprint),
+    invalidateKey: adminQueryKeys.workflowEnrollments(workflowId),
+    successMessage: "Nova tentativa iniciada.",
+    silentErrorCodes: WORKFLOW_RETRY_HANDLED_CODES,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: adminQueryKeys.workflowResults(workflowId) }),
+  })
+}
+
+/** "Ver histórico desta execução" (PEN-071) — só carrega quando a pessoa abre a entrada. */
+export function useWorkflowExecutionAgentRecordsQuery(workflowId: string, enrollmentId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: adminQueryKeys.workflowEnrollmentAgentRecords(workflowId, enrollmentId),
+    queryFn: () => fetchWorkflowExecutionAgentRecords(workflowId, enrollmentId),
+    enabled,
   })
 }
 

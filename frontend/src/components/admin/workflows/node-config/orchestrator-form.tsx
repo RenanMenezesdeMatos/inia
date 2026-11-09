@@ -2,6 +2,7 @@
 
 import { useId } from "react"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,8 +10,40 @@ import { Switch } from "@/components/ui/switch"
 import { scopesAreCompatible } from "@/lib/admin/scope-compatibility"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
+import { useOrchestratorVersionsQuery } from "@/queries/admin/use-assistant-queries"
 import { PROCESS_ASSESSMENT_HINT, SPECIALIST_OUTPUT_CONTRACT_LABELS, type SpecialistOutputContract, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
 import { triggerDataOrigin, type WorkflowTrigger } from "@/schemas/admin/workflow.schema"
+
+/**
+ * Versão do Orquestrador que a etapa executa (PEN-076, com a revisão de 03/11/2026): a versão guarda a CONFIGURAÇÃO do Orquestrador
+ * (lista de especialistas, política, resultado estruturado) e continua referenciada pela etapa — gravar o Orquestrador de novo não
+ * muda esta etapa; sem versão fixada, o Workflow fixa a vigente ao publicar. Os agentes (o orquestrador e os especialistas) NÃO
+ * ficam fixados: cada execução usa a versão vigente de cada um no momento em que começa.
+ */
+function OrchestratorVersionNote({ orchestrator, versionId, onUseVigente }: { orchestrator: Orchestrator | null; versionId: string | undefined; onUseVigente: (versionId: string) => void }) {
+  const versionsQuery = useOrchestratorVersionsQuery(orchestrator?.id ?? null, Boolean(orchestrator && versionId))
+  if (!orchestrator) return null
+  const pinned = versionsQuery.data?.find((version) => version.id === versionId)
+  const vigente = orchestrator.currentVersionNumber ?? null
+  const newer = pinned && vigente && vigente > pinned.number && orchestrator.currentVersionId ? orchestrator.currentVersionId : null
+  return (
+    <div className="space-y-1 text-xs text-muted-foreground">
+      <p>
+        {versionId
+          ? `Esta etapa usa a configuração da versão ${pinned?.number ?? "fixada"} do Orquestrador (especialistas, política e resultado estruturado); gravar o Orquestrador de novo não muda esta etapa.`
+          : `Ao publicar o Workflow, esta etapa fica fixada na configuração da versão vigente do Orquestrador${vigente ? ` (versão ${vigente})` : ""}.`}
+      </p>
+      <p data-testid="orchestrator-agents-vigente">
+        O agente orquestrador e os especialistas rodam sempre na versão vigente de cada um: publicar um deles vale nas próximas execuções, sem republicar o Workflow.
+      </p>
+      {newer ? (
+        <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => onUseVigente(newer)}>
+          Usar a versão {vigente} (vigente) nesta etapa
+        </Button>
+      ) : null}
+    </div>
+  )
+}
 
 export function OrchestratorForm({
   node,
@@ -45,7 +78,13 @@ export function OrchestratorForm({
         ) : (
           <Select
             value={node.config.orchestratorId}
-            onValueChange={(orchestratorId) => onChange({ ...node, config: { ...node.config, orchestratorId } })}
+            onValueChange={(orchestratorId) => {
+              // Trocar de Orquestrador fixa a versão vigente do novo (PEN-076); a versão do anterior nunca vale para outro.
+              const { orchestratorVersionId: _previous, ...rest } = node.config
+              void _previous
+              const vigente = orchestrators.find((candidate) => candidate.id === orchestratorId)?.currentVersionId
+              onChange({ ...node, config: { ...rest, orchestratorId, ...(vigente ? { orchestratorVersionId: vigente } : {}) } })
+            }}
           >
             <SelectTrigger id={`${fieldId}-orchestrator`} className="w-full">
               <SelectValue placeholder="Selecione" />
@@ -60,6 +99,11 @@ export function OrchestratorForm({
           </Select>
         )}
       </div>
+      <OrchestratorVersionNote
+        orchestrator={orchestrators.find((candidate) => candidate.id === node.config.orchestratorId) ?? null}
+        versionId={node.config.orchestratorVersionId}
+        onUseVigente={(orchestratorVersionId) => onChange({ ...node, config: { ...node.config, orchestratorVersionId } })}
+      />
       <div className="space-y-1.5">
         <Label htmlFor={`${fieldId}-instruction`}>Instrução</Label>
         <Input

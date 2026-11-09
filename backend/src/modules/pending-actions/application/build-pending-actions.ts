@@ -208,7 +208,7 @@ export async function buildHumanReviewDetail(repository: PendingActionsRepositor
   ])
   const summary = buildSummary(row, graph, people)
   const node = humanReviewNode(graph, nodeId)
-  const contentValue = node?.config.contentSource ? resolveSource(row.enrollment.nodeOutputs, node.config.contentSource) : undefined
+  const contentValue = node?.config.contentSource ? resolveSource(row.enrollment.nodeOutputs, node.config.contentSource, row.enrollment.variables) : undefined
   const allowedDecisions = graph ? humanReviewDecisionSchema.options.filter((decision) => findEdge(graph, nodeId, decision) !== undefined) : []
   return {
     ...summary,

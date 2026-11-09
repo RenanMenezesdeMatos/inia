@@ -37,6 +37,7 @@ risco que sobra.
 | Limites "só falhas" com vaga reservada e devolvida | `shared/presentation/rate-limit.ts` (`release` nas lojas) |
 | Segredos de produção conferidos na subida | `productionSecretProblems` em `backend/src/config/env.ts` |
 | ZIP com tamanho real conferido; PDF com fluxos medidos | `shared/infrastructure/zip-guard.ts`, `shared/infrastructure/pdf-guard.ts` |
+| PDF/DOCX/XLSX lidos em processo filho com teto de memória e de tempo | `shared/infrastructure/isolated-parser/isolated-parser.ts`, `data-hub/infrastructure/xlsx-parser.ts` |
 | Metadados fora das imagens (EXIF/GPS) | `shared/infrastructure/image-metadata.ts` |
 | Banco interno negado por qualquer nome/IP; metadados de nuvem | `shared/infrastructure/outbound-destination-policy.ts` |
 | Teto de chamadas de ferramenta por rodada/turno | `assistant/application/run-orchestrated-reply.ts` |
@@ -56,7 +57,7 @@ risco que sobra.
 ## Como rodar os testes de segurança
 
 ```bash
-cd backend && npx vitest run http-security case-router knowledge-router.security user-account-router.security scoped-admin-security outbound-destination-policy secret-binding zip-guard pdf-guard image-metadata known-device auth-flows password-hasher conversation-monitoring run-orchestrated-reply create-orchestrator-feedback condition-resolvers glob api-pull-volume query-table-markdown usability-identified-scope auth-domain transcript aes-secret-store push-token-hardening push-openapi
+cd backend && npx vitest run http-security case-router knowledge-router.security user-account-router.security scoped-admin-security outbound-destination-policy secret-binding zip-guard pdf-guard isolated-parser text-extractor xlsx-parser image-metadata known-device auth-flows password-hasher conversation-monitoring run-orchestrated-reply create-orchestrator-feedback condition-resolvers glob api-pull-volume query-table-markdown usability-identified-scope auth-domain transcript aes-secret-store push-token-hardening push-openapi
 ```
 
 ```bash

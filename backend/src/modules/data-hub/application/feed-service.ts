@@ -1,19 +1,26 @@
+import { isDeepStrictEqual } from "node:util"
+import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { requireDataContract } from "../domain/contract-registry.js"
+import { restoreMaskedFeedConnector } from "../domain/config-mask.js"
+import { feedChangedFields } from "../domain/config-unlock.js"
 import { DataRunError, type RecordError } from "../domain/error-codes.js"
-import { expectedIntervalMinutes, nextSyncAt } from "../domain/freshness.js"
+import { cadenceLabel, cadenceWriteProblem, expectedIntervalMinutes, nextSyncAt, type Cadence } from "../domain/freshness.js"
 import { feedMappingSchema, mapRecord, suggestMapping, validateMapping, type FeedMapping, type SourceRecord } from "../domain/mapping.js"
 import { columnsFromRecords, fingerprintColumns, missingMappedSources } from "../domain/schema-fingerprint.js"
 import { feedInputSchema, type FeedInput } from "../domain/source-config.js"
 import { extractRecords, fetchApiRecords } from "./connectors/api-pull-connector.js"
-import { parseFileBatch, type FetchedBatch } from "./connectors/file-connector.js"
+import { parseFileBatchForRequest, type FetchedBatch } from "./connectors/file-connector.js"
 import { fetchSftpSample } from "./connectors/sftp-connector.js"
 import { fetchDatabaseSample, validateDatabaseFeed, type DatabaseObjectDescription } from "./connectors/database-connector.js"
+import { assertConfigStillUnlocked, type ConfigSession } from "./config-unlock-service.js"
 import type { DataHubContext } from "./data-hub-context.js"
+import type { RawObjectMeta } from "./ports.js"
 import { findFeed, recordAudit, requireFeed, requireSource, type DataFeedRow, type DataSourceRow } from "./records.js"
 import { mapAll } from "./run-pipeline.js"
-import { cancelOrphanRuns } from "./run-service.js"
+import { cancelOrphanRuns, cancelWaitingRetries } from "./run-service.js"
 import type { Rejection } from "./writers/domain-writer.js"
 import { requireWriter } from "./writers/writer-registry.js"
 
@@ -24,10 +31,17 @@ import { requireWriter } from "./writers/writer-registry.js"
  */
 export const SAMPLE_SIZE = 20
 
+type Queryable = Pick<Database, "query">
+
 function assertConnectorMatchesSource(source: DataSourceRow, input: Pick<FeedInput, "connectorConfig">): void {
   if (input.connectorConfig.connector !== source.kind) {
     throw new DomainError(`O conector do feed (${input.connectorConfig.connector}) precisa ser o mesmo tipo da fonte (${source.kind}).`, "DATA_FEED_CONNECTOR_MISMATCH", 422)
   }
+}
+
+function assertCadenceWritable(next: Cadence, current?: Cadence): void {
+  const problem = cadenceWriteProblem(next, current)
+  if (problem) throw new DomainError(problem, "DATA_CADENCE_TOO_FREQUENT", 422)
 }
 
 async function computeNextSync(ctx: DataHubContext, organizationId: string, input: Pick<FeedInput, "cadence">, status: string): Promise<Date | null> {
@@ -48,24 +62,37 @@ async function assertDatabaseFeed(ctx: DataHubContext, source: DataSourceRow, in
   }
 }
 
-export async function createFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: unknown): Promise<DataFeedRow> {
+/**
+ * `session` (a da rota) = quem edita: a liberação dela é conferida de novo dentro da transação, com a fonte travada
+ * (`assertConfigStillUnlocked`). Nula = chamada interna sem pessoa.
+ */
+export async function createFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, sourceId: string, rawInput: unknown, session: ConfigSession | null = null): Promise<DataFeedRow> {
   const source = await requireSource(ctx.db, organizationId, sourceId)
-  const input = feedInputSchema.parse(rawInput)
+  const parsed = feedInputSchema.parse(rawInput)
+  const input = { ...parsed, connectorConfig: restoreMaskedFeedConnector(parsed.connectorConfig, null) }
   const contractVersion = requireDataContract(input.contractKey, input.contractVersion).version
   assertConnectorMatchesSource(source, input)
+  assertCadenceWritable(input.cadence)
   await assertDatabaseFeed(ctx, source, input)
   try {
-    const result = await ctx.db.query<{ id: string }>(
-      `insert into data_feeds (organization_id, source_id, feed_key, name, contract_key, contract_version, connector_config, mapping, load_mode, cadence, expected_interval_minutes, status, authoritative, fail_on_any_rejection, source_namespace, created_by, updated_by, availability_policy)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'DRAFT', $12, $13, $14, $15, $15, $16) returning id`,
-      [organizationId, sourceId, input.feedKey, input.name, input.contractKey, contractVersion, JSON.stringify(input.connectorConfig), JSON.stringify(input.mapping), input.loadMode, JSON.stringify(input.cadence), expectedIntervalMinutes(input.cadence), input.authoritative, input.failOnAnyRejection, input.sourceNamespace ?? null, actorId, input.availabilityPolicy ? JSON.stringify(input.availabilityPolicy) : null],
-    )
-    const feed = (await findFeed(ctx.db, organizationId, result.rows[0]!.id))!
-    await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_CREATED", entityType: "data_feed", entityId: feed.id, payload: { sourceId, contract: `${feed.contractKey}@${feed.contractVersion}` } })
-    return feed
+    return await inTransaction(ctx.db, (client) => insertFeed(ctx, client, { organizationId, actorId, source, input, contractVersion, session }))
   } catch (error) {
     throw translateUniqueViolation(error, input)
   }
+}
+
+async function insertFeed(ctx: DataHubContext, client: Queryable, values: { organizationId: string; actorId: string | null; source: DataSourceRow; input: FeedInput; contractVersion: number; session: ConfigSession | null }): Promise<DataFeedRow> {
+  const { organizationId, actorId, source, input, contractVersion } = values
+  const sourceId = source.id
+  await assertConfigStillUnlocked(ctx, client, { organizationId, sourceId, session: values.session, route: "POST /sources/:id/feeds" })
+  const result = await client.query<{ id: string }>(
+    `insert into data_feeds (organization_id, source_id, feed_key, name, contract_key, contract_version, connector_config, mapping, load_mode, cadence, expected_interval_minutes, status, authoritative, fail_on_any_rejection, source_namespace, created_by, updated_by, availability_policy)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'DRAFT', $12, $13, $14, $15, $15, $16) returning id`,
+    [organizationId, sourceId, input.feedKey, input.name, input.contractKey, contractVersion, JSON.stringify(input.connectorConfig), JSON.stringify(input.mapping), input.loadMode, JSON.stringify(input.cadence), expectedIntervalMinutes(input.cadence), input.authoritative, input.failOnAnyRejection, input.sourceNamespace ?? null, actorId, input.availabilityPolicy ? JSON.stringify(input.availabilityPolicy) : null],
+  )
+  const feed = (await findFeed(client, organizationId, result.rows[0]!.id))!
+  await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_FEED_CREATED", entityType: "data_feed", entityId: feed.id, payload: { sourceId, sourceName: source.name, name: feed.name, contract: `${feed.contractKey}@${feed.contractVersion}` } })
+  return feed
 }
 
 function translateUniqueViolation(error: unknown, input: Pick<FeedInput, "feedKey" | "contractKey">): unknown {
@@ -77,17 +104,21 @@ function translateUniqueViolation(error: unknown, input: Pick<FeedInput, "feedKe
   return error
 }
 
-export async function updateFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, feedId: string, rawInput: unknown): Promise<DataFeedRow> {
+/** `session`: como em `createFeed`, a liberação de quem edita é conferida de novo dentro da transação, com a fonte travada. */
+export async function updateFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, feedId: string, rawInput: unknown, session: ConfigSession | null = null): Promise<DataFeedRow> {
   const current = await requireFeed(ctx.db, organizationId, feedId)
   const source = await requireSource(ctx.db, organizationId, current.sourceId)
-  const partial = feedInputSchema.partial().parse(rawInput)
+  // O Zod 4 aplica `.default` mesmo dentro de `.partial()`: sem este filtro, um PATCH só com o nome devolvia cadência Manual e
+  // mapeamento vazio como se tivessem sido enviados, e o feed perdia a periodicidade (e o resto) ao salvar qualquer outra coisa.
+  const sent = new Set(Object.keys(rawInput as object))
+  const partial = Object.fromEntries(Object.entries(feedInputSchema.partial().parse(rawInput)).filter(([key]) => sent.has(key))) as Partial<FeedInput>
   const merged: FeedInput = feedInputSchema.parse({
     feedKey: partial.feedKey ?? current.feedKey,
     name: partial.name ?? current.name,
     contractKey: partial.contractKey ?? current.contractKey,
     // Trocar de contrato (feed sem cargas) leva à versão atual do novo; o mesmo contrato mantém a versão do feed.
     contractVersion: partial.contractVersion ?? (partial.contractKey && partial.contractKey !== current.contractKey ? undefined : current.contractVersion),
-    connectorConfig: partial.connectorConfig ?? current.connectorConfig,
+    connectorConfig: partial.connectorConfig ? restoreMaskedFeedConnector(partial.connectorConfig, current.connectorConfig) : current.connectorConfig,
     mapping: partial.mapping ?? current.mapping,
     loadMode: partial.loadMode ?? current.loadMode,
     cadence: partial.cadence ?? current.cadence,
@@ -98,6 +129,7 @@ export async function updateFeed(ctx: DataHubContext, organizationId: string, ac
   })
   const contractVersion = requireDataContract(merged.contractKey, merged.contractVersion).version
   assertConnectorMatchesSource(source, merged)
+  assertCadenceWritable(merged.cadence, current.cadence)
   if (partial.connectorConfig) await assertDatabaseFeed(ctx, source, merged)
   const contractChanged = merged.contractKey !== current.contractKey
   if (contractChanged) {
@@ -105,18 +137,25 @@ export async function updateFeed(ctx: DataHubContext, organizationId: string, ac
     if ((runs.rows[0]?.count ?? 0) > 0) throw new DomainError("O contrato de um feed que já teve cargas não pode mudar — crie outro feed.", "DATA_FEED_CONTRACT_LOCKED", 409)
   }
   const nextSync = await computeNextSync(ctx, organizationId, merged, current.status)
+  // A tela sempre reenvia a periodicidade: "mudou" compara o resultado, e a auditoria guarda de qual para qual.
+  const previousCadenceLabel = cadenceLabel(current.cadence)
+  const nextCadenceLabel = cadenceLabel(merged.cadence)
+  const cadenceChanged = !isDeepStrictEqual(merged.cadence, current.cadence) // o jsonb devolve as chaves em outra ordem
   try {
-    await ctx.db.query(
-      `update data_feeds set feed_key = $2, name = $3, contract_key = $4, contract_version = $5, connector_config = $6, mapping = $7, load_mode = $8, cadence = $9,
-         expected_interval_minutes = $10, authoritative = $11, fail_on_any_rejection = $12, source_namespace = $13, next_sync_at = $14, updated_by = $15, updated_at = now(),
-         availability_policy = $16
-       where id = $1`,
-      [feedId, merged.feedKey, merged.name, merged.contractKey, contractVersion, JSON.stringify(merged.connectorConfig), JSON.stringify(merged.mapping), merged.loadMode, JSON.stringify(merged.cadence), expectedIntervalMinutes(merged.cadence), merged.authoritative, merged.failOnAnyRejection, merged.sourceNamespace ?? null, nextSync, actorId, merged.availabilityPolicy ? JSON.stringify(merged.availabilityPolicy) : null],
-    )
+    await inTransaction(ctx.db, async (client) => {
+      await assertConfigStillUnlocked(ctx, client, { organizationId, sourceId: source.id, session, route: "PATCH /feeds/:id" })
+      await client.query(
+        `update data_feeds set feed_key = $2, name = $3, contract_key = $4, contract_version = $5, connector_config = $6, mapping = $7, load_mode = $8, cadence = $9,
+           expected_interval_minutes = $10, authoritative = $11, fail_on_any_rejection = $12, source_namespace = $13, next_sync_at = $14, updated_by = $15, updated_at = now(),
+           availability_policy = $16
+         where id = $1`,
+        [feedId, merged.feedKey, merged.name, merged.contractKey, contractVersion, JSON.stringify(merged.connectorConfig), JSON.stringify(merged.mapping), merged.loadMode, JSON.stringify(merged.cadence), expectedIntervalMinutes(merged.cadence), merged.authoritative, merged.failOnAnyRejection, merged.sourceNamespace ?? null, nextSync, actorId, merged.availabilityPolicy ? JSON.stringify(merged.availabilityPolicy) : null],
+      )
+      await recordAudit(client, { organizationId, actorId, action: "DATA_HUB_FEED_UPDATED", entityType: "data_feed", entityId: feedId, payload: { sourceId: source.id, sourceName: source.name, name: merged.name, ...(merged.name !== current.name ? { previousName: current.name } : {}), changedFields: feedChangedFields(current, merged).filter((field) => field in merged), mappingChanged: Boolean(partial.mapping), cadenceChanged, ...(cadenceChanged ? { cadence: nextCadenceLabel, previousCadence: previousCadenceLabel } : {}), availabilityPolicyChanged: partial.availabilityPolicy !== undefined, ...(contractVersion !== current.contractVersion ? { contract: `${merged.contractKey}@${contractVersion}`, previousContract: `${current.contractKey}@${current.contractVersion}` } : {}) } })
+    })
   } catch (error) {
     throw translateUniqueViolation(error, merged)
   }
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_UPDATED", entityType: "data_feed", entityId: feedId, payload: { mappingChanged: Boolean(partial.mapping), cadenceChanged: Boolean(partial.cadence), availabilityPolicyChanged: partial.availabilityPolicy !== undefined, ...(contractVersion !== current.contractVersion ? { contract: `${merged.contractKey}@${contractVersion}`, previousContract: `${current.contractKey}@${current.contractVersion}` } : {}) } })
   return (await findFeed(ctx.db, organizationId, feedId))!
 }
 
@@ -133,22 +172,33 @@ export async function setFeedStatus(ctx: DataHubContext, organizationId: string,
   await ctx.db.query(`update data_feeds set status = $2, next_sync_at = $3, schema_changed_at = case when $2 = 'ACTIVE' then null else schema_changed_at end, updated_by = $4, updated_at = now() where id = $1`, [feedId, next, nextSync, actorId])
   // Ativar o primeiro feed de uma fonte em rascunho ativa a fonte junto (fluxo do wizard).
   if (next === "ACTIVE") await ctx.db.query(`update data_sources set status = 'ACTIVE', updated_at = now() where id = $1 and status = 'DRAFT'`, [feed.sourceId])
-  await recordAudit(ctx.db, { organizationId, actorId, action: `DATA_HUB_FEED_${action}D`, entityType: "data_feed", entityId: feedId })
+  const cancelledRuns = action === "PAUSE" ? await cancelWaitingRetries(ctx.db, { organizationId, feedId }) : 0
+  await recordAudit(ctx.db, { organizationId, actorId, action: `DATA_HUB_FEED_${action}D`, entityType: "data_feed", entityId: feedId, payload: { sourceId: feed.sourceId, name: feed.name, ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
   return (await findFeed(ctx.db, organizationId, feedId))!
 }
 
 export async function deleteFeed(ctx: DataHubContext, organizationId: string, actorId: string | null, feedId: string): Promise<void> {
-  await requireFeed(ctx.db, organizationId, feedId)
-  await ctx.db.query(`update data_feeds set deleted_at = now(), status = 'PAUSED', next_sync_at = null, updated_by = $2, updated_at = now() where id = $1`, [feedId, actorId])
+  const feed = await requireFeed(ctx.db, organizationId, feedId)
+  await ctx.db.query(`update data_feeds set deleted_at = now(), deleted_by_person_id = $2, status = 'PAUSED', next_sync_at = null, updated_by = $2, updated_at = now() where id = $1 and deleted_at is null`, [feedId, actorId])
+  // Restaurar não pode trazer de volta um token que deu acesso a este conjunto.
+  await ctx.db.query(`update data_push_tokens set revoked_at = now() where feed_id = $1 and revoked_at is null`, [feedId])
   // Cargas que ainda estavam na fila (API Push aceita várias) não ficam órfãs ocupando a fila de todas as organizações.
   const cancelledRuns = await cancelOrphanRuns(ctx.db, { organizationId, feedId })
-  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_DELETED", entityType: "data_feed", entityId: feedId, ...(cancelledRuns > 0 ? { payload: { cancelledQueuedRuns: cancelledRuns } } : {}) })
+  await recordAudit(ctx.db, { organizationId, actorId, action: "DATA_HUB_FEED_DELETED", entityType: "data_feed", entityId: feedId, payload: { sourceId: feed.sourceId, name: feed.name, ...(cancelledRuns > 0 ? { cancelledQueuedRuns: cancelledRuns } : {}) } })
 }
 
 // ---------------------------------------------------------------------------------------------
 // Amostra e preview (zero efeitos)
 // ---------------------------------------------------------------------------------------------
 export type SampleResult = { columns: string[]; records: SourceRecord[]; totalRecords: number; detail: string | null; suggestedMapping: FeedMapping; sheets?: string[]; rawObjectId?: string | null; database?: DatabaseObjectDescription }
+
+/**
+ * Conteúdo retido é da fonte que o trouxe. O id de uma carga de banco aparece em `GET /runs/:id`: sem esta conferência, a amostra de uma
+ * fonte de arquivo leria o conteúdo bruto de uma fonte protegida por senha. Sem fonte = envio feito antes de a fonte existir.
+ */
+export function assertRawBelongsToSource(raw: { meta: RawObjectMeta }, sourceId: string): void {
+  if (raw.meta.sourceId !== null && raw.meta.sourceId !== sourceId) throw new DomainError("O arquivo enviado expirou — envie novamente.", "DATA_RAW_EXPIRED", 422)
+}
 
 /** Amostra a partir de um objeto bruto já enviado (upload) ou da própria fonte (API Pull/SFTP). */
 export async function fetchSample(ctx: DataHubContext, organizationId: string, input: { source: DataSourceRow; feed: DataFeedRow | null; connectorConfig: FeedInput["connectorConfig"]; contractKey: string; rawObjectId?: string | null }): Promise<SampleResult> {
@@ -157,13 +207,14 @@ export async function fetchSample(ctx: DataHubContext, organizationId: string, i
   if (input.rawObjectId) {
     const raw = await ctx.rawObjects.get(input.rawObjectId, organizationId)
     if (!raw) throw new DomainError("O arquivo enviado expirou — envie novamente.", "DATA_RAW_EXPIRED", 422)
+    assertRawBelongsToSource(raw, input.source.id)
     if (input.connectorConfig.connector === "API_PUSH" || raw.meta.contentType === "application/json") {
       const records = extractRecords(JSON.parse(new TextDecoder().decode(raw.content)), input.connectorConfig.connector === "API_PUSH" ? input.connectorConfig.push.extractPath : "")
       batch = { columns: columnsFromRecords(records.slice(0, SAMPLE_SIZE)), records: records.slice(0, SAMPLE_SIZE), bytes: raw.meta.byteSize, totalRecords: records.length, detail: null }
     } else {
       const fileConfig = input.connectorConfig.connector === "FILE_UPLOAD" ? input.connectorConfig.file : input.connectorConfig.connector === "SFTP" ? input.connectorConfig.sftp : null
       if (!fileConfig) throw new DomainError("Este conector não lê arquivos.", "DATA_FEED_CONNECTOR_MISMATCH", 422)
-      batch = await parseFileBatch(fileConfig, raw.content, SAMPLE_SIZE)
+      batch = await parseFileBatchForRequest(fileConfig, raw.content, SAMPLE_SIZE)
     }
   } else if (input.connectorConfig.connector === "API_PULL") {
     const feed: DataFeedRow = input.feed ?? draftFeed(input.source, input.connectorConfig, input.contractKey)
@@ -171,7 +222,7 @@ export async function fetchSample(ctx: DataHubContext, organizationId: string, i
   } else if (input.connectorConfig.connector === "SFTP") {
     const feed: DataFeedRow = input.feed ?? draftFeed(input.source, input.connectorConfig, input.contractKey)
     const file = await fetchSftpSample(ctx, input.source, { ...feed, connectorConfig: input.connectorConfig })
-    batch = await parseFileBatch(input.connectorConfig.sftp, file.content, SAMPLE_SIZE)
+    batch = await parseFileBatchForRequest(input.connectorConfig.sftp, file.content, SAMPLE_SIZE)
     batch.detail = `${file.entry.name} · ${batch.detail ?? ""}`
   } else if (input.connectorConfig.connector === "DATABASE") {
     if (input.source.kind !== "DATABASE") throw new DomainError("Esta fonte não é um banco de dados.", "DATA_FEED_CONNECTOR_MISMATCH", 422)

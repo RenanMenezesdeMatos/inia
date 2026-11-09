@@ -87,6 +87,19 @@ export type DeliveryRecord = {
 export type NewDelivery = Omit<DeliveryRecord, "id" | "analysisText" | "analysisAttempts" | "analysisError" | "occurrences" | "lastCheckedAt" | "createdAt">
 export type Recipient = { personId: string; accountId: string | null }
 
+/**
+ * POSSE DA ANÁLISE da IA, por entrega: só quem reivindica chama a IA. Reivindicar marca a entrega "em análise" (PENDING, com
+ * `analysis_updated_at` = agora como prazo) e conta a tentativa — o número da tentativa é a ficha que o resultado confere ao ser
+ * gravado. AUTOMATIC (análise logo depois da entrega e recuperação do worker): PENDING/FAILED abaixo do limite de tentativas e
+ * livre (nunca reivindicada ou mexida há mais que o prazo — o prazo também é a espera entre tentativas). MANUAL ("Tentar de
+ * novo"): só FAILED (FAILED = ninguém analisando), sem limite nem espera.
+ */
+export type AnalysisClaimMode = "AUTOMATIC" | "MANUAL"
+export const MAX_ANALYSIS_ATTEMPTS = 3
+export const ANALYSIS_CLAIM_SECONDS = 10 * 60
+/** A recuperação automática só olha entregas recentes. */
+export const ANALYSIS_RECOVERY_DAYS = 7
+
 export type ReportStore = {
   createReport(input: ReportConfig & { organizationId: string; ownerAccountId: string; ownerPersonId: string; status: ReportStatus; origin: "CHAT" | "SCREEN"; timeZone: string; nextRunAt: string | null; sourceProposalId: string | null }, createdByAccountId: string): Promise<ReportRecord>
   /** Atualiza a configuração; `bumpVersion` grava nova versão. Compare-and-swap pela revisão (null = conflito). */
@@ -94,6 +107,9 @@ export type ReportStore = {
   getReport(id: string, organizationId: string): Promise<ReportRecord | null>
   listReports(organizationId: string, ownerAccountId: string): Promise<ReportRecord[]>
   softDeleteReport(id: string, organizationId: string, actorAccountId: string): Promise<boolean>
+  listDeletedReports(organizationId: string, ownerAccountId: string): Promise<{ id: string; name: string; deletedAt: string }[]>
+  /** Só o dono. Volta inativo e sem próxima execução: a exclusão já deixou assim. */
+  restoreReport(id: string, organizationId: string, ownerAccountId: string, actorPersonId: string | null): Promise<boolean>
   /** Execução de um horário: cria uma vez (chave única report × horário). Devolve null se já existia. */
   enqueueRun(input: { organizationId: string; reportId: string; scheduledFor: string; triggerKind: "SCHEDULE" | "MANUAL"; configVersion: number }): Promise<RunRecord | null>
   finishRun(runId: string, status: RunStatus, outcome: Record<string, unknown>, error: { code: string; message: string } | null): Promise<void>
@@ -107,7 +123,14 @@ export type ReportStore = {
   bumpNotice(deliveryId: string, at: string): Promise<void>
   /** Destinatários de um item: uma linha por pessoa por execução (nunca duplica entre seleções de público). */
   addRecipients(deliveryId: string, runId: string, organizationId: string, reportId: string, recipients: Recipient[]): Promise<number>
-  setAnalysis(deliveryId: string, status: AnalysisStatus, text: string | null, error: string | null): Promise<void>
+  /** Reivindica a análise de uma entrega (ver `AnalysisClaimMode`). null = outro processo já analisa ou ela não cabe. */
+  claimAnalysis(deliveryId: string, mode: AnalysisClaimMode): Promise<DeliveryRecord | null>
+  /** Recuperação: reivindica a próxima entrega livre (AUTOMATIC, mais antiga primeiro) — dois processos nunca pegam a mesma. */
+  claimNextAnalysis(): Promise<DeliveryRecord | null>
+  /** Grava o resultado só se a posse ainda é desta tentativa; false = outro processo reivindicou depois (resultado descartado). */
+  finishAnalysis(deliveryId: string, attempt: number, status: "READY" | "FAILED", text: string | null, error: string | null): Promise<boolean>
+  /** "Em análise" abandonada (prazo vencido) que a recuperação não pega mais vira FAILED — volta a aparecer o "Tentar de novo". */
+  closeAbandonedAnalyses(): Promise<number>
   getDelivery(id: string, organizationId: string): Promise<DeliveryRecord | null>
   isRecipient(deliveryId: string, personId: string): Promise<boolean>
 }
@@ -143,6 +166,10 @@ export const toDelivery = (row: DeliveryRow): DeliveryRecord => ({
 const REPORT_COLUMNS = "id, organization_id, owner_account_id, owner_person_id, name, description, status, origin, config_version, definition, visualization, schedule, audience, analysis, time_zone, next_run_at, last_run_at, last_run_status, last_valid_delivery_at, source_proposal_id, revision, created_at, updated_at, deleted_at"
 const RUN_COLUMNS = "id, organization_id, report_id, scheduled_for, trigger_kind, config_version, status, attempts, outcome, error_code, error_message, started_at, finished_at"
 export const DELIVERY_COLUMNS = "id, organization_id, report_id, run_id, config_version, scope_key, kind, reason, structure_label, period_key, period_label, sources, dataset, visualization, comparison, fingerprint, empty, analysis_status, analysis_text, analysis_attempts, analysis_error, occurrences, last_checked_at, created_at"
+/** Reivindicação da análise (ver `AnalysisClaimMode`); a condição AUTOMATIC usa $2 = limite de tentativas e $3 = prazo em segundos. */
+const ANALYSIS_CLAIM_SET = "analysis_status = 'PENDING', analysis_attempts = analysis_attempts + 1, analysis_updated_at = now()"
+const ANALYSIS_CLAIMABLE = "kind = 'DELIVERY' and analysis_status in ('PENDING', 'FAILED') and analysis_attempts < $2 and (analysis_updated_at is null or analysis_updated_at < now() - make_interval(secs => $3))"
+export const ABANDONED_ANALYSIS_ERROR = "A análise automática não terminou (processo interrompido ou fora do prazo de recuperação)."
 
 export function createPostgresReportStore(db: Database): ReportStore {
   const insertVersion = async (report: ReportRecord, actorAccountId: string) => {
@@ -210,6 +237,18 @@ export function createPostgresReportStore(db: Database): ReportStore {
       await db.query(`update report_runs set status = 'SKIPPED', finished_at = now(), outcome = '{"reason":"REPORT_DELETED"}'::jsonb where report_id = $1 and status = 'QUEUED'`, [id])
       return true
     },
+    async listDeletedReports(organizationId, ownerAccountId) {
+      const result = await db.query<{ id: string; name: string; deleted_at: Date }>(`select id, name, deleted_at from reports where organization_id = $1 and owner_account_id = $2 and deleted_at is not null order by deleted_at desc limit 100`, [organizationId, ownerAccountId])
+      return result.rows.map((row) => ({ id: row.id, name: row.name, deletedAt: new Date(row.deleted_at).toISOString() }))
+    },
+    async restoreReport(id, organizationId, ownerAccountId, actorPersonId) {
+      const result = await db.query(
+        `with restored as (update reports set deleted_at = null, deleted_by_account_id = null, revision = revision + 1, updated_at = now() where id = $1 and organization_id = $2 and owner_account_id = $3 and deleted_at is not null returning id, name)
+         insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) select $2, $4, 'REPORT_RESTORED', 'report', id, jsonb_build_object('name', name) from restored`,
+        [id, organizationId, ownerAccountId, actorPersonId],
+      )
+      return (result.rowCount ?? 0) > 0
+    },
     async enqueueRun(input) {
       const result = await db.query<RunRow>(
         `insert into report_runs (organization_id, report_id, scheduled_for, trigger_kind, config_version, status)
@@ -263,8 +302,42 @@ export function createPostgresReportStore(db: Database): ReportStore {
       )
       return result.rowCount ?? 0
     },
-    async setAnalysis(deliveryId, status, text, error) {
-      await db.query(`update report_deliveries set analysis_status = $2, analysis_text = coalesce($3, analysis_text), analysis_error = $4, analysis_attempts = analysis_attempts + case when $2 in ('READY', 'FAILED') then 1 else 0 end, analysis_updated_at = now() where id = $1`, [deliveryId, status, text, error])
+    async claimAnalysis(deliveryId, mode) {
+      // UPDATE condicional: uma segunda reivindicação simultânea espera a trava da linha, relê a condição e não pega nada.
+      const result =
+        mode === "MANUAL"
+          ? await db.query<DeliveryRow>(`update report_deliveries set ${ANALYSIS_CLAIM_SET} where id = $1 and kind = 'DELIVERY' and analysis_status = 'FAILED' returning ${DELIVERY_COLUMNS}`, [deliveryId])
+          : await db.query<DeliveryRow>(`update report_deliveries set ${ANALYSIS_CLAIM_SET} where id = $1 and ${ANALYSIS_CLAIMABLE} returning ${DELIVERY_COLUMNS}`, [deliveryId, MAX_ANALYSIS_ATTEMPTS, ANALYSIS_CLAIM_SECONDS])
+      return result.rows[0] ? toDelivery(result.rows[0]) : null
+    },
+    async claimNextAnalysis() {
+      const result = await db.query<DeliveryRow>(
+        `update report_deliveries set ${ANALYSIS_CLAIM_SET}
+          where id = (
+            select id from report_deliveries where ${ANALYSIS_CLAIMABLE} and created_at > now() - make_interval(days => $1)
+             order by created_at limit 1 for update skip locked
+          )
+          returning ${DELIVERY_COLUMNS}`,
+        [ANALYSIS_RECOVERY_DAYS, MAX_ANALYSIS_ATTEMPTS, ANALYSIS_CLAIM_SECONDS],
+      )
+      return result.rows[0] ? toDelivery(result.rows[0]) : null
+    },
+    async finishAnalysis(deliveryId, attempt, status, text, error) {
+      const result = await db.query(
+        `update report_deliveries set analysis_status = $3, analysis_text = coalesce($4, analysis_text), analysis_error = $5, analysis_updated_at = now()
+          where id = $1 and analysis_attempts = $2 and analysis_status = 'PENDING'`,
+        [deliveryId, attempt, status, text, error],
+      )
+      return (result.rowCount ?? 0) > 0
+    },
+    async closeAbandonedAnalyses() {
+      const result = await db.query(
+        `update report_deliveries set analysis_status = 'FAILED', analysis_error = $4, analysis_updated_at = now()
+          where kind = 'DELIVERY' and analysis_status = 'PENDING' and (analysis_updated_at is null or analysis_updated_at < now() - make_interval(secs => $2))
+            and (analysis_attempts >= $1 or created_at <= now() - make_interval(days => $3))`,
+        [MAX_ANALYSIS_ATTEMPTS, ANALYSIS_CLAIM_SECONDS, ANALYSIS_RECOVERY_DAYS, ABANDONED_ANALYSIS_ERROR],
+      )
+      return result.rowCount ?? 0
     },
     async getDelivery(id, organizationId) {
       const result = await db.query<DeliveryRow>(`select ${DELIVERY_COLUMNS} from report_deliveries where id = $1 and organization_id = $2`, [id, organizationId])

@@ -5,10 +5,10 @@ import { Handle, Position, type Node, type NodeProps } from "@xyflow/react"
 
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { nodeBranches, NODE_TYPE_LABELS, type FlowNodeType } from "@/schemas/admin/workflow-graph.schema"
+import { nodeBranches, type FlowNodeType } from "@/schemas/admin/workflow-graph.schema"
 
 import type { RFNodeData } from "./graph-mappers"
-import { describeNodeConfig, describeSetVariableBadge, NODE_COLORS, NODE_ICONS } from "./node-visuals"
+import { describeNodeConfig, describeSetVariableBadge, NODE_COLORS, NODE_ICONS, nodeDisplayName, nodeKindLabel } from "./node-visuals"
 import { useWorkflowEditorContext } from "./workflow-editor-context"
 
 /**
@@ -58,14 +58,15 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
       ) : null}
 
       <div className="flex items-center gap-2">
-        <div className={cn("flex h-6 w-6 items-center justify-center rounded", colors.iconBg)}>
-          <Icon className={cn("h-3.5 w-3.5", colors.icon)} />
+        <div className={cn("flex h-6 w-6 shrink-0 items-center justify-center rounded", colors.iconBg)}>
+          <Icon className={cn("h-3.5 w-3.5", colors.icon)} aria-hidden />
         </div>
+        {/* O nome dado à etapa em destaque e o tipo como apoio. O id técnico nunca aparece: não ajuda a decidir nada. */}
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-muted-foreground">{NODE_TYPE_LABELS[node.type]}</p>
-          <p className="truncate font-mono text-[10px] text-muted-foreground/70" title={node.id}>
-            {node.id}
+          <p className="truncate text-sm font-medium" title={nodeDisplayName(node)}>
+            {nodeDisplayName(node)}
           </p>
+          <p className="truncate text-xs text-muted-foreground">{nodeKindLabel(node)}</p>
         </div>
         {setVariableBadge === "FIXED" ? (
           <Badge variant="outline" className="shrink-0 gap-1">
@@ -79,9 +80,9 @@ export function WorkflowNode({ data, selected }: NodeProps<Node<RFNodeData>>) {
             Dinâmico
           </Badge>
         ) : null}
-        {issue ? <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" /> : null}
+        {issue ? <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" aria-label="Esta etapa tem um problema" role="img" /> : null}
       </div>
-      <p className="mt-1.5 line-clamp-2 text-sm">{subtitle}</p>
+      <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
       {/* O card nunca cresce com a mensagem inteira: contagem + uma linha (tooltip/painel têm o
         * resto) — informação crítica visível, layout previsível. */}
       {nodeIssue ? (

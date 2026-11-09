@@ -36,7 +36,7 @@ export type ReviewEnrollment = {
 }
 
 /** Detalhe de UMA revisão: também o Execution Context (conteúdo a revisar, resultados anteriores). */
-export type ReviewAlertDetailRow = Omit<ReviewAlertRow, "enrollment"> & { enrollment: (ReviewEnrollment & { nodeOutputs: Record<string, unknown> }) | null }
+export type ReviewAlertDetailRow = Omit<ReviewAlertRow, "enrollment"> & { enrollment: (ReviewEnrollment & { nodeOutputs: Record<string, unknown>; variables?: Record<string, unknown> }) | null }
 
 export type ReviewCase = { title: string; summary: string; evidences: ReviewEvidence[] }
 
@@ -93,19 +93,19 @@ const reviewAlertSelect = (withExecutionContext: boolean) => `
   select ra.id "alertId", ra.status::text "alertStatus", ra.created_at "requestedAt", ra.case_id "caseId",
          ra.enrollment_key "enrollmentId", ra.node_key "nodeId",
          e.id "enrollmentExists", e.status "enrollmentStatus", e.current_node_id "currentNodeId", e.node_outputs -> ra.node_key "reviewOutput",
-         ${withExecutionContext ? `e.node_outputs "nodeOutputs",` : ""}
+         ${withExecutionContext ? `e.node_outputs "nodeOutputs", e.variables "variables",` : ""}
          e.version_id "versionId", w.name "workflowName",
          coalesce(c.operator_id, e.scheduled_subject_id, m.subject_id, i.operator_id) "operatorId"
   from review_alerts ra
   left join workflow_enrollments e on e.id = ra.enrollment_key::uuid
   left join workflows w on w.id = e.workflow_id
   left join supervision_cases c on c.id = ra.case_id
-  left join indicator_measurements m on m.id = e.indicator_measurement_id
+  left join indicator_measurements_all m on m.id = e.indicator_measurement_id
   left join interactions i on i.id = e.interaction_id`
 
 type ReviewAlertDbRow = {
   alertId: string; alertStatus: string; requestedAt: string; caseId: string | null; enrollmentId: string; nodeId: string
-  enrollmentExists: string | null; enrollmentStatus: string | null; currentNodeId: string | null; reviewOutput: unknown; nodeOutputs?: Record<string, unknown> | null
+  enrollmentExists: string | null; enrollmentStatus: string | null; currentNodeId: string | null; reviewOutput: unknown; nodeOutputs?: Record<string, unknown> | null; variables?: Record<string, unknown> | null
   versionId: string | null; workflowName: string | null; operatorId: string | null
 }
 
@@ -170,7 +170,7 @@ export class PgPendingActionsRepository implements PendingActionsRepository {
     const row = result.rows[0]
     if (!row) return null
     const base = mapReviewAlert(row)
-    return { ...base, enrollment: base.enrollment ? { ...base.enrollment, nodeOutputs: row.nodeOutputs ?? {} } : null }
+    return { ...base, enrollment: base.enrollment ? { ...base.enrollment, nodeOutputs: row.nodeOutputs ?? {}, variables: row.variables ?? {} } : null }
   }
 
   async loadWorkdayReconciliations(viewerId: string, organizationId: string): Promise<WorkdayReconciliationRecord[]> {
@@ -247,7 +247,7 @@ export class PgPendingActionsRepository implements PendingActionsRepository {
          from review_alerts ra
          join workflow_enrollments e on e.id = ra.enrollment_key::uuid
          left join supervision_cases c on c.id = ra.case_id
-         left join indicator_measurements m on m.id = e.indicator_measurement_id
+         left join indicator_measurements_all m on m.id = e.indicator_measurement_id
          left join interactions i on i.id = e.interaction_id
          where ${PENDING_CONDITION}
            and coalesce(c.operator_id, e.scheduled_subject_id, m.subject_id, i.operator_id) = any($3::uuid[])

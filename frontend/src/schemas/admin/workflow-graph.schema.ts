@@ -54,7 +54,7 @@ export const PERIOD_WINDOW_LABELS: Record<PeriodWindow, string> = {
   QUARTER: "Trimestre anterior",
 }
 
-export const agentOutputContractSchema = z.enum(["FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS"])
+export const agentOutputContractSchema = z.enum(["FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS", "RECOGNITION"])
 export type AgentOutputContract = z.infer<typeof agentOutputContractSchema>
 export const AGENT_OUTPUT_CONTRACT_LABELS: Record<AgentOutputContract, string> = {
   FEEDBACK: "Feedback de monitoria",
@@ -62,13 +62,18 @@ export const AGENT_OUTPUT_CONTRACT_LABELS: Record<AgentOutputContract, string> =
   PROCESS_ASSESSMENT: "Avaliação de processo (feedback com base)",
   INDICATOR_DIAGNOSIS: "Diagnóstico do indicador (feedback com base)",
   PRV_CLOSING_DIAGNOSIS: "Diagnóstico do fechamento do PRV (feedback com base)",
+  RECOGNITION: "Reconhecimento de quem o ranking escolheu",
 }
 /** Indicator Diagnosis V1 — formatos com a fonte "Fechamentos oficiais" (gatilho por Agenda). */
-export const PERFORMANCE_OUTPUT_CONTRACT_LABELS: Record<"FEEDBACK" | "PRV_CLOSING_DIAGNOSIS" | "INDICATOR_DIAGNOSIS", string> = {
+export const PERFORMANCE_OUTPUT_CONTRACT_LABELS: Record<"FEEDBACK" | "RECOGNITION" | "PRV_CLOSING_DIAGNOSIS" | "INDICATOR_DIAGNOSIS", string> = {
   FEEDBACK: "Resumo dos fechamentos (sem diagnóstico)",
+  RECOGNITION: "Reconhecimento de quem o ranking escolheu",
   PRV_CLOSING_DIAGNOSIS: "Diagnóstico do fechamento do PRV (feedback com base)",
   INDICATOR_DIAGNOSIS: "Diagnóstico de um indicador, sem PRV (feedback com base)",
 }
+/** Só "Melhores desempenhos" e evolução dão motivo para reconhecer. Mesma regra do backend (`isRecognitionRankingSelection`). */
+export const isRecognitionRankingSelection = (selection: string | undefined): selection is "BEST" | "IMPROVED" => selection === "BEST" || selection === "IMPROVED"
+export const RECOGNITION_HINT = "O ranking de \"Selecionar colaboradores\" escolhe a pessoa, e ser o melhor basta, mesmo abaixo da meta. Quem está sozinho no recorte e fora da meta não recebe reconhecimento, porque não houve comparação. O sistema informa ao agente a posição e como cada resultado ficou frente à meta; ele só escreve. Não analisa chamadas nem explica a causa do resultado."
 /** Indicator Diagnosis V2 — diagnóstico DIRETO do fechamento oficial de UM indicador (sem ler o PRV). */
 export const DIRECT_INDICATOR_DIAGNOSIS_HINT = "O sistema lê o fechamento oficial mais recente do indicador escolhido (sem PRV), aplica a estratégia dele (Indicadores › Diagnóstico com IA) e, quando a estratégia deixa, a IA escolhe entre os passos permitidos o que investigar. Os números, a comparação com grupo e a população são sempre do sistema; nunca afirma causa."
 export const PRV_CLOSING_DIAGNOSIS_HINT = "O sistema lê o fechamento oficial mais recente, decide quais indicadores investigar pela estratégia de cada um (Indicadores › Diagnóstico com IA), escolhe a população e reaproveita as avaliações de processo já feitas. O agente só avalia as chamadas que ainda faltam (nenhuma = nenhuma chamada à IA). \"Gerar feedback\" conta os padrões, compara com o mês anterior e com o Subgrupo (só agregado) e nunca afirma que um comportamento ou o mix causou o resultado."
@@ -304,6 +309,9 @@ export type OrchestratorRouting = z.infer<typeof orchestratorRoutingSchema>
 
 export const orchestratorNodeConfigSchema = z.object({
   orchestratorId: z.string(),
+  // Versão do Orquestrador (PEN-076): a CONFIGURAÇÃO dele (especialistas, política, resultado estruturado). Os agentes rodam na
+  // versão vigente de cada um (revisão de 03/11/2026). Ausente: o Workflow fixa a versão vigente do Orquestrador ao publicar.
+  orchestratorVersionId: z.string().optional(),
   instruction: z.string(),
   specialistOutputContract: specialistOutputContractSchema.optional(),
   routing: orchestratorRoutingSchema.optional(),
@@ -361,7 +369,7 @@ export const AVATAR_INTERACTION_MODE_LABELS: Record<AvatarInteractionMode, strin
 
 export const outputNodeConfigSchema = z.object({
   target: outputTargetSchema,
-  surfaces: z.array(outputSurfaceSchema).min(1),
+  surfaces: z.array(outputSurfaceSchema),
   interactionMode: avatarInteractionModeSchema.optional(),
   source: z.string(),
   /** "Esta entrega deve apresentar os materiais de apoio já recomendados pelo node de origem?"
@@ -398,6 +406,9 @@ export const actionConfigSchema = z.union([
   z.object({
     actionType: z.literal("CALL_AGENT"),
     agentId: z.string(),
+    // LEGADO (revisão de 03/11/2026): o backend ignora — cada execução usa a versão vigente do agente e a registra. Mantido só
+    // para ler grafos antigos; o editor não oferece escolher e remove o campo ao trocar de agente.
+    agentVersionId: z.string().optional(),
     scheduledDataSource: scheduledDataSourceSchema.optional(),
     // "Formato da análise" — FEEDBACK (ausente = comportamento de sempre) ou PROCESS_AUDIT
     // (conformidade etapa a etapa contra o procedimento oficial da KB; só com gatilho por Flag).
@@ -418,8 +429,8 @@ export const actionConfigSchema = z.union([
   z.object({
     actionType: z.literal("ESCALATE"),
     target: hierarchicalTargetSchema,
-    contentSource: z.string().trim().min(1).optional(),
-    surfaces: z.array(outputSurfaceSchema).min(1),
+    contentSource: z.string().trim().optional(),
+    surfaces: z.array(outputSurfaceSchema),
     interactionMode: avatarInteractionModeSchema.optional(),
     reason: z.string().trim().optional(),
     continuation: z.enum(["CONTINUE", "END_BRANCH"]).optional(),
@@ -441,7 +452,7 @@ export const actionConfigSchema = z.union([
     actionType: z.literal("SET_VARIABLE"),
     variableId: z.string(),
     value: z.union([z.boolean(), z.number(), z.string()]).optional(),
-    sourcePath: z.string().min(1).optional(),
+    sourcePath: z.string().optional(),
   }),
 ])
 export type ActionConfig = z.infer<typeof actionConfigSchema>
@@ -453,7 +464,7 @@ export const conditionRuleSchema = z.object({
   comparator: comparatorSchema,
   thresholdBoolean: z.boolean().nullable().optional(),
   thresholdNumeric: z.number().nullable().optional(),
-  sourcePath: z.string().min(1).optional(),
+  sourcePath: z.string().optional(),
   thresholdText: z.string().optional(),
 })
 export type ConditionRule = z.infer<typeof conditionRuleSchema>
@@ -506,7 +517,7 @@ export type EmployeeRankingPartitionBy = z.infer<typeof employeeRankingPartition
 
 export const employeeRankingConfigSchema = z.object({
   source: rankingSourceSchema.optional(),
-  indicatorCode: z.string().trim().min(1).optional(),
+  indicatorCode: z.string().trim().optional(),
   aggregation: employeeRankingAggregationSchema.optional(),
   period: historicalPeriodSchema.optional(),
   selection: employeeRankingSelectionSchema.optional(),
@@ -592,7 +603,7 @@ export const flowNodeSchema = z.discriminatedUnion("type", [
       thresholdNumeric: z.number().nullable().optional(),
       // Presente = compara um valor do Execution Context (saída de um node anterior) em vez do
       // valor bruto do trigger. Ex.: "nodeOutputs.diagnostico.severity".
-      sourcePath: z.string().min(1).optional(),
+      sourcePath: z.string().optional(),
       thresholdText: z.string().optional(),
       // Prioridade: group > historicalQuery > performanceQuery > sourcePath > legado.
       historicalQuery: historicalQuerySchema.optional(),
@@ -634,6 +645,8 @@ export type FlowNodeType = FlowNode["type"]
 export const flowEdgeSchema = z.object({ id: z.string(), source: z.string(), sourceHandle: z.string(), target: z.string() })
 export type FlowEdge = z.infer<typeof flowEdgeSchema>
 
+// O rascunho aceita em branco o que a pessoa ainda vai preencher (backend `draft-graph.ts`): este schema lê o que a API devolve e
+// não pode recusar esses campos, senão o editor não abre. Quem cobra o preenchimento é a validação (workflow-validation.ts).
 export const flowGraphSchema = z.object({ nodes: z.array(flowNodeSchema), edges: z.array(flowEdgeSchema) })
 export type FlowGraph = z.infer<typeof flowGraphSchema>
 

@@ -82,7 +82,7 @@ export function ReportDetailPage({ reportId }: { reportId: string }) {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Excluir este report?</AlertDialogTitle>
-                <AlertDialogDescription>As próximas execuções são canceladas. Entregas já feitas continuam no histórico de quem recebeu, para auditoria.</AlertDialogDescription>
+                <AlertDialogDescription>As próximas execuções são canceladas. Entregas já feitas continuam no histórico de quem recebeu. Dá para restaurar na aba Excluídos, em Reports.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>

@@ -1,5 +1,8 @@
+import { z } from "zod"
+
 import { apiGet } from "@/lib/api/api-client"
 import type { ConversationMessage, ConversationSummary } from "@/lib/realtime/gemini-text-client"
+import { conversationAgentRecordSchema, type ConversationAgentRecord } from "@/schemas/admin/assistant-conversation-agent-record.schema"
 
 /**
  * "Conversas com a INIA" (Administração, somente leitura) — `/api/v1/admin/assistant-conversations`. O backend aplica o
@@ -47,4 +50,9 @@ export function fetchMonitoredMessages(conversationId: string, options: { before
   if (options.before) params.set("before", options.before)
   if (options.after) params.set("after", options.after)
   return apiGet(`${BASE}/${conversationId}/messages?${params}`)
+}
+
+/** Agentes que atuaram nesta conversa, com versão e chamadas impedidas (PEN-071) — mesma autorização de ler a conversa. */
+export async function fetchConversationAgentRecords(conversationId: string): Promise<ConversationAgentRecord[]> {
+  return z.array(conversationAgentRecordSchema).parse(await apiGet<unknown>(`${BASE}/${conversationId}/agent-records`))
 }

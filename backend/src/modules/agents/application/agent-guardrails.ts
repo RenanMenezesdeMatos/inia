@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { loadProhibitedTopics } from "../../governance/application/prohibited-topics.js"
 import { renderProhibitedTopicsBlock, type ProhibitedTopic } from "../../governance/domain/prohibited-topic.js"
 import { effectiveActionLimits, renderActionLimitsBlock } from "../domain/action-limits.js"
+import { agentSnapshotFor } from "./agent-runtime-context.js"
 
 /** O que um Agent nunca faz: os limites de atuação DELE (escritos no Agent) + os assuntos proibidos da organização. */
 export type AgentGuardrails = { actionLimits: string | null; prohibitedTopics: ProhibitedTopic[] }
@@ -9,6 +10,12 @@ export type AgentGuardrails = { actionLimits: string | null; prohibitedTopics: P
 /** Leitura única — instruções do Agent (`build-system-prompt.ts`) e conversas cuja instrução não é o prompt de um Agent
  * (aplicação de feedback, chat/voz sem Orquestrador: `realtime-router.ts`). Sem Agent, só os assuntos proibidos. */
 export async function loadAgentGuardrails(db: Pick<Database, "query">, organizationId: string, agentId: string | null): Promise<AgentGuardrails> {
+  // Versão em execução (PEN-002): os limites são os DELA, não os da vigente.
+  const snapshot = agentSnapshotFor(agentId)
+  if (snapshot) {
+    const topics = await loadProhibitedTopics(db, organizationId)
+    return { actionLimits: effectiveActionLimits({ enabled: snapshot.config.actionLimitsEnabled, text: snapshot.config.actionLimits }), prohibitedTopics: topics }
+  }
   const [topics, agent] = await Promise.all([
     loadProhibitedTopics(db, organizationId),
     agentId

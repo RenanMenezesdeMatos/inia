@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import type { ExclusiveJobRunner } from "../../../infrastructure/jobs/periodic-jobs.js"
+import type { ExclusiveJobRunner, JobLease } from "../../../infrastructure/jobs/periodic-jobs.js"
 import { runActivityProjection } from "./activity-projection.js"
 import { runEligibilityProjection } from "./eligibility-projection.js"
 import { runUsageRetention } from "./usage-retention.js"
@@ -15,18 +15,18 @@ export const RETENTION_INTERVAL_MS = 6 * 3_600_000
 
 export function startUsageAnalyticsWorker(db: Database, options: { exclusive?: ExclusiveJobRunner } = {}): () => void {
   const running = { activity: false, eligibility: false, retention: false }
-  const guard = (kind: keyof typeof running, job: () => Promise<unknown>, intervalMs: number) => () => {
+  const guard = (kind: keyof typeof running, job: (lease: JobLease) => Promise<unknown>, intervalMs: number) => () => {
     if (running[kind]) return
     running[kind] = true
     // Com 2+ processos (INIA_PROCESS_ROLE), cada projeção roda em um só por rodada (trava + última partida no banco).
-    const round = options.exclusive ? options.exclusive(`usage-analytics-${kind}`, job, { minIntervalMs: Math.round(intervalMs * 0.9) }) : job()
+    const round = options.exclusive ? options.exclusive(`usage-analytics-${kind}`, job, { minIntervalMs: Math.round(intervalMs * 0.9) }) : job({ signal: new AbortController().signal })
     round
       .catch((error: unknown) => console.error(`Falha na monitoria de usabilidade (${kind}):`, error))
       .finally(() => {
         running[kind] = false
       })
   }
-  const activity = guard("activity", () => runActivityProjection(db), ACTIVITY_PROJECTION_INTERVAL_MS)
+  const activity = guard("activity", ({ signal }) => runActivityProjection(db, { signal }), ACTIVITY_PROJECTION_INTERVAL_MS)
   const eligibility = guard("eligibility", () => runEligibilityProjection(db), ELIGIBILITY_INTERVAL_MS)
   const retention = guard("retention", () => runUsageRetention(db), RETENTION_INTERVAL_MS)
   eligibility()

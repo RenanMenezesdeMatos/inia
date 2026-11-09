@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { EmployeeCollectionOutput } from "./select-employees-executor.js"
 import type { EmployeeFanInOutput } from "./consolidate-results-executor.js"
+import { currentKnowledgeConsultation } from "../../knowledge/application/knowledge-consultation-context.js"
 import { executeOrchestrator, executeOrchestratorConsolidated, type ConsolidatedOrchestratorContext, type OrchestratorExecutionContext } from "./orchestrator-executor.js"
 
 const resolveOrchestratorById = vi.fn()
 const runOrchestratedReply = vi.fn()
 const generateWithTools = vi.fn()
+const generateAgentReplyWithUsage = vi.fn()
 
 vi.mock("../../assistant/application/resolve-orchestrator.js", () => ({
   resolveOrchestratorById: (...args: unknown[]) => resolveOrchestratorById(...args),
@@ -21,16 +23,50 @@ vi.mock("../../assistant/application/run-orchestrated-reply.js", async (importOr
 vi.mock("../../assistant/infrastructure/gemini-function-calling-client.js", () => ({
   generateWithTools: (...args: unknown[]) => generateWithTools(...args),
 }))
+// A conferência da resposta pede JSON, sem ferramentas e com um turno só: no gateway, esse pedido vai por este cliente, não pelo de cima.
+vi.mock("../../agents/infrastructure/gemini-agent-client.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/infrastructure/gemini-agent-client.js")>()),
+  generateAgentReplyWithUsage: (...args: unknown[]) => generateAgentReplyWithUsage(...args),
+}))
+
+// Nenhum caso aqui depende de chave nem fala com a rede. Um caminho novo até o provedor falha o teste, com ou sem chave no .env.
+beforeEach(() => {
+  generateAgentReplyWithUsage.mockReset()
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Este teste nunca chama a rede.") }))
+  vi.stubEnv("INIA_RESPONSE_CHECK", "ENFORCE")
+})
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+})
 
 const fakeDb = {} as Database
 
+/**
+ * Responde só às consultas que o caso declara (trecho do SQL → linhas). O resto volta vazio, como numa organização sem assunto proibido e sem
+ * limite. Nunca devolva as mesmas linhas para qualquer SQL: a leitura de `prohibited_topics` as tomaria por regras e ligaria a conferência da resposta.
+ */
+function dbAnswering(rowsBySql: Record<string, unknown[]> = {}): Database {
+  return {
+    query: vi.fn(async (sql: string) => {
+      const rows = Object.entries(rowsBySql).find(([fragment]) => sql.includes(fragment))?.[1] ?? []
+      return { rows, rowCount: rows.length }
+    }),
+  } as unknown as Database
+}
+const OPERATOR_ROWS = { "from interactions": [{ operator_id: "operator-1" }] }
+const PEOPLE_ROWS = { "from people": [{ id: "11111111-1111-1111-1111-111111111111", name: "João" }, { id: "22222222-2222-2222-2222-222222222222", name: "Maria" }] }
+
 const ORG = "00000000-0000-4000-8000-0000000000c3"
+/** Alcance do Workflow: vai junto da versão fixada do Orquestrador, que só roda se servir a ele (resolve-orchestrator.test.ts). */
+const WORKFLOW_SCOPE = { scopeType: "TEAM", teamId: "00000000-0000-4000-8000-0000000000d1", subteamId: null }
 
 function baseContext(overrides: Partial<OrchestratorExecutionContext> = {}): OrchestratorExecutionContext {
   return {
     db: fakeDb,
     organizationId: ORG,
     inputContext: "transcrição da chamada",
+    workflowScope: WORKFLOW_SCOPE,
     enrollment: { interactionId: "interaction-1", indicatorMeasurementId: null, scheduledSubjectId: null },
     ...overrides,
   }
@@ -65,7 +101,8 @@ describe("executeOrchestrator", () => {
     const result = await executeOrchestrator({ orchestratorId: "orch-1", instruction: "Analise esta interação" }, baseContext({ db }))
 
     // O Orquestrador é procurado na organização da matrícula.
-    expect(resolveOrchestratorById).toHaveBeenCalledWith(db, ORG, "orch-1", "WORKFLOW", expect.any(String))
+    // PEN-076: sem versão fixada no nó e fora de uma versão publicada (rascunho/QA), executa a versão vigente do Orquestrador.
+    expect(resolveOrchestratorById).toHaveBeenCalledWith(db, ORG, "orch-1", "WORKFLOW", expect.any(String), { versionId: null, legacyPin: false, workflowScope: WORKFLOW_SCOPE })
     expect(runOrchestratedReply).toHaveBeenCalledWith(
       db,
       { orchestratorId: "orch-1", orchestratorName: "Monitoria Geral", orchestratorAgentId: "agent-orch-1", systemPrompt: "...", specialists: [], tools: [], outputInstructions: null },
@@ -80,9 +117,26 @@ describe("executeOrchestrator", () => {
     expect(result.nodeOutput.results).toEqual([{ agentId: "diag-1", toolName: "agent_diagnostico", text: "causa provável: X" }])
   })
 
+  it("a etapa é uma consulta às bases: roda dentro de uma consulta só e grava as versões usadas na execução do Workflow (PEN-008)", async () => {
+    resolveOrchestratorById.mockReset().mockResolvedValueOnce({ orchestratorId: "orch-1", orchestratorName: "Monitoria Geral", orchestratorAgentId: "agent-orch-1", systemPrompt: "...", specialists: [], tools: [], outputInstructions: null })
+    let insideConsultation = false
+    runOrchestratedReply.mockReset().mockImplementationOnce(async () => {
+      insideConsultation = currentKnowledgeConsultation() !== null
+      return { text: "síntese final", agentId: null, calls: [], results: [], structuredResult: null }
+    })
+    const recordWorkflowKnowledgeUsage = vi.fn(async () => {})
+    const db = dbAnswering(OPERATOR_ROWS)
+    const engine = { effects: { recordWorkflowKnowledgeUsage }, organizationId: ORG, workflowId: "workflow-1", enrollmentId: "enrollment-1", nodeId: "node-1" } as unknown as OrchestratorExecutionContext["engine"]
+
+    await executeOrchestrator({ orchestratorId: "orch-1", instruction: "Analise esta interação" }, baseContext({ db, engine }))
+
+    expect(insideConsultation).toBe(true)
+    expect(recordWorkflowKnowledgeUsage).toHaveBeenCalledWith(db, "enrollment-1")
+  })
+
   it("fails the node when the referenced orchestrator doesn't exist, is inactive, or doesn't accept WORKFLOW invocation", async () => {
     resolveOrchestratorById.mockReset().mockResolvedValueOnce(null)
-    const db = { query: vi.fn(async () => ({ rows: [{ operator_id: "operator-1" }], rowCount: 1 })) } as unknown as Database
+    const db = dbAnswering(OPERATOR_ROWS)
 
     await expect(executeOrchestrator({ orchestratorId: "orch-1", instruction: "Analise" }, baseContext({ db }))).rejects.toThrow(/Orquestrador não encontrado/)
   })
@@ -132,11 +186,11 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
   it("nunca chama resolveEnrollmentOperatorId nem consulta interactions/indicator_measurements — não existe 'o operador' aqui", async () => {
     resolveOrchestratorById.mockReset().mockResolvedValueOnce(RESOLVED_ORCHESTRATOR)
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "Resumo executivo: 1 concluído, 1 falhou." })
-    const queries: string[] = []
-    const db = { query: vi.fn(async (sql: string) => { queries.push(sql); return { rows: [{ id: "11111111-1111-1111-1111-111111111111", name: "João" }, { id: "22222222-2222-2222-2222-222222222222", name: "Maria" }], rowCount: 2 } }) } as unknown as Database
+    const db = dbAnswering(PEOPLE_ROWS)
 
-    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma os diagnósticos." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection } as ConsolidatedOrchestratorContext)
+    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma os diagnósticos." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection } as ConsolidatedOrchestratorContext)
 
+    const queries = vi.mocked(db.query).mock.calls.map(([sql]) => String(sql))
     expect(queries.some((sql) => sql.includes("from interactions"))).toBe(false)
     expect(queries.some((sql) => sql.includes("from indicator_measurements"))).toBe(false)
   })
@@ -146,7 +200,7 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese" })
     const db = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } as unknown as Database
 
-    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection: null })
+    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection: null })
 
     expect(generateWithTools).toHaveBeenCalledTimes(1)
     expect(generateWithTools.mock.calls[0]?.[2]).toEqual([])
@@ -155,9 +209,9 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
   it("monta o contexto com nomes resolvidos (nunca UUID cru), decisão de Human Review e motivo de falha por colaborador", async () => {
     resolveOrchestratorById.mockReset().mockResolvedValueOnce(RESOLVED_ORCHESTRATOR)
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese" })
-    const db = { query: vi.fn(async () => ({ rows: [{ id: "11111111-1111-1111-1111-111111111111", name: "João" }, { id: "22222222-2222-2222-2222-222222222222", name: "Maria" }], rowCount: 2 })) } as unknown as Database
+    const db = dbAnswering(PEOPLE_ROWS)
 
-    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection })
+    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection })
 
     const systemPrompt = generateWithTools.mock.calls[0]?.[1] as string
     expect(systemPrompt).toContain("João")
@@ -171,7 +225,7 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
   it("Parte 65/66 da evolução de Evolução/Grupo — coleção RANKING com partição propaga o Grupo/Subgrupo de origem de cada filho pro contexto, sem tocar o engine de fan-in", async () => {
     resolveOrchestratorById.mockReset().mockResolvedValueOnce(RESOLVED_ORCHESTRATOR)
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese" })
-    const db = { query: vi.fn(async () => ({ rows: [{ id: "11111111-1111-1111-1111-111111111111", name: "João" }, { id: "22222222-2222-2222-2222-222222222222", name: "Maria" }], rowCount: 2 })) } as unknown as Database
+    const db = dbAnswering(PEOPLE_ROWS)
 
     const rankingCollection: EmployeeCollectionOutput = {
       kind: "EMPLOYEE_COLLECTION",
@@ -194,7 +248,7 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
       selectedAt: new Date().toISOString(),
     }
 
-    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection: rankingCollection })
+    await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection: rankingCollection })
 
     const systemPrompt = generateWithTools.mock.calls[0]?.[1] as string
     expect(systemPrompt).toContain("[Subgrupo Premium] João")
@@ -207,7 +261,7 @@ describe("executeOrchestratorConsolidated (Orchestrator pós-JOIN — fan-in/JOI
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese final" })
     const db = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } as unknown as Database
 
-    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection: null })
+    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection: null })
 
     expect(result.nodeOutput).toMatchObject({ orchestratorId: "orch-1", orchestratorName: "Monitoria Geral", text: "síntese final", agentId: null, calls: [], results: [] })
   })
@@ -220,7 +274,7 @@ describe("executeOrchestratorConsolidated — JOIN vazio (rodada de hardening 20
     const db = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } as unknown as Database
     const empty = fanIn({ expectedCount: 0, completedCount: 0, failedCount: 0, children: [] })
 
-    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: empty, collection: null } as ConsolidatedOrchestratorContext)
+    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: empty, collection: null } as ConsolidatedOrchestratorContext)
 
     expect(generateWithTools).not.toHaveBeenCalled()
     expect(db.query).not.toHaveBeenCalled()
@@ -234,7 +288,7 @@ describe("executeOrchestratorConsolidated — JOIN vazio (rodada de hardening 20
     resolveOrchestratorById.mockReset().mockResolvedValueOnce(RESOLVED_ORCHESTRATOR)
     generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese" })
     const db = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) } as unknown as Database
-    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", fanIn: fanIn(), collection: null } as ConsolidatedOrchestratorContext)
+    const result = await executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection: null } as ConsolidatedOrchestratorContext)
     expect(generateWithTools).toHaveBeenCalledTimes(1)
     expect(result.nodeOutput.skippedReason).toBeUndefined()
   })
@@ -248,5 +302,52 @@ describe("executeOrchestrator — V1.7.1 caminho rápido vem da configuração d
     const domain = "d0000000-0000-4000-8000-00000000000f"
     await executeOrchestrator({ orchestratorId: "orch-1", instruction: "Avalie", specialistOutputContract: "PROCESS_ASSESSMENT", routing: { mode: "DOMAINS", businessDomainIds: [domain] } }, baseContext({ db }))
     expect(runOrchestratedReply.mock.calls[0]![6]).toEqual({ fixedDomainIds: [domain], allowSynthesisPassthrough: true })
+  })
+})
+
+describe.each([
+  {
+    etapa: "Orquestrador da chamada",
+    run: (db: Database) => {
+      runOrchestratedReply.mockReset().mockResolvedValueOnce({ text: "síntese final", agentId: null, calls: [], results: [], structuredResult: null })
+      return executeOrchestrator({ orchestratorId: "orch-1", instruction: "Analise." }, baseContext({ db }))
+    },
+  },
+  {
+    etapa: "Orquestrador pós-JOIN",
+    run: (db: Database) => {
+      generateWithTools.mockReset().mockResolvedValueOnce({ kind: "text", text: "síntese final" })
+      return executeOrchestratorConsolidated({ orchestratorId: "orch-1", instruction: "Resuma." }, { db, organizationId: ORG, inputContext: "", workflowScope: WORKFLOW_SCOPE, fanIn: fanIn(), collection: null })
+    },
+  },
+])("conferência da resposta antes de seguir (PEN-017) — $etapa", ({ run }) => {
+  const TOPIC_ROWS = { prohibited_topics: [{ name: "Eleições", required_behavior: "Não opine sobre eleições." }] }
+  const dbWithRule = () => dbAnswering({ ...OPERATOR_ROWS, ...TOPIC_ROWS })
+  const verdict = (value: unknown) => ({ text: JSON.stringify(value), usage: null, durationMs: 1, model: "modelo-simulado", finishReason: "STOP" })
+  beforeEach(() => resolveOrchestratorById.mockReset().mockResolvedValueOnce(RESOLVED_ORCHESTRATOR))
+
+  it("sem regra cadastrada, não há nada a conferir e a IA da conferência não é chamada", async () => {
+    const result = await run(dbAnswering(OPERATOR_ROWS))
+    expect(result.nodeOutput.text).toBe("síntese final")
+    expect(generateAgentReplyWithUsage).not.toHaveBeenCalled()
+  })
+
+  it("com regra ativa, a saída só segue depois de a conferência liberar", async () => {
+    generateAgentReplyWithUsage.mockResolvedValueOnce(verdict({ verdict: "ALLOW", violated: [] }))
+    const result = await run(dbWithRule())
+    expect(result.nodeOutput.text).toBe("síntese final")
+    expect(generateAgentReplyWithUsage).toHaveBeenCalledTimes(1)
+    expect(generateAgentReplyWithUsage.mock.calls[0]?.[0]).toContain("Eleições: Não opine sobre eleições.")
+  })
+
+  it("violação: a etapa é interrompida com a resposta bloqueada", async () => {
+    generateAgentReplyWithUsage.mockResolvedValueOnce(verdict({ verdict: "VIOLATION", violated: ["R1"], excerpt: "síntese final", reason: "Opinou sobre eleições." }))
+    await expect(run(dbWithRule())).rejects.toMatchObject({ code: "RESPONSE_BLOCKED_BY_RULES" })
+  })
+
+  it("conferência indisponível: nada segue e a etapa falha com erro que pode ser repetido, depois de uma nova tentativa", async () => {
+    generateAgentReplyWithUsage.mockRejectedValue(new Error("provedor fora do ar"))
+    await expect(run(dbWithRule())).rejects.toMatchObject({ code: "RESPONSE_CHECK_UNAVAILABLE", statusCode: 503 })
+    expect(generateAgentReplyWithUsage).toHaveBeenCalledTimes(2)
   })
 })

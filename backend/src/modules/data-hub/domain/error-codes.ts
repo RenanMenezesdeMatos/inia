@@ -19,6 +19,7 @@ export const DATA_RUN_ERROR_CODES = {
   DATA_SCHEMA_CHANGED: "A estrutura dos dados de origem mudou e um campo obrigatório deixou de existir.",
   DATA_MAPPING_INVALID: "O mapeamento do feed está incompleto ou inválido.",
   DATA_FILE_INVALID: "O arquivo não pôde ser lido.",
+  DATA_FILE_READER_BUSY: "Há muitas planilhas sendo lidas neste momento — a leitura é tentada de novo.",
   DATA_FILE_ALREADY_PROCESSED: "Este arquivo já foi processado anteriormente.",
   DATA_RAW_EXPIRED: "O conteúdo bruto desta carga já foi descartado pela retenção.",
   DATA_CONTRACT_UNKNOWN: "Contrato de dados desconhecido.",
@@ -64,13 +65,16 @@ export const WARNING_RECORD_ERROR_CODES: ReadonlySet<DataRecordErrorCode> = new 
 export type DataRecordErrorCode = keyof typeof DATA_RECORD_ERROR_CODES
 
 /** Erros de execução que valem retry com backoff (transitórios). Os demais são definitivos. */
-export const TRANSIENT_RUN_ERROR_CODES: ReadonlySet<DataRunErrorCode> = new Set(["DATA_SOURCE_UNREACHABLE", "DATA_SOURCE_TIMEOUT"])
+export const TRANSIENT_RUN_ERROR_CODES: ReadonlySet<DataRunErrorCode> = new Set(["DATA_SOURCE_UNREACHABLE", "DATA_SOURCE_TIMEOUT", "DATA_FILE_READER_BUSY"])
 
 export function describeErrorCode(code: string): string {
   return (DATA_RUN_ERROR_CODES as Record<string, string>)[code] ?? (DATA_RECORD_ERROR_CODES as Record<string, string>)[code] ?? code
 }
 
 /** Erro de execução do Run — carrega o código estável e se é transitório. */
+/** Falha de autenticação que não diz nada sobre a senha (ex.: chave do servidor divergente): não conta como tentativa de senha. */
+export const NOT_A_CREDENTIAL_REFUSAL = { credentialRefused: false } as const
+
 export class DataRunError extends Error {
   constructor(
     readonly code: DataRunErrorCode,
@@ -88,3 +92,8 @@ export class DataRunError extends Error {
 
 /** Erro de um registro individual — vai para a quarentena, nunca derruba a carga inteira. */
 export type RecordError = { code: DataRecordErrorCode; field: string | null; message: string }
+
+/** O servidor julgou a credencial e recusou: é isso, e só isso, que conta no limite de tentativas de senha. */
+export function isCredentialRefusal(error: DataRunError): boolean {
+  return error.code === "DATA_SOURCE_AUTH_FAILED" && (error.details as { credentialRefused?: boolean } | undefined)?.credentialRefused !== false
+}

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
-import { classifyExecutionError } from "../../../shared/domain/execution-failure.js"
+import { ApplicationInvariantError, classifyExecutionError } from "../../../shared/domain/execution-failure.js"
 import { decideNodeRetry, MAX_NODE_ATTEMPTS } from "../domain/node-retry-policy.js"
 import type { NodeOutcome } from "./node-handlers.js"
 
@@ -147,6 +147,15 @@ describe("V1.7.1c — o motor aplica a decisão e registra o diagnóstico (§14/
     const { db, event, update } = fakeDb()
     await processEnrollment(db, row(0))
     expect(event()).toMatchObject({ type: "flow_dead", payload: { errorCategory: "APPLICATION_INVARIANT_VIOLATION", errorCode: "WORKFLOW_NODE_INVARIANT", willRetry: false } })
+    expect(update()[0]).toBe("dead")
+  })
+
+  it("versão fixada do Orquestrador de outro Grupo (resolve-orchestrator.ts): encerra na 1ª vez, com o motivo no evento da execução", async () => {
+    const message = 'A etapa usa a versão 1 do Orquestrador "Monitoria", que não está disponível para o grupo deste workflow. Escolha a versão atual do Orquestrador na etapa e publique o workflow de novo.'
+    processNode.mockRejectedValue(new ApplicationInvariantError(message, "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN"))
+    const { db, event, update } = fakeDb()
+    await processEnrollment(db, row(0))
+    expect(event()).toMatchObject({ type: "flow_dead", payload: { message, errorCategory: "APPLICATION_INVARIANT_VIOLATION", errorCode: "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN", willRetry: false } })
     expect(update()[0]).toBe("dead")
   })
 })

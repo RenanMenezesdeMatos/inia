@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery, fakeAgentVersionIdOf } from "../../agents/testing/agent-version-fakes.js"
 
 vi.mock("../../../config/env.js", () => ({
   env: { NODE_ENV: "test", GEMINI_API_KEY: "test-key", JWT_SECRET: "s", JWT_EXPIRES_IN: "1h", CORS_ORIGIN: "*", activeDatabaseUrl: "" },
@@ -17,12 +18,23 @@ const SPECIALIST_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2"
 const ORCH_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const OPERATOR_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 const ADMIN_ID = "22222222-2222-4222-8222-222222222222"
+/** Base "Manual de PRV" vinculada à versão dos agentes (a configuração da versão guarda o uuid; o fake devolve a linha "k1"). */
+const PRV_MANUAL_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 
 function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string } = {}) {
   const log: { sql: string; params: unknown[] }[] = []
   const runs = new Map<string, Record<string, unknown>>()
+  // Agentes publicados (versão vigente v1, migration 164): o agente testado/orquestrador e o especialista, ambos com a base "Manual de PRV".
+  const agentOf = (id: string) =>
+    id === AGENT_ID
+      ? { id, name: "Agente de Indicadores", agent_type: "INDICATOR_FEEDBACK", objective: "obj", description: "desc", context_prompt: "prompt", active: options.agentActive ?? true, knowledgeDocumentIds: [PRV_MANUAL_ID] }
+      : id === SPECIALIST_ID
+        ? { id, name: "Especialista de Indicadores", objective: "Explica indicadores", description: "", context_prompt: "prompt", active: options.agentActive ?? true, knowledgeDocumentIds: [PRV_MANUAL_ID] }
+        : undefined
   async function query(sql: string, params: unknown[] = []) {
     log.push({ sql, params })
+    const versioned = answerAgentVersionQuery(sql, params, agentOf)
+    if (versioned) return versioned
     const text = sql.replace(/\s+/g, " ").trim()
     if (text.startsWith("insert into qa_runs")) {
       const id = `run-${runs.size + 1}`
@@ -34,8 +46,8 @@ function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string 
       const run = runs.get(params[1] as string)
       return { rows: run ? [run] : [], rowCount: run ? 1 : 0 }
     }
-    if (text.includes("select id, name, agent_type, objective, active from agents")) {
-      return { rows: [{ id: AGENT_ID, name: "Agente de Indicadores", agent_type: "INDICATOR_FEEDBACK", objective: "Explicar indicadores", active: options.agentActive ?? true }], rowCount: 1 }
+    if (text.includes("select id, name, agent_type, objective, active, current_version_id from agents")) {
+      return { rows: [{ id: AGENT_ID, name: "Agente de Indicadores", agent_type: "INDICATOR_FEEDBACK", objective: "Explicar indicadores", active: options.agentActive ?? true, current_version_id: fakeAgentVersionIdOf(AGENT_ID) }], rowCount: 1 }
     }
     if (/select name, objective, description, context_prompt, active[a-z_, ]* from agents/.test(text)) {
       const id = params[0]
@@ -46,6 +58,12 @@ function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string 
     // lê as versões publicadas vinculadas (`versionId`) e depois o `content` dessas versões.
     if (text.includes("from agent_knowledge_documents akd join knowledge_documents kd")) {
       return { rows: [{ id: "k1", title: "Manual de PRV", versionId: "k1-v1", version: 1, organizationId: "org-qa", content: "## PRV\nO PRV é o programa de remuneração variável." }], rowCount: 1 }
+    }
+    // Bases da VERSÃO em execução (retrieve-knowledge.ts com o agente no contexto de versão).
+    if (text.includes("from knowledge_documents kd cross join agent_scope a")) {
+      return (params[0] as string[]).includes(PRV_MANUAL_ID)
+        ? { rows: [{ id: "k1", title: "Manual de PRV", documentType: "MANUAL", versionId: "k1-v1", version: 1, organizationId: "org-qa" }], rowCount: 1 }
+        : { rows: [], rowCount: 0 }
     }
     if (text.includes("from knowledge_versions where id = any")) {
       return { rows: (params[0] as string[]).includes("k1-v1") ? [{ id: "k1-v1", content: "## PRV\nO PRV é o programa de remuneração variável." }] : [], rowCount: 1 }
@@ -66,8 +84,8 @@ function fakeDatabase(options: { agentActive?: boolean; invocationMode?: string 
       if (mode !== "BOTH" && mode !== params[2]) return { rows: [], rowCount: 0 }
       return { rows: [{ id: ORCH_ID, name: "Orquestrador Geral", orchestrator_agent_id: AGENT_ID, objective: "obj", description: "desc", context_prompt: "prompt", output_instructions: "um JSON com { diagnostico: { severidade } }" }], rowCount: 1 }
     }
-    if (text.includes("from assistant_orchestrator_specialists s")) {
-      return { rows: [{ agent_id: SPECIALIST_ID, tool_name: "consultar_indicadores", name: "Especialista de Indicadores", objective: "Explica indicadores", description: "" }], rowCount: 1 }
+    if (text.includes("from assistant_orchestrator_specialists where orchestrator_id = $1")) {
+      return { rows: [{ agentId: SPECIALIST_ID, toolName: "consultar_indicadores" }], rowCount: 1 }
     }
     return { rows: [], rowCount: 0 }
   }

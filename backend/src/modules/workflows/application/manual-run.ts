@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { loadEffectiveStrategy } from "../../indicator-diagnosis/application/diagnostic-strategy-service.js"
+import { resolveAgentVersionForRun } from "../../agents/application/agent-versions.js"
+import { executionDenialFor } from "../../agents/application/agent-execution-authorization.js"
 import { flowGraphSchema } from "../domain/graph-schema.js"
 import { MANUAL_TRIGGER_CONTEXT_LABELS, triggerConfigSchema, type ManualTrigger, type ManualTriggerContext } from "../domain/trigger-config-schema.js"
 import { isOperatorEligibleForWorkflow, loadEligibleOperator, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
@@ -121,19 +123,27 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
  * Agents ("Chamar agente") e Orquestradores da versão publicada que não rodariam agora — as mesmas recusas da publicação
  * (`WORKFLOW_AGENT_INACTIVE`, `WORKFLOW_ORCHESTRATOR_INACTIVE`…), mas sobre o estado ATUAL do cadastro.
  */
-async function loadUnavailableReferences(db: Database, organizationId: string, versionId: string): Promise<ManualRunBlocker[]> {
+export async function loadUnavailableReferences(db: Database, organizationId: string, versionId: string): Promise<ManualRunBlocker[]> {
   const version = (await db.query<{ graph: unknown }>(`select graph from workflow_versions where id = $1`, [versionId])).rows[0]
   const graph = flowGraphSchema.safeParse(version?.graph)
   if (!graph.success) return []
   const agentNodes = graph.data.nodes.flatMap((node) => (node.type === "action" && node.config.actionType === "CALL_AGENT" ? [{ label: node.label, id: node.config.agentId }] : []))
   const orchestratorNodes = graph.data.nodes.flatMap((node) => (node.type === "orchestrator" ? [{ label: node.label, id: node.config.orchestratorId }] : []))
-  const agents = new Map((await db.query<{ id: string; name: string; active: boolean }>(`select id, name, active from agents where organization_id = $1 and id = any($2::uuid[])`, [organizationId, agentNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
+  const agents = new Map((await db.query<{ id: string; name: string; active: boolean; current_version_id: string | null }>(`select id, name, active, current_version_id from agents where organization_id = $1 and id = any($2::uuid[])`, [organizationId, agentNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
+  const workflowScope = (await db.query<{ scope_type: string; team_id: string | null; subteam_id: string | null }>(`select w.scope_type, w.team_id, w.subteam_id from workflow_versions v join workflows_all w on w.id = v.workflow_id where v.id = $1`, [versionId])).rows[0]
   const orchestrators = new Map((await db.query<{ id: string; name: string; active: boolean; invocation_mode: string }>(`select id, name, active, invocation_mode from assistant_orchestrators where organization_id = $1 and id = any($2::uuid[])`, [organizationId, orchestratorNodes.map((node) => node.id)])).rows.map((row) => [row.id, row]))
   const blockers: ManualRunBlocker[] = []
   for (const node of agentNodes) {
     const agent = agents.get(node.id)
     if (!agent) blockers.push({ code: "WORKFLOW_AGENT_NOT_FOUND", message: `O nó "${node.label}" usa um agente que não existe mais. Publique uma versão com outro agente antes de executar.` })
     else if (!agent.active) blockers.push({ code: "WORKFLOW_AGENT_INACTIVE", message: `O nó "${node.label}" usa o agente "${agent.name}", que está inativo. Ative-o (ou publique uma versão sem ele) antes de executar.` })
+    else if (!agent.current_version_id) blockers.push({ code: "WORKFLOW_AGENT_NOT_PUBLISHED", message: `O nó "${node.label}" usa o agente "${agent.name}", que ainda não foi publicado. Publique-o antes de executar.` })
+    else if (workflowScope) {
+      // A versão VIGENTE do agente precisa estar autorizada para o alcance do Workflow (revisão de 03/11/2026) — a mesma conferência da execução.
+      const snapshot = await resolveAgentVersionForRun(db, organizationId, agent.id)
+      const denial = await executionDenialFor(db, snapshot, { scopeType: workflowScope.scope_type, teamId: workflowScope.team_id, subteamId: workflowScope.subteam_id })
+      if (denial) blockers.push({ code: "WORKFLOW_AGENT_NOT_AUTHORIZED", message: `O nó "${node.label}" usa o agente "${agent.name}", cuja versão vigente não está autorizada para este Workflow (alcance ou bases do agente). Ajuste o agente antes de executar.` })
+    }
   }
   for (const node of orchestratorNodes) {
     const orchestrator = orchestrators.get(node.id)
@@ -468,7 +478,7 @@ async function enrollmentOfRun(db: Pick<Database, "query">, runId: string): Prom
  * "entregue": só há entrega quando o Output gravou algo (Acompanhamento/Chat/Avatar), e no Avatar "disponível" (convite)
  * é diferente de "ouvido" (DELIVERED — o colaborador aceitou e a fala terminou).
  */
-export type ManualRunStage = "QUEUED" | "PROCESSING" | "RETRYING" | "WAITING" | "COMPLETED" | "FAILED"
+export type ManualRunStage = "QUEUED" | "PROCESSING" | "RETRYING" | "WAITING" | "COMPLETED" | "FAILED" | "BLOCKED"
 
 export type ManualRunDelivery = { surface: string; status: string; recipientName: string | null; createdAt: string; deliveredAt: string | null; title: string | null }
 
@@ -488,6 +498,10 @@ export type ManualRunView = {
     enrollmentId: string
     status: string
     stage: ManualRunStage
+    /** Motivo de "blocked": agente inativo, acesso não autorizado ou revisão sem revisor ou sem conteúdo; null nos demais. */
+    blockedReason: string | null
+    /** Só nos bloqueios de Revisão humana: por que não há revisor ou conteúdo. */
+    blockedCause: string | null
     currentNodeId: string
     currentNodeLabel: string | null
     waitingFor: "HUMAN_REVIEW" | "FEEDBACK_QA" | "WAIT" | null
@@ -510,6 +524,7 @@ const WAIT_EVENT: Record<string, ManualRunView["execution"]["waitingFor"]> = {
 export function manualRunStageOf(status: string, currentNodeIsTrigger: boolean, lastEventType: string | null): ManualRunStage {
   if (status === "completed") return "COMPLETED"
   if (status === "dead" || status === "failed") return "FAILED"
+  if (status === "blocked") return "BLOCKED"
   if (status === "waiting") return "WAITING"
   if (lastEventType === "node_failed") return "RETRYING"
   return currentNodeIsTrigger && (lastEventType === null || lastEventType === "manual_run_requested") ? "QUEUED" : "PROCESSING"
@@ -540,6 +555,8 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
     indicator_name: string | null
     enrollment_id: string | null
     status: string | null
+    blocked_reason: string | null
+    blocked_details: { cause?: string } | null
     current_node_id: string | null
     updated_at: string | null
     graph: unknown
@@ -550,15 +567,15 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
             r.collaborator_id, c.name collaborator_name, c.matricula collaborator_matricula,
             r.interaction_id, i.reason interaction_subject, i.sub_reason interaction_sub_reason, i.started_at interaction_started_at,
             r.indicator_measurement_id measurement_id, m.period_start measurement_period_start, m.period_end measurement_period_end, m.value measurement_value, d.name indicator_name,
-            e.id enrollment_id, e.status, e.current_node_id, e.updated_at, v.graph
+            e.id enrollment_id, e.status, e.blocked_reason, e.blocked_details, e.current_node_id, e.updated_at, v.graph
        from workflow_manual_runs r
-       join workflows w on w.id = r.workflow_id
+       join workflows_all w on w.id = r.workflow_id
        join workflow_versions v on v.id = r.version_id
        join people rb on rb.id = r.requested_by
        join people c on c.id = r.collaborator_id
        left join interactions i on i.id = r.interaction_id
-       left join indicator_measurements m on m.id = r.indicator_measurement_id
-       left join indicator_definitions d on d.id = m.indicator_definition_id
+       left join indicator_measurements_all m on m.id = r.indicator_measurement_id
+       left join indicator_definitions_all d on d.id = m.indicator_definition_id
        left join workflow_enrollments e on e.manual_run_id = r.id
       where r.id = $1 and r.workflow_id = $2 and r.organization_id = $3`,
     [runId, workflowId, organizationId],
@@ -616,6 +633,8 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
       enrollmentId: row.enrollment_id,
       status,
       stage,
+      blockedReason: status === "blocked" ? row.blocked_reason : null,
+      blockedCause: status === "blocked" ? (row.blocked_details?.cause ?? null) : null,
       currentNodeId: row.current_node_id ?? "",
       currentNodeLabel: row.current_node_id ? labelOf(row.current_node_id) : null,
       waitingFor: waitEvent ? (WAIT_EVENT[waitEvent.event_type] ?? null) : null,

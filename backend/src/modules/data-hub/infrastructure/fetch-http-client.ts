@@ -39,6 +39,10 @@ export class FetchHttpClient implements HttpClient {
       response.headers.forEach((value, key) => {
         headers[key.toLowerCase()] = value
       })
+      if (request.statusOnly) {
+        await response.body?.cancel().catch(() => undefined)
+        return { status: response.status, headers, body: "" }
+      }
       return { status: response.status, headers, body: await readCapped(response, this.maxResponseBytes, controller) }
     } catch (error) {
       if (error instanceof DataRunError) throw error

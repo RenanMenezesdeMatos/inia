@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ export function SpecialistsTab({
   specialistAgents,
   disabledReason,
   incompatibleSelected,
+  renderAgentVersion,
 }: {
   name: string
   orchestratorAgentId: string
@@ -34,6 +35,8 @@ export function SpecialistsTab({
   specialistAgents: Agent[]
   disabledReason: (agent: Agent) => string | null
   incompatibleSelected: { agent: Agent; reason: string }[]
+  /** Versão vigente do agente (com que ele roda neste orquestrador), "Não publicado" e "Agente inativo" — sob cada especialista. */
+  renderAgentVersion?: (agentId: string) => ReactNode
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null)
@@ -108,8 +111,9 @@ export function SpecialistsTab({
           {specialistAgentIds.length === 0 ? <p className="py-2 text-sm text-muted-foreground">Nenhum especialista ainda — o orquestrador responde sozinho, sem tools.</p> : null}
           {specialistAgentIds.map((agentId, index) => (
             <div key={index} className="flex items-start gap-2 rounded-md border p-2">
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-1.5">
                 <AgentPicker agents={specialistAgents} value={agentId} onChange={(value) => updateSpecialist(index, value)} disabledReason={disabledReason} />
+                {agentId && renderAgentVersion ? renderAgentVersion(agentId) : null}
               </div>
               <Button variant="ghost" size="icon" className="shrink-0" aria-label="Remover especialista" onClick={() => removeSpecialist(index)}>
                 <Trash2 className="h-3.5 w-3.5" />

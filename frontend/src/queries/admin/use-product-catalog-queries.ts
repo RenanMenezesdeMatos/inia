@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { useAdminMutation } from "@/lib/admin/use-admin-mutation"
 import {
@@ -77,6 +78,20 @@ export function useReactivateIdentificationCriterionMutation() {
 export function useDeleteIdentificationCriterionMutation() {
   return useAdminMutation({ mutationFn: deleteIdentificationCriterion, invalidateKey, successMessage: "Indício excluído." })
 }
+/** Base de conhecimento: a escolha fica no rascunho e não muda nada em uso. Argumentário: vale a partir de agora. */
 export function useSetProductScopeMutation() {
-  return useAdminMutation({ mutationFn: setProductScope, invalidateKey, successMessage: "Produtos da base atualizados." })
+  const queryClient = useQueryClient()
+  return useAdminMutation({
+    mutationFn: setProductScope,
+    invalidateKey,
+    onSuccess: (data, variables) => {
+      if (variables.kind !== "KNOWLEDGE_DOCUMENT") {
+        toast.success("Produtos da base atualizados.")
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.knowledge() })
+      if (data.pending) toast.success(`Produtos salvos no rascunho V${data.pending.version}. Só valem quando a versão entrar em uso.`)
+      else toast.info("Os produtos já eram estes: nada mudou.")
+    },
+  })
 }

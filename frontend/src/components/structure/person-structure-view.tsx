@@ -10,7 +10,6 @@ import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatCount } from "@/lib/analytics/format"
 import { cn } from "@/lib/utils"
@@ -18,6 +17,7 @@ import { usePersonStructureQuery } from "@/queries/org-structure/use-person-stru
 import type { PersonOrganizationStructure, StructurePerson } from "@/schemas/org-structure/person-structure.schema"
 
 import { OrganizationStructureFlow, resolveViewerPath } from "./organization-structure-flow"
+import { StructureTreeSkeleton } from "./structure-tree-skeleton"
 
 export const STRUCTURE_HELP_TEXT = "Um organograma interativo: arraste para navegar, use a roda do mouse, a pinça ou os controles para aproximar ou afastar, clique numa pessoa para abrir o card dela (Dados do colaborador, Dados da estrutura para quem lidera, Reporta-se à), use “Abrir estrutura” para focar a estrutura de quem lidera e clique no gestor acima para subir um nível. Numa estrutura acima da sua, o ramo que leva até você fica sempre destacado — “Ir até mim” percorre a cadeia. Todo mundo explora o organograma da organização; cada papel vê só os dados que está autorizado a ver."
 
@@ -122,7 +122,7 @@ export function PersonStructureView({ personId, rootPersonId, onNavigate, profil
 
   return (
     <section className="w-full space-y-4" aria-labelledby="structure-title">
-      {query.isPending && !data ? <TreeSkeleton /> : null}
+      {query.isPending && !data ? <StructureTreeSkeleton /> : null}
       {query.isError ? <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} /> : null}
       {data && !query.isError ? (
         <>
@@ -309,24 +309,4 @@ export function LeadershipChainList({ chain, subject, viewerId, onOpenStructure 
 function formatDateTime(iso: string): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-}
-
-function TreeSkeleton() {
-  return (
-    <div className="space-y-4" aria-hidden>
-      <div className="space-y-2 px-1">
-        <Skeleton className="h-7 w-48" />
-        <Skeleton className="h-4 w-80" />
-      </div>
-      <div className="flex h-[32rem] flex-col items-center gap-6 rounded-2xl bg-muted/50 p-6 sm:h-[36rem]">
-        <Skeleton className="h-16 w-72 rounded-xl" />
-        <Skeleton className="h-52 w-[25rem] max-w-full rounded-xl" />
-        <div className="flex gap-3">
-          <Skeleton className="h-20 w-64 rounded-xl" />
-          <Skeleton className="h-20 w-64 rounded-xl" />
-          <Skeleton className="h-20 w-64 rounded-xl" />
-        </div>
-      </div>
-    </div>
-  )
 }

@@ -1,5 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { loadIndicatorOperationalDefinition, resolveEligibleDaysBySubject, resolveOperationalWindowBySubject, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
+import { loadIndicatorOperationalDefinition, resolveEligibleDaysBySubject, resolveOperationalWindowBySubject, type IndicatorOperationalDefinition, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
 import { MEASUREMENT_AGGREGATION_LABELS, type MeasurementAggregation } from "../../indicators/domain/operational-aggregation.js"
 import { assignOperationalQuartiles, type OperationalQuartile } from "../../indicators/domain/operational-quartile.js"
 import type { HistoricalPeriod } from "../domain/graph-schema.js"
@@ -25,6 +25,8 @@ export type OperationalQuartileInput = {
   timeZone: string
   /** Memo por request da resolução de dias de trabalho (compartilhado com as janelas do mesmo request). */
   workdayCache?: WorkdayResolutionCache | undefined
+  /** Definição do indicador já lida pelo chamador (fica fora da chave do cache: é função do código); ausente = lida aqui. */
+  definition?: IndicatorOperationalDefinition | undefined
 }
 
 export type OperationalQuartileMember = {
@@ -81,7 +83,7 @@ export async function resolveOperationalQuartiles(db: Database, input: Operation
 
 async function compute(db: Database, input: OperationalQuartileInput): Promise<OperationalQuartileOutcome> {
   const window = resolveTimeWindow(input.period, input.now, input.timeZone)
-  const definition = await loadIndicatorOperationalDefinition(db, input.indicatorCode)
+  const definition = input.definition ?? (await loadIndicatorOperationalDefinition(db, input.indicatorCode))
   const direction = definition?.direction ?? null
   const [bySubject, eligibility] = await Promise.all([
     resolveOperationalWindowBySubject(

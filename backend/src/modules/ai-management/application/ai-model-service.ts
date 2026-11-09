@@ -254,11 +254,8 @@ export async function updateModel(context: AiAdminContext, actor: Actor, id: str
 export async function deleteModel(context: AiAdminContext, actor: Actor, id: string): Promise<void> {
   const current = await getModel(context, actor.organizationId, id)
   if (current.policies.length > 0) throw new DomainError(`O modelo é usado por política(s) (${current.policies.map((policy) => `${policy.useCase} ${policy.status === "ACTIVE" ? "ativa" : "rascunho"}`).join(", ")}). Remova-o das políticas antes.`, "AI_MODEL_IN_USE", 409, { policies: current.policies })
-  await inTransaction(context.db, async (client) => {
-    await client.query(`delete from ai_routing_policy_models where model_id = $1`, [id])
-    await client.query(`delete from ai_model_pricing where organization_id = $1 and model_id = $2`, [actor.organizationId, id])
-    await client.query(`delete from ai_models where organization_id = $1 and id = $2`, [actor.organizationId, id])
-  })
+  // Exclusão lógica (migration 177): preços, histórico de uso e referência de política arquivada continuam. Volta pela Central de Dados, desabilitado.
+  await context.db.query(`update ai_models_all set enabled = false, deleted_at = now(), deleted_by_person_id = $3, updated_at = now() where organization_id = $1 and id = $2`, [actor.organizationId, id, actor.personId])
   await auditAi(context.db, actor, "AI_MODEL_DELETED", "ai_model", id, { providerModelId: current.providerModelId })
   context.runtime.invalidate(actor.organizationId)
 }

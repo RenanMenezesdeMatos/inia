@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { decodeSourcePath } from "../content-sources"
 import { StructuredContentPicker } from "../structured-content-picker"
 import type { Agent } from "@/schemas/admin/agent.schema"
 import type { Orchestrator } from "@/schemas/admin/assistant.schema"
-import { AVATAR_INTERACTION_MODE_LABELS, OUTPUT_SURFACE_LABELS, VISIBLE_OUTPUT_SURFACES, type ActionConfig, type AvatarInteractionMode, type FlowGraph, type OutputSurface } from "@/schemas/admin/workflow-graph.schema"
+import { AVATAR_INTERACTION_MODE_LABELS, CONVERSATIONAL_OUTPUT_SURFACES, OUTPUT_SURFACE_LABELS, VISIBLE_OUTPUT_SURFACES, findNode, type ActionConfig, type AvatarInteractionMode, type FlowGraph, type OutputSurface } from "@/schemas/admin/workflow-graph.schema"
 import { HierarchicalTargetPicker } from "./hierarchical-target-picker"
 
 /**
@@ -39,6 +40,10 @@ export function EscalateForm({
   onChange: (next: ActionConfig) => void
 }) {
   const hasAvatarOrChat = config.surfaces.includes("AVATAR") || config.surfaces.includes("CHAT")
+  // Mesma regra do Output: o feedback pertence ao colaborador analisado, e Chat e Avatar são conversas com quem recebe.
+  const decodedSource = decodeSourcePath(config.contentSource ?? "")
+  const sourceNode = decodedSource?.kind === "node" ? findNode(graph, decodedSource.nodeId) : undefined
+  const feedbackContent = sourceNode?.type === "action" && sourceNode.config.actionType === "GENERATE_FEEDBACK"
   const fieldId = useId()
 
   return (
@@ -56,6 +61,7 @@ export function EscalateForm({
       </p>
 
       <StructuredContentPicker
+        sourceMode="WITH_FEEDBACK"
         label="Conteúdo a escalonar (opcional)"
         graph={graph}
         fromNodeId={fromNodeId}
@@ -67,7 +73,7 @@ export function EscalateForm({
       />
 
       <div className="space-y-1.5">
-        <Label id={`${fieldId}-surfaces`}>Superfícies</Label>
+        <Label id={`${fieldId}-surfaces`}>Onde entregar</Label>
         <ToggleGroup
           type="multiple"
           aria-labelledby={`${fieldId}-surfaces`}
@@ -75,12 +81,14 @@ export function EscalateForm({
           onValueChange={(value) => onChange({ ...config, surfaces: value as OutputSurface[] })}
           className="flex-wrap justify-start"
         >
-          {VISIBLE_OUTPUT_SURFACES.map((surface) => (
-            <ToggleGroupItem key={surface} value={surface} className="text-xs">
+          {/* "Pendências" não tem tela que leia: só continua aparecendo onde já estava escolhida, para poder tirar. */}
+          {VISIBLE_OUTPUT_SURFACES.filter((surface) => surface !== "INBOX" || config.surfaces.includes("INBOX")).map((surface) => (
+            <ToggleGroupItem key={surface} value={surface} className="text-xs" disabled={feedbackContent && CONVERSATIONAL_OUTPUT_SURFACES.includes(surface) && !config.surfaces.includes(surface)}>
               {OUTPUT_SURFACE_LABELS[surface]}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+        {feedbackContent ? <p className="text-xs text-muted-foreground">Este feedback é do colaborador analisado: para a gestão, use Acompanhamento ou Notificação.</p> : null}
       </div>
 
       {hasAvatarOrChat ? (

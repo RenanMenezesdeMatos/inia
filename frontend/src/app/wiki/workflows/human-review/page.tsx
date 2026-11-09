@@ -69,6 +69,17 @@ export default function HumanReviewPage() {
         <FieldRow label="Contexto" value="Exige colaborador individual: cada revisão pertence a UMA pessoa." />
       </WikiSection>
 
+      <WikiSection id="sem-revisor" title="Quando não há revisor ou conteúdo" eyebrow="Bloqueada, com o motivo">
+        <p className="text-sm text-muted-foreground">
+          A execução nunca fica esperando uma decisão que ninguém foi avisado para tomar. Ela fica <strong className="font-medium text-foreground">Bloqueada</strong> na etapa, mantém os resultados
+          anteriores e só continua por uma nova tentativa confirmada em Execuções.
+        </p>
+        <FieldRow label="Bloqueada — sem revisor" value="Ninguém com o cargo acima do colaborador, revisor inativo (não sobe para o próximo da cadeia), revisão anterior não decidida neste caminho, ou o único revisor possível é o próprio colaborador." />
+        <FieldRow label="Bloqueada — conteúdo ausente" value="O conteúdo escolhido não existe nesta execução: a etapa de origem não rodou neste caminho, ou a variável ainda não tem valor. Ninguém decide sem ver o conteúdo." />
+        <FieldRow label="Quem é avisado" value="Quem publicou a versão vigente, pelo sino, uma vez por workflow, etapa e dia, sem o nome do colaborador — mesmo sendo o colaborador da execução. Quem não tem mais acesso ao workflow não recebe. Versão sem publicador ativo não avisa ninguém; a lista de workflows mostra a contagem de bloqueadas." />
+        <FieldRow label="Nova tentativa" value="A prévia confere a causa de novo e não deixa confirmar enquanto ela continuar. Na mesma versão, continua da revisão, sem repetir as etapas anteriores nem a IA." />
+      </WikiSection>
+
       <WikiSection id="decisoes" title="Aprovar, Reprovar, Escalar" eyebrow="O que acontece com o Workflow">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <ExampleCard title="Aprovar">A execução segue pelo ramo Aprovado — nos modelos, o Output que publica o feedback no Acompanhamento do operador.</ExampleCard>
@@ -101,7 +112,7 @@ export default function HumanReviewPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <FieldRow label="Cargo-alvo" value={`${Object.values(ESCALATION_ROLE_LABELS).join(", ")} — resolvido na hierarquia do operador.`} />
           <FieldRow label="Conteúdo" value="Um trecho do contexto de execução (ex.: o resultado do Agent)." />
-          <FieldRow label="Superfícies" value="Uma ou mais: Acompanhamento, Notificação, Pendências, Avatar, Chat." />
+          <FieldRow label="Onde entregar" value="Um ou mais: Acompanhamento, Notificação, Avatar, Chat." />
           <FieldRow label="Continuar" value="Segue o fluxo (Continuar) ou encerra o branch sem exigir aresta (Encerrar branch)." />
         </div>
         <p>

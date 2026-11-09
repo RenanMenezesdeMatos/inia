@@ -179,6 +179,7 @@ describe("workflow-router", () => {
     const draftGraph = {
       nodes: [
         { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} },
+        { id: "orchestrator", type: "wait", label: "Etapa anterior", position: { x: 0, y: 80 }, config: { durationMs: 1000 } },
         {
           id: "condition",
           type: "condition",
@@ -190,7 +191,8 @@ describe("workflow-router", () => {
         { id: "end-false", type: "end", label: "Fim", position: { x: 200, y: 320 }, config: {} },
       ],
       edges: [
-        { id: "e1", source: "trigger", sourceHandle: "always", target: "condition" },
+        { id: "e0", source: "trigger", sourceHandle: "always", target: "orchestrator" },
+        { id: "e1", source: "orchestrator", sourceHandle: "always", target: "condition" },
         { id: "e2", source: "condition", sourceHandle: "true", target: "end-true" },
         { id: "e3", source: "condition", sourceHandle: "false", target: "end-false" },
       ],
@@ -616,6 +618,7 @@ describe("workflow-router", () => {
     const draftGraph = {
       nodes: [
         { id: "trigger", type: "trigger", label: "Gatilho", position: { x: 0, y: 0 }, config: {} },
+        { id: "orch", type: "wait", label: "Etapa anterior", position: { x: 0, y: 80 }, config: { durationMs: 1000 } },
         {
           id: "condition",
           type: "condition",
@@ -636,7 +639,8 @@ describe("workflow-router", () => {
         { id: "end-false", type: "end", label: "Fim", position: { x: 200, y: 320 }, config: {} },
       ],
       edges: [
-        { id: "e1", source: "trigger", sourceHandle: "always", target: "condition" },
+        { id: "e0", source: "trigger", sourceHandle: "always", target: "orch" },
+        { id: "e1", source: "orch", sourceHandle: "always", target: "condition" },
         { id: "e2", source: "condition", sourceHandle: "true", target: "end-true" },
         { id: "e3", source: "condition", sourceHandle: "false", target: "end-false" },
       ],

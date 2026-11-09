@@ -116,7 +116,9 @@ async function configure(ctx: Context) {
       id = (await call<{ id: string }>("POST", "/admin/knowledge", form)).id
       await call("PATCH", `/admin/knowledge/${id}`, { status: "PUBLISHED" })
     }
-    await call("PUT", `/admin/product-catalog/sources/KNOWLEDGE_DOCUMENT/${id}/scope`, { nodeIds: nodeIdsOf(ctx, document.products) })
+    // Os produtos de uma base ficam no rascunho: só valem depois de publicar (PEN-008).
+    const scope = await call<{ pending: { version: number } | null }>("PUT", `/admin/product-catalog/sources/KNOWLEDGE_DOCUMENT/${id}/scope`, { nodeIds: nodeIdsOf(ctx, document.products) })
+    if (scope.pending) await call("POST", `/admin/knowledge/${id}/publish`, {})
     documentIds.set(document.key, id)
     console.log(`Base: ${document.title} → ${document.products.length === 0 ? "todos os produtos" : document.products.join(", ")}`)
   }

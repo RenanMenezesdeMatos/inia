@@ -70,7 +70,7 @@ export function validatePaidCycles(context: ValidationContext): void {
   }
   for (const node of graph.nodes) if (kept(node.id) && !index.has(node.id)) visit(node.id)
   const paid = graph.nodes.find((node) => cyclic.has(node.id) && callsModelOnEachVisit(node))
-  if (paid) issues.push({ nodeId: paid.id, code: "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT", message: `"${paid.label}" chama a IA e o caminho volta para ele sem passar por uma Espera: cada volta seria uma nova chamada paga. Inclua uma Espera no caminho de volta ou desfaça o ciclo.` })
+  if (paid) issues.push({ nodeId: paid.id, code: "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT", message: `"${paid.label}" chama a IA e o caminho volta para ele sem passar por um "Aguardar": cada volta seria uma nova chamada paga. Inclua um "Aguardar" no caminho de volta ou desfaça o ciclo.` })
 }
 
 /**

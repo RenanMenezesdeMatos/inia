@@ -185,13 +185,20 @@ const DEFAULT_TIMEZONE = "America/Fortaleza"
 
 const DEFAULT_DEFINITION: Pick<IndicatorOperationalDefinition, "kind" | "dailySupported" | "direction" | "unjustifiedAbsencePolicy"> = { kind: "AVERAGE", dailySupported: false, direction: "HIGHER", unjustifiedAbsencePolicy: "NO_SAMPLE" }
 
+/** Colunas de `indicator_definitions` que formam a definição operacional — para quem já lê o catálogo da organização numa consulta só. */
+export const OPERATIONAL_DEFINITION_COLUMNS = "id, code, unit, desired_direction, unjustified_absence_policy, operational_aggregation, daily_supported"
+export type OperationalDefinitionRow = { id: string; code: string; unit: string; desired_direction: string; operational_aggregation: string | null; daily_supported: boolean | null; unjustified_absence_policy?: string | null }
+
 export async function loadIndicatorOperationalDefinition(db: Database, indicatorCode: string): Promise<IndicatorOperationalDefinition | null> {
-  const result = await db.query<{ id: string; code: string; unit: string; desired_direction: string; operational_aggregation: string | null; daily_supported: boolean | null; unjustified_absence_policy?: string | null }>(
-    `select id, code, unit, desired_direction, unjustified_absence_policy, operational_aggregation, daily_supported from indicator_definitions where code = $1 order by created_at limit 1`,
+  const result = await db.query<OperationalDefinitionRow>(
+    `select ${OPERATIONAL_DEFINITION_COLUMNS} from indicator_definitions where code = $1 order by created_at limit 1`,
     [indicatorCode],
   )
   const row = result.rows[0]
-  if (!row) return null
+  return row ? toOperationalDefinition(row) : null
+}
+
+export function toOperationalDefinition(row: OperationalDefinitionRow): IndicatorOperationalDefinition {
   return {
     id: row.id,
     code: row.code,

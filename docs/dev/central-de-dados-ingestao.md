@@ -12,9 +12,9 @@
 | --- | --- | --- |
 | `domain/data-contract.ts`, `domain/contracts/*`, `domain/contract-registry.ts` | contratos canônicos (`EMPLOYEES@1`, `INDICATOR_MEASUREMENTS@1`…), chave natural, dependências, política (`PARTIAL_ALLOWED`/`ATOMIC`), exemplos | "qual formato a INIA entende" |
 | `domain/mapping.ts` | dot path, transformações declarativas (TRIM/UPPERCASE/LOWERCASE/PARSE_DATE/PARSE_DECIMAL/BOOLEAN_MAP/DEFAULT/CONSTANT/CODE_MAP), coerção por tipo, `validateMapping`, `suggestMapping` (por nome, sem IA) | "como o formato do cliente vira o da INIA" |
-| `domain/csv-parser.ts`, `infrastructure/xlsx-parser.ts` | CSV próprio (encoding, separador autodetect, aspas) e `.xlsx` via exceljs (só células; macros nunca executadas) | leitura |
+| `domain/csv-parser.ts`, `infrastructure/xlsx-parser.ts` (+ `xlsx-parser-job.ts`) | CSV próprio (encoding, separador autodetect, aspas) e `.xlsx` via exceljs (só células; macros nunca executadas) num processo filho com teto de memória e de tempo, linhas em lotes pelo IPC (R-24) | leitura |
 | `domain/schema-fingerprint.ts` | fingerprint das colunas de origem; coluna obrigatória ausente ⇒ `DATA_SCHEMA_CHANGED` + feed `DEGRADED` | mudança de esquema |
-| `domain/freshness.ts` | `SourceStatus` × `ConnectionHealth` × `FreshnessState` (nunca misturados), cadência e `nextSyncAt` no fuso da organização | saúde × atualidade |
+| `domain/freshness.ts` | `SourceStatus` × `ConnectionHealth` × `FreshnessState` (nunca misturados), cadência (`MANUAL`, `INTERVAL`, `DAILY`, `CALENDAR`), `nextSyncAt` no fuso da organização e `computeFeedFreshness` (atraso pela agenda real) | saúde × atualidade |
 | `domain/error-codes.ts` | códigos estáveis de carga (`DATA_SOURCE_AUTH_FAILED`…) e de registro (`DATA_EMPLOYEE_NOT_FOUND`…); transitórios têm retry | erros |
 | `application/ports.ts` | `SecretStore`, `RawObjectStore`, `HttpClient`, `SftpClient`, `Clock` | ports |
 | `infrastructure/aes-secret-store.ts` | AES-256-GCM com chave **fora do banco** (`DATA_HUB_SECRET_KEY`, obrigatória em produção; fallback fixo só em dev/test) | segredos |
@@ -156,7 +156,7 @@ férias com fim explícito voltam a ATIVO sozinhas. `resolveEmployeeStatusAt/res
 
 **Freshness da situação funcional** (`people/application/employment-status-freshness.ts`):
 derivada só de `data_feeds` (contratos EMPLOYEES/EMPLOYEE_ABSENCES, não-DRAFT; se houver feeds
-autoritativos, só eles decidem) com `computeFreshness`/`expectedIntervalMinutes` da própria
+autoritativos, só eles decidem) com `computeFeedFreshness` da própria
 Central — FRESH | STALE | UNKNOWN (não configurado: legado/manual, nada é degradado).
 Não é saúde de conexão nem um terceiro painel. `resolveEligibleDaysBySubject` devolve
 `statusConfidence { freshness, unconfirmedDays, unconfirmedDates, lastSuccessLocalDate }`: um dia é

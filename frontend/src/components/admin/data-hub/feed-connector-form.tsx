@@ -262,7 +262,7 @@ export function FeedConnectorForm({ kind, draft, onChange, sheets }: { kind: Sou
         <Field id="api-extract" label="Caminho dos registros (extract path)" hint='Dot path até a lista na resposta (ex.: "data.items"). Vazio = a resposta é a lista.'>
           <Input id="api-extract" value={draft.extractPath} onChange={(event) => set("extractPath", event.target.value)} placeholder="data" />
         </Field>
-        <Field id="api-query" label="Query params fixos (opcional)" hint="Um por linha, chave=valor.">
+        <Field id="api-query" label="Query params fixos (opcional)" hint="Um por linha, chave=valor. Sem liberar a configuração, os valores aparecem ocultos; deixar oculto mantém o valor atual.">
           <Input id="api-query" value={draft.queryParamsText} onChange={(event) => set("queryParamsText", event.target.value)} placeholder="tipo=diario" />
         </Field>
       </div>

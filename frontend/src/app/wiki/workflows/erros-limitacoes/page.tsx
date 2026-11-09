@@ -27,10 +27,13 @@ const ERRORS: [string, string][] = [
     "Vira Sem Dados quando a Condition define um mínimo de amostras, quando Últimos N fechamentos pede mais fechamentos do que existem (Atingimento/PRV), ou quando um dos Últimos N meses fechados esperados (Valor) não tem medição suficiente — nunca Não, nunca uma média parcial, nunca substituído por um mês mais antigo.",
   ],
   ["Estrutura Consolidada com metas diferentes entre os membros", "Comparar com Meta vira Sem Dados quando os colaboradores da estrutura resolvem metas diferentes (Subgrupos distintos) — a engine nunca escolhe uma arbitrariamente."],
-  ["Agent ou Orchestrator indisponível", "Falha controlada (ex.: chave de API ausente no ambiente), com retry limitado e mensagem específica."],
+  ["Agent ou Orchestrator indisponível", "Agente inativo ou sem acesso autorizado: a execução fica Bloqueada e espera alguém reativar ou substituir o agente e pedir nova tentativa. Falha técnica (ex.: chave de API ausente): nova tentativa automática limitada, com mensagem específica."],
   ["Evidência não literal (feedback de monitoria)", "Se a IA parafraseia em vez de citar a transcrição, o resultado é descartado e a execução marcada como falha — texto gerado por IA nunca é evidência."],
   ["Etapa de conformidade sem citação", "CONFORME/NÃO CONFORME sem trecho literal é rebaixada por código para NÃO FOI POSSÍVEL CONFIRMAR."],
   ["Revisão Humana aguardando", "Execução fica em 'aguardando' até a decisão chegar pela rota dedicada — nunca expira sozinha hoje."],
+  ["Revisão Humana sem revisor ou sem conteúdo", "A execução fica Bloqueada, com o motivo, e quem publicou e ainda tem acesso ao workflow é avisado pelo sino. Depois de corrigir a causa, alguém pede nova tentativa."],
+  ["Output ou Escalonar sem o conteúdo", "A execução encerra com falha e o motivo, sem entregar nada: nunca sai um aviso vazio. Não há nova tentativa automática, pois a versão é fixa."],
+  ["Origem que não existe ou não vem antes", "A publicação é recusada, apontando a etapa. Versão publicada antes desta regra para ao rodar, com o motivo."],
   ["Execução falhou", "Retry automático até um limite; depois disso, a execução para definitivamente (nunca fica rodando para sempre)."],
   ["Join vazio (0 filhos)", "Não é erro: Consolidar resultados resolve com 0 esperados e o Orquestrador seguinte é pulado sem chamar IA."],
   ["Surface sem leitor", "Avatar, Chat e Pendências (como surface) são gravadas mesmo sem tela dedicada de consumo — ver Outputs › Surfaces."],
@@ -108,7 +111,7 @@ export default function ErrorsLimitationsPage() {
             &quot;Efeitos simulados&quot; (cosmético).
           </li>
           <li>Roteamento dinâmico &quot;pelo problema identificado&quot; dentro de um mesmo Workflow: o especialista de um node é fixo (use o Orquestrador do domínio/multidomínio ou instâncias por grupo).</li>
-          <li>Não existe biblioteca de templates reutilizáveis nem versionamento visual — os 20 modelos são Workflows reais em rascunho, duplicáveis à mão.</li>
+          <li>Não existe biblioteca de templates reutilizáveis, botão de duplicar nem histórico visual de versões — os 20 modelos são Workflows em rascunho no ambiente de demonstração, e adaptar um deles altera o próprio modelo.</li>
         </ul>
       </WikiSection>
 

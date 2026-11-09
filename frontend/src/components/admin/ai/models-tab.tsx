@@ -56,6 +56,7 @@ import {
 } from "@/schemas/admin/ai-management.schema"
 
 import { CapabilityBadges, EnabledBadge, InfoCallout, ModelPriceCell, MoneyList } from "./ai-shared"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /**
  * Modelos: algo utilizável por UMA conexão. O `providerModelId` nunca muda (o nome amigável sim);
@@ -367,7 +368,7 @@ function DeleteModelButton({ model }: { model: AiModel }) {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {model.displayName}?</AlertDialogTitle>
-          <AlertDialogDescription>O modelo e o histórico de preços dele são removidos; o histórico de uso continua. Modelos em políticas (ativas ou rascunho) não podem ser excluídos.</AlertDialogDescription>
+          <AlertDialogDescription>O modelo sai das telas e do roteamento; os preços e o histórico de uso continuam. {RESTORE_NOTE} Modelos em políticas (ativas ou rascunho) não podem ser excluídos.</AlertDialogDescription>
         </AlertDialogHeader>
         {remove.isError ? (
           <p className="text-sm text-destructive" role="alert">

@@ -4,8 +4,14 @@ import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowle
 import type { FunctionDeclaration } from "../infrastructure/gemini-function-calling-client.js"
 import { toolNameForAgent } from "../domain/orchestrator-schema.js"
 import { describeSpecialty, resolveAgentSpecialty, SPECIALTY_KIND_LABELS, type AgentSpecialtyRow } from "../../agents/domain/agent-specialty.js"
-import { agentBusinessDomainColumns, agentBusinessDomainJoin } from "../../business-domains/application/business-domain-lookup.js"
 import { resolveEffectiveStructuredOutput, type StructuredOutputDefinition } from "../domain/structured-output-definition.js"
+import { DomainError } from "../../../shared/domain/domain-error.js"
+import { ApplicationInvariantError } from "../../../shared/domain/execution-failure.js"
+import { scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { withAgentSnapshots } from "../../agents/application/agent-runtime-context.js"
+import { resolveAgentVersionForRun } from "../../agents/application/agent-versions.js"
+import { assertExecutionAuthorized, executionDenialFor, recordExecutionDenial } from "../../agents/application/agent-execution-authorization.js"
+import type { AgentRuntimeSnapshot } from "../../agents/domain/agent-config.js"
 
 
 export type ResolvedOrchestrator = {
@@ -14,9 +20,18 @@ export type ResolvedOrchestrator = {
   orchestratorId: string
   orchestratorName: string
   orchestratorAgentId: string
+  /** Versão do Orquestrador usada (PEN-076): a fixada pelo Workflow ou, no chat/voz, a vigente. Null só em dados de teste. */
+  orchestratorVersionId?: string | null
+  orchestratorVersionNumber?: number | null
+  /** Versão do agente orquestrador usada (PEN-002). */
+  orchestratorAgentVersionId?: string | null
+  /** Versões dos agentes desta resolução (orquestrador + especialistas) — a execução roda dentro delas (agent-runtime-context.ts). */
+  agentSnapshots?: AgentRuntimeSnapshot[]
+  /** Alcance do Orquestrador em execução — contra ele a versão vigente de cada especialista é autorizada, também na hora da chamada. */
+  consumerScope?: { scopeType: string; teamId: string | null; subteamId: string | null }
   systemPrompt: string
   /** V1.7.1 — tipo de especialidade e domínio de negócio (FK) de cada especialista: base do roteamento declarativo por domínio. */
-  specialists: { agentId: string; toolName: string; specialtyKind?: string | null; businessDomainId?: string | null }[]
+  specialists: { agentId: string; agentVersionId?: string | null; toolName: string; specialtyKind?: string | null; businessDomainId?: string | null }[]
   tools: FunctionDeclaration[]
   // Instrução de como formatar um resultado estruturado ao final da resposta — null = orquestrador
   // não configurado pra isso, resposta continua 100% texto livre. Com `structuredOutput` (definição
@@ -43,6 +58,9 @@ type OrchestratorRow = {
   organization_id: string
   id: string
   name: string
+  scope_type: string
+  team_id: string | null
+  subteam_id: string | null
   orchestrator_agent_id: string
   objective: string
   description: string
@@ -66,32 +84,143 @@ export function describeSpecialistForRouting(row: AgentSpecialtyRow): string {
  * linha de `assistant_orchestrators` já carregada — compartilhado pelos dois pontos de entrada
  * (`resolveOrchestratorForSubject` e `resolveOrchestratorById`), nenhuma lógica duplicada entre
  * eles além do próprio WHERE de cada um. */
-async function buildResolvedOrchestrator(db: Database, orchestrator: OrchestratorRow, query: string | undefined, invocationContext: OrchestratorInvocationContext): Promise<ResolvedOrchestrator> {
+/**
+ * Versões em jogo (PEN-076 com a revisão aprovada da PEN-002/PEN-076 de 03/11/2026). A CONFIGURAÇÃO do Orquestrador é versionada:
+ * o Workflow usa a versão fixada na etapa (ou a de origem da migração numa versão do Workflow publicada antes do versionamento);
+ * chat e voz, a vigente. Os AGENTES — orquestrador e especialistas — rodam sempre na versão vigente deles, resolvida agora e
+ * registrada com a resposta. Especialista inativo, nunca publicado ou cuja versão vigente não é autorizada para o alcance do
+ * Orquestrador não vira ferramenta (o último fica registrado na auditoria, sem nada para o colaborador).
+ */
+type OrchestratorVersionPin = {
+  versionId: string | null
+  legacyPin: boolean
+  /** Alcance do Workflow que fixa a versão: a versão fixada só roda se servir a ele (mesma regra da publicação). */
+  workflowScope: ScopedTarget
+}
+
+type OrchestratorVersionConfig = {
+  scopeType?: string
+  teamId?: string | null
+  subteamId?: string | null
+  specialists?: { agentId: string; toolName: string }[]
+  outputInstructions?: string | null
+  outputSchema?: unknown
+  structuredOutput?: unknown
+  recommendSupportMaterials?: boolean
+}
+
+async function loadOrchestratorVersion(db: Database, orchestratorId: string, pin: OrchestratorVersionPin | null): Promise<{ id: string; number: number; config: OrchestratorVersionConfig } | null> {
+  const row = pin?.versionId
+    ? (await db.query<{ id: string; number: number; config: OrchestratorVersionConfig }>(`select id, version_number "number", config from assistant_orchestrator_versions where id = $1 and orchestrator_id = $2`, [pin.versionId, orchestratorId])).rows[0]
+    : pin?.legacyPin
+      ? (await db.query<{ id: string; number: number; config: OrchestratorVersionConfig }>(`select id, version_number "number", config from assistant_orchestrator_versions where orchestrator_id = $1 order by (origin = 'MIGRATION') desc, version_number asc limit 1`, [orchestratorId])).rows[0]
+      : (await db.query<{ id: string; number: number; config: OrchestratorVersionConfig }>(`select v.id, v.version_number "number", v.config from assistant_orchestrators o join assistant_orchestrator_versions v on v.id = o.current_version_id where o.id = $1`, [orchestratorId])).rows[0]
+  return row ?? null
+}
+
+/** Versão vigente de um especialista, ou null quando ele não pode atender (inexistente, nunca publicado, inativo). */
+async function specialistSnapshot(db: Database, organizationId: string, agentId: string): Promise<AgentRuntimeSnapshot | null> {
+  try {
+    const resolved = await resolveAgentVersionForRun(db, organizationId, agentId)
+    if (!resolved.active) return null
+    return { agentId: resolved.agentId, organizationId: resolved.organizationId, versionId: resolved.versionId, versionNumber: resolved.versionNumber, config: resolved.config }
+  } catch (error) {
+    if (error instanceof DomainError && (error.code === "AGENT_NOT_PUBLISHED" || error.code === "AGENT_VERSION_NOT_FOUND" || error.code === "AGENT_NOT_FOUND")) return null
+    throw error
+  }
+}
+
+async function buildResolvedOrchestrator(db: Database, orchestrator: OrchestratorRow, query: string | undefined, invocationContext: OrchestratorInvocationContext, pin: OrchestratorVersionPin | null = null): Promise<ResolvedOrchestrator> {
+  const version = await loadOrchestratorVersion(db, orchestrator.id, pin)
+  const pinned = pin !== null && version !== null
+  // A versão fixada leva o alcance e os especialistas DELA para a execução, então precisa servir ao Grupo do Workflow, pela mesma
+  // `scopesAreCompatible` da publicação (publish-validation/orchestrators.ts). Versão publicada antes dessa conferência, a de origem
+  // da migração e o rascunho do QA Lab chegam aqui sem passar por ela. Falha antes de qualquer especialista, base ou IA, e é
+  // terminal: a versão do Workflow é fixa, nada muda entre uma tentativa e outra. Nunca cai na versão atual nem segue sem os
+  // especialistas. Versão sem alcance gravado usa o do Orquestrador de hoje, como na publicação.
+  if (pinned && version.config.scopeType) {
+    const versionScope = { scopeType: version.config.scopeType, teamId: version.config.teamId ?? null, subteamId: version.config.subteamId ?? null }
+    if (!(await scopesAreCompatible(db, pin.workflowScope, versionScope))) {
+      throw new ApplicationInvariantError(
+        `A etapa usa a versão ${version.number} do Orquestrador "${orchestrator.name}", que não está disponível para o grupo deste workflow. Escolha a versão atual do Orquestrador na etapa e publique o workflow de novo.`,
+        "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
+      )
+    }
+  }
+  const listed: { agentId: string; toolName: string }[] = pinned
+    ? (version.config.specialists ?? []).map((entry) => ({ agentId: entry.agentId, toolName: entry.toolName }))
+    : (await db.query<{ agentId: string; toolName: string }>(`select agent_id "agentId", tool_name "toolName" from assistant_orchestrator_specialists where orchestrator_id = $1 order by agent_id`, [orchestrator.id])).rows
+  // Alcance do Orquestrador em execução (o da versão fixada pelo Workflow, ou o atual): a versão vigente de cada especialista
+  // precisa cobri-lo, com as bases autorizadas — a atualização automática nunca amplia acesso.
+  const consumerScope = pinned && version.config.scopeType
+    ? { scopeType: version.config.scopeType, teamId: version.config.teamId ?? null, subteamId: version.config.subteamId ?? null }
+    : { scopeType: orchestrator.scope_type, teamId: orchestrator.team_id, subteamId: orchestrator.subteam_id }
+  const resolvedSpecialists = (await Promise.all(listed.map(async (entry) => {
+    const snapshot = await specialistSnapshot(db, orchestrator.organization_id, entry.agentId)
+    if (!snapshot) return null
+    const denial = await executionDenialFor(db, snapshot, consumerScope)
+    if (denial) {
+      await recordExecutionDenial(db, { organizationId: orchestrator.organization_id, agentId: entry.agentId, agentVersionId: snapshot.versionId, consumerKind: "ORCHESTRATOR", consumerId: orchestrator.id, reason: denial })
+      return null
+    }
+    return { entry, snapshot }
+  }))).filter((item): item is { entry: { agentId: string; toolName: string }; snapshot: AgentRuntimeSnapshot } => item !== null)
   // Metadata legível de roteamento (Parte K do catálogo de domínios): o coordenador recebe, por
   // especialista, o TIPO de especialidade e o NOME do domínio de negócio (nunca id/código) —
   // só o necessário para escolher; a tabela do catálogo nunca entra no prompt.
-  const specialistRows = await db.query<{ agent_id: string; tool_name: string; name: string; objective: string; description: string } & AgentSpecialtyRow>(
-    `select s.agent_id, s.tool_name, a.name, a.objective, a.description,
-            a.specialty, a.specialty_kind, a.domain, a.capability, a.consolidated_input, ${agentBusinessDomainColumns("bd")}
-     from assistant_orchestrator_specialists s
-     join agents a on a.id = s.agent_id
-     ${agentBusinessDomainJoin("a", "bd")}
-     where s.orchestrator_id = $1 and a.active`,
-    [orchestrator.id],
-  )
-
-  const { systemPrompt, knowledge } = await buildSystemPromptWithTrace(
-    db,
-    orchestrator.orchestrator_agent_id,
-    { organization_id: orchestrator.organization_id, name: orchestrator.name, objective: orchestrator.objective, description: orchestrator.description, context_prompt: orchestrator.context_prompt },
-    { query, collaboratorConversation: invocationContext === "INTERACTIVE" },
-  )
-
-  const specialists = specialistRows.rows.map((row) => {
-    const specialty = resolveAgentSpecialty(row)
-    return { agentId: row.agent_id, toolName: row.tool_name, specialtyKind: specialty.kind, businessDomainId: specialty.kind === "DOMAIN" ? (row.business_domain_id ?? null) : null }
+  const domainIds = [...new Set(resolvedSpecialists.map((item) => item.snapshot.config.businessDomainId).filter((id): id is string => Boolean(id)))]
+  const domains = new Map(domainIds.length === 0 ? [] : (await db.query<{ id: string; code: string; name: string; active: boolean }>(`select id, code, name, active from business_domains where id = any($1::uuid[])`, [domainIds])).rows.map((row) => [row.id, row]))
+  const specialistRows = resolvedSpecialists.map(({ entry, snapshot }) => {
+    const domain = snapshot.config.businessDomainId ? domains.get(snapshot.config.businessDomainId) : undefined
+    return {
+      agent_id: entry.agentId,
+      agent_version_id: snapshot.versionId,
+      tool_name: entry.toolName,
+      name: snapshot.config.name,
+      objective: snapshot.config.objective,
+      description: snapshot.config.description,
+      specialty: snapshot.config.specialty,
+      specialty_kind: snapshot.config.specialtyKind,
+      domain: snapshot.config.domain,
+      capability: snapshot.config.capability,
+      consolidated_input: snapshot.config.consolidatedInput,
+      business_domain_id: snapshot.config.businessDomainId,
+      business_domain_code: domain?.code ?? null,
+      business_domain_name: domain?.name ?? null,
+      business_domain_active: domain?.active ?? null,
+    }
   })
-  const tools: FunctionDeclaration[] = specialistRows.rows.map((row) => ({
+
+  // Agente orquestrador: a versão vigente. Inativo continua atendendo como hoje — o tratamento do agente orquestrador desativado é
+  // a PEN-047, ainda aberta. Versão vigente não autorizada para o alcance do Orquestrador: nada roda (bloqueio com o motivo).
+  const orchestratorAgent = await resolveAgentVersionForRun(db, orchestrator.organization_id, orchestrator.orchestrator_agent_id).catch((error: unknown) => {
+    if (error instanceof DomainError && error.code === "AGENT_NOT_PUBLISHED") return null
+    throw error
+  })
+  const orchestratorAgentSnapshot: AgentRuntimeSnapshot | null = orchestratorAgent ? { agentId: orchestratorAgent.agentId, organizationId: orchestratorAgent.organizationId, versionId: orchestratorAgent.versionId, versionNumber: orchestratorAgent.versionNumber, config: orchestratorAgent.config } : null
+  if (orchestratorAgentSnapshot) await assertExecutionAuthorized(db, orchestratorAgentSnapshot, consumerScope)
+  const agentSnapshots: AgentRuntimeSnapshot[] = [...(orchestratorAgentSnapshot ? [orchestratorAgentSnapshot] : []), ...resolvedSpecialists.map(({ snapshot }) => snapshot)]
+
+  const { systemPrompt, knowledge } = await withAgentSnapshots(agentSnapshots, () =>
+    buildSystemPromptWithTrace(
+      db,
+      orchestrator.orchestrator_agent_id,
+      {
+        organization_id: orchestrator.organization_id,
+        name: orchestrator.name,
+        objective: orchestratorAgentSnapshot?.config.objective ?? orchestrator.objective,
+        description: orchestratorAgentSnapshot?.config.description ?? orchestrator.description,
+        context_prompt: orchestratorAgentSnapshot?.config.contextPrompt ?? orchestrator.context_prompt,
+      },
+      { query, collaboratorConversation: invocationContext === "INTERACTIVE" },
+    ),
+  )
+
+  const specialists = specialistRows.map((row) => {
+    const specialty = resolveAgentSpecialty(row)
+    return { agentId: row.agent_id, agentVersionId: row.agent_version_id, toolName: row.tool_name, specialtyKind: specialty.kind, businessDomainId: specialty.kind === "DOMAIN" ? (row.business_domain_id ?? null) : null }
+  })
+  const tools: FunctionDeclaration[] = specialistRows.map((row) => ({
     name: row.tool_name,
     description: `${describeSpecialistForRouting(row)}${row.objective} ${row.description}`.trim(),
     parameters: {
@@ -124,19 +253,28 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
 
   // Dual-read do resultado estruturado: definição nova (contrato gerado + validação) ou legado
   // (texto livre intacto, sem validação) — nunca duas implementações do marcador.
-  const structured = resolveEffectiveStructuredOutput(orchestrator)
+  // A versão fixada pelo Workflow também fixa o resultado estruturado e a recomendação de materiais dela.
+  const output = pinned
+    ? { output_instructions: version.config.outputInstructions ?? null, output_schema: version.config.outputSchema ?? null, structured_output: version.config.structuredOutput ?? null }
+    : orchestrator
+  const structured = resolveEffectiveStructuredOutput(output)
   return {
     organizationId: orchestrator.organization_id,
     orchestratorId: orchestrator.id,
     orchestratorName: orchestrator.name,
     orchestratorAgentId: orchestrator.orchestrator_agent_id,
+    orchestratorVersionId: version?.id ?? null,
+    orchestratorVersionNumber: version?.number ?? null,
+    orchestratorAgentVersionId: orchestratorAgentSnapshot?.versionId ?? null,
+    agentSnapshots,
+    consumerScope,
     systemPrompt: systemPrompt + routingInstruction,
     specialists,
     tools,
     outputInstructions: structured.llmInstructions,
     structuredOutput: structured.source === "DEFINITION" ? structured.definition : null,
     knowledge,
-    recommendSupportMaterials: orchestrator.recommend_support_materials === true,
+    recommendSupportMaterials: (pinned ? version.config.recommendSupportMaterials : orchestrator.recommend_support_materials) === true,
   }
 }
 
@@ -189,7 +327,7 @@ async function resolveOrchestratorForPlacement(
   query?: string,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
-    `select o.organization_id, o.id, o.name, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
+    `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', $3)
@@ -236,9 +374,12 @@ export async function resolveOrchestratorById(
   orchestratorId: string,
   invocationContext: OrchestratorInvocationContext,
   query?: string,
+  /** Workflow (PEN-076): a versão fixada na etapa; `legacyPin` = etapa publicada antes do versionamento; `workflowScope` = alcance
+   * do Workflow, contra o qual a versão fixada é conferida. Ausente = vigente (chat e voz). */
+  pin?: OrchestratorVersionPin,
 ): Promise<ResolvedOrchestrator | null> {
   const orchestratorRow = await db.query<OrchestratorRow>(
-    `select o.organization_id, o.id, o.name, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
+    `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
      where o.id = $1 and o.organization_id = $2 and o.active and o.invocation_mode in ('BOTH', $3)`,
@@ -246,7 +387,7 @@ export async function resolveOrchestratorById(
   )
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null
-  return buildResolvedOrchestrator(db, orchestrator, query, invocationContext)
+  return buildResolvedOrchestrator(db, orchestrator, query, invocationContext, pin ?? null)
 }
 
 export function findSpecialistByToolName(orchestrator: ResolvedOrchestrator, toolName: string): string | null {

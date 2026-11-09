@@ -16,6 +16,7 @@ const TOC: WikiTocEntry[] = [
   { id: "camadas", label: "As camadas" },
   { id: "fonte", label: "Fonte" },
   { id: "feed", label: "Feed" },
+  { id: "periodicidade", label: "Periodicidade das cargas" },
   { id: "contrato", label: "Contrato de Dados" },
   { id: "catalogo", label: "Catálogo de contratos" },
   { id: "mapping", label: "Mapeamento e transformações" },
@@ -29,6 +30,11 @@ const TOC: WikiTocEntry[] = [
   { id: "severidades", label: "Erros × avisos × rejeitados" },
   { id: "lineage", label: "Linhagem" },
   { id: "saude-freshness", label: "Saúde × Atualidade" },
+  { id: "configurar-com-senha", label: "Configurar exige a senha da fonte" },
+  { id: "consultar-dados", label: "Consultar dados" },
+  { id: "cancelar-registros", label: "Cancelar registros" },
+  { id: "itens-excluidos", label: "Itens excluídos" },
+  { id: "registro", label: "Registro" },
   { id: "seguranca", label: "Segurança" },
   { id: "limitacoes", label: "Limitações atuais" },
 ]
@@ -133,12 +139,76 @@ export default function DataHubPage() {
           incompleto), Ativo, Pausado e <strong>Degradado</strong> — a origem deixou de entregar uma coluna obrigatória (mudança de esquema).
         </p>
         <ul className="list-inside list-disc space-y-1">
-          <li><strong className="font-medium text-foreground">Cadência</strong> (API Pull, SFTP e banco de dados): manual, a cada 15 min / 1 h / 6 h ou diária num horário no fuso da operação. Arquivo e push são sob demanda.</li>
+          <li><strong className="font-medium text-foreground">Cadência</strong> (API Pull, SFTP e banco de dados): quando a carga roda, das opções prontas a dias e horários escolhidos, sempre no fuso da operação (<WikiLink href="#periodicidade">Periodicidade das cargas</WikiLink>). Arquivo e push são sob demanda.</li>
           <li><strong className="font-medium text-foreground">Modo de carga</strong>: Delta (só o que veio muda) ou Snapshot (estado completo). Em ambos, ausência de um registro <strong>nunca</strong> desativa nada nesta versão; desfazer é sempre explícito (<strong>Vigente? = não</strong> em Ausências e em Exceções de calendário).</li>
           <li><strong className="font-medium text-foreground">Fonte autoritativa</strong>: um único feed autoritativo ativo por contrato de dado mestre por organização — duas fontes nunca brigam pelo mesmo cadastro.</li>
           <li><strong className="font-medium text-foreground">Exigir carga íntegra</strong>: qualquer rejeição impede a carga inteira (opt-in por feed).</li>
           <li><strong className="font-medium text-foreground">Namespace de origem</strong>: identidade da origem em medições e fechamentos (coluna <code className="font-mono text-xs">source</code>); padrão = id público da fonte.</li>
           <li><strong className="font-medium text-foreground">Remover</strong> (lixeira no detalhe do feed): o conjunto de dados sai da Central e para de sincronizar; a conexão e os outros feeds dela continuam, o histórico de cargas e a linhagem ficam para auditoria e os dados já aplicados continuam existindo.</li>
+        </ul>
+      </WikiSection>
+
+      <WikiSection id="periodicidade" title="Periodicidade das cargas" eyebrow="Quando a carga roda">
+        <p>
+          Cada feed de API Pull, SFTP ou banco de dados escolhe a sua, no assistente ou em <strong>Conector e frequência</strong> no detalhe do feed. Ela deve acompanhar a atualização
+          daquela tabela e cair depois das rotinas do cliente. A tela mostra a frase do resultado e as próximas execuções antes de salvar, calculadas da mesma forma que o agendador.
+        </p>
+        <WikiTable caption="Formas de periodicidade. Todos os horários estão no fuso da operação.">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Forma</TableHead>
+                <TableHead>O que se escolhe</TableHead>
+                <TableHead>Exemplo na tela</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell>Manual</TableCell>
+                <TableCell>Nada: só roda em Sincronizar agora.</TableCell>
+                <TableCell>Manual</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A cada 15 min, 1 h ou 6 h</TableCell>
+                <TableCell>Opção pronta.</TableCell>
+                <TableCell>A cada 6h</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A cada N minutos ou horas</TableCell>
+                <TableCell>De 15 minutos a 24 horas.</TableCell>
+                <TableCell>A cada 45 min</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Diário</TableCell>
+                <TableCell>Um ou mais horários.</TableCell>
+                <TableCell>Diário às 06:00 e 18:00</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>A cada N dias</TableCell>
+                <TableCell>De 1 a 90 dias, a data de início e um ou mais horários. A contagem parte dessa data e não muda com uma carga manual.</TableCell>
+                <TableCell>A cada 3 dias às 06:00</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Em dias da semana</TableCell>
+                <TableCell>Os dias e um ou mais horários.</TableCell>
+                <TableCell>Seg a sex às 06:00 e 18:00</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Em um dia do mês</TableCell>
+                <TableCell>Um dia de 1 a 31, ou o último dia do mês, e um ou mais horários. Mês sem o dia escolhido (31 em abril) não tem carga; para rodar todo mês, use o último dia.</TableCell>
+                <TableCell>Todo dia 5 às 06:00</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </WikiTable>
+        <ul className="list-inside list-disc space-y-1">
+          <li><strong className="font-medium text-foreground">Limites</strong>: pelo menos 15 minutos entre cargas, também entre dois horários escolhidos (inclusive 23:55 e 00:05), porque um intervalo menor pesa no banco do cliente; até 12 horários. O backend recusa o que passar disso. Um feed gravado antes dessa regra com intervalo menor continua rodando e salvando; só não aceita outro valor abaixo do mínimo.</li>
+          <li><strong className="font-medium text-foreground">Intervalo × horário escolhido</strong>: o intervalo conta a partir do fim da carga anterior, então o horário do dia varia. Para não cair em cima de uma rotina do cliente, escolha dias e horários.</li>
+          <li><strong className="font-medium text-foreground">Cargas nunca se empilham</strong>: se a anterior ainda está rodando, ou esperando uma nova tentativa, aquele horário é pulado.</li>
+          <li><strong className="font-medium text-foreground">Processamento parado no horário</strong>: a carga perdida roda uma única vez assim que ele volta, mesmo fora do horário escolhido.</li>
+          <li><strong className="font-medium text-foreground">Retomar uma fonte pausada</strong>: quem escolheu horários espera o próximo; intervalo roda em seguida. Para carregar na hora, use Sincronizar agora.</li>
+          <li><strong className="font-medium text-foreground">Atrasado segue a agenda real</strong>: com dias e horários, um horário perdido é tolerado, e o feed fica Atrasado uma hora depois do segundo horário perdido. Seg a sex com sucesso na sexta segue Atualizado o fim de semana inteiro. Com intervalo, vale 2× o intervalo. Manual nunca atrasa.</li>
+          <li><strong className="font-medium text-foreground">Periodicidade ≠ disponibilidade (SLA)</strong>: a periodicidade diz quando a carga roda; o SLA diz quando o dado de um dia já deveria ter chegado. Um não ajusta o outro: com carga de seg a sex e SLA D-1, a fonte pode aparecer atrasada no SLA do fim de semana. Configure os dois de forma coerente.</li>
         </ul>
       </WikiSection>
 
@@ -230,7 +300,7 @@ export default function DataHubPage() {
         <ul className="list-inside list-disc space-y-1">
           <li><strong className="font-medium text-foreground">Estrutura</strong>: tipos, obrigatórios, &quot;ao menos um de&quot; (data ou período) e regras do contrato (fim depois do início, confiança entre 0 e 1…).</li>
           <li><strong className="font-medium text-foreground">Referências</strong>: colaborador, indicador, Grupo, Subgrupo, interação e flag são resolvidos <em>em lote</em> (uma consulta por tipo por carga — zero N+1). Referência inexistente vai para a quarentena; a Central <strong>nunca</strong> cria pessoa, indicador, grupo ou interação implicitamente.</li>
-          <li><strong className="font-medium text-foreground">Catálogo</strong>: medição diária exige indicador com medição operacional habilitada; fechamento exige fechamento oficial habilitado; Taxa/Média ponderada exigem numerador e denominador e o valor precisa conferir com numerador ÷ denominador.</li>
+          <li><strong className="font-medium text-foreground">Catálogo</strong>: medição diária exige indicador com medição operacional habilitada; fechamento exige fechamento oficial habilitado; Taxa/Média ponderada exigem numerador e denominador e o valor precisa conferir com numerador ÷ denominador; em Soma, Média simples e Último valor, a linha com numerador e denominador vai para a quarentena, na medição e no fechamento.</li>
           <li><strong className="font-medium text-foreground">Duplicidade na carga</strong>: a mesma chave natural repetida no mesmo lote — a primeira vale, as demais vão para a quarentena.</li>
           <li><strong className="font-medium text-foreground">Ordem de dependências</strong>: se o filho chega antes do pai (flag antes da interação, medição antes do colaborador), fica na quarentena — nunca um pai fake.</li>
         </ul>
@@ -373,8 +443,10 @@ export default function DataHubPage() {
           Toda sincronização, importação, envio ou reprocessamento cria uma carga com linha do tempo por etapa, métricas completas (bytes, recebidos,
           lidos, válidos, rejeitados, inseridos, atualizados, inalterados, desativados — ex.: ausência cancelada pela fonte —, erros, duração, tentativas), checkpoint antes/depois e o maior
           tempo de negócio recebido. O processamento é assíncrono (fila + worker com lease); a tela consulta o status. Uma carga falhada por erro
-          transitório (fonte inalcançável, timeout) volta à fila com backoff limitado (até 3 tentativas); credencial, mapeamento, esquema e validação
-          nunca ficam tentando para sempre. Um feed nunca tem duas execuções em andamento.
+          transitório (fonte inalcançável, timeout) volta à fila com espera crescente: a agendada tenta até 7 vezes, por quase 3 horas, para atravessar
+          uma trava longa na origem; a pedida em Sincronizar agora tenta 3 vezes, em poucos minutos. Durante a espera, a conexão aparece com erro,
+          Sincronizar agora antecipa a mesma carga e pausar a fonte ou o feed cancela a carga, sem nova consulta à origem. Credencial, mapeamento, esquema
+          e validação nunca ficam tentando para sempre. Um feed nunca tem duas execuções em andamento.
         </p>
         <WikiTable caption="Estados de uma carga">
           <Table>
@@ -441,7 +513,7 @@ export default function DataHubPage() {
       <WikiSection id="saude-freshness" title="Saúde × Atualidade" eyebrow="Conectado não significa atualizado">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <ExampleCard title="Conexão (Connection health)">Consigo chegar e autenticar na fonte? Conexão OK · Conexão com erro · Não testada. Muda quando a fonte é de fato contatada.</ExampleCard>
-          <ExampleCard title="Atualidade (Freshness)">Quando chegou dado válido pela última vez? Atualizado · Atrasado (última carga bem-sucedida passou de 2× a cadência esperada) · Nunca recebido.</ExampleCard>
+          <ExampleCard title="Atualidade (Freshness)">Quando chegou dado válido pela última vez? Atualizado · Atrasado (sem carga bem-sucedida por 2× o intervalo ou, com dias e horários, até uma hora depois do segundo horário perdido) · Nunca recebido.</ExampleCard>
           <ExampleCard title="Status da fonte">Rascunho · Ativa · Pausada · Erro — decisão administrativa e falha de credencial, separado dos dois anteriores.</ExampleCard>
           <ExampleCard title="Confiança da situação funcional">A situação funcional que a INIA conhece é recente o bastante para uma decisão? Atualizada · Fonte atrasada · não configurada. Uma conexão saudável com um feed de Colaboradores atrasado dá &quot;Conexão OK&quot; e &quot;Fonte atrasada&quot; ao mesmo tempo.</ExampleCard>
         </div>
@@ -452,9 +524,125 @@ export default function DataHubPage() {
         </p>
       </WikiSection>
 
+      <WikiSection id="configurar-com-senha" title="Configurar exige a senha da fonte" eyebrow="Ter a permissão não basta">
+        <p>
+          A Central é do <strong className="font-medium text-foreground">Administrador geral</strong> e do{" "}
+          <strong className="font-medium text-foreground">Administrador de dados</strong>, sempre na organização inteira. Ter o papel dá acesso à Central,
+          mas não à senha guardada: ela existe para as cargas. Quem quer configurar uma fonte com credencial guardada precisa digitar a credencial de novo,
+          sem exceção para administrador nem para quem cadastrou. Vale para banco de dados, SFTP e API Pull com autenticação. Arquivo, API Push e API Pull
+          sem autenticação não têm senha a exigir.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <ExampleCard title="Sem a senha">
+            Ver fontes, conjuntos, cargas, qualidade, contratos e linhagem; testar a conexão; excluir fonte ou conjunto; pausar; sincronizar; reprocessar e
+            cancelar carga; enviar e importar arquivo; gerenciar tokens de API Push.
+          </ExampleCard>
+          <ExampleCard title="Com a senha">
+            Listar tabelas e colunas do banco do cliente; ler amostra; validar mapeamento; listar arquivos do SFTP; criar ou alterar conjunto; alterar a fonte;
+            ativar e retomar fonte ou conjunto; reiniciar a leitura.
+          </ExampleCard>
+        </div>
+        <p>
+          A senha certa libera a configuração por <strong className="font-medium text-foreground">30 minutos</strong>, só para aquela pessoa, naquela fonte e
+          naquele login: outra pessoa, outra fonte ou um login novo pedem de novo. A conferência compara com a senha guardada e não conecta no banco do cliente. Se a
+          liberação vencer no meio do caminho, a tela pede a senha de novo e mantém o que já foi preenchido. As cargas agendadas continuam usando a senha guardada,
+          sem mudança.
+        </p>
+        <p>
+          <strong className="font-medium text-foreground">Cinco senhas recusadas em 15 minutos</strong> bloqueiam novas tentativas daquela pessoa naquele servidor e
+          usuário, em qualquer caminho: liberar, testar com senha digitada, cadastrar ou trocar. Mudar o banco ou a criptografia não zera a conta, e acertar também não: os
+          erros saem da conta quando passam os 15 minutos. Só recusa de senha conta: servidor fora do ar e chave do servidor SFTP divergente não contam, e testar com a
+          senha guardada nunca bloqueia. Ao cadastrar, a INIA testa a senha antes de gravar: se o servidor
+          recusar, nada é gravado. Se o servidor estiver fora do alcance, a fonte é cadastrada mesmo assim, porque a rede pode estar para ser liberada.
+        </p>
+        <ExampleCard title="A senha mudou no servidor">
+          Use <em>Trocar a senha</em>. A senha antiga não é pedida, porque esse é justamente o caso em que ela deixou de valer. A INIA conecta com a senha nova e
+          só grava se a conexão funcionar: quem não conhece a credencial não consegue derrubar as cargas gravando outra. Depois da troca, quem estava liberado
+          precisa da senha nova. Para apontar a fonte para outro servidor, banco, usuário ou criptografia, é preciso estar liberado, informar a senha nova e
+          passar no mesmo teste. Em API Pull, a INIA chama o endereço com e sem a credencial, primeiro o endereço base e depois os conjuntos de dados. Se a API responder
+          igual nos dois casos, não há como provar a credencial nova, e só troca quem já informou a atual.
+        </ExampleCard>
+      </WikiSection>
+
+            <WikiSection id="consultar-dados" title="Consultar dados" eyebrow="A consulta só lê, e só o que foi aprovado">
+        <p>
+          A aba <strong className="font-medium text-foreground">Consultar dados</strong> mostra, em páginas, os dados importados e os gerados pela INIA, sem SQL. Escolha um conjunto, as colunas e a ordem,
+          combine condições com E e OU, busque nos campos marcados e exporte em CSV. Só o <strong className="font-medium text-foreground">Administrador geral</strong> e o{" "}
+          <strong className="font-medium text-foreground">Administrador de dados</strong> têm acesso, sempre na organização inteira. Uso de IA exige também a permissão de ver IA; Casos de supervisão e Feedbacks, a de ver Indicadores.
+        </p>
+        <ul className="list-inside list-disc space-y-1">
+          <li>Só aparecem conjuntos e colunas de uma lista aprovada. Senha, e-mail, sessão, segredo e token não fazem parte de nenhum conjunto.</li>
+          <li>O nome da pessoa só aparece em Colaboradores. Nos outros conjuntos, a matrícula.</li>
+          <li>Afastamento sensível e atestado aparecem como protegidos, inclusive em filtros e no CSV. O texto das transcrições, dos feedbacks, dos casos, das rejeições e das execuções de IA nunca aparece.</li>
+          <li>Datas nos filtros seguem o fuso da organização, e o último dia do intervalo entra inteiro.</li>
+          <li>A contagem só roda quando você pede e para em 10.000 registros.</li>
+        </ul>
+        <p>
+          O conjunto <strong className="font-medium text-foreground">Workflows</strong> mostra todos os Workflows, inclusive os excluídos, com quando e por quem foram excluídos. As execuções de um Workflow excluído continuam em <strong className="font-medium text-foreground">Execuções de Workflow</strong>.
+        </p>
+        <WarningCallout kind="tip" title="Se a consulta passar do limite">
+          Cada consulta tem até 5 segundos, e cada arquivo CSV tem até 20.000 linhas ou 20 MB. Acima disso, a INIA interrompe e pede para restringir os filtros. Um período menor costuma resolver.
+        </WarningCallout>
+        <WarningCallout kind="warning" title="Fica no Registro">
+          Exportações e tentativas negadas aparecem no <WikiLink href="/wiki/central-de-dados#registro">Registro</WikiLink>. Consultas aparecem ao filtrar por essa ação. Os valores dos filtros e o conteúdo dos dados nunca são guardados.
+        </WarningCallout>
+      </WikiSection>
+
+      <WikiSection id="cancelar-registros" title="Cancelar registros" eyebrow="O dado fica guardado e sai dos cálculos">
+        <p>
+          Em <strong className="font-medium text-foreground">Medições de indicador</strong>, <strong className="font-medium text-foreground">Metas</strong> e nos dois <strong className="font-medium text-foreground">fechamentos oficiais</strong>,
+          a Consultar dados permite cancelar um registro importado errado. Ele continua guardado, aparece riscado e marcado como Cancelado na consulta e deixa de entrar em qualquer cálculo. Só o Administrador geral e o Administrador de dados podem cancelar.
+        </p>
+        <ol className="list-inside list-decimal space-y-1">
+          <li>Marque os registros na tabela, ou aplique um filtro para alcançar todos os que atendem a ele.</li>
+          <li>Clique em Cancelar selecionados ou em Cancelar todos do filtro e confira a prévia: quantos registros, quantas execuções e quantos feedbacks estão ligados a eles.</li>
+          <li>Escreva o motivo e confirme. Não escreva nomes, CPF ou outros dados pessoais.</li>
+        </ol>
+        <WarningCallout kind="tip" title="Indicador cadastrado com a regra errada">
+          Se o indicador está travado porque já recebeu dados, cancele as medições dele, corrija o indicador e reprocesse a carga ou envie um arquivo novo. Os registros voltam a valer pela regra certa.
+        </WarningCallout>
+        <p>Um registro cancelado volta de duas formas:</p>
+        <ul className="list-inside list-disc space-y-1">
+          <li><strong className="font-medium text-foreground">Pela carga:</strong> se a origem enviar o mesmo registro de novo, ele volta a valer. Em medições, isso roda os Workflows por Indicador outra vez e pode gastar IA.</li>
+          <li><strong className="font-medium text-foreground">Por Reativar:</strong> em Cancelamentos deste conjunto, o lote volta como estava, sem rodar Workflow. Fica barrado se o código, a unidade, a direção ou a estratégia do indicador mudaram depois do cancelamento, ou se outra carga já trouxe o mesmo período, porque o dia contaria duas vezes. Nesses casos, os valores precisam vir numa carga nova.</li>
+        </ul>
+        <WarningCallout kind="warning" title="O que o cancelamento não faz">
+          Feedback já entregue e resultado de Workflow não mudam. A PRV não é recalculada, porque vem fechada da origem. Não dá para cancelar com uma execução de Workflow rodando nem com uma carga do mesmo tipo em andamento, e ninguém cancela os próprios resultados. Execução pausada ou bloqueada não impede, mas se voltar a rodar ela fica bloqueada até o registro voltar a valer. Excluir o indicador continua proibido enquanto houver registros cancelados: desative-o. E o dado continua guardado, então isso não atende a um pedido de eliminação pela LGPD.
+        </WarningCallout>
+      </WikiSection>
+
+      <WikiSection id="itens-excluidos" title="Itens excluídos" eyebrow="O que foi excluído continua guardado e pode voltar">
+        <p>
+          Excluir um Workflow, Agent, Orquestrador, base de conhecimento, Argumentário, domínio, flag, indicador, produto, assunto proibido, termo do glossário, feriado, cenário, conexão, modelo ou orçamento de IA, fonte, conjunto de dados ou Report não apaga nada: o objeto sai das telas e da lógica. Em Consultar dados, escolha <strong className="font-medium text-foreground">Itens excluídos</strong> no seletor de conjuntos para ver o que saiu, quando e por quem.
+        </p>
+        <ul className="list-inside list-disc space-y-1">
+          <li><strong className="font-medium text-foreground">Quem vê e restaura:</strong> quem pode gerenciar aquele tipo de objeto na organização inteira, com a Consultar dados liberada. O Report é só de quem o criou, que também o restaura na aba Excluídos da tela de Reports.</li>
+          <li><strong className="font-medium text-foreground">Restaurar nunca liga nada:</strong> o objeto volta desativado, pausado ou encerrado, e quem restaura liga na tela dele, onde as validações de sempre acontecem.</li>
+          <li><strong className="font-medium text-foreground">Credencial não volta:</strong> ao excluir uma conexão de IA ou uma fonte de dados, a credencial é revogada. Depois de restaurar, é preciso informá-la de novo.</li>
+          <li><strong className="font-medium text-foreground">O que barra:</strong> outro registro ativo com o mesmo nome ou código, ou um objeto de que este depende que também esteja excluído. A confirmação diz qual.</li>
+        </ul>
+        <WarningCallout kind="warning" title="Excluir não atende a um pedido de eliminação pela LGPD">
+          O dado continua no banco. Ter histórico não impede excluir: execuções, conversas e medições ficam guardadas e continuam aparecendo no que já aconteceu. O que barra é o uso de agora, como um Agent ou indicador citado por um Workflow, e a tela diz qual é.
+        </WarningCallout>
+      </WikiSection>
+
+      <WikiSection id="registro" title="Registro" eyebrow="Quem fez o quê">
+        <p>
+          A aba <strong className="font-medium text-foreground">Registro</strong>, na Central e em cada fonte, mostra quem cadastrou, alterou e excluiu; quem
+          liberou a configuração, errou a senha ou foi bloqueado; quem tentou configurar sem liberação; quem testou, sincronizou, enviou ou importou arquivo; quem baixou o
+          CSV de rejeições; e quem listou tabelas, leu colunas ou leu amostra do banco do cliente, com o objeto e a quantidade de linhas. Alteração de fonte mostra o antes e o depois de servidor, porta, banco, usuário e criptografia; os
+          demais campos aparecem só pelo nome. Fonte excluída continua no Registro, pelo nome. A fonte também mostra quem a cadastrou e quem alterou por último.
+        </p>
+        <WarningCallout kind="tip" title="O que nunca entra no Registro">
+          Senha, token, cabeçalho ou dado do cliente: a amostra registra quantas linhas foram lidas, nunca o conteúdo delas.
+        </WarningCallout>
+      </WikiSection>
+
       <WikiSection id="seguranca" title="Segurança" eyebrow="Backend valida; segredo nunca sai">
         <ul className="list-inside list-disc space-y-1">
-          <li>Recurso administrativo: rotas exigem sessão de administrador; toda leitura/escrita é escopada pela organização da sessão — id de outra organização responde &quot;não encontrado&quot;.</li>
+          <li>Recurso administrativo: as rotas exigem o papel Administrador geral ou Administrador de dados na organização inteira; toda leitura/escrita é escopada pela organização da sessão — id de outra organização responde &quot;não encontrado&quot;. Configurar uma fonte com credencial guardada exige também a <WikiLink href="/wiki/central-de-dados#configurar-com-senha">senha dela</WikiLink>.</li>
+          <li>Em API Pull, valores de cabeçalhos extras, parâmetros fixos e o que vem depois do &quot;?&quot; na URL aparecem ocultos para quem não liberou a configuração, porque podem levar credencial. Salvar o valor oculto mantém o atual. Em fonte sem autenticação não há senha para pedir, então ficam ocultos para todo mundo; para trocar, digite o valor novo.</li>
+          <li>Conteúdo bruto retido (30 dias) só abre pela fonte que o trouxe: o id de uma carga de banco não serve na amostra nem na importação de uma fonte de arquivo.</li>
           <li>Segredos (token, API key, senha, client secret, chave privada) ficam cifrados em repouso com AES-256-GCM e chave <em>fora do banco</em> (variável de ambiente, obrigatória em produção). Nunca voltam por API (a tela mostra só &quot;configurada em…&quot;), nunca vão para log nem para trace; a rotação revoga o anterior e remover a fonte revoga todas as credenciais dela.</li>
           <li>Token de push: só o hash é guardado; o valor aparece uma única vez ao criar/rotacionar; revogável; rate limit por token.</li>
           <li>SFTP: verificação de host key nunca é desligada silenciosamente — com fingerprint configurada a conexão só é aceita se bater.</li>

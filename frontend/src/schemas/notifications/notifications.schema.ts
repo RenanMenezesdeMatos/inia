@@ -11,6 +11,8 @@ export const notificationTargetSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ADMIN_CALENDAR") }),
   z.object({ type: z.literal("ADMIN_DATA_HUB") }),
   z.object({ type: z.literal("ADMIN_AI_USAGE") }),
+  // Execução bloqueada, para quem publicou e ainda administra o workflow: abre a aba Execuções.
+  z.object({ type: z.literal("ADMIN_WORKFLOW_EXECUTIONS"), workflowId: z.string() }),
   z.object({ type: z.literal("INIA_CONVERSATION"), conversationId: z.string() }),
   z.object({ type: z.literal("INIA_AVATAR_DELIVERY"), deliveryId: z.string() }),
   // Intervenção: abre a intervenção DENTRO do caso de supervisão (o caso concentra análise, evidências e histórico).

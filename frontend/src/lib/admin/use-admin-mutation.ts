@@ -10,6 +10,8 @@ type AdminMutationOptions<TData, TVariables> = Omit<UseMutationOptions<TData, Er
   /** Códigos de erro que a tela trata sozinha (ex.: um 409 que vira diálogo de confirmação) —
    * sem toast, para não avisar duas vezes a mesma coisa. */
   silentErrorCodes?: string[]
+  /** A tela mostra qualquer erro desta ação ao lado do campo: nenhum aviso flutuante repete a mensagem. */
+  silentErrors?: boolean
 }
 
 export function useAdminMutation<TData, TVariables>({
@@ -17,6 +19,7 @@ export function useAdminMutation<TData, TVariables>({
   invalidateKey,
   successMessage,
   silentErrorCodes,
+  silentErrors,
   onSuccess,
   onError,
   ...options
@@ -30,7 +33,7 @@ export function useAdminMutation<TData, TVariables>({
       onSuccess?.(data, variables, onMutateResult, context)
     },
     onError: (error, variables, onMutateResult, context) => {
-      const silent = error instanceof AdminApiError && error.code !== null && silentErrorCodes?.includes(error.code)
+      const silent = silentErrors || (error instanceof AdminApiError && error.code !== null && silentErrorCodes?.includes(error.code))
       if (!silent) toast.error(error instanceof AdminApiError ? error.message : "Não foi possível concluir a ação.")
       onError?.(error, variables, onMutateResult, context)
     },

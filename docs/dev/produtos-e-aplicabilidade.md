@@ -42,7 +42,7 @@ cadastro), e a lista de bases ganha a coluna "Produtos".
 |---|---|
 | `product_catalog_nodes` (tipo, código `^[A-Z][A-Z0-9_]{1,39}$`, nome, descrição, categoria) | produto só dentro de categoria; sem ciclo; código travado quando usado; excluir só sem uso (senão desativar); desativar categoria exige produtos dela desativados |
 | `product_identification_criteria` + `_versions` (indícios) | rascunho → aprovado (nunca retroativo — tolerância de 5 min; `effectiveFrom: null` = agora) → substituído; versão aprovada IMUTÁVEL (gatilho); encerrar = deixa de valer agora; reativar = nova versão a partir de agora; excluir só se nenhuma análise usou |
-| `product_scope_assignments` (Vale para) | vale a partir de agora; a anterior termina, nunca é apagada nem reescrita (gatilho); sem marcação = todos os produtos |
+| `product_scope_assignments` (Vale para) | argumentário: vale a partir de agora. Base de conhecimento (PEN-008, 04/11/2026): a escolha fica no rascunho e a vigência abre na transição da versão. Nos dois, a anterior termina, nunca é apagada nem reescrita (gatilho); sem marcação = todos os produtos |
 
 Componentes: `components/admin/product-catalog/` — `product-directory.tsx` (lista + detalhe), `product-bases.tsx`, `product-clues.tsx`,
 `node-form.tsx`, `node-picker.tsx`, `product-scope-field.tsx` (usado também em `admin/knowledge` e `admin/argument-scripts`) e as relações

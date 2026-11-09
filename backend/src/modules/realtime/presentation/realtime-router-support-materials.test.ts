@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 
 /**
  * Chat e voz SEM Workflow: o Orquestrador (INTERACTIVE) responde ao operador e os materiais que ele
@@ -28,6 +29,7 @@ const { createMemoryConversationStore } = await import("../../assistant/testing/
 const ORG = "00000000-0000-4000-8000-0000000000b2"
 const A = "11111111-1111-4111-8111-111111111111"
 const B = "22222222-2222-4222-8222-222222222222"
+const INACTIVE_AGENT = "33333333-3333-4333-8333-333333333333"
 const REASON = "Este material traz perguntas de sondagem para situações de retenção por preço."
 
 const OPERATOR: AuthTokenPayload = { sub: "acc-1", personId: "person-1", organizationId: ORG, role: "OPERATOR", name: "Operador", email: "op@inia.com", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }
@@ -36,14 +38,19 @@ type Call = { sql: string; params: unknown[] }
 
 /** Banco falso: registra inserts de interação (com id sequencial), a relação persistida e
  * responde a consulta de acesso só com os ids em `accessible`. */
-function fakeDb(accessible: Record<string, string>) {
+function fakeDb(accessible: Record<string, string>, agentOf: (agentId: string) => Record<string, unknown> | undefined = () => ({ active: true })) {
   const calls: Call[] = []
   const interactions: { id: string; role: string; content: string; agent_id: string | null }[] = []
   const stored: { interaction_id: string; knowledge_document_id: string; reason: string; position: number }[] = []
   let sequence = 0
   const db = {
     query: async (sql: string, params: unknown[] = []) => {
+      // Versão vigente e autorização do especialista na hora da chamada (revisão da PEN-002/PEN-076): ativo e publicado.
+      const versioned = answerAgentVersionQuery(sql, params, agentOf)
+      if (versioned) return versioned
       calls.push({ sql, params })
+      // Especialista configurado no Orquestrador (voz): a ferramenta agent_<id> é dele.
+      if (sql.includes("from assistant_orchestrator_specialists s join agents a")) return { rows: [{ agent_id: INACTIVE_AGENT }], rowCount: 1 }
       if (sql.includes("insert into assistant_interactions")) {
         const id = `aaaaaaaa-aaaa-4aaa-8aaa-${String(++sequence).padStart(12, "0")}`
         interactions.push({ id, role: params[3] as string, content: params[4] as string, agent_id: (params[5] as string | null) ?? null })
@@ -187,6 +194,30 @@ describe("voz — tool-call do especialista", () => {
     // A resposta do especialista fica na conversa (criada pela voz) e o cliente recebe o id para adotar.
     expect(response.body.data.conversationId).toBe(assistantMessage().conversationId)
     expect(assistantMessage()).toMatchObject({ channel: "voice", role: "assistant", content: "Resposta do especialista." })
+  })
+
+  it("PEN-070 na voz: especialista desativado depois de a sessão começar não roda; a pessoa ouve que a parte está indisponível e o registro guarda 'Agente inativo'", async () => {
+    const { db } = fakeDb({}, (agentId) => (agentId === INACTIVE_AGENT ? { active: false } : { active: true }))
+    // A resolução de agora já não traz o especialista (inativo); a sessão do Gemini Live ainda tem a ferramenta dele.
+    resolveOrchestratorForSubject.mockResolvedValue({ ...orchestrator(false), specialists: [] })
+    const toolName = `agent_${INACTIVE_AGENT.replace(/-/g, "")}`
+    const response = await request(appWith(db)).post("/api/v1/realtime/tool-call").send({ ...TOOL("quanto custa?"), toolName })
+    expect(response.status).toBe(200)
+    expect(runSpecialistTool).not.toHaveBeenCalled()
+    expect(response.body.data.text).toBe("Esta parte do pedido está indisponível no momento. Posso ajudar com outra coisa?")
+    expect(response.body.data.text).not.toMatch(/inativo|agente|especialista/i)
+    const saved = memory.messages.find((message) => message.role === "assistant")!
+    expect(saved.toolCalls).toEqual([expect.objectContaining({ toolName, agentId: INACTIVE_AGENT, outcome: "BLOCKED_INACTIVE", orchestratorId: "orch-1" })])
+  })
+
+  it("revisão de 03/11/2026 na voz: versão vigente do especialista não autorizada para o alcance do Orquestrador → não roda, registro 'acesso não autorizado'", async () => {
+    const { db } = fakeDb({}, () => ({ active: true, scope_type: "TEAM", team_id: "44444444-4444-4444-8444-444444444444" }))
+    resolveOrchestratorForSubject.mockResolvedValue({ ...orchestrator(false), consumerScope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null } })
+    const response = await request(appWith(db)).post("/api/v1/realtime/tool-call").send(TOOL("como reter?"))
+    expect(response.status).toBe(200)
+    expect(runSpecialistTool).not.toHaveBeenCalled()
+    expect(response.body.data.text).toBe("Esta parte do pedido está indisponível no momento. Posso ajudar com outra coisa?")
+    expect(memory.messages.find((message) => message.role === "assistant")!.toolCalls).toEqual([expect.objectContaining({ agentId: "agent-a", outcome: "BLOCKED_UNAUTHORIZED" })])
   })
 
   it("OFF: o especialista roda sem seleção e a resposta não carrega materiais", async () => {

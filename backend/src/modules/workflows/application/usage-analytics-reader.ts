@@ -29,9 +29,9 @@ const ENROLLMENT_SELECT = `e.id, e.workflow_id, e.version_id, e.status, e.create
       case when wf.consolidated_structure is not null then null
            else coalesce(i.operator_id, case when m.subject_type = 'PERSON' then m.subject_id end, mr.collaborator_id, e.scheduled_subject_id) end subject_person_id`
 // Modo de análise = o do Workflow (workflows.consolidated_structure, migration 047); a versão não guarda essa coluna.
-const ENROLLMENT_JOINS = `left join workflows wf on wf.id = e.workflow_id
+const ENROLLMENT_JOINS = `left join workflows_all wf on wf.id = e.workflow_id
     left join interactions i on i.id = e.interaction_id
-    left join indicator_measurements m on m.id = e.indicator_measurement_id
+    left join indicator_measurements_all m on m.id = e.indicator_measurement_id
     left join workflow_manual_runs mr on mr.id = e.manual_run_id`
 
 export function rootEnrollmentsSql(organizationParam: string): string {
@@ -45,7 +45,7 @@ export function childEnrollmentsSql(organizationParam: string): string {
       coalesce(i.operator_id, case when m.subject_type = 'PERSON' then m.subject_id end, e.scheduled_subject_id) subject_person_id
     from workflow_enrollments e
     left join interactions i on i.id = e.interaction_id
-    left join indicator_measurements m on m.id = e.indicator_measurement_id
+    left join indicator_measurements_all m on m.id = e.indicator_measurement_id
     where e.organization_id = ${organizationParam} and e.parent_enrollment_id is not null`
 }
 
@@ -78,12 +78,12 @@ export function feedbackEmissionsSql(organizationParam: string): string {
 /** Colunas: workflow_id, name, active, active_version_id, trigger_kind, consolidated. */
 export function workflowsSql(organizationParam: string): string {
   return `select w.id workflow_id, w.name, w.active, w.active_version_id, w.trigger_config->>'kind' trigger_kind, (w.consolidated_structure is not null) consolidated
-    from workflows w where w.organization_id = ${organizationParam}`
+    from workflows_all w where w.organization_id = ${organizationParam}`
 }
 
 export async function existingWorkflows(db: Queryable, organizationId: string, ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set()
-  const result = await db.query<{ id: string }>(`select id from workflows where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...new Set(ids)]])
+  const result = await db.query<{ id: string }>(`select id from workflows_all where organization_id = $1 and id = any($2::uuid[])`, [organizationId, [...new Set(ids)]])
   return new Set(result.rows.map((row) => row.id))
 }
 

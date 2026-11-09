@@ -189,6 +189,37 @@ describe("V1.5.7 — revogação, auditoria, lockout e situação", () => {
   })
 })
 
+describe("Administrador de dados — a Central de Dados tem papel próprio", () => {
+  const role = SYSTEM_ROLES.find((entry) => entry.code === "ADMINISTRADOR_DE_DADOS")!
+  const dataAdmin = (roleCode: string): AccessContext => ({ organizationId: ORG, accountId: "conta", personId: "pessoa", assignments: [{ id: "a", roleCode, scope: { type: "ORGANIZATION" } }] }) as unknown as AccessContext
+
+  it("só a Central, só na organização inteira, sem delegar a ninguém", () => {
+    expect(role.permissions).toEqual(["data_hub.manage", "data_hub.explore", "data_hub.cancel_records"])
+    expect(role.allowedScopes).toEqual(["ORGANIZATION"])
+    expect(role.delegates).toEqual([])
+  })
+
+  it("a Central fica só com o Administrador geral e o Administrador de dados; só o Administrador geral concede", () => {
+    expect(SYSTEM_ROLES.filter((entry) => entry.permissions.includes("data_hub.manage")).map((entry) => entry.code).sort()).toEqual(["ADMINISTRADOR_DE_DADOS", "ADMINISTRADOR_GERAL"])
+    expect(SYSTEM_ROLES.filter((entry) => entry.delegates.includes("ADMINISTRADOR_DE_DADOS")).map((entry) => entry.code)).toEqual(["ADMINISTRADOR_GERAL"])
+  })
+
+  it("abre a Administração só pela Central; Administrador da organização inteira não entra mais nela", () => {
+    expect(accessCapabilities(dataAdmin("ADMINISTRADOR_DE_DADOS"))).toMatchObject({ canAccessAdministration: true, canManageDataHub: true, canExploreData: true, canManageConfiguration: false, canManagePeople: false, canManageKnowledge: false, canViewAi: false })
+    expect(accessCapabilities(dataAdmin("ADMINISTRADOR"))).toMatchObject({ canAccessAdministration: true, canManageDataHub: false, canExploreData: false, canManageConfiguration: true })
+  })
+
+  it("Administrador e Administrador de acessos não concedem o papel, mesmo na organização inteira", async () => {
+    const s = setup()
+    await expect(assignRole(s.deps, s.actor("carlos"), { accountId: accountOf("joao").id, roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "ORGANIZATION" } })).rejects.toMatchObject({ code: "ACCESS_ROLE_NOT_DELEGABLE" })
+    const granted = await assignRole(s.deps, s.actor("geral"), { accountId: accountOf("joao").id, roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "ORGANIZATION" } })
+    expect(granted.id).toBeTruthy()
+    await expect(assignRole(s.deps, s.actor("geral"), { accountId: accountOf("maria").id, roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "GROUP", teamId: T_B2B } })).rejects.toBeDefined()
+    // Quem tem o papel não concede a ninguém.
+    await expect(assignRole(s.deps, s.actor("joao"), { accountId: accountOf("maria").id, roleCode: "ADMINISTRADOR_DE_DADOS", scope: { type: "ORGANIZATION" } })).rejects.toBeDefined()
+  })
+})
+
 describe("V1.5.8 — visões ampliadas no catálogo de papéis (permission + scope, nunca papel como bypass)", () => {
   const SURFACES = ["indicators.view", "structure.metrics.view", "calendar.manage"] as const
   const permissionsOf = (code: string) => SYSTEM_ROLES.find((role) => role.code === code)!.permissions

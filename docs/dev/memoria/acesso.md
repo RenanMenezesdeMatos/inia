@@ -45,3 +45,22 @@ Regra: **quem gerou a credencial só tinha custódia do lugar em que a pessoa es
 - Limite conhecido: quem gerou a temporária e entrou antes da pessoa, definindo a senha definitiva, é indistinguível da própria pessoa — só a custódia pendente (cadastro manual) cobre esse caso.
 - Prova: `INIA_DB_PROOF=1 npx vitest run source-custody-proof` (10 cenários; no código anterior a 4859d40f falham os 4 de ataque, e na 4859d40f os 3 da Estrutura como primeira carga).
 
+
+### Agentes inativos — permissão própria (2026-11-03, migration 164)
+
+Permissão nova `agents.inactive.manage`: listar, consultar, ver o histórico completo, as execuções e as versões, reativar e excluir agente inativo, conferida no servidor no alcance do agente. Hoje está em ADMINISTRADOR_GERAL e ADMINISTRADOR, que já tinham `agents.manage`; quais perfis da Vivo a recebem é a PEN-032 (aberta). Capacidade no `/auth/me`: `canManageInactiveAgents`. Os históricos contextuais (execução de Workflow, conversa e caso) seguem a permissão do contexto, nunca abrem o cadastro do inativo.
+
+### Administrador de dados (05/11/2026)
+
+Permissão `data_hub.cancel_records` (06/11/2026): cancelar e reativar registros importados pela Consultar dados, separada de consultar, porque é a única que altera dado por ali. Mesmos dois papéis e mesmo escopo. Ver [central-de-dados-consulta.md](../central-de-dados-consulta.md#cancelar-registros).
+
+Itens excluídos (06/11/2026) não tem permissão própria: quem restaura precisa da permissão de quem gerencia aquele tipo de objeto, com escopo de organização, além de `data_hub.explore`. Report só volta para quem o criou. Usar `data_hub.cancel_records` daria ao Administrador de dados poder sobre Workflow, Agent e IA.
+
+Permissão `data_hub.explore` (06/11/2026): consulta somente leitura dos dados aprovados da Central, separada de `data_hub.manage`. Só Administrador geral e Administrador de dados, sempre com escopo de organização. Capacidade `canExploreData`. O papel `ADMINISTRADOR` não a tem, nem com escopo de organização. Detalhes em [central-de-dados-consulta.md](../central-de-dados-consulta.md).
+
+Papel `ADMINISTRADOR_DE_DADOS`: só `data_hub.manage`, só escopo `ORGANIZATION`, sem delegar a ninguém; só o `ADMINISTRADOR_GERAL` concede. **O `ADMINISTRADOR` perdeu `data_hub.manage`** (decisão do usuário): a Central fica com o geral e o de dados. Sem concessão automática. Ter o papel não dá a senha da fonte: configurar exige digitá-la (`central-de-dados-e-instalacao.md`, "Configurar exige a senha da fonte").
+- O que mudou junto: `/api/v1/ingestion` (mesma permissão), "Origem do dado" (`canManageDataHub`), avisos de fonte atrasada e de horizonte da escala (`personIdsWithOrganizationWidePermission`, sem mudar o código; quem perdeu a permissão tem o aviso encerrado na rodada seguinte, porque a chave deixa de ser mantida).
+- Capacidade nova `canOpenUsersAndAccess` (`access.users.view`, `access.roles.view` ou `people.manage`): sem ela, a entrada "Usuários e acessos" some, e o papel novo só vê a Central. `/admin` manda para `/admin/data-hub` quem tem a Central e não tem Bases.
+- Indicadores, Flags de canal e Calendário operacional usam `configuration.manage` e ficam fora do papel. Sem a página de cima, o Calendário sobe para o primeiro nível do menu do `ADMINISTRADOR`.
+- Custódia: quem não pode conceder o papel novo não troca credencial de quem o tem (`checkCredentialCustody`).
+- Provas: `access-service.test.ts`, `admin-sidebar.test.tsx`, `INIA_DB_PROOF=1 npx vitest run access-proof`.

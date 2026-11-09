@@ -20,6 +20,7 @@ import { productContextOf, scopeLabelFor } from "../../feedback-engine/domain/pr
 import { createPostgresFeedbackMemoryStore } from "../../feedback-engine/infrastructure/postgres-feedback-memory-store.js"
 import { assessmentDetail } from "../../feedback-engine/application/leadership-diagnostics.js"
 import { analysis, confirmingReview, evidence, obligation, reading, request as modelRequest, verifyWithReview } from "../../feedback-engine/testing/product-scenarios.js"
+import { applyProductScopeAssignment } from "../application/product-scope-assignments.js"
 import { loadProductCatalogAt } from "../infrastructure/product-catalog-loaders.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -116,12 +117,22 @@ describe.skipIf(!ENABLED)("Produtos e aplicabilidade — prova Postgres (cadastr
     // Abrangência por produto de uma fonte, com histórico (nunca reescrita).
     const documentId = (await client.query<{ id: string }>("insert into knowledge_documents (organization_id, title, document_type) values ($1, $2, 'PROCEDURE') returning id", [ORG, `Segunda via — tronco de voz (prova ${suffix})`])).rows[0]!.id
     await client.query("insert into knowledge_versions (organization_id, document_id, version, content, content_hash, status) values ($1, $2, 1, $3, 'h', 'PUBLISHED')", [ORG, documentId, "# Segunda via — tronco de voz\n\n## Procedimento\n\n- Informar que a segunda via vai ao e-mail do gestor do contrato."])
-    const firstScope = (await org.put(`${base}/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`).send({ nodeIds: [family.id] })).body.data
-    expect(firstScope.history).toHaveLength(1)
+    // Base (PEN-008): salvar fica no rascunho e não abre vigência nenhuma; ela nasce na transição da versão (knowledge-version-lifecycle-proof).
+    const inDraft = (await org.put(`${base}/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`).send({ nodeIds: [family.id] })).body.data
+    expect(inDraft.history).toHaveLength(0)
+    expect(inDraft.pending).toEqual({ version: 2, nodeIds: [family.id] })
+    const enterInUse = (nodeIds: string[]) => applyProductScopeAssignment(client, { organizationId: ORG, kind: "KNOWLEDGE_DOCUMENT", sourceId: documentId, nodeIds, actorPersonId: null, at: new Date() })
+    await enterInUse([family.id])
     const betweenScopes = new Date()
     await new Promise((resolve) => setTimeout(resolve, 20))
-    const secondScope = (await org.put(`${base}/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`).send({ nodeIds: [product.id] })).body.data
+    await enterInUse([product.id])
+    const secondScope = (await org.get(`${base}/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`)).body.data
     expect(secondScope.history.map((entry: { nodeIds: string[]; effectiveUntil: string | null }) => [entry.nodeIds, entry.effectiveUntil === null])).toEqual([[[product.id], true], [[family.id], false]])
+    // Argumentário continua com a regra própria: vale a partir de agora, sem rascunho.
+    const scriptId = (await client.query<{ id: string }>("insert into argument_scripts (organization_id, name, scope_type) values ($1, $2, 'ALL_TEAMS') returning id", [ORG, `Argumentário de prova ${suffix}`])).rows[0]!.id
+    const scriptScope = (await org.put(`${base}/sources/ARGUMENT_SCRIPT/${scriptId}/scope`).send({ nodeIds: [product.id] })).body.data
+    expect(scriptScope.pending).toBeNull()
+    expect(scriptScope.history.map((entry: { nodeIds: string[]; effectiveUntil: string | null }) => [entry.nodeIds, entry.effectiveUntil === null])).toEqual([[[product.id], true]])
     await client.query("savepoint scope_history")
     await expect(client.query("delete from product_scope_assignments where source_id = $1", [documentId])).rejects.toThrow(/histórico/)
     await client.query("rollback to savepoint scope_history")
@@ -170,14 +181,18 @@ describe.skipIf(!ENABLED)("Produtos e aplicabilidade — prova Postgres (cadastr
     const criterionRow = (await client.query<{ verification: { productApplicability: { effect: string } } }>("select verification from call_criterion_assessments where analysis_run_id = $1", [claim.runId])).rows[0]!
     expect(criterionRow.verification.productApplicability).toMatchObject({ effect: "ESTABLISHED" })
 
-    // Critério usado por uma análise não pode ser excluído (só encerrado); a fotografia continua a mesma depois de renomear o produto.
-    expect((await org.delete(`${base}/criteria/${created.id}`)).body.error.code).toBe("PRODUCT_CRITERION_IN_USE")
+    // A fotografia da análise continua a mesma depois de renomear o produto.
     await org.patch(`${base}/nodes/${product.id}`).send({ name: "Nome novo do produto (prova)" })
     const detail = await assessmentDetail(client, ORG, [operator.id], stored.id)
     expect(detail!.productIdentification!.requests[0]).toMatchObject({ label: "Produto identificado: Tronco de voz (prova)" })
     expect(detail!.criteria[0]!.productApplicability).toMatchObject({ effect: "ESTABLISHED" })
     // Com uma versão agendada para o futuro, encerrar é recusado (mesma regra dos argumentários): aguarde o início ou aprove outra data.
     expect((await org.post(`${base}/criteria/${created.id}/archive`).send({})).body.error.code).toBe("PRODUCT_CRITERION_NOT_STARTED")
+
+    // Usado por uma análise: excluir não apaga nada, e a fotografia dela não muda.
+    expect((await org.delete(`${base}/criteria/${created.id}`)).status).toBe(204)
+    expect((await client.query(`select 1 from product_identification_criteria_all where id = $1 and deleted_at is not null`, [created.id])).rowCount).toBe(1)
+    expect((await assessmentDetail(client, ORG, [operator.id], stored.id))!.productIdentification!.requests[0]).toMatchObject({ label: "Produto identificado: Tronco de voz (prova)" })
 
     // Auditoria.
     const actions = (await client.query<{ action: string }>("select action from audit_logs where organization_id = $1 and entity_id = any($2::uuid[]) order by created_at", [ORG, [created.id, product.id]])).rows.map((row) => row.action)

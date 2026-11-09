@@ -295,7 +295,7 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
       const pageSize = 3
       return json(200, { data: filtered.slice((page - 1) * pageSize, page * pageSize), page })
     })
-    http.on("/", () => json(200, { ok: true }))
+    http.on("/", (req) => (req.headers.authorization === `Bearer ${TOKEN}` ? json(200, { ok: true }) : json(401, { error: "token inválido" })))
     const source = await createSource(ctx, ORG, null, { name: "TC API Operacional", config: { kind: "API_PULL", api: { baseUrl: "https://api.tc.local", auth: { kind: "BEARER" }, headers: {}, timeoutMs: 5000 } }, secrets: { token: TOKEN } })
     expect(JSON.stringify(source)).not.toContain(TOKEN)
     const test = await testSourceConnection(ctx, ORG, null, source.id)
@@ -332,8 +332,9 @@ describe.skipIf(!ENABLED)("Central de Dados — prova de contrato contra o banco
     expect(Number((await db.query<{ c: number }>(`select count(*)::int c from indicator_measurements m join indicator_definitions i on i.id = m.indicator_definition_id where i.code = 'TEST_CENTRAL_RATE' and m.source = 'tc-api'`)).rows[0]!.c)).toBe(5)
     expect((await findSource(db, ORG, source.id))!.connectionHealth).toBe("HEALTHY")
 
-    // Credencial errada: run FAILED com código estável, fonte em ERRO, log sem o segredo.
-    await rotateSourceSecrets(ctx, ORG, null, source.id, { token: "tc-wrong-token-999" })
+    // Credencial errada, como quando a senha muda no servidor: run FAILED com código estável, fonte em ERRO, log sem o segredo.
+    await expect(rotateSourceSecrets(ctx, ORG, null, source.id, { token: "tc-wrong-token-999" })).rejects.toMatchObject({ code: "DATA_SOURCE_AUTH_FAILED" })
+    await secretStore.put({ organizationId: ORG, sourceId: source.id, purpose: "API_AUTH", value: "tc-wrong-token-999", actorId: null })
     const failed = (await executeRun(ctx, (await requestManualSync(ctx, ORG, feed.id, null)).id))!
     expect(failed.status).toBe("FAILED")
     expect(failed.errorCode).toBe("DATA_SOURCE_AUTH_FAILED")

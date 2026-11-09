@@ -23,12 +23,14 @@ function nextZoom(current: number, direction: 1 | -1) {
 // Leitor de PDF dentro da página: uma página por vez, com navegação, zoom em degraus e
 // "ajustar à largura" (zoom 100% = largura do contêiner, então fica legível no celular sem
 // precisar arrastar).
-export function KnowledgePdfViewer({ file }: { file: Blob }) {
+// `initialPage`: abre na página citada (fonte de uma resposta, trecho da prévia). Fora do documento, vale a última página.
+// `jumpId` muda a cada pedido de ir até a página, com o leitor já aberto: pedir a mesma página de novo também leva até ela.
+export function KnowledgePdfViewer({ file, initialPage, jumpId }: { file: Blob; initialPage?: number | undefined; jumpId?: number | undefined }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const [numPages, setNumPages] = useState<number | null>(null)
-  const [pageNumber, setPageNumber] = useState(1)
-  const [pageInput, setPageInput] = useState("1")
+  const [pageNumber, setPageNumber] = useState(initialPage ?? 1)
+  const [pageInput, setPageInput] = useState(String(initialPage ?? 1))
   const [zoom, setZoom] = useState(1)
   const [failed, setFailed] = useState(false)
 
@@ -42,6 +44,16 @@ export function KnowledgePdfViewer({ file }: { file: Blob }) {
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
+
+  const [seenJump, setSeenJump] = useState(jumpId)
+  if (jumpId !== seenJump) {
+    setSeenJump(jumpId)
+    if (initialPage !== undefined) {
+      const next = numPages ? Math.min(Math.max(initialPage, 1), numPages) : initialPage
+      setPageNumber(next)
+      setPageInput(String(next))
+    }
+  }
 
   function goTo(page: number) {
     if (!numPages) return
@@ -110,8 +122,9 @@ export function KnowledgePdfViewer({ file }: { file: Blob }) {
           file={file}
           onLoadSuccess={(pdf) => {
             setNumPages(pdf.numPages)
-            setPageNumber(1)
-            setPageInput("1")
+            const first = Math.min(Math.max(initialPage ?? 1, 1), pdf.numPages)
+            setPageNumber(first)
+            setPageInput(String(first))
           }}
           onLoadError={() => setFailed(true)}
           onSourceError={() => setFailed(true)}

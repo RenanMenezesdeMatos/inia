@@ -125,6 +125,13 @@ export function validateNoVariableCycles(graph: FlowGraph, variablesById: Map<st
   for (const variableId of dependsOn.keys()) if (visit(variableId)) return
 }
 
+/** "Chamar agente" sem agente: o rascunho salva, mas a publicação recusa (backend `draft-graph.ts`). */
+export function validateCallAgentNode(context: ValidationContext, node: FlowNode): void {
+  if (node.type === "action" && node.config.actionType === "CALL_AGENT" && !node.config.agentId) {
+    context.issues.push({ nodeId: node.id, code: "VALIDATION_ERROR", message: "Escolha o agente desta etapa." })
+  }
+}
+
 /** "Definir variável": a variável existe e o valor fixo ou a origem dinâmica é compatível com o tipo dela. */
 export function validateSetVariableNode(context: ValidationContext, node: FlowNode): void {
   const { graph, orchestratorsById, variablesById, issues } = context

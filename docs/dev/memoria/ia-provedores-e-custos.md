@@ -47,3 +47,11 @@ Regra: **cada evento de uso vai para UMA pessoa por fato gravado, e a pessoa vai
 - **Frontend**: `components/admin/ai/usage-ranking-tab.tsx` + `usage-ranking/ranking-views.tsx` (tabela com linha fixa "Sem vínculo" e total; cards), `schemas/admin/ai-usage-ranking.schema.ts`, `services/admin/ai-usage-ranking-service.ts`, `queries/admin/use-ai-usage-ranking-queries.ts` (keys sob `adminQueryKeys.ai()`). Aba some sem `AI_USAGE_RANKING_READ`.
 - Provas: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run ai-usage-ranking-proof` (organização PRÓPRIA; 9/9 em 15/10: seis visões, paginação, ordenação, filtros, escopo Grupo/Subgrupo sem nome/id de fora, contexto, 403 e 400, e request autenticado → `requester_person_id` no banco), `domain/ai-usage-ranking.test.ts`, `ai-routing-policy.test.ts`, `ai-usage-correlation.test.ts`, frontend `usage-ranking-tab.test.tsx`. Wiki: `/wiki/administracao/ia-modelos#quem-mais-usa`.
 - Limitações: estrutura ATUAL (quem mudou de equipe leva o uso antigo; não há "estrutura no fato"); sem limiar de privacidade para unidade pequena (Supervisor com 1 operador mostra o uso dele); medição de Grupo/Subgrupo (subject TEAM) e execução consolidada sem colaborador caem em "Sem vínculo"; volume grande (centenas de milhares de eventos no período) agrega o bruto a cada request — caminho: resumo diário por chave de atribuição, como `ai_usage_daily`.
+
+### Conferência das respostas (2026-11-04, PEN-017)
+
+Use Case `RESPONSE_COMPLIANCE`, tier BASIC, com timeout de 20 s, visível em IA/Modelos. Sem regra ativa, nenhuma chamada. Detalhes em [docs/dev/conferencia-das-respostas.md](../conferencia-das-respostas.md).
+
+## Exclusão lógica (06/11/2026, migration 177)
+
+Excluir conexão, modelo ou orçamento não apaga: sai das telas e do roteamento, com preços e histórico guardados, e volta desligado por Consultar dados › Itens excluídos. A credencial da conexão é revogada na exclusão e não volta. A conexão e os modelos dela têm o mesmo instante de exclusão, e é assim que a restauração sabe quais modelos voltam. As travas por política ativa ou em rascunho não mudaram. O uso de IA lê `ai_models_all` para continuar mostrando o nome de modelo excluído.

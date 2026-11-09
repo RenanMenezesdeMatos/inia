@@ -18,11 +18,11 @@ const database = (overrides: Partial<Extract<SourceConfig, { kind: "DATABASE" }>
 const api = (baseUrl: string, auth: Extract<SourceConfig, { kind: "API_PULL" }>["api"]["auth"] = { kind: "BEARER" }): SourceConfig => ({ kind: "API_PULL", api: { baseUrl, auth, headers: {}, timeoutMs: 30_000 } })
 
 describe("credencial vinculada ao destino", () => {
-  it("banco: servidor, porta, usuário ou TLS diferente = outro destino; trocar só o banco/timeout não", () => {
+  it("banco: servidor, porta, banco, usuário ou TLS diferente = outro destino; trocar só o tempo limite não", () => {
     const base = secretTargetOf(database())
-    expect(secretTargetOf(database({ database: "outro_banco", queryTimeoutMs: 60_000 }))).toBe(base)
+    expect(secretTargetOf(database({ queryTimeoutMs: 60_000 }))).toBe(base)
     expect(secretTargetOf(database({ host: "DB.EMPRESA.LOCAL " }))).toBe(base)
-    for (const changed of [database({ host: "atacante.example" }), database({ port: 6543 }), database({ username: "sa" }), database({ tls: { mode: "DISABLED" } }), database({ engine: "MYSQL" })]) {
+    for (const changed of [database({ host: "atacante.example" }), database({ port: 6543 }), database({ database: "outro_banco" }), database({ username: "sa" }), database({ tls: { mode: "DISABLED" } }), database({ engine: "MYSQL" })]) {
       expect(secretTargetOf(changed)).not.toBe(base)
     }
   })

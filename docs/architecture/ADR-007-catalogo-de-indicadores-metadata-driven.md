@@ -35,6 +35,10 @@ indicador (inclusive desativados) e oferecia janelas operacionais a indicadores 
    (`INDICATOR_SEMANTIC_LOCKED`, 409) quando existem medições, metas, fechamentos oficiais ou
    Workflows que referenciam o código. Nome, glossário, padrões de amostra/cobertura, ligar medição
    operacional, fechamento oficial e status são sempre seguros. Exclusão só sem histórico.
+   **Revisto em 05/11/2026:** unidade, direção e estratégia têm uma correção controlada, com prévia do
+   impacto no servidor, motivo, confirmação digitada e auditoria, porque um cadastro errado ficava preso
+   para sempre. Nada do histórico é reescrito. Código e desligar a medição continuam travados: as cargas e
+   os grafos citam o indicador pelo código. Ver [memoria/indicadores-e-estrutura.md](../dev/memoria/indicadores-e-estrutura.md).
 5. **Publish valida capacidades** (`workflows/application/validate-indicator-capabilities.ts`):
    indicador desativado não entra em Workflow novo; janela de dias/semana e quartil operacional
    exigem medição operacional; fontes oficiais exigem fechamento oficial. Uma consulta ao catálogo
@@ -75,6 +79,9 @@ fator que leva `numerator ÷ denominator` ao valor é da ESTRATÉGIA (`component
 ponderada × 1, demais sem componentes), nunca da unidade —, a coerência com o valor informado é checada com
 tolerância de arredondamento e incoerência vai para a quarentena. Os componentes nunca recalculam o oficial;
 servem para somar estruturas em valor (Σ numerador ÷ Σ denominador × fator).
+
+Medição diária e fechamento aplicam a mesma regra (`componentsProblem`, 05/11/2026): na estratégia sem fator,
+a linha com numerador e denominador vai para a quarentena nos dois.
 
 ## Central de Dados — evolução futura (NÃO implementada nesta decisão)
 

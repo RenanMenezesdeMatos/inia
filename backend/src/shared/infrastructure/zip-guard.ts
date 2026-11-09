@@ -1,4 +1,4 @@
-import { inflateRawSync } from "node:zlib"
+import { createInflateRaw } from "node:zlib"
 
 /**
  * GUARDA CONTRA ZIP MALICIOSO — XLSX e DOCX são pacotes ZIP que os parsers (exceljs, mammoth) descompactam INTEIROS na
@@ -7,7 +7,9 @@ import { inflateRawSync } from "node:zlib"
  * demais, tamanho descompactado total acima do teto ou taxa de compressão absurda. E não confia no tamanho DECLARADO: cada
  * entrada é descompactada de verdade com o teto do próprio tamanho declarado — entrada que passa dele (ou tem tamanho real
  * diferente) recusa o pacote (achado DATA-1 da auditoria de 17/10/2026: o JSZip dos parsers só compara no fim, depois de ter
- * descompactado tudo). A memória dessa conferência é a de UMA entrada por vez, dentro do teto total.
+ * descompactado tudo). A conferência descompacta EM FLUXO e só conta os bytes: cada bloco de 64 KB é descartado, então a memória
+ * é a de um bloco, não a da entrada (antes, uma planilha de 302 MB descompactados subia +0,5 GB no processo que recebe o arquivo),
+ * e o zlib roda fora do laço de eventos (antes, ~270 ms travados nessa planilha).
  * E o pacote precisa ser LIDO DO MESMO JEITO pela guarda e pelo JSZip dos parsers (achado N04 da 4ª auditoria): o JSZip continua
  * lendo registros além da contagem do fim do diretório, troca para ZIP64 com um campo de disco 0xFFFF e reposiciona tudo quando
  * há um vão antes do fim — entradas que a guarda nunca via eram descompactadas sem teto. Por isso o fim do diretório precisa ser
@@ -29,8 +31,32 @@ const ZIP64_MARKER = 0xffffffff
 const STORED = 0
 const DEFLATED = 8
 
-/** Descompacta a entrada com teto = o tamanho declarado; devolve o motivo da recusa ou null (conteúdo confere). */
-function verifyEntry(data: Buffer, centralCursor: number, compressed: number, uncompressed: number): string | null {
+const INFLATE_CHUNK_BYTES = 64 * 1024
+
+/** Descompacta em fluxo só para CONTAR: para no primeiro byte além do declarado; devolve o motivo da recusa ou null. */
+function inflatedSizeMismatch(body: Buffer, declared: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const inflate = createInflateRaw({ chunkSize: INFLATE_CHUNK_BYTES })
+    let total = 0
+    let settled = false
+    const settle = (reason: string | null) => {
+      if (settled) return
+      settled = true
+      resolve(reason)
+      inflate.destroy()
+    }
+    inflate.on("data", (chunk: Buffer) => {
+      total += chunk.length
+      if (total > declared) settle("conteúdo descompactado maior que o declarado")
+    })
+    inflate.once("end", () => settle(total === declared ? null : "tamanho real diferente do declarado"))
+    inflate.once("error", () => settle("entrada corrompida"))
+    inflate.end(body)
+  })
+}
+
+/** Confere a entrada contra o tamanho declarado; devolve o motivo da recusa ou null (conteúdo confere). */
+async function verifyEntry(data: Buffer, centralCursor: number, compressed: number, uncompressed: number): Promise<string | null> {
   const flags = data.readUInt16LE(centralCursor + 8)
   const method = data.readUInt16LE(centralCursor + 10)
   const localOffset = data.readUInt32LE(centralCursor + 42)
@@ -41,15 +67,10 @@ function verifyEntry(data: Buffer, centralCursor: number, compressed: number, un
   const body = data.subarray(start, start + compressed)
   if (method === STORED) return compressed === uncompressed ? null : "tamanho real diferente do declarado"
   if (method !== DEFLATED) return "método de compressão não suportado"
-  try {
-    const inflated = inflateRawSync(body, { maxOutputLength: Math.max(uncompressed, 1) })
-    return inflated.length === uncompressed ? null : "tamanho real diferente do declarado"
-  } catch (error) {
-    return error instanceof RangeError ? "conteúdo descompactado maior que o declarado" : "entrada corrompida"
-  }
+  return inflatedSizeMismatch(body, uncompressed)
 }
 
-export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LIMITS): ZipInspection {
+export async function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LIMITS): Promise<ZipInspection> {
   const data = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength)
   // Fim do diretório central: nos últimos 22 + 65.535 bytes (comentário do ZIP).
   const searchStart = Math.max(0, data.length - 22 - 0xffff)
@@ -87,7 +108,7 @@ export function inspectZip(buffer: Uint8Array, limits: ZipLimits = OFFICE_ZIP_LI
     total += uncompressed
     if (total > limits.maxTotalUncompressedBytes) return { ok: false, reason: "conteúdo descompactado grande demais" }
     if (uncompressed > 1024 * 1024 && uncompressed / Math.max(compressed, 1) > limits.maxEntryRatio) return { ok: false, reason: "taxa de compressão suspeita" }
-    const mismatch = verifyEntry(data, cursor, compressed, uncompressed)
+    const mismatch = await verifyEntry(data, cursor, compressed, uncompressed)
     if (mismatch) return { ok: false, reason: mismatch }
     files.push({ name, bytes: uncompressed })
     cursor += 46 + data.readUInt16LE(cursor + 28) + data.readUInt16LE(cursor + 30) + data.readUInt16LE(cursor + 32)

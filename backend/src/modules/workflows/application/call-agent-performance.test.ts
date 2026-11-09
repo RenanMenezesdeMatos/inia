@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { answerAgentVersionQuery } from "../../agents/testing/agent-version-fakes.js"
 import type { ActionConfig, FlowGraph } from "../domain/graph-schema.js"
 
 const runAgent = vi.fn(async () => ({ id: "run-1", outputText: "{}", status: "COMPLETED", errorMessage: null, workflowResult: { kind: "indicator", input: {} } }))
@@ -38,7 +39,9 @@ function contextWith(query: Database["query"]) {
 describe("CALL_AGENT · fonte PERFORMANCE (fechamentos oficiais)", () => {
   it("monta o contexto com PRV oficial e indicadores por competência, sem recalcular nada", async () => {
     runAgent.mockClear()
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      const versioned = answerAgentVersionQuery(sql, params, () => ({ id: "agent-1", name: "Agente PRV" }))
+      if (versioned) return versioned
       if (sql.includes("from people")) return { rows: [{ team_id: "team-1" }], rowCount: 1 }
       if (sql.includes("from employee_prv_performance")) return { rows: PRV_ROWS, rowCount: 2 }
       if (sql.includes("from employee_indicator_performance e")) return { rows: INDICATOR_ROWS, rowCount: 2 }
@@ -63,7 +66,9 @@ describe("CALL_AGENT · fonte PERFORMANCE (fechamentos oficiais)", () => {
   })
 
   it("falha de forma controlada quando não há fechamento oficial (SEM DADOS nunca vira zero)", async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      const versioned = answerAgentVersionQuery(sql, params, () => ({ id: "agent-1", name: "Agente PRV" }))
+      if (versioned) return versioned
       if (sql.includes("from people")) return { rows: [{ team_id: "team-1" }], rowCount: 1 }
       return { rows: [], rowCount: 0 }
     })

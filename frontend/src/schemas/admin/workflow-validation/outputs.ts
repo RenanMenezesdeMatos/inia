@@ -49,12 +49,13 @@ export function validateConversationalSurfaceContent(
   }
 }
 
-/** Output com conteúdo escolhido. */
+/** Output com conteúdo, destino e, quando for o caso, a pessoa escolhidos — o rascunho nem é aceito sem eles. */
 export function validateOutputSourceNode(context: ValidationContext, node: FlowNode): void {
   const { issues } = context
-  if (node.type === "output" && !node.config.source) {
-    issues.push({ nodeId: node.id, code: "VALIDATION_ERROR", message: "Escolha o conteúdo que será publicado." })
-  }
+  if (node.type !== "output") return
+  if (!node.config.source) issues.push({ nodeId: node.id, code: "VALIDATION_ERROR", message: "Escolha o conteúdo que será publicado." })
+  if (node.config.surfaces.length === 0) issues.push({ nodeId: node.id, code: "VALIDATION_ERROR", message: "Escolha onde entregar o conteúdo." })
+  if (node.config.target.type === "USER" && !node.config.target.userId) issues.push({ nodeId: node.id, code: "VALIDATION_ERROR", message: "Escolha a pessoa que vai receber o conteúdo." })
 }
 
 /** Output para Avatar/Chat nunca publica objeto inteiro nem lista quando o tipo do conteúdo é conhecido. */

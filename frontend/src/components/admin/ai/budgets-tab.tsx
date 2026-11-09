@@ -36,6 +36,7 @@ import { AI_BUDGET_SCOPE_LABELS, AI_BUDGET_SCOPES, AI_DEFAULT_WARNING_THRESHOLDS
 
 import { InfoCallout } from "./ai-shared"
 import { BudgetProgress } from "./overview-tab"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 /**
  * Orçamentos mensais de IA: global, por Use Case ou por provider — sempre com MOEDA explícita.
@@ -301,7 +302,7 @@ function DeleteBudgetButton({ budget }: { budget: AiBudget }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir o orçamento {budget.scopeLabel}?</AlertDialogTitle>
           <AlertDialogDescription>
-            O limite de {formatMoney(budget.monthlyAmount, budget.currency)} deixa de existir{budget.hardLimit ? " e as chamadas deste escopo deixam de ser bloqueadas" : ""}. O histórico de uso não é afetado.
+            O limite de {formatMoney(budget.monthlyAmount, budget.currency)} deixa de valer{budget.hardLimit ? " e as chamadas deste escopo deixam de ser bloqueadas" : ""}. O histórico de uso não é afetado. {RESTORE_NOTE}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

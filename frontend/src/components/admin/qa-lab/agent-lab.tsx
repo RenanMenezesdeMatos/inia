@@ -57,6 +57,8 @@ export function AgentLab() {
                   <SelectItem key={candidate.id} value={candidate.id}>
                     {candidate.name} · {AGENT_TYPE_LABELS[candidate.agentType]}
                     {!candidate.active ? " · inativo" : ""}
+                    {/* PEN-047: não publicado não entra em produção, mas continua disponível para testes (o QA Lab usa o rascunho). */}
+                    {!candidate.published ? " · não publicado (testa o rascunho)" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

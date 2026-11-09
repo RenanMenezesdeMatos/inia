@@ -45,6 +45,7 @@ const TRACE = { version: KNOWLEDGE_CLARIFICATION_VERSION, mode: "NEW" as const, 
 
 function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean; orchestrator?: boolean; accessible?: (id: string) => boolean } = {}) {
   const memory = createMemoryConversationStore()
+  const responseChecks: { text: string; sources?: unknown }[] = []
   const requests: ClarificationRequest[] = []
   // Orquestração falsa que respeita o portão `proceed` como a real: superada = nenhuma ferramenta roda e nada é respondido.
   const proceeded: boolean[] = []
@@ -83,9 +84,13 @@ function setup(outcomes: ClarificationOutcome[], options: { leadership?: boolean
         },
       },
       accessibleKnowledgeDocuments: async (_organizationId, _personId, ids) => new Set(ids.filter((id) => options.accessible?.(id) ?? true)),
+      responseCheck: async (_db, input) => {
+        responseChecks.push(input)
+        return { outcome: "NOT_APPLICABLE" }
+      },
     }),
   )
-  return { app, memory, requests, orchestratedReply, proceeded }
+  return { app, memory, requests, orchestratedReply, proceeded, responseChecks }
 }
 
 function events(text: string) {
@@ -101,6 +106,18 @@ afterEach(() => {
 })
 
 describe("chat de texto — esclarecimento pelas bases", () => {
+  it("resposta pelas bases: a conferência recebe o texto das seções usadas; pergunta e opções vão sem seção", async () => {
+    const state = openState()
+    const groundedOn = [{ documentTitle: "Reparo — Linha Móvel", heading: "Prazo", excerpt: "Abra a análise de rede, com prazo de até 72 horas." }]
+    const { app, responseChecks } = setup([{ kind: "REPLY", content: "O prazo é de até 72 horas. [1]", state, trace: TRACE, groundedOn }])
+    await request(app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Qual o prazo do reparo?", clientMessageId: "aaaaaaaa-0000-4000-8000-00000000c0f1" })
+    expect(responseChecks[0]!.sources).toEqual([{ origin: "KNOWLEDGE", title: "Reparo — Linha Móvel › Prazo", text: groundedOn[0]!.excerpt }])
+
+    const asking = setup([{ kind: "REPLY", content: "Qual cenário de teste?", state, trace: TRACE }])
+    await request(asking.app).post("/api/v1/realtime/messages").send({ conversationId: null, text: "Pergunta genérica de teste?", clientMessageId: "aaaaaaaa-0000-4000-8000-00000000c0f2" })
+    expect(asking.responseChecks[0]!.sources).toEqual([])
+  })
+
   it("pergunta ambígua: grava a pergunta com as opções, envia o estado validado num evento próprio e a orquestração (que corria junto) é descartada sem rodar ferramentas", async () => {
     const state = openState()
     const { app, memory, requests, orchestratedReply, proceeded } = setup([{ kind: "REPLY", content: "Qual cenário de teste?\n\nOpções encontradas nas bases consultadas: Cenário A · Cenário B.", state, trace: TRACE }])

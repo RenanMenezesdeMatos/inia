@@ -3,6 +3,8 @@ import { z } from "zod"
 import { adminGet, adminGetBlob, adminSend, adminUpload } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type PageResult } from "@/lib/admin/list-query"
 import {
+  auditEventSchema,
+  configAccessSchema,
   connectionTestSchema,
   contractSchema,
   contractsCatalogSchema,
@@ -17,6 +19,7 @@ import {
   qualitySchema,
   rejectionSchema,
   runDetailSchema,
+  cadencePreviewSchema,
   runListItemSchema,
   runSchema,
   sampleSchema,
@@ -25,8 +28,11 @@ import {
   sourceSchema,
   sourceSummarySchema,
   uploadResultSchema,
+  type AuditEvent,
   type AvailabilityPolicy,
   type Cadence,
+  type CadencePreview,
+  type ConfigAccess,
   type ConnectionTest,
   type ContractsCatalog,
   type DataContract,
@@ -126,6 +132,11 @@ export async function rotateSourceSecrets(id: string, secrets: Record<string, st
   return sourceSchema.passthrough().parse(await adminSend(`${BASE}/sources/${id}/secrets`, "POST", secrets))
 }
 
+/** Credencial atual digitada de novo: libera a configuração por 30 minutos para esta pessoa, nesta fonte e nesta sessão. */
+export async function unlockSourceConfiguration(id: string, secrets: Record<string, string | undefined>): Promise<ConfigAccess> {
+  return configAccessSchema.parse(await adminSend(`${BASE}/sources/${id}/unlock-configuration`, "POST", secrets))
+}
+
 export type PushTokenInput = { label: string; feedId?: string | null; expiresInDays?: number | null; allowedNetworks?: string[] | null }
 
 export async function createPushToken(sourceId: string, input: PushTokenInput): Promise<PushToken> {
@@ -168,8 +179,8 @@ export async function fetchFeeds(sourceId: string): Promise<Feed[]> {
   return z.array(feedSchema).parse(await adminGet(`${BASE}/sources/${sourceId}/feeds`))
 }
 
-export async function fetchFeed(id: string): Promise<FeedSummary & { source: { id: string; name: string; kind: string; publicId: string; status: string } | null }> {
-  return feedSummarySchema.extend({ source: z.object({ id: z.string(), name: z.string(), kind: z.string(), publicId: z.string(), status: z.string() }).nullable() }).parse(await adminGet(`${BASE}/feeds/${id}`))
+export async function fetchFeed(id: string): Promise<FeedSummary & { configAccess: ConfigAccess; source: { id: string; name: string; kind: string; publicId: string; status: string } | null }> {
+  return feedSummarySchema.extend({ configAccess: configAccessSchema, source: z.object({ id: z.string(), name: z.string(), kind: z.string(), publicId: z.string(), status: z.string() }).nullable() }).parse(await adminGet(`${BASE}/feeds/${id}`))
 }
 
 export type FeedInput = {
@@ -186,6 +197,11 @@ export type FeedInput = {
   failOnAnyRejection?: boolean
   sourceNamespace?: string
   availabilityPolicy?: AvailabilityPolicy | null
+}
+
+/** Frase e próximas execuções de uma periodicidade ainda não salva, pelo mesmo cálculo do agendador e no fuso da operação. */
+export async function fetchCadencePreview(cadence: Cadence): Promise<CadencePreview> {
+  return cadencePreviewSchema.parse(await adminSend(`${BASE}/cadence/preview`, "POST", { cadence }))
 }
 
 export async function createFeed(sourceId: string, input: FeedInput): Promise<Feed> {
@@ -225,6 +241,13 @@ export type RunListParams = ListParams & { sourceId?: string; feedId?: string; s
 export async function fetchRunsPage(params: RunListParams): Promise<PageResult<RunListItem>> {
   const { createdAt, ...rest } = params
   return pageResultSchema(runListItemSchema).parse(await adminGet(`${BASE}/runs${toQueryString({ ...rest, createdFrom: createdAt.from, createdTo: createdAt.to })}`))
+}
+
+export type AuditEventListParams = ListParams & { sourceId?: string; feedId?: string; action: string[]; createdAt: { from?: string; to?: string } }
+
+export async function fetchAuditEventsPage(params: AuditEventListParams): Promise<PageResult<AuditEvent>> {
+  const { createdAt, ...rest } = params
+  return pageResultSchema(auditEventSchema).parse(await adminGet(`${BASE}/audit-events${toQueryString({ ...rest, createdFrom: createdAt.from, createdTo: createdAt.to })}`))
 }
 
 export async function fetchRun(id: string): Promise<RunDetail> {

@@ -20,12 +20,17 @@ import { useCreatePushTokenMutation, useDataSourceQuery, useDeleteSourceMutation
 import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type PushToken, type SourceDetail } from "@/schemas/admin/data-hub.schema"
 import { downloadPushOpenApi } from "@/services/admin/data-hub-service"
 
+import { AuditLogTab } from "./audit-log-tab"
+import { ConfigAccessPanel, isConfigLocked } from "./config-access/config-access-panel"
+import { ignoreHandled, useConfigUnlockPrompt } from "./config-access/use-config-unlock-prompt"
+import { formRevision, useFormInUse, useHeldFormKey } from "./config-access/use-held-form-key"
 import { ConnectionForm, connectionDraftValid, draftFromSource, toSourcePayload } from "./connection-form"
 import { DatabaseConfigurationTab } from "./database/database-configuration"
 import { formatCount, formatDateTime, formatFuture, formatRelative } from "./data-hub-format"
 import { FeedsTable } from "./feeds-tab"
 import { RunsTab } from "./runs-tab"
 import { ConnectionHealthBadge, FreshnessBadge, SourceKindBadge, SourceStatusBadge } from "./status-badges"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 const API_URL = process.env.NEXT_PUBLIC_INIA_API_URL ?? "http://localhost:3333"
 
@@ -39,15 +44,28 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
   )
 }
 
-function ConfigurationTab({ source }: { source: SourceDetail }) {
+function SourceConfiguration({ source }: { source: SourceDetail }) {
+  const form = useHeldFormKey(formRevision(source))
+  return source.kind === "DATABASE" ? <DatabaseConfigurationTab key={form.key} source={source} onHold={form.hold} /> : <ConfigurationTab key={form.key} source={source} onHold={form.hold} />
+}
+
+function ConfigurationTab({ source, onHold }: { source: SourceDetail; onHold: (inUse: boolean) => void }) {
   const update = useUpdateSourceMutation()
   const rotate = useRotateSecretsMutation()
   const [draft, setDraft] = useState(() => draftFromSource(source))
   const payload = toSourcePayload(source.kind, draft)
   const remote = source.kind === "API_PULL" || source.kind === "SFTP"
+  const locked = isConfigLocked(source.configAccess)
+  const prompt = useConfigUnlockPrompt()
+  const markSaved = useFormInUse(onHold, draft, prompt.active)
   return (
     <div className="space-y-6">
-      <ConnectionForm kind={source.kind} draft={draft} onChange={setDraft} secretsMode={remote ? "rotate" : "hidden"} />
+      {prompt.dialog}
+      <ConfigAccessPanel sourceId={source.id} kind={source.kind} access={source.configAccess} />
+      {/* Detalhes continuam à vista; sem liberação, nada aqui é editável. */}
+      <fieldset disabled={locked} className="m-0 min-w-0 border-0 p-0" data-testid="source-config-fields">
+        <ConnectionForm kind={source.kind} draft={draft} onChange={setDraft} secretsMode={remote ? "rotate" : "hidden"} />
+      </fieldset>
       {source.secrets.length > 0 ? (
         <div className="rounded-lg border border-border p-3 text-sm">
           <p className="flex items-center gap-2 font-medium">
@@ -64,11 +82,11 @@ function ConfigurationTab({ source }: { source: SourceDetail }) {
         </div>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        <Button disabled={!connectionDraftValid(source.kind, draft, false) || update.isPending} onClick={() => update.mutate({ id: source.id, input: { name: payload.name, description: payload.description, config: payload.config } })}>
+        <Button disabled={locked || !connectionDraftValid(source.kind, draft, false) || update.isPending} onClick={() => ignoreHandled(prompt.guarded(() => update.mutateAsync({ id: source.id, input: { name: payload.name, description: payload.description, config: payload.config } })).then(markSaved))}>
           Salvar configuração
         </Button>
         {remote ? (
-          <Button variant="outline" disabled={!payload.secrets || rotate.isPending} onClick={() => rotate.mutate({ id: source.id, secrets: payload.secrets! }, { onSuccess: () => setDraft((current) => ({ ...current, token: "", apiKey: "", password: "", clientSecret: "", privateKey: "", passphrase: "" })) })}>
+          <Button variant="outline" disabled={locked || !payload.secrets || rotate.isPending} onClick={() => rotate.mutate({ id: source.id, secrets: payload.secrets! }, { onSuccess: () => { setDraft((current) => ({ ...current, token: "", apiKey: "", password: "", clientSecret: "", privateKey: "", passphrase: "" })); markSaved() } })}>
             <KeyRound /> Rotacionar credencial
           </Button>
         ) : null}
@@ -241,6 +259,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
   const status = useSetSourceStatusMutation()
   const sync = useSyncFeedMutation()
   const remove = useDeleteSourceMutation()
+  const prompt = useConfigUnlockPrompt()
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   if (query.isLoading) return <Skeleton className="h-96 rounded-xl" aria-hidden />
@@ -252,6 +271,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
 
   return (
     <div className="space-y-5">
+      {prompt.dialog}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <Button variant="ghost" size="sm" asChild className="-ml-2">
@@ -296,12 +316,12 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
             </Button>
           ) : null}
           {source.status === "PAUSED" || source.status === "ERROR" ? (
-            <Button variant="outline" onClick={() => status.mutate({ id: source.id, action: "RESUME" })}>
+            <Button variant="outline" onClick={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: source.id, action: "RESUME" })))}>
               <Play /> Retomar
             </Button>
           ) : null}
           {source.status === "DRAFT" ? (
-            <Button variant="outline" onClick={() => status.mutate({ id: source.id, action: "ACTIVATE" })}>
+            <Button variant="outline" onClick={() => ignoreHandled(prompt.guarded(() => status.mutateAsync({ id: source.id, action: "ACTIVATE" })))}>
               <Play /> Ativar
             </Button>
           ) : null}
@@ -314,7 +334,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Remover {source.name}?</AlertDialogTitle>
-                <AlertDialogDescription>A fonte e seus feeds saem da Central (histórico de cargas e linhagem são preservados para auditoria). Os dados já aplicados ao domínio continuam existindo — a Central nunca apaga dado do domínio.</AlertDialogDescription>
+                <AlertDialogDescription>A fonte e seus feeds saem da Central, e credenciais e tokens são revogados (histórico de cargas e linhagem são preservados para auditoria). {RESTORE_NOTE} Os dados já aplicados ao domínio continuam existindo — a Central nunca apaga dado do domínio.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -335,6 +355,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
             <TabsTrigger value="runs">Cargas</TabsTrigger>
             <TabsTrigger value="quality">Qualidade</TabsTrigger>
             <TabsTrigger value="config">Configuração</TabsTrigger>
+            <TabsTrigger value="audit">Registro</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="overview" className="mt-4 space-y-4">
@@ -414,11 +435,15 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
           )}
         </TabsContent>
         <TabsContent value="config" className="mt-4">
-          {source.kind === "DATABASE" ? <DatabaseConfigurationTab key={source.updatedAt} source={source} /> : <ConfigurationTab key={source.updatedAt} source={source} />}
+          <SourceConfiguration source={source} />
+        </TabsContent>
+        <TabsContent value="audit" className="mt-4">
+          <AuditLogTab sourceId={source.id} />
         </TabsContent>
       </Tabs>
-      <p className="text-xs text-muted-foreground">
-        Tipo: {SOURCE_KIND_LABELS[source.kind]} · id público {source.publicId} · criada em {formatDateTime(source.createdAt)}
+      <p className="text-xs text-muted-foreground" data-testid="source-authorship">
+        Tipo: {SOURCE_KIND_LABELS[source.kind]} · id público {source.publicId} · cadastrada por {source.createdByName ?? "pessoa não identificada"} em {formatDateTime(source.createdAt)}
+        {source.lastChangedAt ? ` · última alteração por ${source.updatedByName ?? "pessoa não identificada"} em ${formatDateTime(source.lastChangedAt)}` : ""}
       </p>
     </div>
   )

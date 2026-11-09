@@ -152,10 +152,12 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect(await globalAt(new Date(beforeArchive.getTime() - 1))).toBe(true)
     expect((await org.post(`${base}/${globalId}/reactivate`)).body.data).toMatchObject({ status: "ACTIVE", current: { version: 2 } })
 
-    // Excluir: publicado e nunca usado por uma análise sai de vez — versões pela cascata (o gatilho de imutabilidade só deixa
-    // por ela), conteúdo da última versão no audit_logs.
+    // Excluir: publicado e nunca usado por uma análise sai das telas, com o conteúdo da última versão no audit_logs.
     expect((await org.delete(`${base}/${globalId}`)).status).toBe(204)
-    expect((await client.query<{ n: number }>(`select count(*)::int n from argument_script_versions where script_id = $1`, [globalId])).rows[0]!.n).toBe(0)
+    // Exclusão lógica (migration 177): continua guardado, encerrado e com as versões.
+    expect((await client.query<{ n: number }>(`select count(*)::int n from argument_scripts where id = $1`, [globalId])).rows[0]!.n).toBe(0)
+    expect((await client.query<{ status: string }>(`select status from argument_scripts_all where id = $1 and deleted_at is not null`, [globalId])).rows[0]?.status).toBe("ARCHIVED")
+    expect((await client.query<{ n: number }>(`select count(*)::int n from argument_script_versions where script_id = $1`, [globalId])).rows[0]!.n).toBe(2)
     const deletedAudit = (await client.query<{ payload: Record<string, unknown> }>(`select payload from audit_logs where entity_id = $1 and action = 'ARGUMENT_SCRIPT_DELETED'`, [globalId])).rows[0]!
     expect(deletedAudit.payload).toMatchObject({ name: "Bloqueio após pagamento (prova)", lastVersion: { version: 2, status: "PUBLISHED" } })
 
@@ -213,10 +215,11 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     const assessment = (await client.query<{ argument_scripts: { scriptId: string; applicability: string }[] }>("select argument_scripts from call_assessments where analysis_run_id = $1", [claim.runId])).rows[0]!
     expect(assessment.argument_scripts).toEqual([expect.objectContaining({ scriptId: id, applicability: "APPLIES" })])
 
-    // Usado por uma análise = origem de feedbacks e diagnósticos: nunca se apaga (409); o caminho é desativar.
-    const inUse = await area.delete(`${base}/${id}`)
-    expect(inUse.status).toBe(409)
-    expect(inUse.body.error.code).toBe("ARGUMENT_SCRIPT_IN_USE")
-    expect((await client.query(`select 1 from argument_scripts where id = $1`, [id])).rowCount).toBe(1)
+    // Usado por uma análise: excluir não apaga nada, e a origem dos feedbacks e diagnósticos continua guardada.
+    const criteriaBefore = (await client.query<{ n: number }>(`select count(*)::int n from call_criterion_assessments where argument_script_id = $1`, [id])).rows[0]!.n
+    expect((await area.delete(`${base}/${id}`)).status).toBe(204)
+    expect((await client.query(`select 1 from argument_scripts where id = $1`, [id])).rowCount).toBe(0)
+    expect((await client.query(`select 1 from argument_scripts_all where id = $1 and deleted_at is not null`, [id])).rowCount).toBe(1)
+    expect((await client.query<{ n: number }>(`select count(*)::int n from call_criterion_assessments where argument_script_id = $1`, [id])).rows[0]!.n).toBe(criteriaBefore)
   })
 })

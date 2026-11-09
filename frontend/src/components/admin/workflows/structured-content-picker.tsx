@@ -1,5 +1,6 @@
 "use client"
 
+import { variablesDefinedBefore } from "@/schemas/admin/workflow-validation/node-references"
 import { useEffect, useId } from "react"
 
 import { Label } from "@/components/ui/label"
@@ -11,6 +12,7 @@ import {
   encodeStructuredFieldPath,
   encodeVariableSourcePath,
   decodeStructuredFieldPath,
+  describeWholeResultOrigin,
   resolveContentSources,
   resolveReliableFeedbackSources,
   resolveStructuredFields,
@@ -74,13 +76,17 @@ export function StructuredContentPicker({
   const reliableSources = sourceMode === "DEFAULT" ? [] : resolveReliableFeedbackSources(graph, fromNodeId)
   const sources = sourceMode === "FEEDBACK_ONLY" ? reliableSources : [...reliableSources, ...resolveContentSources(graph, fromNodeId, agentsById, orchestratorsById)]
   const variablesQuery = useWorkflowVariablesQuery(workflowId ?? "")
-  // Uma variável é só um valor escalar — nunca satisfaz `requireWholeObject` (que pede o objeto
-  // inteiro com formato de Feedback), então nem aparece como opção nesse caso.
-  const variableOptions =
-    workflowId && !requireWholeObject ? (variablesQuery.data ?? []).map((variable) => ({ value: `${VARIABLE_ORIGIN_PREFIX}${variable.id}`, label: `Variável: ${variable.name}` })) : []
   const decoded = decodeSourcePath(path)
   const nodeId = decoded?.kind === "node" ? decoded.nodeId : ""
   const variableId = decoded?.kind === "variable" ? decoded.variableId : ""
+  // Uma variável é só um valor escalar — nunca satisfaz `requireWholeObject` (que pede o objeto
+  // inteiro com formato de Feedback), então nem aparece como opção nesse caso. Só tem valor aqui a que uma etapa anterior define;
+  // a já escolhida continua na lista, para a tela mostrar o que está gravado e a validação apontar o problema.
+  const definedBefore = variablesDefinedBefore(graph, fromNodeId)
+  const variableOptions =
+    workflowId && !requireWholeObject
+      ? (variablesQuery.data ?? []).filter((variable) => definedBefore.has(variable.id) || variable.id === variableId).map((variable) => ({ value: `${VARIABLE_ORIGIN_PREFIX}${variable.id}`, label: `Variável: ${variable.name}` }))
+      : []
   const policies = usePolicyResultCatalog(graph)
   const structuredFields = nodeId ? resolveStructuredFields(graph, nodeId, orchestratorsById, policies) : undefined
   const currentFieldPath = decoded?.kind === "node" && decoded.field ? decodeStructuredFieldPath(decoded.field) : null
@@ -147,12 +153,12 @@ export function StructuredContentPicker({
       </div>
 
       {variableId ? (
-        <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">Publicando o valor atual da variável.</p>
+        <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">Publicando o valor atual da variável. Sem valor nesta execução, a etapa para com o motivo, sem entregar nada.</p>
       ) : null}
 
       {nodeId && requireWholeObject ? (
         <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-          Publicando o resultado completo de {originLabel ?? "origem selecionada"}.{" "}
+          Publicando o resultado completo {describeWholeResultOrigin(originLabel)}.{" "}
           {requireWholeObjectReason ?? "Esta combinação exige o resultado inteiro."}
         </p>
       ) : null}
@@ -178,7 +184,7 @@ export function StructuredContentPicker({
 
       {nodeId && !requireWholeObject && !structuredFields ? (
         <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-          Publicando o resultado completo de {originLabel ?? "origem selecionada"} — sem campos declarados pra escolher.
+          Publicando o resultado completo {describeWholeResultOrigin(originLabel)}: esta origem não separa o resultado em campos.
         </p>
       ) : null}
     </div>

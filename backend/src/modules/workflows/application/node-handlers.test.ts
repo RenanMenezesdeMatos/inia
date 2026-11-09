@@ -2414,7 +2414,9 @@ describe("processNode — consolidate_results (Consolidar resultados, fan-in/JOI
     const outcome = await processNode({ db, graph, enrollment, workflow: consolidatedWorkflow, inputContext: "contexto", now: new Date(), effects }, orchestratorNode)
     expect(executeOrchestratorConsolidated).toHaveBeenCalledTimes(1)
     expect(executeOrchestrator).not.toHaveBeenCalled()
-    expect(executeOrchestratorConsolidated).toHaveBeenCalledWith(orchestratorNode.config, { db, organizationId: enrollment.organization_id, inputContext: "contexto", fanIn, collection })
+    // PEN-076: matrícula de uma versão publicada (version_id) — sem versão fixada no nó, o Orquestrador roda a versão da migração.
+    // O alcance do Workflow vai junto: a versão fixada do Orquestrador só roda se servir a ele (resolve-orchestrator.ts).
+    expect(executeOrchestratorConsolidated).toHaveBeenCalledWith(orchestratorNode.config, { db, organizationId: enrollment.organization_id, inputContext: "contexto", fanIn, collection, publishedRun: true, workflowScope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null } })
     expect(outcome).toMatchObject({ kind: "advance", nextNodeId: "end" })
   })
 
@@ -2425,8 +2427,11 @@ describe("processNode — consolidate_results (Consolidar resultados, fan-in/JOI
     const graph: FlowGraph = { nodes: [node], edges: [{ id: "e", source: "orchestrator", sourceHandle: "always", target: "end" }] }
     const enrollment = baseEnrollment({ current_node_id: "orchestrator" })
     const db = {} as Database
-    await processNode({ db, graph, enrollment, workflow: workflowScope, inputContext: "", now: new Date(), effects }, node)
+    const teamWorkflow = { scopeType: "SUBTEAM", teamId: "team-9", subteamId: "subteam-9", populationFilter: { kind: "ALL" } }
+    await processNode({ db, graph, enrollment, workflow: teamWorkflow, inputContext: "", now: new Date(), effects }, node)
     expect(executeOrchestrator).toHaveBeenCalledTimes(1)
     expect(executeOrchestratorConsolidated).not.toHaveBeenCalled()
+    // Só o alcance do Workflow, contra o qual a versão fixada do Orquestrador é conferida.
+    expect(executeOrchestrator).toHaveBeenCalledWith(node.config, expect.objectContaining({ workflowScope: { scopeType: "SUBTEAM", teamId: "team-9", subteamId: "subteam-9" } }))
   })
 })

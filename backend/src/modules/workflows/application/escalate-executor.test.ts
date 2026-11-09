@@ -34,6 +34,7 @@ function fakeDb(overrides: (sql: string, params?: unknown[]) => { rows: unknown[
     query: vi.fn(async (sql: string, params?: unknown[]) => {
       const result = overrides(sql, params)
       if (result) return result
+      if (sql.includes("and active")) return { rows: (params?.[0] as string[]).map((id) => ({ id })), rowCount: 1 }
       if (sql.includes("from interactions")) return { rows: [{ operator_id: "operator-1" }], rowCount: 1 }
       if (sql.includes("select name from people")) return { rows: [{ name: "Ana Operadora" }], rowCount: 1 }
       if (sql.includes("from workflow_enrollment_events")) return { rows: [{ case_id: "case-1" }], rowCount: 1 }

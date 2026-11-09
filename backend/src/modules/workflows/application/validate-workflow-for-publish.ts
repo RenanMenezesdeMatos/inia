@@ -1,5 +1,7 @@
+import { validateNodeReferences } from "./publish-validation/node-references.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { flowGraphSchema, type FlowGraph } from "../domain/graph-schema.js"
+import { parseCompleteGraph } from "../domain/draft-graph.js"
+import type { FlowGraph } from "../domain/graph-schema.js"
 import { triggerDataOriginOf, triggerIndicatorCodeOf } from "../domain/trigger-config-schema.js"
 import type { PublishCatalogContext, PublishGraphContext, PublishTriggerContext, PublishValidationOptions, PublishValidationRow } from "./publish-validation/context.js"
 import { validateBranchEdges, validateDraftConfigurationModes, validateGraphShape, validateInteractionFeedbackSource, validateManualTriggerMode, validatePaidCycles, validateScheduleDataSources, validateTranscriptRequirements } from "./publish-validation/trigger-context.js"
@@ -9,7 +11,7 @@ import { loadWorkflowOrchestrators, validateOrchestratorReferences } from "./pub
 import { validateEscalations, validateHumanReviewTargets, validateFixedRecipients } from "./publish-validation/review-escalation.js"
 import { validateOutputContent } from "./publish-validation/outputs.js"
 import { validateConsolidatedStructure, validateRankings, validateSelectionCriteria } from "./publish-validation/fan-out.js"
-import { validateIndicatorDiagnosis, validateIndicatorUsage, validatePrvClosingDiagnosis } from "./publish-validation/indicator-diagnosis.js"
+import { validateIndicatorDiagnosis, validateIndicatorUsage, validatePrvClosingDiagnosis, validateRecognitionSource } from "./publish-validation/indicator-diagnosis.js"
 import { validateReliableFeedbackFlow } from "./publish-validation/reliable-feedback.js"
 import { validateInterventionPolicyReferences, validateInterventionPolicySources } from "./publish-validation/intervention-policy.js"
 
@@ -34,7 +36,8 @@ export { validateReliableFeedbackFlow } from "./publish-validation/reliable-feed
  * específico, pra UI poder navegar até ele.
  */
 export async function validateWorkflowForPublish(db: Database, organizationId: string, workflowId: string, row: PublishValidationRow, options: PublishValidationOptions = {}): Promise<FlowGraph> {
-  const graph = flowGraphSchema.parse(row.draftGraph)
+  // Rascunho pode estar incompleto; publicar, não: a recusa aponta a etapa e o que falta.
+  const graph = parseCompleteGraph(row.draftGraph)
   const triggerNodes = graph.nodes.filter((node) => node.type === "trigger")
   const context: PublishGraphContext = { db, organizationId, row, options, graph, triggerNodes }
   // Cada família de regra mora em publish-validation/<família>.ts; a ordem das chamadas é a ordem dos erros.
@@ -54,6 +57,7 @@ export async function validateWorkflowForPublish(db: Database, organizationId: s
   validateReliableFeedbackFlow(graph, trigger, Boolean(row.consolidatedStructure))
   validateTranscriptRequirements(triggerContext)
   validatePrvClosingDiagnosis(triggerContext)
+  validateRecognitionSource(triggerContext)
   await validateIndicatorDiagnosis(triggerContext)
   await validateScheduleDataSources(triggerContext)
 
@@ -78,6 +82,7 @@ export async function validateWorkflowForPublish(db: Database, organizationId: s
   const variableNamesById = new Map(variableRows.rows.map((row) => [row.id, row.name]))
   const { orchestratorSchemasById, orchestratorRowsById } = await loadWorkflowOrchestrators(triggerContext)
   const catalogContext: PublishCatalogContext = { ...triggerContext, legacyValueType, variablesById, variableNamesById, orchestratorSchemasById, orchestratorRowsById }
+  validateNodeReferences(catalogContext)
   validateConditions(catalogContext)
   validateSelectionCriteria(catalogContext)
   await validateIndicatorUsage(catalogContext)

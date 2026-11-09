@@ -542,7 +542,7 @@ describe("validateWorkflowGraph — Output para Avatar/Chat (Parte 1)", () => {
       // teste prova só a regra do schema, com a entrega à gestão.
       config: { target: { type: "SUPERVISOR_OF_OPERATOR" }, surfaces: ["AVATAR"], source: "nodeOutputs.agent-1" },
     }
-    const graph: FlowGraph = { nodes: [triggerNode, callAgent, output, endNode], edges: [] }
+    const graph: FlowGraph = { nodes: [triggerNode, callAgent, output, endNode], edges: [{ id: "e", source: "agent-1", sourceHandle: "always", target: "out-1" }] }
     const issues = validateWorkflowGraph(graph, trigger)
     expect(issues.filter((issue) => issue.nodeId === "out-1")).toEqual([])
   })
@@ -612,7 +612,7 @@ describe("validateWorkflowGraph — Escalonar: Target + Conteúdo compartilhados
       contentSource: "nodeOutputs.agent-1",
       surfaces: ["CHAT"],
     })
-    const graph: FlowGraph = { nodes: [triggerNode, callAgent, escalate, endNode], edges: [] }
+    const graph: FlowGraph = { nodes: [triggerNode, callAgent, escalate, endNode], edges: [{ id: "e", source: "agent-1", sourceHandle: "always", target: "esc-1" }] }
     const issues = validateWorkflowGraph(graph, trigger)
     expect(issues.filter((issue) => issue.nodeId === "esc-1")).toEqual([])
   })
@@ -861,7 +861,7 @@ describe('validateWorkflowGraph — Output "O próprio operador" é inválido em
   const scheduleTrigger: WorkflowTrigger = { kind: "schedule", mode: "CALENDAR", intervalDays: 1, times: ["09:00"] }
 
   function outputNode(target: Extract<FlowNode, { type: "output" }>["config"]["target"], id = "out-1"): FlowNode {
-    return { id, type: "output", label: "Notificar", position, config: { target, surfaces: ["INBOX"], source: "nodeOutputs.agent" } }
+    return { id, type: "output", label: "Notificar", position, config: { target, surfaces: ["INBOX"], source: "nodeOutputs.trigger" } }
   }
 
   it('aceita "O próprio operador" normalmente quando o modo não é informado (Individual, padrão)', () => {
@@ -1212,5 +1212,78 @@ describe("validateWorkflowGraph — gatilho Manual (espelha o publish pela orige
     const legacy = conditionNode({ comparator: "LTE", thresholdNumeric: 3 })
     expect(validateWorkflowGraph(graphWith(legacy), manualInteraction).map((issue) => issue.message).join(" ")).toMatch(/não fornece um/)
     expect(validateWorkflowGraph(graphWith(legacy), { kind: "manual", context: "INDICATOR_MEASUREMENT", indicatorCode: "TMA" } as WorkflowTrigger)).toEqual([])
+  })
+})
+
+describe("validateWorkflowGraph — o que o rascunho exige e referências a etapas removidas (auditoria de UX, 04/11/2026)", () => {
+  const trigger: WorkflowTrigger = { kind: "manual", context: "COLLABORATOR" }
+  const position = { x: 0, y: 0 }
+  const base = (...nodes: FlowNode[]): FlowGraph => ({
+    nodes: [{ id: "trigger", type: "trigger", label: "Início", position, config: {} }, ...nodes, { id: "end", type: "end", label: "Fim", position, config: {} }],
+    edges: [],
+  })
+  const messagesFor = (graph: FlowGraph, nodeId: string) =>
+    validateWorkflowGraph(graph, trigger)
+      .filter((issue) => issue.nodeId === nodeId)
+      .map((issue) => issue.message)
+
+  it("WF-01: \"Chamar agente\" sem agente vira problema na lista, e o rascunho continua salvando", () => {
+    const node: FlowNode = { id: "agente", type: "action", label: "Análise", position, config: { actionType: "CALL_AGENT", agentId: "" } }
+    expect(messagesFor(base(node), "agente")).toContain("Escolha o agente desta etapa.")
+  })
+
+  it("WF-01: Output sem destino ou sem pessoa, e Revisão de pessoa específica sem pessoa, viram problema local", () => {
+    const output: FlowNode = { id: "saida", type: "output", label: "Saída", position, config: { target: { type: "USER", userId: "" }, surfaces: [], source: "nodeOutputs.trigger" } }
+    const review: FlowNode = { id: "revisao", type: "human_review", label: "Revisão", position, config: { reviewTarget: { type: "SPECIFIC_USER", userId: "" } } }
+    const graph = base(output, review)
+    expect(messagesFor(graph, "saida")).toEqual(expect.arrayContaining(["Escolha onde entregar o conteúdo.", "Escolha a pessoa que vai receber o conteúdo."]))
+    expect(messagesFor(graph, "revisao")).toContain("Escolha a pessoa.")
+  })
+
+  it("WF-07: Output, Revisão e Escalonar com conteúdo de etapa removida são bloqueados", () => {
+    const removed = "nodeOutputs.apagado.structuredResult.resumo"
+    const output: FlowNode = { id: "saida", type: "output", label: "Saída", position, config: { target: { type: "CURRENT_OPERATOR" }, surfaces: ["NOTIFICATION"], source: removed } }
+    const review: FlowNode = { id: "revisao", type: "human_review", label: "Revisão", position, config: { reviewTarget: { type: "ROLE_OF_OPERATOR", role: "SUPERVISOR" }, contentSource: removed } }
+    const escalate: FlowNode = { id: "escala", type: "action", label: "Escalar", position, config: { actionType: "ESCALATE", target: { type: "ROLE_OF_OPERATOR", role: "MANAGER" }, surfaces: ["NOTIFICATION"], contentSource: removed } }
+    const graph = base(output, review, escalate)
+    expect(messagesFor(graph, "saida")).toContain("O conteúdo escolhido vem de uma etapa que não existe mais — escolha outro.")
+    expect(messagesFor(graph, "revisao")).toContain("O conteúdo a revisar vem de uma etapa que não existe mais — escolha outro.")
+    expect(messagesFor(graph, "escala")).toContain("O conteúdo escalonado vem de uma etapa que não existe mais — escolha outro.")
+  })
+
+  it("WF-07: Condição (simples e em grupo) com origem de etapa removida é bloqueada; origem existente não", () => {
+    const simple: FlowNode = { id: "c1", type: "condition", label: "Simples", position, config: { comparator: "EQUALS", thresholdBoolean: true, thresholdNumeric: null, sourcePath: "nodeOutputs.apagado.ok" } }
+    const grouped: FlowNode = {
+      id: "c2",
+      type: "condition",
+      label: "Em grupo",
+      position,
+      config: { comparator: "EQUALS", thresholdBoolean: null, thresholdNumeric: null, group: { operator: "ALL", rules: [{ comparator: "EQUALS", thresholdBoolean: true, thresholdNumeric: null, sourcePath: "nodeOutputs.apagado.ok" }] } },
+    }
+    const kept: FlowNode = { id: "c3", type: "condition", label: "Ok", position, config: { comparator: "EQUALS", thresholdBoolean: true, thresholdNumeric: null, sourcePath: "nodeOutputs.trigger.ok" } }
+    const graph = base(simple, grouped, kept)
+    expect(messagesFor(graph, "c1").join()).toContain("etapa que não existe mais")
+    expect(messagesFor(graph, "c2").join()).toContain("etapa que não existe mais")
+    expect(messagesFor(graph, "c3").join()).not.toContain("etapa que não existe mais")
+  })
+
+  it("WF-25: mensagens citam a etapa pelo nome da paleta e não mostram enum cru", () => {
+    const issues = validateWorkflowGraph(
+      {
+        nodes: [
+          { id: "trigger", type: "trigger", label: "Início", position, config: {} },
+          { id: "agente", type: "action", label: "Análise", position, config: { actionType: "CALL_AGENT", agentId: "a1", scheduledDataSource: { kind: "INDICATORS", window: "LAST_7_DAYS" } } },
+          { id: "end", type: "end", label: "Fim", position, config: {} },
+        ],
+        edges: [
+          { id: "1", source: "trigger", sourceHandle: "always", target: "agente" },
+          { id: "2", source: "agente", sourceHandle: "always", target: "agente" },
+        ],
+      } as FlowGraph,
+      trigger,
+    )
+    const cycle = issues.find((issue) => issue.code === "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT")
+    expect(cycle?.message).toContain('"Aguardar"')
+    expect(cycle?.message).not.toContain("Espera")
   })
 })

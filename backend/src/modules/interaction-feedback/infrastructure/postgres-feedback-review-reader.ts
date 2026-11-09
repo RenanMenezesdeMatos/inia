@@ -49,7 +49,7 @@ const SCOPED_FROM_RELIABLE = `from reliable_feedback_item_reviews r
   cross join lateral (select coalesce((select op.timezone from operations op where op.organization_id = r.organization_id order by op.created_at limit 1), '${DEFAULT_ORGANIZATION_TIMEZONE}') timezone) o
   left join teams t on t.id = c.team_id
   left join interactions i on i.id = a.interaction_id and i.organization_id = a.organization_id
-  left join indicator_measurements m on m.id = a.indicator_measurement_id and m.organization_id = a.organization_id
+  left join indicator_measurements_all m on m.id = a.indicator_measurement_id and m.organization_id = a.organization_id
   where r.organization_id = $1 and a.collaborator_id <> $2
     -- Retenção antiga encerrada/reprocessada (motor novo): o item pendente sai da fila; decisões já tomadas continuam no histórico.
     and not (a.superseded_at is not null and r.review_status = 'PENDING_REVIEW') and (

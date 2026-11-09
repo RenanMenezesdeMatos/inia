@@ -162,6 +162,17 @@ export async function deleteReport(deps: ReportServiceDeps, actor: ReportActor, 
   await deps.store.softDeleteReport(id, actor.organizationId, actor.accountId)
 }
 
+/** Report é de quem o criou: a pessoa vê e restaura os próprios na tela de Reports, sem precisar da Consultar dados. Volta inativo, sem nova entrega. */
+export async function listDeletedReports(deps: ReportServiceDeps, actor: ReportActor) {
+  await requireAccess(deps, actor)
+  return deps.store.listDeletedReports(actor.organizationId, actor.accountId)
+}
+
+export async function restoreDeletedReport(deps: ReportServiceDeps, actor: ReportActor, id: string) {
+  await requireAccess(deps, actor)
+  if (!(await deps.store.restoreReport(id, actor.organizationId, actor.accountId, actor.personId))) throw new DomainError("Report excluído não encontrado.", "REPORT_NOT_FOUND", 404)
+}
+
 /** "Executar agora": uma execução MANUAL (mesmas regras da agendada; o worker processa). */
 export async function runReportNow(deps: ReportServiceDeps, actor: ReportActor, id: string) {
   const report = await requireOwned(deps, actor, id)
@@ -236,7 +247,8 @@ export async function retryDeliveryAnalysis(deps: ReportServiceDeps, actor: Repo
   const delivery = await requireDeliveryForRecipient(deps, actor, deliveryId)
   if (delivery.kind !== "DELIVERY" || delivery.analysisStatus !== "FAILED") return { analysisStatus: delivery.analysisStatus }
   const report = await deps.store.getReport(delivery.reportId, actor.organizationId)
-  if (report) await analyzeDelivery(deps.store, deps.analysisWriter, delivery, report)
+  // MANUAL: só reivindica se continua FAILED — dois cliques (ou dois destinatários) juntos fazem uma chamada; o outro vê PENDING.
+  if (report) await analyzeDelivery(deps.store, deps.analysisWriter, delivery, report, "MANUAL")
   const updated = await deps.store.getDelivery(delivery.id, actor.organizationId)
   return { analysisStatus: updated?.analysisStatus ?? delivery.analysisStatus }
 }

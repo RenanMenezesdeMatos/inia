@@ -138,6 +138,13 @@ export async function requireSource(db: Queryable, organizationId: string, sourc
   return source
 }
 
+/** Dentro de uma transação: trava a linha da fonte até o commit e devolve o que está gravado agora. */
+export async function lockSource(db: Queryable, organizationId: string, sourceId: string): Promise<DataSourceRow> {
+  const result = await db.query<DataSourceRow>(`${SELECT_SOURCE} where s.organization_id = $1 and s.id = $2 and s.deleted_at is null for update`, [organizationId, sourceId])
+  if (!result.rows[0]) throw new DomainError("Fonte não encontrada.", "DATA_SOURCE_NOT_FOUND", 404)
+  return toIsoRow(result.rows[0])
+}
+
 export async function findFeed(db: Queryable, organizationId: string, feedId: string): Promise<DataFeedRow | null> {
   const result = await db.query<DataFeedRow>(`${SELECT_FEED} where f.organization_id = $1 and f.id = $2 and f.deleted_at is null`, [organizationId, feedId])
   return result.rows[0] ? toIsoRow(result.rows[0]) : null

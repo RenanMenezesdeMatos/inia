@@ -5,7 +5,8 @@ import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { booleanParam, dateParam, listParam, orgScopeFilterSchema, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { applyManageableScopeFilter, canManageScope, getManageableScopes, normalizeScopedTarget, scopesAreCompatible, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
-import { createOrchestratorSchema, updateOrchestratorSchema, toolNameForAgent } from "../domain/orchestrator-schema.js"
+import { createOrchestratorSchema, updateOrchestratorSchema } from "../domain/orchestrator-schema.js"
+import { assertAgentsPublished, assertOrchestratorVersion, listOrchestratorVersions, publishOrchestratorVersion, syncSpecialists } from "../application/orchestrator-versions.js"
 import { checkSpecialistAgainstRouting, describeRoutingProblem, legacyPolicyFor, POLICY_REQUIRED_MESSAGE, resolveRoutingPolicy, type OrchestratorPolicy, type RoutingPolicy } from "../domain/orchestrator-policy.js"
 import { resolveAgentSpecialty } from "../../agents/domain/agent-specialty.js"
 import { agentBusinessDomainColumns, agentBusinessDomainJoin, agentBusinessDomainJson, assertBusinessDomainsSelectable, orchestratorBusinessDomainsJson, resolveBusinessDomainRefs, syncOrchestratorBusinessDomains } from "../../business-domains/application/business-domain-lookup.js"
@@ -18,6 +19,7 @@ import {
   toLegacyOutputSchema,
   type StructuredOutputDefinition,
 } from "../domain/structured-output-definition.js"
+import { deleteOrchestratorIfUnreferenced } from "../application/orchestrator-deletion.js"
 import { assertStructuredOutputChangeAllowed, loadStructuredOutputUsage } from "../application/structured-output-dependencies.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
@@ -40,19 +42,25 @@ const ORCHESTRATOR_SELECT = `
     o.subteam_id "subteamId", st.name "subteamName", o.active, o.created_at "createdAt",
     o.invocation_mode "invocationMode", o.output_instructions "outputInstructions", o.output_schema "outputSchema",
     o.structured_output "structuredOutputRaw", o.recommend_support_materials "recommendSupportMaterials",
-    o.orchestrator_agent_id "orchestratorAgentId", oa.name "orchestratorAgentName",
+    o.orchestrator_agent_id "orchestratorAgentId", oa.name "orchestratorAgentName", oa.active "orchestratorAgentActive",
+    oa.current_version_id "orchestratorAgentCurrentVersionId", oacv.version_number "orchestratorAgentCurrentVersionNumber", (oa.current_version_id is not null) "orchestratorAgentPublished",
+    o.current_version_id "currentVersionId", ocv.version_number "currentVersionNumber",
     o.policy_kind "policyKind", o.policy_domains "policyDomains",
     o.routing_policy "routingPolicy", o.routing_domains "routingDomains",
     ${orchestratorBusinessDomainsJson("o")} "businessDomains",
     coalesce((
-      select json_agg(json_build_object('agentId', s.agent_id, 'agentName', sa.name, 'agentType', sa.agent_type, 'specialty', sa.specialty, 'specialtyKind', sa.specialty_kind, 'domain', sa.domain, 'capability', sa.capability, 'businessDomainId', sa.business_domain_id, 'businessDomain', ${agentBusinessDomainJson("sbd")}) order by sa.name)
+      select json_agg(json_build_object('agentId', s.agent_id, 'agentName', sa.name, 'agentType', sa.agent_type, 'specialty', sa.specialty, 'specialtyKind', sa.specialty_kind, 'domain', sa.domain, 'capability', sa.capability, 'businessDomainId', sa.business_domain_id, 'businessDomain', ${agentBusinessDomainJson("sbd")},
+               'active', sa.active, 'published', (sa.current_version_id is not null), 'agentCurrentVersionId', sa.current_version_id, 'agentCurrentVersionNumber', scv.version_number) order by sa.name)
       from assistant_orchestrator_specialists s
       join agents sa on sa.id = s.agent_id
+      left join agent_versions scv on scv.id = sa.current_version_id
       ${agentBusinessDomainJoin("sa", "sbd")}
       where s.orchestrator_id = o.id
     ), '[]') "specialists"
   from assistant_orchestrators o
   join agents oa on oa.id = o.orchestrator_agent_id
+  left join agent_versions oacv on oacv.id = oa.current_version_id
+  left join assistant_orchestrator_versions ocv on ocv.id = o.current_version_id
   left join teams t on t.id = o.team_id
   left join subteams st on st.id = o.subteam_id
   where o.organization_id = $1
@@ -235,16 +243,6 @@ function rethrowFriendly(error: unknown): never {
   throw error
 }
 
-async function syncSpecialists(client: { query: Database["query"] }, orchestratorId: string, specialistAgentIds: string[]) {
-  await client.query(`delete from assistant_orchestrator_specialists where orchestrator_id = $1`, [orchestratorId])
-  for (const agentId of specialistAgentIds) {
-    await client.query(
-      `insert into assistant_orchestrator_specialists(orchestrator_id, agent_id, tool_name) values ($1,$2,$3)`,
-      [orchestratorId, agentId, toolNameForAgent(agentId)],
-    )
-  }
-}
-
 export function createAssistantRouter(db: Database) {
   const router = Router()
 
@@ -285,6 +283,16 @@ export function createAssistantRouter(db: Database) {
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
     response.json({ data: await loadStructuredOutputUsage(db, organizationId, request.params.id!) })
+  })
+
+  /** Versões publicadas do Orquestrador, com as versões de agente que cada uma fixou (PEN-076). */
+  router.get("/:id/versions", async (request, response) => {
+    const organizationId = sessionUser(request).organizationId
+    const current = await fetchScopedRow(db, organizationId, request.params.id!)
+    if (!current) return response.status(404).json(NOT_FOUND)
+    const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
+    if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
+    response.json({ data: await listOrchestratorVersions(db, organizationId, request.params.id!) })
   })
 
   router.post("/", async (request, response) => {
@@ -330,7 +338,9 @@ export function createAssistantRouter(db: Database) {
         )
         const orchestratorId = created.rows[0]!.id
         await syncOrchestratorBusinessDomains(client, orchestratorId, persisted.domainRefs)
-        await syncSpecialists(client, orchestratorId, input.specialistAgentIds)
+        await syncSpecialists(client, organizationId, orchestratorId, input.specialistAgentIds)
+        await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
+        await publishOrchestratorVersion(client, organizationId, orchestratorId, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return orchestratorId
       })
       const result = await db.query(`${ORCHESTRATOR_SELECT} and o.id = $2`, [organizationId, orchestratorId])
@@ -396,6 +406,7 @@ export function createAssistantRouter(db: Database) {
 
     try {
       const outcome = await inTransaction(db, async (client) => {
+        await assertOrchestratorVersion(client, request.params.id!, input.expectedVersionId)
         const updated = await client.query<{ id: string }>(
           `update assistant_orchestrators set
              name = coalesce($1, name),
@@ -443,9 +454,11 @@ export function createAssistantRouter(db: Database) {
           return "NOT_FOUND" as const
         }
         await syncOrchestratorBusinessDomains(client, request.params.id!, persisted.domainRefs)
-        if (input.specialistAgentIds) {
-          await syncSpecialists(client, request.params.id!, input.specialistAgentIds)
-        }
+        // Nenhuma versão de agente é fixada (revisão de 03/11/2026): os agentes rodam sempre na versão vigente deles.
+        if (input.specialistAgentIds) await syncSpecialists(client, organizationId, request.params.id!, input.specialistAgentIds)
+        if (input.orchestratorAgentId) await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
+        // Toda gravação publica uma versão nova da configuração (as anteriores continuam valendo para os Workflows que as fixaram).
+        await publishOrchestratorVersion(client, organizationId, request.params.id!, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return "UPDATED" as const
       })
       if (outcome === "NOT_FOUND") return response.status(404).json(NOT_FOUND)
@@ -463,7 +476,7 @@ export function createAssistantRouter(db: Database) {
     const scopes = await getManageableScopes(db, sessionUser(request), "agents.manage")
     if (!canManageScope(scopes, current)) return response.status(404).json(NOT_FOUND)
 
-    await db.query(`delete from assistant_orchestrators where id = $1 and organization_id = $2`, [request.params.id, organizationId])
+    await deleteOrchestratorIfUnreferenced(db, sessionUser(request), request.params.id!)
     response.status(204).send()
   })
 

@@ -7,7 +7,6 @@ import { ArrowLeft, CheckCircle2, CircleAlert, ClipboardCheck, Target } from "lu
 
 import { IndicatorsView } from "@/components/analytics/indicators-view"
 import { StructureFollowUpFeed } from "@/components/follow-up/structure-follow-up-feed"
-import { PersonStructureView } from "@/components/structure/person-structure-view"
 import { ProfileHeader, type ProfileHeaderPerson } from "@/components/profile/profile-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,8 @@ import { professionalLineOf } from "@/schemas/profile/my-profile.schema"
 import type { SupervisorOperatorDetail } from "@/services/supervisor"
 
 import { backLinkFor } from "./employee-profile-exit"
+// Indicadores é a aba de entrada da ficha (importada direto); o organograma (@xyflow/react) chega sob demanda.
+import { PersonStructureView } from "./profile-tab-views"
 import { ProfileTabsList } from "./profile-tabs"
 import { ChartNoAxesCombined, MessagesSquare, Network, UserRound } from "lucide-react"
 import { PersonInterventions } from "@/components/interventions/person-interventions"

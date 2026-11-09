@@ -178,6 +178,15 @@ export default function OutputsPage() {
         </p>
       </WikiSection>
 
+      <WikiSection id="fonte-do-conteudo" title="De onde vem o conteúdo" eyebrow="Fonte do conteúdo">
+        <p>
+          O conteúdo é o resultado de uma etapa anterior, um campo desse resultado, ou uma variável que uma etapa anterior define. A variável chega no
+          formato do tipo dela: texto como está, número no formato brasileiro, verdadeiro/falso como Sim/Não. A publicação recusa origem que não existe ou
+          que não vem antes. Se o conteúdo não existir na hora de rodar (a etapa de origem não rodou neste caminho, ou a variável não tem valor), a execução
+          para com o motivo, sem entregar nada. No Acompanhamento do próprio colaborador, variável não serve: ali é preciso o resultado inteiro de uma análise.
+        </p>
+      </WikiSection>
+
       <WikiSection id="avatar-chat" title="Avatar e Chat" eyebrow="Alto nível">
         <p>
           O avatar 3D e o chat de texto/voz da INIA são interfaces de consumo e interação do operador dentro do Acompanhamento. Um Output no

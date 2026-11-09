@@ -7,7 +7,7 @@
  */
 import pg from "pg"
 import request from "supertest"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { env } from "../../../config/env.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
@@ -18,8 +18,9 @@ let pool: pg.Pool
 let client: pg.PoolClient
 
 describe.skipIf(!ENABLED)("Conversas com a INIA — prova Postgres", () => {
-  beforeAll(async () => { pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL }); client = await pool.connect(); await client.query("begin") })
-  afterAll(async () => { if (client) { await client.query("rollback"); client.release() } if (pool) await pool.end() })
+  // Esta prova não simula o provedor: a conferência da resposta (PEN-017), que tem prova própria, faria uma chamada real na fala registrada.
+  beforeAll(async () => { vi.stubEnv("INIA_RESPONSE_CHECK", "OFF"); pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL }); client = await pool.connect(); await client.query("begin") })
+  afterAll(async () => { vi.unstubAllEnvs(); if (client) { await client.query("rollback"); client.release() } if (pool) await pool.end() })
 
   it("persistência, rotas do operador e monitoramento por escopo", async () => {
     const org = (await client.query<{ id: string }>("select id from organizations order by created_at limit 1")).rows[0]!

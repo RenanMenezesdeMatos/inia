@@ -1,7 +1,7 @@
 import { EMPLOYMENT_STATUS_LABELS, type EmploymentStatus } from "../../people/domain/employment-status.js"
 import { SCHEDULE_EXCEPTION_LABELS, type ScheduleExceptionCode } from "../../people/domain/schedule-exception.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { absenceDaysWithDataOf, finishWindow, finishWindowBySubject, ignoredOf, loadIndicatorOperationalDefinition, resolveEligibleDaysBySubject, resolveOperationalWindow, resolveOperationalWindowBySubject, toRaw, type IndicatorOperationalDefinition, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
+import { absenceDaysWithDataOf, finishWindow, finishWindowBySubject, ignoredOf, OPERATIONAL_DEFINITION_COLUMNS, resolveEligibleDaysBySubject, resolveOperationalWindow, resolveOperationalWindowBySubject, toOperationalDefinition, toRaw, type IndicatorOperationalDefinition, type OperationalDefinitionRow, type OperationalWindowResult, type WorkdayResolutionCache } from "../../indicators/application/operational-measurement-resolver.js"
 import { defaultMeasurementAggregation, MEASUREMENT_AGGREGATION_LABELS, type MeasurementAggregation } from "../../indicators/domain/operational-aggregation.js"
 import { percentageChange } from "../../workflows/application/condition-evaluator.js"
 import { resolveOperationalQuartiles } from "../../workflows/application/operational-quartile-resolver.js"
@@ -46,18 +46,17 @@ export type OperationalTrendInput = {
 /** Definição diária + os PADRÕES de suficiência do catálogo (IndicatorDefinition.minimumCoverage / minimumSampleSize). */
 type DailyDefinition = IndicatorOperationalDefinition & { name: string; minimumCoverage: number | null; minimumSampleSize: number | null }
 
-/** Indicadores ativos com medição operacional diária (`daily_supported`) — só esses ganham card. */
+/**
+ * Indicadores ativos com medição operacional diária (`daily_supported`) — só esses ganham card. Uma consulta só, já na
+ * organização de quem abre a tela: antes, cada código era relido por `loadIndicatorOperationalDefinition` (1 + N consultas,
+ * e sem organização — com o mesmo código em duas organizações, valeria a definição da mais antiga).
+ */
 async function loadDailyDefinitions(db: Database, organizationId: string): Promise<DailyDefinition[]> {
-  const result = await db.query<{ code: string; name: string; minimum_coverage: string | null; minimum_sample_size: number | null }>(
-    `select code, name, minimum_coverage, minimum_sample_size from indicator_definitions where organization_id = $1 and active and daily_supported order by name`,
+  const result = await db.query<OperationalDefinitionRow & { name: string; minimum_coverage: string | null; minimum_sample_size: number | null }>(
+    `select ${OPERATIONAL_DEFINITION_COLUMNS}, name, minimum_coverage, minimum_sample_size from indicator_definitions where organization_id = $1 and active and daily_supported order by name`,
     [organizationId],
   )
-  const definitions: DailyDefinition[] = []
-  for (const row of result.rows) {
-    const definition = await loadIndicatorOperationalDefinition(db, row.code)
-    if (definition?.dailySupported) definitions.push({ ...definition, name: row.name, minimumCoverage: row.minimum_coverage === null ? null : Number(row.minimum_coverage), minimumSampleSize: row.minimum_sample_size ?? null })
-  }
-  return definitions
+  return result.rows.map((row) => ({ ...toOperationalDefinition(row), name: row.name, minimumCoverage: row.minimum_coverage === null ? null : Number(row.minimum_coverage), minimumSampleSize: row.minimum_sample_size ?? null }))
 }
 
 /**
@@ -196,7 +195,7 @@ export async function buildEmployeeOperationalTrends(db: Database, input: Operat
       resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: [input.personId], window, aggregation, expectedDays, timeZone: input.timeZone, workdayCache }, definition),
       resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: [input.personId], window: previousWindow, aggregation, expectedDays: previousExpectedDays, timeZone: input.timeZone, workdayCache }, definition),
       // A população do quartil usa a MESMA regra de suficiência do catálogo (cobertura mínima do indicador).
-      resolveOperationalQuartiles(db, { indicatorCode: definition.code, aggregation, period, minimumCoverage: definition.minimumCoverage ?? undefined, populationIds: peers.ids, now: input.now, timeZone: input.timeZone, workdayCache }, quartileCache),
+      resolveOperationalQuartiles(db, { indicatorCode: definition.code, aggregation, period, minimumCoverage: definition.minimumCoverage ?? undefined, populationIds: peers.ids, now: input.now, timeZone: input.timeZone, workdayCache, definition }, quartileCache),
     ])
     const currentView = toWindowView(current, describeTimeWindow(window, input.timeZone))
     const previousView = toWindowView(previous, describeTimeWindow(previousWindow, input.timeZone))

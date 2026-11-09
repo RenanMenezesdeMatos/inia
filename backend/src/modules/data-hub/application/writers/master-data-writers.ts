@@ -759,11 +759,11 @@ export const goalsWriter: DomainWriter<PreparedGoal> = {
   async apply(context, client, batch) {
     if (batch.length === 0) return emptyApply()
     const result = await client.query<{ id: string; key: string; inserted: boolean }>(
-      `insert into goals (organization_id, indicator_definition_id, subject_type, subject_id, target_value, valid_from, valid_until)
+      `insert into goals_all (organization_id, indicator_definition_id, subject_type, subject_id, target_value, valid_from, valid_until)
        select $1, indicator_id, subject_type, subject_id, target_value, valid_from::date, valid_until::date
        from unnest($2::uuid[], $3::text[], $4::uuid[], $5::numeric[], $6::text[], $7::text[]) as t(indicator_id, subject_type, subject_id, target_value, valid_from, valid_until)
-       on conflict (organization_id, indicator_definition_id, subject_type, subject_id, valid_from) do update set target_value = excluded.target_value, valid_until = excluded.valid_until
-       where goals.target_value is distinct from excluded.target_value or goals.valid_until is distinct from excluded.valid_until
+       on conflict (organization_id, indicator_definition_id, subject_type, subject_id, valid_from) do update set target_value = excluded.target_value, valid_until = excluded.valid_until, cancelled_at = null, cancellation_id = null
+       where goals_all.cancelled_at is not null or goals_all.target_value is distinct from excluded.target_value or goals_all.valid_until is distinct from excluded.valid_until
        returning id, indicator_definition_id || '|' || subject_type || '|' || subject_id || '|' || to_char(valid_from, 'YYYY-MM-DD') key, (xmax = 0) inserted`,
       [context.organizationId, batch.map((r) => r.indicatorId), batch.map((r) => r.subjectType), batch.map((r) => r.subjectId), batch.map((r) => r.targetValue), batch.map((r) => r.validFrom), batch.map((r) => r.validUntil)],
     )

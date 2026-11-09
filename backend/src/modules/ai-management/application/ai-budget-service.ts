@@ -80,7 +80,8 @@ export async function updateBudget(context: AiAdminContext, actor: Actor, id: st
 }
 
 export async function deleteBudget(context: AiAdminContext, actor: Actor, id: string): Promise<BudgetView[]> {
-  const deleted = await context.db.query(`delete from ai_budgets where organization_id = $1 and id = $2`, [actor.organizationId, id])
+  // Exclusão lógica (migration 177): volta pela Central de Dados, desligado.
+  const deleted = await context.db.query(`update ai_budgets_all set enabled = false, deleted_at = now(), deleted_by_person_id = $3, updated_at = now() where organization_id = $1 and id = $2 and deleted_at is null`, [actor.organizationId, id, actor.personId])
   if ((deleted.rowCount ?? 0) === 0) throw new DomainError("Orçamento não encontrado.", "AI_BUDGET_NOT_FOUND", 404)
   await auditAi(context.db, actor, "AI_BUDGET_DELETED", "ai_budget", id, {})
   context.runtime.invalidate(actor.organizationId)

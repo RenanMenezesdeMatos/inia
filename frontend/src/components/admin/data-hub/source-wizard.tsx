@@ -18,10 +18,13 @@ import { AdminApiError } from "@/lib/admin/admin-api"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useCreateFeedMutation, useCreatePushTokenMutation, useCreateSourceMutation, useDataContractsQuery, useDataSourceQuery, useSetFeedStatusMutation, useTestConnectionMutation, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
 import { fetchSourceSample, previewSourceMapping, uploadFile } from "@/services/admin/data-hub-service"
-import { CONTRACT_CATEGORY_LABELS, LOAD_MODE_LABELS, SOURCE_KIND_DESCRIPTIONS, SOURCE_KIND_LABELS, SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, type AvailabilityPolicy, type Cadence, type ConnectionTest, type DataContract, type FeedMapping, type Preview, type Sample, type Source, type SourceKind } from "@/schemas/admin/data-hub.schema"
+import { CONTRACT_CATEGORY_LABELS, LOAD_MODE_LABELS, SOURCE_KIND_DESCRIPTIONS, SOURCE_KIND_LABELS, SOURCE_KINDS, availabilityPolicyLabel, cadenceLabel, cadenceProblem, type AvailabilityPolicy, type Cadence, type ConnectionTest, type DataContract, type FeedMapping, type Preview, type Sample, type Source, type SourceDetail, type SourceKind } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
 
-import { AvailabilityPolicyField, ConnectionForm, CadenceSelect, connectionDraftValid, draftFromSource, emptyConnectionDraft, toSourcePayload, type ConnectionDraft } from "./connection-form"
+import { CadenceSelect } from "./cadence-select"
+import { ConfigAccessPanel, isConfigLocked } from "./config-access/config-access-panel"
+import { useConfigUnlockPrompt } from "./config-access/use-config-unlock-prompt"
+import { AvailabilityPolicyField, ConnectionForm, connectionDraftValid, draftFromSource, emptyConnectionDraft, toSourcePayload, type ConnectionDraft } from "./connection-form"
 import { ContractPayloadExample } from "./contracts-tab"
 import { FeedConnectorForm, connectorDraftValid, emptyConnectorDraft, toConnectorConfig, type ConnectorDraft } from "./feed-connector-form"
 import { MappingEditor } from "./mapping-editor"
@@ -58,7 +61,8 @@ function Stepper({ current, offset = 0 }: { current: number; offset?: number }) 
  *
  * Com `?sourceId=` o mesmo wizard vira "Adicionar feed" a uma fonte existente: pula tipo,
  * conexão e teste (reaproveita conexão, autenticação e segredos) e começa na escolha do
- * contrato — uma fonte, muitos feeds (ex.: API RH › Colaboradores + Ausências + Escalas).
+ * contrato — uma fonte, muitos feeds (ex.: API RH › Colaboradores + Ausências + Escalas). Fonte com
+ * credencial guardada pede a credencial antes de continuar: quem configura precisa conhecê-la.
  */
 export function SourceWizard() {
   const params = useSearchParams()
@@ -79,8 +83,9 @@ function AddFeedWizard({ sourceId, presetContractKey }: { sourceId: string; pres
   return <Wizard key={query.data.id} existing={query.data} presetContractKey={presetContractKey} />
 }
 
-function Wizard({ existing = null, presetContractKey }: { existing?: Source | null; presetContractKey: string | null }) {
+function Wizard({ existing = null, presetContractKey }: { existing?: SourceDetail | null; presetContractKey: string | null }) {
   const router = useRouter()
+  const prompt = useConfigUnlockPrompt()
   const contractsQuery = useDataContractsQuery()
   const createSource = useCreateSourceMutation()
   const updateSource = useUpdateSourceMutation()
@@ -91,6 +96,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
 
   const addingFeed = existing !== null
   const firstStep = addingFeed ? ADD_FEED_FIRST_STEP : 0
+  const needsPassword = isConfigLocked(existing?.configAccess)
   const [step, setStep] = useState(firstStep)
   const [kind, setKind] = useState<SourceKind | null>(existing?.kind ?? null)
   const [connection, setConnection] = useState<ConnectionDraft>(() => (existing ? draftFromSource(existing) : emptyConnectionDraft()))
@@ -129,7 +135,8 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
     if (!kind) return null
     const payload = toSourcePayload(kind, connection)
     try {
-      const saved = source ? await updateSource.mutateAsync({ id: source.id, input: payload }) : await createSource.mutateAsync(payload)
+      const current = source
+      const saved = current ? await prompt.guarded(() => updateSource.mutateAsync({ id: current.id, input: payload })) : await createSource.mutateAsync(payload)
       setSource(saved)
       return saved
     } catch {
@@ -158,7 +165,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
         setSample({ columns, records: list, totalRecords: list.length, detail: pushExample.trim() ? "Payload de exemplo informado" : "Exemplo do contrato", suggestedMapping: { fields: contract.fields.filter((field) => columns.includes(field.key)).map((field) => ({ target: field.key, source: field.key, transforms: [] })) } })
         setMapping((current) => (current.fields.length ? current : { fields: contract.fields.filter((field) => columns.includes(field.key)).map((field) => ({ target: field.key, source: field.key, transforms: [] })) }))
       } else {
-        const fetched = await fetchSourceSample(source.id, { connectorConfig, contractKey: contract.key, rawObjectId: kind === "FILE_UPLOAD" ? uploadedRawId : null })
+        const fetched = await prompt.guarded(() => fetchSourceSample(source.id, { connectorConfig, contractKey: contract.key, rawObjectId: kind === "FILE_UPLOAD" ? uploadedRawId : null }))
         setSample(fetched)
         if (fetched.sheets?.length) setUploadedSheets(fetched.sheets)
         setMapping((current) => (current.fields.length ? current : fetched.suggestedMapping))
@@ -176,7 +183,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
     setBusy(true)
     setError(null)
     try {
-      setPreview(await previewSourceMapping(source.id, { contractKey: contract.key, mapping, sample: { columns: sample.columns, records: sample.records } }))
+      setPreview(await prompt.guarded(() => previewSourceMapping(source.id, { contractKey: contract.key, mapping, sample: { columns: sample.columns, records: sample.records } })))
     } catch (err) {
       fail(err, "Não foi possível validar a amostra.")
     } finally {
@@ -189,8 +196,8 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
     setBusy(true)
     setError(null)
     try {
-      const feed = await createFeed.mutateAsync({ sourceId: source.id, input: { feedKey, name: feedName, contractKey: contract.key, connectorConfig, mapping, loadMode, cadence, authoritative, failOnAnyRejection, availabilityPolicy, sourceNamespace: sourceNamespace.trim() || undefined } })
-      await setFeedStatus.mutateAsync({ id: feed.id, action: "ACTIVATE" })
+      const feed = await prompt.guarded(() => createFeed.mutateAsync({ sourceId: source.id, input: { feedKey, name: feedName, contractKey: contract.key, connectorConfig, mapping, loadMode, cadence, authoritative, failOnAnyRejection, availabilityPolicy, sourceNamespace: sourceNamespace.trim() || undefined } }))
+      await prompt.guarded(() => setFeedStatus.mutateAsync({ id: feed.id, action: "ACTIVATE" }))
       let token: string | null = null
       if (kind === "API_PUSH") token = (await createToken.mutateAsync({ sourceId: source.id, label: `Token ${feedName}`, feedId: feed.id })).token ?? null
       setResult({ feedId: feed.id, token })
@@ -234,13 +241,15 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
       case 2:
         return true
       case 3:
-        return Boolean(kind && contract && /^[a-z0-9][a-z0-9-_]{1,63}$/.test(feedKey) && feedName.trim().length >= 2 && connectorDraftValid(kind, connector))
+        return !needsPassword && Boolean(kind && contract && /^[a-z0-9][a-z0-9-_]{1,63}$/.test(feedKey) && feedName.trim().length >= 2 && connectorDraftValid(kind, connector))
       case 4:
         return sample !== null
       case 5:
         return contract !== undefined && contract.fields.filter((field) => field.required).every((field) => mapping.fields.some((entry) => entry.target === field.key))
       case 6:
         return preview !== null && preview.mappingProblems.length === 0
+      case 7:
+        return !remote || cadenceProblem(cadence) === null
       default:
         return true
     }
@@ -319,11 +328,13 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
         {addingFeed && step === ADD_FEED_FIRST_STEP ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" data-testid="add-feed-reuse-note">
             <span>
-              Conexão reutilizada: <span className="font-medium text-foreground">{SOURCE_KIND_LABELS[existing.kind]}</span> · autenticação e segredos já configurados na fonte — nada precisa ser digitado de novo.
+              Conexão reutilizada: <span className="font-medium text-foreground">{SOURCE_KIND_LABELS[existing.kind]}</span> · autenticação já configurada na fonte{existing.configAccess.required ? "; para adicionar um feed, informe a credencial dela." : "."}
             </span>
             {remote ? <ConnectionHealthBadge health={existing.connectionHealth} error={existing.connectionError} checkedAt={existing.connectionCheckedAt} /> : null}
           </div>
         ) : null}
+        {prompt.dialog}
+        {addingFeed && step === ADD_FEED_FIRST_STEP ? <ConfigAccessPanel sourceId={existing.id} kind={existing.kind} access={existing.configAccess} /> : null}
         {step === 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {SOURCE_KINDS.map((option) => {
@@ -370,7 +381,7 @@ function Wizard({ existing = null, presetContractKey }: { existing?: Source | nu
           </div>
         ) : null}
 
-        {step === 3 && kind ? (
+        {step === 3 && kind && !needsPassword ? (
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">

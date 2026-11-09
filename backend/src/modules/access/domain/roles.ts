@@ -19,16 +19,16 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     code: "ADMINISTRADOR_GERAL",
     name: "Administrador geral",
     description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
-    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
+    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "data_hub.explore", "data_hub.cancel_records", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
     allowedScopes: ["ORGANIZATION"],
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ADMINISTRADOR_DE_DADOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
     system: true,
   },
   {
     code: "ADMINISTRADOR",
     name: "Administrador",
     description: "Administra usuários, agentes, workflows e configurações e vê Indicadores, dados de gestão da Estrutura, o Calendário da equipe e quem mais usa a IA dentro do escopo atribuído. Não usa o QA Lab nem altera IA.",
-    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", ...INTERVENTION_POLICY_PERMISSIONS],
+    permissions: [...ACCESS_ADMIN_PERMISSIONS, "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "ai.view", "ai.usage_ranking.view", "indicators.view", "structure.metrics.view", "calendar.manage", ...INTERVENTION_POLICY_PERMISSIONS],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: ["ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
     system: true,
@@ -40,6 +40,17 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     permissions: ACCESS_ADMIN_PERMISSIONS,
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: ["ADMINISTRADOR_DE_ACESSOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "REPORT"],
+    system: true,
+  },
+  {
+    // A Central carrega as credenciais dos sistemas do cliente e os dados da organização inteira: papel próprio, sem delegação, e só
+    // o Administrador geral concede. Indicadores, Flags e Calendário operacional ficam em `configuration.manage`, fora deste papel.
+    code: "ADMINISTRADOR_DE_DADOS",
+    name: "Administrador de dados",
+    description: "Administra a Central de Dados da organização inteira: fontes, conjuntos de dados, cargas, qualidade, consulta dos dados aprovados, cancelamento de registros importados e o registro de quem fez o quê. Configurar uma fonte exige digitar a senha dela. Não abre nenhuma outra área da Administração.",
+    permissions: ["data_hub.manage", "data_hub.explore", "data_hub.cancel_records"],
+    allowedScopes: ["ORGANIZATION"],
+    delegates: [],
     system: true,
   },
   {

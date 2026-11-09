@@ -1,3 +1,6 @@
+import { loadAgentGuardrails } from "../../agents/application/agent-guardrails.js"
+import { checkResponse, enforceResponseBeforeNextStep, recordResponseCheck, RESPONSE_CHECK_UNAVAILABLE_CODE } from "../../governance/application/response-compliance.js"
+import { complianceSourcesOfExcerpts, responseCheckMode, SPECIALIST_BLOCKED_TEXT } from "../../governance/domain/response-compliance.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { resolveAgentSpecialty, type AgentSpecialty } from "../../agents/domain/agent-specialty.js"
 import { knowledgeExcerptsOf, parseStructuredFeedback, STRUCTURED_OUTPUT_INSTRUCTIONS } from "../../agents/application/run-agent.js"
@@ -7,6 +10,7 @@ import { PROCESS_ASSESSMENT_INSTRUCTIONS_V5 } from "../../agents/domain/process-
 import { ASSESSMENT_COVERAGE_REPAIR_PURPOSE, ASSESSMENT_COVERAGE_REPAIR_TAG, completeAssessmentCoverage, type CoverageRepairCall } from "../../agents/application/assessment-coverage-repair.js"
 import { withoutCheckpointCatalog } from "../../knowledge/application/retrieve-knowledge.js"
 import type { StructuredMonitoringFeedback } from "../../feedbacks/application/create-monitoring-feedback.js"
+import { agentSnapshotFor } from "../../agents/application/agent-runtime-context.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { buildSystemPromptWithTrace } from "../../agents/application/build-system-prompt.js"
 import { attachKnowledgeTrace, EMPTY_USAGE, type LlmRequestClassification } from "../../../shared/application/llm-telemetry.js"
@@ -198,13 +202,51 @@ export const SPECIALIST_PROCESS_ASSESSMENT_TIMEOUT_MS = 120_000
 
 /** `organizationId`: a do Orquestrador que aciona o especialista (ou a da sessão no chat/voz) — o especialista precisa ser dela. */
 export async function runSpecialistTool(db: Database, organizationId: string, agentId: string, query: string, operatorId: string, periodDays?: number, sharedContext?: string, options: SpecialistToolOptions = {}): Promise<SpecialistToolResult> {
+  const result = await runSpecialistToolUnchecked(db, organizationId, agentId, query, operatorId, periodDays, sharedContext, options)
+  return guardSpecialistLimits(db, organizationId, agentId, query, result)
+}
+
+/**
+ * Limites de atuação são de cada agente: quem responde por eles é o próprio especialista, antes de o orquestrador usar a resposta (PEN-017). Sem
+ * limites ligados, nenhuma chamada a mais: os assuntos proibidos são conferidos na resposta final de cada canal. Resposta de texto fora do limite
+ * vira um aviso ao orquestrador; resultado estruturado interrompe, como a evidência não literal.
+ */
+async function guardSpecialistLimits(db: Database, organizationId: string, agentId: string, query: string, result: SpecialistToolResult): Promise<SpecialistToolResult> {
+  const mode = responseCheckMode()
+  if (mode === "OFF") return result
+  const guardrails = await loadAgentGuardrails(db, organizationId, agentId)
+  if (!guardrails.actionLimits) return result
+  const sources = complianceSourcesOfExcerpts(result.knowledge.retrieved)
+  if (result.contract !== "TEXT") {
+    await enforceResponseBeforeNextStep(db, { organizationId, text: result.text, agentId, surface: "SPECIALIST", source: "SPECIALIST", guardrails, sources })
+    return result
+  }
+  const check = await checkResponse(db, { organizationId, text: result.text, question: query, agentId, guardrails, source: "SPECIALIST", sources })
+  if (check.outcome === "NOT_APPLICABLE") return result
+  const enforcing = mode === "ENFORCE"
+  const flagged = check.outcome !== "ALLOWED"
+  await recordResponseCheck(db, { organizationId, surface: "SPECIALIST", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : enforcing ? "BLOCKED" : "RECORDED", result: check, text: result.text, agentId })
+  if (!enforcing || !flagged) return result
+  if (check.outcome === "CHECK_FAILED") throw new DomainError("A conferência da resposta não pôde ser concluída. Nada foi entregue.", RESPONSE_CHECK_UNAVAILABLE_CODE, 503)
+  const blocked = { ...result, text: SPECIALIST_BLOCKED_TEXT, supportMaterialCandidates: [] }
+  delete blocked.supportMaterials
+  delete blocked.supportMaterialsRejected
+  return blocked
+}
+
+async function runSpecialistToolUnchecked(db: Database, organizationId: string, agentId: string, query: string, operatorId: string, periodDays?: number, sharedContext?: string, options: SpecialistToolOptions = {}): Promise<SpecialistToolResult> {
   const agentResult = await db.query<{ organization_id: string; name: string; objective: string; description: string; context_prompt: string; active: boolean; specialty: string | null; specialty_kind: string | null; domain: string | null; capability: string | null; consolidated_input: boolean | null; investigation_capabilities: string[] | null }>(
     `select name, objective, description, context_prompt, active, specialty, specialty_kind, domain, capability, consolidated_input, investigation_capabilities, organization_id from agents where id = $1 and organization_id = $2`,
     [agentId, organizationId],
   )
-  const agent = agentResult.rows[0]
-  if (!agent) throw new DomainError("Agente especialista não encontrado.", "SPECIALIST_AGENT_NOT_FOUND", 404)
-  if (!agent.active) throw new DomainError(`O agente "${agent.name}" está inativo.`, "SPECIALIST_AGENT_INACTIVE", 422)
+  const row = agentResult.rows[0]
+  if (!row) throw new DomainError("Agente especialista não encontrado.", "SPECIALIST_AGENT_NOT_FOUND", 404)
+  if (!row.active) throw new DomainError(`O agente "${row.name}" está inativo.`, "SPECIALIST_AGENT_INACTIVE", 422)
+  // Versão em jogo (PEN-002, PEN-076): a fixada pelo Orquestrador do Workflow, ou a vigente (a própria linha) no chat e na voz.
+  const version = agentSnapshotFor(agentId)?.config
+  const agent = version
+    ? { ...row, name: version.name, objective: version.objective, description: version.description, context_prompt: version.contextPrompt, specialty: version.specialty, specialty_kind: version.specialtyKind, domain: version.domain, capability: version.capability, consolidated_input: version.consolidatedInput, investigation_capabilities: version.investigationCapabilities }
+    : row
   const contract = specialistContractFor(resolveAgentSpecialty(agent), sharedContext)
 
   // Retrieval de KB guiado pela pergunta do orquestrador + contexto compartilhado: só os trechos

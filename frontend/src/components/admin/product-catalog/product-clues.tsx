@@ -39,6 +39,7 @@ import { CRITERION_SITUATION_LABEL, STRENGTH_LABEL, type CriterionContent, type 
 
 import { cluesOf, shownVersionOf } from "./catalog-relations"
 import { NodePicker, nodeLabel } from "./node-picker"
+import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
 
 const NO_DOCUMENT = "__none__"
 const emptyClue = (targetNodeIds: string[]): CriterionContent => ({ statement: "", targetNodeIds, context: null, limitations: null, strength: "INDICATIVE", conclusiveWhen: null, sourceDocumentId: null, sourceReference: null })
@@ -318,7 +319,7 @@ function ClueEditor({ id, nodes, documents, initialIssues = [], onClose }: { id:
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Excluir o indício?</AlertDialogTitle>
-                <AlertDialogDescription>{criterion.usedByAnalyses ? "Este indício já foi usado na análise de chamadas: não pode ser excluído. Encerre-o para que deixe de valer." : "Nenhuma análise usou este indício. A exclusão é definitiva (fica registrada na auditoria)."}</AlertDialogDescription>
+                <AlertDialogDescription>{criterion.usedByAnalyses ? `Ele deixa de valer e sai das telas. As análises que já o usaram não mudam. ${RESTORE_NOTE}` : `Nenhuma análise usou este indício. Ele deixa de valer e sai das telas. ${RESTORE_NOTE}`}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>

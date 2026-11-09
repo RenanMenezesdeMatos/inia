@@ -80,30 +80,27 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
 
   if (passwordChangePending) return null
 
-  if (!shell) {
-    return (
-      <div className="min-h-screen overflow-x-clip bg-background text-foreground">
-        {children}
-      </div>
-    )
-  }
-
+  // A MESMA árvore antes e depois de a sessão chegar (no servidor e no primeiro render ela ainda não existe): só o cabeçalho
+  // entra depois. Trocar o elemento raiz desmontava e remontava a página inteira — efeitos rodando duas vezes (o chat
+  // carregava a conversa de novo). O provider de uso, sem sessão, não coleta nada (ver usage-provider.tsx).
   return (
     <UsageAnalyticsProvider>
     <SessionIdleGuard timeoutMinutes={user?.sessionIdleTimeoutMinutes ?? 0} onExpired={handleIdleExpired} />
     <div className="min-h-screen overflow-x-clip bg-background text-foreground">
-      <AppTopBar
-        profile={shell.profile}
-        profileHref={shell.profileHref}
-        onSignOut={handleSignOut}
-        onSignOutEverywhere={() => void handleSignOutEverywhere()}
-        canAccessAdministration={shell.canAccessAdministration}
-        canReviewFeedback={shell.canReviewFeedback}
-        canViewDiagnostics={shell.canViewDiagnostics}
-        canUseReports={shell.canUseReports}
-        canViewBestPractices={shell.canViewBestPractices}
-        onEditProfile={() => editor.open("name")}
-      />
+      {shell ? (
+        <AppTopBar
+          profile={shell.profile}
+          profileHref={shell.profileHref}
+          onSignOut={handleSignOut}
+          onSignOutEverywhere={() => void handleSignOutEverywhere()}
+          canAccessAdministration={shell.canAccessAdministration}
+          canReviewFeedback={shell.canReviewFeedback}
+          canViewDiagnostics={shell.canViewDiagnostics}
+          canUseReports={shell.canUseReports}
+          canViewBestPractices={shell.canViewBestPractices}
+          onEditProfile={() => editor.open("name")}
+        />
+      ) : null}
 
       <main className="min-h-[calc(100vh-3.5rem)]">
         {children}

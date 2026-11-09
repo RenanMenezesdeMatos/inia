@@ -16,6 +16,8 @@ export type NotificationTarget =
   | { type: "ADMIN_DATA_HUB" }
   /** Orçamento de IA atingiu um limiar (70/90/100%) — Administração › IA / Modelos. */
   | { type: "ADMIN_AI_USAGE" }
+  /** Aviso de execução bloqueada a quem publicou: abre a aba Execuções do workflow. */
+  | { type: "ADMIN_WORKFLOW_EXECUTIONS"; workflowId: string }
   /** Workflow Outputs V1 — conversa nova da INIA (Output → Chat): abre a conversa no painel da INIA. */
   | { type: "INIA_CONVERSATION"; conversationId: string }
   /** Workflow Outputs V1 — recado de voz (Output → Avatar): destaca o convite no painel da INIA (nunca toca sozinho). */

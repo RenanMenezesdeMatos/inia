@@ -1,3 +1,4 @@
+import { knowledgeAvailableSql } from "../../knowledge/application/live-knowledge-version.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { Queryable } from "../../people/application/schedule-exception-service.js"
@@ -177,7 +178,7 @@ export async function loadEditorCatalog(db: Database, organizationId: string, sc
       [organizationId],
     ),
     db.query<EditorCatalog["documents"][number]>(
-      `select d.id, d.title, exists (select 1 from knowledge_versions v where v.document_id = d.id and v.status = 'PUBLISHED') published from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null order by d.title`,
+      `select d.id, d.title, ${knowledgeAvailableSql("d.id")} published from knowledge_documents d where d.organization_id = $1 and d.deleted_at is null order by d.title`,
       [organizationId],
     ),
     db.query<EditorCatalog["flags"][number]>(`select channel, flag_name "flagName", value_type "valueType", description, active from channel_flags where organization_id = $1 order by channel, flag_name`, [organizationId]),
@@ -232,7 +233,7 @@ export async function listCompetencies(db: Queryable | Database, organizationId:
   const documentIds = [...new Set(rows.rows.flatMap((row) => row.knowledge_document_ids))]
   const documents = documentIds.length
     ? new Map((await db.query<{ id: string; title: string; published: boolean }>(
-        `select d.id, d.title, exists (select 1 from knowledge_versions v where v.document_id = d.id and v.status = 'PUBLISHED') published from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null`,
+        `select d.id, d.title, ${knowledgeAvailableSql("d.id")} published from knowledge_documents d where d.organization_id = $1 and d.id = any($2::uuid[]) and d.deleted_at is null`,
         [organizationId, documentIds],
       )).rows.map((row) => [row.id, row]))
     : new Map<string, { id: string; title: string; published: boolean }>()

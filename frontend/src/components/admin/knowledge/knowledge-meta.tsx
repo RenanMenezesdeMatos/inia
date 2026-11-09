@@ -8,12 +8,12 @@ import { formatShortDateTime } from "@/lib/format/date"
 import {
   DOCUMENT_TYPE_LABELS,
   KNOWLEDGE_STATUS_LABELS,
+  KNOWLEDGE_UPDATE_STATUS_LABELS,
   SOURCE_TYPE_LABELS,
   type KnowledgeDocument,
-  type KnowledgeStatus,
 } from "@/schemas/admin/knowledge.schema"
 
-import { SOURCE_TYPE_ICONS, SOURCE_TYPE_TONE, STATUS_BADGE_VARIANT, hasMeaningfulUpdate, orgScopeLabel, subjectScopeLabel } from "./knowledge-visuals"
+import { SOURCE_TYPE_ICONS, SOURCE_TYPE_TONE, hasMeaningfulUpdate, orgScopeLabel, subjectScopeLabel, versionLabel } from "./knowledge-visuals"
 
 export function SourceTypeIcon({ sourceType, className }: { sourceType: KnowledgeDocument["sourceType"]; className?: string }) {
   const Icon = SOURCE_TYPE_ICONS[sourceType]
@@ -36,9 +36,34 @@ export function SourceTypeBadge({ sourceType }: { sourceType: KnowledgeDocument[
   )
 }
 
-export function StatusBadge({ status }: { status: string }) {
-  const known = status in KNOWLEDGE_STATUS_LABELS ? (status as KnowledgeStatus) : null
-  return <Badge variant={known ? STATUS_BADGE_VARIANT[known] : "outline"}>{known ? KNOWLEDGE_STATUS_LABELS[known] : status}</Badge>
+type VersionStatusDocument = Pick<KnowledgeDocument, "status" | "inUseVersion" | "draftVersion" | "updateVersion" | "updateStatus">
+
+/** O que a lista diz sobre a IA: a versão em uso. Rascunho e atualização nunca contam aqui; base sem versão pronta não parece disponível. */
+function InUseBadge({ document }: { document: VersionStatusDocument }) {
+  if (document.inUseVersion !== null) {
+    return <Badge variant="secondary">{`${versionLabel(document.inUseVersion)} · ${KNOWLEDGE_STATUS_LABELS.PUBLISHED}`}</Badge>
+  }
+  if (document.status === "ARCHIVED") return <Badge variant="outline">{KNOWLEDGE_STATUS_LABELS.ARCHIVED}</Badge>
+  return (
+    <Badge variant="outline" className="border-dashed text-muted-foreground" title="A IA não consulta esta base até haver uma versão pronta.">
+      Sem versão pronta
+    </Badge>
+  )
+}
+
+/** Status da base na lista: a versão em uso e, à parte, os selos discretos de rascunho e de atualização. */
+export function KnowledgeVersionBadges({ document }: { document: VersionStatusDocument }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <InUseBadge document={document} />
+      {document.draftVersion !== null ? <span className="text-[11px] font-medium text-muted-foreground">{`Rascunho ${versionLabel(document.draftVersion)}`}</span> : null}
+      {document.updateVersion !== null && document.updateStatus ? (
+        <span className={cn("text-[11px] font-medium", document.updateStatus === "FAILED" ? "text-destructive" : "text-muted-foreground")}>
+          {`Atualização ${versionLabel(document.updateVersion)} · ${KNOWLEDGE_UPDATE_STATUS_LABELS[document.updateStatus]}`}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 // Etiquetas discretas de alcance: grupo/subgrupo e assunto, sempre nessa ordem.

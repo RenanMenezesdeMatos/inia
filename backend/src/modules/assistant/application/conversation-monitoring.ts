@@ -19,6 +19,7 @@ import { referencedDocumentIds, toClarificationView } from "../../knowledge-clar
  * filtro SQL: conversa fora do alcance = 404, sem distinguir de inexistente.
  */
 type Queryable = Pick<Database, "query">
+export type MonitoredResponseCheck = { outcome: string; control: string; action: string; rules: { kind: string; name: string }[]; reason: string | null; flaggedContent: string | null }
 export type MonitoringViewer = { organizationId: string; personId: string }
 
 const SCOPE_CTE = `with recursive grants as (
@@ -59,9 +60,9 @@ const RECADO_SUBJECT = `(select case when e.parent_enrollment_id is null and w.c
       else coalesce(i.operator_id, case when im.subject_type = 'PERSON' then im.subject_id end, e.scheduled_subject_id) end
     from workflow_outputs wo
     join workflow_enrollments e on e.id = wo.enrollment_id
-    join workflows w on w.id = e.workflow_id
+    join workflows_all w on w.id = e.workflow_id
     left join interactions i on i.id = e.interaction_id
-    left join indicator_measurements im on im.id = e.indicator_measurement_id
+    left join indicator_measurements_all im on im.id = e.indicator_measurement_id
    where wo.conversation_id = c.id and wo.organization_id = c.organization_id and wo.surface = 'CHAT'
    order by wo.created_at limit 1)`
 const RECADO_VISIBLE = `(c.origin <> 'WORKFLOW' or exists (select 1 from grants g where g.scope_type = 'ORGANIZATION') or exists (
@@ -245,6 +246,15 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
     console.error(JSON.stringify({ event: "monitored_ratings_load_failed", message: (error as Error)?.message ?? String(error) }))
     return new Map<string, "up" | "down">()
   })
+  // Conferência da resposta (PEN-017): o que foi barrado ou detectado nesta conversa, com o texto original, para quem audita. Falhar aqui nunca impede a leitura.
+  const assistantIds = result.messages.filter((m) => m.role === "assistant").map((m) => m.id)
+  const responseChecks = new Map(assistantIds.length === 0 ? [] : await db.query<{ interaction_id: string; outcome: string; control: string; action: string; rules: { kind: string; name: string }[]; reason: string | null; flagged_content: string | null }>(
+    `select interaction_id, outcome, control, action, rules, reason, flagged_content from response_compliance_checks where organization_id = $1 and interaction_id = any($2::uuid[]) and outcome <> 'ALLOWED'`,
+    [viewer.organizationId, assistantIds],
+  ).then((checks) => checks.rows.map((row): [string, MonitoredResponseCheck] => [row.interaction_id, { outcome: row.outcome, control: row.control, action: row.action, rules: row.rules, reason: row.reason, flaggedContent: row.flagged_content }])).catch((error: unknown) => {
+    console.error(JSON.stringify({ event: "monitored_response_checks_load_failed", message: (error as Error)?.message ?? String(error) }))
+    return []
+  }))
   return {
     conversation,
     // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela — só a PROCEDÊNCIA de uma
@@ -253,7 +263,8 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
       const confirmedInChat = parseFeedbackSessionClarificationScope(clarificationScope)?.provenance === "CHAT_CONFIRMATION"
       const recado = recadoHidden && message.role === "assistant"
       const hidden = recado || message.analytics.some((card) => !visible.has(card))
-      return { ...message, ...(hidden ? { content: recado ? OUT_OF_READER_SCOPE_RECADO_NOTICE : OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
+      const responseCheck = !hidden && responseChecks.get(message.id)
+      return { ...message, ...(responseCheck ? { responseCheck } : {}), ...(hidden ? { content: recado ? OUT_OF_READER_SCOPE_RECADO_NOTICE : OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
     }),
     hasMore: result.hasMore,
   }

@@ -33,9 +33,9 @@ vi.mock("@/services/admin/product-catalog-service", () => service)
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 // Exemplos FICTÍCIOS de teste: produtos são dados do cadastro, nunca constantes da tela.
-const node = (overrides: Partial<ProductNode> & Pick<ProductNode, "id" | "kind" | "code" | "name">): ProductNode => ({ description: null, parentId: null, active: true, archivedAt: null, createdAt: "2026-10-21T00:00:00.000Z", updatedAt: "", criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, ...overrides })
+const node = (overrides: Partial<ProductNode> & Pick<ProductNode, "id" | "kind" | "code" | "name">): ProductNode => ({ description: null, parentId: null, active: true, archivedAt: null, createdAt: "2026-10-21T00:00:00.000Z", updatedAt: "", criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, blocksDeletion: false, ...overrides })
 const CATEGORY = node({ id: "f1", kind: "FAMILY", code: "VOZ_CORPORATIVA", name: "Voz corporativa", childCount: 2 })
-const TRUNK = node({ id: "p1", kind: "PRODUCT", code: "TRONCO_VOZ", name: "Tronco de voz", parentId: "f1", criteriaCount: 1, scopeCount: 2, inUse: true })
+const TRUNK = node({ id: "p1", kind: "PRODUCT", code: "TRONCO_VOZ", name: "Tronco de voz", parentId: "f1", criteriaCount: 1, scopeCount: 2, inUse: true, blocksDeletion: true })
 const EXTENSION = node({ id: "p2", kind: "PRODUCT", code: "RAMAL_DIRETO", name: "Ramal direto", parentId: "f1" })
 const DRAFT_CRITERION: IdentificationCriterion = {
   id: "c1",
@@ -142,7 +142,7 @@ describe("Produtos — lista e detalhe por produto", () => {
     const detail = await openProduct("TRONCO_VOZ")
     fireEvent.keyDown(within(detail).getByRole("button", { name: "Mais ações de Tronco de voz" }), { key: "Enter" })
     fireEvent.click(await screen.findByRole("menuitem", { name: "Excluir" }))
-    expect(await screen.findByText(/Desative em vez de excluir/)).toBeInTheDocument()
+    expect(await screen.findByText(/Tire-o de lá antes de excluir/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Excluir" })).toBeDisabled()
   })
 

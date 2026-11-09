@@ -195,7 +195,7 @@ export default function AgentsPage() {
             { title: "Quem é este agente", detail: <>Preencha <strong>Nome</strong>, escolha o <strong>Tipo</strong>, descreva o <strong>Objetivo</strong> (o que ele deve alcançar) e a <strong>Descrição</strong> (como funciona, em linhas gerais).</> },
             { title: "Grupo (alcance)", detail: <>Escolha o <strong>Alcance por grupo</strong>: “Todos os grupos” (só admin global) ou um Grupo/Subgrupo específico. Ao escolher um grupo, as bases já escopadas para ele entram pré-selecionadas.</> },
             { title: "Contexto (prompt)", detail: "Instruções detalhadas de como o agente deve raciocinar. Os especialistas do catálogo seguem um esqueleto de 12 pontos: papel, objetivo, fontes permitidas, prioridade da base, uso da transcrição, uso de indicadores, ausência de dados, fatos × hipóteses, evidências, formato da saída, limitações e proibições." },
-            { title: "Bases de conhecimento consultadas", detail: <>Mova para “Selecionadas” as bases que este Agent pode consultar. Só bases publicadas entram no runtime; ver <WikiLink href="/wiki/bases-conhecimento#vinculo">Vínculo com Agents</WikiLink>. Não associe base “para preencher campo”.</> },
+            { title: "Bases de conhecimento consultadas", detail: <>Mova para “Selecionadas” as bases que este Agent pode consultar. Só bases com versão em uso entram no runtime: a base sem versão pronta aparece com o selo “Sem versão disponível”; ver <WikiLink href="/wiki/bases-conhecimento#vinculo">Vínculo com Agents</WikiLink>. Não associe base “para preencher campo”.</> },
             { title: "Limites de atuação", detail: <>Ligue “Limitar a atuação deste agente” e escreva em “Até onde este agente vai” o que ele atende (ex.: “só assuntos de faturamento — fatura, cobrança, segunda via, contestação e negociação de débito”). Ligado, o que estiver fora é recusado em uma frase. Desligado, ele responde como sempre. Ver <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink>.</> },
             { title: "Criar agente", detail: "Depois de criado, as abas Teste, Execuções e Histórico ficam disponíveis. O Agent nasce ativo; o interruptor no cabeçalho desativa/ativa." },
             { title: "Teste", detail: <>Na aba <strong>Teste</strong>, cole uma “Transcrição ou cenário de teste” e clique em <strong>Executar teste</strong> — uma request real ao modelo, persistida como execução (Teste manual). Para testar com uma interação real e ver o rastro de conhecimento, use o <WikiLink href="/wiki/qa-lab#agent-orchestrator">QA Lab › Agent</WikiLink>.</> },
@@ -246,7 +246,7 @@ export default function AgentsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <ExampleCard title="Configuração">Os campos acima.</ExampleCard>
           <ExampleCard title="Teste">Executa o agente agora, com a configuração atual, contra um cenário de exemplo (transcrição ou descrição). Disponível depois que o agente for criado.</ExampleCard>
-          <ExampleCard title="Execuções">Testes manuais e disparos por gatilho já executados por este agente — entrada, saída, status e erro de cada um (toda execução é persistida).</ExampleCard>
+          <ExampleCard title="Execuções">Testes manuais e execuções disparadas por Workflow já feitos por este agente — entrada, saída, status e erro de cada um (toda execução é persistida).</ExampleCard>
           <ExampleCard title="Histórico">Quem criou, quem alterou, o que mudou e quando.</ExampleCard>
         </div>
         <p className="text-sm text-muted-foreground">

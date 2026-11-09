@@ -119,7 +119,7 @@ function mutate(sample: SweepSample, random: () => number) {
       const agents = ofType((node) => node.type === "action" && node.config.actionType === "CALL_AGENT")
       if (agents.length === 0) continue
       const target = pick(agents)
-      const contract = pick([undefined, "FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS"])
+      const contract = pick([undefined, "FEEDBACK", "PROCESS_AUDIT", "PROCESS_ASSESSMENT", "INDICATOR_DIAGNOSIS", "PRV_CLOSING_DIAGNOSIS", "RECOGNITION"])
       if (contract) target.config.outputContract = contract
       else delete target.config.outputContract
       const source = pick([undefined, null, { kind: "PERFORMANCE", closures: 1 }, { kind: "PERFORMANCE", closures: 1, indicatorCode: "TMA" }, { kind: "MONITORING", sampleSize: 3, period: "WEEK" }])

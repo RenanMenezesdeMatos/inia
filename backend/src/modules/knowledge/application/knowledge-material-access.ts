@@ -1,6 +1,8 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { visibilityOf } from "../../access/application/access-service.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
+import type { PdfExtraction } from "../domain/pdf-markdown/layout.js"
+import { parseKnowledgeExtraction } from "./knowledge-versions.js"
 import { liveKnowledgeVersion } from "./live-knowledge-version.js"
 
 /**
@@ -36,7 +38,7 @@ export type AccessibleKnowledgeMaterial = {
 }
 
 /** A versão vigente do documento `d` (ver regra 2 e `live-knowledge-version.ts`). */
-const LIVE_VERSION = liveKnowledgeVersion("d.id", "content, version")
+const LIVE_VERSION = liveKnowledgeVersion("d.id", "id, content, version, extraction")
 
 const ACCESS_CLAUSE = `
   exists (select 1 from chain)
@@ -100,6 +102,10 @@ export type KnowledgeMaterialDetail = AccessibleKnowledgeMaterial & {
   /** Conteúdo da versão PUBLICADA (nunca um rascunho mais novo). */
   content: string
   version: number
+  /** A versão vigente: quem chega por uma citação confere se a página citada é desta versão. */
+  versionId: string
+  /** Registro da conversão do PDF (páginas e imagens no texto); null fora disso. */
+  extraction: PdfExtraction | null
 }
 
 /** Página do material: detalhe + conteúdo publicado, ou null quando não existe/não acessível (o
@@ -109,18 +115,37 @@ export async function loadAccessibleKnowledgeMaterial(
   input: { organizationId: string; viewer: KnowledgeMaterialViewer; materialId: string },
 ): Promise<KnowledgeMaterialDetail | null> {
   if (!isUuid(input.materialId)) return null
-  const result = await db.query<KnowledgeMaterialDetail>(
+  const result = await db.query<Omit<KnowledgeMaterialDetail, "extraction"> & { extraction?: unknown }>(
     `${REACHABLE_CTE}
      select d.id, d.title, d.document_type "documentType", d.source_type "sourceType",
             d.original_filename "originalFilename", d.mime_type "mimeType", d.file_size_bytes "fileSizeBytes",
-            coalesce(d.updated_at, d.created_at) "updatedAt", lv.content, lv.version
+            coalesce(d.updated_at, d.created_at) "updatedAt", lv.content, lv.version, lv.id "versionId", lv.extraction
      from knowledge_documents d
      join lateral (${LIVE_VERSION}) lv on true
      where d.organization_id = $1 and d.deleted_at is null and d.id = $4 and lv.status = 'PUBLISHED'
        and ${ACCESS_CLAUSE}`,
     [input.organizationId, input.viewer.personId, ...(await knowledgeManagerParams(db, input.organizationId, input.viewer.personId, input.materialId))],
   )
-  return result.rows[0] ?? null
+  const row = result.rows[0]
+  return row ? { ...row, extraction: parseKnowledgeExtraction(row.extraction) } : null
+}
+
+/** Só a versão vigente de um material que o leitor pode abrir, sem o texto: é o que cada imagem de uma página precisa conferir. Mesma regra de acesso. */
+export async function resolveAccessibleMaterialVersion(
+  db: Pick<Database, "query">,
+  input: { organizationId: string; viewer: KnowledgeMaterialViewer; materialId: string },
+): Promise<string | null> {
+  if (!isUuid(input.materialId)) return null
+  const result = await db.query<{ versionId: string }>(
+    `${REACHABLE_CTE}
+     select lv.id "versionId"
+     from knowledge_documents d
+     join lateral (${LIVE_VERSION}) lv on true
+     where d.organization_id = $1 and d.deleted_at is null and d.id = $4 and lv.status = 'PUBLISHED'
+       and ${ACCESS_CLAUSE}`,
+    [input.organizationId, input.viewer.personId, ...(await knowledgeManagerParams(db, input.organizationId, input.viewer.personId, input.materialId))],
+  )
+  return result.rows[0]?.versionId ?? null
 }
 
 /** `$3..$6`: onde a CONTA do leitor administra bases (`knowledge.manage` pelas atribuições de papel) + o `$4` da consulta. */
