@@ -30,6 +30,8 @@ const ids: Record<string, string> = {}
 const accountIds: Record<string, string> = {}
 
 const insertId = async (sql: string, params: unknown[]) => (await pool.query<{ id: string }>(`${sql} returning id`, params)).rows[0]!.id
+/** Os textos na ordem que o próprio banco dá a `order by`: a mesma collation da Consulta. */
+const inDatabaseOrder = async (values: readonly string[]) => (await pool.query<{ value: string }>(`select value from unnest($1::text[]) value order by value`, [values])).rows.map((row) => row.value)
 
 async function cleanup() {
   for (const org of [ORG_A, ORG_B]) {
@@ -414,7 +416,8 @@ describe.skipIf(!ENABLED)("Consulta de dados da Central — prova Postgres", () 
       expect((await query({ filter: where(condition("started_at", "EQ", { value: "2026-03-10" })) })).body.data.rows).toEqual([])
       expect(protocols((await query({ filter: where(condition("started_at", "LTE", { value: "2026-03-05" })) })).body).length).toBe(7)
       expect(protocols((await query({ filter: where(condition("started_at", "GTE", { value: "2026-03-08" })) })).body)).toEqual(["A-NOITE"])
-      expect(protocols((await query({ filter: where(condition("started_at", "BETWEEN", { values: ["2026-03-06", "2026-03-07"] })), sort: { column: "protocol", direction: "ASC" } })).body)).toEqual(["' OR '1'='1", "A-CRUZADA"])
+      // A ordem de texto é a da collation do banco: no glibc (o postgres:17 do CI) a pontuação quase não conta e "A-CRUZADA" vem antes; no macOS, não.
+      expect(protocols((await query({ filter: where(condition("started_at", "BETWEEN", { values: ["2026-03-06", "2026-03-07"] })), sort: { column: "protocol", direction: "ASC" } })).body)).toEqual(await inDatabaseOrder(["' OR '1'='1", "A-CRUZADA"]))
     })
 
     it("intervalos numéricos e de competência", async () => {
