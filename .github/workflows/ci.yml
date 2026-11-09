@@ -132,6 +132,12 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate:test
       - run: npm run db:seed:reference:test
+      # A massa demo exige a senha das contas de demonstração. No runner ela é aleatória e só vive neste banco descartável.
+      - name: Senha descartável da massa demo
+        run: |
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          echo "INIA_DEMO_PASSWORD=$password" >> "$GITHUB_ENV"
       - run: npm run db:seed:demo:test
       - name: Provas (INIA_DB_PROOF=1)
         run: INIA_DB_PROOF=1 npx vitest run --reporter=dot --no-file-parallelism --exclude "scripts/poc-tools/**" --exclude "**/node_modules/**" proof
