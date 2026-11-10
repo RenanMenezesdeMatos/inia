@@ -6,24 +6,35 @@ import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { ASSISTANT_CONVERSATIONS_PATH } from "@/components/admin/assistant-conversations/assistant-conversations-route"
 import { FEEDBACK_CONTESTATIONS_PATH } from "@/components/admin/feedback-contestations/feedback-contestations-route"
 import { USABILITY_PATH } from "@/components/admin/usability/usability-route"
+import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { landingRouteFor } from "@/services/auth/auth-service"
 import { getCurrentUserFromCookies } from "@/services/auth/current-user-server"
 
+/** A rota ou uma subrota dela — `/admin/human-support` não libera `/admin/human-support-monitoring` (nem o contrário). */
+const onPath = (path: string, pathname: string) => pathname === path || pathname.startsWith(`${path}/`)
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const user = await getCurrentUserFromCookies()
   if (!user) redirect("/auth/login")
   // V1.5.7: a Administração abre por PERMISSÃO (papéis da conta), nunca por cargo/nível hierárquico.
-  const { canAccessAdministration, canViewAssistantConversations, canReviewFeedbackContestations } = user.access.capabilities
+  const { canAccessAdministration, canViewAssistantConversations, canReviewFeedbackContestations, canCoordinateHumanSupport, canManageHumanSupport } = user.access.capabilities
   // Monitoria de usabilidade: permissão própria E painel ligado no ambiente (módulo desligado ≠ sem permissão: some do menu).
   const canViewUsability = user.access.capabilities.canViewUsability && user.features.usabilityPanel
-  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability && !canReviewFeedbackContestations) redirect(landingRouteFor(user))
-  // Quem só lê as conversas, a monitoria e/ou revisa contestações entra SÓ nessas áreas — nenhum outro módulo abre por aqui (o backend também nega).
+  if (!canAccessAdministration && !canViewAssistantConversations && !canViewUsability && !canReviewFeedbackContestations && !canCoordinateHumanSupport && !canManageHumanSupport) redirect(landingRouteFor(user))
+  // Quem só lê as conversas, a monitoria, revisa contestações e/ou coordena os Anjos entra SÓ nessas áreas — nenhum outro módulo abre por
+  // aqui (o backend também nega).
   if (!canAccessAdministration) {
     const pathname = (await headers()).get("x-inia-pathname") ?? ""
-    const allowed = [canViewAssistantConversations ? ASSISTANT_CONVERSATIONS_PATH : null, canViewUsability ? USABILITY_PATH : null, canReviewFeedbackContestations ? FEEDBACK_CONTESTATIONS_PATH : null].filter((path): path is string => path !== null)
-    if (!allowed.some((path) => pathname.startsWith(path))) redirect(allowed[0]!)
+    const allowed = [
+      canViewAssistantConversations ? ASSISTANT_CONVERSATIONS_PATH : null,
+      canViewUsability ? USABILITY_PATH : null,
+      canReviewFeedbackContestations ? FEEDBACK_CONTESTATIONS_PATH : null,
+      canCoordinateHumanSupport ? HUMAN_SUPPORT_MONITORING_PATH : null,
+      canManageHumanSupport ? HUMAN_SUPPORT_ADMIN_PATH : null,
+    ].filter((path): path is string => path !== null)
+    if (!allowed.some((path) => onPath(path, pathname))) redirect(allowed[0]!)
   }
 
   return (

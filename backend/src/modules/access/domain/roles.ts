@@ -19,9 +19,10 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     code: "ADMINISTRADOR_GERAL",
     name: "Administrador geral",
     description: "Autoridade ampla no tenant, sempre na organização inteira: todas as permissões de administração. Pode cadastrar outros administradores. Executar e aprovar intervenções e a decisão sensível de continuidade não vêm com o papel: são concessões explícitas (separação de funções).",
-    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "data_hub.explore", "data_hub.cancel_records", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view"],
+    permissions: ["access.users.view", "access.users.manage", "access.roles.view", "access.roles.assign", "people.manage", "agents.manage", "agents.inactive.manage", "knowledge.manage", "workflows.manage", "configuration.manage", "data_hub.manage", "data_hub.explore", "data_hub.cancel_records", "ai.view", "ai.manage", "ai.usage_ranking.view", "qa_lab.use", "feedback_quality_review.view", "feedback_quality_review.decide", "feedback_contestations.review", "privacy.subject_data.export", "indicators.view", "structure.metrics.view", "calendar.manage", "assistant_conversations.view", "inia_experience.manage", "usability.view", "usability.users.view", "usability.export", "usability.comments.view", "usability.manage", ...INTERVENTION_POLICY_PERMISSIONS, "interventions.view", "human_support.coordinate", "human_support.manage"],
     allowedScopes: ["ORGANIZATION"],
-    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ADMINISTRADOR_DE_DADOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT"],
+    // Apoio com Anjo: acompanha e configura, mas não ATENDE (atender é o papel Anjo, concessão explícita).
+    delegates: ["ADMINISTRADOR_GERAL", "ADMINISTRADOR", "ADMINISTRADOR_DE_ACESSOS", "ADMINISTRADOR_DE_DADOS", "QA_DE_FEEDBACK", "REVISOR_DE_CONTESTACOES", "LEITOR_DE_CONVERSAS_INIA", "ANALISTA_DE_USABILIDADE", "LEITOR_DE_USABILIDADE", "GESTOR_DE_POLITICAS_DE_ACOMPANHAMENTO", "ANALISTA_DE_ACOMPANHAMENTO", "AVALIADOR_DE_CONTINUIDADE", "REPORT", "ANJO", "COORDENADOR_DE_ANJOS"],
     system: true,
   },
   {
@@ -131,6 +132,26 @@ export const SYSTEM_ROLES: readonly RoleDefinition[] = [
     name: "Report",
     description: "Cria reports recorrentes para todos os usuários elegíveis, níveis, cargos, Grupos, Subgrupos ou pessoas do escopo. Não amplia o acesso a dados: cada destinatário recebe só o que o próprio escopo alcança, e quem distribui não vê o conteúdo entregue a outros.",
     permissions: ["reports.distribute"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
+    delegates: [],
+    system: true,
+  },
+  {
+    // Apoio com Anjo (migration 182): só o Administrador geral concede. O escopo da atribuição decide QUAIS operadores o Anjo
+    // atende (organização, Grupo com os Subgrupos dele, ou um Subgrupo) — nunca dá leitura ampla de conversas.
+    code: "ANJO",
+    name: "Anjo",
+    description: "Atende pedidos de apoio dos operadores do escopo, no chat da INIA.",
+    permissions: ["human_support.attend"],
+    allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
+    delegates: [],
+    system: true,
+  },
+  {
+    code: "COORDENADOR_DE_ANJOS",
+    name: "Coordenador de Anjos",
+    description: "Acompanha o painel do apoio: funil, pedidos, conversas de apoio, tentativas sem Anjo e presença dos Anjos do escopo.",
+    permissions: ["human_support.coordinate"],
     allowedScopes: ["ORGANIZATION", "GROUP", "SUBGROUP"],
     delegates: [],
     system: true,

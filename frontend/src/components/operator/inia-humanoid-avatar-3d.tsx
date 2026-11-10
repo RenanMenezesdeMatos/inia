@@ -125,7 +125,8 @@ export function IniaHumanoidAvatar3D({
   return (
     <div
       className={cn(
-        "relative h-64 overflow-hidden rounded-2xl",
+        // `@container`: no tile compacto (um quadrado pequeno) os avisos abaixo mostram só o essencial.
+        "@container relative h-64 overflow-hidden rounded-2xl",
         backdrop === "studio" && "bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,.98),rgba(250,247,252,.96)_46%,rgba(236,230,243,.96)_100%)]",
         className,
       )}
@@ -274,8 +275,8 @@ function AvatarFallback({ onRetry }: { onRetry?: () => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-center" role="status">
       <div aria-hidden className="flex size-16 items-center justify-center rounded-full bg-primary/12 text-sm font-semibold tracking-wide text-primary">INIA</div>
-      <p className="max-w-56 text-xs text-muted-foreground">Avatar indisponível agora. A conversa continua normalmente.</p>
-      {onRetry ? <button type="button" onClick={onRetry} className="text-[11px] font-medium text-primary underline-offset-2 hover:underline">Tentar novamente</button> : null}
+      <p className="max-w-56 text-xs text-muted-foreground @max-[160px]:sr-only">Avatar indisponível agora. A conversa continua normalmente.</p>
+      {onRetry ? <button type="button" onClick={onRetry} className="text-[11px] font-medium text-primary underline-offset-2 hover:underline @max-[160px]:hidden">Tentar novamente</button> : null}
     </div>
   )
 }
@@ -331,8 +332,8 @@ function AvatarLoadingOverlay() {
   const percent = Math.max(0, Math.min(100, Math.round(progress)))
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2" role="status" aria-live="polite">
-      <div aria-hidden className="size-10 animate-pulse rounded-full bg-primary/15" />
-      <p className="text-[11px] text-muted-foreground">Carregando avatar{percent > 0 ? `… ${percent}%` : "…"}</p>
+      <div aria-hidden className="size-10 animate-pulse rounded-full bg-primary/15 @max-[160px]:size-7" />
+      <p className="text-[11px] text-muted-foreground @max-[160px]:sr-only">Carregando avatar{percent > 0 ? `… ${percent}%` : "…"}</p>
     </div>
   )
 }

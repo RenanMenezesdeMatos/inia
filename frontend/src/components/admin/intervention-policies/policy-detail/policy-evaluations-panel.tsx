@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { formatDateTime } from "@/lib/format/date"
 import { usePolicyEvaluationsQuery, useReevaluateMutation } from "@/queries/admin/use-intervention-policy-queries"
@@ -28,7 +28,7 @@ export function PolicyEvaluationsPanel({ policyId }: { policyId: string }) {
   const evaluations = evaluationsQuery.data
   if (evaluations.length === 0) return <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma avaliação desta política ainda.</p>
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

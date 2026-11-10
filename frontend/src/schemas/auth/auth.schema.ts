@@ -95,6 +95,11 @@ export const accessCapabilitiesSchema = z.object({
   canExecuteInterventions: capability,
   canApproveInterventions: capability,
   canDecideSensitiveInterventions: capability,
+  // Apoio com Anjo — fora de canAccessAdministration: o Anjo usa a área dele (/apoio); o Coordenador de Anjos entra numa área isolada
+  // da Administração (só o painel do apoio); configurar é do Administrador geral (escopo de organização).
+  canAttendHumanSupport: capability,
+  canCoordinateHumanSupport: capability,
+  canManageHumanSupport: capability,
 })
 export type AccessCapabilities = z.infer<typeof accessCapabilitiesSchema>
 /** Capabilities vazias (deny by default) — quando a sessão ainda não foi lida. */

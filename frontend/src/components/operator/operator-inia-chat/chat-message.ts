@@ -4,6 +4,7 @@ import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-materi
 import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.schema"
 import { parseClarification, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
+import { parseChatRatingDetails, parseSupportSignals, type ChatRatingDetails, type SupportSignal } from "@/schemas/operator/chat-rating.schema"
 
 /** `supportMaterials` = materiais de apoio recomendados pelo Orquestrador nesta resposta (chat ou
  * voz), já resolvidos pelo backend — a mesma seção do Feedback, ao lado do balão; a URL nasce do id
@@ -20,6 +21,14 @@ export type ChatMessage = {
    * histórico (a avaliação fica só na tela, como antes). */
   interactionId?: string
   rating?: "up" | "down"
+  /** Versão vigente da avaliação gravada e o motivo da descurtida (chat livre) — o formulário reabre preenchido. */
+  ratingId?: string
+  ratingDetails?: ChatRatingDetails
+  /** Sinais calculados pelo servidor (Apoio com Anjo): na resposta da INIA ou, com `NO_REPLY`, na pergunta que ficou sem resposta.
+   * Ausente = não calculados. A tela nunca os deduz do texto. */
+  signals?: SupportSignal[]
+  /** Balão de erro local: a pergunta já gravada no servidor que ficou sem resposta (`NO_REPLY` nela). */
+  questionInteractionId?: string
   supportMaterials?: FeedbackSupportMaterial[]
   /** Cartões de dados da liderança desta resposta (escopo, período, base e links) — números do backend. */
   analytics?: LeadershipCard[]
@@ -56,12 +65,32 @@ export function toChatMessage(message: ConversationMessage): ChatMessage {
     channel: message.channel,
     interactionId: message.id,
     ...(message.rating ? { rating: message.rating } : {}),
+    ...ratingFieldsOf(message),
+    ...signalsOf(message.signals),
     ...(message.supportMaterials.length > 0 ? { supportMaterials: message.supportMaterials } : {}),
     ...(analytics.length > 0 ? { analytics } : {}),
     ...(offer?.success ? { reportOffer: offer.data } : {}),
     ...(clarification ? { clarification } : {}),
     ...(message.origin === "WORKFLOW" || message.origin === "FEEDBACK" ? { origin: message.origin } : {}),
   }
+}
+
+function ratingFieldsOf(message: ConversationMessage): Pick<ChatMessage, "ratingId" | "ratingDetails"> {
+  const details = message.rating === "down" ? parseChatRatingDetails(message.ratingDetails) : null
+  return { ...(message.rating && message.ratingId ? { ratingId: message.ratingId } : {}), ...(details ? { ratingDetails: details } : {}) }
+}
+
+const signalsOf = (value: unknown): Pick<ChatMessage, "signals"> => {
+  const signals = parseSupportSignals(value)
+  return signals ? { signals } : {}
+}
+
+/** A mensagem sem a versão e o motivo da avaliação (a marcação vai mudar). */
+export function withoutRatingVersion(message: ChatMessage): ChatMessage {
+  const { ratingId, ratingDetails, ...rest } = message
+  void ratingId
+  void ratingDetails
+  return rest
 }
 
 /** Mensagens carregadas de uma conversa complementar ficam depois do separador "Dúvidas após a conclusão". */

@@ -90,6 +90,11 @@ import { createAiManagementRouter } from "../modules/ai-management/presentation/
 import { createUsageEventsRouter } from "../modules/usage-analytics/presentation/usage-events-router.js"
 import { createUsabilityRouter } from "../modules/usage-analytics/presentation/usability-router.js"
 import { mountUsageServerTaps } from "../modules/usage-analytics/presentation/server-fact-taps.js"
+import { createSuggestionRecorder } from "../modules/human-support/application/suggestions.js"
+import type { WaiterRegistry } from "../modules/human-support/application/waiters.js"
+import { createHumanSupportAdminRouter } from "../modules/human-support/presentation/human-support-admin-router.js"
+import { createHumanSupportMonitoringRouter } from "../modules/human-support/presentation/human-support-monitoring-router.js"
+import { createHumanSupportRouter } from "../modules/human-support/presentation/human-support-router.js"
 
 export type CreateAppOptions = {
   /** false = as bases só ficam prontas pela varredura ou pela própria prova, que controla o instante da transição (PEN-008). */
@@ -117,6 +122,9 @@ export type CreateAppOptions = {
   readiness?: Readiness
   /** Métricas do processo: mede cada request e expõe `GET /internal/metrics` (só da própria máquina, nunca pelo proxy). */
   metrics?: RuntimeMetrics
+  /** Apoio com Anjo: registro das chamadas longas deste processo (o servidor cria no papel de API). Ausente = a chamada de estado
+   * responde na hora (testes). */
+  humanSupportWaiters?: WaiterRegistry | null
 }
 
 /** Tetos por janela — generosos para o uso humano, baixos para laço/automação abusiva. Ver docs/security/configuracao-segura.md. */
@@ -169,6 +177,12 @@ export type RateLimitSettings = {
   dataExplorerExportsPerOrganization: number
   dataExplorerCancellationsPerAccount: number
   dataExplorerCancellationsPerOrganization: number
+  /** Apoio com Anjo, por conta: prévia e criação de pedido por hora (contam também os 409), mensagens e mudanças de presença por minuto. */
+  humanSupportRequestsPerAccount: number
+  humanSupportMessagesPerAccount: number
+  humanSupportPresencePerAccount: number
+  /** "Digitando" e recibos de entregue/lido, por conta, por minuto (a tela manda no máximo ~15 avisos de digitação por minuto). */
+  humanSupportMarksPerAccount: number
 }
 
 const DEFAULT_RATE_LIMITS: RateLimitSettings = {
@@ -193,6 +207,10 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   dataExplorerExportsPerOrganization: env.DATA_EXPLORER_EXPORTS_PER_10_MINUTES_ORGANIZATION,
   dataExplorerCancellationsPerAccount: env.DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES,
   dataExplorerCancellationsPerOrganization: env.DATA_EXPLORER_CANCELLATIONS_PER_10_MINUTES_ORGANIZATION,
+  humanSupportRequestsPerAccount: 10,
+  humanSupportMessagesPerAccount: 60,
+  humanSupportPresencePerAccount: 30,
+  humanSupportMarksPerAccount: 120,
 }
 
 const httpLog = createLogger("http")
@@ -422,6 +440,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/interventions", requireAuth, costly(/\/(narrative|ai-draft)$/), createInterventionRouter(database))
   // Governança (assuntos proibidos, glossário) no prefixo raiz da Administração: montada DEPOIS das áreas específicas para o
   // guard dela não interceptar as outras rotas /admin/*.
+  // Apoio com Anjo — configuração (só o Administrador geral, na organização inteira) e painel (Coordenador de Anjos e Administrador
+  // geral). Montados ANTES do `/api/v1/admin` genérico (que exige `configuration.manage`), como o monitoramento de conversas.
+  app.use("/api/v1/admin/human-support", can("human_support.manage", { organizationWide: true }), createHumanSupportAdminRouter(database))
+  app.use("/api/v1/admin/human-support-monitoring", can("human_support.coordinate"), createHumanSupportMonitoringRouter(database))
   app.use("/api/v1/admin", can("configuration.manage"), orgWideWrites, createGovernanceRouter(database))
   app.use("/api/v1/data-ingestion", createDataIngestionRouter(database, dataHubOverrides))
   app.use("/api/v1/diagnostics", requireAuth, heavyReads("GET", /^\/memory\/export\.csv$/), createDiagnosticsRouter(database))
@@ -433,7 +455,20 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
     requireAuth,
     onlyMethods(["POST"], aiPerAccount),
     (request, response, next) => (request.method === "POST" && routePath(request) === "/sessions" ? voiceSessionsPerAccount(request, response, next) : next()),
-    createRealtimeRouter(database, createVoiceSessionStarter(createEphemeralRealtimeSession), createChatStreamer(streamTextReply)),
+    // A sugestão elegível de falar com um Anjo é do módulo `human-support`, injetada aqui: o `assistant` nunca o importa.
+    createRealtimeRouter(database, createVoiceSessionStarter(createEphemeralRealtimeSession), createChatStreamer(streamTextReply), { recordSuggestion: createSuggestionRecorder(database) }),
+  )
+  // Apoio com Anjo — operador e Anjo. Limites por conta: pedidos (prévia e criação) por hora, mensagens e presença por minuto.
+  app.use(
+    "/api/v1/human-support",
+    requireAuth,
+    createHumanSupportRouter(database, {
+      waiters: options.humanSupportWaiters ?? null,
+      requestsLimiter: limit({ name: "human-support-requests-account", windowMs: 60 * 60_000, max: "humanSupportRequestsPerAccount", key: accountKey, message: "Muitos pedidos de apoio em pouco tempo. Aguarde um pouco e tente de novo." }),
+      messagesLimiter: limit({ name: "human-support-messages-account", windowMs: 60_000, max: "humanSupportMessagesPerAccount", key: accountKey, message: "Muitas mensagens em pouco tempo. Aguarde um instante." }),
+      presenceLimiter: limit({ name: "human-support-presence-account", windowMs: 60_000, max: "humanSupportPresencePerAccount", key: accountKey, message: "Muitas mudanças de estado em pouco tempo. Aguarde um instante." }),
+      marksLimiter: limit({ name: "human-support-marks-account", windowMs: 60_000, max: "humanSupportMarksPerAccount", key: accountKey, message: "Muitos avisos de leitura em pouco tempo. Aguarde um instante." }),
+    }),
   )
   // Workflow Outputs V1 — recados de voz (aceite → fala) e conversas de Workflow do PRÓPRIO destinatário.
   // Voz da INIA para falas prontas (recado do avatar e apresentação do feedback): a MESMA da conversa, conferida contra o texto.

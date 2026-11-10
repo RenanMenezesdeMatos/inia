@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { useDataSourcesQuery, useSetSourceStatusMutation, useSyncFeedMutation, useTestConnectionMutation } from "@/queries/admin/use-data-hub-queries"
 import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type SourceSummary } from "@/schemas/admin/data-hub.schema"
@@ -106,7 +106,7 @@ export function SourcesTab() {
     )
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

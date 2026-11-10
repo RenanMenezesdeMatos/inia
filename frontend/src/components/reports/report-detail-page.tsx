@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ApiError } from "@/lib/api/api-client"
 import { formatDateTime } from "@/lib/format/date"
 import { reportKeys, useReceivedDeliveriesQuery, useReportQuery } from "@/queries/reports/use-reports"
@@ -117,7 +117,7 @@ export function ReportDetailPage({ reportId }: { reportId: string }) {
           {runs.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhuma execução ainda.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

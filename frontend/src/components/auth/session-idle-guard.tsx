@@ -12,7 +12,9 @@ import {
 } from "@/lib/auth/idle-session"
 import { reportSessionActivity } from "@/services/auth/auth-service"
 
-const INTERACTION_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const
+// Sem `scroll` (Apoio com Anjo, D8): a rolagem feita pelo CÓDIGO (mensagem chegando na sala do apoio ou na área do Anjo) não pode
+// renovar a sessão. A rolagem feita por uma pessoa já gera `wheel`, `touchstart`, `keydown` ou `pointerdown`.
+const INTERACTION_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"] as const
 const TICK_MS = 10_000
 const WARNING_TOAST_ID = "session-idle-warning"
 

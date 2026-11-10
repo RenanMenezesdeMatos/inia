@@ -4,7 +4,7 @@ import { useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDateTime } from "@/lib/format/date"
 import type { PolicyView } from "@/schemas/admin/intervention-policy.schema"
 
@@ -20,7 +20,7 @@ export function PolicyVersionsPanel({ policy }: { policy: PolicyView }) {
   const opened = policy.versions.find((version) => version.id === openId) ?? null
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto">
+      <div className={TABLE_FRAME}>
         <Table>
           <TableHeader>
             <TableRow>

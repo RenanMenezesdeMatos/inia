@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useKnowledgeVersionQuery } from "@/queries/admin/use-knowledge-queries"
@@ -162,7 +162,7 @@ export function VersionTable({
   onRevert: (version: KnowledgeVersionFullRow) => void
 }) {
   return (
-    <div className="rounded-lg border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

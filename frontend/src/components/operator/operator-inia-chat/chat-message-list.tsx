@@ -18,7 +18,9 @@ import { RichContent } from "@/components/rich-content/rich-content"
 import { KnowledgeClarificationBlock } from "@/components/knowledge-clarification/knowledge-clarification-block"
 import { clarificationBubbleText, type ClarificationAnswer } from "@/schemas/knowledge-clarification/clarification.schema"
 import type { FeedbackApplicationDetail } from "@/schemas/feedback-applications/feedback-application.schema"
+import type { ChatDislikeInput } from "@/schemas/operator/chat-rating.schema"
 import type { ChatMessage } from "./chat-message"
+import { DislikeControl } from "./dislike-form"
 import type { FeedbackReturn } from "./feedback-session-model"
 import { FollowUpSeparator, PresentationText, TypingBubble } from "./chat-visuals"
 
@@ -56,10 +58,17 @@ type ChatMessageListProps = {
   askQuestion?: (question: string) => void
   /** Escolha (ou correção) de uma etapa do esclarecimento pelas bases — sempre pelo caminho de texto. */
   answerClarification?: (answer: ClarificationAnswer, displayText: string) => void
+  /** Descurtida com motivo no CHAT LIVRE (`null` = retirar a avaliação): o polegar para baixo abre o formulário e espera a gravação.
+   * Ausente, ou fora do chat livre (sessão de feedback, recado), o polegar segue como antes. */
+  saveDislike?: (id: number, change: ChatDislikeInput | null) => Promise<{ ratingId: string | null }>
+  /** Abre o pedido de apoio de uma resposta descurtida com "ainda preciso de ajuda" (Parte B; ausente = apoio indisponível). */
+  onRequestSupport?: (interactionId: string, ratingId: string) => void
+  /** Sugestão de falar com um Anjo abaixo de uma mensagem com sinal (Parte B; ausente = nada aparece). */
+  renderSupportSuggestion?: (message: ChatMessage) => React.ReactNode
 }
 
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, textReplyStatus = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification }: ChatMessageListProps) {
+export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, textReplyStatus = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
   // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
   // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
@@ -103,11 +112,14 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
       const showSeparator = index === 0 || dayKey(messages[index - 1]!.occurredAt) !== dayKey(message.occurredAt)
       // Registro original de uma aplicação concluída: só consulta (sem avaliação de resposta).
       const closedRecord = sessionOpen && feedbackCompleted && message.segment !== "followup"
+      // Descurtida com motivo: só nas respostas gravadas do chat livre (nunca na sessão de feedback nem num recado de Workflow).
+      const dislikeForm = assistant && saveDislike && !sessionOpen && !workflowConversation && !message.origin && message.interactionId ? message.interactionId : null
       return <div key={message.id} className="space-y-6">
       {index === firstFollowUpIndex ? <FollowUpSeparator/> : null}
       {showSeparator ? <div className="flex justify-center" role="separator" aria-label={dateSeparatorLabel(message.occurredAt)}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{dateSeparatorLabel(message.occurredAt)}</span></div> : null}
       {/* `data-message-id`: onde a fala da INIA pousa no palco (a mensagem inteira nasce do balão). */}
-      <Message align={assistant ? "start" : "end"} data-message-id={message.id}>
+      {/* `data-support-signals`: sinais calculados pelo servidor (Apoio com Anjo) — a sugestão de falar com um Anjo parte deles. */}
+      <Message align={assistant ? "start" : "end"} data-message-id={message.id} data-support-signals={message.signals && message.signals.length > 0 ? message.signals.join(",") : undefined}>
         <MessageAvatar>{assistant ? <Avatar className="size-8"><AvatarImage src={operator.assistantImage} alt="INIA"/><AvatarFallback className="bg-primary text-primary-foreground"><Bot className="size-4"/></AvatarFallback></Avatar> : <PersonAvatar name={operator.displayName ?? operator.name} avatarUrl={operator.avatarUrl} className="size-8" fallbackClassName="bg-secondary"/>}</MessageAvatar>
         <MessageContent className="max-w-[88%]">
           <MessageHeader className="flex items-center gap-1.5 px-1">{assistant ? "INIA" : operator.displayName ?? operator.name}{fromWorkflow ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Recado</span> : null}{presentation ? <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground"><Sparkles className="size-3" aria-hidden/>Apresentação do feedback</span> : null}</MessageHeader>
@@ -116,7 +128,8 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
           {assistant ? <SupportMaterialsSection materials={message.supportMaterials} className="mt-2" /> : null}
           {assistant ? <LeadershipCards collapsible cards={message.analytics} {...(askQuestion && !readOnlyConversation && !busy ? { onAsk: askQuestion } : {})} /> : null}
           {assistant && message.reportOffer ? <ReportOfferAction offer={message.reportOffer} /> : null}
-          <MessageFooter className="gap-1 px-1"><span className="mr-1 font-normal">{message.time}{message.channel === "voice" ? <span className="ml-1 inline-flex items-center gap-0.5" aria-label="Por voz"><Mic className="size-3" aria-hidden/>voz</span> : null}{message.saveState === "failed" ? <span className="ml-1 text-destructive" role="status"> · Não salva no histórico</span> : !assistant ? " · Enviada" : ""}</span>{assistant && !message.localError && !readOnlyConversation && !closedRecord ? <><Button variant="ghost" size="icon-xs" aria-label="Resposta útil" onClick={() => rate(message.id, "up")}><ThumbsUp/></Button><Button variant="ghost" size="icon-xs" aria-label="Resposta não foi útil" onClick={() => rate(message.id, "down")}><ThumbsDown/></Button></> : null}</MessageFooter>
+          <MessageFooter className="gap-1 px-1"><span className="mr-1 font-normal">{message.time}{message.channel === "voice" ? <span className="ml-1 inline-flex items-center gap-0.5" aria-label="Por voz"><Mic className="size-3" aria-hidden/>voz</span> : null}{message.saveState === "failed" ? <span className="ml-1 text-destructive" role="status"> · Não salva no histórico</span> : !assistant ? " · Enviada" : ""}</span>{assistant && !message.localError && !readOnlyConversation && !closedRecord ? <><Button variant="ghost" size="icon-xs" aria-label="Resposta útil" onClick={() => rate(message.id, "up")}><ThumbsUp/></Button>{dislikeForm && saveDislike ? <DislikeControl interactionId={dislikeForm} disliked={message.rating === "down"} initial={message.ratingDetails ?? null} onSubmit={(input) => saveDislike(message.id, input)} onRemove={async () => { await saveDislike(message.id, null) }} {...(onRequestSupport ? { onRequestSupport } : {})}/> : <Button variant="ghost" size="icon-xs" aria-label="Resposta não foi útil" onClick={() => rate(message.id, "down")}><ThumbsDown/></Button>}</> : null}</MessageFooter>
+          {renderSupportSuggestion && !readOnlyConversation ? renderSupportSuggestion(message) : null}
         </MessageContent>
       </Message>
       {message.id === resumeMarkerId ? (

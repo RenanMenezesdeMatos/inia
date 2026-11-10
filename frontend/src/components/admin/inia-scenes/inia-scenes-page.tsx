@@ -51,6 +51,7 @@ import { INIA_SCENE_BLUR, INIA_SCENE_DIM, INIA_SCENE_IMAGE_RULES, INIA_SCENE_IMA
 import { sceneImageSrc } from "@/services/inia-scenes/inia-scene-service"
 import { publicAsset } from "@/lib/assets/public-asset"
 import { RESTORE_NOTE } from "@/lib/admin/logical-delete"
+import { DatePicker } from "@/components/ui/date-picker"
 
 /**
  * CENÁRIO DA INIA — o fundo atrás dela no palco da aplicação de feedback e no painel do Acompanhamento (call center, Natal,
@@ -513,11 +514,11 @@ function SceneFormDialog({ open, scene, timeZone, onOpenChange }: { open: boolea
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="inia-scene-start">Início</Label>
-                  <Input id="inia-scene-start" type="date" value={form.start} onChange={(event) => setForm({ ...form, start: event.target.value })} />
+                  <DatePicker id="inia-scene-start" value={form.start} max={form.end || undefined} onChange={(start) => setForm({ ...form, start })} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="inia-scene-end">Fim</Label>
-                  <Input id="inia-scene-end" type="date" value={form.end} min={form.start || undefined} onChange={(event) => setForm({ ...form, end: event.target.value })} />
+                  <DatePicker id="inia-scene-end" value={form.end} min={form.start || undefined} onChange={(end) => setForm({ ...form, end })} />
                 </div>
               </div>
             ) : null}

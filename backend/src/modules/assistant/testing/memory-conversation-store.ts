@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { DEFAULT_CONVERSATION_INACTIVITY_HOURS, decideConversationForWrite, encodeCursor, isInactive, previewOf, type ConversationRecord, type MessageCursor } from "../domain/assistant-conversation.js"
-import { ratingView, sameRating, type AssistantRatingValue } from "../domain/assistant-interaction-rating.js"
+import { ratingView, shouldWriteRating, type AssistantRatingDetails, type AssistantRatingValue } from "../domain/assistant-interaction-rating.js"
+import { SUPPORT_SIGNALS, type SupportSignal } from "../domain/reply-signals.js"
 import { analyticsCardsOf, clarificationPayloadOf, clarificationScopeOf, messageOriginOf, type ConversationMessage, type ConversationScope, type ConversationStore, type ConversationSummary, type MessageInput } from "../application/assistant-conversations.js"
 
 /**
@@ -10,13 +11,15 @@ import { analyticsCardsOf, clarificationPayloadOf, clarificationScopeOf, message
  */
 export type MemoryMessage = MessageInput & { id: string; seq: number }
 /** Linha do histórico de curtir/descurtir (mesmas regras da tabela `assistant_interaction_ratings`). */
-export type MemoryRating = { personId: string; conversationId: string; interactionId: string; value: AssistantRatingValue; createdAt: Date; supersededAt: Date | null }
+export type MemoryRating = { id: string; personId: string; conversationId: string; interactionId: string; value: AssistantRatingValue; details: AssistantRatingDetails | null; createdAt: Date; supersededAt: Date | null }
 
 export function createMemoryConversationStore(options: { inactivityHours?: number } = {}) {
   const inactivityMs = (options.inactivityHours ?? DEFAULT_CONVERSATION_INACTIVITY_HOURS) * 3_600_000
   const conversations: ConversationRecord[] = []
   const messages: MemoryMessage[] = []
   const ratings: MemoryRating[] = []
+  /** Sinais gravados por mensagem (mesmas regras de `assistant_reply_signals`: só no chat livre). */
+  const signals = new Map<string, SupportSignal[]>()
   let seq = 0
   const owned = (scope: ConversationScope, id: string) => conversations.find((c) => c.id === id && c.organizationId === scope.organizationId && c.ownerPersonId === scope.ownerPersonId) ?? null
   const active = (scope: ConversationScope) => conversations.find((c) => c.status === "ACTIVE" && (c.origin ?? "USER") === "USER" && c.organizationId === scope.organizationId && c.ownerPersonId === scope.ownerPersonId) ?? null
@@ -24,7 +27,7 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
   const ordered = (conversationId: string) => messages.filter((m) => m.conversationId === conversationId).sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime() || a.seq - b.seq)
   const toMessage = (m: MemoryMessage): ConversationMessage => {
     const occurredAt = m.occurredAt.toISOString()
-    return { id: m.id, channel: m.channel, role: m.role, content: m.content, agentId: m.agentId ?? null, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(m.seq) }), origin: messageOriginOf(m.role, m.clientMessageId), analytics: m.role === "assistant" ? analyticsCardsOf(m.toolCalls) : [], clarification: m.role === "assistant" ? clarificationPayloadOf(m.toolCalls) : null, clarificationScope: m.role === "assistant" ? clarificationScopeOf(m.toolCalls) : null }
+    return { id: m.id, channel: m.channel, role: m.role, content: m.content, agentId: m.agentId ?? null, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(m.seq) }), origin: messageOriginOf(m.role, m.clientMessageId), analytics: m.role === "assistant" ? analyticsCardsOf(m.toolCalls) : [], clarification: m.role === "assistant" ? clarificationPayloadOf(m.toolCalls) : null, clarificationScope: m.role === "assistant" ? clarificationScopeOf(m.toolCalls) : null, signals: signals.get(m.id) ?? null }
   }
   const compare = (m: MemoryMessage, cursor: MessageCursor) => m.occurredAt.getTime() - new Date(cursor.occurredAt).getTime() || m.seq - Number(cursor.seq)
   const summary = (c: ConversationRecord): ConversationSummary => {
@@ -97,6 +100,8 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
       seq += 1
       const message: MemoryMessage = { ...input, id: randomUUID(), seq }
       messages.push(message)
+      const target = conversations.find((c) => c.id === input.conversationId)
+      if (input.role === "assistant" && (target?.origin ?? "USER") === "USER") signals.set(message.id, SUPPORT_SIGNALS.filter((signal) => (input.signals ?? []).includes(signal)))
       const conversation = conversations.find((c) => c.id === input.conversationId)!
       if (input.occurredAt > conversation.lastActivityAt) conversation.lastActivityAt = input.occurredAt
       return { id: message.id, duplicate: false }
@@ -130,17 +135,32 @@ export function createMemoryConversationStore(options: { inactivityHours?: numbe
     },
     async rate(scope, input, now) {
       const message = messages.find((m) => m.id === input.interactionId && m.conversationId === input.conversationId && m.role === "assistant")
-      if (!message || !owned(scope, input.conversationId)) throw new DomainError("Resposta não encontrada.", "ASSISTANT_MESSAGE_NOT_FOUND", 404)
+      const conversation = owned(scope, input.conversationId)
+      if (!message || !conversation) throw new DomainError("Resposta não encontrada.", "ASSISTANT_MESSAGE_NOT_FOUND", 404)
+      const origin = conversation.origin ?? "USER"
+      const details = input.value === "DOWN" ? (input.details ?? null) : null
+      if (details && origin !== "USER") throw new DomainError("O motivo da descurtida só vale nas conversas abertas por você com a INIA.", "RATING_DETAILS_NOT_ALLOWED", 422)
       const current = ratings.find((r) => r.personId === scope.ownerPersonId && r.interactionId === input.interactionId && !r.supersededAt) ?? null
-      if (sameRating(current?.value ?? null, input.value)) return ratingView(current?.value)
+      if (!shouldWriteRating(current, { value: input.value, details })) {
+        const vigente = current && current.value !== "NONE" ? current : null
+        return { rating: ratingView(vigente?.value), ratingId: vigente?.id ?? null, details: vigente?.details ?? null, conversationOrigin: origin, written: false }
+      }
       if (current) current.supersededAt = now
-      ratings.push({ personId: scope.ownerPersonId, conversationId: input.conversationId, interactionId: input.interactionId, value: input.value, createdAt: now, supersededAt: null })
-      return ratingView(input.value)
+      const id = randomUUID()
+      ratings.push({ id, personId: scope.ownerPersonId, conversationId: input.conversationId, interactionId: input.interactionId, value: input.value, details, createdAt: now, supersededAt: null })
+      return { rating: ratingView(input.value), ratingId: input.value === "NONE" ? null : id, details, conversationOrigin: origin, written: true }
     },
     async ratingsOf(scope, interactionIds) {
       const current = ratings.filter((r) => r.personId === scope.ownerPersonId && interactionIds.includes(r.interactionId) && !r.supersededAt && r.value !== "NONE")
-      return new Map(current.map((r) => [r.interactionId, ratingView(r.value)!] as const))
+      return new Map(current.map((r) => [r.interactionId, { rating: ratingView(r.value)!, ratingId: r.id, details: r.details }] as const))
+    },
+    async markNoReply(scope, questionId) {
+      const question = messages.find((m) => m.id === questionId && m.role === "user")
+      const conversation = question ? owned(scope, question.conversationId) : null
+      if (!question || !conversation || (conversation.origin ?? "USER") !== "USER" || signals.has(questionId)) return false
+      signals.set(questionId, ["NO_REPLY"])
+      return true
     },
   }
-  return { store, conversations, messages, ratings, seedWorkflowConversation, seedFeedbackConversation, completeConversation }
+  return { store, conversations, messages, ratings, signals, seedWorkflowConversation, seedFeedbackConversation, completeConversation }
 }

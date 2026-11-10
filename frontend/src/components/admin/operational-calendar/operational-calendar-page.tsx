@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListEmptyState, ListErrorState } from "@/components/admin/shared/list/list-states"
 import { formatCivilDate } from "@/lib/format/date"
@@ -18,6 +18,7 @@ import { useCalendarSettingsQuery, useCapitalsQuery, useCreateHolidayMutation, u
 import { CATALOG_SCOPE_LABELS, CATALOG_SCOPES, HOLIDAY_SCOPE_LABELS, HOLIDAY_SCOPES, VERIFICATION_LABELS, type CatalogScope, type HolidayScope } from "@/schemas/admin/operational-calendar.schema"
 import { HOLIDAY_FALLBACK_POLICIES, HOLIDAY_FALLBACK_POLICY_LABELS, type HolidayFallbackPolicy } from "@/schemas/people/employment-status.schema"
 import { cn } from "@/lib/utils"
+import { DatePicker } from "@/components/ui/date-picker"
 
 const ALL = "__all__"
 
@@ -268,7 +269,7 @@ function BaseCatalogCard() {
         ) : query.data.length === 0 ? (
           <ListEmptyState icon={CalendarDays} title="Nenhum feriado no catálogo para este filtro" description="O catálogo-base cobre 2026–2028 com fontes oficiais; lacunas conhecidas ficam registradas na documentação, nunca inventadas." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -330,7 +331,7 @@ function OrganizationHolidaysCard() {
           <div className="grid gap-3 sm:grid-cols-[160px_1fr_180px_auto] sm:items-end">
             <div className="space-y-1.5">
               <Label htmlFor="holiday-date">Data</Label>
-              <Input id="holiday-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+              <DatePicker id="holiday-date" value={date} onChange={setDate} className="sm:w-full" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="holiday-name">Nome</Label>
@@ -371,7 +372,7 @@ function OrganizationHolidaysCard() {
           ) : query.data.length === 0 ? (
             <ListEmptyState icon={CalendarDays} title="Nenhuma data própria cadastrada" description="Feriados legais já vêm do calendário-base. Cadastre aqui só o que é específico da operação." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

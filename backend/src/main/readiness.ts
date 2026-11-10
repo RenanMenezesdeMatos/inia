@@ -18,6 +18,9 @@ export type Readiness = {
   /** Deixa de estar pronto (desligamento). Irreversível. */
   startDraining(): void
   readonly draining: boolean
+  /** Avisa quando o dreno começa (uma vez; quem se inscreve depois de começar é avisado na hora). Ex.: as chamadas longas do
+   * Apoio com Anjo respondem `reconnect: true` para o navegador reconectar em outra instância. Devolve o cancelamento. */
+  onDraining(listener: () => void): () => void
 }
 
 export function createReadiness(db: Pick<Database, "query">, options: { cacheMs?: number; timeoutMs?: number; now?: () => number } = {}): Readiness {
@@ -25,6 +28,7 @@ export function createReadiness(db: Pick<Database, "query">, options: { cacheMs?
   const timeoutMs = options.timeoutMs ?? 3_000
   const now = options.now ?? Date.now
   let draining = false
+  const listeners = new Set<() => void>()
   let cached: { at: number; ok: boolean } | null = null
   let inFlight: Promise<boolean> | null = null
 
@@ -64,7 +68,24 @@ export function createReadiness(db: Pick<Database, "query">, options: { cacheMs?
       return ok ? { ready: true, reason: null } : { ready: false, reason: "DATABASE_UNAVAILABLE" }
     },
     startDraining() {
+      if (draining) return
       draining = true
+      for (const listener of [...listeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error(JSON.stringify({ event: "readiness_draining_listener_failed", message: (error as Error).message }))
+        }
+      }
+      listeners.clear()
+    },
+    onDraining(listener) {
+      if (draining) {
+        listener()
+        return () => {}
+      }
+      listeners.add(listener)
+      return () => listeners.delete(listener)
     },
     get draining() {
       return draining

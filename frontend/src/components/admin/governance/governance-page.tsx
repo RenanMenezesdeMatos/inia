@@ -20,7 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
@@ -225,7 +225,7 @@ function ProhibitedTopicsPanel() {
           noResultsTitle="Nenhum assunto corresponde à busca ou aos filtros"
           itemLabel={["assunto", "assuntos"]}
           renderList={(topics) => (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -404,7 +404,7 @@ function GlossaryPanel() {
           noResultsTitle="Nenhum termo corresponde à busca ou aos filtros"
           itemLabel={["termo", "termos"]}
           renderList={(items) => (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Clock, Database,
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useDataHubOverviewQuery } from "@/queries/admin/use-data-hub-queries"
 import { REMOTE_SOURCE_KINDS, SOURCE_KIND_LABELS, type CalendarQuality, type DataMapEntry, type EmploymentStatusFreshness, type Overview } from "@/schemas/admin/data-hub.schema"
@@ -337,7 +337,7 @@ export function OverviewTab({ onOpenTab }: { onOpenTab: (tab: string) => void })
             {overview.recentRuns.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma carga ainda.</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className={TABLE_FRAME}>
                 <Table>
                   <TableHeader>
                     <TableRow>

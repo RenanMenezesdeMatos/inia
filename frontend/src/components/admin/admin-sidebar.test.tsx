@@ -74,6 +74,20 @@ describe("AdminSidebar — organização", () => {
     expect(within(dataHub).getByRole("link", { name: "Calendário operacional" })).toHaveAttribute("href", "/admin/operational-calendar")
   })
 
+  it("Apoio com Anjo: o painel em Monitoramento (Coordenador de Anjos) e a configuração em Plataforma (Administrador geral)", () => {
+    renderSidebar(everything)
+    const groupOf = (label: string) => screen.getByText(label, { selector: '[data-sidebar="group-label"] span' }).closest<HTMLElement>('[data-sidebar="group"]')!
+    expect(within(groupOf("Monitoramento")).getByRole("link", { name: "Apoio com Anjo" })).toHaveAttribute("href", "/admin/human-support-monitoring")
+    expect(within(groupOf("Plataforma")).getByRole("link", { name: "Apoio com Anjo" })).toHaveAttribute("href", "/admin/human-support")
+  })
+
+  it("Coordenador de Anjos sem outro papel: só o painel do apoio", () => {
+    at("/admin/human-support-monitoring")
+    renderSidebar(caps({ canCoordinateHumanSupport: true }))
+    expect(screen.getAllByRole("link").map((item) => item.getAttribute("href"))).toEqual(["/admin/human-support-monitoring"])
+    expect(link("Apoio com Anjo")).toHaveAttribute("aria-current", "page")
+  })
+
   it("Governança (Assuntos proibidos · Glossário geral) fica em Atendimento com IA", () => {
     at("/admin/governance", "tab=glossary")
     renderSidebar(everything)

@@ -20,6 +20,8 @@ import { reportOfferSchema, type ReportOffer } from "@/schemas/reports/reports.s
 import type { FeedbackSupportMaterial } from "@/schemas/feedbacks/support-material.schema"
 import { parseLeadershipCards, type LeadershipCard } from "@/schemas/leadership/leadership.schema"
 import { parseClarification, type ClarificationAnswer, type ClarificationView } from "@/schemas/knowledge-clarification/clarification.schema"
+import { chatRatingResultSchema, parseSupportSignals, type ChatDislikeInput, type ChatRatingResult, type SupportSignal } from "@/schemas/operator/chat-rating.schema"
+import { apiSend } from "@/lib/api/api-client"
 
 export type HistoryTurn = { role: "user" | "model"; text: string }
 
@@ -30,7 +32,8 @@ export type HistoryTurn = { role: "user" | "model"; text: string }
  * próprio, já resolvidos pelo backend — a URL é montada na tela a partir do id, nunca vem do modelo), a conversa em que a
  * troca ficou gravada e se a RESPOSTA foi salva (`persisted = false` = apareceu mas não entrou no histórico). */
 /** `clarification` = a resposta veio do esclarecimento pelas bases (pergunta com opções, resposta com fontes ou o que falta). */
-export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean; analytics?: LeadershipCard[]; reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView }
+/** `signals` = sinais da resposta gravada (só no chat livre; o servidor os calcula — Apoio com Anjo). */
+export type TextReply = { text: string; supportMaterials: FeedbackSupportMaterial[]; interactionId: string | null; conversationId: string; persisted: boolean; analytics?: LeadershipCard[]; reportOffer?: ReportOffer; navigate?: { href: string }; clarification?: ClarificationView; signals?: SupportSignal[] }
 
 /** A conversa pedida já foi encerrada (outra aba começou outra, ou ficou inativa): o chat troca para a atual. */
 export class ConversationClosedError extends Error {
@@ -40,7 +43,8 @@ export class ConversationClosedError extends Error {
   }
 }
 
-export type ConversationRef = { conversationId: string; created: boolean; rotatedFrom: string | null }
+/** `userMessageId` = a pergunta já gravada no servidor (o balão de erro guarda o id: a pergunta sem resposta pode pedir apoio). */
+export type ConversationRef = { conversationId: string; created: boolean; rotatedFrom: string | null; userMessageId?: string }
 
 /** Progresso verdadeiro da resposta (o que está rodando agora no servidor) — rótulo pronto para a tela. */
 export type ReplyStatus = { stage: string; label: string }
@@ -105,6 +109,7 @@ export async function fetchTextReply(
   let interactionId: string | null = null
   let conversationId: string | null = null
   let persisted = false
+  let signals: SupportSignal[] | undefined
 
   for (;;) {
     const { done, value } = await reader.read()
@@ -132,7 +137,9 @@ export async function fetchTextReply(
         if (typeof status.label === "string") options.onStatus?.({ stage: typeof status.stage === "string" ? status.stage : "", label: status.label })
       } else if (name === "persisted") {
         persisted = true
-        interactionId = (JSON.parse(data) as { interactionId?: string }).interactionId ?? interactionId
+        const payload = JSON.parse(data) as { interactionId?: string; signals?: unknown }
+        interactionId = payload.interactionId ?? interactionId
+        signals = parseSupportSignals(payload.signals) ?? undefined
       } else if (name === "persist_error") {
         persisted = false
       } else if (name === "support_materials") {
@@ -163,7 +170,7 @@ export async function fetchTextReply(
 
   if (streamError) throw new Error(streamError)
   if (!full || !conversationId) throw new Error("Não foi possível obter uma resposta da INIA.")
-  return { text: full, supportMaterials, interactionId, conversationId, persisted, ...(analytics.length > 0 ? { analytics } : {}), ...(reportOffer ? { reportOffer } : {}), ...(navigate ? { navigate } : {}), ...(clarification ? { clarification } : {}) }
+  return { text: full, supportMaterials, interactionId, conversationId, persisted, ...(analytics.length > 0 ? { analytics } : {}), ...(reportOffer ? { reportOffer } : {}), ...(navigate ? { navigate } : {}), ...(clarification ? { clarification } : {}), ...(persisted && signals ? { signals } : {}) }
 }
 
 export type ConversationSummary = {
@@ -173,7 +180,7 @@ export type ConversationSummary = {
   startedAt: string
   lastActivityAt: string
   closedAt: string | null
-  closeReason: "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | null
+  closeReason: "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | "HUMAN_SUPPORT" | null
   /** Workflow Outputs V1 — conversa criada por um Workflow (primeira mensagem da INIA); "nova" até a primeira abertura. FEEDBACK =
    * conversa de uma aplicação de feedback (somente consulta depois de concluída). */
   origin?: "USER" | "WORKFLOW" | "FEEDBACK"
@@ -211,6 +218,11 @@ export type ConversationMessage = {
   origin?: "WORKFLOW" | "FEEDBACK" | null
   /** Curtir/descurtir vigente da dona nesta resposta da INIA (null = sem marcação); ausente nas mensagens da pessoa. */
   rating?: "up" | "down" | null
+  /** A versão vigente da avaliação e o motivo da descurtida (chat livre) — validados por `parseChatRatingDetails`. */
+  ratingId?: string | null
+  ratingDetails?: unknown
+  /** Sinais da mensagem calculados pelo servidor (null = não calculados) — validados por `parseSupportSignals`. */
+  signals?: unknown
 }
 
 async function getJson<T>(path: string, errorMessage: string): Promise<T> {
@@ -239,16 +251,15 @@ export function fetchConversationMessages(conversationId: string, options: { bef
   return getJson<{ conversation: ConversationSummary; messages: ConversationMessage[]; hasMore: boolean }>(`/api/v1/realtime/conversations/${conversationId}/messages?${params}`, "Não foi possível carregar as mensagens da conversa.")
 }
 
-/** Grava o curtir/descurtir de uma resposta da INIA (`undefined` = retirou). Só a dona da conversa; o histórico fica no banco. */
-export async function saveMessageRating(conversationId: string, interactionId: string, rating: "up" | "down" | undefined): Promise<void> {
+/**
+ * Grava o curtir/descurtir de uma resposta da INIA (`undefined` = retirou) e devolve a avaliação vigente. Só a dona da conversa; o
+ * histórico fica no banco. `details` = o motivo da descurtida (só no chat livre). Falha = `ApiError` com a mensagem do servidor.
+ */
+export async function saveMessageRating(conversationId: string, interactionId: string, rating: "up" | "down" | undefined, details?: ChatDislikeInput): Promise<ChatRatingResult> {
   const value = rating === "up" ? "UP" : rating === "down" ? "DOWN" : "NONE"
-  const response = await fetch(`${API_URL}/api/v1/realtime/conversations/${conversationId}/messages/${interactionId}/rating`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ value }),
-  })
-  if (!response.ok) throw new Error(`Avaliação não gravada (${response.status}).`)
+  const body = rating === "down" && details ? { value, details: { reason: details.reason, ...(details.comment.trim() ? { comment: details.comment.trim() } : {}), stillNeedsHelp: details.stillNeedsHelp } } : { value }
+  const data = await apiSend<unknown>(`/api/v1/realtime/conversations/${conversationId}/messages/${interactionId}/rating`, "PUT", body)
+  return chatRatingResultSchema.parse(data)
 }
 
 /** "Nova conversa": encerra a atual no backend (nada é criado até a próxima mensagem). */

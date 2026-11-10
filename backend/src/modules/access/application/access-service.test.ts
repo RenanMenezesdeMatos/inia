@@ -385,3 +385,43 @@ describe("Políticas de acompanhamento — configurar não é agir sobre colabor
     expect(systemRoleCatalog.all().filter((role) => role.delegates.includes("AVALIADOR_DE_CONTINUIDADE")).map((role) => role.code)).toEqual(["ADMINISTRADOR_GERAL"])
   })
 })
+
+describe("Apoio com Anjo — papéis Anjo e Coordenador de Anjos (migration 182)", () => {
+  const holder = (roleCode: string, scope: AccessContext["assignments"][number]["scope"] = { type: "ORGANIZATION" }): AccessContext => ({ organizationId: ORG, accountId: "conta", personId: "pessoa", assignments: [{ id: "a", roleCode, scope }] })
+
+  it("Anjo só atende; Coordenador só acompanha; ambos em organização, Grupo ou Subgrupo, sem delegar", () => {
+    const anjo = SYSTEM_ROLES.find((entry) => entry.code === "ANJO")!
+    const coordinator = SYSTEM_ROLES.find((entry) => entry.code === "COORDENADOR_DE_ANJOS")!
+    expect(anjo.permissions).toEqual(["human_support.attend"])
+    expect(coordinator.permissions).toEqual(["human_support.coordinate"])
+    for (const role of [anjo, coordinator]) {
+      expect(role.allowedScopes).toEqual(["ORGANIZATION", "GROUP", "SUBGROUP"])
+      expect(role.delegates).toEqual([])
+    }
+  })
+
+  it("o Administrador geral acompanha e configura, mas não atende; ninguém mais tem as permissões do apoio", () => {
+    expect(SYSTEM_ROLES.filter((entry) => entry.permissions.includes("human_support.attend")).map((entry) => entry.code)).toEqual(["ANJO"])
+    expect(SYSTEM_ROLES.filter((entry) => entry.permissions.includes("human_support.coordinate")).map((entry) => entry.code).sort()).toEqual(["ADMINISTRADOR_GERAL", "COORDENADOR_DE_ANJOS"])
+    expect(SYSTEM_ROLES.filter((entry) => entry.permissions.includes("human_support.manage")).map((entry) => entry.code)).toEqual(["ADMINISTRADOR_GERAL"])
+  })
+
+  it("só o Administrador geral delega os dois papéis", () => {
+    for (const code of ["ANJO", "COORDENADOR_DE_ANJOS"]) expect(SYSTEM_ROLES.filter((entry) => entry.delegates.includes(code)).map((entry) => entry.code)).toEqual(["ADMINISTRADOR_GERAL"])
+  })
+
+  it("capacidades: fora da Administração comum; configurar só com escopo de organização", () => {
+    expect(accessCapabilities(holder("ANJO", { type: "GROUP", teamId: T_B2B }))).toMatchObject({ canAttendHumanSupport: true, canCoordinateHumanSupport: false, canManageHumanSupport: false, canAccessAdministration: false })
+    expect(accessCapabilities(holder("COORDENADOR_DE_ANJOS", { type: "SUBGROUP", subteamId: S_CONTAS, teamId: T_B2B }))).toMatchObject({ canAttendHumanSupport: false, canCoordinateHumanSupport: true, canManageHumanSupport: false, canAccessAdministration: false })
+    expect(accessCapabilities(holder("ADMINISTRADOR_GERAL"))).toMatchObject({ canAttendHumanSupport: false, canCoordinateHumanSupport: true, canManageHumanSupport: true })
+    expect(accessCapabilities(holder("ADMINISTRADOR"))).toMatchObject({ canAttendHumanSupport: false, canCoordinateHumanSupport: false, canManageHumanSupport: false })
+  })
+
+  it("Administrador e Administrador de acessos não concedem; o Administrador geral concede no Grupo; Minha estrutura é recusada", async () => {
+    const s = setup()
+    await expect(assignRole(s.deps, s.actor("carlos"), { accountId: accountOf("joao").id, roleCode: "ANJO", scope: { type: "GROUP", teamId: T_B2B } })).rejects.toMatchObject({ code: "ACCESS_ROLE_NOT_DELEGABLE" })
+    await expect(assignRole(s.deps, s.actor("ana"), { accountId: accountOf("joao").id, roleCode: "COORDENADOR_DE_ANJOS", scope: { type: "ORGANIZATION" } })).rejects.toMatchObject({ code: "ACCESS_ROLE_NOT_DELEGABLE" })
+    expect((await assignRole(s.deps, s.actor("geral"), { accountId: accountOf("joao").id, roleCode: "ANJO", scope: { type: "GROUP", teamId: T_B2B } })).id).toBeTruthy()
+    await expect(assignRole(s.deps, s.actor("geral"), { accountId: accountOf("maria").id, roleCode: "ANJO", scope: { type: "MY_STRUCTURE" } })).rejects.toBeDefined()
+  })
+})

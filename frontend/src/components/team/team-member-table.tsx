@@ -9,7 +9,7 @@ import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatPercent } from "@/lib/analytics/format"
 import { MEMBER_SITUATION_LABELS, type MemberSituation, type TeamMembersPage, type TeamMemberSummary } from "@/schemas/analytics/analytics.schema"
 import type { TeamMembersParams } from "@/services/analytics/analytics-service"
@@ -83,7 +83,7 @@ export function TeamMemberTable({
             action={hasActiveFilters ? <Button variant="outline" size="sm" onClick={onClearFilters}>Limpar filtros</Button> : undefined}
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl bg-card" aria-busy={query.isFetching}>
+          <div className={TABLE_FRAME} aria-busy={query.isFetching}>
             <Table>
               <TableHeader>
                 <TableRow>

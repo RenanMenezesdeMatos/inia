@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ScrollText } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { ListDateRangeFilter, ListMultiSelectFilter, ListSearchInput, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
@@ -20,7 +20,7 @@ const ACTION_OPTIONS = optionsFromLabels(AUDIT_ACTION_LABELS)
 
 function AuditTable({ events, showSource }: { events: AuditEvent[]; showSource: boolean }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

@@ -10,6 +10,8 @@ import { currentUserSchema, type CurrentUser } from "@/schemas/auth/auth.schema"
 import { AuthenticatedAppShell } from "./authenticated-app-shell"
 
 const auth = vi.hoisted(() => ({ fetchCurrentUser: vi.fn() }))
+// O estado do Apoio com Anjo faz chamadas à API; aqui só a árvore importa.
+vi.mock("@/queries/human-support/use-human-support-state", () => ({ HumanSupportStateProvider: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock("@/services/auth/auth-service", async (original) => ({ ...(await original<object>()), ...auth }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }), usePathname: () => "/operator", useSearchParams: () => new URLSearchParams() }))
 // O cabeçalho real (menus, sino, seletor de área) não interessa aqui: só se ele entra na árvore.

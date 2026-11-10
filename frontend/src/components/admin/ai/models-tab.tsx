@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { AdminApiError } from "@/lib/admin/admin-api"
@@ -116,7 +116,7 @@ export function ModelsTab() {
         ) : modelsQuery.data.length === 0 ? (
           <ListEmptyState icon={Server} title="Nenhum modelo" description="Use &quot;Sincronizar modelos&quot; numa conexão (aba Conexões) ou cadastre um modelo manualmente." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -710,7 +710,7 @@ function PricingSection({ model, canWrite }: { model: AiModel; canWrite: boolean
       ) : pricingQuery.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">{model.isLocal ? "Sem preço. Para um modelo local sem tarifa de API, registre 0 — o custo computacional continua não medido." : "Sem preço: o custo das chamadas deste modelo fica como desconhecido."}</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

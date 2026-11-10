@@ -12,6 +12,7 @@ import { AnalysesPanel } from "./analyses-panel"
 import { GuidancePreview } from "./guidance-preview"
 import { PatternDetailDialog } from "./pattern-detail-dialog"
 import { PatternList } from "./pattern-list"
+import { PageHeader } from "@/components/ui/surface"
 
 /**
  * BASE DE BOAS PRÁTICAS — o que os operadores com melhores resultados fazem nas conversas que pode ajudar os outros. Complementa o
@@ -31,10 +32,7 @@ export function BestPracticesPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Boas práticas</h1>
-        <p className="text-sm text-muted-foreground">Comportamentos observados com mais frequência nas chamadas dos operadores com melhores resultados do que no grupo de referência, no mesmo contexto. Não é cumprimento de processo — isso fica no Diagnóstico.</p>
-      </header>
+      <PageHeader icon={Lightbulb} title="Boas práticas" description="Comportamentos observados com mais frequência nas chamadas dos operadores com melhores resultados do que no grupo de referência, no mesmo contexto. Não é cumprimento de processo — isso fica no Diagnóstico." />
 
       <Collapsible className="rounded-lg border border-border bg-card/60 px-3 py-2 text-sm">
         <CollapsibleTrigger className="flex items-center gap-2 font-medium"><Info className="size-4 text-primary" aria-hidden /> Como a base é construída</CollapsibleTrigger>

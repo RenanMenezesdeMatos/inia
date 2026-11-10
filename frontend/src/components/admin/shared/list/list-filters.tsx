@@ -1,14 +1,11 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { format, parseISO } from "date-fns"
-import { ptBR } from "date-fns/locale"
-import type { DateRange } from "react-day-picker"
-import { CalendarDays, ChevronDown, FilterX, Search, X } from "lucide-react"
+import { ChevronDown, FilterX, Search, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
+import { DateRangePicker } from "@/components/ui/date-picker"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -18,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type { DateRangeFilter, OrgScopeFilter, SubjectScopeFilter } from "@/lib/admin/list-query"
@@ -214,46 +210,9 @@ export function ListMultiSelectFilter<V extends string>({
   )
 }
 
-function toIsoDate(date: Date) {
-  return format(date, "yyyy-MM-dd")
-}
-
-function formatIsoDate(value: string) {
-  return format(parseISO(value), "dd/MM/yyyy", { locale: ptBR })
-}
-
-// Intervalo de datas (inclusivo) — serializado como YYYY-MM-DD para a API.
+// Intervalo de datas (inclusivo) — serializado como YYYY-MM-DD para a API. Mesmo seletor de período do resto do app.
 export function ListDateRangeFilter({ label, value, onChange }: { label: string; value: DateRangeFilter; onChange: (value: DateRangeFilter) => void }) {
-  const selected: DateRange | undefined = value.from ? { from: parseISO(value.from), to: value.to ? parseISO(value.to) : undefined } : undefined
-  const active = Boolean(value.from || value.to)
-  const text = value.from && value.to ? `${formatIsoDate(value.from)} – ${formatIsoDate(value.to)}` : value.from ? `a partir de ${formatIsoDate(value.from)}` : label
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className={cn("w-full justify-start font-normal sm:w-auto", active && "border-primary/50")} aria-label={`Filtrar por ${label.toLocaleLowerCase("pt-BR")}`}>
-          <CalendarDays data-icon="inline-start" className="text-muted-foreground" />
-          {text}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="range"
-          locale={ptBR}
-          selected={selected}
-          numberOfMonths={1}
-          onSelect={(range) => onChange({ from: range?.from ? toIsoDate(range.from) : undefined, to: range?.to ? toIsoDate(range.to) : undefined })}
-        />
-        {active ? (
-          <div className="border-t p-2">
-            <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => onChange({})}>
-              <X data-icon="inline-start" /> Limpar período
-            </Button>
-          </div>
-        ) : null}
-      </PopoverContent>
-    </Popover>
-  )
+  return <DateRangePicker value={value} onChange={(next) => onChange({ from: next.from, to: next.to })} placeholder={label} clearable highlightActive aria-label={`Filtrar por ${label.toLocaleLowerCase("pt-BR")}`} />
 }
 
 // Grupo/subgrupo: "qualquer" (sem filtro), só globais, um grupo (inclui subgrupos) ou um subgrupo.

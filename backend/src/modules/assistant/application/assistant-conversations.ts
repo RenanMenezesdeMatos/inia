@@ -13,8 +13,8 @@ import {
   type MessageCursor,
 } from "../domain/assistant-conversation.js"
 import { CLARIFICATION_TOOL_NAME } from "../../knowledge-clarification/domain/clarification-state.js"
-import { loadConversationRatings, rateConversationMessage, type RateConversationMessageInput } from "./assistant-interaction-ratings.js"
-import type { AssistantRatingView } from "../domain/assistant-interaction-rating.js"
+import { loadConversationRatings, rateConversationMessage, type RateConversationMessageInput, type RatingResult, type RatingSnapshot } from "./assistant-interaction-ratings.js"
+import { SUPPORT_SIGNALS, SUPPORT_SIGNALS_VERSION, type SupportSignal } from "../domain/reply-signals.js"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -71,6 +71,22 @@ async function findActive(db: Queryable, scope: ConversationScope): Promise<Conv
 
 async function close(db: Queryable, id: string, reason: "MANUAL" | "INACTIVITY", at: Date) {
   await db.query(`update assistant_conversations set status = 'CLOSED', closed_at = $2, close_reason = $3 where id = $1 and status = 'ACTIVE'`, [id, at, reason])
+}
+
+/**
+ * Encerra a conversa do chat livre de onde saiu um pedido de apoio, quando o atendimento do Anjo termina (`HUMAN_SUPPORT`,
+ * decisão de 10/11/2026): o assunto foi tratado com uma pessoa e a próxima pergunta abre conversa nova. Roda na transação de
+ * quem chama, com a mesma trava por dono das demais escritas da conversa; só fecha a conversa do próprio dono, de origem USER e
+ * ainda ativa — se já foi encerrada (nova conversa, inatividade), fica como está. Devolve se encerrou.
+ */
+export async function closeConversationAfterHumanSupport(client: Queryable, input: { organizationId: string; ownerPersonId: string; conversationId: string }): Promise<boolean> {
+  await client.query("select pg_advisory_xact_lock(hashtext('assistant_conversation:' || $1::text))", [`${input.organizationId}:${input.ownerPersonId}`])
+  const result = await client.query(
+    `update assistant_conversations set status = 'CLOSED', closed_at = statement_timestamp(), close_reason = 'HUMAN_SUPPORT'
+      where id = $1 and organization_id = $2 and owner_person_id = $3 and status = 'ACTIVE' and origin = 'USER'`,
+    [input.conversationId, input.organizationId, input.ownerPersonId],
+  )
+  return result.rowCount === 1
 }
 
 const inOwnerTransaction = transactionRunner("assistant_conversation_lock")
@@ -159,16 +175,31 @@ export type MessageInput = {
   toolCalls?: unknown
   /** Chave idempotente do cliente: a mesma chave na mesma conversa nunca gera duas mensagens. */
   clientMessageId?: string | null
+  /** Sinais da resposta (`assistant/domain/reply-signals.ts`). Mensagem da INIA no chat livre sem eles = lista vazia. */
+  signals?: readonly SupportSignal[]
 }
 
-/** Grava a mensagem e atualiza a última atividade. Com `clientMessageId` repetido devolve a mensagem existente. */
+/**
+ * Grava a mensagem e atualiza a última atividade. Com `clientMessageId` repetido devolve a mensagem existente. Mensagem da INIA numa
+ * conversa do CHAT LIVRE (`origin = USER`) ganha a linha de sinais na MESMA instrução (migration 181) — toda resposta depois da
+ * migration tem a linha, inclusive com lista vazia; sessão de feedback e recado não ganham.
+ */
 export async function appendConversationMessage(db: Queryable, input: MessageInput): Promise<{ id: string; duplicate: boolean }> {
+  const signals = SUPPORT_SIGNALS.filter((signal) => (input.signals ?? []).includes(signal))
   const inserted = await db.query<{ id: string }>(
-    `insert into assistant_interactions (organization_id, operator_id, conversation_id, channel, role, content, agent_id, tool_calls, occurred_at, client_message_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     on conflict (conversation_id, client_message_id) where client_message_id is not null do nothing
-     returning id`,
-    [input.organizationId, input.ownerPersonId, input.conversationId, input.channel, input.role, input.content, input.agentId ?? null, input.toolCalls ? JSON.stringify(input.toolCalls) : null, input.occurredAt, input.clientMessageId ?? null],
+    `with inserted as (
+       insert into assistant_interactions (organization_id, operator_id, conversation_id, channel, role, content, agent_id, tool_calls, occurred_at, client_message_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       on conflict (conversation_id, client_message_id) where client_message_id is not null do nothing
+       returning id
+     ), reply_signals as (
+       insert into assistant_reply_signals (interaction_id, organization_id, person_id, signals, signal_version)
+       select inserted.id, $1, $2, $11::text[], $12 from inserted
+         join assistant_conversations c on c.id = $3 and c.origin = 'USER'
+        where $5::text = 'assistant'
+     )
+     select id from inserted`,
+    [input.organizationId, input.ownerPersonId, input.conversationId, input.channel, input.role, input.content, input.agentId ?? null, input.toolCalls ? JSON.stringify(input.toolCalls) : null, input.occurredAt, input.clientMessageId ?? null, signals, SUPPORT_SIGNALS_VERSION],
   )
   const id = inserted.rows[0]?.id
   if (!id) {
@@ -180,6 +211,22 @@ export async function appendConversationMessage(db: Queryable, input: MessageInp
   // A resposta guarda quais versões das bases a consulta deste turno usou (PEN-008).
   if (input.role === "assistant") await recordKnowledgeUsage(db, { sourceKind: "CONVERSATION", sourceId: id })
   return { id, duplicate: false }
+}
+
+/**
+ * Sinal `NO_REPLY` na MENSAGEM DO OPERADOR cujo turno terminou em erro (não por cancelamento): a pergunta já estava gravada e nenhuma
+ * resposta veio. Só no chat livre da própria pessoa. `true` = gravado agora (a sugestão de apoio pode ser registrada).
+ */
+export async function markConversationNoReply(db: Queryable, scope: ConversationScope, questionId: string): Promise<boolean> {
+  const result = await db.query(
+    `insert into assistant_reply_signals (interaction_id, organization_id, person_id, signals, signal_version)
+     select i.id, c.organization_id, c.owner_person_id, array['NO_REPLY']::text[], $4
+       from assistant_interactions i join assistant_conversations c on c.id = i.conversation_id
+      where i.id = $1 and i.role = 'user' and c.organization_id = $2 and c.owner_person_id = $3 and c.origin = 'USER'
+     on conflict (interaction_id) do nothing`,
+    [questionId, scope.organizationId, scope.ownerPersonId, SUPPORT_SIGNALS_VERSION],
+  )
+  return (result.rowCount ?? 0) > 0
 }
 
 type Participant = { agentId: string; agentVersionId: string | null; orchestratorId: string | null; orchestratorVersionId: string | null; role: "ORCHESTRATOR_AGENT" | "SPECIALIST"; outcome: "EXECUTED" | "BLOCKED_INACTIVE" | "BLOCKED_UNAUTHORIZED" }
@@ -247,8 +294,12 @@ export type ConversationMessage = {
   /** Onde esse esclarecimento foi feito, quando não é o chat de quem atende (ex.: a consulta de processo de quem lidera, com o
    * Orquestrador do Grupo), cru — uso interno do servidor para continuar o fluxo; nunca enviado à tela. */
   clarificationScope: unknown | null
+  /** Sinais gravados com a mensagem (migration 181); `null` = sem linha (anterior à migration, ou mensagem sem sinal calculado). */
+  signals: SupportSignal[] | null
 }
-type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agent_id: string | null; occurred_at: Date; seq: string; client_message_id: string | null; tool_calls?: unknown }
+type MessageRow = { id: string; channel: "chat" | "voice"; role: "user" | "assistant"; content: string; agent_id: string | null; occurred_at: Date; seq: string; client_message_id: string | null; tool_calls?: unknown; signals?: string[] | null }
+
+const knownSignals = (raw: string[] | null | undefined): SupportSignal[] | null => (raw ? SUPPORT_SIGNALS.filter((signal) => raw.includes(signal)) : null)
 
 /** Cartões gravados em `tool_calls` (entradas com `analytics`), na ordem em que as ferramentas rodaram. */
 export function analyticsCardsOf(toolCalls: unknown): unknown[] {
@@ -280,7 +331,7 @@ export const messageOriginOf = (role: "user" | "assistant", clientMessageId: str
 const toMessage = (row: MessageRow): ConversationMessage => {
   const occurredAt = new Date(row.occurred_at).toISOString()
   const origin = messageOriginOf(row.role, row.client_message_id)
-  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin, analytics: row.role === "assistant" ? analyticsCardsOf(row.tool_calls) : [], clarification: row.role === "assistant" ? clarificationPayloadOf(row.tool_calls) : null, clarificationScope: row.role === "assistant" ? clarificationScopeOf(row.tool_calls) : null }
+  return { id: row.id, channel: row.channel, role: row.role, content: row.content, agentId: row.agent_id, occurredAt, cursor: encodeCursor({ occurredAt, seq: String(row.seq) }), origin, analytics: row.role === "assistant" ? analyticsCardsOf(row.tool_calls) : [], clarification: row.role === "assistant" ? clarificationPayloadOf(row.tool_calls) : null, clarificationScope: row.role === "assistant" ? clarificationScopeOf(row.tool_calls) : null, signals: knownSignals(row.signals) }
 }
 
 /**
@@ -309,9 +360,10 @@ export async function loadConversationMessages(
     where += ` and exists (select 1 from assistant_conversations c where c.id = $2 and c.organization_id = $1 and c.owner_person_id = $${params.length})`
   }
   const result = await db.query<MessageRow>(
-    `select id, channel, role, content, agent_id, occurred_at, seq::text seq, client_message_id, tool_calls from assistant_interactions
-     where organization_id = $1 and conversation_id = $2 ${where}
-     order by occurred_at ${order}, seq ${order} limit $3`,
+    `select i.id, i.channel, i.role, i.content, i.agent_id, i.occurred_at, i.seq::text seq, i.client_message_id, i.tool_calls, s.signals
+       from assistant_interactions i left join assistant_reply_signals s on s.interaction_id = i.id
+     where i.organization_id = $1 and i.conversation_id = $2 ${where}
+     order by i.occurred_at ${order}, i.seq ${order} limit $3`,
     params,
   )
   const hasMore = result.rows.length > input.limit
@@ -433,10 +485,12 @@ export type ConversationStore = {
   contextTurns(input: { organizationId: string; conversationId: string }): Promise<{ role: "user" | "model"; text: string }[]>
   listOwn(scope: ConversationScope, page: number, pageSize: number): Promise<{ items: ConversationSummary[]; total: number }>
   ownSummary(scope: ConversationScope, id: string): Promise<ConversationSummary | null>
-  /** Curtir/descurtir de uma resposta da INIA pela dona da conversa (migration 158); 404 fora disso. */
-  rate(scope: ConversationScope, input: RateConversationMessageInput, now: Date): Promise<AssistantRatingView>
-  /** Avaliações vigentes da dona para estas respostas. */
-  ratingsOf(scope: ConversationScope, interactionIds: readonly string[]): Promise<Map<string, Exclude<AssistantRatingView, null>>>
+  /** Curtir/descurtir de uma resposta da INIA pela dona da conversa (migrations 158 e 181); 404 fora disso. */
+  rate(scope: ConversationScope, input: RateConversationMessageInput, now: Date): Promise<RatingResult>
+  /** Avaliações vigentes da dona para estas respostas, com o motivo da descurtida. */
+  ratingsOf(scope: ConversationScope, interactionIds: readonly string[]): Promise<Map<string, RatingSnapshot>>
+  /** Sinal `NO_REPLY` na pergunta do chat livre cujo turno terminou em erro; `true` = gravado agora. */
+  markNoReply(scope: ConversationScope, questionId: string): Promise<boolean>
 }
 
 export function createPostgresConversationStore(db: Database): ConversationStore {
@@ -456,5 +510,6 @@ export function createPostgresConversationStore(db: Database): ConversationStore
     ownSummary: (scope, id) => loadOwnConversationSummary(db, scope, id),
     rate: (scope, input, now) => rateConversationMessage(db, scope, input, now),
     ratingsOf: (scope, interactionIds) => loadConversationRatings(db, scope, interactionIds),
+    markNoReply: (scope, questionId) => markConversationNoReply(db, scope, questionId),
   }
 }

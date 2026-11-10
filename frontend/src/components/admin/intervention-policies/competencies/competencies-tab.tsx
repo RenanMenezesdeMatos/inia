@@ -5,7 +5,7 @@ import { ArrowLeft, GraduationCap, Plus } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { useIndicatorCatalog } from "@/components/admin/workflows/indicator-select"
 import { useCompetenciesQuery } from "@/queries/admin/use-intervention-policy-queries"
@@ -59,7 +59,7 @@ export function CompetenciesTab() {
       ) : competencies.length === 0 ? (
         <ListEmptyState icon={GraduationCap} title="Nenhuma competência" description="Cadastre competências para ligar diagnósticos sustentados a treinamentos." action={newButton} />
       ) : (
-        <div className="overflow-x-auto">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

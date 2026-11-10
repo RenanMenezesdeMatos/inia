@@ -100,7 +100,7 @@ describe("monitoramento de conversas — dados da liderança só no escopo de qu
   const message = (id: string, content: string, analytics: unknown[], seq: number) => ({ id, channel: "chat", role: "assistant", content, agent_id: null, occurred_at: new Date(`2026-10-14T12:0${seq}:00Z`), seq: String(seq), client_message_id: null, tool_calls: analytics.map((card) => ({ toolName: "leadership_indicator_query", analytics: card })) })
   const db = {
     query: async (sql: string) => {
-      if (sql.includes("seq::text seq, client_message_id, tool_calls")) {
+      if (sql.includes("i.seq::text seq, i.client_message_id, i.tool_calls")) {
         return { rows: [message("m1", "Seus resultados: TMA 310 s.", [ownCard], 1), message("m2", "Grupo A: Ana 92%.", [groupA], 2), message("m3", "Grupo B: Bia 61%, afastada.", [groupA, groupB], 3), message("m4", "Olá!", [], 4)] }
       }
       if (sql.includes("person_profile_preferences") || sql.includes("support_materials")) return { rows: [] }
@@ -150,7 +150,7 @@ describe("monitoramento de conversas — trilha do esclarecimento pelas bases (a
   const accessQueries: unknown[][] = []
   const db = {
     query: async (sql: string, params: unknown[] = []) => {
-      if (sql.includes("seq::text seq, client_message_id, tool_calls")) {
+      if (sql.includes("i.seq::text seq, i.client_message_id, i.tool_calls")) {
         return { rows: [row("u1", "user", "Quais documentos para a troca de titularidade?", 1), row("a1", "assistant", "A troca é de cliente empresa ou residencial?", 2, [entry(base)]), row("a2", "assistant", "Para PJ → PJ, peça o contrato social [1].", 3, [entry(answered)])] }
       }
       // Acesso às bases citadas, para QUEM LÊ: só a base de procedimento comum é alcançável.
@@ -193,10 +193,10 @@ describe("monitoramento de conversas — curtir/descurtir de quem perguntou (mig
   const ratingQueries: unknown[][] = []
   const db = {
     query: async (sql: string, params: unknown[] = []) => {
-      if (sql.includes("seq::text seq, client_message_id, tool_calls")) return { rows: [message("u1", "user", 1), message("a1", "assistant", 2), message("a2", "assistant", 3)] }
+      if (sql.includes("i.seq::text seq, i.client_message_id, i.tool_calls")) return { rows: [message("u1", "user", 1), message("a1", "assistant", 2), message("a2", "assistant", 3)] }
       if (sql.includes("from assistant_interaction_ratings")) {
         ratingQueries.push(params)
-        return { rows: [{ interaction_id: "a1", value: "DOWN" }] }
+        return { rows: [{ interaction_id: "a1", id: "r-a1", value: "DOWN", reason: null, comment: null, still_needs_help: null }] }
       }
       if (sql.includes("person_profile_preferences") || sql.includes("support_materials")) return { rows: [] }
       return { rows: [conversationRow("conv-1", OWNER, "Larissa Monteiro", null)] }

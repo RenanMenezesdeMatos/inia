@@ -79,6 +79,31 @@ describe("métricas internas do processo", () => {
   })
 })
 
+describe("rotas fora da latência (chamada longa do Apoio com Anjo)", () => {
+  it("contam em count e nos erros, mas ficam fora de inFlight, das médias e das amostras", async () => {
+    const metrics = metricsWith({ excludeFromLatency: ["/api/v1/human-support/me/state"] })
+    const app = express()
+    app.use(metrics.middleware)
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    app.get("/api/v1/human-support/me/state", async (_request, response) => {
+      await held
+      response.json({})
+    })
+    app.get("/api/v1/outra", (_request, response) => response.status(500).json({}))
+    const pending = request(app).get("/api/v1/human-support/me/state?wait=20")
+    const waiting = pending.then((value) => value)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect((metrics.snapshot() as { http: { inFlight: number } }).http.inFlight).toBe(0)
+    release()
+    await waiting
+    await request(app).get("/api/v1/outra")
+    const routes = Object.fromEntries((metrics.snapshot() as { http: { routes: { route: string }[] } }).http.routes.map((route) => [route.route, route]))
+    expect(routes["GET /api/v1/human-support/me/state"]).toMatchObject({ count: 1, clientErrors: 0, meanMs: null, p95Ms: null, maxMs: null, sampled: 0, latencyExcluded: true })
+    expect(routes["GET /api/v1/outra"]).toMatchObject({ count: 1, serverErrors: 1, sampled: 1 })
+  })
+})
+
 describe("atraso do event loop", () => {
   it("desconta o intervalo de amostragem (processo parado ≈ 0) e mostra o bloqueio de verdade", async () => {
     const metrics = metricsWith()

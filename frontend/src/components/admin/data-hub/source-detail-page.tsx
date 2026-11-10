@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useCreatePushTokenMutation, useDataSourceQuery, useDeleteSourceMutation, useRevokePushTokenMutation, useRotatePushTokenMutation, useRotateSecretsMutation, useSetSourceStatusMutation, useSyncFeedMutation, useTestConnectionMutation, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
@@ -204,7 +204,7 @@ function PushTokensCard({ source }: { source: SourceDetail }) {
         {source.tokens.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum token ainda.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -402,7 +402,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
           {source.feeds.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sem feeds, sem qualidade a reportar.</p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -2,12 +2,12 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Check, ChevronsUpDown, FileBarChart2, FlaskConical, Lightbulb, Settings2, Stethoscope, UserRound, type LucideIcon } from "lucide-react"
+import { Check, ChevronsUpDown, FileBarChart2, FlaskConical, HeartHandshake, Lightbulb, Settings2, Stethoscope, UserRound, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-type Area = { key: "profile" | "admin" | "qa" | "diagnostics" | "best-practices" | "reports"; label: string; href: string; icon: LucideIcon; description: string }
+type Area = { key: "profile" | "admin" | "anjo" | "qa" | "diagnostics" | "best-practices" | "reports"; label: string; href: string; icon: LucideIcon; description: string }
 
 export type AreaSwitcherProps = {
   /** Destino de "Meu perfil" — resolvido a partir da sessão (sempre a pessoa autenticada). */
@@ -22,11 +22,14 @@ export type AreaSwitcherProps = {
   canUseReports?: boolean
   /** Base de boas práticas: público do Diagnóstico ou quem administra a configuração (capability do /auth/me). */
   canViewBestPractices?: boolean
+  /** Área do Anjo (Apoio com Anjo): papel Anjo em algum escopo (capability do /auth/me). */
+  canAttendHumanSupport?: boolean
 }
 
 /** Área atual pela rota. Perfis de outras pessoas e materiais de apoio pertencem à área de perfis. */
 export function currentAreaOf(pathname: string, profileHref: string): { key: Area["key"]; label: string } {
   if (pathname.startsWith("/admin")) return { key: "admin", label: "Administração" }
+  if (pathname === "/apoio" || pathname.startsWith("/apoio/")) return { key: "anjo", label: "Área do Anjo" }
   if (pathname.startsWith("/qa-lab")) return { key: "qa", label: "QA Lab" }
   if (pathname.startsWith("/diagnostics")) return { key: "diagnostics", label: "Diagnóstico" }
   if (pathname.startsWith("/best-practices")) return { key: "best-practices", label: "Boas práticas" }
@@ -38,11 +41,12 @@ export function currentAreaOf(pathname: string, profileHref: string): { key: Are
 }
 
 /** O que o seletor oferece — só pelas capabilities já calculadas pelo backend (nunca por cargo). */
-export function areasFor({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports = false, canViewBestPractices = false }: AreaSwitcherProps): { areas: Area[]; tools: Area[] } {
+export function areasFor({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports = false, canViewBestPractices = false, canAttendHumanSupport = false }: AreaSwitcherProps): { areas: Area[]; tools: Area[] } {
   return {
     areas: [
       { key: "profile", label: "Meu perfil", href: profileHref, icon: UserRound, description: "Acompanhamento, indicadores e estrutura" },
       ...(canAccessAdministration ? [{ key: "admin" as const, label: "Administração", href: "/admin", icon: Settings2, description: "Configuração da operação e acessos" }] : []),
+      ...(canAttendHumanSupport ? [{ key: "anjo" as const, label: "Área do Anjo", href: "/apoio", icon: HeartHandshake, description: "Atender pedidos de apoio dos operadores" }] : []),
     ],
     tools: [
       ...(canReviewFeedback ? [{ key: "qa" as const, label: "QA Lab", href: "/qa-lab/feedbacks", icon: FlaskConical, description: "Avaliação de feedbacks" }] : []),
@@ -57,10 +61,10 @@ export function areasFor({ profileHref, canAccessAdministration, canReviewFeedba
  * Seletor de ÁREA (substitui os links fixos "Operador/Supervisor/Diagnóstico"): Meu perfil ⇄ Administração, mais as
  * ferramentas que a conta já podia abrir. Só mostra o que as capabilities permitem; nada aqui concede acesso.
  */
-export function AreaSwitcher({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports = false, canViewBestPractices = false }: AreaSwitcherProps) {
+export function AreaSwitcher({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports = false, canViewBestPractices = false, canAttendHumanSupport = false }: AreaSwitcherProps) {
   const pathname = usePathname() ?? ""
   const current = currentAreaOf(pathname, profileHref)
-  const { areas, tools } = areasFor({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports, canViewBestPractices })
+  const { areas, tools } = areasFor({ profileHref, canAccessAdministration, canReviewFeedback, canViewDiagnostics, canUseReports, canViewBestPractices, canAttendHumanSupport })
   const CurrentIcon = [...areas, ...tools].find((area) => area.key === current.key)?.icon ?? UserRound
 
   const item = (area: Area) => {

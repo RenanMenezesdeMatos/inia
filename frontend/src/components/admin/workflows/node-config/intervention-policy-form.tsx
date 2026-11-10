@@ -20,6 +20,7 @@ import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { ESCALATION_ROLE_LABELS, RESPONSIBLE_ROLE_LABELS } from "@/schemas/admin/intervention-policy.schema"
 import { findAncestorNodeIds, INTERVENTION_POLICY_MODE_LABELS, NODE_TYPE_LABELS, type FlowGraph, type FlowNode } from "@/schemas/admin/workflow-graph.schema"
 import { simulatePolicy } from "@/services/admin/intervention-policy-service"
+import { DatePicker } from "@/components/ui/date-picker"
 
 type PolicyNode = Extract<FlowNode, { type: "intervention_policy" }>
 
@@ -186,7 +187,7 @@ function PolicySimulationPanel({ policyId, mode }: { policyId: string; mode: Pol
           </div>
           <div className="space-y-1">
             <Label htmlFor="simulation-date">Período analisado até</Label>
-            <Input id="simulation-date" type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
+            <DatePicker id="simulation-date" value={asOf} clearable placeholder="Agora" onChange={setAsOf} />
             <p className="text-xs text-muted-foreground">Vazio = agora. As janelas da política terminam nesta data.</p>
           </div>
         </div>

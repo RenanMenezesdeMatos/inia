@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { formatMoney, normalizeDecimalInput } from "@/lib/admin/ai-format"
 import {
@@ -83,7 +83,7 @@ export function BudgetsTab() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

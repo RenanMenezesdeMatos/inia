@@ -93,6 +93,7 @@ export const WIKI_SECTIONS: WikiSection[] = [
       { href: "/wiki/acompanhamento", title: "Acompanhamento e Ciência", shortTitle: "Acompanhamento", description: "Conteúdo entregue para leitura: feedbacks, reconhecimentos, orientações, resultados de Workflow — e a confirmação formal de ciência." },
       { href: "/wiki/pendencias", title: "Pendências e Revisão humana", shortTitle: "Pendências", description: "O que exige uma decisão sua: aprovar, reprovar ou escalar uma revisão — e por que ler não é decidir." },
       { href: "/wiki/notificacoes", title: "Notificações (sino)", shortTitle: "Notificações", description: "Revisão aguardando decisão, novo acompanhamento e escalonamento — algo novo aconteceu." },
+      { href: "/wiki/apoio-com-anjo", title: "Apoio com Anjo", description: "Quando a INIA não resolve: descurtida com motivo, pedido de ajuda a uma pessoa da equipe de apoio, fila, sala de apoio, área do Anjo e painel." },
     ],
   },
   {

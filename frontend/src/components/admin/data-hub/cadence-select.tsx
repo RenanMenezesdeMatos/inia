@@ -13,6 +13,7 @@ import { formatShortDateTime } from "@/lib/format/date"
 import { useCadencePreviewQuery } from "@/queries/admin/use-data-hub-queries"
 import { MAX_CALENDAR_TIMES, MAX_EVERY_N_DAYS, MIN_SYNC_INTERVAL_MINUTES, cadenceLabel, cadenceProblem, cadenceSaveProblem, type Cadence } from "@/schemas/admin/data-hub-cadence.schema"
 import { WEEKDAY_LABELS, WEEKDAY_ORDER, WEEKDAY_SHORT_LABELS, type Weekday } from "@/schemas/admin/workflow.schema"
+import { DatePicker } from "@/components/ui/date-picker"
 
 const PRESET_INTERVALS = [
   { minutes: 15, label: "A cada 15 min" },
@@ -167,7 +168,7 @@ function EveryNDaysFields({ id, cadence, onChange, disabled }: { id: string; cad
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={`${id}-start`}>A partir de</Label>
-        <Input id={`${id}-start`} type="date" value={frequency.startDate} className="w-40" disabled={disabled} onChange={(event) => onChange({ ...cadence, frequency: { ...frequency, startDate: event.target.value } })} />
+        <DatePicker id={`${id}-start`} value={frequency.startDate} disabled={disabled} onChange={(startDate) => onChange({ ...cadence, frequency: { ...frequency, startDate } })} />
       </div>
     </div>
   )

@@ -6,7 +6,7 @@ import { loadAvatarPresenter, personAvatarLoader } from "../../profile-preferenc
 import { DEFAULT_ORGANIZATION_TIMEZONE } from "../../workflows/application/organization-timezone.js"
 import { decodeCursor } from "../domain/assistant-conversation.js"
 import { CONVERSATION_SUMMARY_SELECT, loadConversationMessages, toSummary, type ConversationSummary, type ConversationSummaryRow } from "./assistant-conversations.js"
-import { loadConversationRatings } from "./assistant-interaction-ratings.js"
+import { loadConversationRatings, type RatingSnapshot } from "./assistant-interaction-ratings.js"
 import { loadAssistantSupportMaterials } from "./assistant-support-materials.js"
 import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
 import { parseClarificationState } from "../../knowledge-clarification/domain/clarification-state.js"
@@ -241,10 +241,11 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
   const documentIds = [...new Set(clarifications.flatMap((item) => referencedDocumentIds(item.state)))]
   const readable = documentIds.length > 0 ? new Set((await resolveAccessibleKnowledgeMaterials(db, { organizationId: viewer.organizationId, viewer: { personId: viewer.personId }, materialIds: documentIds })).keys()) : new Set<string>()
   const clarificationViews = new Map(clarifications.map((item) => [item.id, toClarificationView(item.state, readable)]))
-  // Curtir/descurtir da DONA da conversa em cada resposta da INIA (migration 158) — só leitura; falhar nunca impede a conversa.
+  // Curtir/descurtir da DONA da conversa em cada resposta da INIA (migration 158) — só leitura, só o valor (o motivo da descurtida
+  // fica com a dona); falhar nunca impede a conversa.
   const ratings = await loadConversationRatings(db, { organizationId: viewer.organizationId, ownerPersonId: conversation.owner.personId }, result.messages.filter((m) => m.role === "assistant").map((m) => m.id)).catch((error: unknown) => {
     console.error(JSON.stringify({ event: "monitored_ratings_load_failed", message: (error as Error)?.message ?? String(error) }))
-    return new Map<string, "up" | "down">()
+    return new Map<string, RatingSnapshot>()
   })
   // Conferência da resposta (PEN-017): o que foi barrado ou detectado nesta conversa, com o texto original, para quem audita. Falhar aqui nunca impede a leitura.
   const assistantIds = result.messages.filter((m) => m.role === "assistant").map((m) => m.id)
@@ -259,12 +260,14 @@ export async function loadMonitoredMessages(db: Queryable, viewer: MonitoringVie
     conversation,
     // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela — só a PROCEDÊNCIA de uma
     // confirmação feita na sessão de feedback (`PRODUCT_APPLICABILITY_V1`): o que a pessoa respondeu ali não é evidência da gravação.
-    messages: result.messages.map(({ clarificationScope, ...message }) => {
+    // `signals` (sinais da resposta, Apoio com Anjo) também não: a leitura da gestão mostra a conversa como sempre.
+    messages: result.messages.map(({ clarificationScope, signals, ...message }) => {
+      void signals
       const confirmedInChat = parseFeedbackSessionClarificationScope(clarificationScope)?.provenance === "CHAT_CONFIRMATION"
       const recado = recadoHidden && message.role === "assistant"
       const hidden = recado || message.analytics.some((card) => !visible.has(card))
       const responseCheck = !hidden && responseChecks.get(message.id)
-      return { ...message, ...(responseCheck ? { responseCheck } : {}), ...(hidden ? { content: recado ? OUT_OF_READER_SCOPE_RECADO_NOTICE : OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
+      return { ...message, ...(responseCheck ? { responseCheck } : {}), ...(hidden ? { content: recado ? OUT_OF_READER_SCOPE_RECADO_NOTICE : OUT_OF_READER_SCOPE_NOTICE, analytics: [], outOfReaderScope: true } : {}), ...(message.role === "assistant" ? { rating: ratings.get(message.id)?.rating ?? null } : {}), supportMaterials: materials.get(message.id) ?? [], clarification: hidden ? null : (clarificationViews.get(message.id) ?? null), ...(confirmedInChat && !hidden ? { clarificationProvenance: "CHAT_CONFIRMATION" as const } : {}) }
     }),
     hasMore: result.hasMore,
   }

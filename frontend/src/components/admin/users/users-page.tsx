@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -57,6 +57,7 @@ import { SubjectDataExportButton } from "./subject-data-export-button"
 import { PersonBelongsTo } from "./person-belongs-to"
 import { PersonSourceIdentity } from "./person-source-link"
 import { SourceManagedNotice, sourceManagedText } from "./source-managed-notice"
+import { DatePicker } from "@/components/ui/date-picker"
 
 
 /**
@@ -244,11 +245,11 @@ function EmploymentStatusSection({ userId, capitalManagedBy }: { userId: string;
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${fieldId}-from`}>Início (opcional)</Label>
-              <Input id={`${fieldId}-from`} type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} />
+              <DatePicker id={`${fieldId}-from`} value={effectiveFrom} max={effectiveTo || undefined} clearable onChange={setEffectiveFrom} className="sm:w-full" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${fieldId}-to`}>Fim (opcional)</Label>
-              <Input id={`${fieldId}-to`} type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} />
+              <DatePicker id={`${fieldId}-to`} value={effectiveTo} min={effectiveFrom || undefined} clearable onChange={setEffectiveTo} className="sm:w-full" />
             </div>
           </div>
           <div className="flex justify-end">
@@ -351,7 +352,7 @@ function UserCard({ user, onEdit }: { user: UserAccount; onEdit: (user: UserAcco
 
 function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: UserAccount) => void }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

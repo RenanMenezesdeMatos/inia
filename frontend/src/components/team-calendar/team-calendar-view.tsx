@@ -23,6 +23,7 @@ import { useCancelScheduleExceptionMutation, useClassificationHistoryQuery, useC
 import { AUDIT_ACTION_LABELS, type CalendarAttentionKind, type JustifiedAbsenceReason, type ResolvedWorkdayState, type TeamCalendarDay, type TeamCalendarListParams, type TeamCalendarPerson, type TeamCalendarView as TeamCalendarData, type WorkdayClassificationKind } from "@/schemas/team-calendar/team-calendar.schema"
 
 import { describeRange, rangeFor, shiftRange, WEEKDAY_SHORT, weekdayOf, type CalendarMode } from "./calendar-dates"
+import { SectionLabel } from "@/components/ui/surface"
 
 export type TeamCalendarState = { calendarDate: string | null; calendarPerson: string | null; calendarAnchor: string | null }
 
@@ -70,7 +71,7 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
     <section className="w-full space-y-4" data-testid="team-calendar">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="font-heading text-sm text-muted-foreground">Provisionamento e correção operacional</p>
+          <SectionLabel as="p" className="mb-1">Provisionamento e correção operacional</SectionLabel>
           <h2 className="text-2xl font-semibold tracking-tight">Calendário da equipe</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Planejado (escala, folga, day off, banco de horas, atestado, situação funcional) × observado (produção real). Registre antes da data o que sai da produção; depois que os dados fecham, um dia sem produção vira pendência para você classificar. Ausência de dado não é ausência do colaborador: antes do prazo das fontes o dia fica &quot;aguardando dados&quot;.</p>
         </div>

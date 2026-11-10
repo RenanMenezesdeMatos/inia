@@ -1,7 +1,7 @@
 "use client"
 
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import type { QueryTableCard as Card } from "@/schemas/leadership/leadership.schema"
 
@@ -27,7 +27,7 @@ export function QueryTableCard({ card }: { card: Card }) {
       {card.rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma linha para os filtros pedidos.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className={TABLE_FRAME}>
           <Table className="text-xs">
             <TableHeader>
               <TableRow>

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { startUsageAction } from "@/lib/usage/usage-provider"
 import { cn } from "@/lib/utils"
@@ -187,7 +187,7 @@ export type Column<T> = { key: string; header: ReactNode; cell: (row: T) => Reac
 export function DataTable<T>({ columns, rows, rowKey, empty = "Nenhum registro no recorte.", caption }: { columns: Column<T>[]; rows: readonly T[]; rowKey: (row: T, index: number) => string; empty?: string; caption?: string }) {
   if (rows.length === 0) return <EmptyNote>{empty}</EmptyNote>
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         {caption ? <TableCaption className="sr-only">{caption}</TableCaption> : null}
         <TableHeader>

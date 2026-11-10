@@ -28,6 +28,7 @@ import ConfiguracaoIndicadoresPage from "./indicadores/configuracao/page"
 import FollowUpPage from "./acompanhamento/page"
 import PendingPage from "./pendencias/page"
 import NotificationsPage from "./notificacoes/page"
+import HumanSupportWikiPage from "./apoio-com-anjo/page"
 import WorkflowEngineOverviewPage from "./workflows/page"
 import WorkflowExamplesPage from "./workflows/exemplos/page"
 import CreateWorkflowPage from "./workflows/criacao/page"
@@ -98,6 +99,7 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/indicadores/configuracao": ConfiguracaoIndicadoresPage,
   "/wiki/acompanhamento": FollowUpPage,
   "/wiki/pendencias": PendingPage,
+  "/wiki/apoio-com-anjo": HumanSupportWikiPage,
   "/wiki/notificacoes": NotificationsPage,
   "/wiki/workflows": WorkflowEngineOverviewPage,
   "/wiki/workflows/exemplos": WorkflowExamplesPage,

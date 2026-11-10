@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -86,7 +86,7 @@ function RowActions({ item, onOpen }: { item: ArgumentScript; onOpen: (item: Arg
 
 function ArgumentScriptsTable({ items, onOpen }: { items: ArgumentScript[]; onOpen: (item: ArgumentScript) => void }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

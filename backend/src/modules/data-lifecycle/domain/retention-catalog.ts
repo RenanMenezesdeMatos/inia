@@ -46,9 +46,19 @@ export const RETENTION_CATALOG: readonly RetentionTarget[] = [
   { table: "agent_runs", timeColumn: "created_at" },
   { table: "alerts", timeColumn: "created_at", eligible: `t.status = 'RESOLVED'` },
   { table: "audit_logs", timeColumn: "created_at" },
-  { table: "assistant_interactions", timeColumn: "occurred_at", children: ["assistant_interaction_support_materials"] },
+  { table: "assistant_interactions", timeColumn: "occurred_at", children: ["assistant_interaction_support_materials", "assistant_reply_signals"] },
   { table: "workflow_output_speech_audio", timeColumn: "created_at" },
   { table: "feedback_application_speech_audio", timeColumn: "created_at" },
+  // Apoio com Anjo (migration 182): pedidos só em estado final, levando a conversa, os atendimentos e os eventos (classificações e
+  // avaliações descem em cascata pelos atendimentos) e as marcas de entregue/lido (184); tentativas e sugestões; eventos de presença dos Anjos.
+  {
+    table: "human_support_requests",
+    timeColumn: "created_at",
+    eligible: `t.status in ('CLOSED', 'CANCELLED', 'EXPIRED', 'ABANDONED')`,
+    children: ["human_support_messages", "human_support_attendances", "human_support_request_events", "human_support_conversation_marks"],
+  },
+  { table: "human_support_entry_events", timeColumn: "occurred_at" },
+  { table: "human_support_presence_events", timeColumn: "occurred_at" },
 ]
 
 export function retentionTargetOf(table: string): RetentionTarget | null {

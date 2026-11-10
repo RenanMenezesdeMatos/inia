@@ -14,6 +14,7 @@ import { formatCivilDate, formatDateTime } from "@/lib/format/date"
 import { useInterventionCommand } from "@/queries/interventions/use-intervention-queries"
 import { EVENT_LABELS, LEARNING_RESULT_LABELS, OPERATIONAL_RESULT_LABELS, type InterventionDetail, type InterventionItem } from "@/schemas/interventions/intervention.schema"
 import { addInterventionItem, completeIntervention, updateInterventionItem } from "@/services/interventions/intervention-service"
+import { DatePicker } from "@/components/ui/date-picker"
 
 const KIND_LABELS: Record<InterventionItem["kind"], string> = { TASK: "Tarefa", CHECKPOINT: "Checkpoint", ACTIVITY: "Atividade" }
 
@@ -92,7 +93,7 @@ function AddItem({ detail }: { detail: InterventionDetail }) {
         </Select>
         <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Título" aria-label="Título" />
         <div className="grid grid-cols-2 gap-2">
-          <Input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} aria-label="Prazo" />
+          <DatePicker value={dueAt} onChange={setDueAt} aria-label="Prazo" placeholder="Prazo" className="sm:w-full" />
           <Select value={owner} onValueChange={(value) => setOwner(value as "COLLABORATOR" | "RESPONSIBLE")}>
             <SelectTrigger className="w-full" aria-label="Responsável pelo item"><SelectValue /></SelectTrigger>
             <SelectContent>

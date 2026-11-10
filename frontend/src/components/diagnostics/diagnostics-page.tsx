@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Activity, BookOpen, ChevronRight, Gauge, Info, ListChecks, Users } from "lucide-react"
+import { Stethoscope, Activity, BookOpen, ChevronRight, Gauge, Info, ListChecks, Users } from "lucide-react"
 
 import { ListDateRangeFilter, ListSelectFilter, ListToolbar } from "@/components/admin/shared/list/list-filters"
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
@@ -30,6 +30,7 @@ import { IndicatorInvestigationDialog } from "./indicator-investigation-dialog"
 import { MaterialsTab } from "./materials-tab"
 import { CONCLUSION_LABELS, percent, shortDate } from "./memory-labels"
 import { ProcessesTab } from "./processes-tab"
+import { PageHeader } from "@/components/ui/surface"
 
 const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 const defaultPeriod = (): DateRangeFilter => {
@@ -75,10 +76,7 @@ export function DiagnosticsPage() {
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Diagnóstico</h1>
-        <p className="text-sm text-muted-foreground">O que as análises de chamadas e de indicadores registraram na sua estrutura: onde estão os desvios e os acertos, com as evidências que os sustentam.</p>
-      </header>
+      <PageHeader icon={Stethoscope} title="Diagnóstico" description="O que as análises de chamadas e de indicadores registraram na sua estrutura: onde estão os desvios e os acertos, com as evidências que os sustentam." />
 
       <ListToolbar
         search={<p className="text-xs text-muted-foreground">Mostra só pessoas no seu escopo. Período pela data da chamada.</p>}

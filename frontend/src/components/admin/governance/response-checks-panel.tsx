@@ -4,7 +4,7 @@ import { useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatShortDateTime } from "@/lib/format/date"
 import { useResponseCheckSummaryQuery, useResponseChecksQuery } from "@/queries/admin/use-governance-queries"
 import { RESPONSE_CHECK_SURFACE_LABELS, type ResponseCheckEvent, type ResponseCheckSummary } from "@/schemas/admin/governance.schema"
@@ -64,7 +64,7 @@ export function ResponseChecksPanel() {
       {list.isError ? <p className="text-sm text-muted-foreground">{list.error.message}</p> : null}
       {list.data && list.data.items.length === 0 ? <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nenhuma resposta bloqueada, detectada ou sem conferência.</p> : null}
       {list.data && list.data.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-md border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

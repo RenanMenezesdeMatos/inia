@@ -25,7 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -589,7 +589,7 @@ function IndicatorCard({ indicator, onManage }: { indicator: IndicatorWithRules;
 
 function IndicatorsTable({ indicators, onManage }: { indicators: IndicatorWithRules[]; onManage: (indicator: IndicatorWithRules) => void }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

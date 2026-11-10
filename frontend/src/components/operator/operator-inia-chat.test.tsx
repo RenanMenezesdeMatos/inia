@@ -13,6 +13,8 @@ import type { OperatorIndicatorsData, OperatorProfile } from "@/schemas/operator
 import { readVoiceMuted, resetVoicePreferenceForTests, setVoiceMuted } from "@/lib/avatar/voice-preference"
 import { dateSeparatorLabel } from "@/lib/realtime/conversation-format"
 import { OperatorIniaChat } from "./operator-inia-chat"
+import { HumanSupportStateValueProvider } from "@/queries/human-support/use-human-support-state"
+import type { OperatorView } from "@/schemas/human-support/state.schema"
 
 // O chat com o transporte de voz e o avatar trocados por dublês: o que importa aqui é a fronteira
 // chat ↔ avatar (driver estável, nada de fala/nível por props) e a UX de barge-in/despedida.
@@ -128,16 +130,32 @@ vi.mock("@/lib/realtime/gemini-text-client", () => {
       super("closed")
     }
   }
+  class FeedbackConversationChangedError extends Error {}
   return {
     ConversationClosedError,
+    FeedbackConversationChangedError,
     fetchCurrentConversation: vi.fn(async () => ({ conversation: null, inactivityHours: 24 })),
     fetchConversationMessages: vi.fn(),
     fetchOwnConversations: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 20 })),
     fetchTextReply: vi.fn(async () => ({ text: "", supportMaterials: [], interactionId: null, conversationId: "c", persisted: true })),
     startNewConversation: vi.fn(async () => {}),
-    saveMessageRating: vi.fn(async () => {}),
+    saveMessageRating: vi.fn(async () => ({ interactionId: "x", rating: null, ratingId: null, details: null })),
   }
 })
+
+const supportService = vi.hoisted(() => ({
+  signalSupportTyping: vi.fn(async () => undefined),
+  acknowledgeSupportMessages: vi.fn(async () => ({ deliveredSeq: 0, readSeq: 0 })),
+  sendSupportMessage: vi.fn(async (_requestId: string, input: { clientMessageId: string; body: string }) => ({ id: "m-op", seq: 3, authorKind: "OPERATOR" as const, authorName: "Larissa", body: input.body, systemCode: null, occurredAt: new Date().toISOString() })),
+  fetchSupportMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
+  cancelSupportRequest: vi.fn(),
+  closeSupportRequestAsOperator: vi.fn(),
+  previewSupportRequest: vi.fn(),
+  createSupportRequest: vi.fn(),
+  evaluateSupportAttendance: vi.fn(),
+  fetchHumanSupportState: vi.fn(),
+}))
+vi.mock("@/services/human-support/human-support-service", () => supportService)
 
 vi.mock("next/dynamic", async () => {
   const React = await import("react")
@@ -255,7 +273,7 @@ describe("OperatorIniaChat — voz e avatar", () => {
     expect(transport.calls).toEqual(["prime", "prime", "connect", "startTurn"])
     const driver = driverOf()
     // No painel: busto ("chat"), de frente, ocupando o lugar do avatar; sem selo de preparação (isso é só da sessão de feedback).
-    expect(lastAvatarProps()).toEqual({ modelUrl: expect.any(String), state: "listening", driver, view: "chat", facing: "forward", statusLabel: null, backdrop: "studio", showStatus: false, attributionPlacement: "top", className: "h-full rounded-xl" })
+    expect(lastAvatarProps()).toEqual({ modelUrl: expect.any(String), state: "listening", driver, view: "chat", facing: "forward", statusLabel: null, backdrop: "studio", showStatus: false, attributionPlacement: "bottom", className: "h-full rounded-xl" })
     expect(driver.state).toBe("listening")
 
     act(() => transport.events.onStateChange?.("thinking"))
@@ -340,6 +358,29 @@ describe("OperatorIniaChat — voz e avatar", () => {
     expect(tile).not.toHaveAttribute("data-speaking")
     // Fora da sessão de feedback o silenciar fica só na barra da chamada (não duplica no campo de mensagem).
     expect(screen.getAllByRole("button", { name: "Ativar a voz da INIA" })).toHaveLength(1)
+  })
+
+  it("o avatar começa compacto e só amplia a pedido: o mesmo avatar, com os mesmos controles e a voz intactos", async () => {
+    const transport = await openVoice()
+    const size = () => screen.getByTestId("inia-call-tile").parentElement!.parentElement!
+    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+    const avatar = screen.getByTestId("avatar-stub")
+    const expand = screen.getByRole("button", { name: "Ampliar a INIA" })
+    expect(expand).toHaveAttribute("aria-expanded", "false")
+    act(() => transport.events.onStateChange?.("speaking"))
+    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+
+    fireEvent.click(expand)
+    expect(size()).toHaveAttribute("data-avatar-size", "expanded")
+    expect(screen.getByRole("button", { name: "Compactar a INIA" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("avatar-stub")).toBe(avatar)
+    expect(screen.getByRole("group", { name: "Controles da chamada com a INIA" })).toBeInTheDocument()
+    expect(screen.getByTestId("inia-call-status")).toHaveTextContent("Falando")
+    expect(transport.calls).not.toContain("close")
+
+    fireEvent.click(screen.getByRole("button", { name: "Compactar a INIA" }))
+    expect(size()).toHaveAttribute("data-avatar-size", "compact")
+    expect(screen.getByTestId("avatar-stub")).toBe(avatar)
   })
 
   it("desmontar no meio da despedida cala a fala do navegador e solta os handlers", async () => {
@@ -1183,18 +1224,19 @@ describe("OperatorIniaChat — curtir/descurtir gravado (migration 158), a tela 
     vi.mocked(textClient.fetchCurrentConversation).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, inactivityHours: 24 })
     vi.mocked(textClient.fetchConversationMessages).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("Qual o prazo?", "user", "c1"), message("Até 5 dias úteis.", "assistant", "c2")], hasMore: false })
     vi.mocked(textClient.fetchTextReply).mockReset()
-    vi.mocked(textClient.saveMessageRating).mockReset().mockResolvedValue()
+    vi.mocked(textClient.saveMessageRating).mockReset().mockResolvedValue({ interactionId: "m-c2", rating: null, ratingId: null, details: null })
     setVoiceMuted(true)
   })
 
-  it("resposta do histórico: cada clique grava na resposta do servidor (clicar de novo retira) e os botões continuam os mesmos", async () => {
+  it("resposta do histórico: cada clique em \"útil\" grava na resposta do servidor (clicar de novo retira); o polegar para baixo só abre o formulário", async () => {
     renderChat()
     expect(await screen.findByText("Até 5 dias úteis.")).toBeInTheDocument()
     const up = screen.getByRole("button", { name: "Resposta útil" })
     fireEvent.click(up)
     fireEvent.click(up)
     fireEvent.click(screen.getByRole("button", { name: "Resposta não foi útil" }))
-    expect(vi.mocked(textClient.saveMessageRating).mock.calls).toEqual([[CONV, "m-c2", "up"], [CONV, "m-c2", undefined], [CONV, "m-c2", "down"]])
+    expect(await screen.findByRole("dialog", { name: "Por que esta resposta não foi útil?" })).toBeInTheDocument()
+    expect(vi.mocked(textClient.saveMessageRating).mock.calls).toEqual([[CONV, "m-c2", "up"], [CONV, "m-c2", undefined]])
     // Só a resposta da INIA tem os botões (a pergunta da pessoa não).
     expect(screen.getAllByRole("button", { name: "Resposta útil" })).toHaveLength(1)
   })
@@ -1247,5 +1289,229 @@ describe("OperatorIniaChat — curtir/descurtir gravado (migration 158), a tela 
     await waitFor(() => expect(transportModule.recordVoiceTurn).toHaveBeenCalled())
     for (const button of screen.getAllByRole("button", { name: "Resposta útil" })) await act(async () => { fireEvent.click(button) })
     expect(vi.mocked(textClient.saveMessageRating).mock.calls.map((call) => call[1])).toEqual(expect.arrayContaining(["int-specialist", "int-spoken"]))
+  })
+})
+
+describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com Anjo, Parte A)", () => {
+  const down = { interactionId: "m-c2", rating: "down" as const, ratingId: "rating-2", details: { reason: "NOT_FOUND" as const, comment: null, stillNeedsHelp: false } }
+  beforeEach(() => {
+    vi.mocked(textClient.fetchCurrentConversation).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, inactivityHours: 24 })
+    vi.mocked(textClient.fetchConversationMessages).mockReset().mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("Qual o prazo?", "user", "c1"), message("Até 5 dias úteis.", "assistant", "c2")], hasMore: false })
+    vi.mocked(textClient.fetchTextReply).mockReset()
+    vi.mocked(textClient.saveMessageRating).mockReset().mockResolvedValue(down)
+    setVoiceMuted(true)
+  })
+  const openForm = async () => {
+    expect(await screen.findByText("Até 5 dias úteis.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Resposta não foi útil" }))
+    return screen.findByRole("dialog", { name: "Por que esta resposta não foi útil?" })
+  }
+
+  it("exige o motivo e a resposta de ajuda; envia tudo numa chamada, espera a confirmação e só então marca a resposta", async () => {
+    renderChat()
+    const dialog = await openForm()
+    const send = within(dialog).getByRole("button", { name: "Enviar" })
+    expect(send).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Não encontrou a informação" }))
+    expect(send).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Não" }))
+    expect(send).toBeEnabled()
+    await act(async () => { fireEvent.click(send) })
+    expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-c2", "down", { reason: "NOT_FOUND", comment: "", stillNeedsHelp: false })
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Resposta não foi útil" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("👎")).toBeInTheDocument()
+  })
+
+  it("\"Outro\" exige comentário; fechar sem enviar não grava nada", async () => {
+    renderChat()
+    const dialog = await openForm()
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Outro" }))
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Sim" }))
+    expect(within(dialog).getByRole("button", { name: "Enviar" })).toBeDisabled()
+    expect(within(dialog).getByText("Obrigatório quando o motivo é “Outro”.")).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText("Conte o que aconteceu"), { target: { value: "ok" } })
+    expect(within(dialog).getByText("Escreva pelo menos 3 caracteres.")).toBeInTheDocument()
+    fireEvent.change(within(dialog).getByLabelText("Conte o que aconteceu"), { target: { value: "O prazo mudou." } })
+    expect(within(dialog).getByRole("button", { name: "Enviar" })).toBeEnabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(textClient.saveMessageRating).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Resposta não foi útil" })).toHaveAttribute("aria-pressed", "false")
+  })
+
+  it("falha ao gravar aparece no formulário, com as respostas mantidas; nada é marcado", async () => {
+    vi.mocked(textClient.saveMessageRating).mockRejectedValue(new Error("Não foi possível registrar agora."))
+    renderChat()
+    const dialog = await openForm()
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Resposta incompleta" }))
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Não" }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Enviar" })) })
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Não foi possível registrar agora.")
+    expect(within(dialog).getByRole("radio", { name: "Resposta incompleta" })).toBeChecked()
+    expect(screen.queryByText("👎")).not.toBeInTheDocument()
+  })
+
+  it("com \"Sim\": sem o apoio ligado, avisa que ainda não está disponível para a equipe", async () => {
+    vi.mocked(textClient.saveMessageRating).mockResolvedValue({ ...down, details: { reason: "NOT_FOUND", comment: null, stillNeedsHelp: true } })
+    renderChat()
+    const dialog = await openForm()
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Não encontrou a informação" }))
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Sim" }))
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Enviar" })) })
+    expect(await within(dialog).findByText("O apoio com Anjo ainda não está disponível para sua equipe.")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "Falar com um Anjo" })).not.toBeInTheDocument()
+  })
+
+  it("descurtida gravada volta ao reabrir: o formulário abre preenchido e \"Retirar avaliação\" grava a retirada", async () => {
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [message("Qual o prazo?", "user", "c1"), { ...message("Até 5 dias úteis.", "assistant", "c2"), rating: "down", ratingId: "rating-2", ratingDetails: { reason: "DID_NOT_ANSWER", comment: "Perguntei outra coisa.", stillNeedsHelp: false } }], hasMore: false })
+    vi.mocked(textClient.saveMessageRating).mockResolvedValue({ interactionId: "m-c2", rating: null, ratingId: null, details: null })
+    renderChat()
+    const dialog = await openForm()
+    expect(within(dialog).getByRole("radio", { name: "Não respondeu o que perguntei" })).toBeChecked()
+    expect(within(dialog).getByLabelText("Comentário (opcional)")).toHaveValue("Perguntei outra coisa.")
+    expect(within(dialog).getByRole("radio", { name: "Não" })).toBeChecked()
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Retirar avaliação" })) })
+    expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-c2", undefined, undefined)
+    await waitFor(() => expect(screen.queryByText("👎")).not.toBeInTheDocument())
+  })
+
+  it("recado de Workflow mantém o polegar de sempre (sem formulário)", async () => {
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [{ ...message("Recado do fechamento.", "assistant", "w1"), origin: "WORKFLOW" }], hasMore: false })
+    renderChat()
+    expect(await screen.findByText("Recado do fechamento.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Resposta não foi útil" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(textClient.saveMessageRating).toHaveBeenCalledWith(CONV, "m-w1", "down")
+  })
+
+  it("pergunta gravada que ficou sem resposta: o balão de erro guarda o sinal NO_REPLY; sinais da resposta gravada também ficam na mensagem", async () => {
+    vi.mocked(textClient.fetchConversationMessages).mockResolvedValue({ conversation: summary(CONV) as never, messages: [], hasMore: false })
+    vi.mocked(textClient.fetchTextReply)
+      .mockImplementationOnce(async (_input, _onChunk, onConversation) => {
+        onConversation?.({ conversationId: CONV, created: false, rotatedFrom: null, userMessageId: "q-1" })
+        throw new Error("Não foi possível obter uma resposta da INIA.")
+      })
+      .mockImplementationOnce(async (_input, onChunk, onConversation) => {
+        onConversation?.({ conversationId: CONV, created: false, rotatedFrom: null, userMessageId: "q-2" })
+        onChunk("Não encontrei isso nas bases.")
+        return { text: "Não encontrei isso nas bases.", supportMaterials: [], interactionId: "a-2", conversationId: CONV, persisted: true, signals: ["KNOWLEDGE_NOT_FOUND"] }
+      })
+    const { container } = renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    for (const text of ["como porto a linha?", "e a multa?"]) {
+      fireEvent.change(composer(), { target: { value: text } })
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    }
+    expect(await screen.findByText("Não encontrei isso nas bases.")).toBeInTheDocument()
+    expect([...container.querySelectorAll("[data-support-signals]")].map((element) => element.getAttribute("data-support-signals"))).toEqual(["NO_REPLY", "KNOWLEDGE_NOT_FOUND"])
+  })
+})
+
+describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
+  const openRequest = {
+    id: "req-1", protocol: "AP-7K2QX9", status: "IN_PROGRESS" as const, endCause: null, origin: "BUTTON" as const, createdAt: new Date().toISOString(), queuedAt: new Date().toISOString(), queueExpiresAt: null,
+    sharedContext: { question: null, answer: null, dislike: null, note: "Fatura de outubro" }, anjo: { name: "Ana", avatarUrl: null, awaitingFirstResponse: false },
+    messages: [{ id: "m1", seq: 1, authorKind: "SYSTEM" as const, authorName: null, body: "Ana (Anjo) recebeu seu pedido. Aguardando a primeira resposta.", systemCode: "ANJO_ASSIGNED", occurredAt: new Date().toISOString() }, { id: "m2", seq: 2, authorKind: "ANJO" as const, authorName: "Ana", body: "Oi! Como posso ajudar?", systemCode: null, occurredAt: new Date().toISOString() }],
+    hasOlder: false, canCancel: false, canClose: true, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null,
+  }
+  const supportState: OperatorView = { enabled: true, availability: null, openRequest, pendingEvaluations: [] }
+  function renderWithSupport(operatorView: OperatorView | null) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <HumanSupportStateValueProvider value={{ operator: operatorView }}>
+            <OperatorIniaChat indicators={indicators} operator={operator}/>
+          </HumanSupportStateValueProvider>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    )
+  }
+  beforeEach(() => {
+    vi.mocked(textClient.fetchCurrentConversation).mockReset().mockResolvedValue({ conversation: null, inactivityHours: 24 })
+    vi.mocked(textClient.fetchTextReply).mockReset()
+    supportService.sendSupportMessage.mockClear()
+    setVoiceMuted(false)
+  })
+
+  it("sem apoio ligado: nem botão nem selo", async () => {
+    renderWithSupport({ enabled: false, availability: null, openRequest: null, pendingEvaluations: [] })
+    await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+    expect(screen.queryByRole("button", { name: /Falar com um Anjo/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("support-status-pill")).not.toBeInTheDocument()
+  })
+
+  it("apoio ligado: nenhum botão fixo; \"Falar com um Anjo\" só aparece abaixo da resposta em que a INIA não encontrou", async () => {
+    setVoiceMuted(true)
+    renderWithSupport({ enabled: true, availability: null, openRequest: null, pendingEvaluations: [] })
+    await waitFor(() => expect(composer()).toBeEnabled())
+    // Decisão de 10/11/2026: o apoio só é oferecido depois de a pessoa tentar com a INIA (resposta com sinal ou descurtida com "Sim").
+    expect(screen.queryByRole("button", { name: /Falar com um Anjo/ })).not.toBeInTheDocument()
+    vi.mocked(textClient.fetchTextReply).mockImplementationOnce(async (_input, onChunk, onConversation) => {
+      onConversation?.({ conversationId: CONV, created: true, rotatedFrom: null, userMessageId: "q-1" })
+      onChunk("Não encontrei isso nas bases.")
+      return { text: "Não encontrei isso nas bases.", supportMaterials: [], interactionId: "a-1", conversationId: CONV, persisted: true, signals: ["KNOWLEDGE_NOT_FOUND"] }
+    })
+    fireEvent.change(composer(), { target: { value: "como porto a linha?" } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    expect(await screen.findByText("Não encontrei isso nas bases.")).toBeInTheDocument()
+    const suggestion = screen.getByTestId("support-suggestion")
+    expect(within(suggestion).getByRole("button", { name: "Falar com um Anjo" })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /Falar com um Anjo/ })).toHaveLength(1)
+  })
+
+  it("fim de um atendimento em andamento: a vista volta à conversa atual (o servidor encerrou a de origem); pedido que sai da fila não recarrega", async () => {
+    setVoiceMuted(true)
+    const tree = (operatorView: OperatorView) => (
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TooltipProvider>
+          <HumanSupportStateValueProvider value={{ operator: operatorView }}>
+            <OperatorIniaChat indicators={indicators} operator={operator}/>
+          </HumanSupportStateValueProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const view = render(tree(supportState))
+    await waitFor(() => expect(textClient.fetchCurrentConversation).toHaveBeenCalledTimes(1))
+    view.rerender(tree({ ...supportState, openRequest: null }))
+    await waitFor(() => expect(textClient.fetchCurrentConversation).toHaveBeenCalledTimes(2))
+
+    const waiting = { ...openRequest, id: "req-2", status: "WAITING" as const, anjo: null, canCancel: true, canClose: false }
+    view.rerender(tree({ ...supportState, openRequest: waiting }))
+    view.rerender(tree({ ...supportState, openRequest: null }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)) })
+    expect(textClient.fetchCurrentConversation).toHaveBeenCalledTimes(2)
+  })
+
+  it("abrir a sala ENCERRA a sessão de voz; a mensagem para o Anjo vai pela sala, nunca pelo envio da INIA nem pela voz", async () => {
+    renderWithSupport(supportState)
+    await waitFor(() => expect(avatarMicButton()).toBeEnabled())
+    fireEvent.click(avatarMicButton())
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Permitir microfone" }))
+    })
+    const transport = doubles.transports.at(-1)!
+    expect(screen.getByTestId("support-status-pill")).toHaveTextContent("Apoio · com Ana")
+    expect(screen.getByTestId("inia-avatar-stage")).not.toHaveClass("hidden")
+    fireEvent.click(screen.getByTestId("support-status-pill"))
+    expect(transport.calls).toContain("disconnect")
+    // Com a sala aberta, o avatar sai de cena só por CSS (continua montado) e volta ao sair da sala.
+    expect(screen.getByTestId("inia-avatar-stage")).toHaveClass("hidden")
+    const room = screen.getByTestId("support-room")
+    expect(within(room).getByText("Oi! Como posso ajudar?")).toBeInTheDocument()
+    expect(within(room).getByText(/A INIA não lê esta conversa/)).toBeInTheDocument()
+    const field = within(room).getByRole("textbox", { name: "Mensagem para o Anjo" })
+    fireEvent.change(field, { target: { value: "Preciso contestar a fatura." } })
+    await act(async () => {
+      fireEvent.click(within(room).getByRole("button", { name: "Enviar mensagem para o Anjo" }))
+    })
+    expect(supportService.sendSupportMessage).toHaveBeenCalledWith("req-1", { clientMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/), body: "Preciso contestar a fatura." })
+    expect(textClient.fetchTextReply).not.toHaveBeenCalled()
+    expect(transport.calls.some((call) => call.startsWith("sendText"))).toBe(false)
+    expect(await within(room).findByText("Preciso contestar a fatura.")).toBeInTheDocument()
+    fireEvent.click(within(room).getByRole("button", { name: "Voltar para a INIA" }))
+    expect(screen.queryByTestId("support-room")).not.toBeInTheDocument()
+    expect(screen.getByTestId("inia-avatar-stage")).not.toHaveClass("hidden")
   })
 })

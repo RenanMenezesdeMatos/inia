@@ -10,7 +10,7 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import {
@@ -99,7 +99,7 @@ function KnowledgeCard({ document, products }: { document: KnowledgeDocument; pr
 function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
   const productScope = useProductScopeLabels("KNOWLEDGE_DOCUMENT")
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -121,7 +121,7 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
                 <div className="flex items-center gap-2.5">
                   <SourceTypeIcon sourceType={document.sourceType} className="size-8" />
                   <div className="min-w-0">
-                    <Link href={`/admin/knowledge/${document.id}`} className="line-clamp-1 font-medium hover:underline">
+                    <Link href={`/admin/knowledge/${document.id}`} className="block max-w-md truncate font-medium hover:underline" title={document.title}>
                       {document.title}
                     </Link>
                     <p className="text-xs text-muted-foreground">{SOURCE_TYPE_LABELS[document.sourceType]}</p>

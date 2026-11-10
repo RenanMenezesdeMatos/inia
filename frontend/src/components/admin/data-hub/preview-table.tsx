@@ -2,7 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { DataContract, Preview } from "@/schemas/admin/data-hub.schema"
 import { cn } from "@/lib/utils"
@@ -47,7 +47,7 @@ export function PreviewTable({ preview, contract }: { preview: Preview; contract
           ))}
         </div>
       ) : null}
-      <div className="max-h-96 overflow-auto rounded-lg border border-border">
+      <div className={cn(TABLE_FRAME, "max-h-96 overflow-auto")}>
         <Table>
           <TableHeader>
             <TableRow>

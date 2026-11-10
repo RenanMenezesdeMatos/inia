@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import { formatDateOnly } from "@/components/admin/knowledge/knowledge-meta"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -278,7 +278,7 @@ export function WorkflowCard({ workflow }: { workflow: Workflow }) {
 export function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
   const router = useRouter()
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

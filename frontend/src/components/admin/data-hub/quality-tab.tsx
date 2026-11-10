@@ -5,7 +5,7 @@ import { AlertTriangle, CalendarDays, Clock, Info, ShieldAlert, TableProperties 
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useDataHubQualityQuery } from "@/queries/admin/use-data-hub-queries"
 
@@ -336,7 +336,7 @@ export function QualityTab() {
           {quality.recentRejections.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum erro recente.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

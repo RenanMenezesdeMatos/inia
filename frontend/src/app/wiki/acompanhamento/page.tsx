@@ -124,6 +124,7 @@ export default function FollowUpPage() {
           responde perguntas sobre indicadores e procedimentos por meio do orquestrador que atende o chat/voz. Avatar e chat são{" "}
           <strong className="font-medium text-foreground">superfícies de consumo</strong> — nunca gatilhos de Workflow.
         </p>
+        <FieldRow label="Avatar" value="Compacto por padrão, com o estado e os controles da chamada ao lado. O botão “Ampliar a INIA” dá a ela uma área própria, acima das mensagens, para falar por voz ou vídeo; ela nunca fica por cima da conversa. “Compactar a INIA” volta ao tamanho menor. Trocar o tamanho não interrompe a voz." />
       </WikiSection>
 
       <WikiSection id="limitacoes" title="Limitações atuais" eyebrow="Transparência">

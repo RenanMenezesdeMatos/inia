@@ -6,7 +6,7 @@ import { Activity, CalendarClock, ChevronDown, ChevronRight, Hand, ListOrdered, 
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -382,7 +382,7 @@ export function WorkflowEnrollmentsTab({ workflowId, graph, workflow }: { workfl
         noResultsTitle="Nenhuma execução corresponde à busca ou aos filtros"
         itemLabel={["execução", "execuções"]}
         renderList={(enrollments) => (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

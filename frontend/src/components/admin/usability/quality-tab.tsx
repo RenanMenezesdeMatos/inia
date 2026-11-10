@@ -23,6 +23,7 @@ import type { UsabilityQuery } from "@/services/admin/usability-service"
 import { formatCount, formatInstant, formatMs } from "./usability-format"
 import { DataTable, EmptyNote, ExportButton, Section, StatTile, usePanel } from "./usability-shared"
 import { TabFrame } from "./usability-tab-frame"
+import { DateRangePicker } from "@/components/ui/date-picker"
 
 type Collection = { enabled: boolean; rawRetentionDays: number; factRetentionMonths: number; timezone: string; timezoneSource: string; disabledIntervals: { from: string; to: string }[] }
 type Family = { family: string; label: string; firstEventAt: string | null; lastEventAt: string | null; lastReceivedAt: string | null; coverage: Coverage }
@@ -286,15 +287,9 @@ function ManageCard({ collection, classifications }: { collection: Collection; c
         <form className="space-y-3" onSubmit={runReprocess} aria-label="Reprocessar">
           <p className="text-sm font-medium">Reprocessar sessões e tempo ativo</p>
           <p className="text-xs text-muted-foreground">Recalcula os dias escolhidos a partir dos eventos brutos ainda guardados. Não altera dados de negócio.</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="usability-reprocess-from" className="text-xs">De</Label>
-              <Input id="usability-reprocess-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="usability-reprocess-to" className="text-xs">Até</Label>
-              <Input id="usability-reprocess-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
-            </div>
+          <div className="space-y-1">
+            <Label htmlFor="usability-reprocess-period" className="text-xs">Dias (de – até)</Label>
+            <DateRangePicker id="usability-reprocess-period" value={{ from: from || undefined, to: to || undefined }} onChange={(range) => (setFrom(range.from ?? ""), setTo(range.to ?? ""))} className="sm:w-full" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="usability-reprocess-reason" className="text-xs">Motivo</Label>

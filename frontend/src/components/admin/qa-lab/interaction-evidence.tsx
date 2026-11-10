@@ -19,6 +19,7 @@ import { COMPARATOR_LABELS, type Comparator } from "@/schemas/admin/workflow-gra
 
 import { formatDateTime, formatNumber } from "./qa-lab-format"
 import { PersonPicker, type ThresholdHint } from "./test-data-pickers"
+import { DateRangePicker } from "@/components/ui/date-picker"
 
 /** "07m18s" — duração de uma ligação (segundos), nunca confundida com a duração de uma request. */
 export function formatCallDuration(seconds: number | null | undefined): string {
@@ -555,12 +556,8 @@ export function InteractionEvidencePicker({
                 {period === "custom" ? (
                   <>
                     <div className="space-y-1.5">
-                      <Label htmlFor="qa-interaction-from">De</Label>
-                      <Input id="qa-interaction-from" type="date" className="w-40" value={customFrom} onChange={(event) => (setCustomFrom(event.target.value), resetPaging())} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="qa-interaction-to">Até</Label>
-                      <Input id="qa-interaction-to" type="date" className="w-40" value={customTo} onChange={(event) => (setCustomTo(event.target.value), resetPaging())} />
+                      <Label htmlFor="qa-interaction-period">De – até</Label>
+                      <DateRangePicker id="qa-interaction-period" value={{ from: customFrom || undefined, to: customTo || undefined }} onChange={(range) => (setCustomFrom(range.from ?? ""), setCustomTo(range.to ?? ""), resetPaging())} />
                     </div>
                   </>
                 ) : null}

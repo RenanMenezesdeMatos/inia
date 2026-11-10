@@ -3,7 +3,7 @@
 import { Building2, Hash, Network, Unlink, UserRound, Users, type LucideIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
 import { formatCostByCurrency, formatCount, formatRate, formatTokens } from "@/lib/admin/ai-format"
@@ -87,7 +87,7 @@ function CostCell({ metrics }: { metrics: AiUsageRankingMetrics }) {
 export function RankingTable({ data }: { data: AiUsageRanking }) {
   const level = data.level
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

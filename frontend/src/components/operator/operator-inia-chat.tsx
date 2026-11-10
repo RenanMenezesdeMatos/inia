@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { History, MessageCircle, PanelRightClose, Play, RotateCcw, SquarePen, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { ConfirmReadingControl } from "@/components/feedbacks/confirm-reading/confirm-reading-control"
 import type { ReadConfirmationResult } from "@/schemas/feedback-read-confirmations/feedback-read-confirmation.schema"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -34,13 +35,18 @@ import { AvatarHostManager, AvatarSlot } from "./feedback-application/avatar-hos
 import { FeedbackSessionContent, FeedbackSessionMaterials } from "./feedback-application/feedback-session-content"
 import { FeedbackSessionDialog } from "./feedback-application/feedback-session-dialog"
 import { IniaSceneBackdrop } from "@/components/inia-scenes/inia-scene-backdrop"
-import { IniaCallControls, IniaCallPlaceholder, IniaCallStatus, IniaCallTile } from "./inia-call-tile"
+import { IniaCallControls, IniaCallEndedCompact, IniaCallExpandToggle, IniaCallPlaceholder, IniaCallStatus, IniaCallTile } from "./inia-call-tile"
 import { useCurrentIniaScene } from "@/queries/inia-scenes/use-inia-scenes"
 import { FeedbackInviteCard } from "./feedback-application/feedback-invite-card"
 import { feedbackApplicationsKey, feedbackInviteKey, useFeedbackInviteQuery } from "@/queries/feedback-applications/use-feedback-applications"
 import { fetchFeedbackApplications, fetchFeedbackPresentationAudio, markFeedbackApplicationOpened, pauseFeedbackApplication, postFeedbackPresentationEvent, startOrResumeFeedbackApplication } from "@/services/feedback-applications/feedback-applications-service"
 import { feedbackSourceKey, type FeedbackApplicationDetail } from "@/schemas/feedback-applications/feedback-application.schema"
-import { asFollowUp, newTurnId, nextMessageId, nowTime, PAGE_LIMIT, presentationMessageOf, toChatMessage, type ChatMessage } from "./operator-inia-chat/chat-message"
+import { asFollowUp, newTurnId, nextMessageId, nowTime, PAGE_LIMIT, presentationMessageOf, toChatMessage, withoutRatingVersion, type ChatMessage } from "./operator-inia-chat/chat-message"
+import type { ChatDislikeInput } from "@/schemas/operator/chat-rating.schema"
+import { SupportRequestDialog, type SupportSource } from "@/components/human-support/operator/request-dialog"
+import { SupportStatusPill, SupportSuggestion } from "@/components/human-support/operator/support-entry"
+import { SupportRoom } from "@/components/human-support/operator/support-room"
+import { useHumanSupportState } from "@/queries/human-support/use-human-support-state"
 import { FAREWELL_TEXT, TEXT_REPLY_FALLBACK_TEXT } from "./operator-inia-chat/voice-context"
 import { ENTRY_OF_MODE, FEEDBACK_PRESENTATION_CUE, LIVE_PRESENTATION_START_TIMEOUT_MS, PRESENT_GESTURE_DELAY_MS, presentationAudioKey, type FeedbackReturn, type FeedbackSession, type LivePresentationHooks, type PresentationPhase, type SessionEntry } from "./operator-inia-chat/feedback-session-model"
 import { createReadingClock, READ_HOLD_MS, READ_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
@@ -62,7 +68,11 @@ import { useBrowserIdle } from "@/lib/browser/use-browser-idle"
 // Mesma altura do palco do avatar em todos os estados (carregando, câmera desligada, avatar
 // desativado): trocar um pelo outro nunca empurra a conversa para baixo.
 const AVATAR_STAGE_HEIGHT = "h-64"
-const avatarStagePlaceholder = <div aria-hidden className={`${AVATAR_STAGE_HEIGHT} rounded-2xl bg-muted/40`}/>
+// Tile compacto do painel do operador: o avatar num quadrado à esquerda, o estado e os controles ao lado.
+const AVATAR_COMPACT_HEIGHT = "h-20 sm:h-24"
+const AVATAR_COMPACT_SLOT = "absolute inset-y-0 left-0 w-20 sm:w-24"
+const AVATAR_COMPACT_CONTROLS_OFFSET = "left-20 sm:left-24"
+const avatarStagePlaceholder = <div aria-hidden className="h-full rounded-2xl bg-muted/40"/>
 const IniaHumanoidAvatar3D = dynamic(() => import("./inia-humanoid-avatar-3d").then((module) => module.IniaHumanoidAvatar3D), {
   ssr: false,
   loading: () => avatarStagePlaceholder,
@@ -75,6 +85,11 @@ const avatarModelUrl = process.env.NEXT_PUBLIC_INIA_AVATAR_MODEL_URL ?? publicAs
 export function OperatorIniaChat({ indicators, operator, onCollapse, context = "operator", hidden = false }: { indicators: OperatorIndicatorsData; operator: OperatorProfile; onCollapse?: () => void; context?: "operator" | "team"; hidden?: boolean }) {
   // Espaço de trabalho do Acompanhamento: o motor de voz é UM só (acima do chat) — o clique no feed libera o áudio no gesto.
   const workspace = useFeedbackWorkspace()
+  // No painel do operador a INIA fica compacta (a conversa é o foco); ampliar é um pedido explícito e ela ganha uma área só dela,
+  // acima das mensagens. O tamanho muda só o lugar (o Canvas é o mesmo, nunca remonta); voz, microfone e câmera não dependem dele.
+  const [avatarExpanded, setAvatarExpanded] = useState(false)
+  const avatarCollapsible = context === "operator"
+  const avatarCompact = avatarCollapsible && !avatarExpanded
   // Navegação pedida pelo backend (aceite da oferta de report) — por ref: os callbacks da voz nascem uma vez por sessão.
   const router = useRouter()
   const routerRef = useRef(router)
@@ -167,6 +182,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const inbox = inboxQuery.data
   // Conversa de Workflow aberta agora (respondível; não é a conversa "atual" do usuário, que continua a mesma no backend).
   const [workflowConversation, setWorkflowConversation] = useState<{ id: string; title: string } | null>(null)
+  // Apoio com Anjo: a janela de pedido (com a mensagem de origem, quando há) e a sala de apoio no lugar da conversa com a INIA.
+  const humanSupport = useHumanSupportState()
+  const [supportSource, setSupportSource] = useState<SupportSource | null>(null)
+  const [supportRoomOpen, setSupportRoomOpen] = useState(false)
   const workflowConversationRef = useRef<string | null>(null)
   const recadoPlaybackRef = useRef<RecadoPlayback | null>(null)
   const handledTargetConversationRef = useRef<string | null>(null)
@@ -274,6 +293,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     return messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]') ?? null
   }
 
+  const scrollAfterLoadRef = useRef(false)
   const scrollToLatest = () => {
     requestAnimationFrame(() => {
       const viewport = viewportElement()
@@ -290,6 +310,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setOlderError(false)
     lastActivityRef.current = new Date(page.conversation.lastActivityAt).getTime()
     scrollToLatest()
+    scrollAfterLoadRef.current = true
     return true
   }
 
@@ -1426,6 +1447,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       : ""
     const current = () => generation === viewGenerationRef.current
     let userSaved = false
+    // A pergunta gravada no servidor: se a INIA não responder, o balão de erro guarda o id (`NO_REPLY`, Apoio com Anjo).
+    let userMessageId: string | null = null
     // Monitoria de usabilidade: envio = ação com resultado (gravada pelo servidor ou não) + tempo até o primeiro texto da INIA.
     const usageAction = startUsageAction("chat.send_message")
     const usageStartedAt = performance.now()
@@ -1462,6 +1485,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         },
         (conversation) => {
           userSaved = true
+          userMessageId = conversation.userMessageId ?? null
           if (!current()) return
           // Inatividade: esta mensagem abriu outra conversa — a tela mostra só a conversa nova (a antiga fica no histórico).
           if (conversation.rotatedFrom && conversation.rotatedFrom === requestedConversationId) {
@@ -1492,7 +1516,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       else usageAction.fail("REPLY_NOT_PERSISTED")
       if (!current()) return
       const replyId = nextMessageId()
-      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...(reply.persisted && reply.interactionId ? { interactionId: reply.interactionId } : {}), ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
+      setMessages((list) => [...list, { id: replyId, sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", text: reply.text, ...(reply.persisted && reply.interactionId ? { interactionId: reply.interactionId } : {}), ...segment, ...(reply.supportMaterials.length > 0 ? { supportMaterials: reply.supportMaterials } : {}), ...(reply.analytics && reply.analytics.length > 0 ? { analytics: reply.analytics } : {}), ...(reply.reportOffer ? { reportOffer: reply.reportOffer } : {}), ...(reply.clarification ? { clarification: reply.clarification } : {}), ...(reply.signals ? { signals: reply.signals } : {}), ...(reply.persisted ? {} : { saveState: "failed" as const }) }])
       // "Sim" à oferta de report: abre a configuração já preenchida (o backend decidiu o destino).
       if (reply.navigate) routerRef.current.push(reply.navigate.href)
       if (options.speak && reply.persisted && reply.interactionId) void speakReply(replyId, reply.interactionId, reply.conversationId, speakSince)
@@ -1526,7 +1550,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         return
       }
       if (!userSaved) setMessages((list) => list.map((message) => (message.id === userBubbleId ? { ...message, saveState: "failed" } : message)))
-      setMessages((list) => [...list, { id: nextMessageId(), sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), text: TEXT_REPLY_FALLBACK_TEXT, localError: true }])
+      // Pergunta gravada que ficou sem resposta no chat livre (não cancelada): o servidor marcou `NO_REPLY` nela — o balão guarda o id.
+      const noReply = userMessageId && !inFeedback && !workflowConversation && !abort.signal.aborted ? { questionInteractionId: userMessageId, signals: ["NO_REPLY" as const] } : {}
+      setMessages((list) => [...list, { id: nextMessageId(), sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), text: TEXT_REPLY_FALLBACK_TEXT, localError: true, ...noReply }])
     } finally {
       if (textReplyAbortRef.current === abort) textReplyAbortRef.current = null
       if (current()) {
@@ -1633,11 +1659,25 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   const rate = (id: number, rating: "up" | "down") => {
     const target = messages.find((message) => message.id === id)
-    setMessages((current) => current.map((message) => message.id === id ? { ...message, rating: message.rating === rating ? undefined : rating } : message))
+    // A marcação muda: o motivo e a versão de uma descurtida anterior deixam de valer na tela.
+    setMessages((current) => current.map((message) => message.id === id ? { ...withoutRatingVersion(message), rating: message.rating === rating ? undefined : rating } : message))
     // Gravado por trás: a tela não espera nem avisa. Resposta sem id no servidor (não entrou no histórico) fica só na tela.
     const conversationId = conversationIdRef.current
     if (!target?.interactionId || !conversationId) return
     void saveMessageRating(conversationId, target.interactionId, target.rating === rating ? undefined : rating).catch((error: unknown) => console.warn("[INIA] avaliação da resposta não gravada", error))
+  }
+
+  /**
+   * Descurtida com motivo no chat livre (`null` = retirar): grava e ESPERA a confirmação — a tela só marca depois de gravado, e a
+   * falha volta ao formulário (que a mostra). Resposta que não entrou no histórico não tem como ser avaliada aqui.
+   */
+  const saveDislike = async (id: number, change: ChatDislikeInput | null) => {
+    const target = messages.find((message) => message.id === id)
+    const conversationId = conversationIdRef.current
+    if (!target?.interactionId || !conversationId) throw new Error("Esta resposta não entrou no histórico e não pode ser avaliada.")
+    const saved = await saveMessageRating(conversationId, target.interactionId, change ? "down" : undefined, change ?? undefined)
+    setMessages((current) => current.map((message) => (message.id === id ? { ...withoutRatingVersion(message), rating: saved.rating ?? undefined, ...(saved.ratingId ? { ratingId: saved.ratingId } : {}), ...(saved.details ? { ratingDetails: saved.details } : {}) } : message)))
+    return { ratingId: saved.ratingId }
   }
 
   // -------------------------------------------------------------------------------------------
@@ -1772,6 +1812,20 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // movido entre os dois sem remontar o Canvas.
   // -------------------------------------------------------------------------------------------
   const sessionOpen = feedbackEnabled && feedbackMode
+  // Apoio com Anjo: quando termina um atendimento que estava em andamento, o servidor encerra a conversa com a INIA de onde o pedido
+  // saiu (`HUMAN_SUPPORT`); a vista volta à conversa atual (nova). Pedido cancelado ou expirado na fila não mexe na conversa. Só
+  // recarrega quem está na conversa atual — lendo o histórico, um recado de Workflow ou o feedback, a vista fica como está.
+  const supportRequestRef = useRef<{ id: string; status: string } | null>(null)
+  const openSupportRequest = humanSupport.operator?.openRequest ?? null
+  useEffect(() => {
+    const before = supportRequestRef.current
+    supportRequestRef.current = openSupportRequest ? { id: openSupportRequest.id, status: openSupportRequest.status } : null
+    if (!before || before.status !== "IN_PROGRESS" || openSupportRequest?.id === before.id) return
+    if (sessionOpen || readOnlyConversation || workflowConversation) return
+    // Reage a um fato de fora (o atendimento terminou): recarrega depois desta renderização, não dentro dela.
+    queueMicrotask(() => void loadCurrentConversation())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSupportRequest])
   // Avatar 3D (three.js ~1 MB + modelo de 6,6 MB): monta depois que a página carregou e o navegador ficou ocioso — a tela abre e
   // responde sem esperar o 3D, e a INIA aparece sozinha logo em seguida, como antes. Sessão de feedback aberta ou conversa em
   // andamento antes disso = monta na hora. Uma vez liberado, nunca volta atrás: o Canvas monta UMA vez e esta condição nunca o
@@ -1794,9 +1848,9 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   // No PAINEL a INIA é uma chamada de vídeo: nome e estado no canto, controles de chamada embaixo (microfone, silenciar a INIA,
   // câmera, sair). Na sessão, os controles ficam abaixo dela.
-  const panelAvatarControls = avatarModelUrl && callActive ? <>
-    <IniaCallStatus state={conversationState} muted={voiceMuted}/>
-    <IniaCallControls
+  const callStatus = <IniaCallStatus inline={avatarCompact} state={conversationState} muted={voiceMuted}/>
+  const callControls = <IniaCallControls
+      compact={avatarCompact}
       micOpen={micOpen}
       micDisabled={micDisabled}
       micLabel={micLabel}
@@ -1809,10 +1863,57 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       onToggleCamera={() => setCameraOn((value) => !value)}
       onEnd={endCall}
     />
-  </> : null
+  // Ampliar tira altura das mensagens: quem estava vendo o fim da conversa continua vendo o fim.
+  const avatarPinToEndRef = useRef(false)
+  // As mensagens só aparecem com a conversa pronta: o quadro pedido antes disso (`scrollToLatest`) às vezes rolava uma lista ainda vazia,
+  // e a conversa abria no começo.
+  useLayoutEffect(() => {
+    if (loadState !== "ready" || !scrollAfterLoadRef.current) return
+    scrollAfterLoadRef.current = false
+    const viewport = messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]')
+    if (viewport) viewport.scrollTop = viewport.scrollHeight
+  }, [loadState])
+  useLayoutEffect(() => {
+    if (!avatarPinToEndRef.current) return
+    avatarPinToEndRef.current = false
+    const viewport = messagesContentRef.current?.closest<HTMLElement>('[data-slot="scroll-area-viewport"], [data-chat-scroll]')
+    if (viewport) viewport.scrollTop = viewport.scrollHeight
+  }, [avatarExpanded])
+  const toggleAvatarSize = () => {
+    const viewport = viewportElement()
+    avatarPinToEndRef.current = viewport !== null && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 32
+    setAvatarExpanded((value) => !value)
+  }
+  const avatarToggle = avatarCollapsible && avatarModelUrl ? <IniaCallExpandToggle expanded={avatarExpanded} onToggle={toggleAvatarSize}/> : null
+  // Compacta: o avatar à esquerda (em `AVATAR_COMPACT_SLOT`) e, ao lado, o estado e os mesmos controles. Ampliada: como numa chamada.
+  const panelAvatarControls = !avatarModelUrl ? null : avatarCompact ? (
+    <div className={`absolute inset-y-0 right-0 z-10 flex min-w-0 flex-col justify-center gap-1 py-1.5 pr-2 pl-1 ${AVATAR_COMPACT_CONTROLS_OFFSET}`}>
+      {callActive ? <>
+        <div className="flex min-w-0 items-center justify-between gap-1.5">{callStatus}{avatarToggle}</div>
+        {callControls}
+      </> : <IniaCallEndedCompact onCall={startCall} toggle={avatarToggle}/>}
+    </div>
+  ) : <>
+    {callActive ? <>{callStatus}{callControls}</> : null}
+    {avatarToggle ? <div className="absolute top-2.5 right-2.5 z-10">{avatarToggle}</div> : null}
+  </>
 
 
   // Mensagens da conversa exibida (geral no painel; a da aplicação — e a complementar — na sessão).
+  /** A sala de apoio fica no lugar da conversa com a INIA. Abrir ENCERRA a sessão de voz (não só silencia): a sala nunca passa pela voz. */
+  const openSupportRoom = () => {
+    closeVoiceSessionForSwitch()
+    setSupportSource(null)
+    setSupportRoomOpen(true)
+  }
+  // Pergunta com NO_REPLY só sugere apoio quando nenhuma mensagem da INIA veio depois dela.
+  const answeredQuestions = new Set(messages.flatMap((message, index) => (message.sender === "user" && messages.slice(index + 1).some((later) => later.sender === "assistant" && !later.localError) ? [message.id] : [])))
+  const renderSupportSuggestion = (message: ChatMessage) => {
+    if (!message.signals || message.signals.length === 0 || sessionOpen || workflowConversation) return null
+    const interactionId = message.sender === "assistant" ? (message.localError ? message.questionInteractionId : message.interactionId) : message.interactionId
+    if (!interactionId || (message.sender === "user" && answeredQuestions.has(message.id))) return null
+    return <SupportSuggestion signals={message.signals} onRequest={() => setSupportSource({ interactionId, ratingId: null })} onOpenRoom={openSupportRoom} />
+  }
   const messageItems = <ChatMessageList
     sessionApplication={sessionApplication}
     messages={messages}
@@ -1832,6 +1933,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     feedbackCompleted={feedbackCompleted}
     workflowConversation={workflowConversation}
     rate={rate}
+    saveDislike={saveDislike}
+    // Só com o apoio ligado para a pessoa; sem ele, a descurtida avisa que o apoio ainda não está disponível. Com pedido aberto, abre a sala.
+    onRequestSupport={humanSupport.operator?.enabled ? (interactionId, ratingId) => (humanSupport.operator?.openRequest ? openSupportRoom() : setSupportSource({ interactionId, ratingId })) : undefined}
+    renderSupportSuggestion={renderSupportSuggestion}
     resumeMarkerId={resumeMarkerId}
     conversationState={conversationState}
     liveAssistantText={liveAssistantText}
@@ -1900,10 +2005,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const avatarVisual = !avatarModelUrl ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 text-center">
       <Skeleton className="size-16 rounded-full"/>
-      <div><p className="text-sm font-medium">Avatar 3D não configurado</p><p className="mt-1 max-w-64 text-xs text-muted-foreground">Adicione um modelo VRM local preparado para visualizar a INIA.</p></div>
+      <div className={avatarCompact && !sessionOpen ? "sr-only" : undefined}><p className="text-sm font-medium">Avatar 3D não configurado</p><p className="mt-1 max-w-64 text-xs text-muted-foreground">Adicione um modelo VRM local preparado para visualizar a INIA.</p></div>
     </div>
   ) : !callActive ? (
-    <IniaCallPlaceholder image={operator.assistantImage} variant="ended" onCall={startCall} rounded={!sessionOpen}/>
+    <IniaCallPlaceholder image={operator.assistantImage} variant="ended" onCall={startCall} rounded={!sessionOpen} compact={avatarCompact && !sessionOpen}/>
   ) : cameraOn && !avatarAllowed ? (
     avatarStagePlaceholder
   ) : cameraOn ? (
@@ -1918,13 +2023,14 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       facing={sessionOpen && sessionSpeech.kind !== "say" ? "viewer" : "forward"}
       statusLabel={null}
       backdrop={sessionOpen || scene ? "none" : "studio"}
-      // No painel o nome e o estado dela vêm do tile da chamada (e o crédito do modelo sobe: embaixo ficam os controles).
+      // No painel o nome e o estado dela vêm do tile da chamada. O crédito do modelo fica embaixo, no canto: no alto à direita, no painel
+      // do operador, fica o botão de ampliar (na equipe ele sobe, porque os controles da chamada ocupam a base).
       showStatus={false}
-      attributionPlacement={sessionOpen ? "bottom" : "top"}
+      attributionPlacement={sessionOpen || avatarCollapsible ? "bottom" : "top"}
       className={sessionOpen ? "h-full rounded-none" : "h-full rounded-xl"}
     />
   ) : (
-    <IniaCallPlaceholder image={operator.assistantImage} variant="camera-off" rounded={!sessionOpen}/>
+    <IniaCallPlaceholder image={operator.assistantImage} variant="camera-off" rounded={!sessionOpen} compact={avatarCompact && !sessionOpen}/>
   )
 
   // Sem o registro, o feedback não é exibido (o balão dela diz o que houve, com nova tentativa).
@@ -1980,17 +2086,20 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   return <>
   <section className="flex h-full min-h-0 flex-col bg-card" data-usage-screen={hidden ? undefined : "followup.chat_panel"}>
-    <header className="flex items-center gap-2 px-5 py-4">
+    <header className={cn("flex items-center gap-2 px-5", avatarCollapsible ? "py-3" : "py-4")}>
       <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">INIA</h2>
       <Button type="button" variant="outline" size="sm" onClick={() => void newConversation()} disabled={startingNew || sessionOpen} className="rounded-full" data-usage-element="chat.new_conversation"><SquarePen/>Nova conversa</Button>
       <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setHistoryOpen(true)} aria-label="Conversas anteriores" disabled={sessionOpen} data-usage-element="chat.history.open"><History/></Button></TooltipTrigger><TooltipContent side="bottom" className="inia-tooltip-genie">Conversas anteriores</TooltipContent></Tooltip>
       {onCollapse ? <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={onCollapse} aria-label="Recolher chat"><PanelRightClose/></Button></TooltipTrigger><TooltipContent side="left" className="inia-tooltip-genie">Recolher chat</TooltipContent></Tooltip> : null}
     </header>
     <Separator/>
-    <div className="px-4 pt-4">
-      <IniaCallTile speaking={!sessionOpen && callActive && conversationState === "speaking" && !voiceMuted} className={AVATAR_STAGE_HEIGHT}>
+    {/* Com a sala de apoio aberta (a voz já foi encerrada ao abrir), o avatar da INIA sai de cena e a conversa com o Anjo ocupa o
+        painel — só por CSS: o Canvas continua montado (regra do Canvas do R3F no CLAUDE.md) e volta ao fechar a sala. */}
+    {/* Ampliada, a INIA divide a altura com as mensagens, cada uma na sua área: nada fica por cima da conversa. */}
+    <div className={cn("shrink-0 px-4", avatarCollapsible ? "pt-3" : "pt-4", avatarCollapsible && avatarExpanded && "h-[45%] min-h-36", supportRoomOpen && "hidden")} data-testid="inia-avatar-stage" data-avatar-size={avatarCollapsible ? (avatarExpanded ? "expanded" : "compact") : undefined}>
+      <IniaCallTile speaking={!sessionOpen && callActive && conversationState === "speaking" && !voiceMuted} className={avatarCompact ? AVATAR_COMPACT_HEIGHT : avatarCollapsible ? "h-full" : AVATAR_STAGE_HEIGHT}>
         {scene && !sessionOpen ? <IniaSceneBackdrop imageUrl={scene.imageUrl} blur={scene.blur} dim={scene.dim} variant="panel"/> : null}
-        <AvatarSlot manager={avatarHost} priority={1} className="h-full"/>
+        <AvatarSlot manager={avatarHost} priority={1} className={avatarCompact ? AVATAR_COMPACT_SLOT : "h-full"}/>
         {sessionOpen ? <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-muted/60 px-6 text-center text-xs text-muted-foreground">A INIA está na sessão de feedback.</div> : panelAvatarControls}
       </IniaCallTile>
     </div>
@@ -2000,6 +2109,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         <p className="max-w-72">{sessionTitle}</p>
       </div>
     ) : <>
+      {/* Avisos e convites nunca tomam o lugar das mensagens: em janelas baixas, rolam dentro de um teto próprio. */}
+      <div className={avatarCollapsible ? "max-h-[40%] shrink-0 overflow-y-auto empty:hidden" : "contents"}>
       {showFeedbackInvite && invite ? (
         <FeedbackInviteCard invite={invite} busy={inviteBusy} onListen={() => acceptInvite(invite)} onRead={() => readInvite(invite)} onLater={() => snoozeInvite(invite)}/>
       ) : null}
@@ -2029,13 +2140,28 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         readOnlyConversation={readOnlyConversation}
         conversationNotice={conversationNotice}
       />
-      <ScrollArea className="min-h-0 flex-1">{messageItems}</ScrollArea>
-      <Separator/>
-      {composer}
+      </div>
+      {supportRoomOpen ? <SupportRoom onBack={() => setSupportRoomOpen(false)} /> : <>
+        <SupportStatusPill onOpenRoom={openSupportRoom} />
+        <ScrollArea className="min-h-0 flex-1">{messageItems}</ScrollArea>
+        <Separator/>
+        {composer}
+      </>}
     </>}
     <IniaConversationHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} currentConversationId={readOnlyConversation ? null : conversationId} onSelect={(summary) => void openPastConversation(summary)} />
   </section>
   {sessionDialog}
+  <SupportRequestDialog
+    source={supportSource}
+    onOpenChange={(open) => { if (!open) setSupportSource(null) }}
+    onCreated={(request) => {
+      // A sala abre já com o pedido criado; a chamada de estado confirma em seguida.
+      if (humanSupport.operator) humanSupport.applyOperator({ ...humanSupport.operator, openRequest: request })
+      humanSupport.refresh()
+      openSupportRoom()
+    }}
+    onOpenRoom={openSupportRoom}
+  />
   <MicConsentDialog
     showMicConsent={showMicConsent}
     setShowMicConsent={setShowMicConsent}

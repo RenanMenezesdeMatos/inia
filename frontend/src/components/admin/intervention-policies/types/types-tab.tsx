@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { useCapabilityCatalogQuery, useCreateInterventionTypeMutation, useInterventionTypesQuery } from "@/queries/admin/use-intervention-policy-queries"
 import { CAPABILITY_LABELS, emptyTypeDefinition, type InterventionTypeView } from "@/schemas/admin/intervention-policy.schema"
@@ -70,7 +70,7 @@ export function TypesTab() {
       ) : types.length === 0 ? (
         <ListEmptyState icon={Shapes} title="Nenhum tipo de intervenção" description="Cadastre os tipos que as políticas podem recomendar ou abrir." action={creating ? undefined : newButton} />
       ) : (
-        <div className="overflow-x-auto">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

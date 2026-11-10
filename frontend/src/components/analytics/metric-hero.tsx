@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 
 import { AnalyticsCard } from "./analytics-states"
+import { SectionLabel } from "@/components/ui/surface"
 
 /**
  * Bloco de resultado principal (PRV do operador / consolidado da estrutura): hierarquia visual
@@ -11,7 +12,7 @@ export function MetricHero({ eyebrow, title, value, valueLabel, trend, meta, asi
     <AnalyticsCard>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <p className="font-heading text-sm text-muted-foreground">{eyebrow}</p>
+          <SectionLabel as="p" className="mb-1">{eyebrow}</SectionLabel>
           <h2 className="mt-0.5 text-lg font-semibold tracking-tight">{title}</h2>
           <p className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-heading text-5xl font-semibold tracking-tight text-primary">{value}</span>

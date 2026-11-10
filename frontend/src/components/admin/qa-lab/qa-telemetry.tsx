@@ -3,7 +3,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { AI_CALL_ROLE_LABELS, CACHE_MODE_LABELS, CONTEXT_BREAKDOWN_LABELS, GATING_STATUS_LABELS, LLM_PHASE_LABELS, NEED_STATUS_LABELS, SUFFICIENCY_STATUS_LABELS, UNIVERSE_RELATIONSHIP_LABELS, type CostEstimate, type LlmContextBreakdown, type QaRunSummary, type QaRunTelemetry, type QaTokenTotals, EVIDENCE_SOURCE_LABELS, SAMPLING_STRATEGY_LABELS } from "@/schemas/admin/qa-lab.schema"
 import { REPRESENTATIVENESS_LABELS } from "@/schemas/admin/investigation.schema"
@@ -436,7 +436,7 @@ export function RunTelemetryPanel({ run }: { run: Pick<QaRunSummary, "aiCalls" |
             </p>
           ) : null}
           {saved ? <p className="text-sm font-medium">{saved}</p> : null}
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -482,7 +482,7 @@ export function RunTelemetryPanel({ run }: { run: Pick<QaRunSummary, "aiCalls" |
 
       <section className="space-y-2" data-testid="qa-telemetry-phases">
         <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Por fase</h4>
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -527,7 +527,7 @@ export function RunTelemetryPanel({ run }: { run: Pick<QaRunSummary, "aiCalls" |
       {telemetry.perRequest ? (
         <section className="space-y-2" data-testid="qa-telemetry-requests">
           <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Por request</h4>
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

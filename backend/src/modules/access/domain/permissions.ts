@@ -65,6 +65,12 @@ export const PERMISSIONS = {
   // Nunca dá acesso a dado: cada destinatário recebe só o que o escopo DELE alcança, e quem distribui não vê o conteúdo entregue.
   "reports.distribute": "Criar reports recorrentes para outras pessoas do escopo (cada uma recebe só os dados que já pode ver)",
   "interventions.sensitive_decide": "Decidir solicitações de avaliação de continuidade (decisão humana restrita; nunca altera situação funcional nem executa desligamento)",
+  // Apoio com Anjo (migration 182): ATENDER (o Anjo, só os operadores que o escopo da atribuição cobre), ACOMPANHAR (painel do
+  // apoio, conversas de apoio e presença dos Anjos, no escopo) e CONFIGURAR (liga/desliga e capacidade, só na organização inteira).
+  // Ter o papel de Anjo nunca dá acesso amplo às conversas: ele lê só os pedidos que atendeu.
+  "human_support.attend": "Atender pedidos de apoio",
+  "human_support.coordinate": "Acompanhar o apoio com Anjo",
+  "human_support.manage": "Configurar o apoio com Anjo",
 } as const
 
 export type Permission = keyof typeof PERMISSIONS

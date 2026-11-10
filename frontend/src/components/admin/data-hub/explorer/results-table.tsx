@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ShieldAlert } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import type { ExplorerColumn, ExplorerPage, ExplorerSort } from "@/schemas/admin/data-explorer.schema"
@@ -55,7 +55,7 @@ export function ResultsTable({ page, columns, sort, onSort, selection }: { page:
     selection?.onChange(next)
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-border" data-testid="explorer-results">
+    <div className={TABLE_FRAME} data-testid="explorer-results">
       <Table>
         <TableHeader>
           <TableRow>

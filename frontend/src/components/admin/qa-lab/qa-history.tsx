@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
 import { ListDateRangeFilter, ListMultiSelectFilter, ListSearchInput, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
@@ -97,7 +97,7 @@ function RerunButton({ run, onCreated, compact = false }: { run: QaRunSummary; o
 
 export function QaRunsTable({ runs, onOpen }: { runs: QaRunSummary[]; onOpen: (id: string) => void }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

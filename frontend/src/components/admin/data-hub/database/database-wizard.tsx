@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { cn } from "@/lib/utils"
 import { useCreateSourceMutation, useDataContractsQuery, useUpdateSourceMutation } from "@/queries/admin/use-data-hub-queries"
@@ -411,7 +411,7 @@ export function DatabaseWizard({ existing = null, onAddAnother }: { existing?: S
             <div className="space-y-5">
               <div className="space-y-2">
                 <p className="text-sm">{sample.detail}</p>
-                <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                <div className={cn(TABLE_FRAME, "max-h-64 overflow-auto")}>
                   <Table>
                     <TableHeader>
                       <TableRow>

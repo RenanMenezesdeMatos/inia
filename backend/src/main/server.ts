@@ -5,6 +5,11 @@ import { env } from "../config/env.js"
 import { databaseSession, pool } from "../infrastructure/database/pool.js"
 import { createPostgresJobLockSession } from "../infrastructure/jobs/job-lock-session.js"
 import { startPeriodicJobs } from "../infrastructure/jobs/periodic-jobs.js"
+import { createWaiterRegistry } from "../modules/human-support/application/waiters.js"
+import { readInboxVersions } from "../modules/human-support/application/inbox-versions.js"
+import { dispatchAllOrganizations } from "../modules/human-support/application/dispatch.js"
+import { humanSupportStats } from "../modules/human-support/application/runtime-stats.js"
+import { HUMAN_SUPPORT_LIMITS } from "../modules/human-support/domain/catalogs.js"
 import { processPendingKnowledgeVersions } from "../modules/knowledge/application/knowledge-versions.js"
 import { processKnowledgeOcrJobs } from "../modules/knowledge/application/knowledge-ocr-jobs.js"
 import { startWorkflowWorker } from "../modules/workflows/application/workflow-worker.js"
@@ -56,11 +61,16 @@ const lifecycleLog: LifecycleLog = {
 }
 // Prontidão (/ready) que o balanceador consulta: banco respondendo e processo não desligando.
 const readiness = parts.http ? createReadiness(pool) : null
+// Apoio com Anjo: chamadas longas da chamada de estado (só no papel de API). No dreno respondem com `reconnect: true` na hora.
+const humanSupportWaiters = parts.http ? createWaiterRegistry({ readVersions: (keys) => readInboxVersions(pool, keys) }) : null
+if (readiness && humanSupportWaiters) readiness.onDraining(() => humanSupportWaiters.drain())
 // Métricas do processo (event loop, pool, HTTP por rota, limitador de IA): /internal/metrics na API, /health no worker.
 const metrics = createRuntimeMetrics({
   role,
   pool,
-  sections: () => ({ chat: chatTurnMetrics().snapshot(), aiCalls: aiCallLimiter().stats(), aiConnections: shared.providerGate.stats(), draining: readiness?.draining ?? false, faults: { ...processFaults }, droppedLogLines: droppedLogLines() }),
+  // A chamada longa do Apoio com Anjo espera de propósito até 20 s: contada, mas fora da latência.
+  excludeFromLatency: ["/api/v1/human-support/me/state"],
+  sections: () => ({ chat: chatTurnMetrics().snapshot(), aiCalls: aiCallLimiter().stats(), aiConnections: shared.providerGate.stats(), draining: readiness?.draining ?? false, faults: { ...processFaults }, droppedLogLines: droppedLogLines(), humanSupport: { waits: humanSupportWaiters?.stats() ?? null, ...humanSupportStats } }),
 })
 
 let server: Server | null = null
@@ -71,7 +81,7 @@ if (parts.http) {
   const dataHubWakeWorker = parts.processing
     ? undefined
     : () => notifyWake(pool, DATA_HUB_WAKE_CHANNEL).catch((error: unknown) => console.warn("Aviso à Central de Dados não enviado (o tick de 15 s do processamento pega a carga):", error instanceof Error ? error.message : error))
-  const app = createApp(pool, { registerAiRuntime: true, rateLimitStore: shared.rateLimitStore, readiness: readiness!, metrics, ...(dataHubWakeWorker ? { dataHubWakeWorker } : {}) })
+  const app = createApp(pool, { registerAiRuntime: true, rateLimitStore: shared.rateLimitStore, readiness: readiness!, metrics, humanSupportWaiters, ...(dataHubWakeWorker ? { dataHubWakeWorker } : {}) })
   // `shutdown` é declarado mais abaixo; o callback só roda depois do carregamento do módulo.
   const onListening = onHttpListen({ listening: () => process.stdout.write(`INIA API (${role}) listening on http://${env.HOST ?? "localhost"}:${env.PORT}\n`), shutdown: (reason, exitCode) => shutdown(reason, exitCode), log: lifecycleLog })
   server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening)
@@ -112,6 +122,9 @@ function startProcessing() {
     { name: "data-hub", intervalMs: 15_000, run: () => runDataHubTick(dataHubContext), errorLabel: "Falha no tick da Central de Dados:" },
     // Bases de conhecimento: conclui publicações que ficaram sem dono (API reiniciada, falha passageira). A API processa na hora; esta varredura é a garantia.
     { name: "knowledge-publications", intervalMs: 15_000, run: () => processPendingKnowledgeVersions(pool), errorLabel: "Falha na publicação de bases:" },
+    // Apoio com Anjo: garantia dos prazos (conexão do Anjo, fila, inatividade) e da atribuição. Os comandos já distribuem depois do
+    // commit; esta rodada de 3 s cobre o que vence sozinho. Uma instância por vez no conjunto; dentro dela, uma trava por organização.
+    { name: "human-support-dispatch", intervalMs: HUMAN_SUPPORT_LIMITS.dispatchIntervalMs, run: () => dispatchAllOrganizations(pool).then(() => undefined), errorLabel: "Falha na distribuição do apoio com Anjo:" },
     // PDFs digitalizados: lê as páginas sem texto (OCR) num documento por vez no conjunto e grava o texto no rascunho. Ver knowledge-ocr-jobs.ts.
     { name: "knowledge-ocr", intervalMs: 15_000, run: () => processKnowledgeOcrJobs(pool), errorLabel: "Falha na leitura de PDF digitalizado:" },
     // Reports recorrentes: agenda (cria a execução do horário vencido, uma por report × horário), fila (execução com posse e

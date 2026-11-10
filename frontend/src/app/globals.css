@@ -5,6 +5,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-canvas: var(--canvas);
   --color-foreground: var(--foreground);
   --color-topbar: var(--topbar);
   --color-topbar-foreground: var(--topbar-foreground);
@@ -66,6 +67,8 @@
 @keyframes inia-blink { 0%,45%,48%,100% { opacity: 0; transform: scaleY(.1) } 46%,47% { opacity: .94; transform: scaleY(1) } }
 @keyframes inia-hand-left { 0%,100% { transform: rotate(-1deg) translate(0) } 50% { transform: rotate(4deg) translate(2px,-3px) } }
 @keyframes inia-hand-right { 0%,100% { transform: rotate(1deg) translate(0) } 50% { transform: rotate(-4deg) translate(-2px,-3px) } }
+/* "Digitando" das conversas (kit `typing-dots.tsx`): três pontos que sobem e acendem em sequência. */
+@keyframes typing-dot { 0%,60%,100% { opacity: .35; transform: translateY(0) } 30% { opacity: 1; transform: translateY(-3px) } }
 
 @keyframes inia-accordion-open {
   from { height: 0; opacity: 0; transform: translateY(-4px); }
@@ -102,6 +105,9 @@
   --radius: 0.375rem;
 
   --background: #faf9f7;
+  /* Tela de fundo da página, um tom abaixo do cartão (#fff): cartões e seções se separam sem depender só da borda. Só a tela usa
+     este tom — `--background` continua quase branco porque também é o fundo de elementos (campos, bolhas, controles). */
+  --canvas: #f4f2ee;
   --foreground: #1c1a17;
 
   --card: #ffffff;
@@ -149,6 +155,7 @@
 
 .dark {
   --background: #16140f;
+  --canvas: #16140f;
   --foreground: #f4f2ec;
 
   --card: #1d1b16;
@@ -203,7 +210,7 @@
   }
 
   body {
-    @apply min-h-full bg-background font-sans text-foreground;
+    @apply min-h-full bg-canvas font-sans text-foreground;
   }
 
   h1,
@@ -525,6 +532,7 @@ html.a11y-text-huge {
 
 html.a11y-high-contrast {
   --background: 0 0% 100%;
+  --canvas: #ffffff;
   --foreground: 0 0% 0%;
   --muted: 0 0% 92%;
   --muted-foreground: 0 0% 18%;
@@ -534,6 +542,7 @@ html.a11y-high-contrast {
 
 html.dark.a11y-high-contrast {
   --background: 0 0% 0%;
+  --canvas: #000000;
   --foreground: 0 0% 100%;
   --muted: 0 0% 12%;
   --muted-foreground: 0 0% 88%;
@@ -569,6 +578,7 @@ html.a11y-reduce-motion *::after {
 
 .a11y-high-contrast {
   --background: 0 0% 100%;
+  --canvas: #ffffff;
   --foreground: 222.2 84% 4.9%;
   --muted: 210 40% 94%;
   --muted-foreground: 215 25% 25%;
@@ -578,6 +588,7 @@ html.a11y-reduce-motion *::after {
 
 .dark.a11y-high-contrast {
   --background: 222.2 84% 4.9%;
+  --canvas: #020617;
   --foreground: 210 40% 98%;
   --muted: 217.2 32.6% 14%;
   --muted-foreground: 210 40% 88%;

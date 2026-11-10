@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import { ProductScopeCard, ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
@@ -422,7 +422,7 @@ function VersionHistory({ history, now }: { history: ArgumentScriptVersion[]; no
       {history.length === 0 ? (
         <p className="text-xs text-muted-foreground">Nenhuma versão publicada ainda.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

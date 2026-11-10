@@ -46,3 +46,25 @@ describe("prontidão (/ready)", () => {
     expect(counting.query).toHaveBeenCalledTimes(2)
   })
 })
+
+describe("aviso de dreno (onDraining)", () => {
+  it("avisa uma vez quando o dreno começa; inscrito depois do início é avisado na hora; cancelar a inscrição funciona; erro de um não impede os outros", () => {
+    const readiness = createReadiness(databaseThat(async () => ({ rows: [], rowCount: 0 })))
+    const calls: string[] = []
+    readiness.onDraining(() => calls.push("a"))
+    const cancel = readiness.onDraining(() => calls.push("cancelado"))
+    readiness.onDraining(() => {
+      throw new Error("falhou")
+    })
+    readiness.onDraining(() => calls.push("b"))
+    cancel()
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    readiness.startDraining()
+    readiness.startDraining()
+    expect(calls).toEqual(["a", "b"])
+    expect(error).toHaveBeenCalledTimes(1)
+    readiness.onDraining(() => calls.push("tarde"))
+    expect(calls).toEqual(["a", "b", "tarde"])
+    error.mockRestore()
+  })
+})

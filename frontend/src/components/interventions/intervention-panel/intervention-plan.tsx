@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useInterventionCommand, useTrainingCompetenciesQuery } from "@/queries/interventions/use-intervention-queries"
 import type { InterventionDetail, InterventionPlan } from "@/schemas/interventions/intervention.schema"
 import { applyAiDraft, applyTrainingCompetency, requestAiDraft, updateInterventionPlan } from "@/services/interventions/intervention-service"
+import { DatePicker } from "@/components/ui/date-picker"
 
 /**
  * Conteúdo da intervenção conforme as CAPACIDADES do tipo (o código não conhece tipos de negócio): treinamento, plano de ação,
@@ -68,7 +69,7 @@ export function InterventionPlanSection({ detail }: { detail: InterventionDetail
             {editing ? (
               <div className="space-y-1">
                 <Label htmlFor={dueDateId} className="text-xs">Até</Label>
-                <Input id={dueDateId} type="date" value={current.measurableObjective?.by ?? detail.dueAt} onChange={(event) => set({ measurableObjective: { indicatorCode: current.measurableObjective?.indicatorCode ?? detail.indicatorCode, target: current.measurableObjective?.target ?? "", by: event.target.value } })} />
+                <DatePicker id={dueDateId} value={current.measurableObjective?.by ?? detail.dueAt} onChange={(by) => set({ measurableObjective: { indicatorCode: current.measurableObjective?.indicatorCode ?? detail.indicatorCode, target: current.measurableObjective?.target ?? "", by } })} />
               </div>
             ) : current.measurableObjective ? <p className="self-end text-xs text-muted-foreground">até {current.measurableObjective.by}</p> : null}
           </div>

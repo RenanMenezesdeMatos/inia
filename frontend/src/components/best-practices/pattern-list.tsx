@@ -7,7 +7,7 @@ import { ListBooleanFilter, ListSearchInput, ListSelectFilter, ListToolbar } fro
 import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { usePatternsQuery } from "@/queries/best-practices/use-best-practices"
 import type { BestPracticesMeta, DataOrigin, PatternFilters, ReviewStatus } from "@/schemas/best-practices/best-practices.schema"
 
@@ -47,7 +47,7 @@ export function PatternList({ meta, onOpen }: { meta: BestPracticesMeta | undefi
         <AnalyticsEmptyState icon={Lightbulb} title={hasActiveFilters ? "Nenhum padrão com estes filtros" : "A base ainda não tem padrões"} description="Padrões nascem de uma análise que compara as chamadas dos operadores com melhores resultados com as do grupo de referência. Só associação sustentada e que não é obrigação do processo entra." />
       ) : null}
       {query.data && query.data.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

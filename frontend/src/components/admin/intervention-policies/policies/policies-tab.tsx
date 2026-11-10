@@ -6,7 +6,7 @@ import { ClipboardList, Plus } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListBooleanFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
 import { ListEmptyState, ListErrorState, ListNoResultsState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { formatDateTime } from "@/lib/format/date"
@@ -74,7 +74,7 @@ export function PoliciesTab() {
 
 function PoliciesTable({ policies }: { policies: PolicyView[] }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

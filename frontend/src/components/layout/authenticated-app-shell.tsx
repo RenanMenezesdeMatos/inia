@@ -14,12 +14,13 @@ import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { CREATE_PASSWORD_ROUTE, logout, logoutEverywhere, myProfileHrefFor } from "@/services/auth/auth-service"
 import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { shutdownUsageForLogout, UsageAnalyticsProvider } from "@/lib/usage/usage-provider"
+import { HumanSupportStateProvider } from "@/queries/human-support/use-human-support-state"
 
 type AuthenticatedAppShellProps = {
   children: React.ReactNode
 }
 
-type ShellState = { profile: AppShellProfile; profileHref: string; canAccessAdministration: boolean; canReviewFeedback: boolean; canViewDiagnostics: boolean; canUseReports: boolean; canViewBestPractices: boolean }
+type ShellState = { profile: AppShellProfile; profileHref: string; canAccessAdministration: boolean; canReviewFeedback: boolean; canViewDiagnostics: boolean; canUseReports: boolean; canViewBestPractices: boolean; canAttendHumanSupport: boolean }
 
 export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) {
   const router = useRouter()
@@ -52,11 +53,14 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
         profile: { name: sessionDisplayName(user), registeredName: user.name, role: user.jobTitle ?? ROLE_LABELS[user.role], avatarSrc: user.avatarUrl ?? undefined },
         profileHref: myProfileHrefFor(user),
         // "Administração" também para quem só lê as conversas com a INIA ou revisa contestações (a entrada /admin leva direto à área).
-        canAccessAdministration: user.access.capabilities.canAccessAdministration || user.access.capabilities.canViewAssistantConversations || user.access.capabilities.canReviewFeedbackContestations || (user.features.usabilityPanel && user.access.capabilities.canViewUsability),
+        // Também o Coordenador de Anjos: a entrada leva à área isolada do painel do apoio.
+        canAccessAdministration: user.access.capabilities.canAccessAdministration || user.access.capabilities.canViewAssistantConversations || user.access.capabilities.canReviewFeedbackContestations || (user.features.usabilityPanel && user.access.capabilities.canViewUsability) || user.access.capabilities.canCoordinateHumanSupport,
         canReviewFeedback: user.features.interactionFeedbackQa && user.access.capabilities.canReviewFeedback,
         canViewDiagnostics: user.access.capabilities.canViewDiagnostics,
         canUseReports: user.access.capabilities.canUseReports,
         canViewBestPractices: user.access.capabilities.canViewBestPractices,
+        // Apoio com Anjo: "Área do Anjo" no seletor de área (o Anjo atende em /apoio).
+        canAttendHumanSupport: user.access.capabilities.canAttendHumanSupport,
       }
     : null
 
@@ -86,7 +90,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
   return (
     <UsageAnalyticsProvider>
     <SessionIdleGuard timeoutMinutes={user?.sessionIdleTimeoutMinutes ?? 0} onExpired={handleIdleExpired} />
-    <div className="min-h-screen overflow-x-clip bg-background text-foreground">
+    <div className="min-h-screen overflow-x-clip bg-canvas text-foreground">
       {shell ? (
         <AppTopBar
           profile={shell.profile}
@@ -98,13 +102,17 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
           canViewDiagnostics={shell.canViewDiagnostics}
           canUseReports={shell.canUseReports}
           canViewBestPractices={shell.canViewBestPractices}
+          canAttendHumanSupport={shell.canAttendHumanSupport}
           onEditProfile={() => editor.open("name")}
         />
       ) : null}
 
-      <main className="min-h-[calc(100vh-3.5rem)]">
-        {children}
-      </main>
+      {/* Estado do Apoio com Anjo do operador: UMA chamada por navegador (aba líder), lida pelo chat, pelo selo e pela sala. */}
+      <HumanSupportStateProvider enabled={Boolean(user)}>
+        <main className="min-h-[calc(100vh-3.5rem)]">
+          {children}
+        </main>
+      </HumanSupportStateProvider>
     </div>
     </UsageAnalyticsProvider>
   )

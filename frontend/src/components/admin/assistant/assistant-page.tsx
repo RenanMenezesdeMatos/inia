@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import { formatDateOnly } from "@/components/admin/knowledge/knowledge-meta"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -184,7 +184,7 @@ function OrchestratorCard({ orchestrator }: { orchestrator: Orchestrator }) {
 function OrchestratorsTable({ orchestrators }: { orchestrators: Orchestrator[] }) {
   const router = useRouter()
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

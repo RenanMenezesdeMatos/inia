@@ -25,7 +25,7 @@ function nonceIn(policy: string | null) {
 }
 
 describe("proxy — CSP com nonce em todas as páginas", () => {
-  it.each(["/", "/auth/login", "/auth/forgot-password", "/wiki", "/wiki/seguranca", "/admin/workflows/abc", "/operator", "/perfil/editar", "/materiais/1"])(
+  it.each(["/", "/auth/login", "/auth/forgot-password", "/wiki", "/wiki/seguranca", "/admin/workflows/abc", "/operator", "/perfil/editar", "/materiais/1", "/apoio"])(
     "o matcher alcança %s",
     (path) => expect(unstable_doesMiddlewareMatch({ config, url: path })).toBe(true),
   )
@@ -52,6 +52,7 @@ describe("proxy — CSP com nonce em todas as páginas", () => {
 
   it("área autenticada sem sessão continua indo para o login; com troca de senha pendente, para a criação de senha", () => {
     expect(proxy(request("/admin")).headers.get("location")).toBe("http://localhost:3000/auth/login")
+    expect(proxy(request("/apoio")).headers.get("location")).toBe("http://localhost:3000/auth/login")
     const pending = proxy(request("/operator", { inia_session: sessionToken({ pc: true }) }))
     expect(pending.headers.get("location")).toBe("http://localhost:3000/auth/create-password")
   })

@@ -16,6 +16,7 @@ import { StructureUnitCard } from "./structure-unit-card"
 import { EMPTY_TEAM_FILTERS, hasActiveTeamFilters, TeamFilters, type TeamFilterState } from "./team-filters"
 import { TeamMemberTable } from "./team-member-table"
 import { TeamSummary } from "./team-summary"
+import { SectionLabel } from "@/components/ui/surface"
 
 export type TeamViewState = { subject: SubjectRef | null; period: string | null; situation?: MemberSituation | null; attention?: string | null }
 
@@ -93,7 +94,7 @@ export function TeamView({ context, state, onStateChange, employeeHref }: { cont
     <section className="min-h-[calc(100dvh-12rem)] w-full space-y-4">
       <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="font-heading text-sm text-muted-foreground">{peopleLabel}</p>
+          <SectionLabel as="p" className="mb-1">{peopleLabel}</SectionLabel>
           <h2 className="text-2xl font-semibold tracking-tight">Quem está na estrutura e onde atuar</h2>
           {overview.data ? <HierarchyBreadcrumb entries={overview.data.breadcrumb} onNavigate={navigate} /> : null}
         </div>

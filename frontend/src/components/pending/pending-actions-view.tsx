@@ -13,6 +13,7 @@ import { DECISION_DONE_LABELS, parseReviewKey, parseWorkdayKey, PENDING_STATUS_L
 
 import { HumanReviewSheet } from "./human-review-sheet"
 import { WorkdayReconciliationSheet } from "./workday-reconciliation-sheet"
+import { SectionLabel } from "@/components/ui/surface"
 
 export type PendingActionsState = { review: string | null; operator: string | null }
 
@@ -35,7 +36,7 @@ export function PendingActionsView({ state, onStateChange, employeeHref }: { sta
     <section className="w-full space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="font-heading text-sm text-muted-foreground">Ação requerida</p>
+          <SectionLabel as="p" className="mb-1">Ação requerida</SectionLabel>
           <h2 className="text-2xl font-semibold tracking-tight">Pendências</h2>
           <p className="mt-1 text-sm text-muted-foreground">Revisões de workflow, intervenções e pendências de produção da sua equipe que aguardam sua resposta. Ler um item não decide nada — a decisão é registrada dentro do item.</p>
         </div>

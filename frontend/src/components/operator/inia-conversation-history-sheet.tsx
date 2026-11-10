@@ -6,6 +6,7 @@ import { Mic, MessageSquare } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { SupportHistorySection } from "@/components/human-support/operator/support-history-section"
 import { Skeleton } from "@/components/ui/skeleton"
 import { conversationLabel, conversationStatusLabel, lastActivityLabel } from "@/lib/realtime/conversation-format"
 import { fetchOwnConversations, type ConversationSummary } from "@/lib/realtime/gemini-text-client"
@@ -79,6 +80,8 @@ export function IniaConversationHistorySheet({ open, onOpenChange, currentConver
               {query.isFetchNextPageError ? <p className="mt-1 text-xs text-destructive" role="alert">Não foi possível carregar mais conversas.</p> : null}
             </div>
           ) : null}
+          {/* Apoio com Anjo: os pedidos da própria pessoa (somente leitura), separados das conversas com a INIA. */}
+          <div className="mt-4 border-t pt-3"><SupportHistorySection /></div>
         </div>
       </SheetContent>
     </Sheet>

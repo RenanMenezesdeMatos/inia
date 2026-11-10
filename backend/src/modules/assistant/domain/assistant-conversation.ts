@@ -15,7 +15,8 @@ export const DEFAULT_CONVERSATION_INACTIVITY_HOURS = 24
 
 export type ConversationStatus = "ACTIVE" | "CLOSED"
 export type ConversationKind = "CONVERSATION" | "LEGACY_HISTORY"
-export type ConversationCloseReason = "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED"
+/** `HUMAN_SUPPORT`: encerrada quando terminou o atendimento do Anjo que saiu desta conversa (migration 183). */
+export type ConversationCloseReason = "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | "HUMAN_SUPPORT"
 /** USER = iniciada pela pessoa (a conversa "atual" é sempre uma destas); WORKFLOW = criada por um nó Output (Chat), com a
  * primeira mensagem da INIA — nunca disputa a conversa atual e não é trocada por inatividade (o assunto é o artefato);
  * FEEDBACK = a conversa de uma APLICAÇÃO de feedback (feedback-application): mesma regra do WORKFLOW enquanto a aplicação está

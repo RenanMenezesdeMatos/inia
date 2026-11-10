@@ -10,6 +10,7 @@ import { EmployeeIndicatorsDashboard } from "./employee-indicators-dashboard"
 import { HierarchyBreadcrumb } from "./hierarchy-breadcrumb"
 import { PeriodSelector } from "./period-selector"
 import { StructureIndicatorsDashboard } from "./structure-indicators-dashboard"
+import { SectionLabel } from "@/components/ui/surface"
 
 export type IndicatorsViewState = { subject: SubjectRef | null; period: string | null; comparison?: OperationalComparison | null; indicator: string | null; groupBy: GroupingDimension | null }
 
@@ -35,7 +36,7 @@ export function IndicatorsView({ context, state, onStateChange, employeeHref, ti
     <section className="min-h-[calc(100dvh-12rem)] w-full space-y-4">
       <div className="flex flex-col gap-3 px-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <p className="font-heading text-sm text-muted-foreground">Performance</p>
+          <SectionLabel as="p" className="mb-1">Performance</SectionLabel>
           <h2 className="text-2xl font-semibold tracking-tight">{title ?? (query.data?.mode === "STRUCTURE" ? "Indicadores da estrutura" : "Meus indicadores")}</h2>
           {query.data ? <HierarchyBreadcrumb entries={query.data.breadcrumb} onNavigate={navigateBreadcrumb} /> : null}
         </div>

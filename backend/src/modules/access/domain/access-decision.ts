@@ -119,6 +119,11 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canExecuteInterventions: any("interventions.execute"),
     canApproveInterventions: any("interventions.approve"),
     canDecideSensitiveInterventions: any("interventions.sensitive_decide"),
+    // Apoio com Anjo — FORA de `canAccessAdministration`: o Anjo usa a área dele (/apoio); o Coordenador entra numa área isolada da
+    // Administração (só o painel do apoio); configurar vale só com escopo de organização, como a rota.
+    canAttendHumanSupport: any("human_support.attend"),
+    canCoordinateHumanSupport: any("human_support.coordinate"),
+    canManageHumanSupport: org("human_support.manage"),
   }
 }
 

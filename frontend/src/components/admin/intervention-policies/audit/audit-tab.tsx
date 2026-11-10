@@ -4,7 +4,7 @@ import { useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDateTime } from "@/lib/format/date"
 import { useCompetenciesQuery, useInterventionTypesQuery, usePoliciesQuery, usePolicyAuditQuery } from "@/queries/admin/use-intervention-policy-queries"
 import type { AuditEntry } from "@/schemas/admin/intervention-policy.schema"
@@ -68,7 +68,7 @@ export function AuditTab() {
         ) : auditQuery.data.length === 0 ? (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">Nenhuma alteração registrada.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

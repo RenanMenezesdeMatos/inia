@@ -63,3 +63,31 @@ export function formatShortDateTime(value: string, options: FormatShortDateTimeO
 
   return options.withWeekday && weekday ? `${weekday} ${datePart} às ${timePart}` : `${datePart} às ${timePart}`
 }
+
+/** Instante ISO → "hh:mm" no fuso do navegador (ex.: "Seu pedido fica na fila até 14:35"). Valor inválido vira "". */
+export function formatClockTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false })
+}
+
+/** Cronômetro "mm:ss" (abaixo de 1 h) ou "h:mm:ss": tempo decorrido em ms, nunca negativo. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`
+}
+
+/** O mesmo tempo por extenso, para leitores de tela: "1 h 5 min", "12 min 4 s", "40 s". */
+export function describeElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  if (hours > 0) return `${hours} h ${minutes} min`
+  if (minutes > 0) return `${minutes} min ${seconds} s`
+  return `${seconds} s`
+}

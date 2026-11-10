@@ -54,6 +54,10 @@ export type OrchestratedReply = {
     /** Ferramentas de investigação usadas pelo especialista (só quando ele tem capacidades). */
     toolTrace?: InvestigationOutcomeFields["toolTrace"]
     investigation?: InvestigationOutcomeFields["investigation"]
+    /** A chamada falhou e virou "consulta não concluída" (conversa com `toleratesToolFailure`) — sinal `CONSULTATION_FAILED`. */
+    failed?: true
+    /** A chamada do especialista foi impedida (inativo ou sem autorização) — sinal `SPECIALIST_BLOCKED`. */
+    blocked?: true
   }[]
   /** União deduplicada (por materialId) dos candidatos de TODOS os especialistas acionados —
    * o conjunto que o Orquestrador pôde escolher. Vazio quando nenhum especialista trouxe KB. */
@@ -191,7 +195,12 @@ type TurnResult = {
   toolTrace?: InvestigationOutcomeFields["toolTrace"]
   investigation?: InvestigationOutcomeFields["investigation"]
   direct?: { args: Record<string, unknown>; card: unknown | null; trace?: Record<string, unknown> | undefined }
+  /** Falhou e virou "consulta não concluída" (só com `toleratesToolFailure`). */
+  failed?: true
 }
+
+/** Marcas da chamada que entram no resultado devolvido (sinais da resposta, `assistant/domain/reply-signals.ts`). */
+const callFlagsOf = (result: TurnResult) => ({ ...(result.failed ? { failed: true as const } : {}), ...(result.outcome && result.outcome !== "EXECUTED" ? { blocked: true as const } : {}) })
 
 /** Opções do caminho rápido (só o nó de Workflow as passa; chat/voz nunca). */
 export type OrchestrationFastPath = {
@@ -415,7 +424,7 @@ async function runOrchestratedReplyInVersions(
     answeredSoFar += settled.length - failures.length
     if (failures.length > 0 && answeredSoFar === 0) throw failures[0]!.reason
     for (const failure of failures) console.warn(JSON.stringify({ event: "orchestrator_tool_failed", orchestratorId: orchestrator.orchestratorId, toolName: calls[failure.index]!.name, code: failure.reason instanceof DomainError ? failure.reason.code : (failure.reason as Error)?.name ?? "UNKNOWN" }))
-    return settled.map((outcome, index) => (outcome.status === "fulfilled" ? outcome.value : refused(calls[index]!, TOOL_FAILED_TEXT)))
+    return settled.map((outcome, index) => (outcome.status === "fulfilled" ? outcome.value : { ...refused(calls[index]!, TOOL_FAILED_TEXT), failed: true as const }))
   }
   let answeredSoFar = 0
   const firstResults = await executeRound(first.calls)
@@ -477,6 +486,7 @@ async function runOrchestratedReplyInVersions(
         ...(single.knowledge ? { knowledge: single.knowledge } : {}),
         ...(single.supportMaterialCandidates ? { supportMaterialCandidates: single.supportMaterialCandidates } : {}),
         ...(single.toolTrace ? { toolTrace: single.toolTrace, investigation: single.investigation } : {}),
+        ...callFlagsOf(single),
       }],
       structuredResult: null,
       supportMaterialCandidates,
@@ -599,6 +609,7 @@ async function runOrchestratedReplyInVersions(
       ...(result.knowledge ? { knowledge: result.knowledge } : {}),
       ...(result.supportMaterialCandidates ? { supportMaterialCandidates: result.supportMaterialCandidates } : {}),
       ...(result.toolTrace ? { toolTrace: result.toolTrace, investigation: result.investigation } : {}),
+      ...callFlagsOf(result),
     })),
     structuredResult,
     supportMaterialCandidates,

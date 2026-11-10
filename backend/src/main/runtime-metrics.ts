@@ -16,7 +16,7 @@ import type { NextFunction, Request, Response } from "express"
  */
 export type PoolLike = { totalCount: number; idleCount: number; waitingCount: number; options?: { max?: number } }
 
-type RouteStats = { count: number; inFlight: number; clientErrors: number; serverErrors: number; totalMs: number; maxMs: number; samples: number[]; next: number }
+type RouteStats = { count: number; inFlight: number; clientErrors: number; serverErrors: number; totalMs: number; maxMs: number; samples: number[]; next: number; excluded: boolean }
 
 export type RuntimeMetricsOptions = {
   role: string
@@ -26,6 +26,9 @@ export type RuntimeMetricsOptions = {
   windowMs?: number
   routeSampleSize?: number
   maxRoutes?: number
+  /** Prefixos de caminho cujas requisições ficam fora da latência: contadas em `count` e nos erros, mas fora de `inFlight`,
+   * `totalMs`, `maxMs` e das amostras (ex.: a chamada longa do Apoio com Anjo, que espera de propósito até 20 s). */
+  excludeFromLatency?: readonly string[]
 }
 
 export type RuntimeMetrics = {
@@ -96,7 +99,7 @@ export function createRuntimeMetrics(options: RuntimeMetricsOptions): RuntimeMet
   const statsFor = (key: string): RouteStats => {
     let stats = routes.get(key) ?? (routes.size >= maxRoutes ? routes.get(OVERFLOW_ROUTE) : undefined)
     if (!stats) {
-      stats = { count: 0, inFlight: 0, clientErrors: 0, serverErrors: 0, totalMs: 0, maxMs: 0, samples: [], next: 0 }
+      stats = { count: 0, inFlight: 0, clientErrors: 0, serverErrors: 0, totalMs: 0, maxMs: 0, samples: [], next: 0, excluded: false }
       routes.set(routes.size >= maxRoutes ? OVERFLOW_ROUTE : key, stats)
     }
     return stats
@@ -106,21 +109,27 @@ export function createRuntimeMetrics(options: RuntimeMetricsOptions): RuntimeMet
     middleware(request, response, next) {
       const started = process.hrtime.bigint()
       const routeOf = captureRoute(request)
+      const path = (request.originalUrl ?? request.url ?? "").split("?")[0] ?? ""
+      const excluded = (options.excludeFromLatency ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
       http.requests += 1
-      http.inFlight += 1
+      if (!excluded) http.inFlight += 1
       let done = false
       // A rota só é conhecida depois do roteamento: em andamento por rota começa a contar no primeiro evento de fim.
       const finish = () => {
         if (done) return
         done = true
-        http.inFlight -= 1
         const elapsed = Number(process.hrtime.bigint() - started) / 1e6
         const stats = statsFor(routeOf())
         stats.count += 1
-        stats.totalMs += elapsed
-        stats.maxMs = Math.max(stats.maxMs, elapsed)
         if (response.statusCode >= 500) stats.serverErrors += 1
         else if (response.statusCode >= 400) stats.clientErrors += 1
+        if (excluded) {
+          stats.excluded = true
+          return
+        }
+        http.inFlight -= 1
+        stats.totalMs += elapsed
+        stats.maxMs = Math.max(stats.maxMs, elapsed)
         if (stats.samples.length < sampleSize) stats.samples.push(elapsed)
         else stats.samples[stats.next] = elapsed
         stats.next = (stats.next + 1) % sampleSize
@@ -134,6 +143,8 @@ export function createRuntimeMetrics(options: RuntimeMetricsOptions): RuntimeMet
         .map(([route, stats]) => {
           const sorted = [...stats.samples].sort((a, b) => a - b)
           const round = (value: number | null) => (value === null ? null : Math.round(value * 10) / 10)
+          // Rota fora da latência: só contagem e erros (a espera dela é proposital e distorceria as médias).
+          if (stats.excluded) return { route, count: stats.count, clientErrors: stats.clientErrors, serverErrors: stats.serverErrors, meanMs: null, p50Ms: null, p95Ms: null, p99Ms: null, maxMs: null, sampled: 0, latencyExcluded: true }
           return { route, count: stats.count, clientErrors: stats.clientErrors, serverErrors: stats.serverErrors, meanMs: round(stats.count ? stats.totalMs / stats.count : null), p50Ms: round(percentile(sorted, 50)), p95Ms: round(percentile(sorted, 95)), p99Ms: round(percentile(sorted, 99)), maxMs: round(stats.maxMs), sampled: sorted.length }
         })
         .sort((a, b) => b.count - a.count)

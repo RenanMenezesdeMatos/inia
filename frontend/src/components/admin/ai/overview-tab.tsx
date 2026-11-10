@@ -8,12 +8,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
@@ -35,6 +34,7 @@ import {
 } from "@/schemas/admin/ai-management.schema"
 
 import { HealthBadge, MoneyList } from "./ai-shared"
+import { DateRangePicker } from "@/components/ui/date-picker"
 
 const ALL = "ALL"
 
@@ -77,12 +77,8 @@ export function OverviewTab({ onOpenTab }: { onOpenTab: (tab: string) => void })
         {period === "CUSTOM" ? (
           <>
             <div className="space-y-1.5">
-              <Label htmlFor="ai-usage-from">De</Label>
-              <Input id="ai-usage-from" type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} className="w-40" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ai-usage-to">Até</Label>
-              <Input id="ai-usage-to" type="date" value={customTo} min={customFrom || undefined} onChange={(event) => setCustomTo(event.target.value)} className="w-40" />
+              <Label htmlFor="ai-usage-period">De – até</Label>
+              <DateRangePicker id="ai-usage-period" value={{ from: customFrom || undefined, to: customTo || undefined }} onChange={(range) => (setCustomFrom(range.from ?? ""), setCustomTo(range.to ?? ""))} />
             </div>
           </>
         ) : null}
@@ -406,7 +402,7 @@ function BreakdownCard({ usage }: { usage: UsageDashboard }) {
 export function BreakdownTable({ rows, firstColumn }: { rows: BreakdownRow[]; firstColumn: string }) {
   if (rows.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma chamada no período.</p>
   return (
-    <div className="overflow-x-auto">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>
@@ -562,7 +558,7 @@ export function LegacyCard({ legacy }: { legacy: LegacyEnvironment }) {
           {legacy.profilesOverridden ? <Badge variant="outline">Perfis sobrescritos no ambiente</Badge> : null}
         </div>
         {legacy.profiles.length > 0 ? (
-          <div className="overflow-x-auto">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

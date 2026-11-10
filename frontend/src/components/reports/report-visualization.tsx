@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { cn } from "@/lib/utils"
 import type { QueryTableCard } from "@/schemas/leadership/leadership.schema"
@@ -33,7 +33,7 @@ const safeKey = (key: string, index: number) => `s${index}_${key.replace(/[^a-zA
 export function ExactValuesTable({ card }: { card: QueryTableCard }) {
   if (card.rows.length === 0) return <p className="text-sm text-muted-foreground">Nenhuma linha atende aos filtros neste período.</p>
   return (
-    <div className="max-h-96 overflow-auto rounded-md border">
+    <div className={cn(TABLE_FRAME, "max-h-96 overflow-auto")}>
       <Table>
         <TableHeader>
           <TableRow>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { formatCivilDate, formatDateTime, formatShortDateTime } from "./date"
+import { describeElapsed, formatCivilDate, formatDateTime, formatElapsed, formatShortDateTime } from "./date"
 
 describe("formatCivilDate", () => {
   it("vira dd/mm/aaaa sem passar por Date (o dia nunca desloca pelo fuso)", () => {
@@ -29,5 +29,17 @@ describe("formatShortDateTime", () => {
 
   it("valor inválido vira texto vazio", () => {
     expect(formatShortDateTime("não é data")).toBe("")
+  })
+})
+
+describe("formatElapsed e describeElapsed", () => {
+  it("cronômetro mm:ss e h:mm:ss, nunca negativo", () => {
+    expect(formatElapsed(0)).toBe("00:00")
+    expect(formatElapsed(65_400)).toBe("01:05")
+    expect(formatElapsed(3_725_000)).toBe("1:02:05")
+    expect(formatElapsed(-5_000)).toBe("00:00")
+    expect(describeElapsed(40_000)).toBe("40 s")
+    expect(describeElapsed(724_000)).toBe("12 min 4 s")
+    expect(describeElapsed(3_900_000)).toBe("1 h 5 min")
   })
 })

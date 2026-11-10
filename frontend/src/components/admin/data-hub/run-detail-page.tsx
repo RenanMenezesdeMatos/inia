@@ -8,7 +8,7 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
 import { ListMultiSelectFilter, ListSearchInput, ListToolbar } from "@/components/admin/shared/list/list-filters"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
@@ -44,7 +44,7 @@ function Timeline({ run }: { run: RunDetail }) {
 
 function RejectionsTable({ rows }: { rows: Rejection[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

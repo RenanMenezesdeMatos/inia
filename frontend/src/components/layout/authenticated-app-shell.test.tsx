@@ -13,6 +13,8 @@ import { NO_ACCESS_CAPABILITIES } from "@/schemas/auth/auth.schema"
  * só carrega o login DEPOIS de o logout terminar no servidor.
  */
 const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+// O estado do Apoio com Anjo faz chamadas à API; aqui só a árvore importa.
+vi.mock("@/queries/human-support/use-human-support-state", () => ({ HumanSupportStateProvider: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }))
 const documentLoad = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/auth/session-navigation", () => ({ loadSessionDocument: documentLoad }))

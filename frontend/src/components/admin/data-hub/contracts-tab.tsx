@@ -6,7 +6,7 @@ import { FileJson } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { useDataContractsQuery } from "@/queries/admin/use-data-hub-queries"
 import { CONTRACT_CATEGORY_LABELS, FIELD_TYPE_LABELS, WRITE_POLICY_LABELS, WRITE_SEMANTICS_LABELS, type DataContract } from "@/schemas/admin/data-hub.schema"
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 
 export function ContractFieldsTable({ contract }: { contract: DataContract }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow>

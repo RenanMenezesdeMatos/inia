@@ -3,8 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, ImageIcon, Layers, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
+import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -121,6 +122,8 @@ const GROUPS: NavGroup[] = [
       // Contestações dos colaboradores sobre feedbacks da INIA ("não foi útil") — revisão humana com resposta.
       { href: "/admin/feedback-contestations", label: "Contestações de feedback", icon: MessageSquareWarning, capability: "canReviewFeedbackContestations" },
       { href: "/admin/usability", label: "Monitoria de usabilidade", icon: Activity, capability: "canViewUsability" },
+      // Painel do apoio: funil das respostas da INIA e do apoio, pedidos, tentativas sem Anjo e atividade dos Anjos do escopo.
+      { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Apoio com Anjo", icon: LifeBuoy, capability: "canCoordinateHumanSupport" },
     ],
   },
   {
@@ -129,6 +132,8 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/users", label: "Usuários e acessos", icon: Users, capability: "canOpenUsersAndAccess" },
       // Cenário atrás do avatar (padrão e sazonais) — só o Administrador geral.
       { href: "/admin/inia-scenes", label: "Cenário da INIA", icon: ImageIcon, capability: "canManageIniaScenes" },
+      // Chave geral, escopos (Grupo › Subgrupos) e capacidade dos Anjos — só o Administrador geral.
+      { href: HUMAN_SUPPORT_ADMIN_PATH, label: "Apoio com Anjo", icon: HeartHandshake, capability: "canManageHumanSupport" },
     ],
   },
 ]

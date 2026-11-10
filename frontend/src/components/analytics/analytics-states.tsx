@@ -1,11 +1,12 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Lock, type LucideIcon } from "lucide-react"
+import { AlertTriangle, Lock, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { IconBadge } from "@/components/ui/surface"
 import { ApiError } from "@/lib/api/api-client"
 import { cn } from "@/lib/utils"
 
@@ -40,7 +41,7 @@ export function CardsSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="grid gap-3 md:grid-cols-2" aria-hidden>
       {Array.from({ length: count }).map((_, index) => (
-        <Skeleton key={index} className="h-32 w-full rounded-xl" />
+        <Skeleton key={index} className="h-32 w-full rounded-2xl" />
       ))}
     </div>
   )
@@ -58,9 +59,9 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
 
 export function AnalyticsEmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-card/60 px-6 py-10 text-center">
-      <Icon className="size-8 text-muted-foreground/60" aria-hidden />
-      <p className="mt-3 text-sm font-medium">{title}</p>
+    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
+      <IconBadge icon={Icon} tone="info" size="lg" />
+      <p className="mt-3 text-sm font-semibold">{title}</p>
       {description ? <p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
@@ -71,12 +72,12 @@ export function AnalyticsErrorState({ error, onRetry }: { error: unknown; onRetr
   const isForbidden = error instanceof ApiError && error.status === 403
   const message = error instanceof Error ? error.message : "Não foi possível carregar os dados."
   return (
-    <div role="alert" className={cn("flex flex-col items-center rounded-xl border p-8 text-center", isForbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5")}>
-      {isForbidden ? <Lock className="size-8 text-muted-foreground/60" aria-hidden /> : null}
+    <div role="alert" className={cn("flex flex-col items-center rounded-2xl border p-8 text-center", isForbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5")}>
+      <IconBadge icon={isForbidden ? Lock : AlertTriangle} tone={isForbidden ? "neutral" : "danger"} size="lg" />
       <p className={cn("mt-3 text-sm", isForbidden ? "font-medium" : "text-destructive")}>{isForbidden ? "Sem acesso a esta estrutura" : message}</p>
       {isForbidden ? <p className="mt-1 max-w-md text-sm text-muted-foreground">Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela.</p> : null}
       {!isForbidden && onRetry ? (
-        <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+        <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
           Tentar novamente
         </Button>
       ) : null}

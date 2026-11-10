@@ -4,6 +4,13 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * MOLDURA DE TABELA do app: superfície de cartão (destaca do fundo da página), borda, cantos `rounded-xl` e a rolagem horizontal
+ * POR DENTRO (no `table-container`), para os cantos continuarem arredondados quando a tabela é mais larga que a tela. Use no contêiner
+ * que envolve a `<Table>`; para rolagem vertical, some `max-h-* overflow-auto`.
+ */
+export const TABLE_FRAME = "overflow-hidden rounded-xl border border-border bg-card shadow-xs"
+
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
@@ -23,7 +30,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn("bg-muted/60 [&_tr]:border-b [&>tr:first-child>th:first-child]:rounded-tl-lg [&>tr:first-child>th:last-child]:rounded-tr-lg", className)}
       {...props}
     />
   )
@@ -70,7 +77,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-2 text-left align-middle text-xs font-semibold whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

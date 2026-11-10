@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { indicatorAnalysisCard } from "@/components/leadership/leadership-fixtures"
 
-import { ConversationClosedError, fetchConversationMessages, fetchTextReply } from "./gemini-text-client"
+import { ConversationClosedError, fetchConversationMessages, fetchTextReply, saveMessageRating } from "./gemini-text-client"
 
 function sseResponse(body: string): Response {
   const bytes = new TextEncoder().encode(body)
@@ -165,5 +165,30 @@ describe("fetchTextReply — resposta em fluxo", () => {
     controller.abort()
     await expect(pending).rejects.toThrow()
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("Apoio com Anjo, Parte A — sinais da resposta e motivo da descurtida", () => {
+  it("o id da pergunta gravada chega no evento conversation; os sinais da resposta chegam no persisted (códigos desconhecidos são ignorados)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(sseResponse(`${CONVERSATION}event: chunk\ndata: ${JSON.stringify({ text: "Não encontrei." })}\n\nevent: persisted\ndata: ${JSON.stringify({ interactionId: "int-s", signals: ["KNOWLEDGE_NOT_FOUND", "PHRASE"] })}\n\nevent: done\ndata: {}\n\n`))
+    const refs: unknown[] = []
+    const reply = await fetchTextReply(MESSAGE("e a multa?"), () => {}, (ref) => refs.push(ref))
+    expect(refs).toEqual([{ conversationId: CONVERSATION_ID, created: true, rotatedFrom: null, userMessageId: "u1" }])
+    expect(reply.signals).toEqual(["KNOWLEDGE_NOT_FOUND"])
+  })
+
+  it("a descurtida com motivo vai numa chamada (comentário sem espaços nas pontas; vazio fica de fora) e devolve a vigente", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ data: { interactionId: "int-1", rating: "down", ratingId: "r-1", details: { reason: "OTHER", comment: "Prazo errado.", stillNeedsHelp: true } } }), { status: 200, headers: { "content-type": "application/json" } }))
+    const saved = await saveMessageRating(CONVERSATION_ID, "int-1", "down", { reason: "OTHER", comment: "  Prazo errado. ", stillNeedsHelp: true })
+    expect(saved).toEqual({ interactionId: "int-1", rating: "down", ratingId: "r-1", details: { reason: "OTHER", comment: "Prazo errado.", stillNeedsHelp: true } })
+    expect(JSON.parse(String(fetchSpy.mock.calls[0]![1]!.body))).toEqual({ value: "DOWN", details: { reason: "OTHER", comment: "Prazo errado.", stillNeedsHelp: true } })
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ data: { interactionId: "int-1", rating: "up", ratingId: "r-2", details: null } }), { status: 200 }))
+    await saveMessageRating(CONVERSATION_ID, "int-1", "down", { reason: "INCOMPLETE", comment: "   ", stillNeedsHelp: false })
+    expect(JSON.parse(String(fetchSpy.mock.calls[1]![1]!.body))).toEqual({ value: "DOWN", details: { reason: "INCOMPLETE", stillNeedsHelp: false } })
+  })
+
+  it("falha devolve a mensagem do servidor (o formulário a mostra)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ error: { code: "RATING_DETAILS_NOT_ALLOWED", message: "O motivo da descurtida só vale nas conversas abertas por você com a INIA." } }), { status: 422 }))
+    await expect(saveMessageRating(CONVERSATION_ID, "int-1", "down", { reason: "NOT_FOUND", comment: "", stillNeedsHelp: true })).rejects.toThrow("O motivo da descurtida só vale nas conversas abertas por você com a INIA.")
   })
 })

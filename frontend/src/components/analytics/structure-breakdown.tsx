@@ -4,7 +4,7 @@ import { ChevronRight, Layers } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatPercent } from "@/lib/analytics/format"
 import { subjectToRef, type SubjectRef } from "@/lib/analytics/subject-params"
 import { useStructureBreakdownQuery } from "@/queries/analytics/use-analytics-queries"
@@ -55,7 +55,7 @@ export function StructureGroupTable({ subject, period, groupBy, onDrillDown }: {
           query.data.groups.length === 0 ? (
             <AnalyticsEmptyState icon={Layers} title="Nenhum grupo nesta dimensão" description="A estrutura não possui unidades desse nível." />
           ) : (
-            <div className="overflow-x-auto">
+            <div className={TABLE_FRAME}>
               <Table>
                 <TableHeader>
                   <TableRow>

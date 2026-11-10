@@ -4,7 +4,7 @@ import { formatShortDateTime } from "@/lib/format/date"
  * Apresentação de CONVERSAS com a INIA — compartilhada pelo chat do colaborador e pela área "Conversas com a INIA" da
  * Administração (os dois leem a mesma troca real de mensagens; nada aqui resume ou reescreve conteúdo).
  */
-export type ConversationLike = { kind: "CONVERSATION" | "LEGACY_HISTORY"; status: "ACTIVE" | "CLOSED"; startedAt: string; closeReason?: "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | null; origin?: "USER" | "WORKFLOW" | "FEEDBACK"; title?: string | null; feedbackFollowUp?: boolean }
+export type ConversationLike = { kind: "CONVERSATION" | "LEGACY_HISTORY"; status: "ACTIVE" | "CLOSED"; startedAt: string; closeReason?: "MANUAL" | "INACTIVITY" | "LEGACY" | "COMPLETED" | "HUMAN_SUPPORT" | null; origin?: "USER" | "WORKFLOW" | "FEEDBACK"; title?: string | null; feedbackFollowUp?: boolean }
 
 /** Identificação simples: data/hora de início — ou "Histórico anterior" para os registros sem limite de conversa conhecido.
  * Conversa criada por um Workflow usa o título do recado ("Feedback do seu fechamento de agosto de 2026"). */
@@ -23,7 +23,10 @@ export function conversationStatusLabel(conversation: ConversationLike): string 
   if (conversation.origin === "FEEDBACK" && conversation.feedbackFollowUp) return "Dúvidas após a conclusão"
   if (conversation.origin === "FEEDBACK") return conversation.status === "ACTIVE" ? "Feedback em andamento" : "Feedback concluído"
   if (conversation.status === "ACTIVE") return "Em andamento"
-  return conversation.closeReason === "INACTIVITY" ? "Encerrada por inatividade" : "Encerrada"
+  if (conversation.closeReason === "INACTIVITY") return "Encerrada por inatividade"
+  // Encerrada pelo servidor quando terminou o atendimento do Anjo que saiu desta conversa (Apoio com Anjo).
+  if (conversation.closeReason === "HUMAN_SUPPORT") return "Encerrada após o apoio do Anjo"
+  return "Encerrada"
 }
 
 const dayKeyFormatter = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })

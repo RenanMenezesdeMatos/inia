@@ -2,12 +2,12 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 
 /**
  * REGISTRO DE LEITURA de dados pessoais de OUTRA pessoa (migration 151, LGPD): quem abriu a transcrição de uma chamada, uma
- * conversa com a INIA ou a ficha do colaborador. É chamado DEPOIS de a rota autorizar e carregar o dado — nunca decide acesso.
+ * conversa com a INIA, a ficha do colaborador, uma conversa de apoio com Anjo ou a presença de um Anjo (migration 182). É chamado DEPOIS de a rota autorizar e carregar o dado — nunca decide acesso.
  * Ler os próprios dados não é registrado. Reabrir o mesmo registro em até 10 minutos não grava de novo.
  *
  * Falha ao registrar não derruba a tela (o dado já foi autorizado): vai para o log com o evento `personal_data_access_log_failed`.
  */
-export type PersonalDataKind = "CALL_TRANSCRIPT" | "ASSISTANT_CONVERSATION" | "EMPLOYEE_PROFILE"
+export type PersonalDataKind = "CALL_TRANSCRIPT" | "ASSISTANT_CONVERSATION" | "EMPLOYEE_PROFILE" | "HUMAN_SUPPORT_CONVERSATION" | "HUMAN_SUPPORT_PRESENCE"
 
 export type PersonalDataAccess = {
   organizationId: string
@@ -21,8 +21,9 @@ export type PersonalDataAccess = {
 
 export const ACCESS_LOG_DEDUPE_MINUTES = 10
 
-export async function recordPersonalDataAccess(db: Pick<Database, "query">, access: PersonalDataAccess): Promise<void> {
-  if (access.viewerPersonId === access.subjectPersonId) return
+/** `false` = a gravação falhou (já foi para o log); quem conta falhas para as métricas usa o retorno. Ler os próprios dados = `true`. */
+export async function recordPersonalDataAccess(db: Pick<Database, "query">, access: PersonalDataAccess): Promise<boolean> {
+  if (access.viewerPersonId === access.subjectPersonId) return true
   const at = access.at ?? new Date()
   try {
     await db.query(
@@ -35,8 +36,10 @@ export async function recordPersonalDataAccess(db: Pick<Database, "query">, acce
         )`,
       [access.organizationId, access.viewerPersonId, access.subjectPersonId, access.dataKind, access.resourceId ?? null, at, ACCESS_LOG_DEDUPE_MINUTES],
     )
+    return true
   } catch (error) {
     console.error(JSON.stringify({ event: "personal_data_access_log_failed", dataKind: access.dataKind, message: (error as Error).message }))
+    return false
   }
 }
 

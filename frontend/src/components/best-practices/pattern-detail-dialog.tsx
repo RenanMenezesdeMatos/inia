@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCivilDate, formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { usePatternQuery } from "@/queries/best-practices/use-best-practices"
@@ -86,7 +86,7 @@ export function PatternDetailBody({ pattern }: { pattern: PatternDetail }) {
 
       {current ? (
         <Section title={`Comparação (versão ${current.version} · ${formatCivilDate(current.periodStart)} a ${formatCivilDate(current.periodEnd)} · ${current.callsAnalyzed} chamadas de ${current.operatorsAnalyzed} operadores)`} icon={Scale}>
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader>
                 <TableRow>

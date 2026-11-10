@@ -6,7 +6,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronDown, CircleCheck, Cir
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatIndicatorValue } from "@/lib/analytics/format"
 import { cn } from "@/lib/utils"
 import type { Investigation } from "@/schemas/diagnostics/diagnostics-memory.schema"
@@ -215,7 +215,7 @@ function Localization({ localization }: { localization: Investigation["localizat
         <p className="text-sm">Composição da variação: <span className="font-medium">{localization.decomposition.dominant === "MIX" ? "principalmente mudança no mix de assuntos" : localization.decomposition.dominant === "WITHIN" ? "principalmente mudança dentro dos assuntos" : "mix e mudança dentro dos assuntos"}</span>.</p>
       ) : null}
       {localization.segments.length > 0 ? (
-        <div className="overflow-hidden rounded-lg border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -366,7 +366,7 @@ function PatternCard({ pattern, callAssessments, onOpenCall, activeInteractionId
 function ReferencePractices({ practices }: { practices: ReferencePractice[] }) {
   const ratio = (met: number, eligible: number) => (eligible > 0 ? <><span className="font-semibold tabular-nums">{met}</span><span className="text-muted-foreground tabular-nums"> de {eligible}</span></> : <span className="text-xs text-muted-foreground">não avaliada</span>)
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className={TABLE_FRAME}>
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40">

@@ -1,6 +1,6 @@
 import express, { type ErrorRequestHandler } from "express"
 import request from "supertest"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ZodError } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -24,15 +24,24 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, next) => {
 
 let clock = new Date("2026-10-22T12:00:00.000Z")
 let memory = createMemoryConversationStore()
+/** Sugestões elegíveis registradas (Apoio com Anjo, Parte B): a rota chama a função injetada. */
+let suggestions: { organizationId: string; personId: string; interactionId: string; origin: string }[] = []
 
-function appWith(person = LARISSA) {
+function appWith(person = LARISSA, options: { failSuggestion?: boolean } = {}) {
   const app = express()
   app.use(express.json())
   app.use((req, _res, next) => {
     req.user = operator(person)
     next()
   })
-  app.use("/api/v1/realtime", createRealtimeRouter(fakeDb, async () => { throw new Error("not needed") }, async (history, _instruction, onChunk) => onChunk(`resposta para: ${history.at(-1)!.text}`), { conversations: memory.store, now: () => clock }))
+  app.use("/api/v1/realtime", createRealtimeRouter(fakeDb, async () => { throw new Error("not needed") }, async (history, _instruction, onChunk) => onChunk(`resposta para: ${history.at(-1)!.text}`), {
+    conversations: memory.store,
+    now: () => clock,
+    recordSuggestion: async (input) => {
+      if (options.failSuggestion) throw new Error("registro indisponível")
+      suggestions.push(input)
+    },
+  }))
   app.use(errorHandler)
   return app
 }
@@ -49,11 +58,15 @@ async function exchange(app: express.Express) {
   return { conversationId, question: messages.find((message) => message.role === "user")!, answer: messages.find((message) => message.role === "assistant")! }
 }
 
-const rate = (app: express.Express, conversationId: string, interactionId: string, value: unknown) => request(app).put(`/api/v1/realtime/conversations/${conversationId}/messages/${interactionId}/rating`).send({ value })
+const rate = (app: express.Express, conversationId: string, interactionId: string, value: unknown, details?: unknown) =>
+  request(app).put(`/api/v1/realtime/conversations/${conversationId}/messages/${interactionId}/rating`).send(details === undefined ? { value } : { value, details })
+const reopen = async (app: express.Express, conversationId: string, interactionId: string) =>
+  ((await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages`)).body.data.messages as Record<string, unknown>[]).find((message) => message.id === interactionId)!
 
 beforeEach(() => {
   clock = new Date("2026-10-22T12:00:00.000Z")
   memory = createMemoryConversationStore({ inactivityHours: 24 })
+  suggestions = []
 })
 
 describe("realtime — curtir/descurtir das respostas da INIA (migration 158)", () => {
@@ -64,7 +77,8 @@ describe("realtime — curtir/descurtir das respostas da INIA (migration 158)", 
     expect(answer.rating).toBeNull()
     expect(question).not.toHaveProperty("rating")
 
-    expect((await rate(app, conversationId, answer.id, "UP")).body.data).toEqual({ interactionId: answer.id, rating: "up" })
+    const liked = (await rate(app, conversationId, answer.id, "UP")).body.data
+    expect(liked).toEqual({ interactionId: answer.id, rating: "up", ratingId: memory.ratings[0]!.id, details: null })
     const reopened = await request(app).get(`/api/v1/realtime/conversations/${conversationId}/messages`)
     expect(reopened.body.data.messages.find((message: { id: string }) => message.id === answer.id).rating).toBe("up")
 
@@ -104,5 +118,93 @@ describe("realtime — curtir/descurtir das respostas da INIA (migration 158)", 
     const questionOnly = await request(app).post("/api/v1/realtime/voice-turn").send({ conversationId: spoken.body.data.conversationId, turnId: "voice-turn-r2", userText: "e o de ontem?" })
     expect(questionOnly.body.data.assistantInteractionId).toBeNull()
     expect((await rate(app, spoken.body.data.conversationId, stored.id, "DOWN")).body.data.rating).toBe("down")
+  })
+})
+
+describe("realtime — motivo da descurtida no chat livre (migration 181, Apoio com Anjo)", () => {
+  const wrong = { reason: "WRONG_INFORMATION", stillNeedsHelp: true }
+
+  it("grava o motivo com a descurtida, devolve a versão e o motivo, e eles voltam ao reabrir a conversa", async () => {
+    const app = appWith()
+    const { conversationId, answer } = await exchange(app)
+    const response = await rate(app, conversationId, answer.id, "DOWN", { reason: "OTHER", comment: "  O prazo é outro.  ", stillNeedsHelp: false })
+    expect(response.status).toBe(200)
+    expect(response.body.data).toEqual({ interactionId: answer.id, rating: "down", ratingId: memory.ratings[0]!.id, details: { reason: "OTHER", comment: "O prazo é outro.", stillNeedsHelp: false } })
+    expect(await reopen(app, conversationId, answer.id)).toMatchObject({ rating: "down", ratingId: memory.ratings[0]!.id, ratingDetails: { reason: "OTHER", comment: "O prazo é outro.", stillNeedsHelp: false } })
+    // Sem necessidade de ajuda: nenhuma sugestão.
+    expect(suggestions).toEqual([])
+  })
+
+  it("regras de gravação: sem motivo sobre a vigente com motivo não grava; sem motivo nos outros casos grava como antes; motivo diferente = versão nova", async () => {
+    const app = appWith()
+    const { conversationId, answer } = await exchange(app)
+    // Regra 2: descurtida sem motivo (aba antiga) continua aceita.
+    expect((await rate(app, conversationId, answer.id, "DOWN")).body.data).toMatchObject({ rating: "down", details: null })
+    expect(memory.ratings).toHaveLength(1)
+    // Regra 3: motivo novo sobre a descurtida sem motivo = versão nova.
+    clock = new Date("2026-10-22T12:01:00.000Z")
+    await rate(app, conversationId, answer.id, "DOWN", wrong)
+    expect(memory.ratings.map((row) => [row.value, row.details?.reason ?? null, row.supersededAt?.toISOString() ?? null])).toEqual([
+      ["DOWN", null, "2026-10-22T12:01:00.000Z"],
+      ["DOWN", "WRONG_INFORMATION", null],
+    ])
+    // Regra 1: descurtida sem motivo (outra aba antiga) sobre a vigente com motivo não grava e devolve a vigente.
+    clock = new Date("2026-10-22T12:02:00.000Z")
+    expect((await rate(app, conversationId, answer.id, "DOWN")).body.data).toMatchObject({ rating: "down", details: { reason: "WRONG_INFORMATION", comment: null, stillNeedsHelp: true } })
+    // Mesmo motivo de novo (duplo clique): também não grava.
+    await rate(app, conversationId, answer.id, "DOWN", wrong)
+    expect(memory.ratings).toHaveLength(2)
+    // Motivo diferente: versão nova.
+    await rate(app, conversationId, answer.id, "DOWN", { reason: "INCOMPLETE", stillNeedsHelp: true })
+    expect(memory.ratings).toHaveLength(3)
+    expect(memory.ratings.at(-1)!.details).toEqual({ reason: "INCOMPLETE", comment: null, stillNeedsHelp: true })
+  })
+
+  it("motivo inválido é 400: fora da lista, \"Outro\" sem comentário, comentário curto ou longo demais, motivo com curtida", async () => {
+    const app = appWith()
+    const { conversationId, answer } = await exchange(app)
+    for (const details of [
+      { reason: "RUDE", stillNeedsHelp: false },
+      { reason: "OTHER", stillNeedsHelp: false },
+      { reason: "OTHER", comment: "  ok ", stillNeedsHelp: false },
+      { reason: "INCOMPLETE", comment: "x".repeat(1001), stillNeedsHelp: false },
+      { reason: "INCOMPLETE" },
+      { reason: "INCOMPLETE", stillNeedsHelp: false, extra: true },
+    ]) {
+      expect((await rate(app, conversationId, answer.id, "DOWN", details)).status).toBe(400)
+    }
+    expect((await rate(app, conversationId, answer.id, "UP", wrong)).status).toBe(400)
+    expect(memory.ratings).toHaveLength(0)
+  })
+
+  it("o motivo só vale no chat livre: na conversa de feedback e no recado de Workflow é 422; a descurtida simples continua aceita", async () => {
+    const app = appWith()
+    const at = new Date("2026-10-22T11:00:00.000Z")
+    for (const seeded of [
+      memory.seedFeedbackConversation({ organizationId: ORG, ownerPersonId: LARISSA }, { title: "Rechamada", text: "Apresentação", at }),
+      memory.seedWorkflowConversation({ organizationId: ORG, ownerPersonId: LARISSA }, { title: "Recado", text: "Recado do Workflow", at }),
+    ]) {
+      const conversationId = seeded
+      const answerId = memory.messages.find((message) => message.conversationId === conversationId && message.role === "assistant")!.id
+      const refused = await rate(app, conversationId, answerId, "DOWN", wrong)
+      expect(refused.status).toBe(422)
+      expect(refused.body.error.code).toBe("RATING_DETAILS_NOT_ALLOWED")
+      expect((await rate(app, conversationId, answerId, "DOWN")).body.data.rating).toBe("down")
+    }
+    expect(suggestions).toEqual([])
+  })
+
+  it("\"ainda preciso de ajuda\" numa versão nova registra a sugestão elegível (DISLIKE) uma vez; falha do registro nunca muda a resposta", async () => {
+    const app = appWith()
+    const { conversationId, answer } = await exchange(app)
+    await rate(app, conversationId, answer.id, "DOWN", wrong)
+    await rate(app, conversationId, answer.id, "DOWN", wrong)
+    expect(suggestions).toEqual([{ organizationId: ORG, personId: LARISSA, interactionId: answer.id, origin: "DISLIKE" }])
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const failing = appWith(LARISSA, { failSuggestion: true })
+    const response = await rate(failing, conversationId, answer.id, "DOWN", { reason: "NOT_FOUND", stillNeedsHelp: true })
+    expect(response.status).toBe(200)
+    expect(response.body.data.details).toEqual({ reason: "NOT_FOUND", comment: null, stillNeedsHelp: true })
+    vi.restoreAllMocks()
   })
 })

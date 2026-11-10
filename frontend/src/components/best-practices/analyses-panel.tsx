@@ -8,7 +8,7 @@ import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/compo
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCivilDate, formatShortDateTime } from "@/lib/format/date"
 import { bestPracticeKeys, useAnalysesQuery, useAnalysisQuery } from "@/queries/best-practices/use-best-practices"
 import type { AnalysisReport, BestPracticesMeta } from "@/schemas/best-practices/best-practices.schema"
@@ -39,7 +39,7 @@ export function AnalysesPanel({ meta }: { meta: BestPracticesMeta | undefined })
       {analyses.isPending ? <TableSkeleton rows={4} /> : null}
       {analyses.data && analyses.data.length === 0 ? <AnalyticsEmptyState icon={FlaskConical} title="Nenhuma análise ainda" description="Peça uma análise para levantar boas práticas de um indicador." /> : null}
       {analyses.data && analyses.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -102,7 +102,7 @@ export function AnalysisReportBody({ report }: { report: AnalysisReport }) {
       {report.candidates.length > 0 ? (
         <section className="space-y-1">
           <h3 className="font-semibold">Comportamentos avaliados</h3>
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className={TABLE_FRAME}>
             <Table>
               <TableHeader><TableRow><TableHead>Comportamento</TableHead><TableHead>Por contexto</TableHead><TableHead>Obrigação</TableHead><TableHead>Decisão</TableHead></TableRow></TableHeader>
               <TableBody>

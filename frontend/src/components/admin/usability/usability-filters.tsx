@@ -30,6 +30,7 @@ import {
   STRUCTURE_MODE_LABELS,
 } from "./usability-format"
 import { activeFilterKeys, type FilterKey, type UsabilityUrlState } from "./usability-url-state"
+import { DatePicker } from "@/components/ui/date-picker"
 
 /**
  * FILTROS da Monitoria — período e comparação sempre à vista; o restante num painel "Filtros" agrupado. Um filtro que a aba
@@ -362,7 +363,7 @@ function FilterDate({ id, label, value, disabledReason, onChange }: { id: string
       <Label htmlFor={id} className={cn("text-xs", disabledReason && "text-muted-foreground")}>
         {label}
       </Label>
-      <Input id={id} type="date" value={value ?? ""} disabled={Boolean(disabledReason)} onChange={(event) => onChange(event.target.value || undefined)} aria-describedby={disabledReason ? `${id}-reason` : undefined} />
+      <DatePicker id={id} value={value ?? ""} disabled={Boolean(disabledReason)} clearable onChange={(next) => onChange(next || undefined)} aria-describedby={disabledReason ? `${id}-reason` : undefined} />
       <DisabledReason id={`${id}-reason`} reason={disabledReason} />
     </div>
   )

@@ -19,6 +19,8 @@ import type { ReportSummary } from "@/schemas/reports/reports.schema"
 import { deleteReport, setReportStatus } from "@/services/reports/reports-service"
 import { DeletedReportsList } from "./deleted-reports-list"
 import { NOT_FORWARDED_TEXT, RUN_STATUS_LABELS } from "./report-labels"
+import { PageHeader } from "@/components/ui/surface"
+import { AnalyticsEmptyState } from "@/components/analytics/analytics-states"
 
 const normalizeSearch = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
 
@@ -41,15 +43,16 @@ export function ReportsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><FileBarChart2 className="size-5 text-primary" aria-hidden />Reports</h1>
-          <p className="text-sm text-muted-foreground">Consultas que rodam sozinhas, com os dados atualizados, e chegam ao seu Acompanhamento com gráfico e análise da INIA.</p>
-        </div>
-        <Button asChild>
-          <Link href="/reports/novo"><Plus aria-hidden />Novo report</Link>
-        </Button>
-      </header>
+      <PageHeader
+        icon={FileBarChart2}
+        title="Reports"
+        description="Consultas que rodam sozinhas, com os dados atualizados, e chegam ao seu Acompanhamento com gráfico e análise da INIA."
+        aside={
+          <Button asChild>
+            <Link href="/reports/novo"><Plus aria-hidden />Novo report</Link>
+          </Button>
+        }
+      />
       <Tabs defaultValue="mine">
         <TabsList>
           <TabsTrigger value="mine">Meus reports</TabsTrigger>
@@ -72,7 +75,11 @@ export function ReportsPage() {
           ) : query.isError ? (
             <p className="text-sm text-destructive">Não foi possível carregar os reports.</p>
           ) : items.length === 0 ? (
-            <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">{(query.data?.items.length ?? 0) === 0 ? "Você ainda não tem reports. Crie um aqui ou peça à INIA no chat e aceite a oferta de transformar a consulta em report." : "Nenhum report com esses filtros."}</CardContent></Card>
+            (query.data?.items.length ?? 0) === 0 ? (
+              <AnalyticsEmptyState icon={FileBarChart2} title="Você ainda não tem reports" description="Crie um aqui ou peça à INIA no chat e aceite a oferta de transformar a consulta em report." />
+            ) : (
+              <AnalyticsEmptyState icon={FileBarChart2} title="Nenhum report com esses filtros" />
+            )
           ) : (
             <ul className="space-y-2">
               {items.map((report) => (

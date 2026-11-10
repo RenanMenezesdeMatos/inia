@@ -9,7 +9,8 @@ import { currentAiAbortSignal, runWithAiCancellation } from "../../../shared/app
 import { createChatTurnTrace, currentChatTurnTrace, finishChatTurn, runWithChatTurnTrace, type ChatTurnTrace } from "../../../shared/application/observability/chat-turn-trace.js"
 import { reconcileShownText } from "../../assistant/domain/reply-stream.js"
 import { conversationInactivityMs, createPostgresConversationStore, type ConversationScope, type ConversationStore, type ResolvedConversation } from "../../assistant/application/assistant-conversations.js"
-import { clampOccurredAt, decodeCursor } from "../../assistant/domain/assistant-conversation.js"
+import type { RatingSnapshot } from "../../assistant/application/assistant-interaction-ratings.js"
+import { clampOccurredAt, decodeCursor, type ConversationOrigin } from "../../assistant/domain/assistant-conversation.js"
 import { loadAssistantSupportMaterials, persistAssistantSupportMaterials } from "../../assistant/application/assistant-support-materials.js"
 import { listInteractiveOrchestratorScopes, resolveOrchestratorById, resolveOrchestratorForSubject, findSpecialistByToolName, type InteractiveOrchestratorScope, type OrchestratorInvocationContext, type ResolvedOrchestrator } from "../../assistant/application/resolve-orchestrator.js"
 import { runOrchestratedReply, type DirectToolset, type OrchestratedReply, type OrchestrationProgress, type OrchestrationStream } from "../../assistant/application/run-orchestrated-reply.js"
@@ -53,6 +54,8 @@ import { CLARIFICATION_ANSWER_TOOL_NAME, CLARIFICATION_TOOL_NAME, clarificationA
 import { referencedDocumentIds, toClarificationView } from "../../knowledge-clarification/domain/clarification-view.js"
 import { renderClarificationVoiceInstruction } from "../../knowledge-clarification/domain/clarification-voice.js"
 import { assistantRatingInputSchema } from "../../assistant/domain/assistant-interaction-rating.js"
+import { signalsOfClarification, signalsOfOrchestratedReply, signalsOfSpecialist } from "../../assistant/application/reply-signals.js"
+import { signalsAfterResponseCheck, type SupportSignal } from "../../assistant/domain/reply-signals.js"
 
 const historyTurnSchema = z.object({
   role: z.enum(["user", "model"]),
@@ -298,6 +301,9 @@ export function createSpeculation(target: OrchestrationStream): { stream: Orches
   }
 }
 
+/** Avaliação vigente de uma resposta no histórico: o valor, a versão e o motivo da descurtida (null = sem avaliação). */
+const ratingFieldsOf = (snapshot: RatingSnapshot | undefined) => ({ rating: snapshot?.rating ?? null, ratingId: snapshot?.ratingId ?? null, ratingDetails: snapshot?.details ?? null })
+
 export function createRealtimeRouter(
   db: Database,
   createSession: (config: VoiceSessionConfig) => Promise<EphemeralRealtimeSession>,
@@ -350,6 +356,9 @@ export function createRealtimeRouter(
     knowledgeClarification?: { handle: (request: ClarificationRequest) => Promise<ClarificationOutcome> } | null
     /** Das bases citadas num esclarecimento, as que a pessoa pode ler AGORA (reabrir a conversa revalida o acesso). */
     accessibleKnowledgeDocuments?: (organizationId: string, personId: string, documentIds: string[]) => Promise<Set<string>>
+    /** Apoio com Anjo (Parte B): registra a SUGESTÃO ELEGÍVEL de falar com um Anjo — mensagem com sinal (`SIGNAL`) ou descurtida
+     * com "ainda preciso de ajuda" (`DISLIKE`), só no chat livre. Ausente = nada é registrado. Nunca muda a resposta da rota. */
+    recordSuggestion?: (input: { organizationId: string; personId: string; interactionId: string; origin: "SIGNAL" | "DISLIKE" }) => Promise<void>
   } = {},
 ) {
   const router = Router()
@@ -395,7 +404,7 @@ export function createRealtimeRouter(
     const flagged = result.outcome !== "ALLOWED"
     const record = (interactionId: string | null) => recordResponseCheck(db, { organizationId: input.organizationId, surface: "VOICE_TOOL", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : enforcing ? "BLOCKED" : "RECORDED", result, text: input.text, conversationId: input.conversationId, interactionId, agentId: input.agentId })
     if (!enforcing || !flagged) return { blocked: false as const, record }
-    return { blocked: true as const, record, text: flaggedTextOf(result), toolCall: responseCheckToolCall(result, "PREVENTIVE") }
+    return { blocked: true as const, record, text: flaggedTextOf(result), toolCall: responseCheckToolCall(result, "PREVENTIVE"), signals: signalsAfterResponseCheck({ replaced: true, checkOutcome: result.outcome, computed: [] }) }
   }
   const processOrchestrators = deps.processOrchestrators ?? ((organizationId: string) => listInteractiveOrchestratorScopes(db, organizationId))
   const orchestratorById = deps.orchestratorById ?? ((organizationId: string, orchestratorId: string, query: string) => resolveOrchestratorById(db, organizationId, orchestratorId, "INTERACTIVE", query))
@@ -608,6 +617,40 @@ export function createRealtimeRouter(
   // Dono e organização SEMPRE da sessão — nunca do corpo da requisição.
   const scopeOf = (request: { user?: { organizationId: string; personId: string } }): ConversationScope => ({ organizationId: request.user!.organizationId, ownerPersonId: request.user!.personId })
 
+  /**
+   * Sugestão elegível de falar com um Anjo (`recordSuggestion`, design_draft.md seção 3): só no chat livre (`origin = USER`; lida do
+   * banco quando quem chama não a sabe). Falha vai para o log e nunca muda a resposta da rota.
+   */
+  const suggestSupport = async (input: { scope: ConversationScope; conversationId: string; interactionId: string; origin: "SIGNAL" | "DISLIKE"; conversationOrigin?: ConversationOrigin | undefined }) => {
+    if (!deps.recordSuggestion) return
+    try {
+      // Registro sem origem = conversa do próprio usuário (`ConversationRecord.origin`).
+      const conversationOrigin = input.conversationOrigin ?? (await conversations.requireOwned(input.scope, input.conversationId)).origin ?? "USER"
+      if (conversationOrigin !== "USER") return
+      await deps.recordSuggestion({ organizationId: input.scope.organizationId, personId: input.scope.ownerPersonId, interactionId: input.interactionId, origin: input.origin })
+    } catch (error) {
+      console.error(JSON.stringify({ event: "support_suggestion_record_failed", interactionId: input.interactionId, origin: input.origin, message: (error as Error).message }))
+    }
+  }
+  /** Turno de texto que terminou em erro sem resposta gravada: `NO_REPLY` na pergunta do operador (só no chat livre) e a sugestão.
+   * Falha aqui vai para o log: a pessoa já recebeu o evento de erro. */
+  const recordNoReply = async (input: { scope: ConversationScope; conversationId: string; questionId: string; trace: ChatTurnTrace }) => {
+    try {
+      if (!(await conversations.markNoReply(input.scope, input.questionId))) return
+      input.trace.note("supportSignals", "NO_REPLY")
+      await suggestSupport({ scope: input.scope, conversationId: input.conversationId, interactionId: input.questionId, origin: "SIGNAL", conversationOrigin: "USER" })
+    } catch (error) {
+      console.error(JSON.stringify({ event: "assistant_no_reply_record_failed", conversationId: input.conversationId, message: (error as Error).message }))
+    }
+  }
+  /** Depois de gravar uma resposta da INIA: os sinais dela no rastreamento do turno (só códigos) e a sugestão, quando houve sinal. */
+  const afterReplySaved = async (input: { scope: ConversationScope; conversationId: string; interactionId: string; signals: readonly SupportSignal[]; conversationOrigin?: ConversationOrigin | undefined }) => {
+    const trace = currentChatTurnTrace()
+    trace?.note("replyInteractionId", input.interactionId)
+    trace?.note("supportSignals", input.signals.join(","))
+    if (input.signals.length > 0) await suggestSupport({ ...input, origin: "SIGNAL" })
+  }
+
   // Esclarecimento pelas bases (chat de texto e voz de quem atende; consulta de processo de quem lidera): a IA navega pelas bases
   // dos especialistas do Orquestrador em questão (só as que a pessoa pode ler) e decide esclarecer, responder com fontes ou dizer
   // que falta — saída validada por código.
@@ -714,10 +757,12 @@ export function createRealtimeRouter(
   /** A resposta barrada na voz: grava o texto fixo, registra a conferência e devolve só isso ao modelo de voz e à tela. */
   const blockedVoiceAnswer = async (
     request: { user?: AuthTokenPayload },
-    input: { guard: { record: (interactionId: string | null) => Promise<void>; text: string; toolCall: unknown }; scope: ReturnType<typeof scopeOf>; writable: ResolvedConversation; personId: string; clientMessageId: string; participants?: unknown[] | undefined },
+    input: { guard: { record: (interactionId: string | null) => Promise<void>; text: string; toolCall: unknown; signals: readonly SupportSignal[] }; scope: ReturnType<typeof scopeOf>; writable: ResolvedConversation; personId: string; clientMessageId: string; participants?: unknown[] | undefined },
   ) => {
-    const saved = await conversations.append({ conversationId: input.writable.conversationId, organizationId: input.scope.organizationId, ownerPersonId: input.personId, channel: "voice", role: "assistant", content: input.guard.text, occurredAt: now(), toolCalls: [...(input.participants ?? []), input.guard.toolCall], clientMessageId: input.clientMessageId })
+    // Sinais da mensagem trocada pela conferência (`signalsAfterResponseCheck`): a falha da conferência sugere o Anjo, como no chat.
+    const saved = await conversations.append({ conversationId: input.writable.conversationId, organizationId: input.scope.organizationId, ownerPersonId: input.personId, channel: "voice", role: "assistant", content: input.guard.text, occurredAt: now(), toolCalls: [...(input.participants ?? []), input.guard.toolCall], clientMessageId: input.clientMessageId, signals: input.guard.signals })
     await input.guard.record(saved.id)
+    await afterReplySaved({ scope: input.scope, conversationId: input.writable.conversationId, interactionId: saved.id, signals: input.guard.signals })
     return { text: input.guard.text, modelText: `${input.guard.text}${BLOCKED_VOICE_INSTRUCTION}`, supportMaterials: [], analytics: [], interactionId: saved.id, ...(await conversationPayload(request, input.writable)) }
   }
 
@@ -807,8 +852,10 @@ export function createRealtimeRouter(
         trace?.setPath("VOICE_CLARIFICATION")
         const clarificationGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: outcome.content, question: spoken, agentId: askOrchestrator.orchestratorAgentId || null, sources: [...clarificationSources(outcome), ...priorAnswers] })
         if (clarificationGuard.blocked) return blockedVoiceAnswer(request, { guard: clarificationGuard, scope, writable, personId, clientMessageId })
-        const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(outcome)], clientMessageId })
+        const signals = signalsOfClarification(outcome.state)
+        const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(outcome)], clientMessageId, signals })
         await clarificationGuard.record(saved.id)
+        await afterReplySaved({ scope, conversationId: writable.conversationId, interactionId: saved.id, signals, conversationOrigin: conversationRecord.origin ?? "USER" })
         const [view] = await clarificationViewsFor(scope.organizationId, personId, [outcome.state])
         return { text: outcome.content, modelText: `${outcome.content}${renderClarificationVoiceInstruction(outcome.state, { tool: input.toolName })}`, supportMaterials: [], analytics: [], interactionId: saved.id, clarification: view, ...(await conversationPayload(request, writable)) }
       }
@@ -822,8 +869,10 @@ export function createRealtimeRouter(
       const continued = await continueProcessClarification({ organizationId: scope.organizationId, personId, leadership: ask.leadership, conversationId: writable.conversationId, answer: input.clarification, text: spoken, recentTurns: history.slice(0, -1) })
       const continuedGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: continued.outcome.content, question: spoken, agentId: null, sources: [...clarificationSources(continued.outcome), ...priorAnswers] })
       if (continuedGuard.blocked) return blockedVoiceAnswer(request, { guard: continuedGuard, scope, writable, personId, clientMessageId })
-      const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: continued.outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(continued.outcome, continued.scope)], clientMessageId })
+      const signals = signalsOfClarification(continued.outcome.state)
+      const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: continued.outcome.content, occurredAt: now(), toolCalls: [clarificationToolCall(continued.outcome, continued.scope)], clientMessageId, signals })
       await continuedGuard.record(saved.id)
+      await afterReplySaved({ scope, conversationId: writable.conversationId, interactionId: saved.id, signals, conversationOrigin: conversationRecord.origin ?? "USER" })
       const [view] = await clarificationViewsFor(scope.organizationId, personId, [continued.outcome.state])
       return { text: continued.outcome.content, modelText: `${continued.outcome.content}${renderClarificationVoiceInstruction(continued.outcome.state, { tool: input.toolName })}`, supportMaterials: [], analytics: [], interactionId: saved.id, clarification: view, ...(await conversationPayload(request, writable)) }
     }
@@ -845,8 +894,11 @@ export function createRealtimeRouter(
     const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
     if (replyGuard.blocked) return blockedVoiceAnswer(request, { guard: replyGuard, scope, writable, personId, clientMessageId, participants: orchestratedToolCalls(reply) })
     const toolCalls = [...(orchestratedToolCalls(reply) ?? []), ...(clarified ? [clarificationToolCall(clarified.outcome, clarified.scope)] : [])]
-    const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: replyText, occurredAt: now(), agentId: reply.agentId, ...(toolCalls.length > 0 ? { toolCalls } : {}), clientMessageId })
+    // Sinais como no chat de texto: quem lidera = só o esclarecimento da consulta de processo; sem Orquestrador = só dados (vazia).
+    const signals = ask.leadership ? (clarified ? signalsOfClarification(clarified.outcome.state) : []) : askOrchestrator ? signalsOfOrchestratedReply(reply) : []
+    const saved = await conversations.append({ conversationId: writable.conversationId, organizationId: scope.organizationId, ownerPersonId: personId, channel: "voice", role: "assistant", content: replyText, occurredAt: now(), agentId: reply.agentId, ...(toolCalls.length > 0 ? { toolCalls } : {}), clientMessageId, signals })
     await replyGuard.record(saved.id)
+    await afterReplySaved({ scope, conversationId: writable.conversationId, interactionId: saved.id, signals, conversationOrigin: conversationRecord.origin ?? "USER" })
     if (offer) await reportProposals.attach(offer.id, saved.id)
     const supportMaterials = leaderAnswer
       ? await persistProcessMaterials(scope.organizationId, saved.id, personId, leaderAnswer.materials)
@@ -989,6 +1041,7 @@ export function createRealtimeRouter(
           occurredAt: now(),
           toolCalls: [{ toolName: input.toolName, query: input.query, agentId: blockedAgentId, agentVersionId, outcome, orchestratorId: orchestrator!.orchestratorId, orchestratorVersionId: orchestrator!.orchestratorVersionId ?? null }],
           clientMessageId,
+          signals: ["SPECIALIST_BLOCKED"],
         })).id
       if (existing) {
         // Retentativa da mesma tool-call: devolve a resposta já gravada, sem rodar o especialista de novo.
@@ -997,6 +1050,7 @@ export function createRealtimeRouter(
       } else if ("outcome" in atCall) {
         text = SPECIALIST_UNAVAILABLE_DISPLAY_TEXT
         interactionId = await recordUnavailable(specialistAgentId, atCall.versionId, atCall.outcome)
+        await afterReplySaved({ scope, conversationId: resolved.conversationId, interactionId, signals: ["SPECIALIST_BLOCKED"] })
       } else {
         const specialist = await withAgentSnapshots([atCall.snapshot], () => specialistTool(db, scope.organizationId, specialistAgentId, input.query, operatorId, input.periodDays, undefined, { selectSupportMaterials: orchestrator!.recommendSupportMaterials, collaboratorConversation: true, ...(input.utterance ? { askerQuestion: input.utterance } : {}), ...(consultation ? feedbackSpecialistOptions(consultation) : {}) })).catch(async (error: unknown) => {
           // Desativado entre a conferência e o início (corrida): o mesmo tratamento.
@@ -1006,6 +1060,7 @@ export function createRealtimeRouter(
         if (!specialist) {
           text = SPECIALIST_UNAVAILABLE_DISPLAY_TEXT
           interactionId = await recordUnavailable(specialistAgentId, atCall.snapshot.versionId, "BLOCKED_INACTIVE")
+          await afterReplySaved({ scope, conversationId: resolved.conversationId, interactionId, signals: ["SPECIALIST_BLOCKED"] })
           response.json({ data: { text, modelText: `${text}${VOICE_SPEECH_INSTRUCTION}`, supportMaterials: [], interactionId, ...(await conversationPayload(request, resolved)) } })
           return
         }
@@ -1016,6 +1071,7 @@ export function createRealtimeRouter(
           response.json({ data: blocked })
           return
         }
+        const specialistSignals = signalsOfSpecialist(specialist)
         const saved = await conversations.append({
           conversationId: resolved.conversationId,
           organizationId: scope.organizationId,
@@ -1027,8 +1083,10 @@ export function createRealtimeRouter(
           agentId: specialistAgentId,
           toolCalls: [{ toolName: input.toolName, query: input.query, toolTrace: specialist.toolTrace ?? [], agentId: specialistAgentId, agentVersionId: atCall.snapshot.versionId, outcome: "EXECUTED", orchestratorId: orchestrator!.orchestratorId, orchestratorVersionId: orchestrator!.orchestratorVersionId ?? null }],
           clientMessageId,
+          signals: specialistSignals,
         })
         await specialistGuard.record(saved.id)
+        await afterReplySaved({ scope, conversationId: resolved.conversationId, interactionId: saved.id, signals: specialistSignals })
         text = specialist.text
         interactionId = saved.id
         recommendations = specialist.supportMaterials
@@ -1080,10 +1138,11 @@ export function createRealtimeRouter(
       const visible = new Set(await visibleLeadershipCards(request.user!, withCards.flatMap((message) => message.analytics)))
       for (const message of withCards) allowed.set(message.id, message.analytics.filter((card) => visible.has(card)))
     }
-    // Curtir/descurtir vigente de cada resposta (a marcação volta ao reabrir). Leitura auxiliar: falhar nunca impede o histórico.
+    // Curtir/descurtir vigente de cada resposta (a marcação volta ao reabrir), com o motivo da descurtida (só da própria dona).
+    // Leitura auxiliar: falhar nunca impede o histórico.
     const ratings = await conversations.ratingsOf(scope, page.messages.filter((message) => message.role === "assistant").map((message) => message.id)).catch((error: unknown) => {
       console.error(JSON.stringify({ event: "assistant_ratings_load_failed", message: (error as Error)?.message ?? String(error) }))
-      return new Map<string, "up" | "down">()
+      return new Map<string, RatingSnapshot>()
     })
     // Oferta de report por mensagem (botão "Criar report desta consulta" ao reabrir a conversa) — só as do próprio dono.
     const offers = await reportProposals.forInteractions(scope.organizationId, page.messages.filter((message) => message.role === "assistant").map((message) => message.id)).catch(() => new Map<string, ProposalRecord>())
@@ -1103,7 +1162,7 @@ export function createRealtimeRouter(
         // `clarificationScope` (onde o esclarecimento foi feito) é uso interno do servidor: nunca vai à tela.
         messages: page.messages.map(({ clarificationScope, ...message }) => {
           void clarificationScope
-          return { ...message, analytics: allowed.get(message.id) ?? [], supportMaterials: materials.get(message.id) ?? [], ...offerOf(message.id), clarification: clarificationViews.get(message.id) ?? null, ...(message.role === "assistant" ? { rating: ratings.get(message.id) ?? null } : {}) }
+          return { ...message, analytics: allowed.get(message.id) ?? [], supportMaterials: materials.get(message.id) ?? [], ...offerOf(message.id), clarification: clarificationViews.get(message.id) ?? null, ...(message.role === "assistant" ? ratingFieldsOf(ratings.get(message.id)) : {}) }
         }),
         hasMore: page.hasMore,
       },
@@ -1130,14 +1189,17 @@ export function createRealtimeRouter(
   })
 
   // Curtir/descurtir de uma resposta da INIA pela PRÓPRIA dona da conversa (migration 158): grava o valor (`NONE` = retirou) e
-  // devolve o vigente. Resposta de outra pessoa, mensagem do colaborador ou de outra conversa = 404.
+  // devolve o vigente. Resposta de outra pessoa, mensagem do colaborador ou de outra conversa = 404. O motivo da descurtida
+  // (`details`, migration 181) só vale no chat livre (422 fora dele); descurtida sem motivo continua aceita (abas antigas).
+  // "Ainda preciso de ajuda" numa versão nova = sugestão elegível de falar com um Anjo.
   router.put("/conversations/:conversationId/messages/:interactionId/rating", async (request, response) => {
     const scope = scopeOf(request)
     const conversationId = idParam.parse(request.params.conversationId)
     const interactionId = idParam.parse(request.params.interactionId)
     const input = assistantRatingInputSchema.parse(request.body)
-    const rating = await conversations.rate(scope, { conversationId, interactionId, value: input.value }, now())
-    response.json({ data: { interactionId, rating } })
+    const result = await conversations.rate(scope, { conversationId, interactionId, value: input.value, details: input.details ?? null }, now())
+    if (result.written && result.details?.stillNeedsHelp && result.conversationOrigin === "USER") await suggestSupport({ scope, conversationId, interactionId, origin: "DISLIKE", conversationOrigin: "USER" })
+    response.json({ data: { interactionId, rating: result.rating, ratingId: result.ratingId, details: result.details } })
   })
 
   // A voz nunca passa pelo nosso backend durante a conversa (vai direto pro Gemini Live) — sem
@@ -1267,10 +1329,16 @@ export function createRealtimeRouter(
       if (complianceRulesOf(turnGuardrails).length === 0) releaseHeld()
     }
     send("conversation", { conversationId: resolved.conversationId, created: resolved.created, rotatedFrom: resolved.rotatedFrom, userMessageId: userMessage.id })
+    // Origem da conversa (lida no contexto do turno) e se alguma resposta da INIA ficou gravada — o `NO_REPLY` só vale sem nenhuma.
+    let turnOrigin: ConversationOrigin | undefined
+    let replyPersisted = false
 
     // Persiste a resposta EXIBIDA. Falha ao salvar depois de a resposta já ter aparecido → evento próprio: o cliente
     // mostra que aquela resposta não foi salva, em vez de aparentar sucesso.
-    const persistReply = async (generated: string, generatedExtra: { agentId?: string | null; toolCalls?: unknown } = {}, options: { deterministic?: boolean; sources?: readonly ComplianceSource[] } = {}) => {
+    // `signals`: os sinais da resposta (`assistant/domain/reply-signals.ts`); trocada pela conferência: `signalsAfterResponseCheck`
+    // (falha da conferência = consulta não concluída; violação de regra = lista vazia).
+    const persistReply = async (generated: string, generatedExtra: { agentId?: string | null; toolCalls?: unknown; signals?: readonly SupportSignal[] } = {}, options: { deterministic?: boolean; sources?: readonly ComplianceSource[] } = {}) => {
+      const { signals: computedSignals = [], ...generatedFields } = generatedExtra
       // Texto escrito pelo sistema (não pela IA) não passa pela conferência.
       let check: ResponseCheckResult = { outcome: "NOT_APPLICABLE" }
       if (checkMode !== "OFF" && !options.deterministic) {
@@ -1292,15 +1360,19 @@ export function createRealtimeRouter(
         releaseHeld()
       }
       // Quem foi acionado continua no registro; o que dependia da resposta (cartões, formulário) sai junto com ela.
-      const participants = Array.isArray(generatedExtra.toolCalls) ? generatedExtra.toolCalls.filter((call: { agentId?: unknown; analytics?: unknown; state?: unknown }) => call.agentId && !call.analytics && !call.state) : []
+      const participants = Array.isArray(generatedFields.toolCalls) ? generatedFields.toolCalls.filter((call: { agentId?: unknown; analytics?: unknown; state?: unknown }) => call.agentId && !call.analytics && !call.state) : []
       const extra = replaced && check.outcome !== "NOT_APPLICABLE" && check.outcome !== "ALLOWED"
-        ? { agentId: generatedExtra.agentId ?? null, toolCalls: [...participants, responseCheckToolCall(check, enforcing ? "PREVENTIVE" : "DETECTIVE")] }
-        : generatedExtra
-      const recordCheck = (interactionId: string | null) => (check.outcome === "NOT_APPLICABLE" ? undefined : recordResponseCheck(db, { organizationId: scope.organizationId, surface: "CHAT", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : replaced && enforcing ? "BLOCKED" : "RECORDED", result: check, text: generated, conversationId: resolved.conversationId, interactionId, agentId: generatedExtra.agentId ?? turnAgentId }))
+        ? { agentId: generatedFields.agentId ?? null, toolCalls: [...participants, responseCheckToolCall(check, enforcing ? "PREVENTIVE" : "DETECTIVE")] }
+        : generatedFields
+      const signals = signalsAfterResponseCheck({ replaced, checkOutcome: check.outcome, computed: computedSignals })
+      const recordCheck = (interactionId: string | null) => (check.outcome === "NOT_APPLICABLE" ? undefined : recordResponseCheck(db, { organizationId: scope.organizationId, surface: "CHAT", control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: !flagged ? "DELIVERED" : replaced && enforcing ? "BLOCKED" : "RECORDED", result: check, text: generated, conversationId: resolved.conversationId, interactionId, agentId: generatedFields.agentId ?? turnAgentId }))
       try {
-        const saved = await conversations.append({ conversationId: resolved.conversationId, organizationId: scope.organizationId, ownerPersonId: operatorId, channel: "chat", role: "assistant", content, occurredAt: now(), clientMessageId: replyKey, ...extra })
+        const saved = await conversations.append({ conversationId: resolved.conversationId, organizationId: scope.organizationId, ownerPersonId: operatorId, channel: "chat", role: "assistant", content, occurredAt: now(), clientMessageId: replyKey, ...extra, signals })
+        replyPersisted = true
         await recordCheck(saved.id)
-        send("persisted", { interactionId: saved.id })
+        // Os sinais só existem no chat livre (o mesmo que fica gravado; nas outras conversas a tela não recebe nada).
+        send("persisted", { interactionId: saved.id, ...(turnOrigin === "USER" ? { signals } : {}) })
+        await afterReplySaved({ scope, conversationId: resolved.conversationId, interactionId: saved.id, signals, conversationOrigin: turnOrigin })
         // Resposta barrada: quem chama não anexa nada a ela (materiais, oferta de report).
         return replaced ? null : saved.id
       } catch (error) {
@@ -1358,6 +1430,8 @@ export function createRealtimeRouter(
         const previous = userMessage.duplicate ? await conversations.findByClientMessageId(resolved.conversationId, replyKey) : null
         if (previous) {
           trace.setPath("REPLAY")
+          // A resposta já está gravada: uma falha daqui em diante nunca vira `NO_REPLY` na pergunta.
+          replyPersisted = true
           // Já conferida quando foi gravada.
           releaseHeld()
           send("chunk", { text: previous.content })
@@ -1391,12 +1465,14 @@ export function createRealtimeRouter(
             loadAddressingContext(db, scope.organizationId, operatorId),
           ]),
         )
+        turnOrigin = conversationRecord.origin ?? "USER"
         trace.note("historyTurns", history.length)
         trace.note("historyChars", history.reduce((sum, turn) => sum + turn.text.length, 0))
         // Resposta do Orquestrador: o texto final vai em fluxo (`liveStream`) quando pode ser mostrado antes do fim; o que não foi
         // mostrado em fluxo (ou mudou no fim — ver `reconcileShownText`) sai aqui, gravado com os especialistas acionados e os
         // materiais. `extraToolCalls`: o que mais fica gravado com a resposta (ex.: o estado de um esclarecimento da consulta de processo).
-        const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string, processMaterials?: ProcessMaterials[], extraToolCalls: unknown[] = [], extraSources: readonly ComplianceSource[] = []) => {
+        // `signals`: o ramo decide (tabela da seção 3 do design de Apoio com Anjo) — ORCHESTRATED calcula sobre os resultados do turno.
+        const sendOrchestratedReply = async (reply: Awaited<ReturnType<typeof runOrchestratedReply>>, orchestratorId: string, processMaterials?: ProcessMaterials[], extraToolCalls: unknown[] = [], extraSources: readonly ComplianceSource[] = [], signals: readonly SupportSignal[] = []) => {
           const pending = reconcileShownText(reply.streamedText ?? "", reply.text)
           if (pending.retract) liveStream.retract()
           if (pending.append) send("chunk", { text: pending.append })
@@ -1407,6 +1483,7 @@ export function createRealtimeRouter(
             // Especialistas acionados + o trace SEGURO das ferramentas de investigação que cada um usou (investigation/domain/
             // tool-trace.ts) — auditável, nunca prompt/raciocínio; ferramentas do backend (liderança) com argumentos e cartão.
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+            signals,
           }, { sources: [...replyComplianceSources(reply), ...extraSources] })
           if (cards.length > 0) send("analytics", { interactionId, cards })
           // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
@@ -1522,7 +1599,7 @@ export function createRealtimeRouter(
         if (input.clarification && !(leadership ? clarifies : clarificationApplies)) throw new DomainError("Este esclarecimento não está mais disponível. Faça a pergunta de novo.", "KNOWLEDGE_CLARIFICATION_UNAVAILABLE", 409)
         const sendClarification = async (outcome: ClarificationReply, processScope?: ProcessClarificationScope) => {
           showClarification(outcome.content)
-          const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, processScope)] }, { sources: clarificationSources(outcome) })
+          const interactionId = await persistReply(outcome.content, { toolCalls: [clarificationToolCall(outcome, processScope)], signals: signalsOfClarification(outcome.state) }, { sources: clarificationSources(outcome) })
           send("knowledge_clarification", { interactionId, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [outcome.state]))[0] })
           send("done", {})
         }
@@ -1551,7 +1628,7 @@ export function createRealtimeRouter(
           // Consulta de processo respondida pelo esclarecimento: o texto dele entra como saiu e o formulário (ou as fontes) acompanha a
           // resposta, junto dos cartões das outras ferramentas (ver `leadershipTextWithClarification`).
           const text = clarification ? leadershipTextWithClarification(reply, clarification.outcome.content).text : reply.text
-          const interactionId = await sendOrchestratedReply({ ...reply, text: offer ? `${text}${REPORT_OFFER_LINE}` : text }, "", materials, clarification ? [clarificationToolCall(clarification.outcome, clarification.scope)] : [], consultedSources)
+          const interactionId = await sendOrchestratedReply({ ...reply, text: offer ? `${text}${REPORT_OFFER_LINE}` : text }, "", materials, clarification ? [clarificationToolCall(clarification.outcome, clarification.scope)] : [], consultedSources, clarification ? signalsOfClarification(clarification.outcome.state) : [])
           if (clarification) send("knowledge_clarification", { interactionId, clarification: (await clarificationViewsFor(scope.organizationId, operatorId, [clarification.outcome.state]))[0] })
           if (offer && interactionId) {
             await reportProposals.attach(offer.id, interactionId)
@@ -1594,10 +1671,11 @@ export function createRealtimeRouter(
         }
 
         trace.setPath("ORCHESTRATED")
+        const sendOrchestrated = (reply: OrchestratedReply, orchestratorId: string) => sendOrchestratedReply(reply, orchestratorId, undefined, [], [], signalsOfOrchestratedReply(reply))
         const orchestrate = (hooks: Pick<NonNullable<Parameters<typeof runOrchestratedReply>[7]>, "stream" | "proceed">) =>
           trace.span("orchestration", () => orchestratedReply(db, withConversationInstruction(orchestrator, systemInstruction), history, "", operatorId, { collaboratorConversation: true }, {}, { ...(dataTools ? { directTools: dataTools } : {}), toleratesToolFailure: true, ...hooks }))
         if (!clarificationApplies) {
-          await sendOrchestratedReply(await orchestrate({ stream: liveStream }), orchestrator.orchestratorId)
+          await sendOrchestrated(await orchestrate({ stream: liveStream }), orchestrator.orchestratorId)
           send("done", {})
           return
         }
@@ -1635,7 +1713,7 @@ export function createRealtimeRouter(
             return
           }
           passed(decision)
-          await sendOrchestratedReply(await orchestrate({ stream: liveStream }), orchestrator.orchestratorId)
+          await sendOrchestrated(await orchestrate({ stream: liveStream }), orchestrator.orchestratorId)
           send("done", {})
           return
         }
@@ -1668,7 +1746,7 @@ export function createRealtimeRouter(
         }
         passed(decision)
         speculation.release()
-        await sendOrchestratedReply(await orchestration, orchestrator.orchestratorId)
+        await sendOrchestrated(await orchestration, orchestrator.orchestratorId)
         send("done", {})
       }))
     } catch (error) {
@@ -1680,6 +1758,8 @@ export function createRealtimeRouter(
         outcome = "ERROR"
         const message = error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
         send("error", { message })
+        // Nenhuma resposta da INIA ficou gravada: `NO_REPLY` na pergunta (só no chat livre — a gravação confere a origem).
+        if (!replyPersisted) await recordNoReply({ scope, conversationId: resolved.conversationId, questionId: userMessage.id, trace })
       }
     } finally {
       clearInterval(heartbeat)

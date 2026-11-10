@@ -36,6 +36,8 @@ function setup(options: { check: () => ResponseCheckResult; rules?: boolean; str
   const memory = createMemoryConversationStore()
   const inserts: Row[] = []
   const checks: { text: string; question: unknown; agentId: unknown; sources: unknown }[] = []
+  // Sugestões de falar com um Anjo registradas (Apoio com Anjo): só a falha da conferência gera sinal.
+  const suggestions: string[] = []
   const db = {
     query: async (sql: string, params: unknown[] = []) => {
       if (sql.includes("insert into response_compliance_checks")) inserts.push({ sql, params })
@@ -60,6 +62,9 @@ function setup(options: { check: () => ResponseCheckResult; rules?: boolean; str
       orchestratedReply: reply,
       conversationGuardrails: async () => "",
       selfContext: async () => ({ instructions: "", voiceInstructions: "", toolset: { handles: () => false, execute: async () => ({}), declarations: [] } }),
+      recordSuggestion: async (input: { interactionId: string }) => {
+        suggestions.push(input.interactionId)
+      },
       responseCheck: async (_db: unknown, input: { text: string; question?: unknown; agentId?: unknown; sources?: unknown }) => {
         checks.push({ text: input.text, question: input.question, agentId: input.agentId ?? null, sources: input.sources })
         return options.check()
@@ -73,7 +78,7 @@ function setup(options: { check: () => ResponseCheckResult; rules?: boolean; str
     return { response, events, shown: events.filter((item) => item.event === "chunk").map((item) => item.data.text).join("") }
   }
   const assistantMessages = () => memory.messages.filter((message) => message.role === "assistant")
-  return { app, memory, inserts, checks, chat, assistantMessages }
+  return { app, memory, inserts, checks, suggestions, chat, assistantMessages }
 }
 const recorded = (row: Row) => ({ surface: row.params[1], control: row.params[2], outcome: row.params[3], action: row.params[4], flagged: row.params[8] })
 
@@ -115,14 +120,22 @@ describe("chat: conferência ANTES da entrega (prevenção)", () => {
     expect(saved.toolCalls).toEqual([{ toolName: "response_check", outcome: "VIOLATION", control: "PREVENTIVE", rules: [{ kind: "PROHIBITED_TOPIC", name: "Política" }] }])
     expect(recorded(harness.inserts[0]!)).toEqual({ surface: "CHAT", control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", flagged: GENERATED })
     expect(harness.inserts[0]!.params[10]).toBe(saved.id)
+    // Violação de regra não é falta de informação: sem sinal, sem sugestão de falar com um Anjo.
+    expect(harness.memory.signals.get(saved.id)).toEqual([])
+    expect(harness.suggestions).toEqual([])
   })
 
   it("falha da própria conferência: nada do texto sai; a pessoa é avisada e a falha fica registrada", async () => {
     const harness = setup({ check: () => FAILED })
-    const { response, shown } = await harness.chat()
+    const { response, shown, events } = await harness.chat()
     expect(response.text).not.toContain(GENERATED)
     expect(shown).toBe(RESPONSE_CHECK_UNAVAILABLE_TEXT)
-    expect(harness.assistantMessages()[0]!.content).toBe(RESPONSE_CHECK_UNAVAILABLE_TEXT)
+    const saved = harness.assistantMessages()[0]!
+    expect(saved.content).toBe(RESPONSE_CHECK_UNAVAILABLE_TEXT)
+    // Para a pessoa, a consulta não terminou: `CONSULTATION_FAILED` na mensagem e na tela, e a sugestão de falar com um Anjo.
+    expect(harness.memory.signals.get(saved.id)).toEqual(["CONSULTATION_FAILED"])
+    expect(events.find((item) => item.event === "persisted")?.data.signals).toEqual(["CONSULTATION_FAILED"])
+    expect(harness.suggestions).toEqual([saved.id])
     expect(recorded(harness.inserts[0]!)).toEqual({ surface: "CHAT", control: "PREVENTIVE", outcome: "CHECK_FAILED", action: "BLOCKED", flagged: GENERATED })
     expect(harness.inserts[0]!.params[7]).toBe("RESPONSE_CHECK_PROVIDER_ERROR")
   })
@@ -190,6 +203,8 @@ describe("voz: o que vem do servidor é conferido ANTES de chegar ao modelo de v
     expect(response.body.data.modelText).toContain(RESPONSE_BLOCKED_TEXT)
     expect(response.body.data.modelText).toContain("fale exatamente o texto acima")
     expect(recorded(harness.inserts[0]!)).toEqual({ surface: "VOICE_TOOL", control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", flagged: GENERATED })
+    expect(harness.memory.signals.get(response.body.data.interactionId)).toEqual([])
+    expect(harness.suggestions).toEqual([])
   })
 
   it("self_ask permitido: segue igual, com o registro", async () => {
@@ -205,6 +220,9 @@ describe("voz: o que vem do servidor é conferido ANTES de chegar ao modelo de v
     expect(response.text).not.toContain(GENERATED)
     expect(response.body.data.text).toBe(RESPONSE_CHECK_UNAVAILABLE_TEXT)
     expect(recorded(harness.inserts[0]!)).toMatchObject({ surface: "VOICE_TOOL", outcome: "CHECK_FAILED", action: "BLOCKED" })
+    // Como no chat: a consulta não terminou para a pessoa (sinal gravado e sugestão de falar com um Anjo).
+    expect(harness.memory.signals.get(response.body.data.interactionId)).toEqual(["CONSULTATION_FAILED"])
+    expect(harness.suggestions).toEqual([response.body.data.interactionId])
   })
 })
 

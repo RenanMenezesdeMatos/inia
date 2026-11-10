@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { formatDateTime } from "@/lib/format/date"
 import { useDeletedItemsQuery, useRestorationPreviewQuery, useRestoreDeletedItemMutation } from "@/queries/admin/use-data-explorer-queries"
@@ -73,7 +73,7 @@ export function DeletedItemsPanel({ types }: { types: readonly DeletedItemType[]
       {list.isError ? <ListErrorState message={errorMessage(list.error, "Não foi possível carregar os itens excluídos.")} onRetry={() => void list.refetch()} /> : null}
       {list.data?.items.length === 0 ? <ListEmptyState icon={Trash2} title={search || type !== ALL_TYPES ? "Nenhum item excluído com estes filtros" : "Nenhum item excluído"} description="Quando alguém excluir um objeto que você administra, ele aparece aqui e pode ser restaurado." /> : null}
       {list.data && list.data.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border border-border">
+        <div className={TABLE_FRAME}>
           <Table>
             <TableHeader>
               <TableRow>

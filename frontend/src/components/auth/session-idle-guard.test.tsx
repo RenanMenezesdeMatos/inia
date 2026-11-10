@@ -56,6 +56,21 @@ describe("SessionIdleGuard", () => {
     expect(onExpired).not.toHaveBeenCalled()
   })
 
+  it("rolagem feita pelo código (mensagem chegando na sala do apoio) não renova a sessão", () => {
+    const onExpired = vi.fn()
+    render(<SessionIdleGuard timeoutMinutes={30} onExpired={onExpired} />)
+    for (let minute = 0; minute < 30; minute += 1) {
+      act(() => {
+        window.dispatchEvent(new Event("scroll"))
+        document.dispatchEvent(new Event("scroll"))
+      })
+      act(() => void vi.advanceTimersByTime(MINUTE))
+    }
+    act(() => void vi.advanceTimersByTime(20_000))
+    expect(reportMock).not.toHaveBeenCalled()
+    expect(onExpired).toHaveBeenCalledTimes(1)
+  })
+
   it("servidor já encerrou a sessão: a tela também encerra", async () => {
     reportMock.mockResolvedValue("ended")
     const onExpired = vi.fn()

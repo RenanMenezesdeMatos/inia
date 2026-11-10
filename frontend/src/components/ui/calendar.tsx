@@ -3,12 +3,14 @@
 import * as React from "react"
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
+import { ptBR } from "react-day-picker/locale"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
 function Calendar({ className, classNames, showOutsideDays = true, captionLayout = "label", buttonVariant = "ghost", formatters, components, ...props }: React.ComponentProps<typeof DayPicker> & { buttonVariant?: React.ComponentProps<typeof Button>["variant"] }) {
   const defaults = getDefaultClassNames()
   return <DayPicker
+    locale={ptBR}
     showOutsideDays={showOutsideDays}
     className={cn("bg-background p-3", className)}
     captionLayout={captionLayout}
