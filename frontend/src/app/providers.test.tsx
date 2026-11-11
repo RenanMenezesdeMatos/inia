@@ -19,7 +19,7 @@ vi.mock("@/lib/accessibility/accessibility-provider", async (importOriginal) => 
   const actual = await importOriginal<typeof import("@/lib/accessibility/accessibility-provider")>()
   return { ...actual, AccessibilityProvider: (props: Parameters<typeof actual.AccessibilityProvider>[0]) => { renders.accessibility++; return actual.AccessibilityProvider(props) } }
 })
-vi.mock("next/font/google", () => ({ Atkinson_Hyperlegible: () => ({ variable: "font-atkinson" }), Atkinson_Hyperlegible_Next: () => ({ variable: "font-atkinson-next" }), IBM_Plex_Mono: () => ({ variable: "font-plex-mono" }) }))
+vi.mock("next/font/local", () => ({ default: () => ({ variable: "font-local" }) }))
 vi.mock("./globals.css", () => ({}))
 // Nonce da CSP que o proxy repassa ao RootLayout (src/proxy.ts).
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-nonce": "bm9uY2UtZGEtcmVxdWlzaWNhbw==" }) }))
