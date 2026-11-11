@@ -14,6 +14,8 @@ const control = vi.hoisted(() => ({
   verdict: '{"verdict":"ALLOW","violated":[]}' as string | null,
   /** Vereditos para as próximas conferências, nesta ordem, antes de `verdict`. */
   verdictQueue: [] as string[],
+  /** Vereditos da conferência do limite de atuação, que é uma chamada à parte. Sem nenhum aqui, vale `verdict`. */
+  limitVerdicts: [] as string[],
   /** O que a IA simulada escreve (e o especialista). */
   answer: "Resposta gerada pela IA.",
   routes: [] as string[][],
@@ -30,7 +32,8 @@ vi.mock("../../../shared/application/model-routing/llm-gateway.js", async (impor
     const purpose = gatewayRequest.classification?.purpose
     if (purpose === "RESPONSE_COMPLIANCE") {
       control.checks.push({ system: gatewayRequest.systemPrompt ?? "", user: gatewayRequest.contents?.[0]?.text ?? "" })
-      const verdict = control.verdictQueue.shift() ?? control.verdict
+      const isLimit = (gatewayRequest.systemPrompt ?? "").includes("dentro do que o agente atende")
+      const verdict = isLimit ? (control.limitVerdicts.shift() ?? control.verdict) : (control.verdictQueue.shift() ?? control.verdict)
       if (verdict === null) throw new Error("provedor fora")
       return { kind: "text", text: verdict, ...reply }
     }
@@ -173,6 +176,7 @@ describe.skipIf(!ENABLED)("PEN-017 — conferência das respostas (banco de test
     control.answer = GENERATED
     control.routes = []
     control.verdictQueue = []
+    control.limitVerdicts = []
     control.checks.length = 0
     control.prompts.length = 0
   })
@@ -329,15 +333,14 @@ describe.skipIf(!ENABLED)("PEN-017 — conferência das respostas (banco de test
   })
 
   it("especialista com limites: responde pelos limites dele antes de o orquestrador usar a resposta; sem limites, nenhuma conferência a mais", async () => {
-    // A referência do limite vem depois dos assuntos proibidos; a resposta final, que não tem esse limite, é permitida.
-    const limitRef = `R${(await pool.query<{ n: number }>(`select count(*)::int n from prohibited_topics where organization_id = $1 and active`, [ORG])).rows[0]!.n + 1}`
-    control.verdictQueue = [VIOLATES(limitRef, "frete")]
+    // O limite é conferido à parte, e é a única regra dessa chamada. A resposta final, que não tem esse limite, é permitida.
+    control.limitVerdicts = [VIOLATES("R1", "frete")]
     control.routes = [[tools.get(limited)!]]
     const outOfLimit = "O frete do pedido é grátis, fora do que este especialista atende."
     control.answer = outOfLimit
     await chat()
     expect(await lastCheckRow("SPECIALIST")).toMatchObject({ control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", rules: [{ kind: "ACTION_LIMIT" }], flagged_content: outOfLimit })
-    expect(control.checks[0]!.system).toContain("Só faturamento.")
+    expect(control.checks.some((check) => check.system.includes("Só faturamento."))).toBe(true)
     // A síntese recebeu o aviso, e não o texto do especialista.
     const synthesis = control.prompts.at(-1)!
     expect(synthesis).toContain(SPECIALIST_BLOCKED_TEXT)

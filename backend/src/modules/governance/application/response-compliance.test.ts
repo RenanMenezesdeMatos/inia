@@ -8,6 +8,8 @@ import { checkResponse, enforceResponseBeforeNextStep, recordResponseCheck, RESP
 
 const ORG = "00000000-0000-4000-8000-000000000001"
 const GUARDRAILS = { actionLimits: "Só indicadores e processos.", prohibitedTopics: [{ name: "Política", requiredBehavior: "Não opine sobre política." }] }
+const TOPICS_ONLY = { actionLimits: null, prohibitedTopics: GUARDRAILS.prohibitedTopics }
+const LIMIT_ONLY = { actionLimits: GUARDRAILS.actionLimits, prohibitedTopics: [] }
 const query = vi.fn<(...args: unknown[]) => Promise<{ rows: never[]; rowCount: number }>>(async () => ({ rows: [], rowCount: 0 }))
 const db = { query } as never
 const ask = (model: ComplianceModel, over: Record<string, unknown> = {}) => checkResponse(db, { organizationId: ORG, text: "Resposta.", question: "Pergunta?", guardrails: GUARDRAILS, source: "CHAT", ...over }, model)
@@ -88,7 +90,7 @@ describe("checkResponse", () => {
 
   it("permitida e violação", async () => {
     expect(await ask(replying('{"verdict":"ALLOW","violated":[]}'))).toMatchObject({ outcome: "ALLOWED", model: "simulado" })
-    expect(await ask(replying('{"verdict":"VIOLATION","violated":["R2"],"excerpt":"Resposta","reason":"Fora do limite."}'))).toMatchObject({ outcome: "VIOLATION", hits: [{ kind: "ACTION_LIMIT" }], reason: 'Fora do limite. Trecho: "Resposta"' })
+    expect(await ask(replying('{"verdict":"VIOLATION","violated":["R1"],"excerpt":"Resposta","reason":"Fora do limite."}'), { guardrails: LIMIT_ONLY })).toMatchObject({ outcome: "VIOLATION", hits: [{ kind: "ACTION_LIMIT" }], reason: 'Fora do limite. Trecho: "Resposta"' })
   })
 
   it("lê as regras do cadastro quando não vieram prontas; sem conseguir ler, é falha, nunca passagem livre", async () => {
@@ -102,15 +104,15 @@ describe("checkResponse", () => {
 
   it("resposta fora do contrato tem uma nova tentativa; depois disso é falha", async () => {
     const recovers = vi.fn<ComplianceModel>().mockResolvedValueOnce({ text: "lixo", model: "m" }).mockResolvedValueOnce({ text: '{"verdict":"ALLOW"}', model: "m" })
-    expect(await ask(recovers)).toMatchObject({ outcome: "ALLOWED" })
+    expect(await ask(recovers, { guardrails: TOPICS_ONLY })).toMatchObject({ outcome: "ALLOWED" })
     const never = replying("lixo")
-    expect(await ask(never)).toMatchObject({ outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_INVALID_OUTPUT" })
+    expect(await ask(never, { guardrails: TOPICS_ONLY })).toMatchObject({ outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_INVALID_OUTPUT" })
     expect(never).toHaveBeenCalledTimes(2)
   })
 
   it("falha do provedor vira falha da conferência; cancelamento de quem pediu continua sendo cancelamento", async () => {
     const failing: ComplianceModel = vi.fn(async () => { throw new Error("503") })
-    expect(await ask(failing)).toMatchObject({ outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_PROVIDER_ERROR" })
+    expect(await ask(failing, { guardrails: TOPICS_ONLY })).toMatchObject({ outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_PROVIDER_ERROR" })
     expect(failing).toHaveBeenCalledTimes(2)
     const cancelled: ComplianceModel = vi.fn(async () => { throw new AiCallCancelledError() })
     await expect(ask(cancelled)).rejects.toBeInstanceOf(AiCallCancelledError)
