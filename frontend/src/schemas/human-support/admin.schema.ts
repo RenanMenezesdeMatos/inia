@@ -55,12 +55,13 @@ export const anjoRowSchema = z.object({
   connected: z.boolean(),
   used: z.number(),
   canReceiveAssignment: z.boolean().nullable(),
-  reasonNotEligible: z.enum(["OFFLINE", "PAUSED", "NO_CAPACITY", "NOT_CONNECTED", "SCOPE_NOT_COVERED"]).nullable(),
+  reasonNotEligible: z.enum(["OFFLINE", "PAUSED", "SCHEDULED_CHANGE", "NO_CAPACITY", "NOT_CONNECTED", "SCOPE_NOT_COVERED"]).nullable(),
 })
 export type AnjoRow = z.infer<typeof anjoRowSchema>
 export const NOT_ELIGIBLE_LABELS: Record<NonNullable<AnjoRow["reasonNotEligible"]>, string> = {
   OFFLINE: "Indisponível",
   PAUSED: "Em pausa",
+  SCHEDULED_CHANGE: "Pausa ou indisponibilidade programada",
   NO_CAPACITY: "Sem vaga",
   NOT_CONNECTED: "Sem a área do Anjo aberta",
   SCOPE_NOT_COVERED: "Não atende este escopo",

@@ -14,6 +14,8 @@ export type AnjoWorkspaceState = {
   /** Outra aba já está com a área do Anjo aberta. */
   blocked: boolean
   reconnecting: boolean
+  /** A sessão terminou (401 na chamada de estado): o laço parou e a tela pede para entrar de novo. */
+  sessionEnded: boolean
   refresh: () => void
   applyAnjo: (anjo: AnjoView) => void
   /** Relógio do servidor menos o desta tela, medido a cada resposta (cronômetros e "há N min" contam pelo servidor). */
@@ -28,6 +30,7 @@ export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceId
   const [anjo, setAnjo] = useState<AnjoView | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
+  const [sessionEnded, setSessionEnded] = useState(false)
   const [clockOffsetMs, setClockOffsetMs] = useState(0)
   const pollerRef = useRef<StatePoller | null>(null)
   const knownRef = useRef<Set<string> | null>(null)
@@ -53,7 +56,7 @@ export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceId
     const start = () => {
       if (disposed) return
       // A área do Anjo sempre espera (é ela que mantém a conexão do Anjo).
-      pollerRef.current = startStatePoller({ workspace: "anjo", shouldWait: () => true, onState, onReconnecting: setReconnecting })
+      pollerRef.current = startStatePoller({ workspace: "anjo", shouldWait: () => true, onState, onReconnecting: setReconnecting, onSessionEnded: () => setSessionEnded(true) })
     }
     const locks = typeof navigator === "undefined" ? undefined : (navigator as Navigator & { locks?: LockManager }).locks
     // Espera curta na fila da trava, em vez de `ifAvailable`: uma montagem anterior desta mesma aba (o React monta duas vezes em
@@ -102,7 +105,7 @@ export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceId
     setAnjo(next)
     setClockOffsetMs(offsetOf(next))
   }, [])
-  return { anjo, blocked, reconnecting, refresh, applyAnjo, clockOffsetMs }
+  return { anjo, blocked, reconnecting, sessionEnded, refresh, applyAnjo, clockOffsetMs }
 }
 
 /** Diferença entre o relógio do servidor (na resposta) e o desta tela; sem o instante do servidor, nenhuma correção. */

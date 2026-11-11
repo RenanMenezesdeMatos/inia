@@ -22,6 +22,7 @@ import { periodText } from "./funnel-tab"
 /** Por que a presença mudou (catálogo `PRESENCE_EVENT_CAUSES` do servidor). */
 const PRESENCE_CAUSE_LABELS: Record<string, string> = {
   ANJO: "pelo Anjo",
+  ANJO_SCHEDULED: "programado pelo Anjo, ao terminar o último atendimento",
   LEASE_EXPIRED: "área do Anjo fechada (sem sinal)",
   ROLE_REVOKED: "papel Anjo retirado",
   CONNECTION_LOST: "conexão perdida",

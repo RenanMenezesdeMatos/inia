@@ -1,15 +1,16 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { ChevronDown, CircleStop, Pause, Play, Timer } from "lucide-react"
+import { CalendarClock, ChevronDown, CircleStop, Pause, Play, Timer, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { describeElapsed, formatElapsed, formatShortDateTime } from "@/lib/format/date"
 import { PAUSE_REASON_LABELS, PAUSE_REASONS, PRESENCE_STATUS_LABELS, type PauseReason } from "@/schemas/human-support/catalogs.schema"
 import type { AnjoView } from "@/schemas/human-support/state.schema"
-import { changeAnjoPresence, type PresenceChange } from "@/services/human-support/human-support-service"
-import { IconBadge } from "@/components/ui/surface"
+import { cancelScheduledAnjoPresence, changeAnjoPresence, type PresenceChange } from "@/services/human-support/human-support-service"
+import { IconBadge, toneSurface } from "@/components/ui/surface"
+import { cn } from "@/lib/utils"
 
 import { PAUSE_REASON_ICONS, presenceIcon, STATUS_TONE } from "./presence-icons"
 import { useElapsed } from "./use-clock"
@@ -27,6 +28,11 @@ import { useElapsed } from "./use-clock"
  * do Radix, e a animação do kit respeita a redução de movimento. Cada ação grava no servidor e a tela passa a mostrar a área que ele
  * devolve; as recusas (atendimento em andamento, sem escopo ligado…) chegam já em texto legível — nenhuma confirmação a mais. O motivo
  * da pausa nunca chega ao operador.
+ *
+ * MUDANÇA PROGRAMADA (migration 188): com atendimento em andamento, pausa (estando Disponível) e "Ficar indisponível" não mudam o
+ * estado — o servidor PROGRAMA a mudança, o Anjo deixa de receber chamados na hora e ela entra ao terminar o último atendimento. Os
+ * botões dizem "Programar…", a faixa "Programado" mostra o que vai entrar, com "Cancelar programação"; escolher outro motivo ou
+ * Indisponível altera a programação. O estado e o cronômetro continuam os atuais até a mudança entrar (contam da transição real).
  */
 export type PresenceControlProps = {
   presence: AnjoView["presence"]
@@ -37,24 +43,28 @@ export type PresenceControlProps = {
   clockOffsetMs?: number
   /** Ao lado do estado (ex.: "Atendimentos agora"). */
   aside?: ReactNode
+  /** Atendimentos em andamento: com algum, pausa e indisponibilidade são programadas. */
+  activeAttendances?: number
 }
 
-export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffsetMs = 0, aside }: PresenceControlProps) {
+export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffsetMs = 0, aside, activeAttendances = 0 }: PresenceControlProps) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const change = async (next: PresenceChange) => {
+  const run = async (action: () => Promise<AnjoView>) => {
     if (pending) return
     setPending(true)
     setError(null)
     try {
-      onApplyAnjo(await changeAnjoPresence(next))
+      onApplyAnjo(await action())
     } catch (failure) {
       setError(failure instanceof Error && failure.message ? failure.message : "Não foi possível mudar seu estado. Tente de novo.")
     } finally {
       setPending(false)
     }
   }
+  const change = (next: PresenceChange) => run(() => changeAnjoPresence(next))
+  const cancelScheduled = () => run(cancelScheduledAnjoPresence)
   const becomeAvailable = () => {
     onPrimeAudio?.()
     void change({ status: "AVAILABLE" })
@@ -62,6 +72,12 @@ export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffs
   const currentPause = presence.status === "PAUSED" ? presence.pauseReason : null
   const statusText = currentPause ? `${PRESENCE_STATUS_LABELS.PAUSED} · ${PAUSE_REASON_LABELS[currentPause]}` : PRESENCE_STATUS_LABELS[presence.status]
   const timed = presence.status !== "OFFLINE"
+  const scheduled = presence.scheduled
+  // Com atendimento em andamento: pausa (a partir de Disponível) e Indisponível ficam programadas.
+  const schedulesPause = presence.status === "AVAILABLE" && activeAttendances > 0
+  const schedulesOffline = presence.status !== "OFFLINE" && activeAttendances > 0
+  const pauseLabel = presence.status === "PAUSED" ? "Trocar pausa" : schedulesPause ? (scheduled?.status === "PAUSED" ? "Alterar pausa programada" : "Programar pausa") : "Pausa"
+  const scheduledText = scheduled ? (scheduled.status === "PAUSED" && scheduled.pauseReason ? `${PRESENCE_STATUS_LABELS.PAUSED} · ${PAUSE_REASON_LABELS[scheduled.pauseReason]}` : PRESENCE_STATUS_LABELS.OFFLINE) : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -97,15 +113,48 @@ export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffs
             Voltar
           </Button>
         ) : null}
-        {presence.status !== "OFFLINE" ? <PauseMenu label={presence.status === "PAUSED" ? "Trocar pausa" : "Pausa"} current={currentPause} disabled={pending} onPick={(reason) => void change({ status: "PAUSED", pauseReason: reason })} /> : null}
         {presence.status !== "OFFLINE" ? (
+          <PauseMenu
+            label={pauseLabel}
+            current={schedulesPause && scheduled?.status === "PAUSED" ? scheduled.pauseReason : currentPause}
+            currentHint={schedulesPause && scheduled?.status === "PAUSED" ? "pausa programada" : "pausa atual"}
+            disabled={pending}
+            onPick={(reason) => void change({ status: "PAUSED", pauseReason: reason })}
+          />
+        ) : null}
+        {presence.status !== "OFFLINE" && scheduled?.status !== "OFFLINE" ? (
           <Button type="button" variant="destructive" size="lg" className="border-destructive/40 font-semibold" disabled={pending} onClick={() => void change({ status: "OFFLINE" })}>
             <CircleStop aria-hidden />
-            Ficar indisponível
+            {schedulesOffline ? "Programar indisponível" : "Ficar indisponível"}
           </Button>
         ) : null}
       </div>
-      {presence.status === "PAUSED" ? <p className="-mt-2 text-xs text-muted-foreground">Em pausa você não recebe novos atendimentos; os que estão abertos continuam.</p> : null}
+      {scheduled && scheduledText ? (
+        <div role="status" aria-label={`Mudança programada: ${scheduledText}`} data-testid="presence-scheduled" className={cn(toneSurface("warning"), "-mt-1 flex flex-col gap-3 rounded-xl p-3 sm:flex-row sm:items-center sm:justify-between")}>
+          <div className="flex min-w-0 items-start gap-3">
+            <IconBadge icon={CalendarClock} tone="warning" size="sm" />
+            <p className="min-w-0 text-sm leading-snug">
+              <span className="block font-semibold">Programado: {scheduledText}</span>
+              <span className="block text-muted-foreground">
+                {activeAttendances > 1
+                  ? `Entra quando terminar o último dos ${activeAttendances} atendimentos em andamento.`
+                  : activeAttendances === 1
+                    ? "Entra quando terminar o atendimento em andamento."
+                    : "Entra em instantes."}{" "}
+                Você não recebe novos atendimentos.
+              </span>
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void cancelScheduled()}>
+            <X aria-hidden />
+            Cancelar programação
+          </Button>
+        </div>
+      ) : null}
+      {!scheduled && schedulesOffline ? (
+        <p className="-mt-2 text-xs text-muted-foreground">Com atendimento em andamento, {schedulesPause ? "a pausa e a indisponibilidade ficam programadas" : "a indisponibilidade fica programada"}: entram quando terminar o último, e você para de receber novos atendimentos na hora.</p>
+      ) : null}
+      {presence.status === "PAUSED" && !scheduled ? <p className="-mt-2 text-xs text-muted-foreground">Em pausa você não recebe novos atendimentos; os que estão abertos continuam.</p> : null}
       {error ? (
         <p role="alert" className="-mt-2 text-sm text-destructive">
           {error}
@@ -115,10 +164,10 @@ export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffs
   )
 }
 
-type PauseMenuProps = { label: string; current: PauseReason | null; disabled: boolean; onPick: (reason: PauseReason) => void }
+type PauseMenuProps = { label: string; current: PauseReason | null; currentHint: string; disabled: boolean; onPick: (reason: PauseReason) => void }
 
 /** Motivos de pausa: abre para baixo, ícone e nome de cada motivo, a pausa atual marcada (escolher a mesma não grava nada). */
-function PauseMenu({ label, current, disabled, onPick }: PauseMenuProps) {
+function PauseMenu({ label, current, currentHint, disabled, onPick }: PauseMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -140,7 +189,7 @@ function PauseMenu({ label, current, disabled, onPick }: PauseMenuProps) {
             <DropdownMenuRadioItem key={reason} value={reason} className="gap-3 rounded-lg py-1.5 pr-9 pl-1.5 data-[state=checked]:bg-primary/5 data-[state=checked]:font-semibold">
               <IconBadge icon={PAUSE_REASON_ICONS[reason]} tone={reason === current ? "warning" : "neutral"} size="sm" />
               <span className="flex-1">{PAUSE_REASON_LABELS[reason]}</span>
-              {reason === current ? <span className="sr-only">(pausa atual)</span> : null}
+              {reason === current ? <span className="sr-only">({currentHint})</span> : null}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

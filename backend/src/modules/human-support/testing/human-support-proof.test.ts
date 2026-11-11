@@ -20,7 +20,7 @@ import { listMessages, sendMessage } from "../application/message-service.js"
 import { supportFunnel } from "../application/metrics-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest } from "../application/request-service.js"
 import { listAnjos, listScopes, updateAnjoCapacity, updateScopeState, updateSettings } from "../application/settings-service.js"
-import { changePresence, loadAnjoView, loadOperatorView, loadState, renewAnjoLease } from "../application/state-service.js"
+import { cancelScheduledPresence, changePresence, loadAnjoView, loadOperatorView, loadState, renewAnjoLease } from "../application/state-service.js"
 import { classificationInputSchema } from "../domain/classification.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -50,7 +50,7 @@ const sql = (text: string, params: unknown[] = []) => pool.query(text, params)
 async function resetOpen() {
   await sql(`update human_support_attendances set status = 'ENDED', end_cause = 'ANJO_CLOSED', ended_at = now() where organization_id = $1 and status = 'ACTIVE'`, [ORG])
   await sql(`update human_support_requests set status = 'CLOSED', end_cause = 'ANJO_CLOSED', ended_at = now() where organization_id = $1 and status in ('WAITING', 'IN_PROGRESS')`, [ORG])
-  await sql(`update human_support_agent_presence set status = 'OFFLINE', pause_reason = null, lease_until = null, connection_lost_at = null, connection_restored_at = null where organization_id = $1`, [ORG])
+  await sql(`update human_support_agent_presence set status = 'OFFLINE', pause_reason = null, lease_until = null, connection_lost_at = null, connection_restored_at = null, scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null where organization_id = $1`, [ORG])
 }
 async function available(key: string) {
   await renewAnjoLease(pool, viewer(key))
@@ -80,7 +80,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     await grant("A4", "ANJO", { type: "GROUP", team: "G2" })
     await person("A5", {}, true)
     await grant("A5", "ANJO", { type: "ORGANIZATION" })
-    for (let index = 1; index <= 24; index += 1) await person(`O${index}`, { team: "G1", subteam: "S1" })
+    for (let index = 1; index <= 28; index += 1) await person(`O${index}`, { team: "G1", subteam: "S1" })
     await person("OS2", { team: "G1", subteam: "S2" })
     await person("OG2", { team: "G2", subteam: "S3" })
   }, 60_000)
@@ -308,8 +308,14 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     const started = ((await sql(`select started_at from human_support_attendances where request_id = $1`, [created.id])).rows[0] as { started_at: Date }).started_at
     expect(Date.parse(busy.since!)).toBe(started.getTime())
 
+    // Com atendimento aberto a pausa é PROGRAMADA (188): continua "Em atendimento" e entra ao encerrar, contando dali.
     await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "MEETING" })
-    expect(find(await anjosNow(pool, viewer("ADMIN"), {}), "A1")).toMatchObject({ status: "PAUSED", pauseReason: "MEETING", attendances: { active: 1 } })
+    expect(find(await anjosNow(pool, viewer("ADMIN"), {}), "A1")).toMatchObject({ status: "IN_ATTENDANCE", attendances: { active: 1 } })
+    await closeRequest(pool, viewer("A1"), created.id, { viewerIsAnjo: true })
+    const paused = find(await anjosNow(pool, viewer("ADMIN"), {}), "A1")!
+    expect(paused).toMatchObject({ status: "PAUSED", pauseReason: "MEETING", attendances: { active: 0 } })
+    const endedAt = ((await sql(`select ended_at from human_support_attendances where request_id = $1`, [created.id])).rows[0] as { ended_at: Date }).ended_at
+    expect(Date.parse(paused.since!)).toBe(endedAt.getTime())
 
     // Conta desativada: continua na lista, marcada como inativa (o papel não foi revogado).
     await sql(`update user_accounts set active = false where person_id = $1`, [ids.A3])
@@ -350,6 +356,124 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(((await sql(`select status from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A1])).rows[0] as { status: string }).status).toBe("OFFLINE")
     await resetOpen()
   }, 60_000)
+
+  it("pausa e indisponibilidade programadas (188): com dois atendimentos, programar/alterar/cancelar, nenhuma atribuição nova, entra ao encerrar o último (operador, inatividade), carência preserva e queda além dela apaga", async () => {
+    await resetOpen()
+    const presenceOf = () => sql(`select status, pause_reason, status_since, scheduled_status, scheduled_pause_reason, scheduled_at from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A1]).then((result) => result.rows[0] as { status: string; pause_reason: string | null; status_since: Date; scheduled_status: string | null; scheduled_pause_reason: string | null; scheduled_at: Date | null })
+    const attendanceOf = (requestId: string) => sql(`select id, anjo_person_id, status, end_cause, ended_at from human_support_attendances where request_id = $1 order by started_at desc limit 1`, [requestId]).then((result) => result.rows[0] as { id: string; anjo_person_id: string; status: string; end_cause: string | null; ended_at: Date | null } | undefined)
+    const created: string[] = []
+    const track = async (key: string) => {
+      const { request: made } = await ask(key)
+      created.push(made.id)
+      return made
+    }
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.A1!, 3)
+
+    // Sem atendimento: pausa entra na hora (nada é programado).
+    await available("A1")
+    const immediate = await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "LUNCH" })
+    expect(immediate.presence).toMatchObject({ status: "PAUSED", pauseReason: "LUNCH", scheduled: null })
+    await changePresence(pool, viewer("A1"), { status: "AVAILABLE" })
+
+    // Dois atendimentos simultâneos com o A1 (capacidade 3: sobra vaga, e mesmo assim nada novo chega depois de programar).
+    const first = await track("O25")
+    const second = await track("O26")
+    expect([first.status, second.status]).toEqual(["IN_PROGRESS", "IN_PROGRESS"])
+    const sinceBefore = (await presenceOf()).status_since
+
+    // Programar pausa: o estado atual fica (e o cronômetro não recomeça); alterar o motivo; trocar por Indisponível; cancelar.
+    const scheduled = await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "LUNCH" })
+    expect(scheduled.presence).toMatchObject({ status: "AVAILABLE", pauseReason: null, scheduled: { status: "PAUSED", pauseReason: "LUNCH" } })
+    expect(Date.parse(scheduled.presence.since)).toBe(sinceBefore.getTime())
+    expect((await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "PERSONAL" })).presence.scheduled).toMatchObject({ status: "PAUSED", pauseReason: "PERSONAL" })
+    expect((await changePresence(pool, viewer("A1"), { status: "OFFLINE" })).presence.scheduled).toMatchObject({ status: "OFFLINE", pauseReason: null })
+    expect((await cancelScheduledPresence(pool, viewer("A1"))).presence.scheduled).toBeNull()
+    // Pedir o estado atual também desfaz a programação.
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "MEETING" })
+    expect((await changePresence(pool, viewer("A1"), { status: "AVAILABLE" })).presence).toMatchObject({ status: "AVAILABLE", scheduled: null })
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "LUNCH" })
+    // Programar e cancelar não geram evento de presença (as horas em pausa contam da transição efetiva).
+    expect(((await sql(`select count(*)::int total from human_support_presence_events where organization_id = $1 and person_id = $2 and to_status = 'PAUSED' and occurred_at > $3`, [ORG, ids.A1, sinceBefore])).rows[0] as { total: number }).total).toBe(0)
+
+    // Bloqueio: com vaga sobrando, o pedido novo fica na fila, mesmo com várias distribuições em paralelo.
+    const waiting = await track("O27")
+    expect(waiting.status).toBe("WAITING")
+    await Promise.all(Array.from({ length: 5 }, () => dispatchOrganization(pool, ORG)))
+    expect((await request(waiting.id)).status).toBe("WAITING")
+    expect((await loadOperatorView(pool, viewer("O28"))).availability!.status).not.toBe("AVAILABLE_NOW")
+    expect((await listAnjos(pool, ORG, { subteamId: ids.S1! })).find((row) => row.personId === ids.A1)).toMatchObject({ canReceiveAssignment: false, reasonNotEligible: "SCHEDULED_CHANGE" })
+
+    // Recarregar a página (estado de novo) e cair dentro da carência: a programação continua, os atendimentos seguem com o A1.
+    expect((await loadState(pool, viewer("A1"), { workspace: "anjo" })).anjo!.presence.scheduled).toMatchObject({ status: "PAUSED", pauseReason: "LUNCH" })
+    await sql(`update human_support_agent_presence set lease_until = now() - interval '1 second' where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
+    await dispatchOrganization(pool, ORG)
+    await renewAnjoLease(pool, viewer("A1"))
+    await dispatchOrganization(pool, ORG)
+    expect(await presenceOf()).toMatchObject({ status: "AVAILABLE", scheduled_status: "PAUSED", scheduled_pause_reason: "LUNCH" })
+    expect([(await attendanceOf(first.id))!.status, (await attendanceOf(second.id))!.status]).toEqual(["ACTIVE", "ACTIVE"])
+    expect((await request(waiting.id)).status).toBe("WAITING")
+
+    // O operador encerra o primeiro: ainda há um atendimento, nada muda.
+    await closeRequest(pool, viewer("O25"), first.id, { viewerIsAnjo: false })
+    expect(await presenceOf()).toMatchObject({ status: "AVAILABLE", scheduled_status: "PAUSED" })
+    expect(await activeOf("A1")).toBe(1)
+
+    // O último termina por inatividade (sistema) com distribuições correndo junto: a pausa entra no mesmo instante do fim e a fila
+    // nunca recebe o A1 nesse meio-tempo.
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [second.id])
+    await Promise.all(Array.from({ length: 4 }, () => dispatchOrganization(pool, ORG)))
+    const ended = (await attendanceOf(second.id))!
+    expect(ended).toMatchObject({ status: "ENDED", end_cause: "INACTIVITY" })
+    const applied = await presenceOf()
+    expect(applied).toMatchObject({ status: "PAUSED", pause_reason: "LUNCH", scheduled_status: null, scheduled_at: null })
+    expect(applied.status_since.getTime()).toBe(ended.ended_at!.getTime())
+    // Instante idêntico no banco (microssegundos), não só no ms do JavaScript.
+    expect(((await sql(`select p.status_since = a.ended_at same from human_support_agent_presence p, human_support_attendances a where p.organization_id = $1 and p.person_id = $2 and a.id = $3`, [ORG, ids.A1, ended.id])).rows[0] as { same: boolean }).same).toBe(true)
+    expect(((await sql(`select e.occurred_at = p.status_since same from human_support_presence_events e join human_support_agent_presence p on p.organization_id = e.organization_id and p.person_id = e.person_id where e.organization_id = $1 and e.person_id = $2 and e.cause = 'ANJO_SCHEDULED' order by e.id desc limit 1`, [ORG, ids.A1])).rows[0] as { same: boolean }).same).toBe(true)
+    expect(await attendanceOf(waiting.id)).toBeUndefined()
+    expect((await request(waiting.id)).status).toBe("WAITING")
+    const event = (await sql(`select from_status, to_status, pause_reason, cause, occurred_at from human_support_presence_events where organization_id = $1 and person_id = $2 order by id desc limit 1`, [ORG, ids.A1])).rows[0] as { from_status: string; to_status: string; pause_reason: string; cause: string; occurred_at: Date }
+    expect(event).toMatchObject({ from_status: "AVAILABLE", to_status: "PAUSED", pause_reason: "LUNCH", cause: "ANJO_SCHEDULED" })
+    expect(event.occurred_at.getTime()).toBe(applied.status_since.getTime())
+    const anjoNow = (await anjosNow(pool, viewer("ADMIN"), {})).items.find((item) => item.personId === ids.A1)!
+    expect(anjoNow).toMatchObject({ status: "PAUSED", pauseReason: "LUNCH" })
+    expect(Date.parse(anjoNow.since!)).toBe(applied.status_since.getTime())
+    // O motivo nunca chega ao operador.
+    for (const key of ["O25", "O26", "O27"]) expect(JSON.stringify(await loadState(pool, viewer(key), { workspace: "anjo" }))).not.toMatch(/pause|presence|scheduled|MEETING|LUNCH|PERSONAL|PROCESS_ACTIVITY/i)
+
+    // "Voltar" → recebe o que esperava; Indisponível programado entra quando o próprio Anjo encerra.
+    await changePresence(pool, viewer("A1"), { status: "AVAILABLE" })
+    expect((await request(waiting.id)).status).toBe("IN_PROGRESS")
+    expect((await changePresence(pool, viewer("A1"), { status: "OFFLINE" })).presence).toMatchObject({ status: "AVAILABLE", scheduled: { status: "OFFLINE" } })
+    await closeRequest(pool, viewer("A1"), waiting.id, { viewerIsAnjo: true })
+    expect(await presenceOf()).toMatchObject({ status: "OFFLINE", pause_reason: null, scheduled_status: null })
+
+    // Queda além da carência com pausa programada: atendimento Interrompido, pedido de volta à frente da fila (mesmo protocolo e
+    // mensagens), o A1 Indisponível SEM a programação — ao voltar, não recebe nada até "Ficar disponível".
+    await available("A1")
+    const dropped = await track("O28")
+    expect(dropped.status).toBe("IN_PROGRESS")
+    await sendMessage(pool, viewer("O28"), dropped.id, { clientMessageId: randomUUID(), body: "Mensagem antes da queda", viewerIsAnjo: false })
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "PROCESS_ACTIVITY" })
+    const queuedAt = (await request(dropped.id)).queued_at
+    await sql(`update human_support_agent_presence set lease_until = now() - interval '4 minutes' where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
+    await dispatchOrganization(pool, ORG)
+    expect((await attendanceOf(dropped.id))!.end_cause).toBe("ANJO_LOST")
+    expect((await request(dropped.id)).status).toBe("WAITING")
+    expect((await request(dropped.id)).queued_at.getTime()).toBe(queuedAt.getTime())
+    expect(await presenceOf()).toMatchObject({ status: "OFFLINE", scheduled_status: null, scheduled_at: null })
+    const kept = (await loadOperatorView(pool, viewer("O28"))).openRequest!
+    expect(kept.protocol).toBe(dropped.protocol)
+    expect(kept.messages.map((message) => message.body)).toContain("Mensagem antes da queda")
+    await renewAnjoLease(pool, viewer("A1"))
+    await dispatchOrganization(pool, ORG)
+    expect(await presenceOf()).toMatchObject({ status: "OFFLINE", scheduled_status: null })
+    expect((await request(dropped.id)).status).toBe("WAITING")
+
+    await resetOpen()
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.A1!, null)
+    await sql(`delete from human_support_requests where id = any($1::uuid[])`, [created])
+  }, 120_000)
 
   it("prazos: operador sem chamar 2 min → Abandonado; prazo da fila vencido → Expirado; 15 min sem mensagem → Encerrado, também sem resposta do Anjo", async () => {
     await available("A1")

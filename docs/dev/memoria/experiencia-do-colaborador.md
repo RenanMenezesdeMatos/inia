@@ -79,6 +79,15 @@ Regra: **o Acompanhamento de quem lidera tem a MESMA apresentação do Acompanha
 
 **Materiais utilizados recolhível (21/10/2026):** o bloco abre e fecha pela seta, como "Entenda este feedback" — fechado por padrão, como os irmãos (`MaterialsPanel` em `feedback-narrative-view.tsx`, `<section>` com nome "Materiais utilizados"); antes ficava sempre aberto. Feedback sem ponto a ajustar também tem materiais (os documentos dos acertos, `RECOGNITION_MATERIALS_V1` — ver motor de feedback).
 
+### Hoje, Treinar, "Meu turno" e "Quem lê suas conversas?" — DESCONTINUADOS (removidos em 2026-11-11)
+
+Decisão do responsável em 11/11/2026: "não vamos implementar". Saíram do código (nunca foram commitados): os módulos
+`inia-training` e `operator-today`, as abas Hoje e Treinar, a fala de abertura "Meu turno", "Treinar este ponto", o palco do treino,
+o Use Case `TRAINING_DEBRIEF`, a origem de conversa `TRAINING`, "Quem lê suas conversas?" (`conversation-readers`) e a coleta restrita
+de usabilidade (`INIA_USAGE_COLLECTION_FEATURES`). As migrations 161/162 foram desfeitas nos bancos de dev e de teste e os arquivos
+saíram; nenhum outro ambiente as recebeu. Cópia de tudo (arquivos, diffs, dados de teste) fora do repositório em
+`~/Developer/Works/inia-backup-treino-2026-11-11`. Não retomar sem pedido explícito.
+
 ### Avatar compacto × ampliado no painel do operador (trazido para o ramo do Apoio com Anjo em 2026-11-10)
 
 O botão "Ampliar / Compactar a INIA" nasceu no checkout principal (área de trabalho do colaborador, 04/11, sem commit) e foi trazido

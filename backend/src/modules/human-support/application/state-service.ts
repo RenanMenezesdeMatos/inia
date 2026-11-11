@@ -4,7 +4,7 @@ import type { TransactionSource } from "../../../shared/infrastructure/database/
 import { loadPersonPresentations } from "../../profile-preferences/application/person-presentation-loader.js"
 import { HUMAN_SUPPORT_LIMITS, type AttendanceEndCause, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
 import { evaluationOpenUntil } from "../domain/evaluation.js"
-import { effectiveCapacity, presenceChange, type PresenceRequest } from "../domain/presence.js"
+import { effectiveCapacity, presenceChange, scheduledFromRow, type PresenceRequest } from "../domain/presence.js"
 import type { AnjoView, OperatorView, PendingEvaluation, SharedContext, StateResponse } from "../domain/views.js"
 import { dispatchAfterCommand } from "./dispatch.js"
 import { anyEnabledScope, availabilityFor, enabledForPlace, loadPlace, loadSettings } from "./eligibility.js"
@@ -77,8 +77,9 @@ async function loadPendingEvaluations(db: Queryable, viewer: Viewer): Promise<Pe
 export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoView> {
   const settings = await loadSettings(db, viewer.organizationId)
   const presence = (
-    await db.query<{ status: PresenceStatus; pause_reason: PauseReason | null; connected: boolean; status_since: Date; max_concurrent: number | null }>(
-      `select status, pause_reason, coalesce(lease_until > statement_timestamp(), false) connected, status_since, max_concurrent from human_support_agent_presence where organization_id = $1 and person_id = $2`,
+    await db.query<{ status: PresenceStatus; pause_reason: PauseReason | null; connected: boolean; status_since: Date; max_concurrent: number | null; scheduled_status: string | null; scheduled_pause_reason: string | null; scheduled_at: Date | null }>(
+      `select status, pause_reason, coalesce(lease_until > statement_timestamp(), false) connected, status_since, max_concurrent, scheduled_status, scheduled_pause_reason, scheduled_at
+         from human_support_agent_presence where organization_id = $1 and person_id = $2`,
       [viewer.organizationId, viewer.personId],
     )
   ).rows[0]
@@ -114,7 +115,7 @@ export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoV
   const nameOf = (id: string) => names.get(id)?.displayName ?? "Operador"
   return {
     serverTime: (clock.rows[0]?.now ?? new Date()).toISOString(),
-    presence: { status: presence?.status ?? "OFFLINE", pauseReason: presence?.pause_reason ?? null, connected: presence?.connected === true, since: (presence?.status_since ?? new Date()).toISOString() },
+    presence: { status: presence?.status ?? "OFFLINE", pauseReason: presence?.pause_reason ?? null, connected: presence?.connected === true, since: (presence?.status_since ?? new Date()).toISOString(), scheduled: scheduledView(presence ?? null) },
     capacity: { max: effectiveCapacity(presence?.max_concurrent == null ? null : Number(presence.max_concurrent), settings.defaultCapacity), used: attendances.length },
     attendances: attendances.map((row) => ({
       id: row.id,
@@ -135,6 +136,11 @@ export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoV
   }
 }
 
+function scheduledView(row: { scheduled_status: string | null; scheduled_pause_reason: string | null; scheduled_at: Date | null } | null): AnjoView["presence"]["scheduled"] {
+  const scheduled = row ? scheduledFromRow(row) : null
+  return scheduled && row?.scheduled_at ? { status: scheduled.status, pauseReason: scheduled.pauseReason, requestedAt: row.scheduled_at.toISOString() } : null
+}
+
 /** O Anjo tem o papel em algum escopo agora (o `workspace=anjo` sem ele é ignorado). */
 export async function isAnjo(db: Queryable, viewer: Viewer): Promise<boolean> {
   return (await assignmentScopesOf(db, viewer.organizationId, "human_support.attend", [viewer.personId])).has(viewer.personId)
@@ -153,25 +159,55 @@ export async function loadState(db: Queryable, viewer: Viewer, options: { worksp
 const presenceRefusalText: Record<string, string> = {
   HUMAN_SUPPORT_NOT_CONNECTED: "Abra a área do Anjo para ficar disponível.",
   HUMAN_SUPPORT_NO_ENABLED_SCOPE: "O apoio com Anjo não está ligado em nenhum escopo que você atende.",
-  HUMAN_SUPPORT_ACTIVE_ATTENDANCES: "Encerre seus atendimentos em andamento antes de ficar indisponível.",
   HUMAN_SUPPORT_PRESENCE_INVALID: "Fique disponível antes de entrar em pausa.",
 }
 
-/** "Ficar disponível", pausa com motivo, "Voltar" e "Ficar indisponível" (seção 6). Depois do commit, a distribuição. */
+/**
+ * "Ficar disponível", pausa com motivo, "Voltar" e "Ficar indisponível" (seção 6). Sem atendimento em andamento, pausa e
+ * indisponibilidade entram na hora; com atendimento, ficam PROGRAMADAS (migration 188) — o Anjo para de receber chamados já e o novo
+ * estado entra ao terminar o último atendimento (`endAttendance`). Pedir de novo troca a programação; pedir o estado atual a desfaz.
+ * Depois do commit, a distribuição.
+ */
 export async function changePresence(db: TransactionSource & Queryable, viewer: Viewer, requested: PresenceRequest): Promise<AnjoView> {
   const scopes = (await assignmentScopesOf(db, viewer.organizationId, "human_support.attend", [viewer.personId])).get(viewer.personId) ?? []
   const hasEnabledScope = await anyEnabledScope(db, viewer.organizationId, scopes)
   await withOrganizationLock(db, viewer.organizationId, async (client) => {
     const current = await lockPresence(client, viewer.organizationId, viewer.personId)
     const active = Number((await client.query<{ total: number }>(`select count(*)::int total from human_support_attendances where organization_id = $1 and anjo_person_id = $2 and status = 'ACTIVE'`, [viewer.organizationId, viewer.personId])).rows[0]!.total)
-    const change = presenceChange({ status: current.status, pauseReason: current.pause_reason }, requested, { connected: current.connected, hasEnabledScope, activeAttendances: active })
+    const change = presenceChange({ status: current.status, pauseReason: current.pause_reason, scheduled: current.scheduled }, requested, { connected: current.connected, hasEnabledScope, activeAttendances: active })
     if (!change.ok) throw new DomainError(presenceRefusalText[change.code] ?? "Não foi possível mudar o estado.", change.code, 409)
-    if (!change.changed) return
+    if (change.kind === "NONE") return
+    if (change.kind === "APPLY") {
+      await client.query(
+        `update human_support_agent_presence set status = $3, pause_reason = $4, status_since = statement_timestamp(), scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null, version = version + 1
+          where organization_id = $1 and person_id = $2`,
+        [viewer.organizationId, viewer.personId, change.status, change.pauseReason],
+      )
+      await recordPresenceEvent(client, { organizationId: viewer.organizationId, personId: viewer.personId, from: current.status, to: change.status, pauseReason: change.pauseReason, cause: "ANJO" })
+    } else {
+      // Programar ou desfazer não muda o estado nem gera evento de presença (o cronômetro e as horas contam da transição efetiva).
+      const scheduled = change.kind === "SCHEDULE" ? change.scheduled : null
+      await client.query(
+        `update human_support_agent_presence set scheduled_status = $3, scheduled_pause_reason = $4, scheduled_at = case when $3::text is null then null else statement_timestamp() end, version = version + 1
+          where organization_id = $1 and person_id = $2`,
+        [viewer.organizationId, viewer.personId, scheduled?.status ?? null, scheduled?.pauseReason ?? null],
+      )
+    }
+    await bumpInboxVersions(client, viewer.organizationId, [viewer.personId])
+  })
+  await dispatchAfterCommand(db, viewer.organizationId)
+  return loadAnjoView(db, viewer)
+}
+
+/** "Cancelar programação": o estado atual fica e o Anjo volta a poder receber chamados (se Disponível). Sem programação, nada muda. */
+export async function cancelScheduledPresence(db: TransactionSource & Queryable, viewer: Viewer): Promise<AnjoView> {
+  await withOrganizationLock(db, viewer.organizationId, async (client) => {
+    const current = await lockPresence(client, viewer.organizationId, viewer.personId)
+    if (!current.scheduled) return
     await client.query(
-      `update human_support_agent_presence set status = $3, pause_reason = $4, status_since = statement_timestamp(), version = version + 1 where organization_id = $1 and person_id = $2`,
-      [viewer.organizationId, viewer.personId, change.status, change.pauseReason],
+      `update human_support_agent_presence set scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null, version = version + 1 where organization_id = $1 and person_id = $2`,
+      [viewer.organizationId, viewer.personId],
     )
-    await recordPresenceEvent(client, { organizationId: viewer.organizationId, personId: viewer.personId, from: current.status, to: change.status, pauseReason: change.pauseReason, cause: "ANJO" })
     await bumpInboxVersions(client, viewer.organizationId, [viewer.personId])
   })
   await dispatchAfterCommand(db, viewer.organizationId)

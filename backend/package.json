@@ -86,6 +86,9 @@
   "overrides": {
     "@typescript-eslint/typescript-estree": {
       "minimatch": "^11.0.8"
+    },
+    "exceljs": {
+      "uuid": "^11.1.1"
     }
   }
 }

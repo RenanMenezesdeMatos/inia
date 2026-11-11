@@ -80,8 +80,8 @@ export type AnjoCandidate = AnjoSituation & { personId: string; pauseReason: Pau
 export async function anjosCovering(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, excludePersonId: string | null, defaultCapacity: number): Promise<AnjoCandidate[]> {
   const ids = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((id) => id !== excludePersonId)
   if (ids.length === 0) return []
-  const result = await db.query<{ person_id: string; status: PresenceStatus | null; pause_reason: PauseReason | null; max_concurrent: number | null; connected: boolean | null; last_assigned_at: Date | null; active_count: number }>(
-    `select ids.person_id, p.status, p.pause_reason, p.max_concurrent, p.lease_until > statement_timestamp() connected, p.last_assigned_at,
+  const result = await db.query<{ person_id: string; status: PresenceStatus | null; pause_reason: PauseReason | null; max_concurrent: number | null; connected: boolean | null; last_assigned_at: Date | null; active_count: number; scheduled: boolean | null }>(
+    `select ids.person_id, p.status, p.pause_reason, p.max_concurrent, p.lease_until > statement_timestamp() connected, p.last_assigned_at, p.scheduled_status is not null scheduled,
             (select count(*)::int from human_support_attendances a where a.organization_id = $1 and a.anjo_person_id = ids.person_id and a.status = 'ACTIVE') active_count
        from unnest($2::uuid[]) as ids(person_id)
        left join human_support_agent_presence p on p.organization_id = $1 and p.person_id = ids.person_id`,
@@ -97,6 +97,7 @@ export async function anjosCovering(db: Queryable, organizationId: string, place
     activeAttendances: row.active_count,
     capacity: effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), defaultCapacity),
     isOperator: false,
+    scheduledChange: row.scheduled === true,
     lastAssignedAt: row.last_assigned_at,
   }))
 }
@@ -130,7 +131,7 @@ export async function availabilityFor(db: Queryable, organizationId: string, pla
   if (!enabled) return { status: "DISABLED", estimate: null, queueDeadline: null }
   const anjos = await anjosCovering(db, organizationId, place, operatorPersonId, settings.defaultCapacity)
   const serving = anjos.filter(inService)
-  const status = availabilityOf({ enabled, inService: serving.length, canReceiveNow: serving.filter(canReceiveAssignment).length, availableInService: serving.filter((anjo) => anjo.status === "AVAILABLE").length })
+  const status = availabilityOf({ enabled, inService: serving.length, canReceiveNow: serving.filter(canReceiveAssignment).length, availableInService: serving.filter((anjo) => anjo.status === "AVAILABLE" && !anjo.scheduledChange).length })
   if (status === "NONE_IN_SERVICE") return { status, estimate: null, queueDeadline: null }
   const population = referencePopulation(await loadQueueSamples(db, organizationId), place)
   const deadline = queueDeadline(population)

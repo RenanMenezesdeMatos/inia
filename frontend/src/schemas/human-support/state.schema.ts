@@ -97,7 +97,18 @@ export type AnjoAttendanceView = z.infer<typeof anjoAttendanceViewSchema>
 export const anjoViewSchema = z.object({
   /** Instante do servidor na resposta: corrige o relógio da tela nos contadores ("há quanto tempo"). */
   serverTime: z.string(),
-  presence: z.object({ status: presenceStatusSchema, pauseReason: pauseReasonSchema.nullable(), connected: z.boolean(), since: z.string() }),
+  presence: z.object({
+    status: presenceStatusSchema,
+    pauseReason: pauseReasonSchema.nullable(),
+    connected: z.boolean(),
+    since: z.string(),
+    /** Pausa ou indisponibilidade programada (entra ao terminar o último atendimento). Ausente (API anterior à 188) = nada programado. */
+    scheduled: z
+      .object({ status: z.enum(["PAUSED", "OFFLINE"]), pauseReason: pauseReasonSchema.nullable(), requestedAt: z.string() })
+      .nullable()
+      .optional()
+      .transform((value) => value ?? null),
+  }),
   capacity: z.object({ max: z.number(), used: z.number() }),
   attendances: z.array(anjoAttendanceViewSchema),
   /** `startedAt`/`endedAt`: início e fim reais do atendimento — a duração final, congelada. */

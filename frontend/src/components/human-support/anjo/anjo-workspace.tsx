@@ -9,6 +9,7 @@ import { useAnjoWorkspaceState } from "@/queries/human-support/use-anjo-workspac
 import { describeElapsed } from "@/lib/format/date"
 import type { AnjoView } from "@/schemas/human-support/state.schema"
 import { cn } from "@/lib/utils"
+import { loginWithReturn } from "@/lib/auth/safe-return"
 
 import { IconBadge, StatusChip, SURFACE_CARD, PageHeader, SectionLabel, toneSurface } from "@/components/ui/surface"
 
@@ -54,7 +55,7 @@ export function AnjoWorkspace() {
     stopBlinkRef.current = blinkTabTitle(NEW_ATTENDANCE_TITLE)
     if (attendanceIds[0]) setSelectedId(attendanceIds[0])
   }, [])
-  const { anjo, blocked, reconnecting, refresh, applyAnjo, clockOffsetMs } = useAnjoWorkspaceState({ onNewAttendance })
+  const { anjo, blocked, reconnecting, sessionEnded, refresh, applyAnjo, clockOffsetMs } = useAnjoWorkspaceState({ onNewAttendance })
   const anjoRef = useRef(anjo)
   useEffect(() => {
     anjoRef.current = anjo
@@ -119,6 +120,25 @@ export function AnjoWorkspace() {
     document.getElementById(classifyHeadingId(target))?.focus()
   }, [anjo])
 
+  if (sessionEnded) {
+    // 401 na chamada de estado: tentar de novo não adianta. Sem a área aberta a conexão do Anjo cai; depois da carência o servidor o
+    // deixa Indisponível e devolve os atendimentos à fila (regra da distribuição).
+    return (
+      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8">
+        <WorkspaceTitle />
+        <div role="alert" className={cn(toneSurface("warning"), "p-5")}>
+          <p className="font-medium">Sua sessão terminou</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Entre novamente para continuar os atendimentos. Se você voltar em até 3 minutos, eles continuam com você; depois disso voltam para a fila e você fica indisponível.
+          </p>
+          <Button asChild variant="outline" size="sm" className="mt-4 rounded-full">
+            <a href={loginWithReturn(typeof window === "undefined" ? "/apoio" : `${window.location.pathname}${window.location.search}`)}>Entrar novamente</a>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (blocked) {
     return (
       <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8">
@@ -154,6 +174,7 @@ export function AnjoWorkspace() {
           <div className={cn(SURFACE_CARD, "p-4 sm:p-5")}>
             <PresenceControl
               presence={anjo.presence}
+              activeAttendances={anjo.attendances.length}
               onApplyAnjo={applyAnjo}
               onPrimeAudio={primeAudio}
               clockOffsetMs={clockOffsetMs}

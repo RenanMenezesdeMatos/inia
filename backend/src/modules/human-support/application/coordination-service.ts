@@ -4,6 +4,7 @@ import { recordPersonalDataAccess } from "../../data-lifecycle/application/perso
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { loadPersonPresentations } from "../../profile-preferences/application/person-presentation-loader.js"
 import type { AttendanceEndCause, ClassificationOutcome, ClassificationReason, EvaluationResolved, PauseReason, PresenceStatus, RequestEndCause, RequestOrigin, RequestStatus } from "../domain/catalogs.js"
+import { PRESENCE_STATUS_CAUSES } from "../domain/catalogs.js"
 import { MIN_SAMPLE, presenceHours, type PresenceEvent, type PresenceState } from "../domain/metrics-definitions.js"
 import { operationalStatusOf } from "../domain/anjo-now.js"
 import { effectiveCapacity } from "../domain/presence.js"
@@ -272,7 +273,7 @@ export async function anjosNow(db: Queryable, viewer: Viewer, filter: PanelScope
 }
 
 async function presenceStateAt(db: Queryable, organizationId: string, personId: string, at: string): Promise<PresenceState> {
-  const status = (await db.query<{ to_status: PresenceStatus; pause_reason: PauseReason | null }>(`select to_status, pause_reason from human_support_presence_events where organization_id = $1 and person_id = $2 and cause in ('ANJO', 'LEASE_EXPIRED', 'ROLE_REVOKED') and occurred_at < $3 order by occurred_at desc, id desc limit 1`, [organizationId, personId, at])).rows[0]
+  const status = (await db.query<{ to_status: PresenceStatus; pause_reason: PauseReason | null }>(`select to_status, pause_reason from human_support_presence_events where organization_id = $1 and person_id = $2 and cause = any($4::text[]) and occurred_at < $3 order by occurred_at desc, id desc limit 1`, [organizationId, personId, at, PRESENCE_STATUS_CAUSES])).rows[0]
   const connection = (await db.query<{ cause: string }>(`select cause from human_support_presence_events where organization_id = $1 and person_id = $2 and cause in ('CONNECTION_LOST', 'CONNECTION_RESTORED', 'ANJO') and occurred_at < $3 order by occurred_at desc, id desc limit 1`, [organizationId, personId, at])).rows[0]
   return { status: status?.to_status ?? "OFFLINE", pauseReason: status?.pause_reason ?? null, connected: connection ? connection.cause !== "CONNECTION_LOST" : false }
 }

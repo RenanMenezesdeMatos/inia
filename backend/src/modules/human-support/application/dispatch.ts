@@ -22,7 +22,8 @@ import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, re
  *  4. 15 min sem mensagem humana → Encerrado (INACTIVITY), também sem resposta do Anjo;
  *  5. fila: escopo desligado → Cancelado; operador sem chamar há 2 min → Abandonado; prazo vencido → Expirado;
  *  6. Anjo sem o papel em nenhum escopo → Indisponível (ROLE_REVOKED);
- *  7. cada pedido da fila, por ordem de chegada, vai ao Anjo que pode receber com menos atendimentos e, no empate, ao que recebeu
+ *  7. cada pedido da fila, por ordem de chegada, vai ao Anjo que pode receber (Disponível, conectado, com vaga e SEM pausa ou
+ *     indisponibilidade programada) com menos atendimentos e, no empate, ao que recebeu
  *     há mais tempo — sem aceite (D2). Um savepoint por pedido: a falha de um vai para o log e não para os outros.
  * Depois do commit, o registro LGPD da leitura da cópia pelo Anjo (falha não desfaz a atribuição).
  */
@@ -124,11 +125,12 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     summary.connectionRestored += 1
   }
 
-  /** Presença → Indisponível por causa do sistema. */
+  /** Presença → Indisponível por causa do sistema. A programação some junto: ela nunca devolve o Anjo à fila depois disso. */
   const goOffline = async (personId: string, cause: "LEASE_EXPIRED" | "ROLE_REVOKED") => {
     const previous = (
       await client.query<{ status: PresenceStatus; pause_reason: PauseReason | null }>(
-        `update human_support_agent_presence p set status = 'OFFLINE', pause_reason = null, status_since = statement_timestamp(), version = p.version + 1
+        `update human_support_agent_presence p set status = 'OFFLINE', pause_reason = null, status_since = statement_timestamp(), version = p.version + 1,
+                scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null
            from (select status, pause_reason from human_support_agent_presence where organization_id = $1 and person_id = $2 and status <> 'OFFLINE' for update) old
           where p.organization_id = $1 and p.person_id = $2
           returning old.status, old.pause_reason`,
@@ -251,21 +253,22 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     const candidateIds = [...new Set([...coverage.values()].flat())]
     const presence = new Map(
       (
-        await client.query<{ person_id: string; status: PresenceStatus; connected: boolean; max_concurrent: number | null; last_assigned_at: Date | null; active_count: number }>(
-          `select p.person_id, p.status, p.lease_until > statement_timestamp() connected, p.max_concurrent, p.last_assigned_at,
+        await client.query<{ person_id: string; status: PresenceStatus; connected: boolean; max_concurrent: number | null; last_assigned_at: Date | null; active_count: number; scheduled: boolean }>(
+          `select p.person_id, p.status, p.lease_until > statement_timestamp() connected, p.max_concurrent, p.last_assigned_at, p.scheduled_status is not null scheduled,
                   (select count(*)::int from human_support_attendances a where a.organization_id = p.organization_id and a.anjo_person_id = p.person_id and a.status = 'ACTIVE') active_count
              from human_support_agent_presence p
             where p.organization_id = $1 and p.person_id = any($2::uuid[])`,
           [organizationId, candidateIds],
         )
-      ).rows.map((row) => [row.person_id, { status: row.status, connected: row.connected === true, capacity: effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), settings.defaultCapacity), lastAssignedAt: row.last_assigned_at?.getTime() ?? null, active: row.active_count }]),
+      ).rows.map((row) => [row.person_id, { status: row.status, connected: row.connected === true, capacity: effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), settings.defaultCapacity), lastAssignedAt: row.last_assigned_at?.getTime() ?? null, active: row.active_count, scheduled: row.scheduled === true }]),
     )
     for (const request of queue) {
       const candidates = (coverage.get(`${request.team_id ?? ""}:${request.subteam_id ?? ""}`) ?? [])
         .filter((personId) => personId !== request.operator_person_id)
         .flatMap((personId) => {
           const state = presence.get(personId)
-          return state && state.status === "AVAILABLE" && state.connected && state.active < state.capacity ? [{ personId, state }] : []
+          // Quem programou pausa ou indisponibilidade termina os atendimentos que tem e não recebe novos.
+          return state && state.status === "AVAILABLE" && !state.scheduled && state.connected && state.active < state.capacity ? [{ personId, state }] : []
         })
         .sort((a, b) => a.state.active - b.state.active || (a.state.lastAssignedAt ?? -Infinity) - (b.state.lastAssignedAt ?? -Infinity) || a.personId.localeCompare(b.personId))
       const chosen = candidates[0]

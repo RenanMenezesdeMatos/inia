@@ -152,8 +152,8 @@ export async function listAnjos(db: Queryable, organizationId: string, filter: {
   const ids = [...scopes.keys()]
   if (ids.length === 0) return []
   const [presence, names] = await Promise.all([
-    db.query<{ person_id: string; status: PresenceStatus | null; connected: boolean | null; max_concurrent: number | null; active_count: number }>(
-      `select ids.person_id, p.status, p.lease_until > statement_timestamp() connected, p.max_concurrent,
+    db.query<{ person_id: string; status: PresenceStatus | null; connected: boolean | null; max_concurrent: number | null; active_count: number; scheduled: boolean | null }>(
+      `select ids.person_id, p.status, p.lease_until > statement_timestamp() connected, p.max_concurrent, p.scheduled_status is not null scheduled,
               (select count(*)::int from human_support_attendances a where a.organization_id = $1 and a.anjo_person_id = ids.person_id and a.status = 'ACTIVE') active_count
          from unnest($2::uuid[]) as ids(person_id)
          left join human_support_agent_presence p on p.organization_id = $1 and p.person_id = ids.person_id`,
@@ -170,7 +170,7 @@ export async function listAnjos(db: Queryable, organizationId: string, filter: {
   const rows = presence.rows.map((row): AnjoRow => {
     const list = scopes.get(row.person_id) ?? []
     const capacity = effectiveCapacity(row.max_concurrent === null ? null : Number(row.max_concurrent), settings.defaultCapacity)
-    const situation = { coversScope: filtered ? coversFilter(list) : true, active: true, status: row.status ?? "OFFLINE", connected: row.connected === true, activeAttendances: row.active_count, capacity, isOperator: false }
+    const situation = { coversScope: filtered ? coversFilter(list) : true, active: true, status: row.status ?? "OFFLINE", connected: row.connected === true, activeAttendances: row.active_count, capacity, isOperator: false, scheduledChange: row.scheduled === true }
     const scopeViews: AnjoScopeView[] = list.map((scope) =>
       scope.type === "ORGANIZATION" ? { type: "ORGANIZATION", id: null, name: "Toda a organização" } : scope.type === "GROUP" ? { type: "GROUP", id: scope.teamId, name: teamName.get(scope.teamId) ?? "Grupo" } : { type: "SUBGROUP", id: scope.type === "SUBGROUP" ? scope.subteamId : null, name: scope.type === "SUBGROUP" ? (subteamById.get(scope.subteamId)?.name ?? "Subgrupo") : "" },
     )

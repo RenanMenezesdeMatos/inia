@@ -25,6 +25,7 @@ vi.mock("@/queries/human-support/use-anjo-workspace-state", () => ({
 const service = vi.hoisted(() => ({
   signalSupportTyping: vi.fn(async () => undefined), acknowledgeSupportMessages: vi.fn(async () => ({ deliveredSeq: 0, readSeq: 0 })),
   changeAnjoPresence: vi.fn(),
+  cancelScheduledAnjoPresence: vi.fn(),
   closeSupportRequestAsAnjo: vi.fn(),
   fetchSupportMessages: vi.fn(),
   sendSupportMessage: vi.fn(),
@@ -65,7 +66,7 @@ function attendance(overrides: Partial<AnjoAttendanceView> = {}): AnjoAttendance
 function anjoView(overrides: Partial<AnjoView> = {}): AnjoView {
   return {
     serverTime: new Date().toISOString(),
-    presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: minutesAgo(30) },
+    presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: minutesAgo(30), scheduled: null },
     capacity: { max: 2, used: 1 },
     attendances: [attendance()],
     pendingClassifications: [],
@@ -74,7 +75,7 @@ function anjoView(overrides: Partial<AnjoView> = {}): AnjoView {
 }
 
 function setHook(overrides: Partial<AnjoWorkspaceState> = {}) {
-  hook.value = { anjo: anjoView(), blocked: false, reconnecting: false, refresh: vi.fn(), applyAnjo: vi.fn(), clockOffsetMs: 0, ...overrides }
+  hook.value = { anjo: anjoView(), blocked: false, reconnecting: false, sessionEnded: false, refresh: vi.fn(), applyAnjo: vi.fn(), clockOffsetMs: 0, ...overrides }
   return hook.value
 }
 
@@ -110,8 +111,16 @@ describe("AnjoWorkspace", () => {
     expect(await screen.findByText("Você ainda não fez nenhum atendimento.")).toBeInTheDocument()
   })
 
+  it("sessão terminada (401): pede para entrar de novo, com o retorno para a área, em vez de \"Tentando de novo\" para sempre", () => {
+    setHook({ anjo: null, sessionEnded: true })
+    render(<AnjoWorkspace />)
+    expect(screen.getByRole("alert")).toHaveTextContent("Sua sessão terminou")
+    expect(screen.getByRole("link", { name: "Entrar novamente" }).getAttribute("href")).toMatch(/^\/auth\/login/)
+    expect(screen.queryByText(/Tentando de novo/)).not.toBeInTheDocument()
+  })
+
   it("recusa ao mudar o estado aparece com o texto do servidor; sucesso aplica a área devolvida", async () => {
-    const state = setHook({ anjo: anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(5) }, attendances: [], capacity: { max: 2, used: 0 } }) })
+    const state = setHook({ anjo: anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(5), scheduled: null }, attendances: [], capacity: { max: 2, used: 0 } }) })
     service.changeAnjoPresence.mockRejectedValueOnce(new ApiError("O apoio com Anjo não está ligado em nenhum escopo que você atende.", 409, "HUMAN_SUPPORT_NO_ENABLED_SCOPE"))
     render(<AnjoWorkspace />)
     await act(async () => {
@@ -130,9 +139,9 @@ describe("AnjoWorkspace", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
-  it("pausa com motivo grava o motivo escolhido", async () => {
-    const state = setHook()
-    const paused = anjoView({ presence: { status: "PAUSED", pauseReason: "LUNCH", connected: true, since: minutesAgo(0) } })
+  it("pausa com motivo grava o motivo escolhido (sem atendimento, entra na hora)", async () => {
+    const state = setHook({ anjo: anjoView({ attendances: [], capacity: { max: 2, used: 0 } }) })
+    const paused = anjoView({ presence: { status: "PAUSED", pauseReason: "LUNCH", connected: true, since: minutesAgo(0), scheduled: null } })
     service.changeAnjoPresence.mockResolvedValue(paused)
     render(<AnjoWorkspace />)
     fireEvent.keyDown(screen.getByRole("button", { name: "Pausa" }), { key: "Enter" })
@@ -226,7 +235,7 @@ describe("AnjoWorkspace", () => {
   it("cronômetro ao vivo de há quanto tempo o Anjo está no estado, contado pelo relógio do servidor", () => {
     vi.useFakeTimers({ now: Date.parse("2026-11-10T15:00:00.000Z") })
     try {
-      setHook({ anjo: anjoView({ presence: { status: "PAUSED", pauseReason: "LUNCH", connected: true, since: "2026-11-10T14:48:30.000Z" } }) })
+      setHook({ anjo: anjoView({ presence: { status: "PAUSED", pauseReason: "LUNCH", connected: true, since: "2026-11-10T14:48:30.000Z", scheduled: null } }) })
       render(<AnjoWorkspace />)
       const timer = screen.getByTestId("presence-timer")
       expect(timer).toHaveTextContent("11:30")
@@ -235,7 +244,7 @@ describe("AnjoWorkspace", () => {
       expect(timer).toHaveTextContent("11:35")
       cleanup()
       // A tela está 1 min atrasada em relação ao servidor: o cronômetro conta pelo servidor.
-      setHook({ clockOffsetMs: 60_000, anjo: anjoView({ presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: "2026-11-10T13:00:00.000Z" } }) })
+      setHook({ clockOffsetMs: 60_000, anjo: anjoView({ presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: "2026-11-10T13:00:00.000Z", scheduled: null } }) })
       render(<AnjoWorkspace />)
       expect(screen.getByTestId("presence-timer")).toHaveTextContent("2:01:05")
     } finally {
@@ -244,7 +253,7 @@ describe("AnjoWorkspace", () => {
   })
 
   it("indisponível: estado com ícone e texto, sem cronômetro nem \"desde\"; só \"Ficar disponível\" para mudar", () => {
-    setHook({ anjo: anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(5) }, attendances: [], capacity: { max: 2, used: 0 } }) })
+    setHook({ anjo: anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(5), scheduled: null }, attendances: [], capacity: { max: 2, used: 0 } }) })
     render(<AnjoWorkspace />)
     expect(screen.getByRole("status", { name: "Seu estado: Indisponível" })).toHaveTextContent("Indisponível")
     expect(screen.queryByTestId("presence-timer")).not.toBeInTheDocument()
@@ -255,8 +264,8 @@ describe("AnjoWorkspace", () => {
   })
 
   it("disponível: \"Ficar indisponível\" em vermelho, com ícone de parada, separado do estado atual", async () => {
-    const state = setHook()
-    const offline = anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(0) }, attendances: [] })
+    const state = setHook({ anjo: anjoView({ attendances: [], capacity: { max: 2, used: 0 } }) })
+    const offline = anjoView({ presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(0), scheduled: null }, attendances: [] })
     service.changeAnjoPresence.mockResolvedValue(offline)
     render(<AnjoWorkspace />)
     const actions = screen.getByRole("group", { name: "Mudar estado" })
@@ -272,8 +281,68 @@ describe("AnjoWorkspace", () => {
     expect(state.applyAnjo).toHaveBeenCalledWith(offline)
   })
 
+  it("com atendimento: os botões programam; a faixa mostra o estado atual e o programado, com alterar e cancelar", async () => {
+    const state = setHook()
+    const scheduled = anjoView({ presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: minutesAgo(30), scheduled: { status: "PAUSED", pauseReason: "LUNCH", requestedAt: minutesAgo(0) } } })
+    service.changeAnjoPresence.mockResolvedValue(scheduled)
+    const { rerender } = render(<AnjoWorkspace />)
+    const actions = screen.getByRole("group", { name: "Mudar estado" })
+    expect(within(actions).getByRole("button", { name: "Programar indisponível" })).toBeInTheDocument()
+    expect(screen.getByText(/ficam programadas/)).toBeInTheDocument()
+    fireEvent.keyDown(within(actions).getByRole("button", { name: "Programar pausa" }), { key: "Enter" })
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitemradio", { name: "Lanche" }))
+    })
+    expect(service.changeAnjoPresence).toHaveBeenCalledWith({ status: "PAUSED", pauseReason: "LUNCH" })
+    expect(state.applyAnjo).toHaveBeenCalledWith(scheduled)
+
+    // A tela com a programação: o estado atual (e o cronômetro) continuam; a faixa diz o que entra e quando.
+    const after = setHook({ anjo: scheduled })
+    rerender(<AnjoWorkspace />)
+    expect(screen.getByRole("status", { name: "Seu estado: Disponível" })).toBeInTheDocument()
+    expect(screen.getByTestId("presence-timer")).toBeInTheDocument()
+    const band = screen.getByTestId("presence-scheduled")
+    expect(band).toHaveTextContent("Programado: Em pausa · Lanche")
+    expect(band).toHaveTextContent("Entra quando terminar o atendimento em andamento.")
+    expect(band).toHaveTextContent("Você não recebe novos atendimentos.")
+
+    // Alterar: o menu marca a pausa programada; outro motivo troca a programação.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Alterar pausa programada" }), { key: "Enter" })
+    expect(await screen.findByRole("menuitemradio", { name: /Lanche/ })).toHaveAttribute("aria-checked", "true")
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitemradio", { name: "Reunião" }))
+    })
+    expect(service.changeAnjoPresence).toHaveBeenLastCalledWith({ status: "PAUSED", pauseReason: "MEETING" })
+
+    // Cancelar a programação.
+    const cleared = anjoView()
+    service.cancelScheduledAnjoPresence.mockResolvedValueOnce(cleared)
+    await act(async () => {
+      fireEvent.click(within(band).getByRole("button", { name: "Cancelar programação" }))
+    })
+    expect(service.cancelScheduledAnjoPresence).toHaveBeenCalledTimes(1)
+    expect(after.applyAnjo).toHaveBeenLastCalledWith(cleared)
+  })
+
+  it("indisponível programado com dois atendimentos: sem o botão de novo, e a faixa conta os atendimentos", () => {
+    setHook({
+      anjo: anjoView({
+        presence: { status: "PAUSED", pauseReason: "MEETING", connected: true, since: minutesAgo(3), scheduled: { status: "OFFLINE", pauseReason: null, requestedAt: minutesAgo(1) } },
+        capacity: { max: 2, used: 2 },
+        attendances: [attendance(), attendance({ id: "att-2", requestId: "req-2", protocol: "AP-NEW222", operatorName: "Carla" })],
+      }),
+    })
+    render(<AnjoWorkspace />)
+    expect(screen.getByRole("status", { name: "Seu estado: Em pausa · Reunião" })).toBeInTheDocument()
+    expect(screen.getByTestId("presence-scheduled")).toHaveTextContent("Programado: Indisponível")
+    expect(screen.getByTestId("presence-scheduled")).toHaveTextContent("último dos 2 atendimentos")
+    const actions = screen.getByRole("group", { name: "Mudar estado" })
+    expect(within(actions).queryByRole("button", { name: /indisponível/i })).not.toBeInTheDocument()
+    expect(within(actions).getByRole("button", { name: "Voltar" })).toBeInTheDocument()
+  })
+
   it("em pausa: a pausa atual aparece no estado e vem marcada no menu, cada motivo com ícone próprio; escolher a mesma não grava", async () => {
-    setHook({ anjo: anjoView({ presence: { status: "PAUSED", pauseReason: "MEETING", connected: true, since: minutesAgo(3) } }) })
+    setHook({ anjo: anjoView({ presence: { status: "PAUSED", pauseReason: "MEETING", connected: true, since: minutesAgo(3), scheduled: null } }) })
     render(<AnjoWorkspace />)
     expect(screen.getByRole("status", { name: "Seu estado: Em pausa · Reunião" })).toBeInTheDocument()
     fireEvent.keyDown(screen.getByRole("button", { name: "Trocar pausa" }), { key: "Enter" })

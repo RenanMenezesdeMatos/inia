@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api/api-client"
 import { fetchHumanSupportState } from "@/services/human-support/human-support-service"
 import type { StateResponse } from "@/schemas/human-support/state.schema"
 
@@ -9,6 +10,8 @@ import type { StateResponse } from "@/schemas/human-support/state.schema"
  *    `wait + 5 s`;
  *  - `reconnecting` = a última tentativa falhou (a tela mostra "Reconectando…");
  *  - `refresh()` = busca agora (depois de um comando), interrompendo a espera em curso.
+ *  - 401 (sessão expirada, encerrada por inatividade ou revogada): PARA o laço e chama `onSessionEnded` — repetir não adianta, e a
+ *    tela não pode ficar em "Tentando de novo…" para sempre. Sem `onSessionEnded`, segue como qualquer falha.
  * Nunca chama `/auth/activity`: a chamada de estado não renova a sessão.
  */
 export const LONG_POLL_SECONDS = 20
@@ -21,6 +24,8 @@ export type StatePollerOptions = {
   shouldWait: (state: StateResponse) => boolean
   onState: (state: StateResponse) => void
   onReconnecting: (reconnecting: boolean) => void
+  /** A sessão não vale mais (401): o laço parou. */
+  onSessionEnded?: () => void
   fetchState?: typeof fetchHumanSupportState
   random?: () => number
   now?: () => number
@@ -92,11 +97,17 @@ export function startStatePoller(options: StatePollerOptions): StatePoller {
           if (options.shouldWait(state)) await pause(now() < fallbackUntil ? FALLBACK_INTERVAL_MS : 0)
           else await idle()
         }
-      } catch {
+      } catch (error) {
         clearTimeout(watchdog)
         if (stopped) return
         // Interrompida por um `refresh()`: não é falha.
         if (current.signal.aborted && !timedOut) continue
+        if (options.onSessionEnded && error instanceof ApiError && error.status === 401) {
+          stopped = true
+          options.onReconnecting(false)
+          options.onSessionEnded()
+          return
+        }
         failures += 1
         options.onReconnecting(true)
         if (timedOut || failures >= FAILURES_BEFORE_FALLBACK) fallbackUntil = now() + FALLBACK_DURATION_MS

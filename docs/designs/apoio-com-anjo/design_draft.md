@@ -331,7 +331,8 @@ Tabelas `human_support_settings` (uma por organização; ausência = desligado) 
 | `OFFLINE` | `AVAILABLE` | Anjo: "Ficar disponível" | Exige conexão e o papel cobrindo algum escopo ligado (409 `HUMAN_SUPPORT_NOT_CONNECTED` / `HUMAN_SUPPORT_NO_ENABLED_SCOPE`) |
 | `AVAILABLE` | `PAUSED` | Anjo escolhe motivo | Não recebe novas atribuições; atendimentos seguem |
 | `PAUSED` | `AVAILABLE` | Anjo: "Voltar" | — |
-| `AVAILABLE`/`PAUSED` | `OFFLINE` | Anjo: "Ficar indisponível" | Recusado com atendimento em andamento (409 `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`) |
+| `AVAILABLE`/`PAUSED` | `OFFLINE` | Anjo: "Ficar indisponível" | ~~Recusado com atendimento em andamento (409 `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`)~~ — **decisão posterior (2026-11-11, migration 188):** com atendimento em andamento vira PROGRAMAÇÃO (ver abaixo) |
+| `AVAILABLE` | `PAUSED`/`OFFLINE` programado | Anjo, com atendimento em andamento | O estado fica; não recebe novas atribuições; entra ao terminar o último atendimento (qualquer causa), na mesma transação, com evento `ANJO_SCHEDULED`. `DELETE /anjo/presence/scheduled` cancela; pedir o estado atual também. Sistema deixando Indisponível apaga a programação |
 | `AVAILABLE`/`PAUSED` | `OFFLINE` | Sistema: sem conexão há mais de 3 min | Causa `LEASE_EXPIRED` |
 | `AVAILABLE`/`PAUSED` | `OFFLINE` | Sistema: papel revogado | Causa `ROLE_REVOKED`; atendimentos Interrompidos na próxima distribuição (até 3 s) |
 
@@ -1121,7 +1122,8 @@ type PresenceTimeline = { events: { occurredAt: string; fromStatus: string | nul
 | `POST /requests/:id/messages` | 201 `{ message: MessageView }` (200 com a mesma chave) | 409 `HUMAN_SUPPORT_REQUEST_ENDED`; 404 para Anjo fora do próprio atendimento em andamento; 429 limite |
 | `PUT /attendances/:id/evaluation` | 200 `{ current: PendingEvaluation["current"] }` | 409 `HUMAN_SUPPORT_EVALUATION_CLOSED` (24 h passadas ou atendimento Interrompido) |
 | `GET /me/requests`, `GET /anjo/attendances` | 200 lista | — |
-| `PUT /anjo/presence` | 200 `{ anjo: AnjoView }` | 409 `HUMAN_SUPPORT_NOT_CONNECTED` (sem a área aberta), `HUMAN_SUPPORT_NO_ENABLED_SCOPE`, `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`; 429 limite |
+| `PUT /anjo/presence` | 200 `{ anjo: AnjoView }` (com `presence.scheduled`) | 409 `HUMAN_SUPPORT_NOT_CONNECTED` (sem a área aberta), `HUMAN_SUPPORT_NO_ENABLED_SCOPE`, `HUMAN_SUPPORT_PRESENCE_INVALID`; 429 limite. Desde a 188 não há mais `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`: com atendimento, programa |
+| `DELETE /anjo/presence/scheduled` | 200 `{ anjo: AnjoView }` | 429 limite (sem programação: nada muda) |
 | `POST /attendances/:id/classification` | 201 `{ classification: ClassificationBody }` | 409 `HUMAN_SUPPORT_ALREADY_CLASSIFIED`; 422 regras de título/descrição |
 | `GET`/`PUT /admin/human-support/settings` | 200 `SettingsView` | 409 `HUMAN_SUPPORT_CONCURRENT_CHANGE` |
 | `GET /admin/human-support/scopes` · `PUT …/scopes/:scopeType/:id` | 200 `{ items: ScopeNode[] }` · 200 `{ node: ScopeNode }` | 404 Grupo/Subgrupo inexistente |

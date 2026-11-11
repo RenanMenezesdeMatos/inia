@@ -36,7 +36,10 @@ export const PAUSE_REASONS_V1 = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETI
 export type PauseReason = (typeof PAUSE_REASONS_V1)[number]
 export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião" }
 
-export const PRESENCE_EVENT_CAUSES = ["ANJO", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED"] as const
+/** `ANJO_SCHEDULED` = a pausa ou indisponibilidade que o Anjo programou entrou ao terminar o último atendimento (migration 188). */
+export const PRESENCE_EVENT_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED"] as const
+/** Causas que mudam o estado declarado (as outras só falam da conexão). */
+export const PRESENCE_STATUS_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED"] as const satisfies readonly PresenceEventCause[]
 export type PresenceEventCause = (typeof PRESENCE_EVENT_CAUSES)[number]
 
 /**

@@ -66,7 +66,14 @@ export type AnjoAttendanceView = {
 export type AnjoView = {
   /** Instante do servidor ao montar a resposta: a tela corrige o próprio relógio para contar "há quanto tempo" sem diferença de fuso ou de hora. */
   serverTime: string
-  presence: { status: PresenceStatus; pauseReason: PauseReason | null; connected: boolean; since: string }
+  presence: {
+    status: PresenceStatus
+    pauseReason: PauseReason | null
+    connected: boolean
+    since: string
+    /** Pausa ou indisponibilidade programada (entra ao terminar o último atendimento); null = nada programado. Só na visão do Anjo. */
+    scheduled: { status: "PAUSED" | "OFFLINE"; pauseReason: PauseReason | null; requestedAt: string } | null
+  }
   capacity: { max: number; used: number }
   attendances: AnjoAttendanceView[]
   /** Atendimentos encerrados sem classificação; `startedAt`/`endedAt` = início e fim reais do atendimento (a duração final, congelada). */
@@ -112,7 +119,7 @@ export type AnjoRow = {
   connected: boolean
   used: number
   canReceiveAssignment: boolean | null
-  reasonNotEligible: "OFFLINE" | "PAUSED" | "NO_CAPACITY" | "NOT_CONNECTED" | "SCOPE_NOT_COVERED" | null
+  reasonNotEligible: "OFFLINE" | "PAUSED" | "SCHEDULED_CHANGE" | "NO_CAPACITY" | "NOT_CONNECTED" | "SCOPE_NOT_COVERED" | null
 }
 
 // Painel do apoio

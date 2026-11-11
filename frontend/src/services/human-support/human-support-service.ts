@@ -74,6 +74,11 @@ export async function changeAnjoPresence(change: PresenceChange) {
   return z.object({ anjo: anjoViewSchema }).parse(await apiSend<unknown>(`${BASE}/anjo/presence`, "PUT", change)).anjo
 }
 
+/** "Cancelar programação": o estado atual fica e o Anjo volta a poder receber chamados. */
+export async function cancelScheduledAnjoPresence() {
+  return z.object({ anjo: anjoViewSchema }).parse(await apiSend<unknown>(`${BASE}/anjo/presence/scheduled`, "DELETE")).anjo
+}
+
 export async function fetchAnjoAttendanceHistory(cursor?: string | null) {
   return anjoAttendanceHistorySchema.parse(await apiGet<unknown>(`${BASE}/anjo/attendances${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`))
 }

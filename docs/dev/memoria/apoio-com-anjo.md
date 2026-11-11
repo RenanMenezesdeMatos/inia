@@ -281,5 +281,61 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
   pilha isolada (Playwright, `inia_hsbench`, IA falsa; foco simulado com `hasFocus`/`blur`): toast + selo + som com a sala fechada,
   "Abrir conversa" abre a sala, título com o nome e som fora da vista dos dois lados, nada com o Anjo olhando. Sem notificação do sistema
   operacional (pediria permissão do navegador): fica como possível próximo passo.
+- **Pausa e indisponibilidade programadas (pedido do responsável em 2026-11-11, migration 188)**: sem atendimento em andamento, pausa
+  e Indisponível valem na hora (como antes). COM atendimento, "Pausa" (estando Disponível) e "Ficar indisponível" (Disponível ou Em
+  pausa) viram PROGRAMAÇÃO — antes a pausa entrava na hora e Indisponível era recusado com 409 `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`
+  (código que deixou de existir). Em pausa, trocar o motivo e "Voltar" continuam na hora.
+  - **Onde fica**: `human_support_agent_presence.scheduled_status | scheduled_pause_reason | scheduled_at` (check que amarra as três).
+    Regra pura em `domain/presence.ts › presenceChange` (`NONE | APPLY | SCHEDULE | CANCEL_SCHEDULE`): pedir o que já está programado
+    não muda nada; pedir o ESTADO ATUAL desfaz a programação; qualquer mudança aplicada na hora apaga a programação. Cancelar também
+    por `DELETE /api/v1/human-support/anjo/presence/scheduled` (mesmo limite da presença). Programar/cancelar não gera evento de
+    presença (as horas em pausa do painel contam da transição efetiva).
+  - **Bloqueio de novas atribuições**: `canReceiveAssignment` exige `!scheduledChange` (motivo `SCHEDULED_CHANGE` na lista de Anjos da
+    configuração) e o passo 7 da distribuição ignora quem tem programação — mesmo com vaga sobrando. Na disponibilidade do operador o
+    Anjo programado não conta como "disponível em serviço".
+  - **Aplicação**: dentro de `transitions.ts › endAttendance` (todos os caminhos passam por ali: Anjo encerra, operador encerra,
+    inatividade, interrupção), na MESMA transação e sob a trava da organização: se não sobra atendimento `ACTIVE`, `status` vira o
+    programado, `status_since` = o `ended_at` exato do atendimento (copiado no banco — o `Date` do JS cortaria os microssegundos),
+    evento `ANJO_SCHEDULED` no mesmo instante (`PRESENCE_STATUS_CAUSES` em `catalogs.ts` = causas que mudam o estado; o painel
+    `presenceStateAt` usa essa lista). Não há instante entre o fim do último atendimento e o novo estado em que a fila consiga
+    atribuir (duas garantias: mesma transação + filtro na distribuição).
+  - **Queda e sessão** (prazos confirmados em `catalogs.ts`: conexão `leaseSeconds` 75 s renovada só pela chamada de estado com
+    `workspace=anjo`; carência `graceMs` 3 min; inatividade 15 min; operador sem chamar 2 min → Abandonado na fila; sessão
+    `SESSION_IDLE_TIMEOUT_MINUTES` 30 min sem interação, e a chamada de estado NÃO renova a sessão). Dentro da carência: o vínculo,
+    o protocolo, as mensagens e a programação ficam; o operador vê "conexão perdida"/"O Anjo voltou". Além da carência (lease vencido
+    há > 3 min): passo 2 deixa Indisponível (`LEASE_EXPIRED`) e APAGA a programação; passo 3 interrompe os atendimentos (`ANJO_LOST`)
+    e o pedido volta à FRENTE da fila (mantém `queued_at`, protocolo e mensagens; prazo novo); ao voltar o Anjo está Indisponível e
+    só recebe depois de "Ficar disponível" (a programação nunca o devolve à fila). Sessão expirada = mesma coisa (a área para de
+    renovar a conexão); o shell leva ao login com `voltar=/apoio`, e a área do Anjo, se receber 401 antes, mostra "Sua sessão
+    terminou" com "Entrar novamente" em vez de "Tentando de novo…" para sempre (`state-poller.ts › onSessionEnded`).
+  - **Tela** (`anjo/presence-control.tsx`): com atendimento, "Programar pausa"/"Alterar pausa programada" e "Programar indisponível";
+    faixa "Programado: Em pausa · Lanche — Entra quando terminar o último dos N atendimentos… Você não recebe novos atendimentos" com
+    "Cancelar programação"; estado e cronômetro continuam os atuais até a troca. O operador nunca recebe a programação nem o motivo
+    (prova confere o JSON do estado do operador).
+  - **Provas**: `presence.test.ts` (regras), `anjo-workspace.test.tsx` (programar, alterar, cancelar, dois atendimentos, 401),
+    `state-poller.test.ts` (401 para o laço, 500 continua) e o cenário "pausa e indisponibilidade programadas (188)…" em
+    `human-support-proof` (16 cenários): imediato sem atendimento, dois simultâneos, programar/alterar/cancelar, bloqueio com vaga e 5
+    distribuições em paralelo, recarregar, queda dentro da carência, operador encerra um, inatividade encerra o último com 4
+    distribuições em paralelo (estado = `ended_at` exato, nenhuma atribuição no meio), privacidade, "Voltar", Indisponível programado
+    ao o Anjo encerrar e queda além da carência. Mutação conferida: sem o filtro na distribuição a prova falha. Em 39 execuções houve
+    UMA falha não reproduzida (logo depois da mutação; a saída não foi guardada).
+  - **Aviso "Não foi possível abrir a área do Anjo. Tentando de novo…" (11/11)**: causa CONFIRMADA em `error_occurrences` do dev — 418
+    respostas 500 em `GET /me/state` entre 14:54:07 e 14:59:36, `42703 column p.scheduled_status does not exist` em
+    `eligibility.ts › anjosCovering`: um código anterior com a programação rodou na API de dev (`tsx watch` recarrega ao salvar) ANTES
+    da coluna existir; foi revertido às 14:59:36 e as falhas pararam. Não era autenticação nem conexão. Lição: migration ANTES do código
+    — aqui a 188 foi aplicada nos bancos de dev e teste antes de salvar o código que a usa.
+  - **Ordem na VM** (a 188 só acrescenta: colunas anuláveis e a causa nova no check; o código anterior funciona com ela aplicada):
+    1. backup do banco; 2. `npm --prefix backend run db:migrate` com o código NOVO já copiado mas a API ainda no ar com o antigo (ou
+    parada — os dois servem); 3. conferir `select max(name) from schema_migrations` = `188_human_support_scheduled_presence.sql`;
+    4. publicar/reiniciar a API e o worker e depois a interface; 5. abrir `/apoio` e conferir `GET /api/v1/human-support/me/state?
+    workspace=anjo` = 200 com `presence.scheduled`. NUNCA publicar o código antes da migration (repete o 42703 acima). A
+    homologação ainda precisa da 182–187 se não estiverem lá.
+  - **Validação da migration**: `inia_hs188` (clone do `inia_test` na 187) e `inia_hs188ui` (clone do `inia_hsanjo` na 185) migrados
+    pelo runner; reaplicar o SQL não quebra; causa inválida segue recusada. No `inia_hs188ui`, API isolada (127.0.0.1:3545, papel
+    `api`, sem IA) e interface numa cópia da `frontend` (127.0.0.1:3621): a Área do Anjo abriu, dois atendimentos, pausa programada,
+    recarregar mantém, operadora encerra um, Anjo encerra o último → "Em pausa · Lanche" com cronômetro do fim do atendimento;
+    `SESSION_IDLE` forçado → login com `voltar=/apoio`. Senha descartável só nesse clone (Anjo `supervisor02.demo`, operadoras
+    `camila.pereira` e `ana.lima`). A 188 está aplicada em `inia` (dev) e `inia_test`. Não conferido no navegador: queda além da
+    carência e inatividade (só na prova no banco), celular e tema claro.
 - **Não conferido no navegador**: aba oculta (som e título ao chegar atendimento), "Reconectando…" com a API fora do ar e várias APIs
   atrás do IIS (o script de chamada longa no IIS segue pendente antes do piloto).

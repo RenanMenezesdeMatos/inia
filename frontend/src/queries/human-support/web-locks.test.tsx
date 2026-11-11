@@ -64,7 +64,7 @@ beforeEach(() => {
   const state = {
     version: "1",
     operator: { enabled: true, availability: null, openRequest: null, pendingEvaluations: [] },
-    anjo: { presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: "2026-11-10T11:00:00.000Z" }, capacity: { max: 2, used: 0 }, attendances: [], pendingClassifications: [] },
+    anjo: { presence: { status: "AVAILABLE", pauseReason: null, connected: true, since: "2026-11-10T11:00:00.000Z", scheduled: null }, capacity: { max: 2, used: 0 }, attendances: [], pendingClassifications: [] },
   }
   // A chamada curta responde na hora; a longa (Área do Anjo) fica aberta até a tela sair — como no servidor, sem laço.
   service.fetchHumanSupportState.mockImplementation(({ wait, signal }: { wait: number; signal: AbortSignal }) =>

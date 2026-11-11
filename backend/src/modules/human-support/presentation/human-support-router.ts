@@ -9,7 +9,7 @@ import { acknowledgeMessages, signalTyping } from "../application/conversation-m
 import { listMessages, sendMessage } from "../application/message-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest, type Viewer } from "../application/request-service.js"
 import { operatorRequestView } from "../application/request-views.js"
-import { changePresence, isAnjo, loadAnjoView, loadState } from "../application/state-service.js"
+import { cancelScheduledPresence, changePresence, isAnjo, loadAnjoView, loadState } from "../application/state-service.js"
 import type { WaiterRegistry } from "../application/waiters.js"
 import { closeSchema, createRequestSchema, idParamSchema, listQuerySchema, messagesQuerySchema, presenceSchema, receiptsSchema, sendMessageSchema, sourceSchema, stateQuerySchema, typingSchema } from "./schemas.js"
 
@@ -125,6 +125,10 @@ export function createHumanSupportRouter(db: Database, deps: HumanSupportRouterD
 
   router.put("/anjo/presence", requireAttend, presenceLimiter, async (request, response) => {
     response.json({ data: { anjo: await changePresence(db, viewerOf(request), presenceSchema.parse(request.body)) } })
+  })
+  // Desfaz a pausa ou indisponibilidade programada (o estado atual fica).
+  router.delete("/anjo/presence/scheduled", requireAttend, presenceLimiter, async (request, response) => {
+    response.json({ data: { anjo: await cancelScheduledPresence(db, viewerOf(request)) } })
   })
 
   router.get("/anjo/attendances", requireAttend, async (request, response) => {
