@@ -18,6 +18,7 @@ import {
   RESPONSE_COMPLIANCE_MAX_CHARS,
   RESPONSE_COMPLIANCE_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION,
+  RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION,
   responseCheckMode,
   type ComplianceHit,
   type ComplianceRule,
@@ -113,7 +114,9 @@ export const checkResponse: ResponseCheck = async (db, request, model = gatewayC
   // Com fontes: os assuntos proibidos vão com elas (V3); o limite de atuação não depende de onde a informação veio e vai à parte, sem elas (V1).
   const topicRules = complianceRulesOf({ actionLimits: null, prohibitedTopics: guardrails.prohibitedTopics })
   const limitRules = complianceRulesOf({ actionLimits: guardrails.actionLimits, prohibitedTopics: [] })
-  const judgeTopics = () => judge(topicRules, renderComplianceSourcesSystem(topicRules), RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION, sources)
+  // Com dados calculados entre as fontes, a V5 (a V3 com a origem desses dados); sem eles, a V3 exatamente como foi medida.
+  const withData = sources.some((source) => source.origin === "DATA")
+  const judgeTopics = () => judge(topicRules, renderComplianceSourcesSystem(topicRules, { withData }), withData ? RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION : RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION, sources)
   const judgeLimits = () => judge(limitRules, renderComplianceSystem(limitRules), RESPONSE_COMPLIANCE_PROMPT_VERSION, [])
   if (limitRules.length === 0) return judgeTopics()
   if (topicRules.length === 0) return judgeLimits()
@@ -125,7 +128,8 @@ type Judgement = Exclude<ResponseCheckResult, { outcome: "NOT_APPLICABLE" }>
 /** Violação em qualquer lado é violação, mesmo que o outro lado tenha falhado. Sem violação, uma falha vale pela conferência inteira: nada sai sem as duas partes. */
 function combineJudgements(topics: Judgement, limits: Judgement): ResponseCheckResult {
   const durationMs = Math.max(topics.durationMs, limits.durationMs)
-  const promptVersion = RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION
+  // A versão das fontes que valeu nesta conferência (V3 ou V5), a mesma da parte dos assuntos proibidos.
+  const promptVersion = topics.promptVersion ?? RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION
   const violations = [topics, limits].filter((item): item is Extract<Judgement, { outcome: "VIOLATION" }> => item.outcome === "VIOLATION")
   if (violations.length > 0) return { outcome: "VIOLATION", hits: violations.flatMap((item) => item.hits), reason: violations.map((item) => item.reason).join(" "), model: violations[0]!.model, durationMs, promptVersion }
   const failed = [topics, limits].find((item) => item.outcome === "CHECK_FAILED")

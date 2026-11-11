@@ -32,7 +32,7 @@ const GENERATED = "Em quem votar: minha opinião é esta."
 type Row = { sql: string; params: unknown[] }
 const RETRIEVED = { documentId: "kb-1", documentTitle: "Reparo — Linha Móvel", heading: "Prazo", excerpt: "Abra a análise de rede, com prazo de até 72 horas.", score: 1 }
 const KB_SOURCE = { origin: "KNOWLEDGE", title: "Reparo — Linha Móvel › Prazo", text: RETRIEVED.excerpt }
-function setup(options: { check: () => ResponseCheckResult; rules?: boolean; streamed?: boolean; results?: unknown[]; orchestratorKnowledge?: unknown }) {
+function setup(options: { check: () => ResponseCheckResult; rules?: boolean; streamed?: boolean; results?: unknown[]; orchestratorKnowledge?: unknown; directResults?: unknown[] }) {
   const memory = createMemoryConversationStore()
   const inserts: Row[] = []
   const checks: { text: string; question: unknown; agentId: unknown; sources: unknown }[] = []
@@ -48,7 +48,7 @@ function setup(options: { check: () => ResponseCheckResult; rules?: boolean; str
   const reply: typeof runOrchestratedReply = async (...args) => {
     const hooks = args[7] as { stream?: { text: (chunk: string) => void } } | undefined
     if (options.streamed !== false) hooks?.stream?.text(GENERATED)
-    return { text: GENERATED, agentId: null, calls: [], results: (options.results ?? []) as never, structuredResult: null, supportMaterialCandidates: [], ...(options.streamed !== false ? { streamedText: GENERATED } : {}) }
+    return { text: GENERATED, agentId: null, calls: [], results: (options.results ?? []) as never, ...(options.directResults ? { directResults: options.directResults as never } : {}), structuredResult: null, supportMaterialCandidates: [], ...(options.streamed !== false ? { streamedText: GENERATED } : {}) }
   }
   const app = express()
   app.use(express.json())
@@ -264,6 +264,23 @@ describe("a conferência sabe de onde veio a resposta (V3)", () => {
     const response = await toolCall(harness, "self_ask", "turno-de-voz-fontes-1")
     expect(response.status, response.text).toBe(200)
     expect(harness.checks[0]!.sources).toEqual([KB_SOURCE])
+  })
+
+  // Caso real de 11/11/2026: "quero saber dos MEUS números" — `my_results` calculou e a conferência barrou os números por "criar valores".
+  const MY_RESULTS = { agentId: null, toolName: "my_results", text: "[Seus resultados, calculados pelo sistema]\n| Reincidência em até 7 Dias | 11,6% | 9% |" }
+  const DATA_SOURCE = { origin: "DATA", title: "my_results", text: MY_RESULTS.text }
+  it("chat: os dados calculados por uma ferramenta do backend vão como fonte; a consulta de processo (texto de IA) não", async () => {
+    const process = { agentId: null, toolName: "leadership_process", text: "Resposta do Orquestrador do Grupo." }
+    const harness = setup({ check: () => ALLOWED, results: [MY_RESULTS, process], directResults: [{ toolName: "my_results", args: {}, card: null }, { toolName: "leadership_process", args: {}, card: null }] })
+    await harness.chat()
+    expect(harness.checks[0]!.sources).toEqual([DATA_SOURCE])
+  })
+
+  it("voz, self_ask: os dados calculados chegam à conferência antes do modelo de voz", async () => {
+    const harness = setup({ check: () => ALLOWED, streamed: false, results: [MY_RESULTS], directResults: [{ toolName: "my_results", args: {}, card: null }] })
+    const response = await toolCall(harness, "self_ask", "turno-de-voz-dados-1")
+    expect(response.status, response.text).toBe(200)
+    expect(harness.checks[0]!.sources).toEqual([DATA_SOURCE])
   })
 
   it("voz, o que já foi falado: compara com o que o servidor entregou à voz nesta conversa, porque repetir não é criar", async () => {

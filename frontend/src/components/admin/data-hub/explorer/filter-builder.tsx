@@ -1,12 +1,12 @@
 "use client"
 
-import { Plus, Trash2 } from "lucide-react"
+import { ListFilter, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SectionLabel } from "@/components/ui/surface"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
 import type { ExplorerColumn, ExplorerLimits, ExplorerOperator } from "@/schemas/admin/data-explorer.schema"
 
 import { addChild, countConditions, emptyCondition, emptyGroup, operatorLabel, removeNode, updateNode, type DraftCondition, type DraftGroup } from "./explorer-filter-model"
@@ -51,7 +51,7 @@ function ConditionRow({ condition, columns, onChange, onRemove }: { condition: D
   const operators = column?.operators ?? []
   const needsValue = condition.operator !== "" && condition.operator !== "IS_EMPTY" && condition.operator !== "IS_NOT_EMPTY"
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="explorer-condition">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 shadow-xs" data-testid="explorer-condition">
       <Select
         value={condition.column}
         onValueChange={(key) => {
@@ -94,9 +94,36 @@ function ConditionRow({ condition, columns, onChange, onRemove }: { condition: D
           <ValueInput column={column} label={`Fim do intervalo de ${column.label}`} value={condition.valueTo} onChange={(valueTo) => onChange({ ...condition, valueTo })} />
         </>
       ) : null}
-      <Button type="button" variant="ghost" size="icon-sm" aria-label="Remover condição" onClick={onRemove}>
+      <Button type="button" variant="ghost" size="icon-sm" className="ml-auto text-muted-foreground hover:text-destructive" aria-label="Remover condição" onClick={onRemove}>
         <Trash2 />
       </Button>
+    </div>
+  )
+}
+
+/** Conector entre duas linhas do mesmo grupo: diz em palavras como elas se combinam (E = todas valem; OU = basta uma). */
+function LogicConnector({ logic }: { logic: "AND" | "OR" }) {
+  return (
+    <div className="flex items-center gap-2 pl-3" aria-hidden>
+      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-primary">{logic === "AND" ? "E" : "OU"}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+function LogicSelect({ value, onChange }: { value: "AND" | "OR"; onChange: (logic: "AND" | "OR") => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm text-muted-foreground">Combinar</span>
+      <Select value={value} onValueChange={(logic) => onChange(logic as "AND" | "OR")}>
+        <SelectTrigger size="sm" className="w-52 bg-card" aria-label="Como combinar as condições">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="AND">Todas as condições (E)</SelectItem>
+          <SelectItem value="OR">Qualquer condição (OU)</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -117,42 +144,74 @@ function GroupEditor({
   onChange: (next: DraftGroup) => void
 }) {
   const atConditionLimit = countConditions(root) >= limits.maxFilterConditions
-  return (
-    <div className={cn("space-y-2", depth > 1 && "rounded-lg border border-border bg-muted/30 p-3")} role="group" aria-label={depth === 1 ? "Condições" : "Grupo de condições"}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground">Vale</span>
-        <Select value={group.logic} onValueChange={(logic) => onChange(updateNode(root, group.id, (node) => ({ ...node, logic: logic as "AND" | "OR" })))}>
-          <SelectTrigger size="sm" className="w-52" aria-label="Como combinar as condições">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="AND">Todas as condições (E)</SelectItem>
-            <SelectItem value="OR">Qualquer condição (OU)</SelectItem>
-          </SelectContent>
-        </Select>
-        {depth > 1 ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeNode(root, group.id))}>
-            <Trash2 data-icon="inline-start" /> Remover grupo
-          </Button>
-        ) : null}
-      </div>
-      {group.children.map((child) =>
-        child.kind === "condition" ? (
-          <ConditionRow key={child.id} condition={child} columns={columns} onChange={(next) => onChange(updateNode(root, child.id, () => next))} onRemove={() => onChange(removeNode(root, child.id))} />
-        ) : (
-          <GroupEditor key={child.id} group={child} root={root} depth={depth + 1} columns={columns} limits={limits} onChange={onChange} />
-        ),
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={atConditionLimit} onClick={() => onChange(addChild(root, group.id, emptyCondition()))}>
-          <Plus data-icon="inline-start" /> Condição
+  const isRoot = depth === 1
+  const setLogic = (logic: "AND" | "OR") => onChange(updateNode(root, group.id, (node) => ({ ...node, logic })))
+  const empty = group.children.length === 0
+
+  const addButtons = (
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" variant="outline" size="sm" className="bg-card" disabled={atConditionLimit} onClick={() => onChange(addChild(root, group.id, emptyCondition()))}>
+        <Plus data-icon="inline-start" /> Condição
+      </Button>
+      {depth < limits.maxFilterDepth ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="bg-card"
+          disabled={atConditionLimit}
+          onClick={() => onChange(addChild(root, group.id, { ...emptyGroup(group.logic === "AND" ? "OR" : "AND"), children: [emptyCondition()] }))}
+        >
+          <Plus data-icon="inline-start" /> Grupo
         </Button>
-        {depth < limits.maxFilterDepth ? (
-          <Button type="button" variant="outline" size="sm" disabled={atConditionLimit} onClick={() => onChange(addChild(root, group.id, { ...emptyGroup(group.logic === "AND" ? "OR" : "AND"), children: [emptyCondition()] }))}>
-            <Plus data-icon="inline-start" /> Grupo
-          </Button>
-        ) : null}
+      ) : null}
+    </div>
+  )
+
+  const rows = group.children.map((child, index) => (
+    <div key={child.id} className="space-y-2">
+      {index > 0 ? <LogicConnector logic={group.logic} /> : null}
+      {child.kind === "condition" ? (
+        <ConditionRow condition={child} columns={columns} onChange={(next) => onChange(updateNode(root, child.id, () => next))} onRemove={() => onChange(removeNode(root, child.id))} />
+      ) : (
+        <GroupEditor group={child} root={root} depth={depth + 1} columns={columns} limits={limits} onChange={onChange} />
+      )}
+    </div>
+  ))
+
+  if (isRoot) {
+    return (
+      <div className="space-y-2" role="group" aria-label="Condições">
+        <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+          <SectionLabel as="p">Condições</SectionLabel>
+          {group.children.length > 1 ? <LogicSelect value={group.logic} onChange={setLogic} /> : null}
+        </div>
+        <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-3">
+          {empty ? (
+            <div className="flex items-start gap-3 rounded-lg border border-dashed border-border bg-card px-3 py-3 text-sm text-muted-foreground">
+              <ListFilter className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <p>Nenhuma condição. Sem condições, a consulta traz todos os registros do conjunto (respeitando a busca). Adicione uma condição para filtrar por coluna.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">{rows}</div>
+          )}
+          {addButtons}
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-primary/25 bg-primary/[0.03] p-3" role="group" aria-label="Grupo de condições">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold tracking-wider text-primary uppercase">Grupo</span>
+        {group.children.length > 1 ? <LogicSelect value={group.logic} onChange={setLogic} /> : null}
+        <Button type="button" variant="ghost" size="sm" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => onChange(removeNode(root, group.id))}>
+          <Trash2 data-icon="inline-start" /> Remover grupo
+        </Button>
+      </div>
+      <div className="space-y-2">{rows}</div>
+      {addButtons}
     </div>
   )
 }

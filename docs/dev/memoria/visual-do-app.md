@@ -42,6 +42,11 @@ Primeira rodada (2026-11-10), pelas peças compartilhadas e pelas ferramentas:
 - Diagnóstico, Boas práticas e Reports com `PageHeader` (ícone do seletor de área: Stethoscope, Lightbulb, FileBarChart2); o vazio
   de Reports passou a ser o `AnalyticsEmptyState` (título + descrição).
 
+- Central de Dados › Consultar dados (2026-11-11): o bloco de filtros virou `SURFACE_CARD` (antes só borda, sumia contra o fundo da
+  página); condições num painel `muted/40` com rótulo "CONDIÇÕES", cada linha num cartão branco, conector "E"/"OU" entre linhas,
+  "Combinar" só com 2+ itens, grupo aninhado com borda roxa e rótulo "GRUPO", estado vazio que explica que sem condição vem tudo,
+  rodapé com divisória (Aplicar · Limpar · contador à direita). Só apresentação (`filter-builder.tsx`, `data-explorer-tab.tsx`).
+
 Pendente: Calendário e Organograma em detalhe, feed do Acompanhamento, telas de detalhe (report, material) e a Administração —
 por último, porque a pasta principal tem o ramo `admin-list-standardization` com alterações nas listas. Capturas antes/depois
 de cada rodada ficam fora do Git (pasta temporária da sessão).

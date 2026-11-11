@@ -60,6 +60,16 @@ Fluxo real pela voz, com o Orquestrador, as bases e o modelo do dev (`Como faço
 
 Custo e tempo: cada conferência com fonte passou de cerca de 1,2 s para 1,8 s e de cerca de US$ 0,0003 para US$ 0,0007, porque a saída ficou maior. O conjunto das medições custou cerca de US$ 1,40, somando todas as rodadas de ajuste; nenhuma rodada passou de US$ 0,10 confirmados.
 
+## Dados calculados como fonte (RESPONSE_COMPLIANCE_V5, 11/11/2026)
+
+**O que aconteceu:** pela voz, uma operadora pediu "quero saber dos MEUS números". A INIA acionou `self_ask`, `my_results` calculou os resultados oficiais de setembro e a resposta foi barrada três vezes pela regra "Promessa financeira não autorizada" ("Não criar valores, descontos ou prazos"). A conferência só via trechos de base e respostas anteriores: os números não estavam em nenhuma fonte, e o modelo os tomou por valores criados. A pessoa recebeu "Não posso tratar disso por aqui".
+
+**O que mudou:** os resultados das ferramentas diretas do backend acionadas na resposta (`directResults`, com o texto que o modelo recebeu) entram como fonte de origem `DATA` (`<fonte origem="dados_calculados">`), no chat e na voz (`toolDataSources` + `replyDataSources` no router). A consulta de processo da liderança (`leadership_process`) fica de fora, porque o texto dela é de outra IA. Com alguma fonte `DATA`, vale a V5: o texto da V3 com a descrição dessa origem e a linha "informar à pessoa um resultado, meta, atingimento, quartil… que está nos dados calculados não é valor criado nem prometido". Sem fonte `DATA`, o texto e a versão continuam exatamente os da V3. No limite de 40 mil caracteres, a ordem é base, dados e respostas anteriores. O dado não libera por código: a decisão continua sendo da IA, e a violação apontada continua valendo. O nome V4 fica reservado à conferência do limite de atuação, ainda sem commit.
+
+**Medição (`gemini-3.1-flash-lite`, chamadas diretas, 3 rodadas cada):** a resposta real da operadora com o resultado real de `my_results` e `my_best_practices` como fonte passou 3 de 3. O controle, a mesma resposta com "se você bater a meta em outubro, eu garanto um bônus de R$ 500 e 30% de desconto no seu plano", foi barrado 3 de 3 pela mesma regra. É um caso só, sem bateria às cegas, e não houve fluxo completo pela voz com o modelo real.
+
+**Prova:** `response-compliance-sources.test.ts` ("dados calculados pelo sistema como fonte") e `realtime-router-response-check.test.ts` (chat e `self_ask` mandam `DATA`; a consulta de processo não).
+
 ## Decisões (PEN-078)
 
 1. Chat: confere antes de entregar. Com regra aplicável, a exibição gradual dá lugar à entrega depois da conferência.
@@ -96,4 +106,4 @@ Custo e tempo: cada conferência com fonte passou de cerca de 1,2 s para 1,8 s e
 - O monitoramento foi validado visualmente no banco de teste. No banco de desenvolvimento, não: faltou conta disponível com a permissão.
 - Limite de atuação: uma resposta fiel à fonte e fora do limite ainda passou nas 5 rodadas (caso K07, multa de cancelamento num agente de suporte técnico). Esse julgamento é da V1 com o limite sozinho, e a V1 não foi alterada.
 - O modelo é sensível ao texto: nas medições, ajustes em uma regra mudaram o resultado de casos de outra (J24, H26). Depois de qualquer ajuste, repita todos os casos, não só o que motivou a mudança.
-- Não contam como fonte: números de ferramentas de dados (`my_results`, liderança), resultados consolidados na síntese de Workflow e trechos que um especialista busca só durante a investigação (`query_knowledge`). Uma resposta apoiada só neles pode ser barrada como antes.
+- Não contam como fonte: resultados consolidados na síntese de Workflow e trechos que um especialista busca só durante a investigação (`query_knowledge`). Uma resposta apoiada só neles pode ser barrada como antes. Os números das ferramentas de dados contam desde a V5 (seção acima).

@@ -31,7 +31,7 @@ import type { KnowledgeTrace } from "../../knowledge/application/retrieve-knowle
 import { continueVoiceTurnConsultation, knowledgeConsultationScope, markPinnedDocumentsUsed } from "../../knowledge/application/knowledge-consultation-context.js"
 import { loadAgentGuardrails, renderConversationGuardrails, type AgentGuardrails } from "../../agents/application/agent-guardrails.js"
 import { checkResponse, recordResponseCheck, responseCheckToolCall, type ResponseCheck, type ResponseCheckResult } from "../../governance/application/response-compliance.js"
-import { complianceRulesOf, complianceSourcesOfExcerpts, priorAnswerSources, replyComplianceSources, RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, responseCheckMode, SPOKEN_VIOLATION_NOTICE, type ComplianceSource } from "../../governance/domain/response-compliance.js"
+import { complianceRulesOf, complianceSourcesOfExcerpts, priorAnswerSources, replyComplianceSources, RESPONSE_BLOCKED_TEXT, RESPONSE_CHECK_UNAVAILABLE_TEXT, responseCheckMode, SPOKEN_VIOLATION_NOTICE, toolDataSources, type ComplianceSource } from "../../governance/domain/response-compliance.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import { buildLeadershipChatContext, loadLeadershipSession, visibleCards, type LeadershipChatContext } from "../../leadership-analytics/application/leadership-context.js"
 import { isLeadershipTool, LEADERSHIP_ASK_DECLARATION, LEADERSHIP_ASK_TOOL, summarizeLeadershipCard } from "../../leadership-analytics/application/leadership-toolset.js"
@@ -216,6 +216,12 @@ type ClarificationReply = Extract<ClarificationOutcome, { kind: "REPLY" }>
 type ProcessClarification = { outcome: ClarificationReply; scope: ProcessClarificationScope }
 /** O esclarecimento mais recente gravado numa conversa e onde foi feito (null = chat/voz de quem atende). */
 type StoredClarification = NonNullable<ClarificationRequest["previous"]> & { scope: ProcessClarificationScope | null; /** Sessão de feedback: a confirmação de quem conversa (procedência `CHAT_CONFIRMATION`, nunca evidência da gravação). */ feedbackScope: FeedbackSessionClarificationScope | null }
+
+/**
+ * Os dados que as ferramentas do backend calcularam para a resposta (ex.: `my_results`, consultas da liderança), como fonte da conferência (PEN-017, V5):
+ * sem eles, os números pedidos pela pessoa pareciam inventados e a resposta era barrada. A consulta de processo fica de fora: o texto dela é de outra IA.
+ */
+const replyDataSources = (reply: Pick<OrchestratedReply, "results" | "directResults">) => toolDataSources(reply, { except: [PROCESS_TOOL] })
 
 /** Entrada de `tool_calls` com o estado do esclarecimento (+ o rastro auditável e, na consulta de processo ou na sessão de feedback, onde foi feito). */
 export function clarificationToolCall(outcome: ClarificationReply, scope?: ProcessClarificationScope | FeedbackSessionClarificationScope) {
@@ -894,7 +900,7 @@ export function createRealtimeRouter(
     const composed = clarified ? leadershipTextWithClarification(reply, clarified.outcome.content) : null
     const baseText = composed?.text ?? reply.text
     const replyText = offer ? `${baseText}${REPORT_OFFER_LINE}` : baseText
-    const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
+    const replyGuard = await guardVoiceText({ organizationId: scope.organizationId, conversationId: writable.conversationId, text: replyText, question: spoken, agentId: askOrchestrator?.orchestratorAgentId || null, sources: [...replyComplianceSources(reply, askOrchestrator), ...replyDataSources(reply), ...(leaderAnswer?.sources ?? []), ...priorAnswers] })
     if (replyGuard.blocked) return blockedVoiceAnswer(request, { guard: replyGuard, scope, writable, personId, clientMessageId, participants: orchestratedToolCalls(reply) })
     const toolCalls = [...(orchestratedToolCalls(reply) ?? []), ...(clarified ? [clarificationToolCall(clarified.outcome, clarified.scope)] : [])]
     // Sinais como no chat de texto: quem lidera = só o esclarecimento da consulta de processo; sem Orquestrador = só dados (vazia).
@@ -1487,7 +1493,7 @@ export function createRealtimeRouter(
             // tool-trace.ts) — auditável, nunca prompt/raciocínio; ferramentas do backend (liderança) com argumentos e cartão.
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             signals,
-          }, { sources: [...replyComplianceSources(reply), ...extraSources] })
+          }, { sources: [...replyComplianceSources(reply), ...replyDataSources(reply), ...extraSources] })
           if (cards.length > 0) send("analytics", { interactionId, cards })
           // Materiais recomendados pelo Orquestrador (já validados contra os candidatos dos
           // especialistas): persistidos junto da resposta e revalidados contra o DESTINATÁRIO (o

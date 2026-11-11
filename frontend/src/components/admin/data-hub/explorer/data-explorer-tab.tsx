@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SURFACE_CARD } from "@/components/ui/surface"
+import { cn } from "@/lib/utils"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { useExplorerCatalogQuery, useExplorerDatasetQuery, useExplorerPageQuery } from "@/queries/admin/use-data-explorer-queries"
 import type { CancellationScope, ExplorerCount, ExplorerDataset, ExplorerGroupRequest, ExplorerLimits, ExplorerRecordStatus, ExplorerRequest, ExplorerSort } from "@/schemas/admin/data-explorer.schema"
@@ -204,7 +206,7 @@ function DatasetExplorer({ dataset, limits }: { dataset: ExplorerDataset; limits
 
   return (
     <>
-      <section className="space-y-3 rounded-xl border border-border p-4" aria-label="Filtros">
+      <section className={cn(SURFACE_CARD, "space-y-4 p-4 sm:p-5")} aria-label="Filtros">
         {searchableLabels.length > 0 ? (
           <div className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />
@@ -227,7 +229,7 @@ function DatasetExplorer({ dataset, limits }: { dataset: ExplorerDataset; limits
             {problem}
           </p>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button type="button" size="sm" onClick={applyFilters}>
             Aplicar
           </Button>
@@ -236,7 +238,7 @@ function DatasetExplorer({ dataset, limits }: { dataset: ExplorerDataset; limits
               <FilterX data-icon="inline-start" /> Limpar filtros
             </Button>
           ) : null}
-          <span className="text-xs text-muted-foreground">
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {countConditions(draft)} de {limits.maxFilterConditions} condições
           </span>
         </div>
