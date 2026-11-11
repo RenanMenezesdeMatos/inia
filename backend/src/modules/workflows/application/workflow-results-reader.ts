@@ -25,6 +25,7 @@ import {
   type UsageGroupRow,
   type UsageTotals,
 } from "../domain/workflow-results.js"
+import { enrollmentSubjectScopeOf } from "./enrollment-visibility.js"
 
 /**
  * V1.5.13 — leitura dos RESULTADOS do Workflow (aba "Resultados"). Três leituras, contagem fixa de consultas (nunca uma
@@ -82,9 +83,8 @@ export type DispatchDetail = {
   rootUsage: { usage: UsageTotals; aiCalls: ResultAiCall[] } | null
 }
 
-type Scope = { allTeams: boolean; teamIds: string[]; subteamIds: string[] }
-const scopeOf = (scopes: ManageableScopes): Scope =>
-  scopes.unrestricted ? { allTeams: true, teamIds: [], subteamIds: [] } : { allTeams: scopes.allTeams, teamIds: [...scopes.teamIds], subteamIds: [...scopes.subteamIds] }
+// Mesmo escopo por pessoa das rotas de Execuções (enrollment-visibility.ts).
+const scopeOf = (scopes: ManageableScopes) => enrollmentSubjectScopeOf(scopes)
 
 const UUID_RE = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 

@@ -5,6 +5,7 @@ import { getManageableScopes, type ManageableScopes } from "../../../auth/applic
 import { listManualRunCollaborators, listManualRunInteractions, listManualRunMeasurements, listManualRuns, loadManualRun, loadManualRunTarget, manualRunBlockers, requestManualRun, type CollaboratorScopeCheck } from "../../application/manual-run.js"
 import { NOT_FOUND, canManageWorkflow, fetchScopedRow, type WorkflowRouterOptions } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
+import { enrollmentSubjectScopeOf } from "../../application/enrollment-visibility.js"
 
 
 /** Gatilho Manual — "Executar agora". Registradas na ordem original (ver workflow-router.ts). */
@@ -33,7 +34,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return null
     const target = await loadManualRunTarget(db, organizationId, workflowId)
-    return target ? { target, canAccess: collaboratorScopeCheck(scopes) } : null
+    return target ? { target, canAccess: collaboratorScopeCheck(scopes), subjectScope: enrollmentSubjectScopeOf(scopes) } : null
   }
 
   router.get("/:id/manual-run", async (request, response) => {
@@ -50,7 +51,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
         published: target.versionId !== null,
         active: target.active,
         blockers: manualRunBlockers(target),
-        recentRuns: target.trigger ? await listManualRuns(db, organizationId, target.id) : [],
+        recentRuns: target.trigger ? await listManualRuns(db, organizationId, target.id, access.subjectScope) : [],
       },
     })
   })
@@ -98,7 +99,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
     )
     // Só o disparo NOVO acorda o worker do motor (reivindica na hora, sem esperar a varredura); o reenvio não faz nada.
     if (result.created) options.onManualRunCreated(result.enrollmentId)
-    const run = await loadManualRun(db, organizationId, request.params.id!, result.runId)
+    const run = await loadManualRun(db, organizationId, request.params.id!, result.runId, access.subjectScope)
     response.status(result.created ? 201 : 200).json({ data: { created: result.created, run } })
   })
 
@@ -106,7 +107,7 @@ export function registerWorkflowManualRunRoutes(router: Router, db: Database, op
     const organizationId = sessionUser(request).organizationId
     const access = await manualRunAccess(request)
     if (!access) return response.status(404).json(NOT_FOUND)
-    const run = await loadManualRun(db, organizationId, request.params.id!, request.params.runId!)
+    const run = await loadManualRun(db, organizationId, request.params.id!, request.params.runId!, access.subjectScope)
     if (!run) return response.status(404).json({ error: { code: "WORKFLOW_MANUAL_RUN_NOT_FOUND", message: "Execução manual não encontrada." } })
     response.json({ data: run })
   })

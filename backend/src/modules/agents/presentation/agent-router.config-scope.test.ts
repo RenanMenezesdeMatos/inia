@@ -48,7 +48,8 @@ const versionSummary = (id: string) => ({ id, number: VERSIONS[id]!.number, orig
 const RUN_V1 = "f0000000-0000-4000-8000-000000000001"
 const RUN_V2 = "f0000000-0000-4000-8000-000000000002"
 const RUN_WIDE_DRAFT = "f0000000-0000-4000-8000-000000000003"
-const runOf = (id: string, config: AgentConfig, overrides: Record<string, unknown>) => ({
+const RUN_LEGACY = "f0000000-0000-4000-8000-000000000004"
+const runOf = (id: string, config: AgentConfig | null, overrides: Record<string, unknown>) => ({
   id, source: "WORKFLOW", inputContext: "Transcrição de um operador", outputText: "Feedback do agente", status: "COMPLETED", errorMessage: null, model: "modelo",
   caseId: null, createdAt: AT, completedAt: AT, agentVersionId: null, agentVersionNumber: null, runTarget: "VERSION", hasTestedConfig: false, config, ...overrides,
 })
@@ -56,6 +57,8 @@ const RUNS = [
   runOf(RUN_V1, WIDE, { agentVersionId: V1, agentVersionNumber: 1, inputContext: "Transcrição de um operador do Grupo A", outputText: "Feedback com o procedimento do Grupo A", caseId: "caso-grupo-a" }),
   runOf(RUN_V2, LIVE, { agentVersionId: V2, agentVersionNumber: 2 }),
   runOf(RUN_WIDE_DRAFT, WIDE, { source: "MANUAL_TEST", runTarget: "DRAFT", hasTestedConfig: true, inputContext: "Cenário do Grupo A", outputText: "Resposta com o procedimento do Grupo A" }),
+  // Anterior à migration 164: sem versão nem conteúdo testado — o alcance da configuração com que rodou não foi guardado.
+  runOf(RUN_LEGACY, null, { runTarget: null, inputContext: "Transcrição antiga de um operador do Grupo A", outputText: "Feedback antigo do Grupo A", caseId: "caso-antigo-grupo-a" }),
 ]
 const change = (from: string, to: string, configs?: AgentConfig[]) => ({ field: "contextPrompt", label: "Contexto", from, to, ...(configs ? { configScopes: configs.map(scopeOf) } : {}) })
 const HISTORY = [
@@ -69,7 +72,7 @@ const HISTORY = [
 function readAnswer(sql: string, params: unknown[], versionConfigs: AgentConfig[]): { rows: unknown[] } | null {
   if (sql.includes("select distinct") && sql.includes("from agent_versions v")) return { rows: versionConfigs.map(scopeOf) }
   if (sql.includes("from agent_versions v") && sql.includes('"scope"')) return { rows: [V2, V1].map((id) => ({ ...versionSummary(id), scope: scopeOf(VERSIONS[id]!.config) })) }
-  if (sql.includes("from agent_runs r") && sql.includes("limit 50")) return { rows: RUNS.map(({ config, ...run }) => ({ ...run, configScope: scopeOf(config) })) }
+  if (sql.includes("from agent_runs r") && sql.includes("limit 50")) return { rows: RUNS.map(({ config, ...run }) => ({ ...run, configScope: config ? scopeOf(config) : null })) }
   if (sql.includes("from agent_runs r") && sql.includes("where r.id = $1")) {
     const run = RUNS.find((candidate) => candidate.id === params[0])
     return { rows: run ? [{ id: run.id, source: run.source, status: run.status, createdAt: AT, completedAt: AT, runTarget: run.runTarget, agentVersionId: run.agentVersionId, agentVersionNumber: run.agentVersionNumber, testedConfig: run.config }] : [] }
@@ -261,7 +264,7 @@ describe("Agentes — ler um rascunho, uma versão ou uma execução de outro al
   it("as execuções: a de uma versão ou rascunho de outro alcance sai sem entrada, saída e conteúdo testado", async () => {
     const { app } = appFor("GROUP_B")
     const list = await request(app).get(`/${AGENT}/runs`)
-    expect(list.body.data.map((run: { id: string; restricted: boolean }) => [run.id, run.restricted])).toEqual([[RUN_V1, true], [RUN_V2, false], [RUN_WIDE_DRAFT, true]])
+    expect(list.body.data.map((run: { id: string; restricted: boolean }) => [run.id, run.restricted])).toEqual([[RUN_V1, true], [RUN_V2, false], [RUN_WIDE_DRAFT, true], [RUN_LEGACY, true]])
     expect(list.body.data[0]).toEqual({ id: RUN_V1, source: "WORKFLOW", inputContext: null, outputText: null, status: "COMPLETED", errorMessage: null, model: null, caseId: null, createdAt: AT, completedAt: AT, agentVersionId: V1, agentVersionNumber: 1, runTarget: "VERSION", hasTestedConfig: false, restricted: true })
     expect(list.body.data[1]).toMatchObject({ inputContext: "Transcrição de um operador", outputText: "Feedback do agente" })
     expect(leaks(list.body)).toEqual([])
@@ -285,6 +288,19 @@ describe("Agentes — ler um rascunho, uma versão ou uma execução de outro al
     const organization = (await request(appFor("ORGANIZATION").app).get(`/${AGENT}/history`)).body.data
     expect(organization.map((entry: { restricted: boolean }) => entry.restricted)).toEqual([false, false, false, false])
     expect(organization[0]).toMatchObject({ changes: [{ to: WIDE.contextPrompt }] })
+  })
+
+  it("execução antiga (sem versão nem conteúdo testado): falha fechado como o histórico antigo", async () => {
+    const legacyRun = async (app: Parameters<typeof request>[0]) => ((await request(app).get(`/${AGENT}/runs`)).body.data as { id: string }[]).find((run) => run.id === RUN_LEGACY)!
+    // O agente já foi "todos os Grupos" numa versão: a execução antiga pode ser dessa configuração — sai sem entrada, saída e caso.
+    const narrowed = await legacyRun(appFor("GROUP_B").app)
+    expect(narrowed).toEqual({ id: RUN_LEGACY, source: "WORKFLOW", inputContext: null, outputText: null, status: "COMPLETED", errorMessage: null, model: null, caseId: null, createdAt: AT, completedAt: AT, agentVersionId: null, agentVersionNumber: null, runTarget: null, hasTestedConfig: false, restricted: true })
+    // Rascunho em andamento de todos os Grupos também basta para falhar fechado.
+    expect(await legacyRun(appFor("GROUP_B", WIDE, [LIVE]).app)).toMatchObject({ restricted: true, inputContext: null })
+    // Sempre foi do Grupo B (versões, rascunho e linha viva): quem o administra vê tudo.
+    expect(await legacyRun(appFor("GROUP_B", null, [LIVE]).app)).toMatchObject({ restricted: false, outputText: "Feedback antigo do Grupo A", caseId: "caso-antigo-grupo-a" })
+    // Quem alcança a organização vê tudo.
+    expect(await legacyRun(appFor("ORGANIZATION").app)).toMatchObject({ restricted: false, inputContext: "Transcrição antiga de um operador do Grupo A" })
   })
 
   it("registro antigo (sem o alcance gravado): falha fechado só se o agente já teve um alcance que quem lê não alcança", async () => {

@@ -400,9 +400,14 @@ type AgentRunRow = {
   createdAt: string; completedAt: string | null; agentVersionId: string | null; agentVersionNumber: number | null; runTarget: string | null; hasTestedConfig: boolean; configScope: ScopedTarget | null
 }
 
-/** Execução de uma configuração de outro alcance: só id, origem, situação, datas e versão — a entrada e a saída também ficam de fora. */
-function readableRun(scopes: ManageableScopes, { configScope, ...run }: AgentRunRow) {
-  if (canReadAgentConfig(scopes, configScope)) return { ...run, restricted: false }
+/**
+ * Execução de uma configuração de outro alcance: só id, origem, situação, datas e versão — a entrada e a saída também ficam de fora.
+ * Execução anterior à migration 164 (sem versão nem conteúdo testado) não guarda o alcance da configuração com que rodou: falha
+ * fechado como o histórico antigo — o conteúdo dela só sai para quem alcança TODOS os alcances que o agente já teve
+ * (`readsLegacyRuns` = `readsEveryAgentScope`).
+ */
+function readableRun(scopes: ManageableScopes, { configScope, ...run }: AgentRunRow, readsLegacyRuns: boolean) {
+  if (configScope ? canReadAgentConfig(scopes, configScope) : readsLegacyRuns) return { ...run, restricted: false }
   return { ...run, inputContext: null, outputText: null, errorMessage: null, model: null, caseId: null, hasTestedConfig: false, restricted: true }
 }
 
@@ -587,7 +592,9 @@ export function createAgentRouter(db: Database) {
        limit 50`,
       [request.params.id, sessionUser(request).organizationId],
     )
-    response.json({ data: result.rows.map((row) => readableRun(access.scopes, row)) })
+    // Só consulta os alcances do agente quando há execução antiga (sem alcance de configuração guardado).
+    const readsLegacyRuns = result.rows.some((row) => !row.configScope) && (await readsEveryAgentScope(db, sessionUser(request).organizationId, request.params.id!, access))
+    response.json({ data: result.rows.map((row) => readableRun(access.scopes, row, readsLegacyRuns)) })
   })
 
   /** Uma execução com o conteúdo efetivamente testado (PEN-049: o teste do rascunho guarda o que foi testado) — se for do alcance de quem lê. */

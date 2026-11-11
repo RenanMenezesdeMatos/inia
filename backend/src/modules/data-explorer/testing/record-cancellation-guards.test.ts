@@ -39,8 +39,9 @@ describe("guardas do código sobre registros cancelados", () => {
     expect(sources.filter((source) => pattern.test(source.text)).map((source) => source.path)).toEqual([])
   })
 
+  // enrollment-visibility.ts lê de quem era a execução passada pelo id da medição (histórico), mesmo com a medição cancelada.
   it("só a Central, a consulta, a ingestão e as telas de histórico citam as tabelas reais", () => {
-    const allowed = /^(modules\/data-explorer\/|modules\/data-hub\/application\/writers\/|modules\/ingestion\/presentation\/|modules\/indicators\/application\/indicator-dependencies\.ts$|modules\/(ai-management\/application\/ai-usage-ranking-service|assistant\/application\/conversation-monitoring|feedbacks\/infrastructure\/feedback-origins|indicator-diagnosis\/application\/diagnostic-strategy-service|interaction-feedback\/infrastructure\/postgres-feedback-review-reader|pending-actions\/application\/pending-actions-repository|workflows\/application\/(engine|manual-run|usage-analytics-reader|workflow-results-reader|workflow-retry))\.ts$)/
+    const allowed = /^(modules\/workflows\/application\/enrollment-visibility\.ts$|modules\/data-explorer\/|modules\/data-hub\/application\/writers\/|modules\/ingestion\/presentation\/|modules\/indicators\/application\/indicator-dependencies\.ts$|modules\/(ai-management\/application\/ai-usage-ranking-service|assistant\/application\/conversation-monitoring|feedbacks\/infrastructure\/feedback-origins|indicator-diagnosis\/application\/diagnostic-strategy-service|interaction-feedback\/infrastructure\/postgres-feedback-review-reader|pending-actions\/application\/pending-actions-repository|workflows\/application\/(engine|manual-run|usage-analytics-reader|workflow-results-reader|workflow-retry))\.ts$)/
     const pattern = new RegExp(`\\b(${TABLES})_all\\b`)
     expect(sources.filter((source) => pattern.test(source.text) && !allowed.test(source.path)).map((source) => source.path)).toEqual([])
   })

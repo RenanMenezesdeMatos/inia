@@ -7,6 +7,7 @@ import { flowGraphSchema } from "../domain/graph-schema.js"
 import { MANUAL_TRIGGER_CONTEXT_LABELS, triggerConfigSchema, type ManualTrigger, type ManualTriggerContext } from "../domain/trigger-config-schema.js"
 import { isOperatorEligibleForWorkflow, loadEligibleOperator, resolveEligibleOperatorIds, type WorkflowPopulation } from "./workflow-eligibility.js"
 import { transactionRunner } from "../../../shared/infrastructure/database/transaction.js"
+import { enrollmentSubjectScopeParams, personInScopeSql, type EnrollmentSubjectScope } from "./enrollment-visibility.js"
 
 /**
  * GATILHO MANUAL — "Executar agora" para UM colaborador escolhido explicitamente (nunca a população inteira).
@@ -530,7 +531,8 @@ export function manualRunStageOf(status: string, currentNodeIsTrigger: boolean, 
   return currentNodeIsTrigger && (lastEventType === null || lastEventType === "manual_run_requested") ? "QUEUED" : "PROCESSING"
 }
 
-export async function loadManualRun(db: Database, organizationId: string, workflowId: string, runId: string): Promise<ManualRunView | null> {
+/** `scope` = escopo de `workflows.manage` de quem lê: disparo para colaborador fora dele não existe (null → 404). */
+export async function loadManualRun(db: Database, organizationId: string, workflowId: string, runId: string, scope: EnrollmentSubjectScope): Promise<ManualRunView | null> {
   const result = await db.query<{
     id: string
     workflow_id: string
@@ -577,8 +579,9 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
        left join indicator_measurements_all m on m.id = r.indicator_measurement_id
        left join indicator_definitions_all d on d.id = m.indicator_definition_id
        left join workflow_enrollments e on e.manual_run_id = r.id
-      where r.id = $1 and r.workflow_id = $2 and r.organization_id = $3`,
-    [runId, workflowId, organizationId],
+      where r.id = $1 and r.workflow_id = $2 and r.organization_id = $3
+        and ${personInScopeSql("c", { allTeams: "$4", teamIds: "$5", subteamIds: "$6" })}`,
+    [runId, workflowId, organizationId, ...enrollmentSubjectScopeParams(scope)],
   )
   const row = result.rows[0]
   if (!row || !row.enrollment_id) return null
@@ -648,8 +651,9 @@ export async function loadManualRun(db: Database, organizationId: string, workfl
   }
 }
 
-/** Últimos disparos manuais deste Workflow (quem, quando, para quem, estado) — a trilha que a tela mostra. */
-export async function listManualRuns(db: Database, organizationId: string, workflowId: string, limit = 10): Promise<{ id: string; requestedAt: string; requestedByName: string; collaboratorName: string; status: string | null; enrollmentId: string | null }[]> {
+/** Últimos disparos manuais deste Workflow (quem, quando, para quem, estado) — a trilha que a tela mostra; só os de
+ * colaboradores no escopo de quem lê (`scope`, a mesma regra das Execuções — enrollment-visibility.ts). */
+export async function listManualRuns(db: Database, organizationId: string, workflowId: string, scope: EnrollmentSubjectScope, limit = 10): Promise<{ id: string; requestedAt: string; requestedByName: string; collaboratorName: string; status: string | null; enrollmentId: string | null }[]> {
   const result = await db.query<{ id: string; requestedAt: string; requestedByName: string; collaboratorName: string; status: string | null; enrollmentId: string | null }>(
     `select r.id, r.requested_at "requestedAt", rb.name "requestedByName", c.name "collaboratorName", e.status, e.id "enrollmentId"
        from workflow_manual_runs r
@@ -657,9 +661,10 @@ export async function listManualRuns(db: Database, organizationId: string, workf
        join people c on c.id = r.collaborator_id
        left join workflow_enrollments e on e.manual_run_id = r.id
       where r.workflow_id = $1 and r.organization_id = $2
+        and ${personInScopeSql("c", { allTeams: "$4", teamIds: "$5", subteamIds: "$6" })}
       order by r.requested_at desc, r.id
       limit $3`,
-    [workflowId, organizationId, Math.min(Math.max(limit, 1), 50)],
+    [workflowId, organizationId, Math.min(Math.max(limit, 1), 50), ...enrollmentSubjectScopeParams(scope)],
   )
   return result.rows
 }

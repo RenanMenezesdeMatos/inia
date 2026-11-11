@@ -578,6 +578,7 @@ describe("workflow-router", () => {
       if (sql.includes("from workflows where id = $1 and organization_id = $2")) {
         return { rows: [{ scopeType: "ALL_TEAMS", teamId: null, subteamId: null }], rowCount: 1 }
       }
+      if (sql.includes("from workflow_enrollments we") && sql.includes("we.id = $1")) return { rows: [{ visible: 1 }], rowCount: 1 }
       if (sql.includes("from workflow_enrollments where id = $1 and workflow_id = $2")) {
         return { rows: [{ id: "enr-1", status: "waiting", current_node_id: "review", revision: 3 }], rowCount: 1 }
       }
@@ -600,6 +601,7 @@ describe("workflow-router", () => {
       if (sql.includes("from workflows where id = $1 and organization_id = $2")) {
         return { rows: [{ scopeType: "ALL_TEAMS", teamId: null, subteamId: null }], rowCount: 1 }
       }
+      if (sql.includes("from workflow_enrollments we") && sql.includes("we.id = $1")) return { rows: [{ visible: 1 }], rowCount: 1 }
       if (sql.includes("from workflow_enrollments where id = $1 and workflow_id = $2")) {
         return { rows: [{ id: "enr-1", status: "active", current_node_id: "review", revision: 3 }], rowCount: 1 }
       }
@@ -3174,5 +3176,66 @@ describe("workflow-router", () => {
       expect(response.status).toBe(422)
       expect(response.body.error.code).toBe("WORKFLOW_INVALID_CONDITION")
     })
+  })
+})
+
+/**
+ * Execuções de um Workflow (achado da auditoria run-2): autorizar o Workflow pela Abrangência PUBLICADA não basta — cada execução
+ * só é lida ou acionada se a PESSOA dela está no escopo de quem pede (a regra da aba Resultados, enrollment-visibility.ts).
+ * Cenário: Workflow hoje do Grupo A (movido de outro Grupo, ou a pessoa trocou de Grupo depois); quem pede administra só o Grupo A.
+ * O predicado em si é provado contra o Postgres em `workflow-enrollment-visibility-proof.test.ts`.
+ */
+describe("Execuções do Workflow — só as de pessoas no escopo de quem pede", () => {
+  const WORKFLOW_A_ROW = { liveScopeType: "TEAM", liveTeamId: TEAM_A, liveSubteamId: null, scopeType: "TEAM", teamId: TEAM_A, subteamId: null, active: true, activeVersionId: "v-1" }
+  const ENROLLMENT = "33333333-3333-4333-8333-333333333333"
+
+  async function groupAAdmin(enrollmentVisible: boolean) {
+    const passwordHash = await hashPassword("Inia@123")
+    const calls: { sql: string; params: unknown[] }[] = []
+    const database = fakeDatabase([{ scope_type: "TEAM", team_id: TEAM_A, subteam_id: null }], passwordHash, (sql, params) => {
+      calls.push({ sql, params: params ?? [] })
+      if (sql.includes("from workflows where id = $1 and organization_id = $2")) return { rows: [WORKFLOW_A_ROW], rowCount: 1 }
+      if (sql.includes("from workflow_enrollments we") && sql.includes("we.id = $1")) return enrollmentVisible ? { rows: [{ visible: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 }
+      if (sql.includes("from workflow_enrollment_events ev join agent_runs ar")) return { rows: [{ id: "run-1", outputText: "Saída do agente sobre o operador" }], rowCount: 1 }
+      return undefined
+    })
+    const agent = request.agent(createApp(database))
+    await agent.post("/api/v1/auth/login").send({ email: ACCOUNT.email, password: "Inia@123" })
+    return { agent, calls }
+  }
+
+  it("a lista filtra pela pessoa de cada execução, com o escopo de quem pede (não pela Abrangência atual do Workflow)", async () => {
+    const { agent, calls } = await groupAAdmin(true)
+    const response = await agent.get("/api/v1/admin/workflows/wf-2/enrollments")
+    expect(response.status).toBe(200)
+    const list = calls.find(({ sql }) => sql.includes("from workflow_enrollments we") && sql.includes("we.workflow_id = $1"))!
+    expect(list.sql).toContain("scheduled_subject_id")
+    expect(list.sql).toContain("team_id = any($3::uuid[])")
+    expect(list.sql).toContain("subteam_id = any($4::uuid[])")
+    expect(list.params.slice(0, 4)).toEqual(["wf-2", false, [TEAM_A], []])
+  })
+
+  it("execução de pessoa fora do escopo: histórico do agente, prévia e confirmação da nova tentativa e decisão respondem 404 sem ler nem gravar nada", async () => {
+    const { agent, calls } = await groupAAdmin(false)
+    const base = `/api/v1/admin/workflows/wf-2/enrollments/${ENROLLMENT}`
+    const records = await agent.get(`${base}/agent-records`)
+    expect(records.status).toBe(404)
+    expect(JSON.stringify(records.body)).not.toContain("Saída do agente")
+    expect((await agent.get(`${base}/retry`)).status).toBe(404)
+    expect((await agent.post(`${base}/retry`).send({ fingerprint: "impressao-digital" })).status).toBe(404)
+    const decision = await agent.post(`${base}/decision`).send({ nodeId: "review", decision: "approved" })
+    expect(decision.status).toBe(404)
+    expect(decision.body.error.code).toBe("ENROLLMENT_NOT_FOUND")
+    const visibility = calls.find(({ sql }) => sql.includes("from workflow_enrollments we") && sql.includes("we.id = $1"))!
+    expect(visibility.params).toEqual([ENROLLMENT, "wf-2", ACCOUNT.organization_id, false, [TEAM_A], []])
+    expect(calls.some(({ sql }) => sql.includes("join agent_runs ar"))).toBe(false)
+    expect(calls.some(({ sql }) => /^\s*(update|insert)\s/i.test(sql) && sql.includes("workflow_enrollment"))).toBe(false)
+  })
+
+  it("execução de pessoa no escopo: o histórico do agente continua saindo", async () => {
+    const { agent } = await groupAAdmin(true)
+    const records = await agent.get(`/api/v1/admin/workflows/wf-2/enrollments/${ENROLLMENT}/agent-records`)
+    expect(records.status).toBe(200)
+    expect(records.body.data).toEqual([{ id: "run-1", outputText: "Saída do agente sobre o operador" }])
   })
 })

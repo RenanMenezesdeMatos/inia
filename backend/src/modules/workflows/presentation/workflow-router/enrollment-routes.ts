@@ -9,13 +9,7 @@ import { NOT_FOUND, canManageWorkflow, fetchScopedRow } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
 import { confirmWorkflowRetry, previewWorkflowRetry } from "../../application/workflow-retry.js"
 import { signalWorkflowWork } from "../../application/workflow-work-signal.js"
-import { DomainError } from "../../../../shared/domain/domain-error.js"
-
-/** A execução precisa ser deste Workflow (o alcance foi conferido pelo Workflow). */
-async function assertEnrollmentOfWorkflow(db: Database, workflowId: string, enrollmentId: string): Promise<void> {
-  const found = await db.query(`select 1 from workflow_enrollments where id = $1 and workflow_id = $2`, [enrollmentId, workflowId])
-  if (!found.rows[0]) throw new DomainError("Execução não encontrada.", "WORKFLOW_ENROLLMENT_NOT_FOUND", 404)
-}
+import { assertEnrollmentVisible, enrollmentSubjectScopeOf, enrollmentSubjectScopeParams, visibleEnrollmentSql } from "../../application/enrollment-visibility.js"
 
 const submitHumanReviewDecisionSchema = z.object({ nodeId: z.string().min(1), decision: humanReviewDecisionSchema })
 
@@ -50,9 +44,15 @@ const ENROLLMENT_SELECT = `
     ), '[]') "events"
   from workflow_enrollments we
   where we.workflow_id = $1
+    -- Só as execuções de pessoas no escopo de quem pergunta (mesma regra da aba Resultados; ver enrollment-visibility.ts).
+    and ${visibleEnrollmentSql("we", { allTeams: "$2", teamIds: "$3", subteamIds: "$4" })}
 `
 
-/** Execuções (matrículas) e a decisão da Revisão humana pela rota admin. Registradas na ordem original (ver workflow-router.ts). */
+/**
+ * Execuções (matrículas) e a decisão da Revisão humana pela rota admin. Registradas na ordem original (ver workflow-router.ts).
+ * Além do Workflow (Abrangência publicada), cada execução só é lida ou acionada se a pessoa dela está no escopo de quem pede
+ * (`enrollment-visibility.ts`, a regra da aba Resultados): a lista filtra, as rotas de uma execução respondem 404.
+ */
 export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): void {
 
   router.get("/:id/enrollments", async (request, response) => {
@@ -62,7 +62,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
 
     const input = listEnrollmentsSchema.parse(request.query)
-    const filter = new SqlFilter([request.params.id])
+    const filter = new SqlFilter([request.params.id, ...enrollmentSubjectScopeParams(enrollmentSubjectScopeOf(scopes))])
       .search(input.search, ['q."currentNodeId"'])
       .in("q.status", input.status)
       .dateRange('q."createdAt"', input.createdFrom, input.createdTo)
@@ -85,7 +85,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
-    await assertEnrollmentOfWorkflow(db, request.params.id!, request.params.enrollmentId!)
+    await assertEnrollmentVisible(db, sessionUser(request).organizationId, request.params.id!, request.params.enrollmentId!, enrollmentSubjectScopeOf(scopes))
     response.json({ data: await previewWorkflowRetry(db, sessionUser(request).organizationId, request.params.enrollmentId!) })
   })
 
@@ -94,7 +94,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
-    await assertEnrollmentOfWorkflow(db, request.params.id!, request.params.enrollmentId!)
+    await assertEnrollmentVisible(db, sessionUser(request).organizationId, request.params.id!, request.params.enrollmentId!, enrollmentSubjectScopeOf(scopes))
     const input = z.object({ fingerprint: z.string().min(8) }).parse(request.body)
     const created = await confirmWorkflowRetry(db, sessionUser(request).organizationId, request.params.enrollmentId!, input, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
     signalWorkflowWork()
@@ -111,7 +111,7 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
-    await assertEnrollmentOfWorkflow(db, request.params.id!, request.params.enrollmentId!)
+    await assertEnrollmentVisible(db, sessionUser(request).organizationId, request.params.id!, request.params.enrollmentId!, enrollmentSubjectScopeOf(scopes))
     const rows = await db.query(
       `select ar.id, ar.agent_id "agentId", a.name "agentName", a.active "agentActive", ar.status, ar.source, ar.created_at "createdAt", ar.completed_at "completedAt",
               ar.output_text "outputText", ar.error_message "errorMessage", av.version_number "agentVersionNumber", ev.node_id "nodeId"
@@ -132,6 +132,8 @@ export function registerWorkflowEnrollmentRoutes(router: Router, db: Database): 
     if (!current) return response.status(404).json(NOT_FOUND)
     const scopes = await getManageableScopes(db, sessionUser(request), "workflows.manage")
     if (!canManageWorkflow(scopes, current)) return response.status(404).json(NOT_FOUND)
+
+    await assertEnrollmentVisible(db, sessionUser(request).organizationId, request.params.id!, request.params.enrollmentId!, enrollmentSubjectScopeOf(scopes), "ENROLLMENT_NOT_FOUND")
 
     // Gravação compartilhada com a Surface Pendências do revisor (submit-human-review-decision.ts).
     await submitHumanReviewDecision(db, { enrollmentId: request.params.enrollmentId!, workflowId: request.params.id!, nodeId: input.nodeId, decision: input.decision, reviewerId: sessionUser(request).personId })

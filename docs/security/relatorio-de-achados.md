@@ -804,4 +804,9 @@ Limites conhecidos das correções (revisão independente de 11/11/2026):
 
 Rejeitado: recarregar um registro cancelado o reativa (comportamento documentado em `docs/dev/central-de-dados-consulta.md`; quem tem `data_hub.manage` já grava qualquer resultado por carga).
 
-Adiadas para a próxima rodada (parada antecipada explícita): leitura e retry de execuções de Workflow conferem só o escopo atual do Workflow; `DELETE` de Agent sem conferir o escopo do rascunho/versões e `/references` devolvendo Agents inativos sem `agents.inactive.manage`.
+Áreas adiadas, auditadas em 11/11/2026 a pedido (onda 6, no tronco `e3fdd414`; crítico final sem lacunas, então a cobertura do escopo fechou):
+
+| # | Gravidade | Achado | Correção |
+|---|---|---|---|
+| R5-C10 | Média | As rotas de execuções do Workflow (lista, registros dos Agents, retry, decisão) conferiam só o escopo ATUAL do Workflow e devolviam toda execução: depois de mover o Workflow para outro Grupo (ou de a pessoa mudar de Grupo), o admin do Grupo novo via e reexecutava execuções sobre operadores fora do seu alcance | regra única por pessoa (`enrollment-visibility.ts`, a mesma de Resultados): fora do alcance some da lista e dá 404; sem pessoa, vale o escopo gravado na versão; "Executar agora" filtra pelo colaborador |
+| R5-C11 | Baixa | Execuções de Agent anteriores à migration 164 (sem versão, sem escopo gravado) ficavam legíveis para todos depois de o Agent ter o escopo restringido | sem escopo gravado, entrada e saída só para quem lê todos os escopos do Agent (mesma regra do histórico) |

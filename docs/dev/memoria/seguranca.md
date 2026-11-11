@@ -206,3 +206,4 @@ Passada parcial sobre o que entrou depois da 4ª rodada (`6b5667ad..4a066be9`) e
 - Toda busca de definição de indicador por código leva a **organização** (parâmetro obrigatório).
 - Portões de privacidade contam exatamente quem entra no valor publicado; leitor só de agregados não recebe células com menos de 5 pessoas em nenhum recorte.
 - A tela de login limpa o cache do cliente e recarrega uma vez quando a página anterior não era de `/auth` (cobre os redirecionamentos suaves do servidor).
+- Execuções de Workflow (lista, registros dos Agents, retry, decisão, "Executar agora") seguem a regra por pessoa de Resultados (`workflows/application/enrollment-visibility.ts`), nunca só o escopo atual do Workflow.
