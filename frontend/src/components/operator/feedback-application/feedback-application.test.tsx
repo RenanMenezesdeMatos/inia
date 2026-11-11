@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest"
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -168,7 +168,7 @@ const presentationMessage = { id: "m1", channel: "chat", role: "assistant", cont
 function workspaceDouble() {
   let handler: ((request: FeedbackOpenRequest) => void) | null = null
   let seq = 0
-  const workspace: FeedbackWorkspace & { focusCalls: number; focusFeedbackTrigger: ReturnType<typeof vi.fn>; revealChat: ReturnType<typeof vi.fn> } = {
+  const workspace: FeedbackWorkspace & { focusCalls: number; focusFeedbackTrigger: Mock<() => boolean>; revealChat: Mock<() => void> } = {
     voice: createIniaVoiceEngine(),
     layout: "desktop",
     activeSourceKey: null,
