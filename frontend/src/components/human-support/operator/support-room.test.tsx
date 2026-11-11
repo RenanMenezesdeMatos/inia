@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { HumanSupportStateValueProvider } from "@/queries/human-support/use-human-support-state"
 import type { OperatorRequestView, OperatorView } from "@/schemas/human-support/state.schema"
+import { formatClockTime } from "@/lib/format/date"
 import { supportPillText } from "./support-entry"
 import { SupportRoom } from "./support-room"
 
@@ -79,8 +80,8 @@ describe("sala de apoio do operador", () => {
     expect(supportPillText(view({ openRequest: live }))).toBe("Apoio · com Ana")
     expect(supportPillText(view({ openRequest: live }), 1)).toBe("Apoio · com Ana · 1 mensagem nova")
     expect(supportPillText(view({ openRequest: live }), 3)).toBe("Apoio · com Ana · 3 mensagens novas")
-    // Na fila não há mensagem do Anjo: o selo fica no prazo.
-    expect(supportPillText(view({ openRequest: waiting }), 2)).toBe("Apoio · Na fila até 14:20")
+    // Na fila não há mensagem do Anjo: o selo fica no prazo, no relógio de quem vê (o CI roda em UTC, a máquina em São Paulo).
+    expect(supportPillText(view({ openRequest: waiting }), 2)).toBe(`Apoio · Na fila até ${formatClockTime(waiting.queueExpiresAt!)}`)
   })
 
   it("aberta pelo selo \"avalie\" sem o pedido em memória (página recarregada): mostra a avaliação, não a sala vazia", () => {
