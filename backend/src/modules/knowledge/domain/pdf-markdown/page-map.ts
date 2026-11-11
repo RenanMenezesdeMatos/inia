@@ -74,7 +74,10 @@ export function withChunkPages<T extends Pick<KnowledgeChunk, "text">>(chunks: r
     const offset = image.offset
     const found = spans.findIndex((span) => span !== null && offset <= span.end)
     const holder = found >= 0 ? found : lastSpan
-    imagesOf.set(holder, [...(imagesOf.get(holder) ?? []), { id: image.id, page: image.page, width: image.width, height: image.height, at: Math.max(0, offset - spans[holder]!.start) }])
+    const entry = { id: image.id, page: image.page, width: image.width, height: image.height, at: Math.max(0, offset - spans[holder]!.start) }
+    const list = imagesOf.get(holder)
+    if (list) list.push(entry)
+    else imagesOf.set(holder, [entry])
   }
   return located.map((chunk, index) => (imagesOf.has(index) ? { ...chunk, images: imagesOf.get(index)! } : chunk))
 }

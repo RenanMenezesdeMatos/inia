@@ -5,6 +5,22 @@ import type { PdfPageLayout, PdfRun, PdfRunHint } from "./layout.js"
  * eles (células alinhadas ou colunas). Duas colunas de texto corrido só são lidas coluna por coluna quando os dois lados parecem
  * prosa; em dúvida, fica a ordem de cima para baixo, sem separar nada.
  */
+/**
+ * Mínimo/máximo por laço, nunca `Math.min(...lista)`: espalhar a lista passa cada item como argumento e estoura a pilha com as
+ * centenas de milhares de execuções que um PDF montado pode trazer (auditoria run-3 C03). Lista vazia: ±Infinity, como o Math.
+ */
+export function minOf<T>(items: readonly T[], value: (item: T) => number): number {
+  let result = Number.POSITIVE_INFINITY
+  for (const item of items) result = Math.min(result, value(item))
+  return result
+}
+
+export function maxOf<T>(items: readonly T[], value: (item: T) => number): number {
+  let result = Number.NEGATIVE_INFINITY
+  for (const item of items) result = Math.max(result, value(item))
+  return result
+}
+
 export type Fragment = { text: string; x0: number; x1: number; y: number; fontSize: number; bold: boolean; mono: boolean; hint: PdfRunHint | null }
 
 export type Line = {
@@ -117,8 +133,8 @@ export function buildRows(runs: readonly PdfRun[]): Fragment[][] {
 /** Uma coluna de prosa: a maioria das linhas ocupa boa parte da largura disponível. Listas e células curtas não passam nesta conta. */
 function looksLikeProse(fragments: readonly Fragment[]): boolean {
   if (fragments.length < 4) return false
-  const left = Math.min(...fragments.map((fragment) => fragment.x0))
-  const right = Math.max(...fragments.map((fragment) => fragment.x1))
+  const left = minOf(fragments, (fragment) => fragment.x0)
+  const right = maxOf(fragments, (fragment) => fragment.x1)
   const width = right - left
   if (width <= 0) return false
   return fragments.filter((fragment) => fragment.x1 - fragment.x0 >= width * 0.7).length / fragments.length >= 0.6
@@ -195,7 +211,7 @@ function toLine(page: number, { row, columnStart }: Ordered): Line {
     y: first.y,
     x0: first.x0,
     x1: last.x1,
-    fontSize: Math.max(...row.map((fragment) => fragment.fontSize)),
+    fontSize: maxOf(row, (fragment) => fragment.fontSize),
     bold: row.every((fragment) => fragment.bold),
     mono: row.every((fragment) => fragment.mono),
     blockRight: last.x1,
@@ -209,7 +225,7 @@ function toLine(page: number, { row, columnStart }: Ordered): Line {
 function assignBlockRight(lines: Line[]): Line[] {
   let start = 0
   const close = (end: number) => {
-    const right = Math.max(...lines.slice(start, end).map((line) => line.x1))
+    const right = maxOf(lines.slice(start, end), (line) => line.x1)
     for (let index = start; index < end; index += 1) lines[index]!.blockRight = right
   }
   lines.forEach((line, index) => {

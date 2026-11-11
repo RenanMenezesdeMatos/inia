@@ -50,6 +50,7 @@ const context = {
 const realRow = (subject: string, value: number) => ({ subject_id: subject, sample_count: "1", days_with_data: "1", sum_value: String(value), avg_value: String(value), min_value: String(value), max_value: String(value) })
 
 beforeEach(() => {
+  indicator.kind = "SUM"
   state.rows = [realRow("ME", 120)]
   state.facts = new Map(PEERS.map((id) => [id, { eligibleDays: 1, unjustifiedAbsenceDays: 0 }]))
 })
@@ -73,5 +74,13 @@ describe("compare_population — o mínimo de privacidade conta só quem entra n
     state.facts.set("P5", { eligibleDays: 1, unjustifiedAbsenceDays: 1 })
     const result = await comparePopulation(context, { indicatorCode: "PRODUCAO", reference: "GROUP" })
     expect(result.data).toMatchObject({ referenceValue: 400, targetValue: 120 })
+  })
+
+  it.each(["LATEST"] as const)("indicador %s (valor de UMA medição) com 4 colegas medidos → NOT_SUPPORTED, nunca o valor de um colega (run-3 C02)", async (kind) => {
+    indicator.kind = kind
+    state.rows.push(realRow("P1", 100), realRow("P2", 160), realRow("P3", 90), realRow("P4", 100))
+    const result = await comparePopulation(context, { indicatorCode: "PRODUCAO", reference: "GROUP" })
+    expect(result.data).toMatchObject({ status: "NOT_SUPPORTED" })
+    expect(result.data).not.toHaveProperty("referenceValue")
   })
 })

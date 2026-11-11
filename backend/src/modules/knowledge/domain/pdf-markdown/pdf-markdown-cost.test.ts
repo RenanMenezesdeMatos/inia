@@ -32,6 +32,22 @@ describe("PDF → Markdown — custo limitado na thread da API", () => {
     expect(performance.now() - markdownStarted).toBeLessThan(1_000)
   })
 
+  it("120 mil execuções de texto dentro de uma grade 2×2 saem em menos de 1 s (run-3 C03: o acúmulo por célula era quadrático)", () => {
+    const rules = crossingGrid(3, 0, 100)
+    const runs = Array.from({ length: 120_000 }, (_, index) => run("a", 5 + (index % 2) * 100 + (index % 50), 5 + (Math.floor(index / 2) % 2) * 100 + (index % 40)))
+    const started = performance.now()
+    const { tables } = ruledTables(rules, runs)
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(tables).toHaveLength(1)
+  })
+
+  it("tabela marcada (PDF com tags) com 120 mil execuções numa célula sai em menos de 1 s (run-3 C03)", () => {
+    const tagged = Array.from({ length: 120_000 }, (_, index): PdfRun => ({ ...run("a", 10 + (index % 2) * 200, 20 + (Math.floor(index / 2) % 2) * 20), hint: { kind: "TABLE_CELL", tableId: "t0", row: Math.floor(index / 2) % 2, col: index % 2, header: false } }))
+    const started = performance.now()
+    pdfLayoutToMarkdown([page({ tagged: true, runs: tagged })])
+    expect(performance.now() - started).toBeLessThan(1_000)
+  })
+
   it("duas grades separadas continuam duas tabelas (a união dos traços não junta o que não se toca)", () => {
     const rules = [...crossingGrid(3, 50, 40), ...crossingGrid(3, 300, 40)]
     const runs = [run("A", 55, 75), run("B", 95, 75), run("C", 55, 115), run("D", 95, 115), run("E", 305, 325), run("F", 345, 325), run("G", 305, 365), run("H", 345, 365)]

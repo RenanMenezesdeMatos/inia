@@ -41,6 +41,20 @@ describe("envelope de erro", () => {
     expect(recorded).toEqual([expect.objectContaining({ reference: "tela-ref-0001", code: "FORBIDDEN", source: "API", httpStatus: 403, route: "GET /api/v1/itens/:id", authenticated: false })])
   })
 
+  it("corpo de erro compartilhado (constante de módulo) nunca é alterado: cada resposta leva a SUA referência (run-3 C04)", async () => {
+    const SHARED_NOT_FOUND = { error: { code: "NOT_FOUND", message: "Caso não encontrado." } } as const
+    registerOccurrenceRecorder({ record: () => undefined, stats: () => ({ recorded: 0, dropped: 0, failed: 0 }) })
+    const app = express()
+    app.use(requestIdMiddleware())
+    app.use(errorEnvelope())
+    app.get("/api/v1/casos/:id", (_request, response) => response.status(404).json(SHARED_NOT_FOUND))
+    const first = await request(app).get("/api/v1/casos/x").set("x-request-id", "ATACANTE-REF-0001")
+    const second = await request(app).get("/api/v1/casos/y").set("x-request-id", "vitima-ref-0002")
+    expect(first.body.error.reference).toBe("ATACANTE-REF-0001")
+    expect(second.body.error.reference).toBe("vitima-ref-0002")
+    expect(SHARED_NOT_FOUND.error).toEqual({ code: "NOT_FOUND", message: "Caso não encontrado." })
+  })
+
   it("resposta de sucesso não é tocada nem registrada", async () => {
     const recorded: OccurrenceInput[] = []
     const response = await request(appWith(recorded)).get("/ok")

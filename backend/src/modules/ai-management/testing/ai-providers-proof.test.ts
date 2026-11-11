@@ -121,11 +121,11 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     const ok = await api.post(`/api/v1/admin/ai/connections/${connectionId}/test`)
     expect(ok.body.data).toMatchObject({ status: "CONNECTED", latencyMs: expect.any(Number) })
     const wrong = "sk-qa-WRONG-KEY-000000000000"
-    await api.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: wrong })
+    await api.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: wrong, expectedBaseUrl: fake.url })
     const denied = await api.post(`/api/v1/admin/ai/connections/${connectionId}/test`)
     expect(denied.body.data.status).toBe("AUTH_ERROR")
     expect(JSON.stringify(denied.body)).not.toContain(wrong)
-    const replaced = await api.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: SECRET })
+    const replaced = await api.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: SECRET, expectedBaseUrl: fake.url })
     expect(JSON.stringify(replaced.body)).not.toContain(SECRET)
     const revoked = await pool.query(`select 1 from ai_connection_secrets where connection_id = $1 and revoked_at is not null`, [connectionId])
     expect(revoked.rowCount).toBe(2)
@@ -304,7 +304,7 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     expect((await api.get(`/api/v1/admin/ai/connections/${idB}`)).status).toBe(404)
     expect((await api.patch(`/api/v1/admin/ai/connections/${idB}`).send({ enabled: false })).status).toBe(404)
     expect((await api.post(`/api/v1/admin/ai/connections/${idB}/test`)).status).toBe(404)
-    expect((await api.put(`/api/v1/admin/ai/connections/${idB}/secret`).send({ apiKey: "sk-qa-x-12345678" })).status).toBe(404)
+    expect((await api.put(`/api/v1/admin/ai/connections/${idB}/secret`).send({ apiKey: "sk-qa-x-12345678", expectedBaseUrl: null })).status).toBe(404)
     expect((await api.get(`/api/v1/admin/ai/models/${modelB.rows[0]!.id}`)).status).toBe(404)
     expect((await api.put("/api/v1/admin/ai/routing/CHAT/draft").send({ mode: "PINNED", modelIds: [modelB.rows[0]!.id] })).status).toBe(404)
     const usage = await api.get("/api/v1/admin/ai/usage?period=TODAY")
@@ -323,7 +323,7 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     expect((await scoped.get("/api/v1/admin/ai/me")).body.data.permissions).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ", "AI_USAGE_RANKING_READ"])
     expect((await scoped.get("/api/v1/admin/ai/connections")).status).toBe(200)
     expect((await scoped.post("/api/v1/admin/ai/connections").send({ providerKey: "OPENAI", name: `${PREFIX}x`, apiKey: "sk-qa-1234567890" })).status).toBe(403)
-    expect((await scoped.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: "sk-qa-1234567890" })).status).toBe(403)
+    expect((await scoped.put(`/api/v1/admin/ai/connections/${connectionId}/secret`).send({ apiKey: "sk-qa-1234567890", expectedBaseUrl: fake.url })).status).toBe(403)
     expect((await scoped.put("/api/v1/admin/ai/routing/CHAT/draft").send({ mode: "PINNED", modelIds: [] })).status).toBe(403)
     expect((await scoped.post("/api/v1/admin/ai/budgets").send({ scope: "GLOBAL", currency: "USD", monthlyAmount: "1" })).status).toBe(403)
   })
@@ -359,7 +359,7 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     let mixed = 0
     for (let attempt = 0; attempt < 20; attempt += 1) {
       expect((await api.patch(`/api/v1/admin/ai/connections/${id}`).send({ baseUrl: fake.url })).status).toBe(200)
-      expect((await api.put(`/api/v1/admin/ai/connections/${id}/secret`).send({ apiKey: SECRET })).status).toBe(200)
+      expect((await api.put(`/api/v1/admin/ai/connections/${id}/secret`).send({ apiKey: SECRET, expectedBaseUrl: fake.url })).status).toBe(200)
       // Lê sem parar enquanto a troca está em andamento (duas leitoras, como requisições simultâneas).
       let done = false
       const move = api.patch(`/api/v1/admin/ai/connections/${id}`).send({ baseUrl: NEW_HOST }).then((response) => ((done = true), response))

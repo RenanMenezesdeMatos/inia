@@ -65,8 +65,14 @@ export const connectionPatchSchema = z.object({
   enabled: z.boolean().optional(),
 })
 
-export const secretSchema = z.object({ apiKey: z.string().trim().min(4).max(4000) })
-export const headersSchema = z.object({ customHeaders: z.record(z.string(), z.string().max(2000)) })
+/**
+ * `expectedBaseUrl` = o endpoint que a tela MOSTRAVA a quem digitou a credencial (obrigatório; `null` = endpoint padrão do provider).
+ * A gravação compara com a linha travada: se outra pessoa trocou o endpoint depois que a tela foi aberta, a credencial não fica
+ * ativa no endpoint novo (409). Antes o servidor usava o endpoint que ele mesmo lia na hora — auditoria run-3 C01.
+ */
+const expectedBaseUrl = z.string().trim().max(2000).nullable()
+export const secretSchema = z.object({ apiKey: z.string().trim().min(4).max(4000), expectedBaseUrl })
+export const headersSchema = z.object({ customHeaders: z.record(z.string(), z.string().max(2000)), expectedBaseUrl })
 
 type ConnectionRow = {
   id: string
@@ -282,7 +288,7 @@ export async function replaceConnectionSecret(context: AiAdminContext, actor: Ac
   const current = await getConnection(context, actor.organizationId, id)
   const provider = findAiProvider(current.providerKey)
   if (provider?.credential === "NONE") throw new DomainError(`${provider.name} não usa credencial.`, "AI_CONNECTION_CREDENTIAL_NOT_ALLOWED", 422)
-  await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey), current.effectiveBaseUrl)
+  await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey), input.expectedBaseUrl)
   await auditAi(context.db, actor, current.credential.configured ? "AI_CONNECTION_SECRET_REPLACED" : "AI_CONNECTION_SECRET_SET", "ai_connection", id, { purpose: "API_KEY" })
   context.runtime.invalidate(actor.organizationId)
   return getConnection(context, actor.organizationId, id)
@@ -304,7 +310,7 @@ export async function replaceConnectionHeaders(context: AiAdminContext, actor: A
   const provider = findAiProvider(current.providerKey)
   if (!provider) throw new DomainError("Provider desconhecido.", "AI_PROVIDER_UNKNOWN", 422)
   const headers = validateHeaders(provider, input.customHeaders)
-  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","), current.effectiveBaseUrl)
+  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","), input.expectedBaseUrl)
   else await context.db.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and purpose = $2 and revoked_at is null`, [id, "CUSTOM_HEADERS", context.now()])
   await auditAi(context.db, actor, "AI_CONNECTION_HEADERS_REPLACED", "ai_connection", id, { headerNames: headers ? Object.keys(headers) : [] })
   context.runtime.invalidate(actor.organizationId)

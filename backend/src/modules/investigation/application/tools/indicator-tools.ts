@@ -392,6 +392,9 @@ function contribution(indicator: IndicatorInfo): string {
   return "contribution não se aplica a esta semântica"
 }
 
+/** Agregações que devolvem o valor de UMA linha — nunca servem de referência de população. */
+const SINGLE_ROW_AGGREGATIONS: ReadonlySet<string> = new Set(["LATEST", "MINIMUM", "MAXIMUM"])
+
 export async function comparePopulation(context: ToolContext, args: { indicatorCode: string; reference: "SUBGROUP" | "GROUP"; period?: { from: string; to: string } }): Promise<ToolResult> {
   const indicator = await loadIndicator(context, args.indicatorCode)
   const period = resolvePeriod(context, args.period)
@@ -402,6 +405,11 @@ export async function comparePopulation(context: ToolContext, args: { indicatorC
     return { data: { reference: args.reference, status: "POPULATION_TOO_SMALL", populationSize: population.ids.length, minimum: MINIMUM_COMPARISON_POPULATION }, quality: notSupported(`população de referência com ${population.ids.length} pessoa(s) — mínimo ${MINIMUM_COMPARISON_POPULATION} (privacidade)`), provenance: { ...provenanceBase, population: population.label, dataSource: "STRUCTURE" } }
   }
   if (!indicator.dailySupported) return { data: { reference: args.reference, status: "NOT_SUPPORTED" }, quality: notSupported("sem medição operacional diária"), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
+  // Agregação que ESCOLHE uma linha (último valor, mínimo, máximo) não agrega: a "referência" pooled seria a medição de um único
+  // colega, por maior que seja a população (auditoria run-3 C02). Nesses indicadores não há referência de grupo a devolver.
+  if (SINGLE_ROW_AGGREGATIONS.has(defaultMeasurementAggregation(indicator.kind))) {
+    return { data: { reference: args.reference, status: "NOT_SUPPORTED" }, quality: notSupported("o indicador usa um valor de uma única medição (ex.: último valor) — a referência seria o valor de um colega, não um agregado (privacidade)"), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
+  }
   // O mínimo de privacidade vale para quem TEM medição na janela, não para a lista de ativos: numa janela em que só um colega
   // trabalhou, a "referência" seria o valor dele (achado C13 da 4ª auditoria). Zero lógico de falta injustificada não conta:
   // a janela por pessoa inclui, na política ZERO_CONTRIBUTION, colegas cujo único "dado" é o zero lógico, mas a referência

@@ -4,8 +4,10 @@
  *   A) a chave é cadastrada por outra pessoa DEPOIS de a troca de endpoint ler a conexão e ANTES da transação dela: a troca revoga a
  *      chave assim mesmo (a decisão é tomada sobre a linha travada, não sobre a leitura de antes);
  *   B) o endpoint é trocado DEPOIS de o cadastro da chave ler a conexão e ANTES da transação dele: o cadastro é recusado (409);
- * (Disparadas juntas sem ordem forçada, a chave pode terminar ativa no endpoint novo quando o cadastro LEU a conexão já com ele: é a
- * chave cadastrada para o endpoint que estava valendo, e não há o que recusar. Por isso as ordens que importam são forçadas.)
+ *   C) tela aberta ANTES da troca de endpoint (run-3 C01): o cadastro leva o endpoint que a pessoa via e é recusado (409), mesmo
+ *      com a troca já confirmada antes de a requisição chegar;
+ *   D) tela atualizada (endpoint novo exibido): o cadastro vale.
+ * A referência é sempre o endpoint que a TELA mostrava (`expectedBaseUrl`), nunca o que o servidor lê na hora.
  * Chama o serviço direto (o mesmo das rotas), com o banco real; nenhum provider é chamado. Organização própria, apagada no fim.
  *   INIA_DB_PROOF=1 npx vitest run ai-connection-endpoint-race-proof
  */
@@ -73,7 +75,7 @@ describe.skipIf(!ENABLED)("Conexão de IA — chave e troca de endpoint serializ
 
   it("A) chave cadastrada entre a leitura e a transação da troca de endpoint: a troca revoga a chave", async () => {
     const id = await fresh()
-    beforeNextTransaction = () => replaceConnectionSecret(raw, ACTOR, id, { apiKey: KEY })
+    beforeNextTransaction = () => replaceConnectionSecret(raw, ACTOR, id, { apiKey: KEY, expectedBaseUrl: OLD_URL })
     await updateConnection(ctx, ACTOR, id, { baseUrl: NEW_URL })
     expect(await state(id)).toEqual({ baseUrl: NEW_URL, activeKey: false })
     const audit = await pool.query(`select 1 from audit_logs where entity_id = $1 and action = 'AI_CONNECTION_SECRET_REVOKED'`, [id])
@@ -83,7 +85,21 @@ describe.skipIf(!ENABLED)("Conexão de IA — chave e troca de endpoint serializ
   it("B) endpoint trocado entre a leitura e a transação do cadastro da chave: 409, a chave não fica ativa no endpoint novo", async () => {
     const id = await fresh()
     beforeNextTransaction = () => updateConnection(raw, ACTOR, id, { baseUrl: NEW_URL })
-    expect(await codeOf(replaceConnectionSecret(ctx, ACTOR, id, { apiKey: KEY }))).toBe("AI_CONNECTION_ENDPOINT_CHANGED")
+    expect(await codeOf(replaceConnectionSecret(ctx, ACTOR, id, { apiKey: KEY, expectedBaseUrl: OLD_URL }))).toBe("AI_CONNECTION_ENDPOINT_CHANGED")
     expect(await state(id)).toEqual({ baseUrl: NEW_URL, activeKey: false })
+  })
+
+  it("C) tela aberta antes da troca de endpoint já confirmada: 409, a chave não fica ativa no endpoint novo", async () => {
+    const id = await fresh()
+    await updateConnection(raw, ACTOR, id, { baseUrl: NEW_URL })
+    expect(await codeOf(replaceConnectionSecret(raw, ACTOR, id, { apiKey: KEY, expectedBaseUrl: OLD_URL }))).toBe("AI_CONNECTION_ENDPOINT_CHANGED")
+    expect(await state(id)).toEqual({ baseUrl: NEW_URL, activeKey: false })
+  })
+
+  it("D) tela já mostrando o endpoint novo: a chave é cadastrada", async () => {
+    const id = await fresh()
+    await updateConnection(raw, ACTOR, id, { baseUrl: NEW_URL })
+    expect(await codeOf(replaceConnectionSecret(raw, ACTOR, id, { apiKey: KEY, expectedBaseUrl: NEW_URL }))).toBeNull()
+    expect(await state(id)).toEqual({ baseUrl: NEW_URL, activeKey: true })
   })
 })

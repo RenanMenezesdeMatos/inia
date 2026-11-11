@@ -101,6 +101,12 @@ describe("retorno seguro depois do login", () => {
     ["/auth/login?voltar=/x", null],
     ["/", null],
     ["javascript:alert(1)", null],
+    // Auditoria run-3 C06: a normalização de `.`/`..` não pode virar `//outro-site`.
+    ["/..//evil.example", null],
+    ["/.//evil.example", null],
+    ["/%2e%2e//evil.example", null],
+    ["/a/..//evil.example/x?y=1", null],
+    ["/a/../supervisor", "/supervisor"],
   ])("%s → %s", (input, expected) => {
     expect(safeReturnPath(input)).toBe(expected)
   })

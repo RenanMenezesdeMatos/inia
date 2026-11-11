@@ -27,25 +27,24 @@ export function routeOf(request: Request): string {
  *   logger) — 4xx em `info`/`warn`, 5xx em `error` com o resumo sanitizado da falha;
  * - registra a ocorrência no banco (assíncrono, com teto; ver occurrence-recorder.ts), exceto o 404 de rota inexistente
  *   (varredura) — que fica só no log.
- * Status e corpo continuam os mesmos: só o campo `reference` é acrescentado.
+ * Status e corpo continuam os mesmos: só o campo `reference` é acrescentado — numa CÓPIA rasa do corpo, nunca no objeto da rota
+ * (várias rotas reaproveitam constantes de módulo como `NOT_FOUND`; gravar nelas prenderia a referência de uma requisição no 404 de
+ * todas as seguintes, de qualquer organização — auditoria run-3 C04).
  */
 export function errorEnvelope(): RequestHandler {
   return (request, response, next) => {
     const originalJson = response.json.bind(response)
-    response.json = ((body: unknown) => {
-      if (response.statusCode >= 400) decorate(request, response, body)
-      return originalJson(body)
-    }) as Response["json"]
+    response.json = ((body: unknown) => originalJson(response.statusCode >= 400 ? decorate(request, response, body) : body)) as Response["json"]
     response.setHeader("x-inia-release", serviceRelease())
     next()
   }
 }
 
-function decorate(request: Request, response: Response, body: unknown): void {
+function decorate(request: Request, response: Response, body: unknown): unknown {
   const reference = currentRequestId()
   const errorObject = body && typeof body === "object" && "error" in body && typeof (body as { error: unknown }).error === "object" && (body as { error: unknown }).error !== null ? ((body as { error: Record<string, unknown> }).error) : null
   const code = typeof errorObject?.code === "string" ? errorObject.code : `HTTP_${response.statusCode}`
-  if (errorObject && reference && errorObject.reference === undefined) errorObject.reference = reference
+  const output = errorObject && reference && errorObject.reference === undefined ? { ...(body as Record<string, unknown>), error: { ...errorObject, reference } } : body
   const status = response.statusCode
   const route = routeOf(request)
   const severity = severityFor(code, status)
@@ -55,9 +54,9 @@ function decorate(request: Request, response: Response, body: unknown): void {
   if (status >= 500) log.error(line, "erro na API")
   else if (severity === "warning") log.warn(line, "erro do cliente na API")
   else log.info(line, "erro do cliente na API")
-  if (!reference) return
+  if (!reference) return output
   const unmatchedRoute = status === 404 && code === "NOT_FOUND" && !request.route
-  if (unmatchedRoute) return
+  if (unmatchedRoute) return output
   recordOccurrence({
     reference,
     code,
@@ -70,4 +69,5 @@ function decorate(request: Request, response: Response, body: unknown): void {
     authenticated: Boolean(user),
     details: summary ? { failure: summary } : {},
   })
+  return output
 }

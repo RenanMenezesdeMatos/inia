@@ -688,7 +688,7 @@ function CredentialSection({ connection, provider, canWriteSecrets }: { connecti
                 disabled={newKey.trim().length < 4 || replace.isPending}
                 onClick={() =>
                   replace.mutate(
-                    { id: connection.id, apiKey: newKey.trim() },
+                    { id: connection.id, apiKey: newKey.trim(), expectedBaseUrl: connection.effectiveBaseUrl },
                     {
                       onSuccess: () => {
                         setNewKey("")
@@ -791,7 +791,7 @@ function HeadersSection({ connection, canWriteSecrets }: { connection: AiConnect
             <HeadersEditor rows={rows} onChange={setRows} idPrefix="ai-edit-header" />
             <p className="text-xs text-muted-foreground">Salvar substitui TODOS os cabeçalhos (lista vazia remove).</p>
             <div className="flex gap-2">
-              <Button size="sm" disabled={replace.isPending} onClick={() => replace.mutate({ id: connection.id, customHeaders: headersRecord(rows) }, { onSuccess: () => setEditing(false) })}>
+              <Button size="sm" disabled={replace.isPending} onClick={() => replace.mutate({ id: connection.id, customHeaders: headersRecord(rows), expectedBaseUrl: connection.effectiveBaseUrl }, { onSuccess: () => setEditing(false) })}>
                 Salvar cabeçalhos
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(false)}>

@@ -74,8 +74,26 @@ export async function recentOccurrencesByCode(db: Queryable, code: string, organ
   return { total24h: Number(total.rows[0]?.total ?? 0), recent: recent.rows.map(toRecord) }
 }
 
-/** Retenção: apaga em lotes as mais antigas que `days`. */
-export async function purgeOldOccurrences(db: Queryable, days: number): Promise<number> {
-  const result = await db.query(`delete from error_occurrences where id in (select id from error_occurrences where occurred_at < now() - make_interval(days => $1) limit 5000)`, [days])
-  return result.rowCount ?? 0
+const PURGE_BATCH = 5000
+
+/**
+ * Retenção: apaga em lotes as mais antigas que `days` ATÉ ESGOTAR o vencido (ou o orçamento de lotes/tempo da rodada). Um lote só
+ * por hora (5.000) ficava abaixo do que se pode gravar (teto do recorder por processo + `client-errors` por IP), e o vencido
+ * crescia sem fim — auditoria run-3 C05. Com o orçamento padrão, uma rodada apaga até 1 milhão de linhas.
+ */
+export async function purgeOldOccurrences(db: Queryable, days: number, options: { maxBatches?: number; budgetMs?: number; batchSize?: number } = {}): Promise<number> {
+  const batchSize = options.batchSize ?? PURGE_BATCH
+  const maxBatches = options.maxBatches ?? 200
+  const deadline = Date.now() + (options.budgetMs ?? 60_000)
+  let total = 0
+  for (let batch = 0; batch < maxBatches && Date.now() < deadline; batch += 1) {
+    const result = await db.query(
+      `delete from error_occurrences where id in (select id from error_occurrences where occurred_at < now() - make_interval(days => $1) limit $2)`,
+      [days, batchSize],
+    )
+    const deleted = result.rowCount ?? 0
+    total += deleted
+    if (deleted < batchSize) break
+  }
+  return total
 }

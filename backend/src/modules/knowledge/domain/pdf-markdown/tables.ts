@@ -1,5 +1,5 @@
 import type { PdfRule, PdfRun } from "./layout.js"
-import { normalizeSpaces, type Line } from "./lines.js"
+import { minOf, normalizeSpaces, type Line } from "./lines.js"
 
 /**
  * TABELAS. Só vira tabela o que o arquivo sustenta: as tags do PDF, uma grade desenhada ou colunas alinhadas em várias linhas seguidas.
@@ -50,13 +50,16 @@ export function taggedTables(runs: readonly PdfRun[]): { tables: TableBlock[]; u
     for (const run of group) {
       if (run.hint?.kind !== "TABLE_CELL") continue
       const row = byRow.get(run.hint.row) ?? new Map<number, PdfRun[]>()
-      row.set(run.hint.col, [...(row.get(run.hint.col) ?? []), run])
+      // Acumula no próprio array (linear): espalhar a cada execução era quadrático numa célula cheia (auditoria run-3 C03).
+      const bucket = row.get(run.hint.col)
+      if (bucket) bucket.push(run)
+      else row.set(run.hint.col, [run])
       byRow.set(run.hint.row, row)
       if (run.hint.header) headerRows.add(run.hint.row)
       else bodyRows.add(run.hint.row)
     }
     const orderedRows = [...byRow.keys()].sort((left, right) => left - right)
-    const startOf = (runs: readonly PdfRun[]) => Math.min(...runs.map((run) => run.x))
+    const startOf = (runs: readonly PdfRun[]) => minOf(runs, (run) => run.x)
     // A posição de cada coluna vem da linha mais completa. Célula mesclada não está nas tags como mesclada, e numa linha com menos células a ordem não diz a
     // coluna: quem diz é onde o texto começa. Sem isso, o valor iria parar sob o cabeçalho errado.
     const fullest = [...byRow.values()].reduce((best, row) => (row.size > best.size ? row : best), new Map<number, PdfRun[]>())
@@ -72,7 +75,7 @@ export function taggedTables(runs: readonly PdfRun[]): { tables: TableBlock[]; u
     if (!isRealGrid(cleaned)) continue
     for (const run of group) used.add(run)
     const firstIsHeader = orderedRows[0] !== undefined && headerRows.has(orderedRows[0]) && !bodyRows.has(orderedRows[0])
-    tables.push({ y: Math.min(...group.map((run) => run.y)), x: Math.min(...group.map((run) => run.x)), rows: firstIsHeader ? cleaned.slice(1) : cleaned, header: firstIsHeader ? cleaned[0]! : null })
+    tables.push({ y: minOf(group, (run) => run.y), x: minOf(group, (run) => run.x), rows: firstIsHeader ? cleaned.slice(1) : cleaned, header: firstIsHeader ? cleaned[0]! : null })
   }
   return { tables, used }
 }
@@ -150,7 +153,9 @@ export function ruledTables(rules: readonly PdfRule[], runs: readonly PdfRun[]):
       const column = xs.findIndex((x, index) => index + 1 < xs.length && run.x >= x - 1 && run.x < xs[index + 1]! - 0.5)
       if (row < 0 || column < 0) continue
       const key = `${row}:${column}`
-      cells.set(key, [...(cells.get(key) ?? []), run])
+      const cell = cells.get(key)
+      if (cell) cell.push(run)
+      else cells.set(key, [run])
     }
     const raw = Array.from({ length: ys.length - 1 }, (_, row) => Array.from({ length: xs.length - 1 }, (_, column) => cellText(cells.get(`${row}:${column}`) ?? [])))
     const rows = trimEmptyColumns(raw).filter((row) => row.some(Boolean))

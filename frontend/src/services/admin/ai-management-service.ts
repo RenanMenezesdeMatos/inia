@@ -92,16 +92,17 @@ export async function deleteAiConnection(id: string): Promise<void> {
 }
 
 /** Escrita-apenas: o valor vai, nunca volta (a resposta traz só a máscara). */
-export async function replaceAiConnectionSecret({ id, apiKey }: { id: string; apiKey: string }): Promise<AiConnection> {
-  return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}/secret`, "PUT", { apiKey }))
+/** `expectedBaseUrl` = o endpoint exibido na tela de quem digitou: se mudou no servidor, a API recusa (409) em vez de ativar a chave lá. */
+export async function replaceAiConnectionSecret({ id, apiKey, expectedBaseUrl }: { id: string; apiKey: string; expectedBaseUrl: string | null }): Promise<AiConnection> {
+  return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}/secret`, "PUT", { apiKey, expectedBaseUrl }))
 }
 
 export async function removeAiConnectionSecret(id: string): Promise<AiConnection> {
   return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}/secret`, "DELETE"))
 }
 
-export async function replaceAiConnectionHeaders({ id, customHeaders }: { id: string; customHeaders: Record<string, string> }): Promise<AiConnection> {
-  return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}/headers`, "PUT", { customHeaders }))
+export async function replaceAiConnectionHeaders({ id, customHeaders, expectedBaseUrl }: { id: string; customHeaders: Record<string, string>; expectedBaseUrl: string | null }): Promise<AiConnection> {
+  return aiConnectionSchema.parse(await adminSend(`${BASE}/connections/${id}/headers`, "PUT", { customHeaders, expectedBaseUrl }))
 }
 
 export async function testAiConnection(id: string): Promise<ConnectionTestResult> {

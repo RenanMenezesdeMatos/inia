@@ -14,6 +14,8 @@ export function safeReturnPath(value: unknown): string | null {
     return null
   }
   if (parsed.origin !== "http://inia.local") return null
+  // A normalização do URL remove `.`/`..` e pode transformar `/..//site` em `//site`: confere de novo o caminho JÁ normalizado.
+  if (parsed.pathname.startsWith("//") || parsed.pathname.includes("\\")) return null
   if (parsed.pathname === "/" || parsed.pathname.startsWith("/auth")) return null
   return `${parsed.pathname}${parsed.search}`
 }
