@@ -17,10 +17,18 @@ import {
   type ReadConfirmationFailure,
 } from "../domain/read-confirmation.js"
 import { applicationSourceLockKey, completeApplication, findApplicationViewBySource, type ApplicationScope, type FeedbackApplicationView } from "./feedback-application-service.js"
+import { readAgreementInputSchema, sameAgreement, type ReadAgreementInput, type ReadAgreementView } from "../../feedback-rating/domain/feedback-rating.js"
+import { findReadAgreement, recordReadAgreement } from "../../feedback-rating/application/read-agreement-service.js"
+import { loadFeedbackEvaluation } from "../../feedback-rating/application/feedback-evaluation-reader.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
  * CONFIRMAÇÃO DE CIÊNCIA COM LOGIN E SENHA (ver domain/read-confirmation.ts) — `/api/v1/feedback-read-confirmations`.
+ *
+ * Com CONCORDÂNCIA (migration 186): o pedido traz a escolha obrigatória do colaborador ("Concordo" / "Não concordo" + motivo e
+ * justificativa) e a ciência e a escolha são gravadas na MESMA transação — nunca uma sem a outra. Discordar é contestação (aviso
+ * aos revisores, na mesma transação) e não impede a ciência. Ciência anterior à escolha (sem concordância registrada) registra a
+ * escolha uma vez; ciência com escolha nunca muda a escolha (devolve a registrada).
  *
  * A pessoa e a conta vêm SEMPRE da sessão; o login digitado precisa ser o da PRÓPRIA conta (digitar as credenciais de outra
  * pessoa não confirma nada). A fonte é autorizada aqui (organização + destinatário + publicado/entregue + visível): de outra
@@ -43,6 +51,11 @@ export type ReadConfirmationResult = {
   source: FeedbackSourceRef
   acknowledgedAt: string
   alreadyConfirmed: boolean
+  /** A escolha registrada para a fonte (a desta confirmação, a de uma confirmação anterior ou, numa ciência anterior à escolha,
+   * a registrada agora). Sempre presente depois do sucesso. */
+  agreement: ReadAgreementView | null
+  /** O pedido trouxe uma escolha diferente da que já estava registrada (outra aba, reenvio): valeu a registrada. */
+  agreementDiffered: boolean
   /** A aplicação da fonte depois da confirmação (concluída se estava em andamento); null = nenhuma aplicação. */
   application: FeedbackApplicationView | null
 }
@@ -138,11 +151,13 @@ async function recentCredentialFailures(db: Queryable, scope: ReadConfirmationSc
 export async function confirmFeedbackReading(
   db: Database,
   scope: ReadConfirmationScope,
-  input: ReadConfirmationAttempt & { login: string; password: string },
+  input: ReadConfirmationAttempt & { login: string; password: string; agreement: ReadAgreementInput },
   now: Date,
   deps: { verifyPassword: PasswordVerifier },
 ): Promise<ReadConfirmationResult> {
   const attempt: ReadConfirmationAttempt = { source: input.source, entryPoint: input.entryPoint, attemptId: input.attemptId, device: input.device, elapsedMs: input.elapsedMs }
+  // A escolha é validada (e a justificativa aparada) AQUI também, antes das credenciais — vale para qualquer chamador, não só a rota.
+  const chosen = readAgreementInputSchema.parse(input.agreement)
   if (!(await loadOwnedSourceState(db, scope, input.source))) throw notFound()
   const before = await findApplicationViewBySource(db, scope, input.source)
   const applicationBefore = before && { id: before.id, status: before.status }
@@ -197,6 +212,14 @@ export async function confirmFeedbackReading(
       acknowledgedAt = result.acknowledgedAt
     }
 
+    // A escolha. Ciência nova: gravada junto, no instante da ciência que a fonte devolveu (uma escolha que já existisse para uma
+    // fonte sem ciência é estado impossível pelo código — o índice único recusa, 409, e TUDO é desfeito). Ciência anterior sem
+    // escolha: registrada agora (registro único). Ciência com escolha: nada muda — vale a registrada, mesmo que o pedido traga outra.
+    const recorded = alreadyConfirmed ? await findReadAgreement(client, scope, input.source) : null
+    const agreementRecorded = recorded === null
+    const agreement = recorded ?? (await recordReadAgreement(client, scope, input.source, chosen, alreadyConfirmed ? now : new Date(acknowledgedAt)))
+    const agreementDiffered = recorded !== null && !sameAgreement(recorded, chosen)
+
     const completes = application?.status === "IN_PROGRESS"
     if (completes) await completeApplication(client as unknown as Database, scope, application.id, now, { via: "READ_CONFIRMATION", entryPoint: input.entryPoint, attemptId: input.attemptId })
     await client.query(
@@ -206,11 +229,25 @@ export async function confirmFeedbackReading(
         scope.personId,
         input.source.kind === "PUBLISHED_FEEDBACK" ? "feedback" : "interaction_feedback_delivery",
         input.source.id,
-        JSON.stringify({ method: "LOGIN_AND_PASSWORD", entryPoint: input.entryPoint, attemptId: input.attemptId, alreadyConfirmed, applicationId: application?.id ?? null, completedApplication: completes }),
+        JSON.stringify({
+          method: "LOGIN_AND_PASSWORD",
+          entryPoint: input.entryPoint,
+          attemptId: input.attemptId,
+          alreadyConfirmed,
+          applicationId: application?.id ?? null,
+          completedApplication: completes,
+          // A justificativa fica só em `feedback_read_agreements`; aqui, a referência e a escolha.
+          agreement: agreement.value,
+          agreementId: agreement.id,
+          reason: agreement.reason,
+          agreementRecorded,
+          agreementDiffered,
+        }),
       ],
     )
     await insertEvent(client, scope, { attempt, event: "CONFIRMED", alreadyConfirmed, completedApplication: completes, application: application && { id: application.id, status: application.status } }, now)
     const after = await findApplicationViewBySource(client, scope, input.source)
-    return { source: input.source, acknowledgedAt, alreadyConfirmed, application: after }
+    const evaluation = await loadFeedbackEvaluation(client, scope, input.source)
+    return { source: input.source, acknowledgedAt, alreadyConfirmed, agreement: evaluation.agreement, agreementDiffered, application: after }
   })
 }

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState, ErrorState } from "@/components/ui/states"
 import type { ListViewMode } from "@/hooks/use-admin-list-state"
 import { cn } from "@/lib/utils"
+import { FailureSupport } from "@/components/error-states/support-details"
 
 // Estados das listagens: carregando, erro, sem registro nenhum e sem resultado para os filtros.
 // "Sem registros" e "sem resultados" são coisas diferentes para quem usa — o primeiro convida a
@@ -37,8 +38,9 @@ export function ListSkeleton({ view, rows = 6 }: { view: ListViewMode; rows?: nu
 }
 
 /** Erro de lista — o `ErrorState` do kit (antes um bloco próprio, menor e sem ícone). */
-export function ListErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <ErrorState message={message} onRetry={onRetry} />
+/** `error` (opcional): o erro da consulta — mostra código e referência para o suporte quando houver. */
+export function ListErrorState({ message, onRetry, error }: { message: string; onRetry: () => void; error?: unknown }) {
+  return <ErrorState message={message} onRetry={onRetry} support={error === undefined ? undefined : <FailureSupport error={error} />} />
 }
 
 /** Lista sem nenhum registro — o `EmptyState` do kit (convida a cadastrar pela `action`). */

@@ -2,6 +2,7 @@ import { format } from "node:util"
 import pino from "pino"
 import { env } from "../../../config/env.js"
 import { currentRequestId } from "../../application/observability/request-context.js"
+import { serviceName, serviceRelease } from "../../application/observability/service-identity.js"
 
 /**
  * LOGS ESTRUTURADOS SEM ESCRITA SÍNCRONA. No Windows o serviço (WinSW) lê a saída do Node por um PIPE — e no Windows o Node
@@ -44,14 +45,15 @@ function sharedDestination() {
 }
 
 function rootLogger(): pino.Logger {
-  root ??= env.NODE_ENV === "test" ? pino({ enabled: false }) : pino({ level: env.LOG_LEVEL, base: { pid: process.pid }, mixin: requestIdField }, sharedDestination())
+  // `time` em ISO 8601 UTC (busca por horário na VM sem converter epoch); `service` e `release` em toda linha (diagnóstico de erros).
+  root ??= env.NODE_ENV === "test" ? pino({ enabled: false }) : pino({ level: env.LOG_LEVEL, base: { pid: process.pid }, timestamp: pino.stdTimeFunctions.isoTime, mixin: requestIdField }, sharedDestination())
   return root
 }
 
 /** Dentro de uma requisição HTTP, toda linha leva o id dela (o mesmo devolvido em `x-request-id` e no 500 genérico). */
 function requestIdField(): Record<string, unknown> {
   const requestId = currentRequestId()
-  return requestId ? { requestId } : {}
+  return requestId ? { service: serviceName(), release: serviceRelease(), requestId } : { service: serviceName(), release: serviceRelease() }
 }
 
 /** Logger estruturado de um componente (`name` vira campo de cada linha). */

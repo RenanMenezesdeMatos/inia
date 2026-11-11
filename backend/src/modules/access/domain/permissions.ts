@@ -71,6 +71,8 @@ export const PERMISSIONS = {
   "human_support.attend": "Atender pedidos de apoio",
   "human_support.coordinate": "Acompanhar o apoio com Anjo",
   "human_support.manage": "Configurar o apoio com Anjo",
+  // Diagnóstico de erros: catálogo de códigos e ocorrências técnicas (sanitizadas) da organização — só com escopo de organização.
+  "support.diagnostics.view": "Consultar o catálogo de erros e as ocorrências registradas (diagnóstico de suporte)",
 } as const
 
 export type Permission = keyof typeof PERMISSIONS

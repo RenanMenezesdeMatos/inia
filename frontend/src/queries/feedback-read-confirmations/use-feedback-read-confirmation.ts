@@ -6,30 +6,43 @@ import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-ap
 import { feedbackApplicationsKey } from "@/queries/feedback-applications/use-feedback-applications"
 import { myDeliveredFeedbackKey } from "@/queries/feedback-delivery/use-delivered-feedback"
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
-import type { ReadConfirmationAttempt } from "@/schemas/feedback-read-confirmations/feedback-read-confirmation.schema"
+import type { ReadAgreement } from "@/schemas/feedback-ratings/feedback-rating.schema"
+import type { ReadConfirmationRequest } from "@/schemas/feedback-read-confirmations/feedback-read-confirmation.schema"
 import { confirmFeedbackReading } from "@/services/feedback-read-confirmations/feedback-read-confirmations-service"
 
 /**
- * Ciências confirmadas NESTA sessão do navegador (chave da fonte → data). O Acompanhamento chega do servidor já renderizado e a
- * sessão com a INIA é outro componente: os dois leem daqui para que confirmar num lugar mude o outro na hora. A verdade é o
- * backend — este mapa só cobre o intervalo até o próximo carregamento.
+ * Ciências confirmadas NESTA sessão do navegador (chave da fonte → data e escolha registrada). O Acompanhamento chega do servidor
+ * já renderizado e a sessão com a INIA é outro componente: os dois leem daqui para que confirmar num lugar mude o outro na hora.
+ * A verdade é o backend — este mapa só cobre o intervalo até o próximo carregamento (quando o item do servidor já traz a escolha,
+ * vale o do servidor, que tem também a resposta da revisão).
  */
 const CONFIRMED_KEY = ["feedback-read-confirmations", "confirmed"] as const
-type ConfirmedReadings = Record<string, string>
+export type ConfirmedReading = { acknowledgedAt: string; agreement: ReadAgreement | null }
+type ConfirmedReadings = Record<string, ConfirmedReading>
 
-export function useConfirmedReadingAt(source: FeedbackSourceRef): string | null {
+export function useConfirmedReading(source: FeedbackSourceRef): ConfirmedReading | null {
   const { data } = useQuery<ConfirmedReadings>({ queryKey: CONFIRMED_KEY, queryFn: () => ({}), initialData: {}, staleTime: Infinity, gcTime: Infinity })
   return data[feedbackSourceKey(source)] ?? null
+}
+
+export function useConfirmedReadingAt(source: FeedbackSourceRef): string | null {
+  return useConfirmedReading(source)?.acknowledgedAt ?? null
 }
 
 export function useConfirmFeedbackReadingMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: ReadConfirmationAttempt & { login: string; password: string }) => confirmFeedbackReading(input),
+    mutationFn: (input: ReadConfirmationRequest) => confirmFeedbackReading(input),
     onSuccess: (result) => {
-      queryClient.setQueryData<ConfirmedReadings>(CONFIRMED_KEY, (current) => ({ ...current, [feedbackSourceKey(result.source)]: result.acknowledgedAt }))
+      queryClient.setQueryData<ConfirmedReadings>(CONFIRMED_KEY, (current) => ({ ...current, [feedbackSourceKey(result.source)]: { acknowledgedAt: result.acknowledgedAt, agreement: result.agreement } }))
       if (result.source.kind === "INTERACTION_FEEDBACK_DELIVERY") {
-        queryClient.setQueryData<DeliveredFeedback[]>(myDeliveredFeedbackKey, (current) => current?.map((entry) => (entry.id === result.source.id ? { ...entry, acknowledgedAt: result.acknowledgedAt } : entry)))
+        queryClient.setQueryData<DeliveredFeedback[]>(myDeliveredFeedbackKey, (current) =>
+          current?.map((entry) =>
+            entry.id === result.source.id
+              ? { ...entry, acknowledgedAt: result.acknowledgedAt, evaluation: { agreement: result.agreement, legacyContestation: entry.evaluation?.legacyContestation ?? null } }
+              : entry,
+          ),
+        )
       }
       // O botão da aplicação ("Continuar feedback" → "Ver feedback e conversa") e o que mostra o estado de ciência para a gestão.
       void queryClient.invalidateQueries({ queryKey: feedbackApplicationsKey })

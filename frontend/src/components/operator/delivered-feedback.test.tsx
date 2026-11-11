@@ -16,8 +16,6 @@ const service = vi.hoisted(() => ({ fetchMyDeliveredFeedback: vi.fn() }))
 vi.mock("@/services/feedback-delivery/feedback-delivery-service", () => service)
 const confirmation = vi.hoisted(() => ({ confirmFeedbackReading: vi.fn(), recordReadConfirmationEvent: vi.fn(async () => undefined) }))
 vi.mock("@/services/feedback-read-confirmations/feedback-read-confirmations-service", () => confirmation)
-const ratings = vi.hoisted(() => ({ fetchMyFeedbackRatings: vi.fn(async () => []), rateFeedback: vi.fn() }))
-vi.mock("@/services/feedback-ratings/feedback-ratings-service", () => ratings)
 
 const POSITIVE: DeliveredFeedback = {
   id: "d-1",
@@ -35,6 +33,7 @@ const POSITIVE: DeliveredFeedback = {
     { key: "whatYouCanDo", label: "O que você pode continuar fazendo", text: "Manter essa prática em conversas parecidas." },
   ],
   evidence: [{ speakerLabel: "Você", text: "O prazo é de até cinco dias úteis, protocolo [PROTOCOLO].", truncated: false }],
+  evaluation: null,
 }
 const ATTENTION: DeliveredFeedback = { ...POSITIVE, id: "d-2", section: "OPPORTUNITY", sectionLabel: "Ponto de atenção", blocks: [{ key: "observed", label: "O que foi observado", text: "O cliente disse que não entendeu o termo usado." }, { key: "whyItMatters", label: "Por que isso importa", text: "Palavras do dia a dia facilitam." }, { key: "whatYouCanDo", label: "O que você pode fazer", text: "Explique o termo com um exemplo." }], evidence: [] }
 const EMPTY_HISTORY = { current: [], history: [] }
@@ -68,9 +67,10 @@ describe("Acompanhamento — feedback de atendimento (V1.5.6)", () => {
     expect(within(entry).getByText("Feedback de atendimento")).toBeInTheDocument()
     expect(within(entry).getByText("Ponto positivo")).toBeInTheDocument()
     expect(within(entry).getByText("Atendimento de 14/03/2026")).toBeInTheDocument()
-    // Feedback sobre uma chamada = selo Monitoria; a avaliação "foi útil?" aparece UMA vez, no rodapé do item.
+    // Feedback sobre uma chamada = selo Monitoria; sem polegar ("foi útil?"): a avaliação é a concordância na ciência.
     expect(within(entry).getByText("Monitoria").closest("[data-family]")).toHaveAttribute("data-family", "MONITORING")
-    expect(within(entry).getAllByRole("button", { name: "Conteúdo útil" })).toHaveLength(1)
+    expect(within(entry).queryByRole("button", { name: /útil/ })).not.toBeInTheDocument()
+    expect(entry.querySelector("[data-slot='feedback-rating']")).toBeNull()
     expect(within(entry).getByText(POSITIVE.blocks[0]!.text)).toBeInTheDocument()
     fireEvent.click(within(entry).getByRole("button", { name: "Ver feedback completo" }))
     expect(await within(entry).findByText("O que você pode continuar fazendo")).toBeInTheDocument()
@@ -91,19 +91,23 @@ describe("Acompanhamento — feedback de atendimento (V1.5.6)", () => {
     expect(text).not.toMatch(/\bQA\b|Gemini|\bIA\b|fallback|revis|valida|prompt|política|incerteza/i)
   })
 
-  it("ciência: o próprio colaborador confirma com login e senha (diálogo central); depois mostra a confirmação", async () => {
+  it("ciência: o próprio colaborador escolhe se concorda e confirma com login e senha (diálogo central); depois mostra a confirmação e a escolha no rodapé", async () => {
     service.fetchMyDeliveredFeedback.mockResolvedValue([POSITIVE])
-    confirmation.confirmFeedbackReading.mockResolvedValue({ source: { kind: "INTERACTION_FEEDBACK_DELIVERY", id: "d-1" }, acknowledgedAt: "2026-09-25T09:00:00.000Z", alreadyConfirmed: false, application: null })
+    confirmation.confirmFeedbackReading.mockResolvedValue({ source: { kind: "INTERACTION_FEEDBACK_DELIVERY", id: "d-1" }, acknowledgedAt: "2026-09-25T09:00:00.000Z", alreadyConfirmed: false, agreement: { value: "AGREE", reason: null, justification: null, recordedAt: "2026-09-25T09:00:00.000Z", review: null }, agreementDiffered: false, application: null })
     renderFeed()
     const entry = await screen.findByTestId("delivered-feedback")
     fireEvent.click(within(entry).getByRole("button", { name: "Ver feedback completo" }))
     fireEvent.click(await within(entry).findByRole("button", { name: /Confirmar ciência/ }))
+    const choice = await screen.findByRole("dialog", { name: "Você concorda com este feedback?" })
+    fireEvent.click(within(choice).getByRole("radio", { name: "Concordo com o feedback" }))
+    fireEvent.click(within(choice).getByRole("button", { name: "Continuar" }))
     const dialog = await screen.findByRole("dialog", { name: "Confirmar ciência" })
     fireEvent.change(within(dialog).getByLabelText("Login"), { target: { value: "joana@empresa.com" } })
     fireEvent.change(within(dialog).getByLabelText("Senha"), { target: { value: "segredo" } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar ciência" }))
-    await waitFor(() => expect(confirmation.confirmFeedbackReading).toHaveBeenCalledWith(expect.objectContaining({ source: { kind: "INTERACTION_FEEDBACK_DELIVERY", id: "d-1" }, entryPoint: "FOLLOW_UP_FEED", login: "joana@empresa.com", password: "segredo" })))
+    await waitFor(() => expect(confirmation.confirmFeedbackReading).toHaveBeenCalledWith(expect.objectContaining({ source: { kind: "INTERACTION_FEEDBACK_DELIVERY", id: "d-1" }, entryPoint: "FOLLOW_UP_FEED", login: "joana@empresa.com", password: "segredo", agreement: { value: "AGREE" } })))
     expect(await within(entry).findByText(/Ciência confirmada em/)).toBeInTheDocument()
+    expect(await within(entry).findByText("Você concordou com o feedback.")).toBeInTheDocument()
   })
 })
 

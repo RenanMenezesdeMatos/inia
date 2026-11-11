@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto"
+import { sanitizeError } from "../shared/application/errors/classify-error.js"
+import { recordOccurrence } from "../modules/error-diagnostics/application/occurrence-recorder.js"
 import type { Server } from "node:http"
 import type { Readiness } from "./readiness.js"
 
@@ -96,13 +99,20 @@ function describeError(value: unknown): Record<string, unknown> {
 /** Sinais do sistema (Ctrl+C do serviço do Windows = SIGINT; SIGBREAK no Windows) e falhas fora de request. */
 export function installProcessHandlers(shutdown: (reason: string, exitCode?: number) => Promise<void>, log: LifecycleLog, target: NodeJS.Process = process): void {
   for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"] as const) target.on(signal, () => void shutdown(signal))
+  // Falha fora de request: código do catálogo (INIA-PROCESSO-FALHA) + referência própria, no log e como ocorrência (se o banco
+  // estiver de pé). Resumo sanitizado: nada de segredo/dado pessoal da mensagem vai para a ocorrência.
+  const fault = (kind: "unhandledRejection" | "uncaughtException", value: unknown) => {
+    const reference = `proc-${randomUUID()}`
+    recordOccurrence({ reference, code: "INIA-PROCESSO-FALHA", source: "PROCESS", httpStatus: null, severity: "critical", authenticated: false, details: { kind, failure: sanitizeError(value) } })
+    return { code: "INIA-PROCESSO-FALHA", reference, kind }
+  }
   target.on("unhandledRejection", (reason) => {
     processFaults.unhandledRejections++
-    log.error({ event: "unhandled_rejection", err: describeError(reason) })
+    log.error({ event: "unhandled_rejection", ...fault("unhandledRejection", reason), err: describeError(reason) })
   })
   target.on("uncaughtException", (error, origin) => {
     processFaults.uncaughtExceptions++
-    log.error({ event: "uncaught_exception", origin, err: describeError(error) })
+    log.error({ event: "uncaught_exception", origin, ...fault("uncaughtException", error), err: describeError(error) })
     void shutdown("uncaughtException", 1)
   })
 }

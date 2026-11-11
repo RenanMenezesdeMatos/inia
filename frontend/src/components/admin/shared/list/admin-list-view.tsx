@@ -14,6 +14,8 @@ type PageQuery<T> = {
   data: PageResult<T> | undefined
   isLoading: boolean
   isError: boolean
+  /** Erro da consulta (React Query): código e referência na faixa de suporte. */
+  error?: unknown
   isFetching: boolean
   isPlaceholderData: boolean
   refetch: () => unknown
@@ -44,7 +46,7 @@ export function AdminListView<T, F extends { search: string }>({
   useClampListPage(query.data, state.page, state.pageSize, state.setPage)
 
   if (query.isLoading) return <ListSkeleton view={state.view} />
-  if (query.isError || !query.data) return <ListErrorState message={errorMessage} onRetry={() => query.refetch()} />
+  if (query.isError || !query.data) return <ListErrorState message={errorMessage} onRetry={() => query.refetch()} error={query.error ?? undefined} />
 
   const { items, total } = query.data
   if (total === 0) {

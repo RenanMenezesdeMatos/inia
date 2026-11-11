@@ -56,6 +56,9 @@ import { renderClarificationVoiceInstruction } from "../../knowledge-clarificati
 import { assistantRatingInputSchema } from "../../assistant/domain/assistant-interaction-rating.js"
 import { signalsOfClarification, signalsOfOrchestratedReply, signalsOfSpecialist } from "../../assistant/application/reply-signals.js"
 import { signalsAfterResponseCheck, type SupportSignal } from "../../assistant/domain/reply-signals.js"
+import { currentRequestId } from "../../../shared/application/observability/request-context.js"
+import { sanitizeError } from "../../../shared/application/errors/classify-error.js"
+import { recordOccurrence } from "../../error-diagnostics/application/occurrence-recorder.js"
 
 const historyTurnSchema = z.object({
   role: z.enum(["user", "model"]),
@@ -1757,7 +1760,14 @@ export function createRealtimeRouter(
       } else {
         outcome = "ERROR"
         const message = error instanceof DomainError ? error.message : "Não foi possível obter uma resposta da INIA."
-        send("error", { message })
+        // O status já foi 200: a falha vai no evento, com o código (o do domínio, ou INIA-STREAM-FALHA) e a referência
+        // (x-request-id) que a pessoa copia — e fica no log e nas ocorrências (Diagnóstico de erros).
+        const code = error instanceof DomainError ? error.code : "INIA-STREAM-FALHA"
+        const reference = currentRequestId()
+        const summary = sanitizeError(error)
+        console.error(JSON.stringify({ event: "stream_error", code, reference, route: "POST /api/v1/realtime/messages", severity: "error", failure: summary }))
+        if (reference) recordOccurrence({ reference, code, source: "STREAM", httpStatus: null, severity: "error", method: request.method, route: "POST /api/v1/realtime/messages", organizationId: scope.organizationId, authenticated: true, details: { failure: summary } })
+        send("error", { message, code, ...(reference ? { reference } : {}) })
         // Nenhuma resposta da INIA ficou gravada: `NO_REPLY` na pergunta (só no chat livre — a gravação confere a origem).
         if (!replyPersisted) await recordNoReply({ scope, conversationId: resolved.conversationId, questionId: userMessage.id, trace })
       }

@@ -36,16 +36,22 @@ async function setup() {
   if (result.status !== "RECORDED") throw new Error(result.status)
   await decideItemReview({ store: memory.store, now }, { organizationId: ORG, reviewId: result.reviews[0]!.id, reviewerId: OTHER_OP, decision: "APPROVED_UNCHANGED" })
   await deliverReadyFeedbackItems({ deliveries: deliveries.store, now })
+  const evaluationReaders: { organizationId: string; personId: string }[] = []
   const app = (personId: string | null) => {
     const instance = express()
     instance.use(express.json())
     instance.use((req, res, next) => { if (!personId) return res.status(401).json({}); req.user = { sub: "a", personId, organizationId: ORG, role: "OPERATOR", name: "x", email: "x@inia.local", avatarUrl: null, jobTitle: null, teamId: null, teamName: null }; next() })
-    instance.use("/feedback-deliveries", createFeedbackDeliveryRouter({} as Database, { deliveries: deliveries.store, clock: fixedClock(new Date("2026-09-25T09:00:00Z")) }))
+    // Avaliação de cada entrega (escolha na ciência): o leitor recebe SEMPRE a pessoa da sessão.
+    const evaluations = async (reader: { organizationId: string; personId: string }, sources: { kind: string; id: string }[]) => {
+      evaluationReaders.push(reader)
+      return new Map(reader.personId === OP ? sources.map((source) => [`${source.kind}:${source.id}`, { agreement: { value: "AGREE" as const, reason: null, justification: null, recordedAt: "2026-09-25T09:00:00.000Z", review: null }, legacyContestation: null }]) : [])
+    }
+    instance.use("/feedback-deliveries", createFeedbackDeliveryRouter({} as Database, { deliveries: deliveries.store, clock: fixedClock(new Date("2026-09-25T09:00:00Z")), evaluations }))
     const errorHandler: ErrorRequestHandler = (error, _req, res, next) => { void next; if (error instanceof DomainError) return res.status(error.statusCode).json({ error: { code: error.code } }); if (error instanceof ZodError) return res.status(400).json({ error: { code: "VALIDATION_ERROR" } }); return res.status(500).json({}) }
     instance.use(errorHandler)
     return instance
   }
-  return { app, deliveries }
+  return { app, deliveries, evaluationReaders }
 }
 
 describe("V1.5.6 — Acompanhamento do colaborador (/feedback-deliveries)", () => {
@@ -56,6 +62,13 @@ describe("V1.5.6 — Acompanhamento do colaborador (/feedback-deliveries)", () =
     expect((await request(s.app(OTHER_OP)).get("/feedback-deliveries/mine")).body.data).toEqual([])
     // Não existe parâmetro para ler o feedback de outra pessoa.
     expect((await request(s.app(OTHER_OP)).get(`/feedback-deliveries/mine?collaboratorId=${OP}`)).body.data).toEqual([])
+  })
+  it("GET /mine traz a avaliação de cada entrega (escolha na ciência), lida só para a pessoa da sessão", async () => {
+    const s = await setup()
+    const [entry] = (await request(s.app(OP)).get("/feedback-deliveries/mine")).body.data
+    expect(entry.evaluation).toEqual({ agreement: { value: "AGREE", reason: null, justification: null, recordedAt: "2026-09-25T09:00:00.000Z", review: null }, legacyContestation: null })
+    await request(s.app(OTHER_OP)).get(`/feedback-deliveries/mine?collaboratorId=${OP}`)
+    expect(s.evaluationReaders).toEqual([{ organizationId: ORG, personId: OP }, { organizationId: ORG, personId: OTHER_OP }])
   })
   it("não existe ciência sem credencial: POST /:id/acknowledge não é rota (a ciência é com login e senha, em feedback-read-confirmations)", async () => {
     const s = await setup()

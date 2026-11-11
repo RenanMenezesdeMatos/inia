@@ -3,15 +3,16 @@ import { SqlParams } from "../../../shared/infrastructure/sql-params.js"
 import { scopedPeopleSql } from "../../access/application/scope-people-reader.js"
 import { publishedFeedbackSourcesSql } from "../../feedbacks/application/usage-analytics-reader.js"
 import { deliveredInteractionFeedbackSourcesSql } from "../../usage-analytics/application/feedback-sources.js"
-import { CONTESTATION_DECISIONS, FEEDBACK_DISLIKE_REASON_LABELS, FEEDBACK_DISLIKE_REASONS, type ContestationDecision, type FeedbackDislikeReason } from "../domain/feedback-rating.js"
+import { CONTESTATION_DECISIONS, CONTESTATION_REASON_LABELS, CONTESTATION_REASONS, type ContestationDecision, type ContestationReason } from "../domain/feedback-rating.js"
 import type { Reviewer } from "./contestation-review-service.js"
 
 /**
  * TAXA DE CONTESTAÇÃO DOS FEEDBACKS (KPI pedido pela gestão em 2026-11-10). Coorte = feedbacks DISPONIBILIZADOS no período (data
  * local da organização) a pessoas do escopo de quem revisa, menos as do próprio revisor — feedbacks publicados no Acompanhamento e
  * entregas de feedback de atendimento, pelas MESMAS leituras da Monitoria de usabilidade (os números batem entre as telas).
- * Contestado = o destinatário marcou "não foi útil" (com motivo e descrição) e a contestação está vigente ou já foi respondida — a
- * mesma regra da fila de contestações; retirada sem resposta não conta. Taxa = contestados ÷ disponibilizados, só com 5 ou mais
+ * Contestado = o destinatário NÃO CONCORDOU ao confirmar a ciência (com motivo e justificativa, migration 186) ou, antes disso,
+ * marcou "não foi útil" e a contestação está vigente ou já foi respondida — as duas origens pela MESMA visão da fila
+ * (`feedback_contestations`); "não foi útil" retirado sem resposta não conta. Taxa = contestados ÷ disponibilizados, só com 5 ou mais
  * feedbacks (abaixo disso aparece a contagem, nunca uma porcentagem frágil; sem nenhum, "sem dados"). Cada feedback conta uma vez,
  * com a contestação mais recente (motivo e situação da resposta).
  */
@@ -29,7 +30,7 @@ export type ContestationSummary = {
   contested: number
   /** contested ÷ delivered; null com menos de `CONTESTATION_RATE_MIN_SAMPLE` feedbacks. */
   rate: number | null
-  byReason: { reason: FeedbackDislikeReason; label: string; count: number }[]
+  byReason: { reason: ContestationReason; label: string; count: number }[]
   byStatus: { pending: number } & Record<ContestationDecision, number>
 }
 
@@ -41,7 +42,7 @@ export async function contestationSummary(db: Queryable, reviewer: Reviewer, per
   const to = p.typed(period.to, "date")
   const sources = `${publishedFeedbackSourcesSql(p, reviewer.organizationId)} union all ${deliveredInteractionFeedbackSourcesSql(p, reviewer.organizationId)}`
   const scope = scopedPeopleSql(p, { organizationId: reviewer.organizationId, viewerPersonId: reviewer.personId, permission: PERMISSION })
-  const result = await db.query<{ delivered: number; reason: FeedbackDislikeReason | null; decision: ContestationDecision | null; contested: boolean }>(
+  const result = await db.query<{ delivered: number; reason: ContestationReason | null; decision: ContestationDecision | null; contested: boolean }>(
     `with bounds as (
        select (${from})::timestamp at time zone analytics_org_timezone(${org}) starts_at, (${to} + 1)::timestamp at time zone analytics_org_timezone(${org}) ends_at
      ), cohort as (
@@ -50,13 +51,12 @@ export async function contestationSummary(db: Queryable, reviewer: Reviewer, per
         where src.available_at >= b.starts_at and src.available_at < b.ends_at
           and src.recipient_person_id <> ${viewer} and src.recipient_person_id in (${scope})
      ), contested as (
-       select distinct on (c.source_kind, c.source_id) c.source_kind, c.source_id, r.reason, rv.decision
+       select distinct on (c.source_kind, c.source_id) c.source_kind, c.source_id, fc.reason, fc.review_decision decision
          from cohort c
-         join feedback_ratings r on r.organization_id = ${org} and r.person_id = c.recipient_person_id and r.source_kind = c.source_kind
-          and coalesce(r.feedback_id, r.interaction_delivery_id) = c.source_id
-         left join feedback_rating_reviews rv on rv.rating_id = r.id
-        where r.value = 'DOWN' and (r.superseded_at is null or rv.id is not null)
-        order by c.source_kind, c.source_id, r.created_at desc, r.id desc
+         join feedback_contestations fc on fc.organization_id = ${org} and fc.person_id = c.recipient_person_id and fc.source_kind = c.source_kind
+          and coalesce(fc.feedback_id, fc.interaction_delivery_id) = c.source_id
+        where fc.superseded_at is null or fc.review_id is not null
+        order by c.source_kind, c.source_id, fc.created_at desc, fc.id desc
      )
      select (select count(*)::int from cohort) delivered, ct.reason, ct.decision, ct.source_id is not null contested
        from (select 1) one left join contested ct on true`,
@@ -64,7 +64,7 @@ export async function contestationSummary(db: Queryable, reviewer: Reviewer, per
   )
   const delivered = result.rows[0]?.delivered ?? 0
   const rows = result.rows.filter((row) => row.contested)
-  const reasonCounts = new Map<FeedbackDislikeReason, number>()
+  const reasonCounts = new Map<ContestationReason, number>()
   const byStatus: ContestationSummary["byStatus"] = { pending: 0, ...(Object.fromEntries(CONTESTATION_DECISIONS.map((decision) => [decision, 0])) as Record<ContestationDecision, number>) }
   for (const row of rows) {
     if (row.reason) reasonCounts.set(row.reason, (reasonCounts.get(row.reason) ?? 0) + 1)
@@ -79,7 +79,7 @@ export async function contestationSummary(db: Queryable, reviewer: Reviewer, per
     contested,
     rate: delivered >= CONTESTATION_RATE_MIN_SAMPLE ? contested / delivered : null,
     // Do maior para o menor (empate na ordem do catálogo), como nos demais cards de motivo.
-    byReason: FEEDBACK_DISLIKE_REASONS.map((reason) => ({ reason, label: FEEDBACK_DISLIKE_REASON_LABELS[reason], count: reasonCounts.get(reason) ?? 0 }))
+    byReason: CONTESTATION_REASONS.map((reason) => ({ reason, label: CONTESTATION_REASON_LABELS[reason], count: reasonCounts.get(reason) ?? 0 }))
       .filter((entry) => entry.count > 0)
       .sort((a, b) => b.count - a.count),
     byStatus,

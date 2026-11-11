@@ -1,0 +1,11251 @@
+// GERADO por `npm run errors:catalog` (backend/scripts/error-catalog.ts) — não edite à mão. O teste error-catalog.test.ts
+// recusa divergência entre este inventário e o código-fonte.
+import type { InventoriedDomainCode } from "./error-catalog-types.js"
+
+export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
+  {
+    "code": "ACCESS_ACCOUNT_NOT_FOUND",
+    "module": "access",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Conta não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_ALREADY_DISABLED",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O acesso desta pessoa já está desabilitado."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_ALREADY_ENABLED",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O acesso desta pessoa já está habilitado. Para uma nova senha, use “Gerar nova senha temporária”."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_ASSIGNMENT_NOT_FOUND",
+    "module": "access",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Atribuição não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_CONCURRENT_CHANGE",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra pessoa alterou este acesso agora há pouco. Atualize a lista e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_DISABLED",
+    "module": "auth",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Seu acesso à INIA está desabilitado. Procure o administrador."
+    ],
+    "refs": [
+      "backend/src/modules/auth/presentation/auth-router.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_EMAIL_REQUIRED",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe o e-mail que a pessoa vai usar para entrar."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_LAST_TENANT_ADMIN",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este é o último Administrador geral ativo — conceda o papel a outra pessoa antes de revogar.",
+      "Esta pessoa é o último Administrador geral ativo — conceda o papel a outra pessoa antes de desabilitar o acesso.",
+      "Esta pessoa é o último Administrador geral ativo — conceda o papel a outra pessoa antes de desativá-la."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts",
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_NOT_ENABLED",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O acesso desta pessoa está desabilitado — use “Habilitar acesso”."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_PERSON_INACTIVE",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta pessoa está inativa no cadastro — reative-a antes de habilitar o acesso.",
+      "Esta pessoa está inativa no cadastro — reative-a antes de gerar uma senha."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_PERSON_NOT_FOUND",
+    "module": "access",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pessoa não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts",
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_ROLE_ALREADY_ASSIGNED",
+    "module": "access",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta conta já tem este papel com o mesmo escopo."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_SCOPE_INVALID",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escopo inválido para esta organização."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts"
+    ]
+  },
+  {
+    "code": "ACCESS_TARGET_LEADS_OUTSIDE_SCOPE",
+    "module": "access",
+    "statuses": [
+      403
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts"
+    ]
+  },
+  {
+    "code": "ACTIVE",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A conexão é usada por política(s) de roteamento (${deps.rows.map((row) => ",
+      "O modelo é usado por política(s) (${current.policies.map((policy) => "
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts",
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "ACTIVE_WORKFLOWS",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [
+      "${plural(active, \"Workflow ativo depende\", \"Workflows ativos dependem\")} de uma configuração que a regra nova não aceita. A versão publicada não muda sozinha e a execução falharia. Pause antes de corrigir; depois, aju…"
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "AGENT_ACCESS_NOT_AUTHORIZED",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/agents/application/agent-execution-authorization.ts"
+    ]
+  },
+  {
+    "code": "AGENT_ACTION_LIMITS_REQUIRED",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_DELETE_BLOCKED",
+    "module": "agents",
+    "statuses": [
+      409
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/agents/application/agent-deletion.ts"
+    ]
+  },
+  {
+    "code": "AGENT_DRAFT_CONFLICT",
+    "module": "agents",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra pessoa alterou o rascunho deste agente depois que você o abriu. Atualize para ver a versão atual; o que você digitou continua na tela."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-versions.ts"
+    ]
+  },
+  {
+    "code": "AGENT_DRAFT_PENDING",
+    "module": "agents",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este agente tem um rascunho em andamento. Reverter publica a configuração escolhida como versão nova e descarta o rascunho — confirme para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-versions.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EVIDENCE_ENVELOPE_MISSING",
+    "module": "investigation",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A resposta não trouxe o envelope de evidência validável após correção — descartada (fail-closed)."
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/text-evidence-gating.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EXECUTION_EMPTY",
+    "module": "agents",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "O agente não retornou nenhum texto."
+    ],
+    "refs": [
+      "backend/src/modules/agents/infrastructure/gemini-agent-client.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EXECUTION_FAILED",
+    "module": "agents",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "O modelo de IA não retornou uma resposta válida."
+    ],
+    "refs": [
+      "backend/src/modules/agents/infrastructure/gemini-agent-client.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EXECUTION_NETWORK_ERROR",
+    "module": "agents",
+    "statuses": [
+      504
+    ],
+    "messages": [
+      "Não foi possível contatar o modelo de IA."
+    ],
+    "refs": [
+      "backend/src/modules/agents/infrastructure/gemini-agent-client.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EXECUTION_NOT_CONFIGURED",
+    "module": "agents",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Execução de agentes não está configurada neste ambiente (falta GEMINI_API_KEY)."
+    ],
+    "refs": [
+      "backend/src/modules/agents/infrastructure/gemini-agent-client.ts"
+    ]
+  },
+  {
+    "code": "AGENT_EXECUTION_TIMEOUT",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/agents/infrastructure/gemini-agent-client.ts"
+    ]
+  },
+  {
+    "code": "AGENT_INACTIVE",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este agente está inativo.",
+      "Este agente está inativo — ative-o antes de testar."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/agent-inactive-error.ts",
+      "backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts",
+      "backend/src/modules/qa-lab/application/run-agent-simulation.ts"
+    ]
+  },
+  {
+    "code": "AGENT_INACTIVE_RESTRICTED",
+    "module": "agents",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Este agente está inativo. Só administradores consultam o cadastro, o histórico completo e as execuções de agentes inativos, e podem reativá-los ou excluí-los."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_KNOWLEDGE_NOT_FOUND",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Uma das bases de conhecimento selecionadas não existe ou foi excluída."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_KNOWLEDGE_SCOPE_FORBIDDEN",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Uma das bases de conhecimento selecionadas vale para outro Grupo — escolha bases globais ou do Grupo deste agente."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_NAME_TAKEN",
+    "module": "agents",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um agente com esse nome."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_NOT_FOUND",
+    "module": "agents",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Agente não encontrado.",
+      "Agent não encontrado para este colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-deletion.ts",
+      "backend/src/modules/agents/application/agent-versions.ts",
+      "backend/src/modules/agents/application/run-agent.ts",
+      "backend/src/modules/agents/presentation/agent-router.ts",
+      "backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts",
+      "backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_NOT_PUBLISHED",
+    "module": "agents",
+    "statuses": [
+      409,
+      422
+    ],
+    "messages": [
+      "Este agente ainda não foi publicado: o rascunho é tudo o que existe dele.",
+      "Este agente ainda não foi publicado.",
+      "Este agente ainda não tem versão publicada: teste o rascunho."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-versions.ts",
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_NOTHING_TO_PUBLISH",
+    "module": "agents",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há alterações em rascunho para publicar."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-versions.ts"
+    ]
+  },
+  {
+    "code": "AGENT_RUN_NOT_FOUND",
+    "module": "agents",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Execução não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_SCOPE_FORBIDDEN",
+    "module": "agents",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para mover o agente para esse escopo.",
+      "Você não tem permissão para criar agentes nesse escopo."
+    ],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_SPECIALTY_INVALID",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AGENT_STRUCTURED_OUTPUT_INCOMPLETE",
+    "module": "workflows",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "O Agent de síntese não retornou todos os campos obrigatórios."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/synthesis-agent-executor.ts"
+    ]
+  },
+  {
+    "code": "AGENT_STRUCTURED_OUTPUT_INVALID",
+    "module": "workflows",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "O Agent de síntese não retornou um JSON válido."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/synthesis-agent-executor.ts"
+    ]
+  },
+  {
+    "code": "AGENT_UNEXPECTED_RESPONSE",
+    "module": "agents",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Resposta inesperada do agente no reparo de cobertura.",
+      "Resposta inesperada do agente no reparo do diagnóstico."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/run-agent.ts"
+    ]
+  },
+  {
+    "code": "AGENT_UNSUPPORTED_BEHAVIORAL_CLAIM",
+    "module": "investigation",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A resposta mantém afirmações sem evidência após correção (${salvage.persistentRejections.map((item) => "
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/text-evidence-gating.ts"
+    ]
+  },
+  {
+    "code": "AGENT_VERSION_NOT_FOUND",
+    "module": "agents",
+    "statuses": [
+      404,
+      422
+    ],
+    "messages": [
+      "A versão do agente referenciada não existe.",
+      "Versão não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/agent-versions.ts",
+      "backend/src/modules/agents/presentation/agent-router.ts"
+    ]
+  },
+  {
+    "code": "AI_AUTH",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_BUDGET_DUPLICATE",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe orçamento para este escopo e moeda."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-budget-service.ts"
+    ]
+  },
+  {
+    "code": "AI_BUDGET_EXCEEDED",
+    "module": "shared",
+    "statuses": [
+      402
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_BUDGET_INVALID",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-budget-service.ts"
+    ]
+  },
+  {
+    "code": "AI_BUDGET_NOT_FOUND",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Orçamento não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-budget-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CALL_CANCELLED",
+    "module": "shared",
+    "statuses": [
+      499
+    ],
+    "messages": [
+      "A solicitação à INIA foi cancelada."
+    ],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_CAPACITY_BUSY",
+    "module": "shared",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "A INIA está atendendo muitas solicitações neste momento. Tente de novo em alguns segundos."
+    ],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-call-limiter.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_CREDENTIAL_NOT_ALLOWED",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${provider.name} não usa credencial."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_CREDENTIAL_REQUIRED",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${provider.credentialLabel} é obrigatória para ${provider.name}."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_ENDPOINT_CHANGED",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra pessoa mudou o endpoint desta conexão enquanto a credencial era cadastrada. Confira o endpoint atual e cadastre a credencial de novo."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_ENDPOINT_REQUIRED",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe o endpoint da conexão."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_HEADER_INVALID",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_HEADERS_NOT_ALLOWED",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O provider ${provider.name} não aceita cabeçalhos personalizados."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_IN_USE",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A conexão atende política(s) ativa(s) (${current.activePolicyUseCases.join(\", \")}) e ${provider.name} exige credencial. Substitua a chave ou desative as políticas antes."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_NAME_TAKEN",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma conexão com esse nome."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONNECTION_NOT_FOUND",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Conexão não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts",
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_CONTEXT_LIMIT",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_DISCOVERY_UNSUPPORTED",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este provider não permite descobrir modelos — cadastre-os manualmente."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts"
+    ]
+  },
+  {
+    "code": "AI_INVALID_REQUEST",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_MODEL_DUPLICATE",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este modelo já está cadastrado nesta conexão."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_MODEL_IN_USE_ACTIVE",
+    "module": "ai-management",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este modelo atende política(s) ativa(s): ${activeUseCases.join(\", \")}. Desabilitá-lo deixa essas políticas sem esse candidato (sem troca silenciosa de modelo). Confirme para prosseguir."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_MODEL_NOT_FOUND",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Modelo não encontrado.",
+      "Um ou mais modelos não existem nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-model-service.ts",
+      "backend/src/modules/ai-management/application/ai-policy-service.ts"
+    ]
+  },
+  {
+    "code": "AI_MODEL_UNAVAILABLE",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_NETWORK",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_ACTIVE_NOT_FOUND",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Não há política ativa."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-policy-service.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_CHAIN_TOO_SHORT",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Uma cadeia de fallback precisa de ao menos 2 modelos."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_COST_CURRENCY_REQUIRED",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Informe a moeda do limite de custo por requisição."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_DRAFT_NOT_FOUND",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Não há rascunho para ativar."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-policy-service.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_DUPLICATE_MODEL",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "O mesmo modelo aparece mais de uma vez."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_EMPTY",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Selecione ao menos um modelo."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_FALLBACK_NOT_ALLOWED",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Fallback não permitido para: ${invalidFallback.join(\", \")} (trocar de provider não resolve esse tipo de erro)."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_INVALID",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A política não pode ser ativada: ${view.draft.issues.map((issue) => issue.message).join(\" \")}"
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-policy-service.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_MODEL_INELIGIBLE",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "${models.get(modelId)?.displayName ?? modelId}: ${reason}."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_QUALITY_TIER_MISSING",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "QUALITY_FIRST exige o tier declarado em todos os modelos (faltando: ${undeclared.map((model) => model!.displayName).join(\", \")})."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_STRATEGY_NOT_ALLOWED",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Estratégia só se aplica ao modo automático."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_STRATEGY_REQUIRED",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "Escolha a estratégia do modo automático."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_POLICY_TOO_MANY_MODELS",
+    "module": "ai-management",
+    "statuses": [],
+    "messages": [
+      "O modo ${policy.mode} aceita no máximo ${MAX_POLICY_MODELS[policy.mode]} modelo(s)."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_PRICING_INVALID",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_PRICING_OVERLAP",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A nova vigência precisa começar depois do início do preço vigente (o histórico não é reescrito).",
+      "Já existe preço com vigência posterior a esta data."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_PROVIDER_ERROR",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_PROVIDER_UNKNOWN",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Provider desconhecido."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-connection-service.ts",
+      "backend/src/modules/ai-management/application/ai-model-service.ts"
+    ]
+  },
+  {
+    "code": "AI_RATE_LIMIT",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_ROUTE_UNAVAILABLE",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_TIMEOUT",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_UNKNOWN",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/model-routing/ai-errors.ts"
+    ]
+  },
+  {
+    "code": "AI_USAGE_PERIOD_INVALID",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe um período válido (início antes do fim)."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-usage-service.ts"
+    ]
+  },
+  {
+    "code": "AI_USAGE_PERIOD_TOO_LONG",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O período personalizado pode ter no máximo 1 ano."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-usage-service.ts"
+    ]
+  },
+  {
+    "code": "AI_USE_CASE_NOT_ROUTABLE",
+    "module": "ai-management",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\"${useCase.label}\" não é configurável nesta versão."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-policy-service.ts",
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "AI_USE_CASE_UNKNOWN",
+    "module": "ai-management",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Use Case desconhecido."
+    ],
+    "refs": [
+      "backend/src/modules/ai-management/application/ai-policy-service.ts",
+      "backend/src/modules/ai-management/domain/ai-routing-policy.ts"
+    ]
+  },
+  {
+    "code": "ALL_TEAMS",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "APPLICABILITY_INVALID",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "Entrada de aplicabilidade fora do contrato (a aplicabilidade decide quais etapas podem ser julgadas)."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_ALTERNATIVES_NEED_TWO",
+    "module": "argument-scripts",
+    "statuses": [],
+    "messages": [
+      "Um grupo de alternativas precisa de pelo menos duas opções."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/domain/argument-script.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_ARCHIVED",
+    "module": "argument-scripts",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Argumentário encerrado: reative-o para publicar."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_AREA_REQUIRED",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe a área responsável."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts",
+      "backend/src/modules/argument-scripts/domain/argument-script.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_EFFECTIVE_ORDER",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A nova vigência precisa começar depois do início da versão vigente."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_EMPTY",
+    "module": "argument-scripts",
+    "statuses": [],
+    "messages": [
+      "Cadastre ao menos uma orientação, um ponto obrigatório ou uma conduta a evitar."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/domain/argument-script.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_NAME_REQUIRED",
+    "module": "argument-scripts",
+    "statuses": [],
+    "messages": [
+      "Informe o nome do argumentário."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/domain/argument-script.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_NO_DRAFT",
+    "module": "argument-scripts",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para descartar.",
+      "Não há rascunho para publicar."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_NOT_FOUND",
+    "module": "argument-scripts",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Argumentário não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_NOT_READY",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O rascunho ainda não pode ser publicado."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_NOT_STARTED",
+    "module": "argument-scripts",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A versão publicada ainda não começou a valer: publique outra data ou aguarde o início para encerrar."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_RETROACTIVE",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A vigência não pode começar antes da publicação: uma regra publicada agora nunca vale para chamadas anteriores."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN",
+    "module": "argument-scripts",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Seu escopo de administração não cobre o escopo deste argumentário."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_SCOPE_INVALID",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha o grupo.",
+      "Grupo não encontrado.",
+      "Escolha o subgrupo."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_SCOPE_LOCKED",
+    "module": "argument-scripts",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O escopo de um argumentário já publicado não muda (preserva a quem a regra valia). Encerre este e crie outro."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_SOURCE_NOT_FOUND",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Documento de origem não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
+    ]
+  },
+  {
+    "code": "ARGUMENT_SCRIPT_TRIGGER_REQUIRED",
+    "module": "argument-scripts",
+    "statuses": [],
+    "messages": [
+      "Informe a condição ou gatilho: sem ela não há como saber quando o argumentário vale."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/domain/argument-script.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_CONVERSATION_CLOSED",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta conversa já foi encerrada. Abrimos a conversa atual para você continuar."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-conversations.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_CONVERSATION_NOT_FOUND",
+    "module": "assistant",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Conversa não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-conversations.ts",
+      "backend/src/modules/assistant/application/conversation-monitoring.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_EMPTY",
+    "module": "assistant",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A INIA não retornou nenhum texto."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_FAILED",
+    "module": "assistant",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Não foi possível obter uma resposta da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_MESSAGE_NOT_FOUND",
+    "module": "assistant",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Resposta não encontrada.",
+      "Resposta não encontrada nesta conversa."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-interaction-ratings.ts",
+      "backend/src/modules/realtime/presentation/realtime-router.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_NETWORK_ERROR",
+    "module": "assistant",
+    "statuses": [
+      504
+    ],
+    "messages": [
+      "Não foi possível contatar a INIA."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_NOT_CONFIGURED",
+    "module": "assistant",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Orquestrador de chat não está configurado neste ambiente (falta GEMINI_API_KEY)."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts"
+    ]
+  },
+  {
+    "code": "ASSISTANT_TIMEOUT",
+    "module": "assistant",
+    "statuses": [
+      422,
+      504
+    ],
+    "messages": [
+      "A INIA demorou demais para responder."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/infrastructure/gemini-function-calling-client.ts"
+    ]
+  },
+  {
+    "code": "AUDIENCE_OUT_OF_SCOPE",
+    "module": "reports",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Público fora do seu escopo de distribuição.",
+      "Há Grupos ou Subgrupos fora do seu escopo de distribuição.",
+      "Há pessoas fora do seu escopo de distribuição (ou sem conta ativa)."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "AUTH_BUSY",
+    "module": "auth",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Muitos acessos ao mesmo tempo. Tente de novo em alguns segundos."
+    ],
+    "refs": [
+      "backend/src/modules/auth/infrastructure/password-hasher.ts"
+    ]
+  },
+  {
+    "code": "AVATAR_DELIVERY_NOT_FOUND",
+    "module": "conversational-delivery",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Recado não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/application/avatar-delivery-service.ts",
+      "backend/src/modules/conversational-delivery/application/recado-speech-audio.ts"
+    ]
+  },
+  {
+    "code": "BAD_REQUEST",
+    "module": "main",
+    "statuses": [],
+    "messages": [
+      "Requisição inválida."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_ANALYSIS_IN_PROGRESS",
+    "module": "best-practices",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma análise deste resultado e população na fila ou em andamento."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_ANALYSIS_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Análise não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_ANSWER_KEY_MISSING",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este dataset não tem gabarito para o modelo simulado."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_DATASET_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Dataset sintético não encontrado.",
+      "Dataset sintético não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_EDIT_EMPTY",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Nada a editar."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/pattern-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_EVIDENCE_INSUFFICIENT",
+    "module": "best-practices",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A análise mais recente não sustenta este padrão: não dá para aprová-lo."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/domain/pattern.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_EVIDENCE_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Chamada não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_HOW_IT_HELPS_PERSONAL_DATA",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\\\"Como isso ajuda no resultado\\\" não pode ter dado pessoal nem número de identificação."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/pattern-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_INDICATOR_INACTIVE",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O indicador está desativado."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_INDICATOR_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Indicador não encontrado.",
+      "Indicador da análise não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts",
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_OBLIGATION_PENDING",
+    "module": "best-practices",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Antes de aprovar, confirme que o comportamento não é uma obrigação do processo."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/domain/pattern.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_PATTERN_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Padrão não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/pattern-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_PHRASING_PERSONAL_DATA",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A sugestão de fala não pode ter dado pessoal nem número de identificação."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/pattern-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_REVIEW_CONFLICT",
+    "module": "best-practices",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O padrão mudou enquanto você revisava. Atualize e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/pattern-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_REVIEW_INVALID_TRANSITION",
+    "module": "best-practices",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta ação não vale para o estado atual do padrão."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/domain/pattern.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_REVIEW_REASON_REQUIRED",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe o motivo desta decisão."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/domain/pattern.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SCOPE_DENIED",
+    "module": "best-practices",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não administra este Subgrupo.",
+      "Você não administra este Grupo.",
+      "Só quem administra a organização inteira roda o dataset sintético."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts",
+      "backend/src/modules/best-practices/application/pattern-service.ts",
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SIGNAL_INACTIVE",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O sinal está desativado."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SIGNAL_NOT_CONFIGURED",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Cadastre no sinal o que é chamada boa e ruim antes de analisar por ele."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SIGNAL_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Sinal da chamada não encontrado.",
+      "Sinal da análise não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SIMULATION_ONLY_SYNTHETIC",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O modelo simulado só existe para o dataset sintético."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SUBTEAM_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Subgrupo não encontrado neste Grupo.",
+      "Subgrupo da análise não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SUBTEAM_ONLY_REAL",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O dataset sintético não tem Subgrupo."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_SYNTHETIC_DISABLED",
+    "module": "best-practices",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Dados sintéticos não são analisados em produção.",
+      "Dados sintéticos não são carregados em produção.",
+      "Pré-visualização sintética indisponível em produção."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts",
+      "backend/src/modules/best-practices/application/synthetic-datasets.ts",
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_TEAM_NOT_FOUND",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Grupo não encontrado.",
+      "Grupo da análise não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICE_TEAM_REQUIRED",
+    "module": "best-practices",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha o Grupo (operação) da análise."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/application/analysis-service.ts"
+    ]
+  },
+  {
+    "code": "BEST_PRACTICES_ACCESS_DENIED",
+    "module": "best-practices",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem acesso à base de boas práticas."
+    ],
+    "refs": [
+      "backend/src/modules/best-practices/presentation/best-practices-router.ts"
+    ]
+  },
+  {
+    "code": "BOOLEAN",
+    "module": "ingestion",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Flag \"${flagName}\" espera um valor ${flag.value_type === \"BOOLEAN\" ? \"booleano\" : \"numérico\"}."
+    ],
+    "refs": [
+      "backend/src/modules/ingestion/presentation/ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "BUSINESS_DOMAIN_CODE_LOCKED",
+    "module": "business-domains",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "${BUSINESS_DOMAIN_IN_USE_MESSAGE} Crie um novo domínio com o código desejado e migre as referências."
+    ],
+    "refs": [
+      "backend/src/modules/business-domains/application/business-domain-service.ts"
+    ]
+  },
+  {
+    "code": "BUSINESS_DOMAIN_CODE_TAKEN",
+    "module": "business-domains",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um domínio de negócio com esse código."
+    ],
+    "refs": [
+      "backend/src/modules/business-domains/application/business-domain-service.ts"
+    ]
+  },
+  {
+    "code": "BUSINESS_DOMAIN_IN_USE",
+    "module": "business-domains",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "\"${current.name}\" ainda é utilizado por Agents ou Orchestrators e não pode ser excluído. Desative-o em vez de excluir.",
+      "\"${current.name}\" ainda é utilizado por Argumentários ou checkpoints e não pode ser excluído. Desative-o em vez de excluir."
+    ],
+    "refs": [
+      "backend/src/modules/business-domains/application/business-domain-service.ts"
+    ]
+  },
+  {
+    "code": "BUSINESS_DOMAIN_INACTIVE",
+    "module": "argument-scripts",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Área responsável inativa.",
+      "O domínio de negócio \"${describeBusinessDomain(inactive)}\" está desativado e não pode entrar em novas configurações. Reative-o em Domínios de negócio ou escolha outro."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts",
+      "backend/src/modules/business-domains/application/business-domain-lookup.ts"
+    ]
+  },
+  {
+    "code": "BUSINESS_DOMAIN_NOT_FOUND",
+    "module": "business-domains",
+    "statuses": [
+      404,
+      422
+    ],
+    "messages": [
+      "Área responsável não encontrada.",
+      "Código de domínio inválido: \"${invalidCode}\".",
+      "Um dos domínios de negócio selecionados não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts",
+      "backend/src/modules/business-domains/application/business-domain-lookup.ts",
+      "backend/src/modules/business-domains/application/business-domain-service.ts",
+      "backend/src/modules/business-domains/presentation/business-domain-router.ts"
+    ]
+  },
+  {
+    "code": "CALL_EXPECTATIONS_MOVED",
+    "module": "call-expectations",
+    "statuses": [
+      410
+    ],
+    "messages": [
+      "As Regras de chamada agora são Argumentários. Use Administração › Argumentários."
+    ],
+    "refs": [
+      "backend/src/modules/call-expectations/presentation/call-expectation-router.ts"
+    ]
+  },
+  {
+    "code": "CAPITAL_UNKNOWN",
+    "module": "people",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Capital fora do catálogo das 27 capitais."
+    ],
+    "refs": [
+      "backend/src/modules/people/presentation/operational-calendar-router.ts"
+    ]
+  },
+  {
+    "code": "CASE_EVIDENCE_REQUIRED",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O caso não possui evidência verificável."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/publish-feedback.ts"
+    ]
+  },
+  {
+    "code": "CASE_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Caso não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts",
+      "backend/src/modules/supervision-cases/presentation/case-router.ts"
+    ]
+  },
+  {
+    "code": "CHANGE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "CHANNEL_FLAG_IN_USE",
+    "module": "channel-flags",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta flag é usada por ${users.slice(0, 3).join(\", \")}${users.length > 3 ? "
+    ],
+    "refs": [
+      "backend/src/modules/channel-flags/presentation/channel-flag-router.ts"
+    ]
+  },
+  {
+    "code": "CHANNEL_FLAG_INDICATOR_NOT_FOUND",
+    "module": "channel-flags",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Indicador relacionado não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/channel-flags/presentation/channel-flag-router.ts"
+    ]
+  },
+  {
+    "code": "CHANNEL_FLAG_NOT_FOUND",
+    "module": "channel-flags",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Flag não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/channel-flags/presentation/channel-flag-router.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "CHANNEL_FLAG_TAKEN",
+    "module": "channel-flags",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esse canal já tem uma flag com esse nome."
+    ],
+    "refs": [
+      "backend/src/modules/channel-flags/presentation/channel-flag-router.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_CAPACITY_EXCEEDED",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "O documento apresentado tem ${presentedSteps} etapas (teto ${capacity})."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_CONDUCT_REQUIRED",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "FOLLOWED/NOT_FOLLOWED precisam de conductEvidence (papel da fala e relação com a conduta)."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_DEPENDS_ON_UNKNOWN",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "dependsOn precisa ser o código [CP-…] de OUTRA etapa apresentada."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_LINK_NOT_CANDIDATE",
+    "module": "checkpoint-registry",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Essa regra não está entre as correspondências possíveis.",
+      "A regra escolhida não tem versão anterior."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_NOT_AMBIGUOUS",
+    "module": "checkpoint-registry",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só um checkpoint ambíguo em revisão pode ser vinculado."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_NOT_FOUND",
+    "module": "checkpoint-registry",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Checkpoint não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-queries.ts",
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_NOT_REMOVED",
+    "module": "checkpoint-registry",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só um checkpoint removido da base pode ter a remoção confirmada."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_NOT_REVIEWABLE",
+    "module": "checkpoint-registry",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só um checkpoint proposto ou em revisão pode ser aprovado.",
+      "Só um checkpoint proposto ou em revisão pode ser rejeitado."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_OFFICIAL_RULE_READ_ONLY",
+    "module": "checkpoint-registry",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A regra oficial vem da Base de Conhecimento e não pode ser editada aqui. Só a configuração operacional é alterável."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_READING_REQUIRED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Registre a leitura do checkpoint (o que foi observado e o valor do indicador)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_REF_REQUIRED",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "Cada etapa precisa do código [CP-…] que a marca no trecho apresentado."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_REF_UNKNOWN",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "O código não existe entre as etapas apresentadas nesta chamada (o modelo não cria etapa)."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_REJECTION_REASON_REQUIRED",
+    "module": "checkpoint-registry",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe o motivo da rejeição."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CHECKPOINT_SCOPE_INVALID",
+    "module": "checkpoint-registry",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escopo incompleto."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts"
+    ]
+  },
+  {
+    "code": "CODIGO",
+    "module": "shared",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/infrastructure/errors/scan-error-codes.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_ACTIVITY_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A chave de atividade ${activity.key} está repetida."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_CRITERION_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O critério ${key} não existe nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_DOCUMENT_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Um dos documentos escolhidos não existe mais na base de conhecimento.",
+      "A atividade \"${activity.title}\" aponta para um documento que não existe."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_INDICATOR_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O indicador ${code} não existe nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_KEY_LOCKED",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A chave da competência não muda depois de criada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_KEY_TAKEN",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma competência com a chave ${input.key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Competência não encontrada ou inativa."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_PRACTICE_INVALID",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Chave de prática inválida."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPETENCY_PRACTICE_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A prática ${key} não existe nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "COMPLETED",
+    "module": "feedback-application",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_JUSTIFICATION_REQUIRED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A justificativa da decisão precisa de pelo menos ${CONTINUITY_JUSTIFICATION_MIN} caracteres."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_APPROVAL_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade sempre exige decisão humana; não é possível desligar."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_EVIDENCE_CONDITION",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade exige uma condição com evidência verificável (indicador, diagnóstico sustentado ou feedback publicado)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_EVIDENCE_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade exige pelo menos uma evidência verificável."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_EXCLUSIVE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade é um processo próprio: não se combina com outras capacidades."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_JUSTIFICATION",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A regra que abre avaliação de continuidade precisa de uma justificativa com pelo menos 30 caracteres."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_NO_AI",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A IA nunca rascunha nem decide uma avaliação de continuidade."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "CONTINUITY_REVIEW_NOT_ON_INCONCLUSIVE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A avaliação de continuidade nunca é aberta com dados insuficientes."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "CONTRACT",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "Fora do contrato: ${parsed.error.issues.slice(0, 4).map((issue) => "
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "CROSS_SITE_REQUEST_BLOCKED",
+    "module": "shared",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Requisição bloqueada: origem não autorizada."
+    ],
+    "refs": [
+      "backend/src/shared/presentation/origin-guard.ts"
+    ]
+  },
+  {
+    "code": "DATA_CADENCE_TOO_FREQUENT",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_BUSY",
+    "module": "data-explorer",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Já há um cancelamento em andamento nesta organização. Aguarde terminar e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_FAILED",
+    "module": "data-explorer",
+    "statuses": [
+      500
+    ],
+    "messages": [
+      "Não foi possível concluir e nada foi alterado. Tente de novo; se continuar, avise o administrador."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_IN_FLIGHT",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "${count === 1 ? \"Uma execução de Workflow em andamento usa\" : "
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_INVALID_REASON",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escreva o motivo, com 10 a 500 caracteres, sem caracteres invisíveis."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_LOCKED",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Estes registros estão em uso por outra operação, como uma carga. Aguarde e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_NOT_AVAILABLE",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Os registros deste conjunto não podem ser cancelados por aqui."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_NOTHING",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Nenhum registro ativo foi encontrado: eles podem já ter sido cancelados."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_OWN_RECORDS",
+    "module": "data-explorer",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Estes registros incluem os seus próprios resultados. Peça a outro administrador para ${action}."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_RUN_IN_PROGRESS",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Há uma carga deste tipo de dado em andamento. Aguarde terminar para não misturar os dois."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_SCOPE_CHANGED",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A quantidade de registros mudou desde a prévia. Confira de novo antes de confirmar."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_SCOPE_REQUIRED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha os registros ou aplique ao menos um filtro: um cancelamento nunca vale para o conjunto inteiro."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_TIMEOUT",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O cancelamento passou do limite de tempo e nada foi alterado. Restrinja os filtros e faça por partes."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_TOO_MANY",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O cancelamento alcança mais de ${max.toLocaleString(\"pt-BR\")} registros, o limite por vez. Restrinja os filtros e faça por partes."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCEL_TOO_MANY_KEYS",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Selecione no máximo ${max} registros de uma vez, ou use um filtro."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_CANCELLATION_NOT_FOUND",
+    "module": "data-explorer",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Este cancelamento não existe ou não está disponível."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_COMPONENT_MISSING",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Componente exigido pela estratégia do indicador ausente."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_CONTRACT_UNKNOWN",
+    "module": "data-hub",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Contrato de dados desconhecido.",
+      "Contrato não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_CONTRACT_VIOLATION",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O registro viola uma regra do contrato."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_DUPLICATE",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Registro duplicado dentro da mesma carga."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_EMPLOYEE_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Colaborador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_EMPLOYMENT_STATUS_CONFLICT",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Conflito de situação funcional resolvido pela precedência de evidência (registro aplicado; veja a mensagem)."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_EMPLOYMENT_STATUS_UNKNOWN",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Situação funcional não reconhecida — a INIA nunca converte desconhecido em 'em produção'; mapeie o valor da fonte com 'Mapear códigos'."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_BUSY",
+    "module": "data-explorer",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Já há consultas em andamento no limite permitido. Aguarde terminarem e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_COLUMN_NOT_ALLOWED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A consulta usa uma coluna que não está liberada neste conjunto de dados."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_DATASET_NOT_FOUND",
+    "module": "data-explorer",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Este conjunto de dados não existe ou não está liberado para consulta."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_EXPORT_BUSY",
+    "module": "data-explorer",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Já há uma exportação em andamento. Aguarde terminar e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_EXPORT_TOO_LARGE",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A exportação tem mais de ${maxRows.toLocaleString(\"pt-BR\")} registros, o limite por arquivo. Restrinja os filtros e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_FILTER_LIMIT",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Os filtros aceitam até ${conditions} condições e ${depth} níveis de grupo. Simplifique os filtros."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_FILTER_NOT_ALLOWED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta coluna não pode ser usada em filtros. Escolha outra coluna."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_INVALID_CURSOR",
+    "module": "data-explorer",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "A posição da página não vale mais para esta consulta. Volte para a primeira página."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_INVALID_REQUEST",
+    "module": "data-explorer",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "A consulta não está no formato esperado."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_INVALID_VALUE",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Um dos valores do filtro não é válido para o tipo da coluna."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_LIST_LIMIT",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Uma lista de valores aceita no máximo ${max} itens."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_NO_COLUMNS",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha ao menos uma coluna."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_OPERATOR_NOT_ALLOWED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta condição não vale para o tipo desta coluna."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_PAGE_SIZE_EXCEEDED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Cada página mostra no máximo ${max} registros."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_QUERY_FAILED",
+    "module": "data-explorer",
+    "statuses": [
+      500
+    ],
+    "messages": [
+      "Não foi possível executar a consulta. Tente de novo; se continuar, avise o administrador."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_QUERY_TIMEOUT",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A consulta passou do limite de ${Math.round(timeoutMs / 1000)} segundos e foi interrompida. Restrinja os filtros, por exemplo com um período menor, e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_SEARCH_LENGTH",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A busca precisa ter de ${min} a ${max} caracteres."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_SEARCH_NOT_AVAILABLE",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este conjunto de dados não tem campos de busca. Use os filtros."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_SORT_NOT_ALLOWED",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não é possível ordenar por esta coluna. Escolha uma das colunas marcadas como ordenáveis."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_EXPLORER_TOO_MANY_COLUMNS",
+    "module": "data-explorer",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha no máximo ${max} colunas."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_AUTHORITATIVE_CONFLICT",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um feed autoritativo ativo para ${input.contractKey} nesta organização. Desmarque o outro antes — duas fontes não podem ser master do mesmo cadastro."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_CONNECTOR_MISMATCH",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O conector do feed (${input.connectorConfig.connector}) precisa ser o mesmo tipo da fonte (${source.kind}).",
+      "Este conector não lê arquivos.",
+      "Esta fonte não é um banco de dados."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts",
+      "backend/src/modules/data-hub/application/source-service.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_CONTRACT_LOCKED",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O contrato de um feed que já teve cargas não pode mudar — crie outro feed."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_INACTIVE",
+    "module": "data-hub",
+    "statuses": [
+      409,
+      422
+    ],
+    "messages": [
+      "O feed não está ativo — ative-o na Central de Dados.",
+      "Ative o feed antes de sincronizar (o mapeamento precisa estar completo).",
+      "O feed não está ativo."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/push-ingestion.ts",
+      "backend/src/modules/data-hub/application/run-service.ts",
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_INVALID_TRANSITION",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Um rascunho não pode ser pausado — ative-o primeiro."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_KEY_CONFLICT",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um feed com a chave \"${input.feedKey}\" nesta fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_FEED_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [
+      404,
+      422
+    ],
+    "messages": [
+      "Feed não encontrado.",
+      "O feed informado não pertence a esta fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/records.ts",
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_FILE_ALREADY_PROCESSED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Este arquivo já foi processado anteriormente."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_FILE_INVALID",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O arquivo não pôde ser lido.",
+      "Envie um arquivo no campo 'file'.",
+      "Só arquivos .csv e .xlsx são aceitos."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_FILE_READER_BUSY",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Há muitas planilhas sendo lidas neste momento — a leitura é tentada de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_FLAG_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Flag de canal não cadastrada."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_GROUP_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Grupo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INDICATOR_CAPABILITY",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O indicador não suporta esta granularidade/capacidade."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INDICATOR_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Indicador não encontrado ou inativo."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INTERACTION_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Interação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INTERNAL_ERROR",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Erro interno ao processar a carga."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INVALID_DATE",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Data inválida."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INVALID_ENUM",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Valor fora das opções permitidas."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_INVALID_NUMBER",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Número inválido."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_MAPPING_INVALID",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O mapeamento está incompleto: ${problems.join(\" \")}",
+      "O mapeamento do feed está incompleto ou inválido."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts",
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_NO_VALID_RECORDS",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Nenhum registro da carga é válido."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_PERSON_LINK_ACCESS_DISABLED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Pessoa ligada pelo e-mail foi para outro Grupo ou nível de liderança: o acesso foi desabilitado até quem administra o lugar novo liberar de novo (registro aplicado; veja a mensagem)."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_PERSON_LINKED_BY_EMAIL",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Matrícula ligada pela conta de login (mesmo e-mail) a uma pessoa já cadastrada na INIA sem matrícula (registro aplicado; veja a mensagem)."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_POSSIBLE_DUPLICATE_PERSON",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Possível pessoa duplicada: mesmo nome de uma pessoa cadastrada na INIA sem matrícula (registro aplicado; a INIA não junta por nome)."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_PUSH_EMPTY_BODY",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Envie um corpo JSON com os registros (ex.: { \\\"records\\\": [...] })."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/presentation/data-ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_PUSH_IDEMPOTENCY_CONFLICT",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta Idempotency-Key já foi usada com outro conteúdo. Use uma chave nova para um lote diferente."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/push-ingestion.ts",
+      "backend/src/modules/data-hub/application/run-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_PUSH_RATE_LIMITED",
+    "module": "data-hub",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Limite de requisições excedido. Tente novamente em instantes."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/presentation/data-ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_PUSH_TOKEN_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Token não encontrado ou já revogado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_PUSH_UNAUTHORIZED",
+    "module": "data-hub",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "Credencial inválida."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/push-ingestion.ts",
+      "backend/src/modules/data-hub/presentation/data-ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_RAW_EXPIRED",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O arquivo enviado expirou — envie novamente.",
+      "Esta carga não tem conteúdo bruto retido para reprocessar.",
+      "O conteúdo bruto desta carga já foi descartado pela retenção."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts",
+      "backend/src/modules/data-hub/application/run-service.ts",
+      "backend/src/modules/data-hub/domain/error-codes.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_REACTIVATION_BLOCKED",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Estes registros não passam na regra atual do indicador. Corrija o indicador ou envie uma carga nova: nada foi reativado."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_REACTIVATION_NOTHING",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há mais registros cancelados neste lote. Uma carga pode já tê-los reativado."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/domain/explorer-errors.ts"
+    ]
+  },
+  {
+    "code": "DATA_REFERENCE_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Referência não encontrada na INIA."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_REQUIRED_FIELD_MISSING",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Campo obrigatório ausente."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_RUN_ALREADY_QUEUED",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma carga em andamento ou na fila para este feed.",
+      "Espere a carga em andamento terminar (ou cancele a que está na fila) antes de reiniciar a leitura."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/run-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_RUN_ATOMIC_REJECTED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Contrato atômico: nenhum registro foi aplicado porque houve rejeições."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_RUN_NOT_CANCELLABLE",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só cargas ainda na fila podem ser canceladas."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/run-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_RUN_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Carga não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/records.ts"
+    ]
+  },
+  {
+    "code": "DATA_SAMPLE_REQUIRES_UPLOAD",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Envie um arquivo (ou payload de exemplo) para obter a amostra desta fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/feed-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SCHEDULE_EXCEPTION_CONFLICT",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Conflito entre a exceção de calendário da Central e a registrada pelo Supervisor (mantido o registro do Supervisor; veja a mensagem)."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SCHEMA_CHANGED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "A estrutura dos dados de origem mudou e um campo obrigatório deixou de existir."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_AUTH_FAILED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Falha de autenticação na fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_CONFIG_LOCKED",
+    "module": "data-hub",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Para configurar esta fonte, informe a senha dela de novo.",
+      "Sessão sem pessoa identificada: entre de novo para continuar.",
+      "Esta rota da Central de Dados ainda não foi classificada: fica bloqueada até decidir se exige a senha da fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/config-unlock-service.ts",
+      "backend/src/modules/data-hub/presentation/config-access-guard.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_CREDENTIAL_UNPROVEN",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta API responde igual com e sem credencial, então não dá para provar a nova. Libere a configuração com a credencial atual e troque em seguida."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/config-unlock-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_DESTINATION_CHANGED",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra pessoa mudou o destino desta fonte enquanto a alteração era conferida. Abra a fonte de novo, confira o destino atual e informe a credencial outra vez."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_DESTINATION_DENIED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O endereço da fonte não é permitido pela política de destinos do servidor da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_INACTIVE",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A fonte está pausada ou em rascunho — ative-a na Central de Dados."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/push-ingestion.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_INVALID_TRANSITION",
+    "module": "data-hub",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só uma fonte ativa pode ser pausada.",
+      "Só uma fonte pausada (ou com erro) pode ser retomada."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_KIND_IMMUTABLE",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O tipo da conexão não pode ser alterado depois de criada — crie outra fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_MASKED_VALUE",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A Base URL agora aponta para outro servidor, e ${hidden.length === 1 ? ",
+      "Esta fonte guarda valores ocultos além da credencial ${where}, e quem troca a credencial passa a vê-los. Libere a configuração com a credencial atual e troque em seguida. Sem a credencial atual, tire esses valores, tr…",
+      "A Base URL agora aponta para outro servidor: digite de novo o valor de \"${field}\". O valor guardado só vale para o servidor em que foi digitado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts",
+      "backend/src/modules/data-hub/domain/config-mask.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Fonte não encontrada.",
+      "Banco de dados, instância, tabela ou visão não encontrado na fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/records.ts",
+      "backend/src/modules/data-hub/domain/error-codes.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_NOT_PUSH",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Tokens de push só existem para fontes API Push.",
+      "Só fontes API Push têm OpenAPI de envio."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts",
+      "backend/src/modules/data-hub/presentation/data-hub-router.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_NOT_SYNCABLE",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Só fontes que a INIA consulta (API Pull, SFTP e banco de dados) podem ser sincronizadas pela INIA; arquivos e push chegam do cliente."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/run-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_PERMISSION_DENIED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O usuário da fonte não tem permissão para ler estes dados."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_RESPONSE_INVALID",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "A fonte respondeu com um formato inesperado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_SECRET_INCORRECT",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/data-hub/application/config-unlock-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_SECRET_REENTRY_REQUIRED",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O servidor, o banco, o usuário ou a forma de autenticação mudou: informe a credencial de novo (a guardada vale só para o destino original).",
+      "O servidor, o banco, o usuário ou a criptografia mudou: informe a senha para testar este destino."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_SECRET_REQUIRED",
+    "module": "data-hub",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta conexão não usa credencial.",
+      "Informe a senha desta fonte para liberar a configuração.",
+      "Esta fonte não tem credencial guardada. Troque a credencial para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/config-unlock-service.ts",
+      "backend/src/modules/data-hub/application/source-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_TIMEOUT",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "A fonte demorou demais para responder."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_TLS_FAILED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Falha na conexão segura (TLS/certificado) com a fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_UNLOCK_TOO_MANY_ATTEMPTS",
+    "module": "data-hub",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Muitas tentativas com a senha errada neste servidor. Aguarde alguns minutos e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/application/config-unlock-service.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_UNREACHABLE",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Não foi possível alcançar a fonte."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SOURCE_VOLUME_LIMIT",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "O volume lido passou do limite configurado para esta carga."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_SUBGROUP_NOT_FOUND",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Subgrupo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DATA_TYPE_INVALID",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Valor com tipo inválido."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
+    "code": "DELETED_ITEM_NOT_FOUND",
+    "module": "data-explorer",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Item excluído não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/application/deleted-items-service.ts"
+    ]
+  },
+  {
+    "code": "DELETED_ITEM_RESTORE_BLOCKED",
+    "module": "data-explorer",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outro registro ativo já usa este nome ou código. Renomeie ou exclua o atual antes de restaurar."
+    ],
+    "refs": [
+      "backend/src/modules/data-explorer/application/deleted-items-service.ts"
+    ]
+  },
+  {
+    "code": "DIAGNOSTIC_NOT_FOUND",
+    "module": "diagnostics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Investigação não encontrada.",
+      "Avaliação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/diagnostics/presentation/diagnostics-router.ts"
+    ]
+  },
+  {
+    "code": "DIAGNOSTICS_ACCESS_DENIED",
+    "module": "diagnostics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem acesso ao Diagnóstico."
+    ],
+    "refs": [
+      "backend/src/modules/diagnostics/presentation/diagnostics-router.ts"
+    ]
+  },
+  {
+    "code": "DIAGNOSTICS_PERIOD_INVALID",
+    "module": "diagnostics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Escolha um período de até 366 dias (início antes do fim)."
+    ],
+    "refs": [
+      "backend/src/modules/diagnostics/presentation/diagnostics-router.ts"
+    ]
+  },
+  {
+    "code": "DRAFT",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts"
+    ]
+  },
+  {
+    "code": "DUPLICATE_RECORD",
+    "module": "main",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um registro com esses dados."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "EMAIL_ALREADY_IN_USE",
+    "module": "users",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma conta com este e-mail."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "EMPLOYMENT_STATUS_CONFLICT",
+    "module": "users",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um período ${EMPLOYMENT_STATUS_LABELS[outcome.conflict!.existing.status]} de ${outcome.conflict!.existing.effectiveFrom}${outcome.conflict!.existing.effectiveTo ? "
+    ],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "EMPLOYMENT_STATUS_INVALID_RANGE",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Fim da situação anterior ao início."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/employment-status-service.ts"
+    ]
+  },
+  {
+    "code": "EMPLOYMENT_STATUS_OVERLAP",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A correção sobreporia períodos de situação da mesma pessoa."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/employment-status-service.ts"
+    ]
+  },
+  {
+    "code": "EMPLOYMENT_STATUS_UNKNOWN",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Situação funcional não reconhecida: \"${snapshot.rawStatus ?? \"\"}\"."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/employment-status-service.ts"
+    ]
+  },
+  {
+    "code": "ENROLLMENT_CONCURRENT_UPDATE",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A execução mudou de estado enquanto a decisão era enviada — tente novamente."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/submit-human-review-decision.ts"
+    ]
+  },
+  {
+    "code": "ENROLLMENT_NOT_AWAITING_DECISION",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta execução não está aguardando decisão neste nó."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/submit-human-review-decision.ts"
+    ]
+  },
+  {
+    "code": "ENROLLMENT_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Execução não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/submit-human-review-decision.ts"
+    ]
+  },
+  {
+    "code": "ERROR_CODE_NOT_IN_CATALOG",
+    "module": "error-diagnostics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Código não encontrado no catálogo."
+    ],
+    "refs": [
+      "backend/src/modules/error-diagnostics/presentation/error-diagnostics-router.ts"
+    ]
+  },
+  {
+    "code": "ERROR_REFERENCE_INVALID",
+    "module": "error-diagnostics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Referência em formato inválido."
+    ],
+    "refs": [
+      "backend/src/modules/error-diagnostics/presentation/error-diagnostics-router.ts"
+    ]
+  },
+  {
+    "code": "EVIDENCE_NOT_VERBATIM",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "Não é trecho literal da transcrição."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/run-agent.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_ACK_FORBIDDEN",
+    "module": "feedbacks",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só o próprio colaborador pode dar ciência neste feedback."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/acknowledge-feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_ANALYSIS_COLLABORATOR_NOT_ALLOWED",
+    "module": "feedback-engine",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Análise bloqueada: o colaborador ${collaboratorId} está fora do escopo permitido nesta execução."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/analyze-call.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_ANALYSIS_IN_PROGRESS",
+    "module": "feedback-engine",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A análise desta chamada está em andamento em outra execução — será retomada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/analyze-call.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_COMPLETED",
+    "module": "feedback-application",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta conversa já foi concluída: a apresentação não é reproduzida em modo consulta.",
+      "Esta conversa já foi concluída."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_CONTEXT_UNAVAILABLE",
+    "module": "realtime",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Não foi possível carregar o contexto deste feedback. Tente de novo em instantes."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/presentation/realtime-router.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_CONVERSATION_MISMATCH",
+    "module": "feedback-application",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta conversa não pertence a este feedback. Abra o feedback de novo para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_NOT_FOUND",
+    "module": "feedback-application",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Aplicação de feedback não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_NOT_STARTED",
+    "module": "feedback-application",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta aplicação ainda não começou."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_APPLICATION_SOURCE_NOT_FOUND",
+    "module": "feedback-application",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feedback não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/feedback-application-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_CALL_REVIEW_PENDING",
+    "module": "feedback-engine",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "A revisão da análise da chamada não pôde ser concluída agora — a análise está guardada e só a revisão será retomada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/analyze-call.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_CONTESTATION_ALREADY_REVIEWED",
+    "module": "feedback-rating",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta contestação já foi respondida."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-rating/application/contestation-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_CONTESTATION_NOT_FOUND",
+    "module": "feedback-rating",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Contestação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-rating/application/contestation-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_CONTESTATION_WITHDRAWN",
+    "module": "feedback-rating",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O colaborador retirou ou mudou esta avaliação."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-rating/application/contestation-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_DELIVERY_NOT_FOUND",
+    "module": "interaction-feedback",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feedback não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/deliver-feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_ENGINE_BUDGET_EXHAUSTED",
+    "module": "feedback-engine",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Orçamento da execução atingido (${limit}) — a chamada de ${stage} não foi feita."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/engine-meter.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_ENGINE_IN_PROGRESS",
+    "module": "feedback-engine",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A geração deste feedback está em andamento em outra execução — será retomada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/generate-feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_EVIDENCE_REQUIRED",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O feedback precisa conter indicador, evidência, comportamento, procedimento e recomendação."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/domain/feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_INVESTIGATION_ANALYSIS_PENDING",
+    "module": "feedback-engine",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "A investigação depende de ${interactionIds.length} análise(s) de chamada com revisão pendente — será retomada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/investigate-indicator.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_INVESTIGATION_IN_PROGRESS",
+    "module": "feedback-engine",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A investigação deste indicador está em andamento em outra execução — será retomada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-engine/application/investigate-indicator.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_NOT_APPROVED",
+    "module": "feedbacks",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Somente feedback aprovado pode ser publicado."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/publish-feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_NOT_FOUND",
+    "module": "feedbacks",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feedback não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/acknowledge-feedback.ts",
+      "backend/src/modules/feedbacks/application/publish-feedback.ts",
+      "backend/src/modules/feedbacks/presentation/feedback-router.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_NOT_PUBLISHED",
+    "module": "feedbacks",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só um feedback publicado pode receber ciência."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/acknowledge-feedback.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_QUALITY_REVIEW_FORBIDDEN",
+    "module": "interaction-feedback",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão de QA de feedback."
+    ],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/feedback-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_RATING_REPLACED_BY_READ_CONFIRMATION",
+    "module": "feedback-rating",
+    "statuses": [
+      410
+    ],
+    "messages": [
+      "A avaliação deste feedback agora é feita ao confirmar a ciência. Atualize a página."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-rating/presentation/feedback-ratings-router.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_READ_AGREEMENT_CONFLICT",
+    "module": "feedback-rating",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A escolha deste feedback já foi registrada."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-rating/application/read-agreement-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_READ_CONFIRMATION_SOURCE_NOT_FOUND",
+    "module": "feedback-application",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feedback não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_REVIEW_ALREADY_DECIDED",
+    "module": "interaction-feedback",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este feedback já foi avaliado por outra pessoa ou em outra aba."
+    ],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/feedback-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_REVIEW_EDIT_BLOCKED",
+    "module": "interaction-feedback",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O texto editado tem um problema que impede a aprovação."
+    ],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/feedback-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_REVIEW_INVALID_DECISION",
+    "module": "interaction-feedback",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/feedback-review-service.ts"
+    ]
+  },
+  {
+    "code": "FEEDBACK_REVIEW_NOT_FOUND",
+    "module": "interaction-feedback",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Revisão não encontrada ou fora do seu escopo."
+    ],
+    "refs": [
+      "backend/src/modules/interaction-feedback/application/feedback-review-service.ts"
+    ]
+  },
+  {
+    "code": "FILE_TOO_LARGE",
+    "module": "main",
+    "statuses": [
+      413
+    ],
+    "messages": [
+      "Arquivo acima do tamanho permitido."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Output \"${node.label}\" publicaria o resultado de \"${source.node.label}\" direto ${node.config.surfaces.includes(\"FOLLOW_UP\") ? \"no Acompanhamento\" : \"no Chat/Avatar\"} do operador. Feedback oficial de monitoria/indica…"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP_HIDE_EMPTY_SELECTION",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe ao menos um feedback."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/follow-up-visibility.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP_HIDE_FEEDBACK_NOT_FOUND",
+    "module": "feedbacks",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feedback não encontrado nesta organização: ${missing.join(\", \")}"
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/follow-up-visibility.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP_HIDE_INVALID_REASON",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Motivo de ocultação inválido.",
+      "Descreva o motivo da ocultação.",
+      "Descreva o motivo da restauração."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/follow-up-visibility.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP_HIDE_INVALID_SELECTION",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Rótulo da seleção inválido."
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/follow-up-visibility.ts"
+    ]
+  },
+  {
+    "code": "FOLLOW_UP_HIDE_OPERATOR_MISMATCH",
+    "module": "feedbacks",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Feedback de outro colaborador: ${other.join(\", \")}"
+    ],
+    "refs": [
+      "backend/src/modules/feedbacks/application/follow-up-visibility.ts"
+    ]
+  },
+  {
+    "code": "FORBIDDEN",
+    "module": "access",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para esta ação.",
+      "Você não tem permissão para este recurso.",
+      "Você não tem permissão para ver quem mais usa a IA."
+    ],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts",
+      "backend/src/modules/access/application/account-access-service.ts",
+      "backend/src/modules/access/presentation/require-permission.ts",
+      "backend/src/modules/ai-management/application/ai-usage-ranking-service.ts",
+      "backend/src/modules/ai-management/presentation/ai-management-router.ts",
+      "backend/src/modules/checkpoint-registry/presentation/checkpoint-registry-router.ts"
+    ]
+  },
+  {
+    "code": "FUNNEL_PERIOD_INVALID",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe as datas no formato AAAA-MM-DD.",
+      "Escolha um período de 1 a ${FUNNEL_MAX_DAYS} dias."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/reply-funnel.ts"
+    ]
+  },
+  {
+    "code": "GLOSSARY_TERM_NOT_FOUND",
+    "module": "governance",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Termo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/governance/presentation/governance-router.ts"
+    ]
+  },
+  {
+    "code": "GROUP",
+    "module": "human-support",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/human-support/application/settings-service.ts"
+    ]
+  },
+  {
+    "code": "HOLIDAY_NOT_FOUND",
+    "module": "people",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Feriado não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/people/presentation/operational-calendar-router.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_REVIEW_SELF_DECISION",
+    "module": "workflows",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Ninguém decide a revisão do próprio resultado."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/submit-human-review-decision.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_ALREADY_CLASSIFIED",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este atendimento já foi classificado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/classification-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_ANJO_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Esta pessoa não tem o papel de Anjo."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/settings-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_ATTENDANCE_ACTIVE",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Classifique o atendimento depois de encerrá-lo."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/classification-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_ATTENDANCE_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Atendimento não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/classification-service.ts",
+      "backend/src/modules/human-support/application/evaluation-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_CONCURRENT_CHANGE",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A configuração mudou enquanto você editava. Recarregue e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/settings-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_DISABLED",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O apoio com Anjo ainda não está disponível para sua equipe."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_EVALUATION_CLOSED",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A avaliação deste atendimento não está mais aberta."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/evaluation-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_NO_ANJO_IN_SERVICE",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Nenhum Anjo em serviço agora."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Registro não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/coordination-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_OPERATOR_PRESENT",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O operador ainda está com a INIA aberta."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_REQUEST_ALREADY_OPEN",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Você já tem um pedido de apoio aberto."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_REQUEST_ENDED",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este atendimento já foi encerrado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/message-service.ts",
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_REQUEST_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pedido de apoio não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/conversation-marks.ts",
+      "backend/src/modules/human-support/application/message-service.ts",
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_SOURCE_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Mensagem não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "IMAGE_TOO_LARGE",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A imagem é grande demais."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "IMAGE_UNREADABLE",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/profile-preferences/application/profile-preferences-service.ts"
+    ]
+  },
+  {
+    "code": "INCOHERENT_VALUES",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [
+      "${plural(scan.incoherentValues, \"medição tem\", \"medições têm\")} valor que não confere com numerador ÷ denominador pela estratégia \"${label}\". O resultado do período não bateria com o que foi medido. ${fix}"
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_CODE_TAKEN",
+    "module": "indicators",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um indicador com esse código."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/application/indicator-definition-service.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_CORRECTION_BLOCKED",
+    "module": "indicators",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não foi possível corrigir \"${definition.name}\". ${impact.blockers.map((blocker) => blocker.message).join(\" \")}"
+    ],
+    "refs": [
+      "backend/src/modules/indicators/application/indicator-correction-service.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_CORRECTION_CONFIRMATION_MISMATCH",
+    "module": "indicators",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Para confirmar, digite o código do indicador: ${definition.code}."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/application/indicator-correction-service.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_HAS_DEPENDENTS",
+    "module": "indicators",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "\"${current.name}\" é usado agora (${reasons}) e não pode ser excluído. Tire-o de lá ou aguarde as execuções terminarem, ou desative-o."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/application/indicator-definition-service.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_INVALID_CODE",
+    "module": "indicators",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O código deve começar com letra e conter apenas letras maiúsculas, números e underscore (ex.: DIGITAL_RESOLUTION_RATE)."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-definition.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_INVALID_CONFIGURATION",
+    "module": "indicators",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A estratégia \"${strategy.label}\" só é válida para ${strategy.allowedUnits.map((unit) => INDICATOR_UNIT_METADATA[unit].label).join(\", \")} — ${INDICATOR_UNIT_METADATA[input.unit].label} não é compatível.",
+      "Amostra mínima e cobertura mínima só se aplicam a indicadores com medição operacional ativada.",
+      "Um indicador precisa de ao menos uma capacidade: medição operacional ou fechamento oficial."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-definition.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_NOT_FOUND",
+    "module": "indicator-rules",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Indicador não encontrado.",
+      "Indicador inexistente.",
+      "Indicador \"${ranking.indicatorCode}\" não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/diagnostic-strategy-service.ts",
+      "backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts",
+      "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts",
+      "backend/src/modules/indicators/application/indicator-correction-service.ts",
+      "backend/src/modules/indicators/application/indicator-definition-service.ts",
+      "backend/src/modules/performance-analytics/application/build-indicator-members.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_RULE_SCOPE_FORBIDDEN",
+    "module": "indicator-rules",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Esta regra vale para Grupos fora do seu escopo."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts"
+    ]
+  },
+  {
+    "code": "INDICATOR_SEMANTIC_LOCKED",
+    "module": "indicators",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não é possível alterar ${fields.join(\", \")} de \"${current.name}\" por aqui: o indicador já tem histórico (${describeDependencies(dependencies)}). ${guidance}"
+    ],
+    "refs": [
+      "backend/src/modules/indicators/application/indicator-definition-service.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_BLUR_INVALID",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O desfoque precisa estar entre 0 e 3 px."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_DIM_INVALID",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O escurecimento precisa estar entre 0% e 100%."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGE_LABEL_INVALID",
+    "module": "inia-scenes",
+    "statuses": [],
+    "messages": [
+      "Identifique cada imagem com até ${INIA_SCENE_IMAGES.labelMax} caracteres (ex.: Dia, Noite)."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/domain/inia-scene.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGE_LABEL_TAKEN",
+    "module": "inia-scenes",
+    "statuses": [],
+    "messages": [
+      "Duas imagens estão identificadas como \"${entry.label}\". Use nomes diferentes."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/domain/inia-scene.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGE_REQUIRED",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Envie o arquivo da imagem \"${label}\".",
+      "Envie a imagem do cenário."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts",
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGE_SLOT_OVERLAP",
+    "module": "inia-scenes",
+    "statuses": [],
+    "messages": [
+      "Os horários de \"${overlap.a.label}\" e \"${overlap.b.label}\" se sobrepõem das ${range.start} às ${range.end}. Ajuste as faixas para não coincidirem."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/domain/inia-scene.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGES_CHANGED",
+    "module": "inia-scenes",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Imagem desconhecida neste cenário.",
+      "As imagens deste cenário foram alteradas em outra tela. Feche e abra o cenário de novo."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGES_COUNT",
+    "module": "inia-scenes",
+    "statuses": [],
+    "messages": [
+      "Um cenário tem de 1 a ${INIA_SCENE_IMAGES.max} imagens."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/domain/inia-scene.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_IMAGES_INVALID",
+    "module": "inia-scenes",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Lista de imagens inválida.",
+      "Um cenário tem de 1 a ${INIA_SCENE_IMAGES.max} imagens, cada uma com identificação.",
+      "Os arquivos enviados não correspondem à lista de imagens."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_NAME_INVALID",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Informe um nome de até 80 caracteres."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_NAME_TAKEN",
+    "module": "inia-scenes",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um cenário com esse nome."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_NOT_FOUND",
+    "module": "inia-scenes",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Cenário não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts",
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_PERIOD_OVERLAP",
+    "module": "inia-scenes",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O período coincide com o do cenário \"${conflict.name}\". Ajuste as datas para não se sobreporem."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_PRIMARY_IMAGE_REQUIRED",
+    "module": "inia-scenes",
+    "statuses": [],
+    "messages": [
+      "Escolha exatamente uma imagem principal (ela vale nos horários sem faixa)."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/domain/inia-scene.ts"
+    ]
+  },
+  {
+    "code": "INIA_SCENE_UPLOAD_INVALID",
+    "module": "inia-scenes",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Envio de imagem inválido."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "INTERACTION_ENDS_IN_FUTURE",
+    "module": "ingestion",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O fim da chamada está no futuro. Confira o relógio e o fuso horário do sistema de origem."
+    ],
+    "refs": [
+      "backend/src/modules/ingestion/presentation/ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "INTERACTION_SUBJECT_ALIAS_UNKNOWN_CODE",
+    "module": "interactions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Alias \"${alias.rawSubject}\" aponta para código desconhecido \"${alias.code}\"."
+    ],
+    "refs": [
+      "backend/src/modules/interactions/application/interaction-subject-catalog.ts"
+    ]
+  },
+  {
+    "code": "INTERACTION_SUBJECT_CODE_INVALID",
+    "module": "interactions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Código de assunto inválido: \"${definition.code}\"."
+    ],
+    "refs": [
+      "backend/src/modules/interactions/application/interaction-subject-catalog.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_AI_DRAFT_NOT_READY",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho pronto para aplicar."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/ai-draft.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_AI_DRAFT_UNAVAILABLE",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Rascunho pela IA não está disponível para esta intervenção agora."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/ai-draft.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_AI_DRAFT_UNSUPPORTED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Rascunho pela IA só existe para treinamento ou plano de ação."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/ai-draft.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ALREADY_ACTIVE",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "${person.name} já tem \"${type.definition.name}\" em andamento para este assunto."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ASSIGNMENT_UNRESOLVED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/apply-evaluation.ts",
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_CASE_TEAM_REQUIRED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${evaluation.person.name} não está em nenhum Grupo: o caso de supervisão precisa de um.",
+      "${person.name} não está em nenhum Grupo: o caso de supervisão precisa de um."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/apply-evaluation.ts",
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_CONCURRENT_CHANGE",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A intervenção mudou desde que você abriu. Atualize e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/ai-draft.ts",
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_EVALUATION_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Avaliação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_EVIDENCE_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Referência não encontrada para este colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_EVIDENCE_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Este tipo exige pelo menos ${definition.evidence.minimumItems} evidência(s) verificável(is); há ${evidenceCount}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-plan.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_FORM_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_FORM_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Preencha \"${field.label}\"."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_FORM_UNKNOWN_FIELD",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O campo ${key} não existe neste tipo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_FORWARD_TARGET_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha para quem encaminhar.",
+      "Encaminhe para alguém acima na cadeia de gestão do colaborador (diferente do responsável atual)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ITEM_KIND_UNSUPPORTED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este tipo de intervenção não usa esse tipo de item."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ITEM_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Item não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ITEM_OWNER_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O responsável da tarefa precisa ser o colaborador ou alguém da cadeia de gestão dele."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_ITEM_SKIP_REASON",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Diga por que o item foi dispensado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_LEARNING_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Registre a avaliação de aprendizagem."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NO_APPROVER",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOT_COMPLETABLE",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Intervenção não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOT_IN_PROGRESS",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Itens são concluídos durante a execução."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOT_READY",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOT_TRAINING",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Só intervenções com treinamento usam competências."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_NOTE_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Registre o resultado da intervenção."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_OPERATIONAL_READING",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Descreva a leitura do indicador que sustenta o resultado operacional (período, valor antes e depois)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_OPERATIONAL_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Registre a leitura da evolução operacional (o indicador depois da intervenção)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_PLAN_LOCKED",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O plano não pode ser alterado agora.",
+      "O plano só muda enquanto a intervenção está proposta ou em execução (nunca durante a aprovação).",
+      "Itens só mudam com a intervenção proposta ou em execução."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/ai-draft.ts",
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_CONCURRENT_CHANGE",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O rascunho mudou durante a publicação. Abra de novo e tente outra vez."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_DRAFT_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para publicar.",
+      "Não há rascunho para validar.",
+      "Não há rascunho para simular."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts",
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_DRAFT_ONLY",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Uma política sem versão publicada não tem para onde voltar: edite o rascunho ou inative a política."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_EFFECTIVE_FROM_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Data de vigência inválida."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_EFFECTIVE_FROM_PAST",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A vigência não pode começar no passado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O rascunho tem campos inválidos: salve-o de novo antes de simular."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts",
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_KEY_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Chave inválida: use letras maiúsculas, números e _ (2 a 40 caracteres, começando por letra)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_KEY_TAKEN",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma política com a chave ${key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_NAME_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Dê um nome à política (até 120 caracteres)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Política não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_SCOPE_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Grupo não encontrado.",
+      "Subgrupo não encontrado neste Grupo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_SCOPE_LOCKED",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O escopo não muda depois da primeira publicação: crie outra política para outro escopo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_POLICY_VERSION_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Versão não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_REASON_REQUIRED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Diga o que precisa mudar (pelo menos 5 caracteres).",
+      "Diga por que a intervenção está sendo cancelada (pelo menos 5 caracteres).",
+      "Diga por que está encaminhando (pelo menos 5 caracteres)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_REPORT_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Relatório não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/report-narrative.ts",
+      "backend/src/modules/interventions/presentation/intervention-router.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TASKS_PENDING",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Ainda há ${counts.tasksTotal - counts.tasksDone - counts.tasksSkipped} tarefa(s) pendente(s)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-state.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_CONCURRENT_CHANGE",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O rascunho mudou durante a publicação. Abra de novo e tente outra vez."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_DRAFT_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para publicar.",
+      "Não há rascunho para validar."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_DRAFT_ONLY",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Um tipo sem versão publicada não tem para onde voltar: edite o rascunho ou inative o tipo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_INVALID",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_KEY_INVALID",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Chave inválida: use letras maiúsculas, números e _ (2 a 40 caracteres, começando por letra)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_KEY_TAKEN",
+    "module": "interventions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um tipo de intervenção com a chave ${key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/config-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Tipo de intervenção não encontrado ou inativo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INTERVENTION_TYPE_VERSION_MISSING",
+    "module": "interventions",
+    "statuses": [
+      500
+    ],
+    "messages": [
+      "A versão do tipo desta intervenção não foi encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "INVALID_CHARACTER",
+    "module": "main",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Valor com caractere inválido."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "INVALID_COMPARISON",
+    "module": "performance-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Comparação operacional inválida."
+    ],
+    "refs": [
+      "backend/src/modules/performance-analytics/presentation/analytics-router.ts"
+    ]
+  },
+  {
+    "code": "INVALID_CONFIGURATION",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "INVALID_CREDENTIALS",
+    "module": "auth",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "E-mail ou senha inválidos."
+    ],
+    "refs": [
+      "backend/src/modules/auth/presentation/auth-router.ts"
+    ]
+  },
+  {
+    "code": "INVALID_CURSOR",
+    "module": "performance-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Cursor de paginação inválido."
+    ],
+    "refs": [
+      "backend/src/modules/performance-analytics/presentation/analytics-router.ts",
+      "backend/src/modules/reporting/presentation/operator-router.ts"
+    ]
+  },
+  {
+    "code": "INVALID_GROUPING",
+    "module": "leadership-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Agrupar por ${GROUPING_LABELS[groupBy]} não está disponível para esta estrutura.",
+      "Agrupamento inválido.",
+      "Agrupamento não disponível para esta estrutura."
+    ],
+    "refs": [
+      "backend/src/modules/leadership-analytics/application/indicator-analysis.ts",
+      "backend/src/modules/leadership-analytics/presentation/leadership-router.ts",
+      "backend/src/modules/performance-analytics/application/build-structure-dashboard.ts",
+      "backend/src/modules/performance-analytics/presentation/analytics-router.ts"
+    ]
+  },
+  {
+    "code": "INVALID_IDENTIFIER",
+    "module": "main",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Identificador ou valor em formato inválido."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "INVALID_JSON",
+    "module": "knowledge-clarification",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Corpo da requisição não é um JSON válido.",
+      "A resposta não é um JSON válido."
+    ],
+    "refs": [
+      "backend/src/main/app.ts",
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "INVALID_PERIOD",
+    "module": "ingestion",
+    "statuses": [
+      400,
+      422
+    ],
+    "messages": [
+      "O fim da chamada deve ser posterior ao início.",
+      "Competência inválida — use o formato AAAA-MM."
+    ],
+    "refs": [
+      "backend/src/modules/ingestion/presentation/ingestion-router.ts",
+      "backend/src/modules/performance-analytics/domain/reference-period.ts"
+    ]
+  },
+  {
+    "code": "INVALID_SCOPE_JSON",
+    "module": "knowledge",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Escopo inválido."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "INVALID_SUBJECT",
+    "module": "performance-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Tipo de estrutura desconhecido.",
+      "Sujeito de análise inválido."
+    ],
+    "refs": [
+      "backend/src/modules/performance-analytics/domain/analytics-subject.ts"
+    ]
+  },
+  {
+    "code": "INVALID_UPLOAD",
+    "module": "main",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Envio de arquivo inválido."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "INVESTIGATION_SUBJECT_NOT_FOUND",
+    "module": "investigation",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Colaborador não encontrado nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/tool-context.ts"
+    ]
+  },
+  {
+    "code": "JSON_INVALID",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "A resposta não é um JSON válido."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/run-agent.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_ARCHIVED_REACTIVATION_REQUIRED",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta base está arquivada. Publicar faz com que ela volte a valer para a IA: confirme a reativação para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_CLARIFICATION_ANSWER_INVALID",
+    "module": "knowledge-clarification",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-state.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_CLARIFICATION_STALE",
+    "module": "knowledge-clarification",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este esclarecimento foi substituído por uma pergunta mais recente. Faça a pergunta de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/application/knowledge-clarification-service.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_CLARIFICATION_UNAVAILABLE",
+    "module": "realtime",
+    "statuses": [
+      409,
+      503
+    ],
+    "messages": [
+      "Este esclarecimento não está mais disponível. Faça a pergunta de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/application/knowledge-clarification-service.ts",
+      "backend/src/modules/realtime/presentation/realtime-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_DRAFT_ONLY",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta base só tem o rascunho: para retirá-la, exclua a base."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_DRAFT_PENDING",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Há um rascunho em edição. Reverter descarta esse rascunho: confirme para continuar.",
+      "Há um rascunho em edição. Reprocessar substitui o texto dele: confirme para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_EXTRACTION_BUSY",
+    "module": "knowledge",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Há muitos arquivos sendo lidos agora. Tente de novo em instantes."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_EXTRACTION_FAILED",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não foi possível extrair texto do arquivo enviado.",
+      "Nenhuma página deste PDF tem texto para a IA ler. Nada foi alterado."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_FILE_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Arquivo original não encontrado para este material.",
+      "Arquivo original não encontrado para esta base.",
+      "Esta versão não tem arquivo original."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-material-router.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_FILE_TYPE_MISMATCH",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O arquivo foi recusado: a leitura passou do limite de memória ou de tempo. Confira se ele não está corrompido ou envie uma versão menor.",
+      "O conteúdo do arquivo não corresponde ao tipo informado (aceitos: PDF, DOCX, TXT e JSON).",
+      "O arquivo original não passou na conferência de segurança."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_IMAGE_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Esta imagem não faz parte desta versão."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_MATERIAL_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Material de apoio não encontrado ou não disponível para você."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-material-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_NO_DRAFT",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para descartar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_NOT_ARCHIVED",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta base não está arquivada."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Base de conhecimento não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-queries.ts",
+      "backend/src/modules/checkpoint-registry/application/checkpoint-registry-service.ts",
+      "backend/src/modules/knowledge/application/knowledge-versions.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_NOTHING_TO_PUBLISH",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para publicar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_DRAFT_CHANGED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "O rascunho mudou durante a leitura, e o texto lido não foi gravado. Reprocesse o arquivo para ler de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_FAILED",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "A leitura do PDF parou antes do fim em várias tentativas. Reprocesse o arquivo para tentar de novo.",
+      "Não foi possível ler as páginas digitalizadas deste PDF. Reprocesse o arquivo para tentar de novo ou digite o conteúdo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_FILE_GONE",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "O arquivo deste rascunho não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_LIMIT",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "A leitura do PDF passou do limite de memória ou de tempo do servidor. Divida o arquivo em partes menores e envie de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_NO_TEXT",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [
+      "O OCR não encontrou texto nas páginas digitalizadas. Confira se o PDF está legível ou digite o conteúdo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_RUNNING",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O PDF ainda está sendo lido (OCR). Espere a leitura terminar e confira o texto antes de editar ou publicar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_OCR_UNAVAILABLE",
+    "module": "knowledge",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-ocr-jobs.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_PREVIEW_FAILED",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não foi possível gerar a prévia deste documento."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-material-router.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_PREVIEW_TOO_LARGE",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-material-router.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_PREVIEW_UNSUPPORTED",
+    "module": "knowledge",
+    "statuses": [
+      415
+    ],
+    "messages": [
+      "Este formato não tem prévia em HTML."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-material-router.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_REPROCESS_NO_FILE",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta base não tem arquivo original para reprocessar."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_REPROCESS_STALE",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A base mudou enquanto o arquivo era reprocessado. Confira e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_REPROCESS_UNSUPPORTED",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O reprocessamento vale para bases em PDF."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SCOPE_FORBIDDEN",
+    "module": "knowledge",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Esta base vale para Grupos fora do seu escopo: só quem administra todos eles pode alterá-la.",
+      "Você só pode cadastrar bases nos Grupos do seu escopo (base para todos os Grupos exige escopo de organização)."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SCOPE_INVALID",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Subgrupo informado não existe neste Grupo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SOURCE_REQUIRED",
+    "module": "knowledge",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Informe um texto ou envie um arquivo.",
+      "Envie um arquivo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_VERSION_ALREADY_CURRENT",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta já é a versão em uso."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_VERSION_NOT_FAILED",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só uma atualização com falha pode ser processada de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_VERSION_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Versão não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_VERSION_NOT_REVERTIBLE",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só é possível reverter para uma versão que já ficou pronta."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-versions.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_VERSION_RESTRICTED",
+    "module": "knowledge",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Esta versão valia para Grupos fora do seu escopo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "LABEL_TOO_LONG",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "Rótulo longo demais (máx. 80): \"${clip(label, 60)}\" — use a descrição para o detalhe."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "LEADERSHIP_SCOPE_REQUIRED",
+    "module": "leadership-analytics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Disponível para quem lidera uma estrutura ou tem acesso de consulta a indicadores."
+    ],
+    "refs": [
+      "backend/src/modules/leadership-analytics/presentation/leadership-router.ts"
+    ]
+  },
+  {
+    "code": "LEADERSHIP_TOOL_NOT_FOUND",
+    "module": "leadership-analytics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Ferramenta desconhecida."
+    ],
+    "refs": [
+      "backend/src/modules/leadership-analytics/presentation/leadership-router.ts"
+    ]
+  },
+  {
+    "code": "LOGIN_TOO_MANY_ATTEMPTS",
+    "module": "auth",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente."
+    ],
+    "refs": [
+      "backend/src/modules/auth/presentation/auth-router.ts"
+    ]
+  },
+  {
+    "code": "MEASUREMENT_NOT_FOUND",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Medição não encontrada para este indicador e colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/simulate-diagnostic-strategy.ts"
+    ]
+  },
+  {
+    "code": "MISSING_COMPONENTS",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [
+      "${plural(scan.missingComponents, \"medição não tem\", \"medições não têm\")} numerador e denominador, que a estratégia \"${label}\" exige. O resultado do período ficaria errado, porque essas linhas entrariam com peso 1.${sc…"
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "MISSING_EVIDENCE",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "ANSWER exige \\\"answerEvidence\\\" com os marcadores K-n das SEÇÕES que sustentam a resposta (base inteira, B-n, não vale: abra a base e cite as seções)."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "MISSING_FIELD",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "CLARIFY exige o objeto \\\"clarification\\\".",
+      "A etapa precisa de \\\"dimension\\\" e \\\"question\\\".",
+      "INSUFFICIENT exige \\\"insufficient.reason\\\" dizendo o que as fontes não cobrem."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "NO_CHANGE",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [
+      "Nada mudou: escolha outra unidade, direção ou estratégia."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "NO_STRUCTURE",
+    "module": "performance-analytics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Seu perfil não possui estrutura vinculada."
+    ],
+    "refs": [
+      "backend/src/modules/performance-analytics/presentation/analytics-router.ts"
+    ]
+  },
+  {
+    "code": "NO_VALID_CHECKPOINT",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "Nenhuma etapa proposta respeitou o contrato."
+    ],
+    "refs": [
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "NOT_APPLICABLE_FORBIDDEN",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "A escolha veio do formulário desta etapa: decida CLARIFY, ANSWER ou INSUFFICIENT."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "NOT_ENOUGH_OPTIONS",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "Uma etapa precisa de ao menos ${MIN_CLARIFICATION_OPTIONS} opções distintas, cada uma citando os marcadores K-n que a sustentam.${rejected ? "
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "NOT_FOUND",
+    "module": "main",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Recurso não encontrado.",
+      "Colaborador não encontrado."
+    ],
+    "refs": [
+      "backend/src/main/app.ts",
+      "backend/src/main/worker-health.ts",
+      "backend/src/modules/indicator-diagnosis/presentation/diagnostic-strategy-router.ts"
+    ]
+  },
+  {
+    "code": "NOTIFICATION_NOT_FOUND",
+    "module": "notifications",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Notificação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/notifications/application/build-notification-summary.ts"
+    ]
+  },
+  {
+    "code": "NUMERIC",
+    "module": "channel-flags",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/channel-flags/presentation/channel-flag-router.ts"
+    ]
+  },
+  {
+    "code": "OPERATOR_NOT_FOUND",
+    "module": "reporting",
+    "statuses": [
+      404,
+      422
+    ],
+    "messages": [
+      "Colaborador não encontrado nesta organização.",
+      "Colaborador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/ingestion/presentation/ingestion-router.ts",
+      "backend/src/modules/reporting/presentation/operator-router.ts",
+      "backend/src/modules/reporting/presentation/supervisor-router.ts"
+    ]
+  },
+  {
+    "code": "OPERATOR_WITHOUT_TEAM",
+    "module": "agents",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O operador desta interação não está associado a um grupo."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/run-agent.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_AGENT_NOT_FOUND",
+    "module": "assistant",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Um dos agentes selecionados não existe mais.",
+      "Agente orquestrador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/orchestrator-versions.ts",
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_AGENT_NOT_PUBLISHED",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O agente \"${agent.name}\" ainda não foi publicado. Publique-o antes de usá-lo num orquestrador."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/orchestrator-versions.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_AGENT_SCOPE_FORBIDDEN",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O agente \"${agent.name}\" não está disponível para o grupo deste orquestrador."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_AGENT_WRONG_TYPE",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O agente escolhido precisa ser do tipo \"Orquestrador\" — crie ou escolha um agente desse tipo em Agentes."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_INACTIVE",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este orquestrador está inativo — ative-o antes de testar."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/run-orchestrator-simulation.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_INVOCATION_MODE_MISMATCH",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este orquestrador não está habilitado para o contexto \"${input.invocationContext}\" (modo de invocação: ${row.invocation_mode})."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/run-orchestrator-simulation.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_NOT_FOUND",
+    "module": "assistant",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Orquestrador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts",
+      "backend/src/modules/qa-lab/application/run-orchestrator-simulation.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_POLICY_INVALID",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_POLICY_REQUIRED",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_SCOPE_FORBIDDEN",
+    "module": "assistant",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para criar um orquestrador nesse escopo.",
+      "Você não tem permissão para mover o orquestrador para esse escopo."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_SCOPE_TAKEN",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um orquestrador ativo atendendo o chat/voz nesse escopo — desative-o, ou restrinja um dos dois a \\\"Somente Workflow\\\", pra evitar que os dois disputem quem responde o operador."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_SPECIALIST_FORBIDDEN_BY_POLICY",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "ORCHESTRATOR_VERSION_CONFLICT",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Outra pessoa gravou este orquestrador depois que você o abriu. Atualize para ver a versão atual; o que você alterou continua na tela."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/orchestrator-versions.ts"
+    ]
+  },
+  {
+    "code": "ORGANIZATION_SCOPE_REQUIRED",
+    "module": "access",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Esta configuração vale para a organização inteira: só quem a administra em toda a organização pode alterá-la.",
+      "Este registro vale para a organização inteira: só quem a administra em toda a organização pode lê-lo.",
+      "Indicadores e glossário valem para a organização inteira: só quem administra toda a organização pode alterá-los."
+    ],
+    "refs": [
+      "backend/src/modules/access/presentation/require-permission.ts",
+      "backend/src/modules/governance/presentation/governance-router.ts",
+      "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts",
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts",
+      "backend/src/modules/knowledge/application/knowledge-versions.ts",
+      "backend/src/modules/org-structure/presentation/org-structure-router.ts"
+    ]
+  },
+  {
+    "code": "PASSWORD_CHANGE_NOT_REQUIRED",
+    "module": "auth",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Sua senha já foi criada."
+    ],
+    "refs": [
+      "backend/src/modules/auth/application/define-first-password.ts"
+    ]
+  },
+  {
+    "code": "PASSWORD_CHANGE_REQUIRED",
+    "module": "auth",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Crie a sua senha para continuar."
+    ],
+    "refs": [
+      "backend/src/modules/auth/domain/session-state.ts"
+    ]
+  },
+  {
+    "code": "PASSWORD_CONFIRMATION_MISMATCH",
+    "module": "auth",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A confirmação não é igual à nova senha."
+    ],
+    "refs": [
+      "backend/src/modules/auth/application/define-first-password.ts"
+    ]
+  },
+  {
+    "code": "PASSWORD_POLICY_VIOLATION",
+    "module": "auth",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A senha não atende à política de segurança."
+    ],
+    "refs": [
+      "backend/src/modules/auth/application/define-first-password.ts"
+    ]
+  },
+  {
+    "code": "PASSWORD_SAME_AS_TEMPORARY",
+    "module": "auth",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A nova senha precisa ser diferente da senha temporária."
+    ],
+    "refs": [
+      "backend/src/modules/auth/application/define-first-password.ts"
+    ]
+  },
+  {
+    "code": "PAYLOAD_TOO_LARGE",
+    "module": "main",
+    "statuses": [
+      413
+    ],
+    "messages": [
+      "Corpo da requisição grande demais."
+    ],
+    "refs": [
+      "backend/src/main/app.ts"
+    ]
+  },
+  {
+    "code": "PDF",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "PENDING_ACTION_ALREADY_DECIDED",
+    "module": "pending-actions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta revisão já foi decidida.",
+      "Esta pendência já foi resolvida."
+    ],
+    "refs": [
+      "backend/src/modules/pending-actions/application/build-pending-actions.ts",
+      "backend/src/modules/people/application/workday-reconciliation-service.ts"
+    ]
+  },
+  {
+    "code": "PENDING_ACTION_DECISION_NOT_ALLOWED",
+    "module": "pending-actions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta decisão não está prevista no workflow para esta revisão."
+    ],
+    "refs": [
+      "backend/src/modules/pending-actions/application/build-pending-actions.ts"
+    ]
+  },
+  {
+    "code": "PENDING_ACTION_NOT_ACTIONABLE",
+    "module": "people",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este registro é informativo e não exige decisão."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/workday-reconciliation-service.ts"
+    ]
+  },
+  {
+    "code": "PENDING_ACTION_NOT_FOUND",
+    "module": "pending-actions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pendência não encontrada ou não endereçada a você.",
+      "Revisão não encontrada ou não endereçada a você.",
+      "Pendência não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/pending-actions/application/build-pending-actions.ts",
+      "backend/src/modules/people/application/workday-reconciliation-service.ts"
+    ]
+  },
+  {
+    "code": "PENDING_ACTION_UNAVAILABLE",
+    "module": "pending-actions",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta execução não está mais aguardando esta revisão."
+    ],
+    "refs": [
+      "backend/src/modules/pending-actions/application/build-pending-actions.ts"
+    ]
+  },
+  {
+    "code": "PENDING_REPLY_INVALID",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "A etapa aberta aceita uma opção só; a mensagem foi interpretada como várias."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "PEOPLE_ROLE_REQUIRES_ORGANIZATION_SCOPE",
+    "module": "users",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Definir ou mudar um nível de liderança (Supervisor, Coordenador, Gerente…) exige administrar pessoas na organização inteira."
+    ],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "PEOPLE_SELF_CHANGE_FORBIDDEN",
+    "module": "users",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não pode alterar o seu próprio nível, Grupo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.",
+      "Você não pode vincular a sua própria conta — outra pessoa autorizada precisa fazer isso."
+    ],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "PERIOD_TOO_LONG",
+    "module": "human-support",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha um período de até 92 dias."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/coverage.ts"
+    ]
+  },
+  {
+    "code": "PERSON_ALREADY_LINKED",
+    "module": "people",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta pessoa já foi vinculada a uma pessoa da base."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_FIELD_MANAGED_BY_SOURCE",
+    "module": "users",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "PERSON_HIERARCHY_REQUIRES_SOURCE",
+    "module": "users",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Quem é da hierarquia vem pela base (${sources.map((source) => "
+    ],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "PERSON_LINK_SAME_PERSON",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha outra pessoa: não dá para vincular alguém a si mesmo."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_LINK_SOURCE_HAS_MATRICULA",
+    "module": "people",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta pessoa já veio da base (tem matrícula) — o vínculo é feito a partir da pessoa cadastrada à mão."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_LINK_TARGET_HAS_ACCOUNT",
+    "module": "people",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A pessoa da base já tem conta de login. Decida qual conta fica (desabilite a outra em Acessos) antes de vincular."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_LINK_TARGET_INACTIVE",
+    "module": "people",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A pessoa da base está inativa: os papéis da conta não valeriam para ela. Confira a base antes de vincular."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_LINK_TARGET_NOT_FROM_SOURCE",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha uma pessoa que veio da base (com matrícula)."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts"
+    ]
+  },
+  {
+    "code": "PERSON_MATRICULA_IN_USE",
+    "module": "users",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma pessoa com esta matrícula na organização. Não cadastre de novo: libere o acesso dela em Acessos › Habilitar acesso."
+    ],
+    "refs": [
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "PERSON_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pessoa não encontrada.",
+      "Colaborador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/data-lifecycle/application/subject-data-export.ts",
+      "backend/src/modules/interventions/application/intervention-service.ts",
+      "backend/src/modules/interventions/presentation/intervention-admin-router.ts",
+      "backend/src/modules/people/application/schedule-exception-service.ts",
+      "backend/src/modules/people/application/workday-classification-service.ts",
+      "backend/src/modules/performance-analytics/application/viewer-scope.ts"
+    ]
+  },
+  {
+    "code": "POLICY_ACTION_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O tipo ${action.typeKey} aparece duas vezes na mesma regra."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_ACTION_TYPE_INACTIVE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O tipo ${action.typeKey} está inativo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_ACTION_TYPE_UNPUBLISHED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O tipo ${action.typeKey} não existe ou ainda não tem versão publicada."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_COMPETENCY_UNKNOWN",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Não existe competência com a chave ${key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_CONDITION_TYPE_UNKNOWN",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Não existe tipo de intervenção com a chave ${key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_EMPLOYMENT_PERIOD",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Dias elegíveis usam uma janela de dias ou de calendário."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_FLAG_INACTIVE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A flag ${condition.flagName} está desativada no catálogo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_FLAG_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A flag ${condition.flagName} (${condition.channel}) não existe no catálogo de flags."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_FLAG_PERCENT",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Percentual de atendimentos vai de 0 a 100."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_FLAG_VALUE_TYPE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A flag ${condition.flagName} é ${flag.valueType === \"BOOLEAN\" ? \"sim/não\" : \"numérica\"}: ajuste o valor procurado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_GROUP_TOO_DEEP",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Use no máximo ${MAX_GROUP_DEPTH} níveis de grupos."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INCONCLUSIVE_ACTION_CLASSIFIES",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Dados insuficientes nunca viram classificação: com regra inconclusiva só cabem tipos de observação, revisão de dados ou revisão pela liderança (${type.definition.name} não é)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_COMPARATOR",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Use um comparador numérico."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_COUNT_COMPARE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Recorrência compara uma contagem com um número, não com meta ou período anterior."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_COUNT_FILTER",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Recorrência: defina qual medição conta (comparação e valor)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_INACTIVE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O indicador ${code} está desativado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_NOT_FOUND",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O indicador ${code} não existe nesta organização.",
+      "O indicador ${condition.indicatorCode} não existe nesta organização.",
+      "O indicador ${definition.indicatorCode} não existe nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_PERIOD_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Defina a janela de análise."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_QUERY_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Escolha UMA consulta: histórico do indicador ou resultado oficial."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_REQUIRED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Escolha o indicador da condição."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_INDICATOR_THRESHOLD",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Recorrência: defina quantas ocorrências.",
+      "Defina o valor de comparação.",
+      "Defina em quantos fechamentos o quartil precisa aparecer."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_OPERATIONAL_QUARTILE_UNSUPPORTED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Quartil operacional não está disponível em políticas: use o quartil oficial do fechamento."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_PERFORMANCE_QUARTILE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Quartil oficial compara com Q1 a Q4 (Q1 = melhor, Q4 = pior), usando igual ou diferente."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_PERFORMANCE_RECURRENCE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Recorrência de fechamentos só existe para quartil oficial."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_PRIOR_RESULT_NEEDS_COMPLETED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Resultado operacional só existe em intervenções concluídas."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_RULE_ACTIONS_INCOMPATIBLE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "${a.typeKey} e ${b.typeKey} são incompatíveis e não podem estar na mesma regra."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_RULE_KEY_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A chave de regra ${rule.key} está repetida."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_RULE_PRIORITY_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A prioridade ${rule.priority} já é da regra ${other}: cada regra precisa de uma prioridade própria (sem empate)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_RULE_WITHOUT_ACTIONS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A regra ${rule.name} precisa de pelo menos uma ação."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_SKILL_GAP_NEEDS_DIAGNOSIS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "${type.definition.name} afirma uma lacuna de habilidade: a regra precisa exigir um diagnóstico sustentado (indicador abaixo da meta, sozinho, não basta)."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_TOO_MANY_CONDITIONS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Use no máximo ${MAX_CONDITIONS_PER_RULE} condições por regra."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "POLICY_WITHOUT_RULES",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A política precisa de pelo menos uma regra."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/policy-definition.ts"
+    ]
+  },
+  {
+    "code": "PROCESS_ASSESSMENT_MISSING",
+    "module": "agents",
+    "statuses": [],
+    "messages": [
+      "O campo obrigatório processAssessment não veio como objeto.",
+      "O campo processAssessment não veio como objeto."
+    ],
+    "refs": [
+      "backend/src/modules/agents/application/run-agent.ts",
+      "backend/src/modules/agents/domain/process-assessment-contract.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CODE_LOCKED",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O código já é usado por bases ou indícios: crie outro produto em vez de trocar o código."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CODE_TAKEN",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe um produto ou categoria com esse código."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_ARCHIVED",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Indício encerrado: reative-o para aprovar uma nova versão."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_EFFECTIVE_ORDER",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A nova vigência precisa começar depois do início da versão vigente."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_NO_DRAFT",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para aprovar."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_NOT_FOUND",
+    "module": "product-catalog",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Indício não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_NOT_READY",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O rascunho ainda não pode ser aprovado.",
+      "A última versão não pode voltar a valer como está (um produto indicado foi desativado?). Edite e aprove uma nova versão."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_NOT_STARTED",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A versão aprovada ainda não começou a valer: aguarde o início ou aprove outra data."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_ONLY_DRAFT",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O indício nunca foi aprovado: exclua o indício em vez de descartar o único rascunho."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_RETROACTIVE",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A vigência não pode começar antes da aprovação: um indício aprovado agora nunca vale para chamadas anteriores."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_SOURCE_INVALID",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Documento de origem não encontrado na base desta organização."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_CRITERION_TARGET_INVALID",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Um dos produtos indicados não existe nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_NODE_HAS_ACTIVE_CHILDREN",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Desative primeiro os produtos desta categoria."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_NODE_IN_USE",
+    "module": "product-catalog",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este item é usado agora por bases, indícios ou produtos dentro dele: tire-o de lá antes de excluir, ou desative."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_NODE_NOT_FOUND",
+    "module": "product-catalog",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Produto ou categoria não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_PARENT_INACTIVE",
+    "module": "product-catalog",
+    "statuses": [
+      409,
+      422
+    ],
+    "messages": [
+      "A categoria escolhida está desativada.",
+      "Reative primeiro a categoria deste item."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_SCOPE_SOURCE_NOT_FOUND",
+    "module": "product-catalog",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Base não encontrada nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_SCOPE_TARGET_INVALID",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha só produtos ou categorias ativos."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-scope-assignments.ts"
+    ]
+  },
+  {
+    "code": "PRODUCT_TREE_INVALID",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_AVATAR_FILE_REQUIRED",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Envie a foto para substituir a atual."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_COVER_FILE_REQUIRED",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Envie a imagem da capa."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_COVER_INVALID",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Capa inválida.",
+      "Escolha uma das capas."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/application/profile-preferences-service.ts",
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_IMAGE_NOT_FOUND",
+    "module": "profile-preferences",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Imagem não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_NOT_FOUND",
+    "module": "profile-preferences",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Perfil não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/application/profile-preferences-service.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_PREFERRED_NAME_INVALID",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Use apenas letras, espaços, apóstrofo, hífen ou ponto."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/application/profile-preferences-service.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_PREFERRED_NAME_TOO_LONG",
+    "module": "profile-preferences",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Use no máximo ${PREFERRED_NAME_MAX_LENGTH} caracteres."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/application/profile-preferences-service.ts"
+    ]
+  },
+  {
+    "code": "PROFILE_UPLOAD_INVALID",
+    "module": "profile-preferences",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Envio de imagem inválido."
+    ],
+    "refs": [
+      "backend/src/modules/profile-preferences/presentation/profile-preferences-router.ts"
+    ]
+  },
+  {
+    "code": "QA_CHANNEL_MISMATCH",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta interação é do canal ${call.channel}, mas o gatilho exige a Flag ${flagLabel(flag)} (canal ${flag.channel})."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_CONDITION_NOT_PREVIEWABLE",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A prévia por colaborador só se aplica a Conditions de performance ou histórico do indicador — para Conditions sobre o valor do gatilho, use os filtros de chamadas/medições.",
+      "Condição sem consulta de dados avaliável."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/test-data-finders.ts"
+    ]
+  },
+  {
+    "code": "QA_FLAG_MISSING_ON_INTERACTION",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta interação não possui a Flag ${flagLabel(flag)} exigida pelo gatilho."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_FLAG_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A flag configurada no gatilho não existe mais no catálogo."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_INDICATOR_MISMATCH",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A medição selecionada é do indicador \"${row2.code}\", mas o workflow dispara por \"${expectedCode}\"."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_INTERACTION_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Interação não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts",
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts"
+    ]
+  },
+  {
+    "code": "QA_INTERACTION_UNAVAILABLE",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A interação original deste QA Run não está mais disponível."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_MEASUREMENT_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Medição não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_NODE_NOT_CONDITION",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Selecione um node de Condição."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/test-data-finders.ts"
+    ]
+  },
+  {
+    "code": "QA_OPERATOR_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Colaborador não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_OPERATOR_OUT_OF_POPULATION",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O colaborador não pertence à população deste Workflow (Abrangência/Filtro Populacional)."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_RESOURCE_UNKNOWN",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Tipo de recurso desconhecido."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_AWAITING_DECISION",
+    "module": "qa-lab",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta simulação está aguardando uma decisão de revisão humana (aprovar/reprovar/escalar)."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_EMPLOYEE_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Colaborador \"${employeeId}\" não faz parte de nenhuma coleção desta simulação."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/run-workflow-simulation.ts",
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_FINISHED",
+    "module": "qa-lab",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta simulação já terminou — use \\\"Executar novamente\\\"."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_NOT_AWAITING_DECISION",
+    "module": "qa-lab",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta simulação não está aguardando decisão de revisão humana."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Execução de QA não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts",
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_NOT_RESUMABLE",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta execução de QA não é uma simulação de Workflow retomável."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_NOT_WORKFLOW",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\\\"Testar rascunho atual\\\" só se aplica a execuções de Workflow."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts"
+    ]
+  },
+  {
+    "code": "QA_RUN_WITHOUT_SNAPSHOT",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Esta execução antiga não guardou o snapshot da configuração — use \\\"Testar rascunho atual\\\"."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts"
+    ]
+  },
+  {
+    "code": "QA_SHIFT_INCOMPATIBLE",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A regra relativa deste workflow é incompatível com a jornada do colaborador (cairia fora do expediente)."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_SHIFT_MISSING",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O colaborador selecionado não tem jornada cadastrada para a data simulada — cadastre a jornada em Usuários ou escolha outro colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_SUBJECT_MISMATCH",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este workflow parte de uma medição de indicador — selecione uma medição de um colaborador.",
+      "Este workflow manual executa para um colaborador — selecione um colaborador.",
+      "Agenda relativa ao expediente é individual — selecione um colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_TRANSCRIPT_REQUIRED",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este Workflow necessita de transcrição e esta interação não possui uma disponível. Escolha outra interação ou use \\\"Parar antes da IA\\\" para testar as etapas anteriores."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts"
+    ]
+  },
+  {
+    "code": "QA_TRIGGER_INVALID",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Trigger relativo ao expediente sem configuração."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_TRIGGER_NOT_FLAG",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este workflow não parte de uma interação (Flag de canal ou Manual com interação) — a massa de teste por interação não se aplica."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/interaction-evidence.ts"
+    ]
+  },
+  {
+    "code": "QA_UNIT_EMPTY",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A estrutura selecionada não tem nenhum operador — nada a analisar."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts",
+      "backend/src/modules/qa-lab/application/test-data-finders.ts"
+    ]
+  },
+  {
+    "code": "QA_UNIT_KIND_MISMATCH",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A estrutura selecionada (${structure.kind}) não é do mesmo tipo configurado no workflow (${configuredStructure.kind})."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts",
+      "backend/src/modules/qa-lab/application/test-data-finders.ts"
+    ]
+  },
+  {
+    "code": "QA_WORKFLOW_NO_TRIGGER",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O grafo deste workflow não tem node Trigger."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_WORKFLOW_NOT_PUBLISHED",
+    "module": "qa-lab",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este workflow ainda não tem versão publicada — teste o rascunho."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/build-simulated-enrollment.ts"
+    ]
+  },
+  {
+    "code": "QA_WRITE_BLOCKED",
+    "module": "qa-lab",
+    "statuses": [
+      500
+    ],
+    "messages": [
+      "Escrita no banco bloqueada em ambiente de QA: \"${sql.trim().slice(0, 80).replace(/\\s+/g, \" \")}…\". A simulação nunca grava dados operacionais."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/read-only-database.ts"
+    ]
+  },
+  {
+    "code": "RATING_DETAILS_NOT_ALLOWED",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O motivo da descurtida só vale nas conversas abertas por você com a INIA."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/assistant-interaction-ratings.ts"
+    ]
+  },
+  {
+    "code": "READ_CONFIRMATION_INVALID_CREDENTIALS",
+    "module": "feedback-application",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Login ou senha não conferem com a sua conta."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+    ]
+  },
+  {
+    "code": "READ_CONFIRMATION_TOO_MANY_ATTEMPTS",
+    "module": "feedback-application",
+    "statuses": [
+      429
+    ],
+    "messages": [
+      "Muitas tentativas com login ou senha incorretos. Aguarde alguns minutos e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/feedback-application/application/read-confirmation-service.ts"
+    ]
+  },
+  {
+    "code": "READ_EMPTY",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "READ precisa de bases ainda não abertas (B-n) ou seções ainda não lidas (K-n) que aparecem acima; se já tem o suficiente, decida."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "READ_LIMIT",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "Não há mais consultas para esta pergunta: decida CLARIFY, ANSWER ou INSUFFICIENT com o que já foi mostrado."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "REALTIME_NOT_CONFIGURED",
+    "module": "realtime",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Voz em tempo real não está configurada neste ambiente."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-realtime-client.ts"
+    ]
+  },
+  {
+    "code": "REALTIME_SESSION_FAILED",
+    "module": "realtime",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Não foi possível iniciar a sessão de voz."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-realtime-client.ts"
+    ]
+  },
+  {
+    "code": "REALTIME_SESSION_TIMEOUT",
+    "module": "realtime",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-realtime-client.ts"
+    ]
+  },
+  {
+    "code": "REPEATED_DIMENSION",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "A dimensão \"${dimension}\" já foi definida: não pergunte de novo — pergunte outra distinção que mude a resposta, ou responda."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "REPEATED_OPTIONS",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "Estas opções repetem as de uma etapa anterior: não pergunte de novo."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "REPORT_DELIVERY_NOT_FOUND",
+    "module": "reports",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Entrega não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-deliveries-reader.ts",
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORT_DISTRIBUTION_NOT_ALLOWED",
+    "module": "reports",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só o papel Report escolhe outros destinatários."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORT_NOT_FOUND",
+    "module": "reports",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Report não encontrado.",
+      "Report excluído não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORT_PROPOSAL_NOT_FOUND",
+    "module": "reports",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Proposta não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORT_REVISION_CONFLICT",
+    "module": "reports",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O report foi alterado em outra tela. Recarregue e tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORT_SELF_NOT_ALLOWED",
+    "module": "reports",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Para criar um report para você é preciso liderar uma estrutura (ou ter acesso de consulta)."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "REPORTS_ACCESS_REQUIRED",
+    "module": "reports",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Reports são para quem lidera uma estrutura ou tem o papel Report."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "RESPONSE_CHECK_FAILED",
+    "module": "governance",
+    "statuses": [],
+    "messages": [
+      "A conferência da resposta falhou."
+    ],
+    "refs": [
+      "backend/src/modules/governance/application/response-compliance.ts"
+    ]
+  },
+  {
+    "code": "RESPONSE_CHECK_INVALID_OUTPUT",
+    "module": "governance",
+    "statuses": [],
+    "messages": [
+      "A conferência devolveu uma resposta fora do contrato."
+    ],
+    "refs": [
+      "backend/src/modules/governance/application/response-compliance.ts"
+    ]
+  },
+  {
+    "code": "RESPONSE_CHECK_PROVIDER_ERROR",
+    "module": "governance",
+    "statuses": [],
+    "messages": [
+      "O provedor de IA não concluiu a conferência."
+    ],
+    "refs": [
+      "backend/src/modules/governance/application/response-compliance.ts"
+    ]
+  },
+  {
+    "code": "RULE_NOT_FOUND",
+    "module": "indicator-rules",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Regra não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts"
+    ]
+  },
+  {
+    "code": "SCENE_IMAGE_TOO_LARGE",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A imagem é grande demais (máximo de 8 MB)."
+    ],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "SCENE_IMAGE_UNREADABLE",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/inia-scenes/application/inia-scene-service.ts"
+    ]
+  },
+  {
+    "code": "SCENE_PERIOD_INCOMPLETE",
+    "module": "inia-scenes",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/inia-scenes/presentation/inia-scene-router.ts"
+    ]
+  },
+  {
+    "code": "SCHEDULE_EXCEPTION_CODE_NOT_ALLOWED",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O motivo \"${SCHEDULE_EXCEPTION_LABELS[input.code] ?? input.code}\" não pode ser provisionado diretamente."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/schedule-exception-service.ts"
+    ]
+  },
+  {
+    "code": "SCHEDULE_EXCEPTION_INVALID_DATE",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Datas devem estar no formato AAAA-MM-DD."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/schedule-exception-service.ts"
+    ]
+  },
+  {
+    "code": "SCHEDULE_EXCEPTION_INVALID_RANGE",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A data inicial não pode ser posterior à final."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/schedule-exception-service.ts"
+    ]
+  },
+  {
+    "code": "SCHEDULE_EXCEPTION_NOT_FOUND",
+    "module": "people",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Exceção de calendário não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/schedule-exception-service.ts",
+      "backend/src/modules/people/application/team-calendar.ts"
+    ]
+  },
+  {
+    "code": "SCHEDULE_EXCEPTION_RANGE_TOO_LONG",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O período não pode ultrapassar ${MAX_PROVISION_SPAN_DAYS} dias."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/schedule-exception-service.ts"
+    ]
+  },
+  {
+    "code": "SESSION_IDLE",
+    "module": "auth",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "Sua sessão foi encerrada por inatividade. Entre novamente."
+    ],
+    "refs": [
+      "backend/src/modules/auth/domain/session-state.ts"
+    ]
+  },
+  {
+    "code": "SESSION_REVOKED",
+    "module": "auth",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "Sua sessão foi encerrada. Entre novamente.",
+      "Seu acesso foi alterado agora há pouco. Entre novamente."
+    ],
+    "refs": [
+      "backend/src/modules/auth/application/define-first-password.ts",
+      "backend/src/modules/auth/domain/session-state.ts"
+    ]
+  },
+  {
+    "code": "SPECIALIST_AGENT_INACTIVE",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O agente \"${row.name}\" está inativo."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/run-specialist-tool.ts"
+    ]
+  },
+  {
+    "code": "SPECIALIST_AGENT_NOT_FOUND",
+    "module": "assistant",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Agente especialista não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/run-specialist-tool.ts"
+    ]
+  },
+  {
+    "code": "SPECIALIST_TOOL_NOT_FOUND",
+    "module": "realtime",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Especialista não encontrado para essa tool."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/presentation/realtime-router.ts"
+    ]
+  },
+  {
+    "code": "SPECIALIST_UNEXPECTED_RESPONSE",
+    "module": "assistant",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Resposta inesperada do especialista.",
+      "Resposta inesperada do especialista no reparo de cobertura."
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/run-specialist-tool.ts"
+    ]
+  },
+  {
+    "code": "SPEECH_NETWORK_ERROR",
+    "module": "conversational-delivery",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Não foi possível gerar a voz da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-live-speech-client.ts"
+    ]
+  },
+  {
+    "code": "SPEECH_NOT_CONFIGURED",
+    "module": "conversational-delivery",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Voz da INIA não está configurada neste ambiente.",
+      "Voz da INIA não está configurada."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-live-speech-client.ts",
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-tts-client.ts",
+      "backend/src/modules/conversational-delivery/presentation/inia-deliveries-router.ts",
+      "backend/src/modules/feedback-application/presentation/feedback-applications-router.ts"
+    ]
+  },
+  {
+    "code": "SPEECH_PROVIDER_ERROR",
+    "module": "conversational-delivery",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A sessão de voz foi encerrada pelo provedor.",
+      "Não foi possível gerar a voz da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-live-speech-client.ts",
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-tts-client.ts"
+    ]
+  },
+  {
+    "code": "SPEECH_TIMEOUT",
+    "module": "conversational-delivery",
+    "statuses": [
+      422,
+      502
+    ],
+    "messages": [
+      "A voz da INIA demorou demais.",
+      "Não foi possível gerar a voz da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-live-speech-client.ts",
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-tts-client.ts"
+    ]
+  },
+  {
+    "code": "SPEECH_UNEXPECTED_RESPONSE",
+    "module": "conversational-delivery",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A voz da INIA não veio.",
+      "A voz da INIA veio num formato inesperado."
+    ],
+    "refs": [
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-live-speech-client.ts",
+      "backend/src/modules/conversational-delivery/infrastructure/gemini-tts-client.ts"
+    ]
+  },
+  {
+    "code": "START",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "STEP_LIMIT",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "O limite de etapas de esclarecimento chegou: decida ANSWER (se as fontes já sustentam a resposta) ou INSUFFICIENT (explicando o que falta)."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "STOP_BEFORE_AI",
+    "module": "shared",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/shared/application/llm-telemetry.ts"
+    ]
+  },
+  {
+    "code": "STRATEGY_DRAFT_NOT_FOUND",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não há rascunho para publicar."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/diagnostic-strategy-service.ts"
+    ]
+  },
+  {
+    "code": "STRATEGY_INVALID",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Configuração da estratégia inválida."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/diagnostic-strategy-service.ts"
+    ]
+  },
+  {
+    "code": "STRATEGY_INVALID_FOR_PUBLISH",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/diagnostic-strategy-service.ts"
+    ]
+  },
+  {
+    "code": "STRATEGY_NOT_FOUND",
+    "module": "indicator-diagnosis",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Este indicador ainda não tem estratégia de diagnóstico."
+    ],
+    "refs": [
+      "backend/src/modules/indicator-diagnosis/application/diagnostic-strategy-service.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURE_ACCESS_DENIED",
+    "module": "leadership-analytics",
+    "statuses": [
+      403,
+      422
+    ],
+    "messages": [
+      "Você não tem acesso a esta estrutura."
+    ],
+    "refs": [
+      "backend/src/modules/leadership-analytics/presentation/leadership-router.ts",
+      "backend/src/modules/performance-analytics/application/viewer-scope.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURE_OUT_OF_SCOPE",
+    "module": "reports",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "A estrutura escolhida não está no seu escopo."
+    ],
+    "refs": [
+      "backend/src/modules/reports/application/report-service.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURE_REQUIRED",
+    "module": "performance-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Esta visão só existe para estruturas."
+    ],
+    "refs": [
+      "backend/src/modules/performance-analytics/presentation/analytics-router.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURED_OUTPUT_IN_USE_DRAFT",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta alteração afeta ${impacts.length === 1 ? \"um Workflow em rascunho\" : "
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/structured-output-dependencies.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURED_OUTPUT_IN_USE_PUBLISHED",
+    "module": "assistant",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta alteração quebraria ${published.length === 1 ? \"um Workflow publicado\" : "
+    ],
+    "refs": [
+      "backend/src/modules/assistant/application/structured-output-dependencies.ts"
+    ]
+  },
+  {
+    "code": "STRUCTURED_OUTPUT_INVALID",
+    "module": "assistant",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/assistant/presentation/assistant-router.ts"
+    ]
+  },
+  {
+    "code": "TARGET",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${nodeLabel}\" usa Quartil operacional para um indicador sem direção de desempenho oficial definida (meta por faixa/alvo — \"TARGET\"). Sem direção HIGHER/LOWER não há regra de classificação em quartis."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "TEAM_CALENDAR_RANGE_TOO_LONG",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O calendário mostra no máximo ${MAX_CALENDAR_RANGE_DAYS} dias por vez."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/team-calendar.ts"
+    ]
+  },
+  {
+    "code": "TEAM_NOT_FOUND",
+    "module": "org-structure",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Grupo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/org-structure/presentation/org-structure-router.ts"
+    ]
+  },
+  {
+    "code": "TEMPORARY_PASSWORD_EXPIRED",
+    "module": "auth",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "Sua senha temporária expirou. Peça uma nova ao administrador."
+    ],
+    "refs": [
+      "backend/src/modules/auth/domain/session-state.ts",
+      "backend/src/modules/auth/presentation/auth-router.ts"
+    ]
+  },
+  {
+    "code": "TEXT_REPLY_EMPTY",
+    "module": "realtime",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "A INIA não retornou uma resposta."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-text-client.ts"
+    ]
+  },
+  {
+    "code": "TEXT_REPLY_FAILED",
+    "module": "realtime",
+    "statuses": [
+      502
+    ],
+    "messages": [
+      "Não foi possível obter uma resposta da INIA."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-text-client.ts"
+    ]
+  },
+  {
+    "code": "TEXT_REPLY_NETWORK_ERROR",
+    "module": "realtime",
+    "statuses": [
+      504
+    ],
+    "messages": [
+      "Não foi possível contatar a INIA."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-text-client.ts"
+    ]
+  },
+  {
+    "code": "TEXT_REPLY_NOT_CONFIGURED",
+    "module": "realtime",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "Resposta de texto não está configurada neste ambiente."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-text-client.ts"
+    ]
+  },
+  {
+    "code": "TEXT_REPLY_TIMEOUT",
+    "module": "realtime",
+    "statuses": [
+      422,
+      504
+    ],
+    "messages": [
+      "A INIA demorou demais para responder."
+    ],
+    "refs": [
+      "backend/src/modules/realtime/infrastructure/gemini-text-client.ts"
+    ]
+  },
+  {
+    "code": "TOO_MANY_OPTIONS",
+    "module": "knowledge-clarification",
+    "statuses": [],
+    "messages": [
+      "${options.length} opções é demais para uma etapa (máx. ${MAX_CLARIFICATION_OPTIONS}): pergunte primeiro uma distinção mais ampla que separe os cenários em grupos."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge-clarification/domain/clarification-contract.ts"
+    ]
+  },
+  {
+    "code": "TOOL_INVALID_ARGUMENTS",
+    "module": "investigation",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/investigation/application/tool-executor.ts"
+    ]
+  },
+  {
+    "code": "TOOL_INVALID_INDICATOR",
+    "module": "investigation",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Indicador \"${indicatorCode}\" não existe no catálogo. Códigos válidos: ${known.rows.map((item) => item.code).join(\", \")}."
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/tool-context.ts"
+    ]
+  },
+  {
+    "code": "TOOL_INVALID_PERIOD",
+    "module": "investigation",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Período inválido.",
+      "O fim do período é anterior ao início."
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/tool-context.ts"
+    ]
+  },
+  {
+    "code": "TOOL_KNOWLEDGE_UNAVAILABLE",
+    "module": "investigation",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Consulta à base indisponível: esta análise não tem um Agent com bases autorizadas."
+    ],
+    "refs": [
+      "backend/src/modules/investigation/application/tools/context-tools.ts"
+    ]
+  },
+  {
+    "code": "TOPIC_NOT_FOUND",
+    "module": "governance",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Assunto não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/governance/presentation/governance-router.ts"
+    ]
+  },
+  {
+    "code": "TRAINING_CONTENT_NOT_APPROVED",
+    "module": "interventions",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Treinamento só usa conteúdos publicados da base de conhecimento.",
+      "\"${competency.name}\" não tem conteúdo publicado na base: o treinamento só usa conteúdo aprovado."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/application/intervention-service.ts"
+    ]
+  },
+  {
+    "code": "TYPE_AI_DRAFT_UNSUPPORTED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Rascunho pela IA só existe para Treinamento ou Plano de ação."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_CAPABILITIES_INCOMPATIBLE",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Treinamento (lacuna de habilidade) e Reconhecimento não convivem no mesmo tipo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_COMPLETION_NEEDS_TASKS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Exigir todas as tarefas concluídas só faz sentido com a capacidade Tarefas."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_COMPLETION_NEEDS_TRAINING",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Avaliação de aprendizagem só existe com a capacidade Treinamento."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_FORM_FIELD_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O campo \"${field.key}\" aparece mais de uma vez no formulário."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_FORM_OPTIONS_UNEXPECTED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Só campos do tipo lista têm opções (\"${field.label}\")."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_FORM_SELECT_OPTIONS",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "O campo \"${field.label}\" é uma lista e precisa de pelo menos duas opções."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_INCOMPATIBLE_DUPLICATED",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "A chave ${key} está repetida."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_INCOMPATIBLE_SELF",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Um tipo não pode ser incompatível consigo mesmo."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "TYPE_INCOMPATIBLE_UNKNOWN",
+    "module": "interventions",
+    "statuses": [],
+    "messages": [
+      "Não existe tipo de intervenção com a chave ${key}."
+    ],
+    "refs": [
+      "backend/src/modules/interventions/domain/intervention-type.ts"
+    ]
+  },
+  {
+    "code": "UNAUTHENTICATED",
+    "module": "auth",
+    "statuses": [
+      401
+    ],
+    "messages": [
+      "Sessão ausente ou expirada."
+    ],
+    "refs": [
+      "backend/src/modules/auth/presentation/require-auth.ts",
+      "backend/src/modules/auth/presentation/session-user.ts"
+    ]
+  },
+  {
+    "code": "UNKNOWN_CHANNEL_FLAG",
+    "module": "ingestion",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Flag \"${flagName}\" não está cadastrada para o canal ${input.channel}. Cadastre-a no catálogo antes de enviar."
+    ],
+    "refs": [
+      "backend/src/modules/ingestion/presentation/ingestion-router.ts"
+    ]
+  },
+  {
+    "code": "UNKNOWN_ROLE",
+    "module": "access",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/access/application/access-service.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_CLASSIFICATION_NOT_FOUND",
+    "module": "usage-analytics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pessoa sem classificação vigente."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/usage-settings-service.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_COMMENTS_FORBIDDEN",
+    "module": "usage-analytics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Exportar comentários exige permissão específica."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-export.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_EXPORT_FORBIDDEN",
+    "module": "usage-analytics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para exportar."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/presentation/usability-router.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_EXPORT_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Tabela de exportação inválida."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-export.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_EXPORT_TOO_LARGE",
+    "module": "usage-analytics",
+    "statuses": [
+      413
+    ],
+    "messages": [
+      "O recorte tem ${total} linhas — acima do limite de ${EXPORT_ROW_LIMIT} por arquivo. Estreite o período ou os filtros."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-export.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_FILTER_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Filtro inválido.",
+      "Intervalo personalizado exige data inicial e final."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-filters.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_FILTER_NOT_SUPPORTED",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Filtro não se aplica a esta aba: ${unsupported.join(\", \")}."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-filters.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_PEOPLE_FORBIDDEN",
+    "module": "usage-analytics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para ver pessoas identificadas.",
+      "Filtrar por pessoa exige permissão para ver pessoas identificadas.",
+      "Filtrar por cargo, papel de acesso ou situação exige permissão para ver pessoas identificadas."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/person-query.ts",
+      "backend/src/modules/usage-analytics/application/query/usability-context.ts",
+      "backend/src/modules/usage-analytics/application/query/usability-export.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_PERIOD_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-context.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_PERSON_NOT_FOUND",
+    "module": "usage-analytics",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pessoa não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/person-query.ts",
+      "backend/src/modules/usage-analytics/application/usage-settings-service.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_REPROCESS_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Intervalo inválido (máximo 400 dias)."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/usage-settings-service.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_SEGMENT_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Segmento inválido.",
+      "Etapa de funil inválida."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/feedbacks-query.ts",
+      "backend/src/modules/usage-analytics/application/query/journeys-query.ts",
+      "backend/src/modules/usage-analytics/application/query/people-query.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_SMALL_COHORT",
+    "module": "usage-analytics",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O recorte escolhido tem menos de ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas. Para não identificar ninguém, a monitoria só mostra números de grupos com ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION} pessoas ou mais —…"
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/query/usability-context.ts"
+    ]
+  },
+  {
+    "code": "USABILITY_TIMEZONE_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Fuso horário inválido."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/usage-settings-service.ts"
+    ]
+  },
+  {
+    "code": "USAGE_ACCOUNT_MISMATCH",
+    "module": "usage-analytics",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O lote pertence a outra conta e foi descartado."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/ingest-client-events.ts"
+    ]
+  },
+  {
+    "code": "USAGE_BATCH_INVALID",
+    "module": "usage-analytics",
+    "statuses": [
+      400
+    ],
+    "messages": [
+      "Lote de eventos inválido."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/application/ingest-client-events.ts",
+      "backend/src/modules/usage-analytics/presentation/usage-events-router.ts"
+    ]
+  },
+  {
+    "code": "USAGE_BATCH_TOO_LARGE",
+    "module": "usage-analytics",
+    "statuses": [
+      413
+    ],
+    "messages": [
+      "Lote acima do limite."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/presentation/usage-events-router.ts"
+    ]
+  },
+  {
+    "code": "USAGE_ORIGIN_NOT_ALLOWED",
+    "module": "usage-analytics",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Origem não permitida."
+    ],
+    "refs": [
+      "backend/src/modules/usage-analytics/presentation/usage-events-router.ts"
+    ]
+  },
+  {
+    "code": "USER_NOT_FOUND",
+    "module": "users",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Pessoa não encontrada.",
+      "Usuário não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/person-source-link.ts",
+      "backend/src/modules/users/presentation/user-account-router.ts"
+    ]
+  },
+  {
+    "code": "VALIDATION_ERROR",
+    "module": "human-support",
+    "statuses": [
+      400,
+      422
+    ],
+    "messages": [
+      "Dados inválidos.",
+      "Informe as datas no formato AAAA-MM-DD.",
+      "A data inicial precisa ser antes da final."
+    ],
+    "refs": [
+      "backend/src/main/app.ts",
+      "backend/src/modules/human-support/application/coverage.ts",
+      "backend/src/modules/human-support/application/request-service.ts",
+      "backend/src/modules/human-support/application/settings-service.ts",
+      "backend/src/modules/indicators/presentation/employee-performance-router.ts",
+      "backend/src/modules/workflows/domain/draft-graph.ts"
+    ]
+  },
+  {
+    "code": "VALUES_OUTSIDE_UNIT",
+    "module": "indicators",
+    "statuses": [],
+    "messages": [
+      "${plural(scan.outOfUnitRange, \"medição tem\", \"medições têm\")} valor fora do que a unidade \"${INDICATOR_UNIT_METADATA[next.unit].label}\" aceita. A carga recusaria essas linhas hoje."
+    ],
+    "refs": [
+      "backend/src/modules/indicators/domain/indicator-correction.ts"
+    ]
+  },
+  {
+    "code": "WORKDAY_CLASSIFICATION_REASON_NOT_ALLOWED",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\"${WORKDAY_CLASSIFICATION_LABELS[classification]}\" não aceita motivo."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/workday-classification-service.ts"
+    ]
+  },
+  {
+    "code": "WORKDAY_CLASSIFICATION_REASON_REQUIRED",
+    "module": "people",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Ausência justificada exige um motivo (atestado, day off, banco de horas, folga extraordinária ou outro)."
+    ],
+    "refs": [
+      "backend/src/modules/people/application/workday-classification-service.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ACTION_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" gera feedback de um colaborador sobre uma interação ou medição — não existe nesse ponto de um Workflow consolidado."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_INACTIVE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o agente \"${agent.name}\", que está inativo. Ative-o (ou publique uma versão sem ele) antes de executar.",
+      "O nó \"${node.label}\" usa o agente \"${live.name}\", que está inativo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_INVALID_TYPE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" chama \"${found.name}\", que é o agente-coordenador de um Orquestrador — use o nó Orquestrador, ou escolha um agente especialista."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_NOT_AUTHORIZED",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" usa o agente \"${agent.name}\", cuja versão vigente não está autorizada para este Workflow (alcance ou bases do agente). Ajuste o agente antes de executar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_NOT_CONSOLIDATED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" chama \"${found.name}\" depois de \"Consolidar resultados\", mas esse agente analisa um colaborador por vez — escolha um Agent de síntese (ou marque o agente como \"aceita resultado consolidado\").",
+      "O agente \"${agent.name}\" não aceita o resultado consolidado de \"Consolidar resultados\" — só um Agent de síntese (ou que declare aceitar esse contexto) pode rodar aqui."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts",
+      "backend/src/modules/workflows/application/synthesis-agent-executor.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa um agente que não existe mais. Publique uma versão com outro agente antes de executar.",
+      "O nó \"${node.label}\" referencia um agente que não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_NOT_PUBLISHED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o agente \"${agent.name}\", que ainda não foi publicado. Publique-o antes de executar.",
+      "O nó \"${node.label}\" usa o agente \"${live.name}\", que ainda não foi publicado — publique o agente antes de publicar o Workflow."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_SCOPE_FORBIDDEN",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O agente \"${found.name}\" não está disponível para o grupo deste workflow."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_AGENT_SYNTHESIS_REQUIRES_JOIN",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" chama \"${found.name}\", que é um Agent de síntese — ele só roda depois de \"Consolidar resultados\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_APPLY_INDIVIDUALLY_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" (\"Aplicar individualmente\") exige uma coleção de colaboradores — adicione \"Selecionar colaboradores\" antes dele."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_APPLY_INDIVIDUALLY_MULTIPLE_JOINS",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "\"${applyNode?.label ?? applyId}\" (\"Aplicar individualmente\") alcança mais de um \"Consolidar resultados\" diferente — só um Join é permitido por fan-out."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_CONSOLIDATE_RESULTS_AMBIGUOUS_ORIGIN",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "\"${joinNode.label}\" (\"Consolidar resultados\") é alcançado por mais de um \"Aplicar individualmente\" diferente — a origem ficou ambígua."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_CONSOLIDATE_RESULTS_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" (\"Consolidar resultados\") exige um colaborador individual como contexto de entrada — ele espera pelas execuções nascidas de \"Aplicar individualmente\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_CONSOLIDATE_RESULTS_MISSING_ORIGIN",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "\"${joinNode.label}\" (\"Consolidar resultados\") precisa estar associado a um \"Aplicar individualmente\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_CONSOLIDATED_MODE_INVALID_TRIGGER",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A Estrutura Consolidada configurada só é válida para Agenda de calendário — troque o Alvo da avaliação para Individual antes de publicar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/lifecycle-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_DISPATCH_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "Disparo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-results-router.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_EMPLOYEE_COLLECTION_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${collectionNode.label}\" só é válido quando o Workflow analisa uma Estrutura Consolidada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ENROLLMENT_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Execução não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FAN_OUT_PATH_ESCAPES_JOIN",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "Nem todos os caminhos individuais de \"${applyNode.label}\" (\"Aplicar individualmente\") chegam ao mesmo \"Consolidar resultados\" — algum caminho termina antes de consolidar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_DOMAIN_AMBIGUOUS",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não dá para saber se \"${node.label}\" é feedback de monitoria ou de indicador com este gatilho e esta origem. Escolha o tipo explicitamente (monitoria exige gatilho por Flag ou Manual com interação; indicador, gatilho …"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_INDICATOR_ORCHESTRATOR_UNSUPPORTED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\"${node.label}\" é feedback de indicador a partir de um Orquestrador — ainda não suportado: o Orquestrador não recebe o contexto canônico do indicador. Use \"Chamar agente\" como origem."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_INDICATOR_REQUIRES_CANONICAL_CONTEXT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\"${node.label}\" é feedback de indicador, que precisa do dado canônico de uma medição — só existe com gatilho por Indicador ou Manual com medição (modo Individual)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_MONITORING_REQUIRES_INTERACTION",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\"${node.label}\" é feedback de monitoria, que precisa da interação do gatilho por Flag de canal ou Manual com interação (modo Individual)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_SOURCE_INCOMPATIBLE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A origem de \"${node.label}\" (\"${source.label}\") não é um \"Chamar agente\" ou \"Orquestrador\" que analisa um colaborador."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_SOURCE_NOT_ANCESTOR",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A origem de \"${node.label}\" (\"${source.label}\") precisa vir ANTES dele no fluxo.",
+      "O Output \"${node.label}\" precisa vir depois de \"${source.node.label}\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_SOURCE_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" precisa de uma origem: escolha o \"Chamar agente\" ou \"Orquestrador\" cujo resultado vira feedback."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_FEEDBACK_WITHOUT_OUTPUT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O feedback de \"${node.label}\" não é entregue a ninguém. Adicione um Output com ele como conteúdo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_HUMAN_REVIEW_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_DIAGNOSIS_DOMAIN_NOT_ALLOWED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Agent do nó \"${node.label}\" não pertence a um domínio permitido na estratégia de diagnóstico do indicador."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_DIAGNOSIS_INDICATOR_UNAVAILABLE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" diagnostica um indicador inativo ou sem fechamento oficial."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_DIAGNOSIS_REQUIRES_INDICATOR",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_DIAGNOSIS_STRATEGY_MISSING",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o formato \"Diagnóstico do indicador\", mas o indicador não tem estratégia de diagnóstico publicada e ativa. Configure-a em Indicadores › Diagnóstico com IA.",
+      "O nó \"${diagnosisNodes[0]!.label}\" usa o formato \"Diagnóstico do indicador\", mas o indicador não tem estratégia de diagnóstico publicada e ativa. Configure-a em Indicadores › Diagnóstico com IA."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_INACTIVE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${use.subject} usa o indicador \"${indicator.name}\", que está desativado — indicadores desativados não entram em Workflows novos."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/validate-indicator-capabilities.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_NO_OFFICIAL_CLOSURE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${use.subject} usa o fechamento oficial (atingimento/quartil) de \"${indicator.name}\", que não tem fechamento oficial habilitado — use o Valor do indicador (medição operacional)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/validate-indicator-capabilities.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INDICATOR_NOT_OPERATIONAL",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${use.subject} usa uma janela operacional (dias, semana ou quartil operacional) para \"${indicator.name}\", que não tem medição operacional habilitada — use períodos mensais/fechamentos ou habilite a medição operacional…"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/validate-indicator-capabilities.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERACTION_FEEDBACK_DISABLED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" gera feedback de atendimento, mas esse módulo está desligado neste ambiente. Remova o nó ou habilite o módulo antes de publicar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERACTION_FEEDBACK_NO_INTERACTION",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa \"Interação que disparou o Workflow\", que só existe com gatilho por Flag de canal (ou Manual com interação) no modo Individual. Troque a origem para \"Interações do colaborador no período\" ou us…"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_INACTIVE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa a política \"${policy.name}\", que está inativa."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/intervention-policy.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa uma política de acompanhamento que não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/intervention-policy.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_SCOPE_MISMATCH",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A política \"${policy.name}\" vale para outro Grupo/Subgrupo: nenhum colaborador deste Workflow estaria no escopo dela."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/intervention-policy.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_SOURCE_NOT_ANCESTOR",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa como referência de análise um nó que não vem antes dele no fluxo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/intervention-policy.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INTERVENTION_POLICY_UNPUBLISHED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A política \"${policy.name}\" ainda não tem versão publicada: publique a política antes do Workflow."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/intervention-policy.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INVALID_ACTION",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A ação \"${label}\" tem uma origem dinâmica inválida.",
+      "A ação \"${label}\" referencia uma variável de origem que não existe mais neste workflow.",
+      "A ação \"${label}\" tenta atribuir o valor de uma variável de outro tipo — os tipos precisam ser exatamente iguais."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts",
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INVALID_CONDITION",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó de condição \"${label}\" precisa de uma origem selecionada.",
+      "O nó de condição \"${label}\" referencia uma variável que não existe mais neste workflow.",
+      "O nó de condição \"${label}\" precisa de um valor para comparar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/conditions.ts",
+      "backend/src/modules/workflows/application/publish-validation/node-references.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INVALID_GRAPH",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A versão publicada não tem nó Gatilho.",
+      "O workflow precisa ter exatamente um nó Gatilho.",
+      "O workflow precisa ter ao menos um nó Fim."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts",
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_INVALID_TRIGGER",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O gatilho Manual não diz de qual indicador é a medição. Escolha o indicador nas configurações do workflow.",
+      "Escolha o momento do expediente.",
+      "Defina o percentual da jornada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_COLLABORATOR_NOT_ELIGIBLE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "${row.name} não é elegível para este workflow (precisa ser um operador ativo dentro da Abrangência e do Filtro Populacional do workflow)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_COLLABORATOR_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Colaborador não encontrado no seu escopo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_CONFLICT",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Não foi possível registrar o disparo. Tente de novo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_CONTEXT_MISMATCH",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este workflow manual pede \"${MANUAL_TRIGGER_CONTEXT_LABELS[target.trigger.context]}\", não \"${MANUAL_TRIGGER_CONTEXT_LABELS[context]}\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_CONTEXT_REQUIRED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Selecione a interação do colaborador que será analisada.",
+      "Selecione a medição do indicador que será analisada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_CONTEXT_UNEXPECTED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Este workflow não usa uma interação selecionada.",
+      "Este workflow não usa uma medição selecionada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_IDEMPOTENCY_CONFLICT",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta solicitação já foi usada para outro disparo. Abra o diálogo de novo para uma nova execução."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_INACTIVE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O workflow está desativado. Ative-o antes de executar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_INTERACTION_INVALID",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A interação selecionada não pertence a este colaborador.",
+      "A interação selecionada não tem transcrição — escolha outra."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_MEASUREMENT_INVALID",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A medição selecionada não é deste colaborador e do indicador deste workflow."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Execução manual não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/manual-run-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_NOT_MANUAL",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "Este workflow não usa o gatilho Manual — ele começa pelo próprio gatilho (Flag, Indicador ou Agenda)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_RUN_NOT_PUBLISHED",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O workflow ainda não foi publicado. Publique o rascunho antes de executar.",
+      "O workflow não tem versão publicada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MANUAL_TRIGGER_CONSOLIDATED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O gatilho Manual executa para um colaborador — troque o Alvo da avaliação para Individual.",
+      "O gatilho Manual executa para UM colaborador escolhido a cada disparo — troque o Alvo da avaliação para Individual."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MISSING_BRANCH_EDGE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" não está ligado ao próximo passo. Conecte a saída dele antes de publicar.",
+      "O nó \"${node.label}\" não tem para onde seguir na saída \"${branch.label}\". Ligue essa saída ao próximo passo (ou a um nó Fim) antes de publicar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts",
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_MISSING_OUTPUT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O workflow chama um agente mas não tem nenhum nó Output — o resultado do agente nunca seria publicado. Adicione um nó Output."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_NODE_INVARIANT",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "Nó \"${row.current_node_id}\" não existe mais na versão pinada deste workflow."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/engine.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_NOT_FOUND",
+    "module": "qa-lab",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Workflow não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/qa-lab/application/test-data-finders.ts",
+      "backend/src/modules/qa-lab/application/workflow-simulation-service.ts",
+      "backend/src/modules/qa-lab/presentation/qa-lab-router.ts",
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/presentation/workflow-results-router.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/shared.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_NOT_PUBLISHED",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Este workflow ainda não foi publicado — não há configuração publicada para restaurar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/lifecycle-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OPERATIONAL_QUARTILE_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_INACTIVE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o Orquestrador \"${orchestrator.name}\", que está inativo. Ative-o (ou publique uma versão sem ele) antes de executar.",
+      "O nó \"${node.label}\" usa o Orquestrador \"${found.name}\", que está inativo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_INVALID_INVOCATION",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o Orquestrador \"${orchestrator.name}\", que só atende chat/voz. Publique uma versão com um Orquestrador habilitado para Workflows antes de executar.",
+      "O nó \"${node.label}\" usa o Orquestrador \"${found.name}\", que só atende chat/voz — escolha um Orquestrador habilitado para Workflows."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" usa o Orquestrador, que exige um colaborador individual como contexto. Adicione \"Aplicar individualmente\" antes deste nó."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa um Orquestrador que não existe mais. Publique uma versão com outro Orquestrador antes de executar.",
+      "O nó \"${node.label}\" referencia um Orquestrador que não existe mais."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/manual-run.ts",
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_ROUTING_DOMAIN_INVALID",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" declara um domínio de negócio inexistente ou inativo no roteamento.",
+      "O nó \"${node.label}\" declara o domínio \"${domain.name}\", mas o Orquestrador \"${found.name}\" tem ${domain.specialists === 0 ? \"nenhum especialista ativo\" : "
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_SCOPE_FORBIDDEN",
+    "module": "workflows",
+    "statuses": [
+      409,
+      422
+    ],
+    "messages": [
+      "O Orchestrator \"${orchestratorRow.name}\" não está disponível para o grupo deste workflow.",
+      "Não é possível mover para esse escopo: o Orchestrator \"${orchestrator.name}\", já usado neste workflow, não está disponível para o grupo de destino."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_VERSION_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" referencia uma versão que não é do Orquestrador \"${found.name}\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_ORCHESTRATOR_VERSION_SCOPE_FORBIDDEN",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" fixa uma versão do Orquestrador \"${found.name}\" que não está disponível para o grupo deste workflow — use a versão atual."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/orchestrators.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OUTPUT_CONVERSATIONAL_TARGET_INVALID",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Output \"${node.label}\" entrega o feedback de \"${source.node.label}\" no Chat/Avatar de outra pessoa. O feedback é do colaborador analisado: use \"O próprio operador\" (para a gestão, use Acompanhamento ou Notificação)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OUTPUT_FEEDBACK_SOURCE_INVALID",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Output \"${node.label}\" precisa publicar o feedback inteiro de \"${source.node.label}\", não um campo dele.",
+      "O Output \"${node.label}\" não publica o resultado do feedback direto de atendimento (legado): ele é entregue pelo próprio módulo. Use \"Gerar feedback\" a partir de um Agent/Orquestrador."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OUTPUT_RECIPIENT_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não foi possível determinar um ${ROLE_LABELS[role]} na cadeia de gestão deste operador."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/output-executor.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OUTPUT_SURFACE_UNSUPPORTED",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Output \"${node.label}\" usa superfície(s) que ainda não têm consumidor real (${unsupported.join(\", \")}). Para feedback, use Acompanhamento, Notificação, Chat ou Avatar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_OUTPUT_TARGET_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PAID_CYCLE_WITHOUT_WAIT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${paid.label}\" chama a IA e faz parte de um caminho que volta para ele sem passar por uma Espera: cada volta faria uma nova chamada paga, sem pausa. Inclua uma Espera no caminho de volta ou desfaça o ciclo antes…"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PAID_NODE_RUN_LIMIT",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" chama a IA e já rodou ${runs} vezes nesta execução (limite: ${env.WORKFLOW_MAX_PAID_NODE_RUNS}). A execução foi encerrada para não repetir o gasto de IA."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/engine.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PERFORMANCE_QUERY_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_POPULATION_FILTER_INVALID_TRIGGER",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O Filtro Populacional configurado só é válido para Agenda — troque o filtro para \"Todos os colaboradores elegíveis\" antes de publicar.",
+      "Filtro Populacional só está disponível para Agenda."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/lifecycle-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PROCESS_ASSESSMENT_REQUIRES_FLAG",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${assessmentNode.label}\" usa o formato \"Avaliação de processo\", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PROCESS_AUDIT_REQUIRES_FLAG",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${auditNode.label}\" usa o formato \"Conformidade de processo\", que exige uma transcrição de chamada — só disponível com gatilho por Flag de canal ou Manual com interação."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/trigger-context.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_PRV_DIAGNOSIS_REQUIRES_SCHEDULE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o formato \"Diagnóstico do fechamento do PRV\", que parte do fechamento oficial — só com gatilho por Agenda (ou Manual por colaborador) e a fonte de dados \"Fechamentos oficiais\".",
+      "\"${node.label}\" é feedback do fechamento do PRV, que precisa do gatilho por Agenda no modo Individual (um colaborador por execução)."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts",
+      "backend/src/modules/workflows/application/publish-validation/reliable-feedback.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RECIPIENT_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Uma pessoa escolhida como destinatário ou revisor não existe mais, está inativa ou não pertence a esta organização."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/review-escalation.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RECOGNITION_REQUIRES_RANKING",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O nó \"${node.label}\" usa o formato \"Reconhecimento\", que precisa da fonte de dados \"Fechamentos oficiais\" e de um \"Selecionar colaboradores\" antes, por ranking de \"Melhores desempenhos\" ou de evolução. É dele que vem …"
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/indicator-diagnosis.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_CONTENT_MISSING",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O conteúdo a revisar continua ausente nesta versão. Publique uma versão que corrija a origem do conteúdo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_FAN_OUT_MISSING",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "A versão vigente do Workflow não tem mais a etapa de envio para vários colaboradores desta execução. Publique uma versão com essa etapa ou execute o Workflow de novo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_IN_PROGRESS",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe uma nova tentativa desta execução em andamento. Aguarde ela terminar."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_NOT_BLOCKED",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Só uma execução bloqueada aceita nova tentativa."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_RECONFIRM",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "O que será usado na nova tentativa mudou desde que você abriu a confirmação. Confira os dados atualizados e confirme de novo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_RECORD_CANCELLED",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "A medição desta execução foi cancelada na Central de Dados. Ela precisa voltar a valer, por uma carga ou por Reativar, antes de uma nova tentativa."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_REVIEWER_MISSING",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "${NO_REVIEWER_MESSAGES[cause]} Ajuste a hierarquia ou o revisor da etapa antes de tentar de novo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_RETRY_WORKFLOW_INACTIVE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/application/workflow-retry.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_SCOPE_FORBIDDEN",
+    "module": "workflows",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem permissão para publicar este workflow na Abrangência do rascunho.",
+      "Você não tem permissão para criar workflows nesse escopo.",
+      "Você não tem permissão para mover o workflow para esse escopo."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-workflow.ts",
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_SELECT_EMPLOYEES_INVALID_MODE",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" (\"Selecionar colaboradores\") exige uma estrutura ou uma coleção como contexto — não pode vir depois de \"Aplicar individualmente\"."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_SELECT_EMPLOYEES_MISSING_CRITERION",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" (\"Selecionar colaboradores\") precisa de um critério de seleção configurado."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_SELECT_EMPLOYEES_MISSING_RANKING",
+    "module": "workflows",
+    "statuses": [],
+    "messages": [
+      "O nó \"${node.label}\" (\"Selecionar colaboradores\") precisa de uma configuração de ranking."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/fan-out.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_STRUCTURED_FIELD_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "A ação \"${label}\" usa o campo \"${fieldPath}\", que não existe mais no resultado estruturado do Orquestrador.",
+      "O nó de condição \"${label}\" usa o campo \"${fieldPath}\", que não existe mais no resultado estruturado do Orquestrador — escolha outro campo.",
+      "O nó \"${label}\" publica o campo \"${fieldPath}\", que não existe mais no resultado estruturado do Orquestrador."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts",
+      "backend/src/modules/workflows/application/publish-validation/conditions.ts",
+      "backend/src/modules/workflows/application/publish-validation/outputs.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_TRIGGER_CONSOLIDATED_MODE_CONFLICT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_TRIGGER_POPULATION_FILTER_CONFLICT",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Não é possível trocar o gatilho: este workflow tem um Filtro Populacional configurado, que só é válido para Agenda. Troque o filtro para \"Todos os colaboradores elegíveis\" antes."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/definition-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_VARIABLE_CYCLE",
+    "module": "workflows",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Ciclo entre variáveis: ${cycleNames.join(\" → \")}. Uma variável nunca pode depender dela mesma, mesmo indiretamente."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/application/publish-validation/actions.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_VARIABLE_IN_USE",
+    "module": "workflows",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Esta variável está em uso por um ou mais nós deste workflow (rascunho ou versão publicada) — remova as referências antes de excluí-la."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/variable-routes.ts"
+    ]
+  },
+  {
+    "code": "WORKFLOW_VARIABLE_NOT_FOUND",
+    "module": "workflows",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Variável não encontrada."
+    ],
+    "refs": [
+      "backend/src/modules/workflows/presentation/workflow-router/variable-routes.ts"
+    ]
+  },
+  {
+    "code": "WRITER_TRANSIENT_PROVIDER_ERROR",
+    "module": "reliable-feedback",
+    "statuses": [
+      503
+    ],
+    "messages": [
+      "O redator do feedback não respondeu (${code}) — nova tentativa pela política de retry."
+    ],
+    "refs": [
+      "backend/src/modules/reliable-feedback/application/generate-reliable-feedback.ts"
+    ]
+  }
+]

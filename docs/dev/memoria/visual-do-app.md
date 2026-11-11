@@ -121,6 +121,13 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   continuam com a mesma API, desenhados por estes. O rótulo é sempre **"Tentar novamente"** (era "Tentar de novo" em parte das
   telas). Ficam: "Tentar de novo e reativar" da base arquivada (é outra ação, com confirmação) e o recado de voz do chat do
   operador (arquivo da outra frente).
+- **Telas de erro** (2026-11-11) — `components/error-states/`: `ErrorScreen` é a única tela de falha, com a arte de cada estado
+  (`public/brand/error-states/`: 400 quebra-cabeça, 401 crachá, 403 cancela, 404 cabo, 500 servidor, sem conexão roteador/celular
+  alternados por ocorrência). `variant="page"` quando a navegação/fluxo está bloqueado (fronteiras `error.tsx`/`global-error.tsx`,
+  `not-found.tsx`, sem conexão sobreposto); `variant="contextual"` dentro de painel. Erro contextual de consulta continua no
+  `ErrorState` do kit, com a faixa `FailureSupport` no slot `support` (código, referência, "Copiar detalhes para suporte" e, quando a
+  pessoa não resolve, "Procure o administrador…"). Texto sempre em HTML; a arte é decorativa (`alt=""`) e some se não carregar.
+  Conferência visual: `/dev/estados-de-erro` (só com `INIA_ERROR_STATES_PREVIEW=ON`).
 
 ### Mapa do que ainda se repete com variações (prioridade pelo impacto visível; não feito nesta rodada)
 

@@ -6,7 +6,7 @@ import { LoginFooter } from "@/components/auth/login-footer"
 import { LoginFields } from "@/components/auth/auth-form-client"
 
 /** `notice`: por que a pessoa voltou ao login (sessão encerrada por inatividade, saiu de todos os aparelhos). */
-export function LoginForm({ notice }: { notice?: string }) {
+export function LoginForm({ notice, returnTo }: { notice?: string; returnTo?: string }) {
   return (
     <Card className="w-full max-w-md border-border/70 bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/85">
       <AuthCardHeader
@@ -16,7 +16,7 @@ export function LoginForm({ notice }: { notice?: string }) {
 
       <CardContent className="space-y-5">
         {notice ? <AuthFeedback type="success" message={notice} /> : null}
-        <LoginFields />
+        <LoginFields returnTo={returnTo} />
       </CardContent>
 
       <LoginFooter />

@@ -794,7 +794,7 @@ describe("Aplicação de feedback — sessão no card central", () => {
     api.start.mockResolvedValue({ application: detail(), created: false })
     const { script: _script, limitations: _limitations, sourceCorrected: _corrected, content: _content, ...view } = detail()
     void [_script, _limitations, _corrected, _content]
-    api.confirm.mockResolvedValue({ source: SOURCE, acknowledgedAt: "2026-10-01T13:00:00.000Z", alreadyConfirmed: false, application: { ...view, status: "COMPLETED", completedAt: "2026-10-01T13:00:00.000Z", acknowledgedAt: "2026-10-01T13:00:00.000Z" } })
+    api.confirm.mockResolvedValue({ source: SOURCE, acknowledgedAt: "2026-10-01T13:00:00.000Z", alreadyConfirmed: false, agreement: { value: "AGREE", reason: null, justification: null, recordedAt: "2026-10-01T13:00:00.000Z", review: null }, agreementDiffered: false, application: { ...view, status: "COMPLETED", completedAt: "2026-10-01T13:00:00.000Z", acknowledgedAt: "2026-10-01T13:00:00.000Z" } })
     text.reply.mockResolvedValue({ text: "Resposta.", supportMaterials: [], interactionId: "i", conversationId: "conv-followup", persisted: true })
     const workspace = renderWorkspace()
     await waitFor(() => expect(text.currentCalls).toBe(1))
@@ -810,15 +810,18 @@ describe("Aplicação de feedback — sessão no card central", () => {
     act(() => workspace.openFeedback({ source: SOURCE, mode: "continue", title: "Rechamada", periodLabel: null, origin: "feed" }))
     const dialog = await session()
     await screen.findByTestId("feedback-resume-marker")
-    // O MESMO controle do Acompanhamento: diálogo central (nunca painel lateral) com login e senha.
+    // O MESMO controle do Acompanhamento: diálogo central (nunca painel lateral) — primeiro a escolha, depois login e senha.
     fireEvent.click(within(dialog).getByRole("button", { name: /Confirmar ciência/ }))
+    const choice = await screen.findByRole("dialog", { name: "Você concorda com este feedback?" })
+    fireEvent.click(within(choice).getByRole("radio", { name: "Concordo com o feedback" }))
+    fireEvent.click(within(choice).getByRole("button", { name: "Continuar" }))
     const confirm = await screen.findByRole("dialog", { name: "Confirmar ciência" })
     expect(within(confirm).getByText(/A conversa com a INIA sobre este feedback será concluída/)).toBeInTheDocument()
     fireEvent.change(within(confirm).getByLabelText("Login"), { target: { value: "joana@empresa.com" } })
     fireEvent.change(within(confirm).getByLabelText("Senha"), { target: { value: "segredo" } })
     await act(async () => fireEvent.click(within(confirm).getByRole("button", { name: "Confirmar ciência" })))
     expect(api.confirm).toHaveBeenCalledTimes(1)
-    expect(api.confirm.mock.calls[0]![0]).toMatchObject({ source: SOURCE, entryPoint: "FEEDBACK_SESSION", login: "joana@empresa.com", password: "segredo" })
+    expect(api.confirm.mock.calls[0]![0]).toMatchObject({ source: SOURCE, entryPoint: "FEEDBACK_SESSION", login: "joana@empresa.com", password: "segredo", agreement: { value: "AGREE" } })
     await waitFor(() => expect(within(screen.getByTestId("feedback-session")).getByTestId("feedback-session-status")).toHaveTextContent(/Ciência confirmada em/))
     // Depois de concluir, a próxima dúvida nasce na conversa complementar — nunca na conversa encerrada da aplicação.
     const box = within(screen.getByTestId("feedback-session")).getByPlaceholderText("Tire uma dúvida sobre este feedback…")

@@ -41,7 +41,7 @@ const history = (id: string, occurredAt: string, title = `Feedback ${id}`): Oper
 const delivered = (id: string, deliveredAt: string): DeliveredFeedback => ({
   id, kind: "INTERACTION_FEEDBACK", title: "Feedback de atendimento", section: "STRENGTH", sectionLabel: "Ponto positivo",
   interactionLabel: "28/09/2026", interactionAt: null, deliveredAt, acknowledgedAt: null,
-  blocks: [{ key: "observed", label: "O que foi observado", text: `Entrega ${id}` }], evidence: [],
+  blocks: [{ key: "observed", label: "O que foi observado", text: `Entrega ${id}` }], evidence: [], evaluation: null,
 })
 
 describe("Timeline do Acompanhamento — mais recente primeiro", () => {

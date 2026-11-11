@@ -63,3 +63,4 @@ pacote-configuracao-*/
 
 # cópias de segurança do banco (npm run db:backup) — têm dados pessoais, nunca vão para o repositório
 /backups/
+/RELEASE

@@ -16,19 +16,20 @@ import { formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useContestationsQuery } from "@/queries/admin/use-feedback-contestation-queries"
 import { CONTESTATION_STATUS_LABELS, type ContestationItem, type ContestationStatus } from "@/schemas/admin/feedback-contestation.schema"
-import { DISLIKE_REASON_COPY, type FeedbackDislikeReason } from "@/schemas/feedback-ratings/feedback-rating.schema"
+import { CONTESTATION_ORIGIN_LABELS, CONTESTATION_REASON_COPY, type ContestationOrigin, type ContestationReason } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 import { ContestationDetailPanel } from "./contestation-detail"
 import { ContestationRateCard } from "./contestation-rate-card"
 
 const PAGE_SIZE = 20
-type Filters = { search: string; status: ContestationStatus | undefined; reason: FeedbackDislikeReason | undefined }
-const DEFAULT_FILTERS: Filters = { search: "", status: "PENDING", reason: undefined }
-const REASON_LABELS = Object.fromEntries(Object.entries(DISLIKE_REASON_COPY).map(([reason, copy]) => [reason, copy.label])) as Record<FeedbackDislikeReason, string>
+type Filters = { search: string; status: ContestationStatus | undefined; origin: ContestationOrigin | undefined; reason: ContestationReason | undefined }
+const DEFAULT_FILTERS: Filters = { search: "", status: "PENDING", origin: undefined, reason: undefined }
+const REASON_LABELS = Object.fromEntries(Object.entries(CONTESTATION_REASON_COPY).map(([reason, copy]) => [reason, copy.label])) as Record<ContestationReason, string>
 
 /**
- * "Contestações de feedback" — quando um colaborador marca um feedback da INIA como "não foi útil" (impreciso, processo errado…)
- * e descreve o problema, alguém do escopo dele lê e responde. A resposta aparece para o colaborador junto do feedback; o
+ * "Contestações de feedback" — quando um colaborador NÃO CONCORDA com um feedback da INIA ao confirmar a ciência (ou, antes de
+ * 10/11/2026, marcou como "não foi útil"), ele escolhe o motivo (impreciso, processo errado…) e justifica; alguém do escopo dele
+ * lê e responde. A resposta aparece para o colaborador junto do feedback; o
  * feedback em si não muda. A lista à esquerda (sem resposta primeiro), a contestação aberta à direita; no celular, uma de cada vez.
  */
 export function FeedbackContestationsPage() {
@@ -37,7 +38,7 @@ export function FeedbackContestationsPage() {
   const searchParams = useSearchParams()
   const selectedId = searchParams.get("contestation")
   const list = useAdminListState<Filters>({ storageKey: "feedback-contestations", defaultFilters: DEFAULT_FILTERS, defaultPageSize: PAGE_SIZE })
-  const query = useContestationsQuery({ search: list.params.search, status: list.filters.status, reason: list.filters.reason, page: list.page, pageSize: list.pageSize })
+  const query = useContestationsQuery({ search: list.params.search, status: list.filters.status, origin: list.filters.origin, reason: list.filters.reason, page: list.page, pageSize: list.pageSize })
 
   function select(id: string | null) {
     const next = new URLSearchParams(searchParams.toString())
@@ -55,7 +56,7 @@ export function FeedbackContestationsPage() {
       <PageHeader
         icon={MessageSquareWarning}
         title="Contestações de feedback"
-        description="Quando um colaborador do seu escopo marca um feedback da INIA como “não foi útil”, ele explica o motivo. Leia, compare com o feedback e responda — a resposta aparece para ele junto do feedback."
+        description="Quando um colaborador do seu escopo não concorda com um feedback da INIA ao confirmar a ciência, ele escolhe o motivo e justifica (as avaliações “não foi útil” de antes também estão aqui). Leia, compare com o feedback e responda — a resposta aparece para ele junto do feedback."
         aside={query.data ? <p className="text-sm text-muted-foreground tabular-nums">{pending === 0 ? "Nenhuma aguardando resposta" : `${pending} ${pending === 1 ? "aguardando resposta" : "aguardando resposta"}`}</p> : null}
       />
 
@@ -70,6 +71,7 @@ export function FeedbackContestationsPage() {
             onClearFilters={list.resetFilters}
           >
             <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={optionsFromLabels(CONTESTATION_STATUS_LABELS)} allLabel="Todas" ariaLabel="Filtrar por situação" />
+            <ListSelectFilter value={list.filters.origin} onChange={(value) => list.setFilter("origin", value)} options={optionsFromLabels(CONTESTATION_ORIGIN_LABELS)} allLabel="Todas as origens" ariaLabel="Filtrar por origem" />
             <ListSelectFilter value={list.filters.reason} onChange={(value) => list.setFilter("reason", value)} options={optionsFromLabels(REASON_LABELS)} allLabel="Todos os motivos" ariaLabel="Filtrar por motivo" />
           </ListToolbar>
 
@@ -136,7 +138,8 @@ function ContestationRow({ item, selected, onSelect }: { item: ContestationItem;
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatShortDateTime(item.contestedAt)}</span>
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="text-[11px]">{DISLIKE_REASON_COPY[item.reason].label}</Badge>
+          <Badge variant="secondary" className="text-[11px]" data-testid="contestation-origin">{CONTESTATION_ORIGIN_LABELS[item.origin]}</Badge>
+          <Badge variant="outline" className="text-[11px]">{CONTESTATION_REASON_COPY[item.reason].label}</Badge>
           {item.status === "PENDING" ? <Badge className="bg-amber-500/15 text-[11px] text-amber-700 dark:text-amber-300">Aguardando resposta</Badge> : <Badge variant="secondary" className="text-[11px]">Respondida</Badge>}
         </span>
         <span className="line-clamp-2 text-xs text-muted-foreground">“{item.comment}”</span>

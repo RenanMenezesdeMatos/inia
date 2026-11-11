@@ -33,8 +33,8 @@ export function mapOperatorFeedbackHistory(rows: OperatorFeedbackRow[]): Operato
         view: row.feedbackView ?? null,
       },
       origin: row.origin ?? null,
-      // Só feedbacks publicados podem receber ciência — para os demais o campo fica ausente.
-      ...(row.status === "PUBLISHED" ? { acknowledgedAt: row.acknowledgedAt } : {}),
+      // Só feedbacks publicados podem receber ciência (e a escolha que vai com ela) — para os demais os campos ficam ausentes.
+      ...(row.status === "PUBLISHED" ? { acknowledgedAt: row.acknowledgedAt, evaluation: row.evaluation ?? null } : {}),
     }
   })
 }

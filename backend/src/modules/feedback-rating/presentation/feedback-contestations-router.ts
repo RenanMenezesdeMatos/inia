@@ -3,13 +3,14 @@ import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getContestation, listContestations, reviewContestation, type Reviewer } from "../application/contestation-review-service.js"
 import { contestationSummary } from "../application/contestation-summary.js"
-import { contestationReviewInputSchema, FEEDBACK_DISLIKE_REASONS } from "../domain/feedback-rating.js"
+import { CONTESTATION_ORIGINS, CONTESTATION_REASONS, contestationReviewInputSchema } from "../domain/feedback-rating.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const listQuerySchema = z
   .object({
     status: z.enum(["PENDING", "ANSWERED"]).optional(),
-    reason: z.enum(FEEDBACK_DISLIKE_REASONS).optional(),
+    origin: z.enum(CONTESTATION_ORIGINS).optional(),
+    reason: z.enum(CONTESTATION_REASONS).optional(),
     search: z.string().trim().max(120).optional(),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(25),
@@ -30,7 +31,7 @@ const summaryQuerySchema = z
  * Contestações de feedback — `/api/v1/admin/feedback-contestations` (montado atrás de `feedback_contestations.review`). O
  * recorte (quem aparece) é sempre o escopo das atribuições de quem revisa, lido do banco a cada request.
  *
- *   GET  /                 fila (sem resposta primeiro) + contagem das que esperam resposta
+ *   GET  /                 fila (sem resposta primeiro) + contagem das que esperam resposta; filtros situação, origem, motivo, nome
  *   GET  /summary          taxa de contestação dos feedbacks disponibilizados no período (?from&to), por motivo e resposta
  *   GET  /:id              detalhe com o conteúdo do feedback contestado
  *   POST /:id/review       { decision, response } → responde (uma vez)

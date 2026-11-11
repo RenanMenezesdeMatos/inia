@@ -136,6 +136,15 @@ $node = $node.Source
 $versao = (& $node --version).Trim()
 if ([int]($versao.TrimStart("v").Split(".")[0]) -lt 24) { Falha "Node.js $versao encontrado; a INIA precisa do 24 ou mais novo." }
 Ok "Node.js $versao ($node)"
+# Versão implantada (campo `release` de cada log e ocorrência de erro): o arquivo RELEASE da raiz. Publicação por Git = o commit;
+# sem Git (cópia da pasta), mantém o RELEASE que veio junto ou, se não houver, a versão do package.json.
+$arquivoVersao = Join-Path $raiz "RELEASE"
+$git = Get-Command git -ErrorAction SilentlyContinue
+if ($git -and (Test-Path (Join-Path $raiz ".git"))) {
+  $commit = (& $git.Source -C $raiz rev-parse --short=12 HEAD 2>$null)
+  if ($LASTEXITCODE -eq 0 -and $commit) { [IO.File]::WriteAllText($arquivoVersao, "$($commit.Trim())`n", (New-Object Text.UTF8Encoding($false))) }
+}
+if (Test-Path $arquivoVersao) { Ok "versão implantada: $((Get-Content -Raw $arquivoVersao).Trim()) (arquivo RELEASE)" } else { Ok "versão implantada: a do package.json (sem arquivo RELEASE)" }
 $apiJs = Join-Path $raiz "backend\dist\main\server.js"
 $nextJs = Join-Path $raiz "frontend\node_modules\next\dist\bin\next"
 if (-not (Test-Path (Join-Path $raiz "backend\.env"))) { Falha "backend\.env não existe - rode npm run env:init e npm run db:connect." }

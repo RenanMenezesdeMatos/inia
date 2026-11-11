@@ -36,7 +36,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Automação", area: "Políticas de acompanhamento", configures: "Tipos de intervenção (capacidades, responsável, prazo, evidências, aprovação, formulário, conclusão, incompatíveis), competências (diagnóstico → conteúdo aprovado → atividades) e políticas versionadas (regras com prioridade, condições, ações, dados insuficientes, simulação, publicação com vigência, auditoria e reavaliação).", href: "/wiki/administracao/politicas-de-acompanhamento" },
   { menu: "Automação", area: "QA Lab", configures: "Simulação de Workflows, Agents e Orchestrators; Histórico de QA; Feedbacks (QA de feedback). Só com o papel Administrador geral (Feedbacks: papel QA de feedback).", href: "/wiki/qa-lab" },
   { menu: "Monitoramento", area: "Conversas com a INIA", configures: "Leitura das conversas dos colaboradores do escopo (livres, sessões de feedback e recados) e o Tempo de resposta da INIA no chat de texto (média, mediana e 90% em até, com os filtros da lista e um período próprio).", href: "/wiki/administracao#conversas" },
-  { menu: "Monitoramento", area: "Contestações de feedback", configures: "Fila das avaliações “não foi útil” dos colaboradores do escopo (motivo + descrição), o que a INIA disse no feedback e a resposta (Contestação procedente, Procedente em parte, Feedback mantido + texto). Papel Revisor de contestações de feedback (ou Administrador geral).", href: "#contestacoes" },
+  { menu: "Monitoramento", area: "Contestações de feedback", configures: "Fila das contestações dos colaboradores do escopo — discordâncias registradas na ciência (motivo + justificativa) e as avaliações “não foi útil” de antes de 10/11/2026 —, com a origem, o que a INIA disse no feedback e a resposta (Contestação procedente, Procedente em parte, Feedback mantido + texto). Papel Revisor de contestações de feedback (ou Administrador geral).", href: "#contestacoes" },
   { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
 ]
 
@@ -175,15 +175,16 @@ export default function AdministrationPage() {
 
       <WikiSection id="contestacoes" title="Contestações de feedback" eyebrow="Revisão humana do que a IA escreveu">
         <p>
-          No Acompanhamento, o colaborador pode marcar um feedback da INIA como <em>não foi útil</em>, escolher o motivo (ex.: não condiz com o que
-          aconteceu, processo citado errado) e descrever o problema. Isso é uma <strong className="font-medium text-foreground">contestação</strong>:
+          Ao confirmar a ciência de um feedback, o colaborador diz se concorda com ele. Quando <em>não concorda</em>, escolhe o motivo (ex.: não condiz
+          com o que aconteceu, processo citado errado) e escreve a justificativa. Isso é uma <strong className="font-medium text-foreground">contestação</strong>
+          (as avaliações <em>não foi útil</em> feitas antes de 10/11/2026 também são, com a origem marcada na fila):
           quem tem o papel <strong className="font-medium text-foreground">Revisor de contestações de feedback</strong> no escopo do colaborador (ou o
           Administrador geral) recebe um aviso no sino e responde em Administração › Contestações de feedback, vendo lado a lado o que o colaborador
           escreveu e o que a INIA disse.
         </p>
         <p>
           A resposta tem uma conclusão — <em>Contestação procedente</em>, <em>Procedente em parte</em> ou <em>Feedback mantido</em> — e um texto. O
-          colaborador recebe um aviso e lê a resposta no próprio feedback (<em>Ver resposta</em>). Responder não altera nem retira o feedback; cada
+          colaborador recebe um aviso e lê a resposta no próprio feedback (<em>Ver detalhes</em>, embaixo do item). Responder não altera nem retira o feedback; cada
           contestação é respondida uma vez e a resposta fica auditada com o nome de quem respondeu. Ninguém revisa a própria contestação. É a revisão
           humana prevista na LGPD (art. 20) para avaliações feitas por máquina.
         </p>

@@ -18,7 +18,8 @@ export function IniaFeed({ title, description, children }: { title: string; desc
  * com a foto; à direita dela fica o `meta` do item (ex.: quando o atendimento aconteceu). O conteúdo começa na mesma coluna
  * do nome (as ações de um feedback ficam no topo do cartão dele).
  * `recipient` (só no Acompanhamento da estrutura) diz de quem é o item ("para Larissa Monteiro"), logo depois da data.
- * `footer` (ex.: "Este conteúdo foi útil?") só existe onde a ação é real — nada de botão só de tela.
+ * `footer` (ex.: a avaliação do colaborador — concordou ou não com o feedback, e a resposta da revisão) só existe onde o dado é
+ * real — nada de botão só de tela; footer que não renderiza nada some (`empty:hidden`).
  */
 export function IniaFeedItem({ timestamp, recipient, meta, footer, children }: { timestamp: string; recipient?: React.ReactNode; meta?: React.ReactNode; footer?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -41,7 +42,7 @@ export function IniaFeedItem({ timestamp, recipient, meta, footer, children }: {
         {/* No celular o conteúdo usa a largura inteira (passa sob a coluna do avatar); do sm para cima, alinha com o nome. */}
         <div className="flex min-w-0 flex-col gap-3 max-sm:-ml-12">
           {children}
-          {footer ? <MessageFooter className="px-0 font-normal">{footer}</MessageFooter> : null}
+          {footer ? <MessageFooter className="px-0 font-normal empty:hidden">{footer}</MessageFooter> : null}
         </div>
       </MessageContent>
     </Message>

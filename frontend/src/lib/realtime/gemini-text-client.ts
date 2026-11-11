@@ -163,7 +163,10 @@ export async function fetchTextReply(
         clarification = parseClarification(payload.clarification)
         interactionId = payload.interactionId ?? interactionId
       } else if (name === "error") {
-        streamError = (JSON.parse(data) as { message: string }).message
+        // Falha depois que o fluxo já começou (status 200): o evento traz código e referência — vão no texto para a pessoa
+        // poder informar ao administrador (Diagnóstico de erros).
+        const failure = JSON.parse(data) as { message: string; code?: string; reference?: string }
+        streamError = failure.reference ? `${failure.message} (código ${failure.code ?? "INIA-STREAM-FALHA"} · referência ${failure.reference})` : failure.message
       }
     }
   }

@@ -3,7 +3,7 @@ import { scopedPeopleSql } from "../../access/application/scope-people-reader.js
 import { publishedFeedbackSourcesSql } from "../../feedbacks/application/usage-analytics-reader.js"
 // Ponto único de leitura das entregas de feedback de atendimento fora do módulo (somente leitura).
 import { deliveredInteractionFeedbackSourcesSql } from "../../usage-analytics/application/feedback-sources.js"
-import { CONTESTATION_DECISION_LABELS, FEEDBACK_DISLIKE_REASON_LABELS, FEEDBACK_DISLIKE_REASONS, type FeedbackDislikeReason } from "../../feedback-rating/domain/feedback-rating.js"
+import { CONTESTATION_DECISION_LABELS, CONTESTATION_REASON_LABELS, CONTESTATION_REASONS, type ContestationReason } from "../../feedback-rating/domain/feedback-rating.js"
 import { foldByBucket, rate, type Bucket, type Rate } from "../domain/success-metrics.js"
 import { boundsCte, placementFilter, type Queryable, type SuccessQuery, type SuccessViewer } from "./success-query.js"
 
@@ -16,11 +16,13 @@ import { boundsCte, placementFilter, type Queryable, type SuccessQuery, type Suc
  * Quatro coisas diferentes, nunca misturadas:
  *  - CIÊNCIA = o próprio colaborador confirmou com login e senha que LEU (`acknowledged_at`). Não é concordância nem utilidade.
  *  - AVALIAÇÃO = a VIGENTE ("útil" / "não foi útil"); retirada (`NONE`) não é avaliação; trocas ficam no histórico (contadas à parte).
- *  - CONTESTAÇÃO = a mesma regra da fila de contestações: um "não foi útil" (com motivo e descrição) vigente OU já respondido pela revisão;
- *    retirado sem resposta não conta. Cada feedback conta uma vez, com a contestação mais recente.
+ *  - CONTESTAÇÃO = a mesma regra da fila de contestações (visão `feedback_contestations`, migration 186): a DISCORDÂNCIA registrada na
+ *    ciência ou, antes dela, um "não foi útil" vigente OU já respondido pela revisão; "não foi útil" retirado sem resposta não conta.
+ *    Cada feedback conta uma vez, com a contestação mais recente.
  *  - REVISÃO = a decisão humana sobre a contestação: procedente, procedente em parte ou feedback mantido. "Procedente" = a contestação
  *    tinha razão (não é aprovação do feedback). Pendente = ainda sem decisão (fora do denominador da procedência).
- * Concordância explícita com o feedback não tem registro próprio hoje (coleta indisponível).
+ * Concordância: registrada na ciência desde a migration 186 (`feedback_read_agreements`); a discordância já entra como contestação,
+ * mas a taxa de concordância ainda não é exibida aqui (`agreement.status` continua NOT_COLLECTED até a tela ganhar esse bloco).
  */
 export type FeedbackCounts = { delivered: number; acknowledged: number; up: number; down: number; withdrawn: number; changed: number; contested: number; pending: number; accepted: number; partial: number; rejected: number }
 export type FeedbackKindSummary = { kind: "INDICATOR" | "MONITORING"; counts: FeedbackCounts; contestation: Rate; positive: Rate }
@@ -33,7 +35,7 @@ export type FeedbackSummary = {
   contestation: Rate
   reviewed: number
   procedence: { accepted: Rate; partial: Rate; rejected: Rate }
-  reasons: { reason: FeedbackDislikeReason; label: string; count: number; share: Rate }[]
+  reasons: { reason: ContestationReason; label: string; count: number; share: Rate }[]
   decisionLabels: Record<string, string>
   byKind: FeedbackKindSummary[]
   agreement: { status: "NOT_COLLECTED" }
@@ -52,7 +54,7 @@ export async function feedbackSummary(db: Queryable, viewer: SuccessViewer, quer
   const sources = `${publishedFeedbackSourcesSql(p, viewer.organizationId)} union all ${deliveredInteractionFeedbackSourcesSql(p, viewer.organizationId)}`
   const scope = scopedPeopleSql(p, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, permission: "feedback_contestations.review" })
   const placed = placementFilter(p, query)
-  const result = await db.query<{ days: DayRow[] | null; reasons: { reason: FeedbackDislikeReason; count: number }[] | null }>(
+  const result = await db.query<{ days: DayRow[] | null; reasons: { reason: ContestationReason; count: number }[] | null }>(
     `with ${bounds},
      cohort as (
        select src.source_kind, src.source_id, src.recipient_person_id, src.feedback_kind, src.acknowledged_at,
@@ -76,9 +78,12 @@ export async function feedbackSummary(db: Queryable, viewer: SuccessViewer, quer
          from history where superseded_at is null order by source_kind, source_id, created_at desc, id desc
      ),
      contested as (
-       select distinct on (source_kind, source_id) source_kind, source_id, reason, decision
-         from history where value = 'DOWN' and (superseded_at is null or decision is not null)
-        order by source_kind, source_id, created_at desc, id desc
+       select distinct on (c.source_kind, c.source_id) c.source_kind, c.source_id, fc.reason, fc.review_decision decision
+         from cohort c
+         join feedback_contestations fc on fc.organization_id = ${org} and fc.person_id = c.recipient_person_id and fc.source_kind = c.source_kind
+          and coalesce(fc.feedback_id, fc.interaction_delivery_id) = c.source_id
+        where fc.superseded_at is null or fc.review_id is not null
+        order by c.source_kind, c.source_id, fc.created_at desc, fc.id desc
      ),
      versions as (select source_kind, source_id, count(*) n from history group by source_kind, source_id),
      items as (
@@ -133,7 +138,7 @@ export async function feedbackSummary(db: Queryable, viewer: SuccessViewer, quer
     reviewed,
     procedence: { accepted: rate(counts.accepted, reviewed), partial: rate(counts.partial, reviewed), rejected: rate(counts.rejected, reviewed) },
     // Uma contestação tem um motivo só: as parcelas somam 100% das contestações.
-    reasons: FEEDBACK_DISLIKE_REASONS.map((reason) => ({ reason, label: FEEDBACK_DISLIKE_REASON_LABELS[reason], count: reasonCounts.get(reason) ?? 0, share: rate(reasonCounts.get(reason) ?? 0, counts.contested) }))
+    reasons: CONTESTATION_REASONS.map((reason) => ({ reason, label: CONTESTATION_REASON_LABELS[reason], count: reasonCounts.get(reason) ?? 0, share: rate(reasonCounts.get(reason) ?? 0, counts.contested) }))
       .filter((entry) => entry.count > 0)
       .sort((a, b) => b.count - a.count),
     decisionLabels: { ...CONTESTATION_DECISION_LABELS },

@@ -1,28 +1,16 @@
 import { Router } from "express"
-import type { Database } from "../../../infrastructure/database/pool.js"
-import { listMyRatings, rateFeedback, type RatingScope } from "../application/feedback-rating-service.js"
-import { feedbackRatingInputSchema } from "../domain/feedback-rating.js"
-import { sessionUser } from "../../auth/presentation/session-user.js"
+import { DomainError } from "../../../shared/domain/domain-error.js"
 
 /**
- * Avaliação do feedback pelo próprio destinatário — `/api/v1/feedback-ratings` (migration 113). A pessoa é sempre a da sessão.
- *
- *   GET  /   avaliações vigentes da pessoa (estado dos botões "Este conteúdo foi útil?")
- *   POST /   { source, value: UP } | { source, value: DOWN, reason, comment } | { source, value: NONE } → { rating }
+ * `/api/v1/feedback-ratings` — o antigo "Este conteúdo foi útil?" (migration 113). Desde 10/11/2026 a avaliação do feedback é a
+ * concordância registrada na confirmação de ciência (`/api/v1/feedback-read-confirmations`, migration 186): nenhuma avaliação
+ * nova é gravada por aqui, para nenhuma fonte, e as avaliações antigas ficam como histórico (lidas pelo item do Acompanhamento e
+ * pela fila de contestações). A rota só responde 410 para a tela antiga que ainda estiver aberta.
  */
-export function createFeedbackRatingsRouter(db: Database, deps: { now?: () => Date } = {}) {
+export function createFeedbackRatingsRouter() {
   const router = Router()
-  const now = deps.now ?? (() => new Date())
-  const scopeOf = (request: { user?: { organizationId: string; personId: string } }): RatingScope => ({ organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId })
-
-  router.get("/", async (request, response) => {
-    response.json({ data: { items: await listMyRatings(db, scopeOf(request)) } })
+  router.post("/", () => {
+    throw new DomainError("A avaliação deste feedback agora é feita ao confirmar a ciência. Atualize a página.", "FEEDBACK_RATING_REPLACED_BY_READ_CONFIRMATION", 410)
   })
-
-  router.post("/", async (request, response) => {
-    const input = feedbackRatingInputSchema.parse(request.body)
-    response.json({ data: { rating: await rateFeedback(db, scopeOf(request), input, now()) } })
-  })
-
   return router
 }

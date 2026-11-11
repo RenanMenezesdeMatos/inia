@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState, ErrorState } from "@/components/ui/states"
 import { ApiError } from "@/lib/api/api-client"
 import { cn } from "@/lib/utils"
+import { FailureSupport } from "@/components/error-states/support-details"
 
 // Estados compartilhados das áreas de Indicadores e Equipe: carregando (skeleton local, nunca
 // bloqueando a tela inteira), vazio (SEM DADOS é first-class) e erro (403 de escopo tem mensagem
@@ -65,9 +66,11 @@ export function AnalyticsEmptyState({ icon, title, description, action }: { icon
 export function AnalyticsErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const isForbidden = error instanceof ApiError && error.status === 403
   const message = error instanceof Error ? error.message : "Não foi possível carregar os dados."
+  // Código e referência (com "Copiar detalhes para suporte") quando a falha tem — a tela continua montada.
+  const support = <FailureSupport error={error} />
   return isForbidden ? (
-    <ErrorState forbidden message="Sem acesso a esta estrutura" description="Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela." />
+    <ErrorState forbidden message="Sem acesso a esta estrutura" description="Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela." support={support} />
   ) : (
-    <ErrorState message={message} onRetry={onRetry} />
+    <ErrorState message={message} onRetry={onRetry} support={support} />
   )
 }

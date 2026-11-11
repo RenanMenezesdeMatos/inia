@@ -116,7 +116,10 @@ describe("tarefas periódicas", () => {
     const jobs = startPeriodicJobs(locks.runExclusive, [{ name: "data-hub", intervalMs: 500, run: async () => { attempt++; if (attempt === 1) throw new Error("tick falhou") }, errorLabel: "Falha no tick da Central de Dados:" }])
     await vi.advanceTimersByTimeAsync(1_000)
     expect(jobs.status()[0]).toMatchObject({ runs: 1, failures: 1, lastOutcome: "RAN", lastError: null })
-    expect(errors).toHaveBeenCalledWith("Falha no tick da Central de Dados:", expect.any(Error))
+    // Uma linha estruturada: código do catálogo, referência da rodada, tarefa e o rótulo de sempre (resumo sanitizado do erro).
+    const line = JSON.parse(String(errors.mock.calls[0]![0])) as Record<string, unknown>
+    expect(line).toMatchObject({ event: "job_error", code: "INIA-JOB-FALHA", job: "data-hub", label: "Falha no tick da Central de Dados:", failure: { name: "Error", message: "tick falhou" } })
+    expect(String(line.reference)).toMatch(/^job-data-hub-[0-9a-f-]{36}$/)
     await jobs.stop()
     errors.mockRestore()
   })

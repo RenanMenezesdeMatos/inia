@@ -166,6 +166,16 @@ if ($LASTEXITCODE -ne 0) {
   } else { Ok "site '$NomeDoSite' já existe (pasta atualizada para $PastaDoSite)" }
 }
 
+# Diagnóstico de erros: o log do IIS grava o x-request-id que o navegador envia (pedido) e o que a API devolve (resposta) — a
+# REFERÊNCIA que a tela de erro mostra. Assim uma falha que nasce no proxy (502 sem a API) também é encontrada pela referência:
+#   Select-String -Path "C:\inetpub\logs\LogFiles\W3SVC*\u_ex*.log" -SimpleMatch "<referência>"
+# Idempotente: remove os campos (se existirem) e cria de novo.
+foreach ($campo in @(@("x-request-id", "x-request-id", "RequestHeader"), @("x-request-id-resposta", "x-request-id", "ResponseHeader"))) {
+  & $appcmd set config -section:system.applicationHost/sites "/-[name='$NomeDoSite'].logFile.customFields.[logFieldName='$($campo[0])']" /commit:apphost *> $null
+  AppCmd @("set", "config", "-section:system.applicationHost/sites", "/+[name='$NomeDoSite'].logFile.customFields.[logFieldName='$($campo[0])',sourceName='$($campo[1])',sourceType='$($campo[2])']", "/commit:apphost") | Out-Null
+}
+Ok "log do IIS com os campos x-request-id (pedido e resposta) — referência das telas de erro"
+
 # --- 5. HTTPS ---------------------------------------------------------------------------------------------------
 Passo "5/6 HTTPS"
 if ($Https) {

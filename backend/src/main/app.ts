@@ -73,6 +73,10 @@ import { createDataIngestionRouter } from "../modules/data-hub/presentation/data
 import { DomainError } from "../shared/domain/domain-error.js"
 import { currentRequestId } from "../shared/application/observability/request-context.js"
 import { requestIdMiddleware } from "../shared/presentation/request-id.js"
+import { classifyUnexpectedError } from "../shared/application/errors/classify-error.js"
+import { ERROR_SUMMARY_LOCAL, errorEnvelope } from "../modules/error-diagnostics/presentation/error-envelope.js"
+import { createErrorDiagnosticsRouter } from "../modules/error-diagnostics/presentation/error-diagnostics-router.js"
+import { createClientErrorsRouter } from "../modules/error-diagnostics/presentation/client-errors-router.js"
 import { DataRunError } from "../modules/data-hub/domain/error-codes.js"
 import { createResponseCompression } from "../shared/presentation/compression.js"
 import { createOriginGuard } from "../shared/presentation/origin-guard.js"
@@ -81,7 +85,6 @@ import { createMemoryRateLimitStore, type RateLimitStore } from "../shared/appli
 import { createReadiness, type Readiness } from "./readiness.js"
 import { isInternalRequest, type RuntimeMetrics } from "./runtime-metrics.js"
 import { SESSION_COOKIE_NAME } from "../modules/auth/presentation/session-cookie.js"
-import { createLogger } from "../shared/infrastructure/logging/logger.js"
 import { createChatStreamer, createRoutedSpeechSynthesizer, createSpeechSynthesizer, createVoiceSessionStarter, speechCacheIdentity } from "../shared/application/model-routing/llm-gateway.js"
 import { registerAiRuntime } from "../shared/application/model-routing/ai-runtime.js"
 import { createAiRuntime } from "../modules/ai-management/application/ai-runtime-service.js"
@@ -136,6 +139,8 @@ export type RateLimitSettings = {
   loginPerIp: number
   /** Criação de senha do primeiro acesso: tentativas RECUSADAS por IP a cada 15 min (contra enxurrada anônima). */
   firstPasswordPerIp: number
+  /** Registros de falha do navegador (`POST /api/v1/client-errors`, sem sessão) por IP a cada minuto. */
+  clientErrorsPerIp: number
   /**
    * Criação de senha do primeiro acesso por SESSÃO a cada 15 min — no dia da liberação centenas de pessoas criam a senha pelo
    * mesmo IP (Citrix/NAT): cada uma tem o seu contador (achado AUTH-14 da auditoria de 17/10/2026).
@@ -190,6 +195,7 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   loginPerIpAndEmail: env.LOGIN_RATE_LIMIT_PER_IP_EMAIL,
   loginPerIp: env.LOGIN_RATE_LIMIT_PER_IP,
   firstPasswordPerIp: 300,
+  clientErrorsPerIp: 30,
   firstPasswordPerSession: 10,
   readConfirmationFailuresPerAccount: 10,
   pushIngestionFailuresPerIp: 30,
@@ -213,8 +219,6 @@ const DEFAULT_RATE_LIMITS: RateLimitSettings = {
   humanSupportPresencePerAccount: 30,
   humanSupportMarksPerAccount: 120,
 }
-
-const httpLog = createLogger("http")
 
 /**
  * Caminho como o roteador do Express o casa: sem diferenciar maiúsculas e sem a barra final. Todo limite montado por caminho
@@ -250,6 +254,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.disable("x-powered-by")
   // Antes de tudo: o id da requisição (logs e 500 genérico) vale para a cadeia inteira, inclusive métricas e limites.
   app.use(requestIdMiddleware())
+  // Toda resposta de erro ganha `error.reference` (= x-request-id), uma linha `http_error` no log e a ocorrência registrada
+  // (Diagnóstico de erros) — sem mudar status nem código de nenhuma rota.
+  app.use(errorEnvelope())
   if (options.metrics) app.use(options.metrics.middleware)
   // IP real do cliente atrás do IIS/proxy (limites de tentativas) — só de proxies explicitamente confiáveis.
   app.set("trust proxy", parseTrustProxy(env.TRUST_PROXY))
@@ -258,7 +265,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use(createResponseCompression())
   // content-disposition não é safelisted no CORS — sem expor, o browser esconde o nome do arquivo
   // do download da base de conhecimento.
-  app.use(cors({ origin: env.allowedOrigins, credentials: true, exposedHeaders: ["content-disposition"] }))
+  // x-request-id e x-inia-release expostos: a tela de erro mostra a referência e a versão no "Copiar detalhes" (origem cruzada em dev).
+  app.use(cors({ origin: env.allowedOrigins, credentials: true, exposedHeaders: ["content-disposition", "x-request-id", "x-inia-release"] }))
   // JSON de 1 MB para a API; o API Push (lotes de registros do cliente) tem o próprio parser de 10 MB no router — o global
   // não roda ali, senão o limite dele nunca valeria (413 acima de 1 MB).
   const jsonBody = express.json({ limit: "1mb" })
@@ -366,6 +374,10 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
       response.json(metrics.snapshot())
     })
   }
+  // Falhas nascidas no navegador (tela quebrada, sem conexão, proxy fora): aceitas sem sessão, com teto por IP e corpo pequeno.
+  app.use("/api/v1/client-errors", limit({ name: "client-errors-ip", windowMs: 60_000, max: "clientErrorsPerIp", key: clientIpKey, message: "Muitos registros de erro em pouco tempo." }), createClientErrorsRouter(database))
+  // Diagnóstico de erros (catálogo + ocorrências): permissão própria com escopo de organização.
+  app.use("/api/v1/admin/error-diagnostics", can("support.diagnostics.view", { organizationWide: true }), createErrorDiagnosticsRouter(database))
   app.use("/api/v1/auth", createAuthRouter(database, { features: { interactionFeedbackQa: interactionFeedbackEnabled, usageCollection: usageCollectionEnabled, usabilityPanel: usabilityPanelEnabled } }))
   // Preferências pessoais do perfil (nome de tratamento, foto, capa) — sempre da pessoa da sessão; imagens da mesma organização.
   const profileWrites = limit({ name: "profile-writes-account", windowMs: 60_000, max: "profileWritesPerAccount", key: accountKey, message: "Muitas alterações de perfil em pouco tempo. Aguarde um instante." })
@@ -488,7 +500,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Ciência = o próprio destinatário confirma com login e senha que leu o feedback (Acompanhamento ou sessão com a INIA).
   app.use("/api/v1/feedback-read-confirmations", requireAuth, onlyMethods(["POST"], readConfirmationFailures), createFeedbackReadConfirmationsRouter(database))
   // "Este conteúdo foi útil?" — avaliação do feedback pelo próprio destinatário (descurtir = motivo + descrição).
-  app.use("/api/v1/feedback-ratings", requireAuth, createFeedbackRatingsRouter(database))
+  app.use("/api/v1/feedback-ratings", requireAuth, createFeedbackRatingsRouter())
   app.use("/api/v1/supervisor", requireAuth, createSupervisorRouter(database))
   app.use("/api/v1/operator", requireAuth, createOperatorRouter(database))
   // Indicadores e Equipe/Estrutura — escopo por papel resolvido no backend a cada request.
@@ -534,11 +546,13 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
       response.status(clientError.status).json({ error: { code: clientError.code, message: clientError.message } })
       return
     }
-    // Falha inesperada: registrada no servidor (sem corpo, cookies nem query — podem ter dado pessoal ou segredo) e
-    // devolvida sem detalhe interno.
-    httpLog.error({ method: request.method, path: request.path, err: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error) }, "erro não tratado na API")
+    // Falha inesperada: classificada (banco fora/lento/esgotado, prazo de dependência; senão INTERNAL_ERROR) e resumida SEM
+    // corpo, cookies, query, e-mail, CPF ou token. O envelope (error-envelope.ts) grava UMA linha `http_error` com esse resumo e a
+    // ocorrência; o status continua 500 e a mensagem, genérica.
+    const failure = classifyUnexpectedError(error)
+    response.locals[ERROR_SUMMARY_LOCAL] = failure.summary
     // O id (também no cabeçalho x-request-id e em cada linha do log) liga a reclamação do usuário ao erro registrado.
-    response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Erro interno.", requestId: currentRequestId() ?? undefined } })
+    response.status(500).json({ error: { code: failure.code, message: "Erro interno.", requestId: currentRequestId() ?? undefined } })
   }
   app.use(errorHandler)
   return app

@@ -20,6 +20,8 @@ describe("logs estruturados com escrita assíncrona", () => {
     expect(lines[1]).toMatchObject({ level: 40, msg: "Aviso à Central de Dados não enviado: conexão recusada" })
     expect(lines[2]).toMatchObject({ level: 50 })
     expect(String(lines[2]!.msg)).toContain("Error: quebrou")
-    for (const line of lines) expect(typeof line.time).toBe("number")
+    // `time` em ISO 8601 UTC (busca por horário na VM) e a identidade do processo em toda linha (diagnóstico de erros).
+    for (const line of lines) expect(line.time).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    for (const line of lines) expect(line).toMatchObject({ service: expect.any(String), release: expect.any(String) })
   }, 20_000)
 })

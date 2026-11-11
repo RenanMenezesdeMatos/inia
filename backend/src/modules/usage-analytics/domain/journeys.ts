@@ -20,7 +20,7 @@ export const FUNNELS: readonly FunnelDefinition[] = [
       { key: "SESSION", label: "Entrada (sessão iniciada)", source: "Sessões derivadas" },
       { key: "FOLLOWUP", label: "Acompanhamento visto", source: "screen.viewed (Acompanhamento)" },
       { key: "OPENED", label: "Feedback aberto", source: "screen.viewed (feedback aberto pelo destinatário)" },
-      { key: "RATED", label: "Mesmo feedback avaliado", source: "feedback_ratings (oficial)" },
+      { key: "RATED", label: "Mesmo feedback avaliado", source: "feedback_ratings (oficial; congelada desde 10/11/2026 — a avaliação passou para a concordância na ciência)" },
     ],
   },
   {

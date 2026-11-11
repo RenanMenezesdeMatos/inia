@@ -44,6 +44,9 @@ import { createReadiness } from "./readiness.js"
 import { applyHttpTimeouts, createShutdown, installProcessHandlers, onHttpListen, processFaults, type LifecycleLog } from "./process-lifecycle.js"
 import { createRuntimeMetrics } from "./runtime-metrics.js"
 import { droppedLogLines, flushLogs, routeConsoleToLog } from "../shared/infrastructure/logging/logger.js"
+import { configureServiceName } from "../shared/application/observability/service-identity.js"
+import { createOccurrenceRecorder, registerOccurrenceRecorder } from "../modules/error-diagnostics/application/occurrence-recorder.js"
+import { purgeOldOccurrences } from "../modules/error-diagnostics/infrastructure/pg-error-occurrence-store.js"
 
 // Todo log (console.* e pino) num destino assíncrono: no Windows a saída do serviço é um pipe, e escrever em pipe ali é síncrono.
 routeConsoleToLog()
@@ -51,6 +54,10 @@ routeConsoleToLog()
 // Papel do processo (process-role.ts): `all` (padrão) = API + processamento juntos, como sempre; `api` = só HTTP; `worker` = só
 // o processamento de IA e as tarefas periódicas — um lote pesado deixa de dividir o event loop com as telas.
 const role = resolveProcessRole(process.argv.slice(2), env.INIA_PROCESS_ROLE)
+// `service` em toda linha de log e ocorrência (inia-api, inia-processamento, inia-api-processamento).
+configureServiceName(role)
+// Ocorrências de erro gravadas no banco (Diagnóstico de erros) — assíncronas e com teto; o log continua sendo a fonte primária.
+registerOccurrenceRecorder(createOccurrenceRecorder(pool))
 const parts = componentsOf(role)
 // Limites de requisição e pausa do provedor de IA divididos com os outros processos (PostgreSQL).
 const shared = installSharedRuntimeState(pool, role)
@@ -157,6 +164,8 @@ function startProcessing() {
     { name: "rate-limit-purge", intervalMs: 10 * 60_000, run: () => purgeExpiredRateLimitHits(pool), errorLabel: "Falha na limpeza dos limites de requisição:" },
     // Tentativas de login com mais de 30 dias (a trava usa 15 minutos): e-mails que nunca entram não acumulam para sempre (AUTH-15).
     { name: "login-attempts-purge", intervalMs: 3_600_000, run: () => purgeOldLoginAttempts(pool), errorLabel: "Falha na limpeza das tentativas de login:" },
+    // Ocorrências de erro além da guarda (INIA_ERROR_OCCURRENCE_RETENTION_DAYS, padrão 30 dias), em lotes.
+    { name: "error-occurrences-purge", intervalMs: 3_600_000, run: () => purgeOldOccurrences(pool, env.INIA_ERROR_OCCURRENCE_RETENTION_DAYS).then(() => undefined), errorLabel: "Falha na limpeza das ocorrências de erro:" },
   ])
   // Processamento sem HTTP (papel `worker`): a API avisa por NOTIFY que há carga nova na Central de Dados — processa na hora
   // (o tick de 15 s continua sendo a garantia). Com o papel `all` a própria API processa, sem aviso.

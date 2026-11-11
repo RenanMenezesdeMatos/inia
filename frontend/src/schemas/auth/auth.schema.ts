@@ -103,6 +103,8 @@ export const accessCapabilitiesSchema = z.object({
   // Indicadores de sucesso da INIA — fora de canAccessAdministration: quem lê ao menos um bloco (conversas, painel do apoio, contestações ou
   // a conferência das respostas na organização inteira). Cada bloco é conferido no backend.
   canViewIniaSuccess: capability,
+  // Diagnóstico de erros (catálogo + ocorrências da organização) — escopo de organização, conferido no backend.
+  canViewErrorDiagnostics: capability,
 })
 export type AccessCapabilities = z.infer<typeof accessCapabilitiesSchema>
 /** Capabilities vazias (deny by default) — quando a sessão ainda não foi lida. */

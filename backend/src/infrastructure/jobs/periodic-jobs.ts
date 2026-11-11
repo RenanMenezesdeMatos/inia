@@ -10,6 +10,9 @@
  * pool durante a rodada. Chave de DOIS inteiros (namespace "INIA" + hash do nome): espaço separado das travas de um bigint
  * (`pg_advisory_xact_lock(hashtext(...))`) que o resto do código usa por registro.
  */
+import { randomUUID } from "node:crypto"
+import { sanitizeError } from "../../shared/application/errors/classify-error.js"
+import { recordOccurrence } from "../../modules/error-diagnostics/application/occurrence-recorder.js"
 export const JOB_LOCK_NAMESPACE = 0x494e4941
 
 /** FNV-1a 32 bits do nome → inteiro com sinal (o `int4` da trava). Estável entre processos e versões. */
@@ -121,7 +124,11 @@ export function startPeriodicJobs(runner: ExclusiveJobRunner, definitions: reado
           status.failures++
           status.lastOutcome = "FAILED"
           status.lastError = error instanceof Error ? error.message : String(error)
-          console.error(definition.errorLabel ?? `Falha na tarefa periódica ${definition.name}:`, error)
+          // Código do catálogo + referência própria da rodada (`job-<tarefa>-<uuid>`), no log e como ocorrência pesquisável.
+          const reference = `job-${definition.name}-${randomUUID()}`.slice(0, 80)
+          const summary = sanitizeError(error)
+          recordOccurrence({ reference, code: "INIA-JOB-FALHA", source: "JOB", httpStatus: null, severity: "error", authenticated: false, details: { job: definition.name, failure: summary } })
+          console.error(JSON.stringify({ event: "job_error", code: "INIA-JOB-FALHA", reference, job: definition.name, severity: "error", label: definition.errorLabel ?? `Falha na tarefa periódica ${definition.name}:`, failure: summary }))
         })
         .finally(() => {
           status.lastFinishedAt = new Date().toISOString()

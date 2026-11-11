@@ -29,7 +29,7 @@ Uma seção vai para o `CLAUDE.md` só quando a regra vale para qualquer código
 |---|---|---|---|
 | [motor-de-feedback.md](motor-de-feedback.md) | caminho atual de “Gerar feedback”: análise de chamada com revisão, investigação de indicador, práticas e temas, firmeza, entrega única, memória do motor, diagnóstico da liderança e registro das rodadas pagas. | b | 60,6 KB |
 | [diagnostico-de-indicador.md](diagnostico-de-indicador.md) | estratégia de diagnóstico por indicador (versões, rascunho × publicada, pino no nascimento, “Testar diagnóstico”, sinal da população) e as execuções de diagnóstico anteriores ao motor de feedback. | b, c | 16,5 KB |
-| [experiencia-do-colaborador.md](experiencia-do-colaborador.md) | narrativa do feedback e “Entenda este feedback”, timeline e ocultação lógica do Acompanhamento, “Ouvir com a INIA” (aplicação de feedback e consultas na sessão), ciência com login e senha, “Este conteúdo foi útil?” e cabeçalho do item. | b | 37,1 KB |
+| [experiencia-do-colaborador.md](experiencia-do-colaborador.md) | narrativa do feedback e “Entenda este feedback”, timeline e ocultação lógica do Acompanhamento, “Ouvir com a INIA” (aplicação de feedback e consultas na sessão), ciência com login e senha e com concordância (a avaliação do feedback), o antigo “Este conteúdo foi útil?” e cabeçalho do item. | b | 37,1 KB |
 | [conversa-voz-e-avatar.md](conversa-voz-e-avatar.md) | conversas persistidas com a INIA e monitoramento da gestão, recados de Workflow no Chat e no Avatar (com a voz do recado), avatar Mentora (modelo, lip-sync PT-BR, animação, laboratório) e Cenário da INIA. | b | 20,6 KB |
 | [perfil-e-navegacao.md](perfil-e-navegacao.md) | perfil pessoal (nome preferido, foto, capa), cabeçalho global e seletor de área, abas do perfil e acesso à área de Diagnóstico. | b | 5,6 KB |
 | [workflows.md](workflows.md) | Workflows-modelo e validação de publicação (DRAFT válido, destinatário pela estrutura, editor), gatilho Manual “Executar agora”, worker concorrente com posse da matrícula, aba Resultados com correlação do uso de IA e configuração em rascunho × publicada com confirmação do impacto de entrar no ar. | b | 24,1 KB |
@@ -54,6 +54,7 @@ Uma seção vai para o `CLAUDE.md` só quando a regra vale para qualquer código
 | [apoio-com-anjo.md](apoio-com-anjo.md) | (criado em 09/11/2026) Apoio com Anjo: motivo da descurtida e sinais (Parte A); pedido, distribuição, sala, área do Anjo, configuração e painel (Parte B) | b |
 | [visual-do-app.md](visual-do-app.md) | (criado em 10/11/2026) visual do app inteiro: referência observada, tokens e kit (camada 1), peças de `components/ui/surface.tsx` e a camada 2 tela a tela | b |
 | [indicadores-de-sucesso.md](indicadores-de-sucesso.md) | (criado em 10/11/2026) Indicadores de sucesso da INIA: decisões de alcance por bloco, leitores oficiais, tempo de resposta pelo par de chaves, lacuna da assertividade do Anjo, provas e pendências | b |
+| [diagnostico-de-erros.md](diagnostico-de-erros.md) | (criado em 11/11/2026) Telas de erro, catálogo de códigos, referência de ocorrência, ocorrências no banco, Diagnóstico de erros na Administração, CLI e runbook da VM | b |
 | [investigacao-v14.md](investigacao-v14.md) | (linha encerrada) descoberta semântica V1.4.0–V1.4.8f: frames, findings, patterns, candidatos de afirmação, atribuição de resultado, variância da extração. | c | 50,4 KB |
 | [historico-feedback-v15-v16.md](historico-feedback-v15-v16.md) | (substituído pelo motor de feedback) feedback de atendimento V1 e caminho confiável V1.5.x–V1.6.0: redator, revisão/QA, política de autonomia, entrega no Acompanhamento e “Gerar feedback” no Workflow. | c | 47,3 KB |
 | [historico-monitoria-v17.md](historico-monitoria-v17.md) | (substituído pelo motor de feedback) monitoria por processo V1.7.1–V1.7.4, Checkpoint Registry e Monitoring Architecture V2. | c | 92,3 KB |
@@ -152,6 +153,7 @@ Na ordem do arquivo antigo. Use este mapa quando um texto citar uma seção pelo
 | Cenário da INIA — fundo atrás do avatar, padrão e sazonais (2026-10-01, migrations 106 + 107) | b | [conversa-voz-e-avatar.md](conversa-voz-e-avatar.md) |
 | Aplicação de feedback conversacional — "Ouvir com a INIA" (2026-10-01, migration 103) | b | [experiencia-do-colaborador.md](experiencia-do-colaborador.md) |
 | Avaliação do feedback no Acompanhamento + cabeçalho do item (2026-10-06, migrations 113 + 115) | b | [experiencia-do-colaborador.md](experiencia-do-colaborador.md) |
+| Ciência com concordância (2026-11-10, migration 186) | b | [experiencia-do-colaborador.md](experiencia-do-colaborador.md) |
 | Monitoria de usabilidade (2026-10-06, migration 116) | b | [monitoria-de-usabilidade.md](monitoria-de-usabilidade.md) |
 
 ## Como manter

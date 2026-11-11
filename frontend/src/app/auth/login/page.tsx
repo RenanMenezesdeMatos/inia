@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 import { LoginForm } from "@/components/auth/login-form"
+import { safeReturnPath } from "@/lib/auth/safe-return"
 
 export const metadata: Metadata = {
   title: "Login | INIA",
@@ -14,7 +15,10 @@ const NOTICES: Record<string, string> = {
 }
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> }) {
-  const reason = (await searchParams).motivo
+  const params = await searchParams
+  const reason = params.motivo
   const notice = typeof reason === "string" ? NOTICES[reason] : undefined
-  return <LoginForm notice={notice} />
+  // Volta para a tela de onde a pessoa saiu (tela de 401): só caminho interno, nunca outro site nem as telas de login.
+  const returnTo = safeReturnPath(params.voltar) ?? undefined
+  return <LoginForm notice={notice} returnTo={returnTo} />
 }

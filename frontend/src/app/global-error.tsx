@@ -1,6 +1,6 @@
 "use client"
 
-import { RouteErrorState } from "@/components/layout/route-error-state"
+import { RouteErrorBoundary } from "@/components/error-states/route-error-boundary"
 import { useStoredThemeIsDark } from "@/lib/browser/use-stored-theme-is-dark"
 import "./globals.css"
 
@@ -15,7 +15,7 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
     <html lang="pt-BR" className={dark ? "dark" : undefined}>
       <body className="min-h-screen bg-background font-sans text-foreground">
         <title>INIA</title>
-        <RouteErrorState error={error} onRetry={retry} />
+        <RouteErrorBoundary error={error} retry={retry} />
       </body>
     </html>
   )

@@ -18,7 +18,7 @@ describe("app", () => {
     for (const path of ["/api/v1/feedback-quality-reviews", "/api/v1/feedback-quality-reviews/access", "/api/v1/feedback-deliveries/mine"]) {
       const off = await request(createApp(emptyDatabase, { interactionFeedbackReview: false })).get(path)
       expect(off.status).toBe(404)
-      expect(off.body).toEqual({ error: { code: "NOT_FOUND", message: "Recurso não encontrado." } })
+      expect(off.body).toEqual({ error: { code: "NOT_FOUND", message: "Recurso não encontrado.", reference: off.headers["x-request-id"] } })
       // Padrão = a flag do AMBIENTE (o `.env` local de dev pode ligá-la; o default do código continua OFF — checado abaixo).
       expect((await request(createApp(emptyDatabase)).get(path)).status).toBe(env.INIA_INTERACTION_FEEDBACK_PIPELINE === "ON" ? 401 : 404)
       expect((await request(createApp(emptyDatabase, { interactionFeedbackReview: true })).get(path)).status).toBe(401)
@@ -105,6 +105,7 @@ describe("app", () => {
     const response = await request(createApp(brokenDatabase, { rateLimits: false })).post("/api/v1/auth/login").set("x-request-id", "suporte-ticket-4242").send({ email: "alguem@inia.com", password: "x" })
     expect(response.status).toBe(500)
     expect(response.headers["x-request-id"]).toBe("suporte-ticket-4242")
-    expect(response.body).toEqual({ error: { code: "INTERNAL_ERROR", message: "Erro interno.", requestId: "suporte-ticket-4242" } })
+    // `reference` (o que a tela mostra) = `requestId` (mantido por compatibilidade) = x-request-id.
+    expect(response.body).toEqual({ error: { code: "INTERNAL_ERROR", message: "Erro interno.", requestId: "suporte-ticket-4242", reference: "suporte-ticket-4242" } })
   })
 })

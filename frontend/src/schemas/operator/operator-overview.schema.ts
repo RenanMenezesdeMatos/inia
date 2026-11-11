@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { feedbackEvaluationSchema } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
 import { feedbackViewSchema } from "@/schemas/feedbacks/feedback-view.schema"
@@ -44,6 +45,8 @@ export const operatorFeedbackRowSchema = z.object({
   heading: z.object({ title: z.string(), subtitle: z.string().nullable() }).nullable().optional(),
   /** Motivo do feedback (flag, rotina, avulsa, indicador) + ícone — selo do cabeçalho do item. */
   origin: feedbackOriginSchema.nullable().optional(),
+  /** Avaliação do PRÓPRIO colaborador (escolha registrada na ciência + contestação antiga); null = quem lê não é o destinatário. */
+  evaluation: feedbackEvaluationSchema.nullable().optional(),
 })
 
 /** Uma página do Acompanhamento: `nextCursor` null = não há feedbacks mais antigos. */

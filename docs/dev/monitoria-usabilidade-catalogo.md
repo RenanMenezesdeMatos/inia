@@ -40,8 +40,8 @@
 | feedback.available | feedbacks | Feedbacks disponibilizados | Fontes × destinatários publicados/entregues no período e visíveis no Acompanhamento. | `count(fonte publicada/entregue no período)` | ITEMS | feedbacks (published_at) e interaction_feedback_deliveries (delivered_at) | — | Organização × tipo da fonte × id × destinatário | Fonte oficial desde a existência da tabela. | Ocultados do Acompanhamento. | — |
 | feedback.exposure_rate | feedbacks | Exposição | Da coorte disponibilizada, quantos tiveram o card exposto ao destinatário na janela. | `expostos ÷ disponibilizados` | PERCENT | Navegador (exposição) × fonte oficial | Disponibilizados na coorte | Fonte × destinatário | Itens disponibilizados antes da coleta ficam como “exposição não medida”. | Exposição por gestores (ator ≠ destinatário). | Exposição ≠ leitura. |
 | feedback.open_rate | feedbacks | Abertura | Da coorte, quantos o destinatário abriu: expandiu o feedback no Acompanhamento (“Entenda este feedback”, “Ver feedback completo”) ou abriu a sessão com a INIA. | `abertos ÷ disponibilizados` | PERCENT | Navegador × fonte oficial | Disponibilizados na coorte | Fonte × destinatário | Igual à exposição. | — | Abrir ≠ ler. O feedback novo mostra a narrativa direto no feed; a leitura dela sem expandir aparece em “Leitura do conteúdo” (rolagem), não como abertura. |
-| feedback.rating_among_opened | feedbacks | Avaliação entre abertos | Abertos com avaliação vigente (UP/DOWN) no corte ÷ abertos. | `abertos ∧ avaliação vigente ÷ abertos` | PERCENT | Navegador × feedback_ratings (histórico) | Abertos na coorte | Fonte × destinatário | Abertura medida. | Avaliação retirada (NONE). | A tela permite avaliar sem abrir — caminho mostrado à parte. |
-| feedback.useful_rate | feedbacks | Utilidade positiva | Avaliações vigentes UP ÷ (UP + DOWN) no corte. | `UP ÷ (UP + DOWN)` | PERCENT | feedback_ratings (versão vigente na data do corte) | Avaliações vigentes UP + DOWN | Uma vigente por pessoa × fonte | Desde a migration 113. | NONE fora do denominador. | Mudanças não contam como novos feedbacks avaliados. |
+| feedback.rating_among_opened | feedbacks | Avaliação entre abertos | Abertos com avaliação vigente (UP/DOWN) no corte ÷ abertos. CONGELADA desde 10/11/2026: o “Este conteúdo foi útil?” deixou de gravar; a avaliação passou a ser a concordância registrada na ciência (migration 186). | `abertos ∧ avaliação vigente ÷ abertos` | PERCENT | Navegador × feedback_ratings (histórico) | Abertos na coorte | Fonte × destinatário | Abertura medida. | Avaliação retirada (NONE). | A tela permite avaliar sem abrir — caminho mostrado à parte. |
+| feedback.useful_rate | feedbacks | Utilidade positiva | Avaliações vigentes UP ÷ (UP + DOWN) no corte. CONGELADA desde 10/11/2026: o “Este conteúdo foi útil?” deixou de gravar (a avaliação passou a ser a concordância na ciência, migration 186); só mede o histórico. | `UP ÷ (UP + DOWN)` | PERCENT | feedback_ratings (versão vigente na data do corte) | Avaliações vigentes UP + DOWN | Uma vigente por pessoa × fonte | Desde a migration 113. | NONE fora do denominador. | Mudanças não contam como novos feedbacks avaliados. |
 | feedback.ack_rate | feedbacks | Ciência | Da coorte, quantos têm ciência confirmada pelo destinatário (login e senha). | `com ciência ÷ disponibilizados` | PERCENT | acknowledged_at das fontes oficiais | Disponibilizados na coorte | Fonte × destinatário; confirmação repetida nunca é nova ciência | Fonte oficial. | — | Ciência não comprova execução da orientação nem encerra caso. |
 | feedback.application_rate | feedbacks | Aplicação iniciada | Da coorte, quantos tiveram a aplicação com a INIA iniciada. | `com aplicação iniciada ÷ disponibilizados` | PERCENT | feedback_applications | Disponibilizados na coorte | Uma aplicação por fonte | Desde a migration 103. | — | — |
 | feedback.application_completion | feedbacks | Conclusão da aplicação | Aplicações concluídas ÷ iniciadas da mesma coorte. | `concluídas ÷ iniciadas` | PERCENT | feedback_applications | Aplicações iniciadas na coorte | Aplicação | Desde a migration 103. | — | Hoje a conclusão acontece pela confirmação de ciência. |
@@ -204,9 +204,15 @@ Todo evento tem esquema FECHADO (propriedade desconhecida = evento recusado). Or
 | `feedback.confirm_reading.open` | Confirmar ciência | Confirmação de ciência | BUTTON | sim |  |  |
 | `feedback.confirm_reading.submit` | Confirmar (login e senha) | Confirmação de ciência | BUTTON |  |  | 15000 |
 | `feedback.confirm_reading.cancel` | Cancelar confirmação | Confirmação de ciência | BUTTON |  |  |  |
-| `feedback.rating.up` | Foi útil | Avaliação de feedback | BUTTON | sim |  | 10000 |
-| `feedback.rating.down` | Não foi útil | Avaliação de feedback | BUTTON | sim |  |  |
-| `feedback.rating.submit_reason` | Enviar motivo | Avaliação de feedback | BUTTON |  |  | 10000 |
+| `feedback.confirm_reading.agree` | Concordo com o feedback | Confirmação de ciência | BUTTON |  |  |  |
+| `feedback.confirm_reading.disagree` | Não concordo com o feedback | Confirmação de ciência | BUTTON |  |  |  |
+| `feedback.confirm_reading.continue` | Continuar para login e senha | Confirmação de ciência | BUTTON |  |  |  |
+| `feedback.confirm_reading.change` | Alterar a escolha antes de confirmar | Confirmação de ciência | BUTTON |  |  |  |
+| `feedback.evaluation.details` | Ver detalhes da avaliação | Confirmação de ciência | BUTTON |  |  |  |
+| `feedback.evaluation.register` | Dizer se concorda (ciência anterior) | Confirmação de ciência | BUTTON | sim |  |  |
+| `feedback.rating.up` | Foi útil (legado) | Avaliação de feedback | BUTTON | sim |  | 10000 |
+| `feedback.rating.down` | Não foi útil (legado) | Avaliação de feedback | BUTTON | sim |  |  |
+| `feedback.rating.submit_reason` | Enviar motivo (legado) | Avaliação de feedback | BUTTON |  |  | 10000 |
 | `feedback.material.open` | Abrir material de apoio | Materiais de apoio | LINK | sim |  |  |
 | `feedback.invite.listen` | Convite: ouvir agora | Aplicação de feedback com a INIA | BUTTON | sim |  |  |
 | `feedback.invite.read` | Convite: ler | Aplicação de feedback com a INIA | BUTTON |  |  |  |
@@ -263,7 +269,7 @@ Correlação: Sessão de uso; nas duas últimas etapas, o MESMO feedback aberto 
 | 1 | Entrada (sessão iniciada) | Sessões derivadas |
 | 2 | Acompanhamento visto | screen.viewed (Acompanhamento) |
 | 3 | Feedback aberto | screen.viewed (feedback aberto pelo destinatário) |
-| 4 | Mesmo feedback avaliado | feedback_ratings (oficial) |
+| 4 | Mesmo feedback avaliado | feedback_ratings (oficial; congelada desde 10/11/2026 — a avaliação passou para a concordância na ciência) |
 
 ### Feedback disponível → exposição → abertura → ciência
 

@@ -11,6 +11,9 @@ import { KNOWLEDGE_CLARIFICATION_VERSION } from "../../knowledge-clarification/d
 import type { SelfChatContext } from "../../leadership-analytics/application/self-context.js"
 import { createChatTurnMetrics, setChatTurnMetrics } from "../../../shared/application/observability/chat-turn-trace.js"
 import { createRealtimeRouter, createSpeculation, progressLabel } from "./realtime-router.js"
+import { requestIdMiddleware } from "../../../shared/presentation/request-id.js"
+import { registerOccurrenceRecorder } from "../../error-diagnostics/application/occurrence-recorder.js"
+import type { OccurrenceInput } from "../../error-diagnostics/domain/error-occurrence.js"
 
 /**
  * SSE do chat em fluxo: a resposta aparece enquanto é escrita (pedaços ANTES de `persisted`/`done`), o progresso é um evento
@@ -31,6 +34,7 @@ const baseReply = { agentId: null, calls: [], results: [], structuredResult: nul
 function setup(fake: Fake, options: { clarification?: (request: ClarificationRequest) => Promise<ClarificationOutcome> } = {}) {
   const memory = createMemoryConversationStore()
   const app = express()
+  app.use(requestIdMiddleware())
   app.use(express.json())
   app.use((req, _res, next) => {
     req.user = user
@@ -243,5 +247,25 @@ describe("peças do fluxo", () => {
     expect(progressLabel({ stage: "TOOLS", tools: ["my_results", "agent_x"] }, isData)).toBe("Consultando os dados e as bases de conhecimento…")
     expect(progressLabel({ stage: "TOOLS", tools: ["leadership_process"] }, () => true)).toBe("Consultando o processo nas bases de conhecimento…")
     expect(progressLabel({ stage: "WRITING" }, isData)).toBe("Escrevendo a resposta…")
+  })
+
+  it("falha DEPOIS de o fluxo começar (status já 200): evento `error` com código e referência, registrada como ocorrência", async () => {
+    const recorded: OccurrenceInput[] = []
+    registerOccurrenceRecorder({ record: (input) => recorded.push(input), stats: () => ({ recorded: 0, dropped: 0, failed: 0 }) })
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const { app } = setup(async (hooks) => {
+        hooks.stream!.text("Começando")
+        throw new Error("orquestrador quebrou com token=abc")
+      })
+      const response = await post(app, "77").set("x-request-id", "chat-ref-00000077")
+      expect(response.status).toBe(200)
+      const failure = events(response.text).find((item) => item.event === "error")
+      expect(failure?.data).toEqual({ message: "Não foi possível obter uma resposta da INIA.", code: "INIA-STREAM-FALHA", reference: "chat-ref-00000077" })
+      expect(recorded).toEqual([expect.objectContaining({ reference: "chat-ref-00000077", code: "INIA-STREAM-FALHA", source: "STREAM", httpStatus: null })])
+      expect(JSON.stringify(recorded)).not.toContain("abc")
+    } finally {
+      registerOccurrenceRecorder(null)
+    }
   })
 })

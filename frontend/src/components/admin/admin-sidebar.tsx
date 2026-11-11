@@ -3,10 +3,11 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, SearchCode, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
 import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { INIA_SUCCESS_PATH } from "@/components/inia-success/inia-success-route"
+import { ERROR_DIAGNOSTICS_PATH } from "@/components/error-diagnostics/error-diagnostics-route"
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -138,6 +139,8 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/inia-scenes", label: "Cenário da INIA", icon: ImageIcon, capability: "canManageIniaScenes" },
       // Chave geral, escopos (Grupo › Subgrupos) e capacidade dos Anjos — só o Administrador geral.
       { href: HUMAN_SUPPORT_ADMIN_PATH, label: "Apoio com Anjo", icon: HeartHandshake, capability: "canManageHumanSupport" },
+      // Catálogo de códigos de erro e ocorrências (código + referência copiados da tela) — escopo de organização.
+      { href: ERROR_DIAGNOSTICS_PATH, label: "Diagnóstico de erros", icon: SearchCode, capability: "canViewErrorDiagnostics" },
     ],
   },
 ]

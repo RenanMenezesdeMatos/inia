@@ -416,7 +416,7 @@ describe("erros do banco provocados pela entrada viram 4xx (ZAP, auditoria AppSe
     const cookie = await loggedInCookie(app)
     const response = await request(app).get("/api/v1/admin/agents/x%00y").set("Cookie", cookie)
     expect(response.status).toBe(400)
-    expect(response.body.error).toEqual({ code: "INVALID_CHARACTER", message: "Valor com caractere inválido." })
+    expect(response.body.error).toEqual({ code: "INVALID_CHARACTER", message: "Valor com caractere inválido.", reference: response.headers["x-request-id"] })
   })
 
   it("assunto com nome repetido: 409 com a mensagem do catálogo (antes 500)", async () => {

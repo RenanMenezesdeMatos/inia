@@ -12,8 +12,10 @@ describe("erro no layout raiz (global-error)", () => {
     const html = renderToStaticMarkup(<GlobalError error={new Error("providers quebrou: token=abc")} retry={() => {}} />)
 
     // O React 19 leva o <title> para o <head> do documento.
-    expect(html).toMatch(/^<html lang="pt-BR"><head><title>INIA<\/title><\/head><body[^>]*>/)
-    expect(html).toContain("Não foi possível exibir esta tela.")
+    // (A arte vira um <link rel="preload"> no <head>; o título continua lá.)
+    expect(html).toMatch(/^<html lang="pt-BR"><head>.*<title>INIA<\/title><\/head><body[^>]*>/)
+    expect(html).toContain("Algo deu errado por aqui.")
+    expect(html).toContain("inia-500-servidor.webp")
     expect(html).toContain("Tentar novamente")
     expect(html).not.toContain("token=abc")
     // No servidor (e na hidratação) nasce claro, como a página de erro padrão.

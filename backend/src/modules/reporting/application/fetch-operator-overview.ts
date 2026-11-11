@@ -6,6 +6,8 @@ import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visi
 import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legacy-feedback-headings.js"
 import { loadFeedbackOrigins } from "../../feedbacks/infrastructure/feedback-origins.js"
 import { encodeFollowUpCursor, followUpCursorAtSql, type FollowUpCursor } from "../../feedbacks/domain/follow-up-cursor.js"
+import { loadFeedbackEvaluations } from "../../feedback-rating/application/feedback-evaluation-reader.js"
+import { EMPTY_EVALUATION } from "../../feedback-rating/domain/feedback-rating.js"
 
 
 export async function fetchOperatorProfile(db: Database, organizationId: string, operatorId: string) {
@@ -96,9 +98,20 @@ export async function fetchOperatorFeedbackPage(db: Database, organizationId: st
   const legacyHeadings = await loadLegacyFeedbackHeadings(db, { organizationId, feedbackIds: rows.map((row) => row.id) })
   // Motivo do feedback (flag que disparou a monitoria, rotina, avulsa, indicador) — selo e ícone do cabeçalho do item.
   const origins = await loadFeedbackOrigins(db, { organizationId, feedbackIds: rows.map((row) => row.id) })
+  // Avaliação do item (escolha registrada na ciência + contestação antiga): só quando quem lê é o próprio destinatário — a
+  // justificativa nunca vai para outra pessoa por este caminho (a liderança vê só o estado da ciência).
+  const ownFeed = viewer.personId === operatorId
+  const evaluations = ownFeed ? await loadFeedbackEvaluations(db, { organizationId, personId: operatorId }, rows.map((row) => ({ kind: "PUBLISHED_FEEDBACK" as const, id: row.id }))) : null
   const items = rows.map((row, index) => {
     const legacy = legacyHeadings.get(row.id)
-    return { ...row, feedbackView: views[index] ?? null, supportMaterials: supportMaterials.get(row.id) ?? [], origin: origins.get(row.id) ?? null, heading: legacy ? { title: legacy.title, subtitle: legacy.subtitle, subjectSource: legacy.subjectSource } : null }
+    return {
+      ...row,
+      feedbackView: views[index] ?? null,
+      supportMaterials: supportMaterials.get(row.id) ?? [],
+      origin: origins.get(row.id) ?? null,
+      heading: legacy ? { title: legacy.title, subtitle: legacy.subtitle, subjectSource: legacy.subjectSource } : null,
+      evaluation: evaluations ? (evaluations.get(`PUBLISHED_FEEDBACK:${row.id}`) ?? EMPTY_EVALUATION) : null,
+    }
   })
   return { items, nextCursor }
 }

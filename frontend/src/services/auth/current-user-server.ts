@@ -21,6 +21,13 @@ export async function getCurrentUserFromCookies(options: { allowPasswordChangePe
     headers: { cookie: sessionCookieHeader(session) },
     cache: "no-store",
   })
+  // API fora/falhando (5xx, inclusive o 502 do proxy) NÃO é "sem sessão": mandar ao login esconderia a falha e a pessoa cairia num
+  // login que também falha. Vira erro de servidor da interface → tela 500 com o digest; o log da interface (instrumentation.ts)
+  // guarda o digest junto com o código e a referência da API, que ligam os dois registros.
+  if (response.status >= 500) {
+    const failure = await response.json().then((payload: { error?: { code?: string; reference?: string } }) => payload?.error ?? null).catch(() => null)
+    throw new Error(`Falha ao ler a sessão na API: status ${response.status}, código ${failure?.code ?? "sem corpo da API"}, referência ${failure?.reference ?? response.headers.get("x-request-id") ?? "—"}`)
+  }
   if (!response.ok) return null
   const payload: unknown = await response.json()
   const user = currentUserSchema.parse((payload as { data: unknown }).data)

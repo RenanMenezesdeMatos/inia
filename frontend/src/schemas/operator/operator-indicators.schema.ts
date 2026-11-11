@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { feedbackEvaluationSchema } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 import { feedbackSupportMaterialSchema } from "@/schemas/feedbacks/support-material.schema"
 import { feedbackViewSchema } from "@/schemas/feedbacks/feedback-view.schema"
@@ -87,6 +88,8 @@ export const operatorIndicatorHistorySchema = z.object({
    * ausente = item que não é um feedback publicado (ex.: leitura do dia). */
   acknowledgedAt: z.string().nullable().optional(),
   origin: feedbackOriginSchema.nullable().optional(),
+  /** Avaliação do próprio colaborador (escolha na ciência + contestação antiga); ausente = item sem avaliação. */
+  evaluation: feedbackEvaluationSchema.nullable().optional(),
 })
 
 export const operatorIndicatorsDataSchema = z.object({

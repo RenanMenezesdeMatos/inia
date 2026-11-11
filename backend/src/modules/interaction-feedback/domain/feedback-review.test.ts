@@ -29,7 +29,8 @@ describe("V1.5.0/V1.5.5 — regras da avaliação de QA", () => {
     walk(root)
     // V1.5.12: a camada de confiabilidade do Workflow (modules/reliable-feedback) reusa DE PROPÓSITO o redator, a política e
     // a tela de QA deste módulo — é parte do mesmo núcleo, não um consumidor externo.
-    const outside = files.filter((file) => !file.path.startsWith(join("modules", "interaction-feedback")) && !file.path.startsWith(join("modules", "reliable-feedback")))
+    // O inventário gerado do catálogo de erros só CITA caminhos (texto), não importa nada.
+    const outside = files.filter((file) => !file.path.startsWith(join("modules", "interaction-feedback")) && !file.path.startsWith(join("modules", "reliable-feedback")) && !file.path.endsWith(".generated.ts"))
     // Fora do módulo, só estes importam application/infrastructure/domain: o servidor liga o VARREDOR (V1.5.6); o Workflow
     // pluga a geração na fronteira de efeitos, executa a ação e valida o publish (V1.5.10); o QA Lab simula sem gravar; a
     // aplicação de feedback conversacional LÊ a entrega do próprio colaborador pela MESMA projeção do Acompanhamento (só leitura)

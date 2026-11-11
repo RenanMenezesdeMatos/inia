@@ -14,7 +14,7 @@ import { ApiError } from "@/lib/api/api-client"
 import { formatShortDateTime } from "@/lib/format/date"
 import { useContestationQuery, useReviewContestationMutation } from "@/queries/admin/use-feedback-contestation-queries"
 import { CONTESTATION_RESPONSE_LIMITS, type ContestationDetail } from "@/schemas/admin/feedback-contestation.schema"
-import { CONTESTATION_DECISION_LABELS, CONTESTATION_DECISIONS, DISLIKE_REASON_COPY, type ContestationDecision } from "@/schemas/feedback-ratings/feedback-rating.schema"
+import { CONTESTATION_DECISION_LABELS, CONTESTATION_DECISIONS, CONTESTATION_ORIGIN_LABELS, CONTESTATION_REASON_COPY, type ContestationDecision } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 const DECISION_HELP: Record<ContestationDecision, string> = {
   ACCEPTED: "O colaborador tem razão: o feedback não condiz com o que aconteceu.",
@@ -46,8 +46,16 @@ export function ContestationDetailPanel({ contestationId, onBack }: { contestati
 
       <section className="space-y-2" aria-labelledby="contestation-what">
         <h3 id="contestation-what" className="text-sm font-semibold">O que o colaborador disse</h3>
-        <Badge variant="outline">{DISLIKE_REASON_COPY[item.reason].label}</Badge>
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="secondary" data-testid="contestation-origin">{CONTESTATION_ORIGIN_LABELS[item.origin]}</Badge>
+          <Badge variant="outline">{CONTESTATION_REASON_COPY[item.reason].label}</Badge>
+        </div>
         <blockquote className="border-l-2 border-primary/40 pl-3 text-sm whitespace-pre-line">{item.comment}</blockquote>
+        {item.laterAgreement ? (
+          <p className="text-xs text-muted-foreground" data-testid="contestation-later-agreement">
+            Depois, ao confirmar a ciência deste feedback em {formatShortDateTime(item.laterAgreement.recordedAt)}, o colaborador {item.laterAgreement.value === "AGREE" ? "disse que concorda com ele" : "disse que não concorda com ele"}.
+          </p>
+        ) : null}
       </section>
 
       <FeedbackContent item={item} />

@@ -8,7 +8,7 @@ import type { OperatorIndicatorsData, OperatorIndicatorsHistoryKind } from "@/sc
 import { RichContent } from "@/components/rich-content/rich-content"
 import { OperatorFeedbackDetail, type FeedbackAcknowledgement } from "./operator-feedback-detail"
 import { FeedbackCard, FeedbackEntryHeader, FeedbackEntryWhen, type FeedbackEntryFamily } from "@/components/feedbacks/feedback-entry-header"
-import { FeedbackRating } from "@/components/feedbacks/feedback-rating"
+import { ReadingEvaluation } from "@/components/feedbacks/confirm-reading/reading-evaluation"
 import { IniaFeed, IniaFeedItem } from "./inia-feed"
 import { DeliveredFeedbackEntry } from "./delivered-feedback-entry"
 import { useMyDeliveredFeedbackQuery } from "@/queries/feedback-delivery/use-delivered-feedback"
@@ -94,15 +94,17 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
   const setEntryOpen = (key: string, open: boolean) => setOpenEntries((current) => ({ ...current, [key]: open }))
 
   function renderEntry(entry: FollowUpEntry) {
-    // Avaliação "foi útil?" só onde ela é real: item com fonte (feedback publicado ou atendimento entregue), nunca "Leitura do dia".
+    // Avaliação do colaborador (escolha registrada na ciência + contestação antiga) só onde ela é real: item com fonte (feedback
+    // publicado ou atendimento entregue), nunca "Leitura do dia". Sempre visível, mesmo com o item fechado.
     const source = sourceOfEntry(entry)
-    const footer = source ? <FeedbackRating source={source}/> : undefined
     if (entry.source === "delivered") {
       const item = entry.item
+      const footer = source ? <ReadingEvaluation source={source} title={item.title} acknowledgedAt={item.acknowledgedAt} evaluation={item.evaluation}/> : undefined
       return <div data-testid="delivered-feedback"><IniaFeedItem timestamp={formatDateTime(item.deliveredAt)} meta={<FeedbackEntryWhen text={`Atendimento de ${item.interactionLabel}`}/>} footer={footer}><DeliveredFeedbackEntry item={item} expanded={openEntries[entry.key] ?? false} onExpandedChange={(open) => setEntryOpen(entry.key, open)} action={<FeedbackApplicationButton source={{ kind: "INTERACTION_FEEDBACK_DELIVERY", id: item.id }} title={item.title} periodLabel={`Atendimento de ${item.interactionLabel}`}/>}/></IniaFeedItem></div>
     }
     const item = entry.item
     const title = item.feedback?.view?.heading?.title ?? item.title
+    const footer = source ? <ReadingEvaluation source={source} title={title} acknowledgedAt={item.acknowledgedAt ?? null} evaluation={item.evaluation}/> : undefined
     const subtitle = item.feedback?.view?.heading?.subtitle ?? item.subtitle ?? null
     // Só feedback PUBLICADO (o que pode receber ciência) tem aplicação; "Leitura do dia" não.
     const action = item.acknowledgedAt !== undefined ? <FeedbackApplicationButton source={{ kind: "PUBLISHED_FEEDBACK", id: item.id }} title={title} periodLabel={subtitle}/> : undefined

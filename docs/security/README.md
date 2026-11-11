@@ -50,7 +50,7 @@ risco que sobra.
 | Cifra dos segredos presa à organização/dono/finalidade (AAD) e recifragem | `data-hub/infrastructure/aes-secret-store.ts`, `backend/scripts/seguranca/recifrar-segredos.ts` |
 | Registro de leitura de dados pessoais de outra pessoa | migration 151, `data-lifecycle/application/personal-data-access-log.ts` |
 | Exportação dos dados do titular (LGPD art. 18) | `data-lifecycle/application/subject-data-export.ts` |
-| Revisão humana das contestações de feedback (LGPD art. 20) | migration 150, `feedback-rating/application/contestation-review-service.ts` |
+| Revisão humana das contestações de feedback (LGPD art. 20) — desde 10/11/2026 a contestação é a discordância registrada na ciência (escolha única por feedback; ciência anterior registra a escolha uma vez); quem concordou não tem um segundo canal no sistema (decisão a confirmar com o dono do produto) | migrations 150 e 186, `feedback-rating/application/contestation-review-service.ts`, `feedback-rating/application/read-agreement-service.ts` |
 | Token da API Push com validade e IPs; token antes do corpo | migration 152, `data-hub/application/push-ingestion.ts`, `data-hub/presentation/data-ingestion-router.ts` |
 | Banco fora do ar não trava a API | `infrastructure/database/pool.ts` (`query_timeout`, keep-alive), `main/readiness.ts`; prova `database-outage-proof` (Docker) |
 

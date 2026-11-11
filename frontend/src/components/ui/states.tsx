@@ -32,7 +32,8 @@ export function EmptyState({ icon, title, description, action, className }: { ic
   )
 }
 
-export function ErrorState({ message, description, onRetry, forbidden = false, className }: { message: ReactNode; description?: ReactNode; onRetry?: (() => void) | undefined; forbidden?: boolean; className?: string }) {
+/** `support`: faixa de suporte (código, referência, copiar) que a feature monta — o kit só reserva o lugar, abaixo da ação. */
+export function ErrorState({ message, description, onRetry, forbidden = false, support, className }: { message: ReactNode; description?: ReactNode; onRetry?: (() => void) | undefined; forbidden?: boolean; support?: ReactNode; className?: string }) {
   return (
     <div role="alert" className={cn("flex flex-col items-center rounded-2xl border p-8 text-center", forbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5", className)}>
       <IconBadge icon={forbidden ? Lock : AlertTriangle} tone={forbidden ? "neutral" : "danger"} size="lg" />
@@ -43,6 +44,7 @@ export function ErrorState({ message, description, onRetry, forbidden = false, c
           {RETRY_LABEL}
         </Button>
       ) : null}
+      {support ? <div className="mt-4 w-full max-w-md">{support}</div> : null}
     </div>
   )
 }

@@ -11,7 +11,8 @@ import { PasswordInput } from "@/components/auth/password-input"
 import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { CREATE_PASSWORD_ROUTE, fetchCurrentUser, landingRouteFor, login } from "@/services/auth/auth-service"
 
-export function LoginFields() {
+/** `returnTo`: caminho interno já validado (`safeReturnPath`) para onde voltar depois de entrar. */
+export function LoginFields({ returnTo }: { returnTo?: string } = {}) {
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -33,7 +34,7 @@ export function LoginFields() {
       const current = await fetchCurrentUser()
       // Documento novo (lib/auth/session-navigation.ts): nada que uma conta anterior abriu nesta aba sobrevive na sessão nova.
       // Primeiro acesso (senha temporária): a única tela possível é a de criar a senha.
-      loadSessionDocument(current ? landingRouteFor(current) : user.passwordChangeRequired ? CREATE_PASSWORD_ROUTE : "/supervisor")
+      loadSessionDocument(current && !user.passwordChangeRequired ? returnTo ?? landingRouteFor(current) : current ? landingRouteFor(current) : user.passwordChangeRequired ? CREATE_PASSWORD_ROUTE : "/supervisor")
     } catch (error) {
       setFeedback({
         type: "error",

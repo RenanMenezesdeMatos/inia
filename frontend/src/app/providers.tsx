@@ -1,5 +1,6 @@
 "use client"
 
+import { OfflineMonitor } from "@/components/error-states/offline-screen"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -31,6 +32,8 @@ export function Providers({ children, nonce: requestNonce }: ProvidersProps) {
           <QueryProvider>
             <TooltipProvider>
               {children}
+              {/* Sem conexão com o app aberto: aviso por cima da tela (o que foi digitado continua). */}
+              <OfflineMonitor />
               <Toaster />
             </TooltipProvider>
           </QueryProvider>

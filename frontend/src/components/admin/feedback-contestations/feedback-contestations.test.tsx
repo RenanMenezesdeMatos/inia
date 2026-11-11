@@ -19,6 +19,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const ITEM: ContestationItem = {
   id: "11111111-1111-4111-8111-111111111111",
+  origin: "READ_AGREEMENT",
   status: "PENDING",
   reason: "INACCURATE",
   comment: "Eu informei o protocolo no fim da ligação.",
@@ -27,7 +28,7 @@ const ITEM: ContestationItem = {
   feedback: { kind: "PUBLISHED_FEEDBACK", id: "f-1", feedbackKind: "MONITORING", impactedIndicator: "TMA", publishedAt: "2026-10-19T15:00:00.000Z" },
   review: null,
 }
-const DETAIL: ContestationDetail = { ...ITEM, content: { observedBehavior: "Não confirmou o protocolo.", evidenceFound: "“vou verificar aqui”", relatedProcedure: "Procedimento 35", recommendation: "Informe o protocolo." } }
+const DETAIL: ContestationDetail = { ...ITEM, content: { observedBehavior: "Não confirmou o protocolo.", evidenceFound: "“vou verificar aqui”", relatedProcedure: "Procedimento 35", recommendation: "Informe o protocolo." }, laterAgreement: null }
 
 beforeAll(installJsdomStubs)
 const SUMMARY = { from: "2026-10-12", to: "2026-11-10", delivered: 0, contested: 0, rate: null, byReason: [], byStatus: { pending: 0, ACCEPTED: 0, PARTIALLY_ACCEPTED: 0, REJECTED: 0 } }
@@ -45,7 +46,7 @@ afterEach(() => {
 
 describe("Contestações de feedback — fila", () => {
   it("abre filtrando as que aguardam resposta; mostra colaborador, motivo, situação e o que ele escreveu; selecionar abre a contestação", async () => {
-    service.fetchContestations.mockResolvedValue({ items: [ITEM, { ...ITEM, id: "22222222-2222-4222-8222-222222222222", status: "ANSWERED", reason: "WRONG_PROCESS", review: { decision: "REJECTED", response: "Mantido.", reviewerName: "Ana", respondedAt: "2026-10-20T13:00:00.000Z" } }], total: 2, pendingCount: 1 })
+    service.fetchContestations.mockResolvedValue({ items: [ITEM, { ...ITEM, id: "22222222-2222-4222-8222-222222222222", origin: "USEFULNESS_RATING", status: "ANSWERED", reason: "WRONG_PROCESS", review: { decision: "REJECTED", response: "Mantido.", reviewerName: "Ana", respondedAt: "2026-10-20T13:00:00.000Z" } }], total: 2, pendingCount: 1 })
     renderWithQuery(<FeedbackContestationsPage />)
     const rows = await screen.findAllByTestId("feedback-contestation")
     expect(service.fetchContestations).toHaveBeenCalledWith(expect.objectContaining({ status: "PENDING" }))
@@ -54,6 +55,10 @@ describe("Contestações de feedback — fila", () => {
     expect(within(rows[0]!).getByText("Aguardando resposta")).toBeInTheDocument()
     expect(within(rows[0]!).getByText("“Eu informei o protocolo no fim da ligação.”")).toBeInTheDocument()
     expect(within(rows[1]!).getByText("Respondida")).toBeInTheDocument()
+    // A origem: discordância registrada na ciência × avaliação "não foi útil" antiga.
+    expect(within(rows[0]!).getByTestId("contestation-origin")).toHaveTextContent("Discordância na ciência")
+    expect(within(rows[1]!).getByTestId("contestation-origin")).toHaveTextContent("Avaliação “não foi útil”")
+    expect(screen.getByRole("combobox", { name: "Filtrar por origem" })).toBeInTheDocument()
     expect(screen.getByText("1 aguardando resposta")).toBeInTheDocument()
     fireEvent.click(rows[0]!)
     expect(navigation.replace).toHaveBeenCalledWith(`/admin/feedback-contestations?contestation=${ITEM.id}`, { scroll: false })
@@ -86,6 +91,13 @@ describe("Contestações de feedback — responder", () => {
     fireEvent.click(send)
     await waitFor(() => expect(service.reviewContestation).toHaveBeenCalledWith(ITEM.id, { decision: "ACCEPTED", response: "Você tem razão." }))
     expect(await screen.findByText("Resposta enviada")).toBeInTheDocument()
+  })
+
+  it("avaliação antiga: mostra a origem e a escolha que o colaborador registrou depois na ciência", async () => {
+    service.fetchContestation.mockResolvedValue({ ...DETAIL, origin: "USEFULNESS_RATING", laterAgreement: { value: "AGREE", recordedAt: "2026-10-21T10:00:00.000Z" } })
+    renderWithQuery(<ContestationDetailPanel contestationId={ITEM.id} onBack={() => {}} />)
+    expect(await screen.findByTestId("contestation-origin")).toHaveTextContent("Avaliação “não foi útil”")
+    expect(screen.getByTestId("contestation-later-agreement")).toHaveTextContent("disse que concorda com ele")
   })
 
   it("já respondida: mostra a resposta, quem respondeu e não oferece o formulário", async () => {

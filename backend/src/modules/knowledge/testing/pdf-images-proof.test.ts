@@ -148,7 +148,11 @@ describe.runIf(ENABLED)("imagens de PDF no fluxo real", () => {
     const denied = await readerB.get(`${READER}/${id}/images/${image.id}`)
     const missing = await readerB.get(`${READER}/00000000-0000-4000-8000-00000000abcd/images/${image.id}`)
     expect(denied.status).toBe(404)
-    expect(denied.body).toEqual(missing.body)
+    // Mesma resposta para "sem acesso" e "não existe" (nada revela que o item existe). Só a referência da ocorrência difere —
+    // ela é aleatória por requisição (x-request-id) e não diz nada sobre o item.
+    const withoutReference = (body: { error: Record<string, unknown> }) => ({ ...body, error: { ...body.error, reference: undefined } })
+    expect(withoutReference(denied.body)).toEqual(withoutReference(missing.body))
+    expect(denied.body.error.reference).toEqual(expect.any(String))
     // O id da imagem não abre nada em outra base, mesmo uma que o leitor alcança.
     const other = await upload("Outra base", manual(30))
     await publish(other)

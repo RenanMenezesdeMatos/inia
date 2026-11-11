@@ -8,12 +8,19 @@ import {
   type ContestationStatus,
   type ContestationSummary,
 } from "@/schemas/admin/feedback-contestation.schema"
-import type { ContestationDecision, FeedbackDislikeReason } from "@/schemas/feedback-ratings/feedback-rating.schema"
+import type { ContestationDecision, ContestationOrigin, ContestationReason } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
 /** "Contestações de feedback" — `/api/v1/admin/feedback-contestations`; o backend aplica o escopo de quem revisa em cada chamada. */
 const BASE = "/api/v1/admin/feedback-contestations"
 
-export type ContestationFilters = { status?: ContestationStatus | undefined; reason?: FeedbackDislikeReason | undefined; search?: string | undefined; page: number; pageSize: number }
+export type ContestationFilters = {
+  status?: ContestationStatus | undefined
+  origin?: ContestationOrigin | undefined
+  reason?: ContestationReason | undefined
+  search?: string | undefined
+  page: number
+  pageSize: number
+}
 
 export async function fetchContestations(filters: ContestationFilters): Promise<ContestationPage> {
   const params = new URLSearchParams()

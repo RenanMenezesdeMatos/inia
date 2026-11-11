@@ -74,6 +74,13 @@ export const envSchema = z.object({
    */
   CORS_ORIGIN: z.string().trim().min(1).optional(),
   LOG_LEVEL: z.string().default("info"),
+  /**
+   * Versão implantada que vai em cada linha de log e em cada ocorrência de erro (`release`): o commit ou rótulo da publicação.
+   * Ausente = `INIA_RELEASE` do ambiente do serviço, senão o arquivo RELEASE da raiz, senão a versão do package.json.
+   */
+  INIA_RELEASE: z.string().trim().regex(/^[A-Za-z0-9._+-]{1,64}$/).optional(),
+  /** Dias de guarda das ocorrências de erro (tabela error_occurrences); a tarefa periódica apaga as mais antigas. */
+  INIA_ERROR_OCCURRENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   GEMINI_API_KEY: z.string().optional(),
   JWT_SECRET: z.string().default("inia-dev-secret-change-me"),
   JWT_EXPIRES_IN: z.string().default("12h"),
