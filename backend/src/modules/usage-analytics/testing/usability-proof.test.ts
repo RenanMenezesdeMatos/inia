@@ -253,6 +253,29 @@ describe.skipIf(!ENABLED)("Monitoria de usabilidade — prova Postgres", () => {
     expect((await ctxFor("vera", "overview", { jobTitle: "Gestão" })).filters.jobTitle).toBe("Gestão")
   })
 
+  it("leitora só de agregados não reconstrói recorte pequeno por diferença: Organização − Grupo A ≠ Grupo B (desvio do C18, 2ª rodada)", async () => {
+    // Grupo B (Alan, Bruno) continua recusado sozinho…
+    await expect(assertAggregateCohort(db(), await ctxFor("lia", "conversations", { teamId: ids.teamB }))).rejects.toMatchObject({ code: "USABILITY_SMALL_COHORT" })
+    // …e a organização e o Grupo A, ambos permitidos, não diferem mais em nada: as células com menos de 5 pessoas saem dos dois.
+    for (const tab of ["conversations", "overview"] as const) {
+      const org = await ctxFor("lia", tab)
+      const teamA = await ctxFor("lia", tab, { teamId: ids.teamA })
+      await expect(assertAggregateCohort(db(), org)).resolves.toBeUndefined()
+      await expect(assertAggregateCohort(db(), teamA)).resolves.toBeUndefined()
+      const strip = (data: { meta: unknown }) => ({ ...data, meta: undefined })
+      if (tab === "conversations") {
+        const [whole, partial] = [await conversationsQuery(db(), org), await conversationsQuery(db(), teamA)]
+        expect(whole.messages.proactive).toBe(partial.messages.proactive)
+        expect(strip(whole)).toEqual(strip(partial))
+      } else {
+        expect(strip(await overviewQuery(db(), org))).toEqual(strip(await overviewQuery(db(), teamA)))
+      }
+    }
+    // Quem vê pessoas identificadas continua vendo o Bruno (recado proativo) no total da organização.
+    const vera = await conversationsQuery(db(), await ctxFor("vera", "conversations"))
+    expect(vera.messages.proactive).toBe(1)
+  })
+
   it("afastamento sensível sai como AFASTAMENTO_PROTEGIDO na lista, no detalhe e no CSV; o filtro de afastados continua valendo (C04, 4ª auditoria)", async () => {
     await pool.query(`update people set current_employment_status = 'INSS' where id = $1`, [ids.people.diego])
     try {

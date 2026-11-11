@@ -124,6 +124,9 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canAttendHumanSupport: any("human_support.attend"),
     canCoordinateHumanSupport: any("human_support.coordinate"),
     canManageHumanSupport: org("human_support.manage"),
+    // Indicadores de sucesso da INIA: quem lê ao menos um bloco (conversas, painel do apoio, contestações ou a conferência das respostas
+    // na organização inteira). Cada bloco confere a própria permissão no backend (`inia-success/application/context-reader.ts`).
+    canViewIniaSuccess: any("assistant_conversations.view") || any("human_support.coordinate") || any("feedback_contestations.review") || org("configuration.manage"),
   }
 }
 

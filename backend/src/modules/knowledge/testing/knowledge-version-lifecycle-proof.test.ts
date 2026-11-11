@@ -537,7 +537,10 @@ describe.skipIf(!ENABLED)("PEN-008 — bases de conhecimento: atualização auto
     }
     const [productA, productB, productC] = [await productNode("Produto A"), await productNode("Produto B"), await productNode("Produto C")]
     const scopeUrl = `/api/v1/admin/product-catalog/sources/KNOWLEDGE_DOCUMENT/${id}/scope`
-    const inProduction = async (at = new Date()) => (await loadProductCatalogAt(pool, ORG, at, [id]))?.scopes.flatMap((scope) => scope.nodeIds) ?? []
+    // A vigência é gravada pelo relógio do BANCO (`now()` na transição); os instantes da prova vêm do mesmo relógio — o do processo
+    // de teste pode estar adiantado em relação ao do Postgres (contêiner), e o "antes da transição" cairia depois dela.
+    const dbNow = async () => (await pool.query<{ at: Date }>(`select clock_timestamp() as at`)).rows[0]!.at
+    const inProduction = async (at?: Date) => (await loadProductCatalogAt(pool, ORG, at ?? await dbNow(), [id]))?.scopes.flatMap((scope) => scope.nodeIds) ?? []
     const source = async () => (await admin.get("/api/v1/admin/product-catalog/sources")).body.data.find((row: { sourceId: string }) => row.sourceId === id) as { scope: { nodeIds: string[] } | null; pendingScope: { version: number; status: string; nodeIds: string[] } | null }
 
     // Salvar: fica no rascunho. Nada do que o motor lê muda; a versão em uso e os produtos dela continuam.
@@ -565,7 +568,7 @@ describe.skipIf(!ENABLED)("PEN-008 — bases de conhecimento: atualização auto
     expect(await detailOf(id)).toMatchObject({ inUse: { version: 1 }, draft: { version: 2 }, updates: [] })
 
     // Pedir a publicação ainda não muda; a transição muda, na mesma transação, a partir daquele instante.
-    const beforeTransition = new Date()
+    const beforeTransition = await dbNow()
     const pending = await publish(id, { process: false })
     expect(await inProduction()).toEqual([])
     expect(await processKnowledgeVersion(pool, pending)).toBe("PUBLISHED")

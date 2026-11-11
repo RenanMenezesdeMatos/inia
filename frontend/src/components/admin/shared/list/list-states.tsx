@@ -5,6 +5,7 @@ import { FilterX, Search, type LucideIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState, ErrorState } from "@/components/ui/states"
 import type { ListViewMode } from "@/hooks/use-admin-list-state"
 import { cn } from "@/lib/utils"
 
@@ -35,36 +36,27 @@ export function ListSkeleton({ view, rows = 6 }: { view: ListViewMode; rows?: nu
   )
 }
 
+/** Erro de lista — o `ErrorState` do kit (antes um bloco próprio, menor e sem ícone). */
 export function ListErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
-      <p className="text-sm text-destructive">{message}</p>
-      <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-        Tentar novamente
-      </Button>
-    </div>
-  )
+  return <ErrorState message={message} onRetry={onRetry} />
 }
 
-export function ListEmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
-  return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-border p-10 text-center">
-      <Icon className="size-8 text-muted-foreground/60" />
-      <p className="mt-3 text-sm font-medium">{title}</p>
-      {description ? <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p> : null}
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  )
+/** Lista sem nenhum registro — o `EmptyState` do kit (convida a cadastrar pela `action`). */
+export function ListEmptyState({ icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
+  return <EmptyState icon={icon} title={title} description={description} action={action} />
 }
 
+/** Filtros sem resultado — o `EmptyState` do kit com "Limpar filtros" (diferente de "sem registros": convida a limpar). */
 export function ListNoResultsState({ title, onClear }: { title: string; onClear: () => void }) {
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-border p-10 text-center">
-      <Search className="size-8 text-muted-foreground/60" />
-      <p className="mt-3 text-sm font-medium">{title}</p>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onClear}>
-        <FilterX /> Limpar filtros
-      </Button>
-    </div>
+    <EmptyState
+      icon={Search}
+      title={title}
+      action={
+        <Button variant="outline" size="sm" onClick={onClear}>
+          <FilterX /> Limpar filtros
+        </Button>
+      }
+    />
   )
 }

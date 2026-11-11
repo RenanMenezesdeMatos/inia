@@ -221,6 +221,8 @@ function checkedImage(data: Buffer, context?: { index: number; label: string }):
   }
   // Fundo visto por toda a organização: sem EXIF/GPS, XMP e afins (achado AUTH-11 da auditoria de 17/10/2026).
   const clean = stripImageMetadata(data, validation.image.mimeType)
+  // Estrutura que o removedor não entende: recusa (nunca grava os bytes originais, com os metadados).
+  if (!clean) throw new DomainError(context ? `Imagem "${context.label}": ${SCENE_IMAGE_ERROR_MESSAGES.SCENE_IMAGE_UNREADABLE}` : SCENE_IMAGE_ERROR_MESSAGES.SCENE_IMAGE_UNREADABLE, "SCENE_IMAGE_UNREADABLE", 422, context ? { imageIndex: context.index } : undefined)
   return { ...validation.image, sha256: createHash("sha256").update(clean).digest("hex"), byteSize: clean.length, data: clean }
 }
 

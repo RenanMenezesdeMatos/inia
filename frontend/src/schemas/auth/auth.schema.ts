@@ -100,6 +100,9 @@ export const accessCapabilitiesSchema = z.object({
   canAttendHumanSupport: capability,
   canCoordinateHumanSupport: capability,
   canManageHumanSupport: capability,
+  // Indicadores de sucesso da INIA — fora de canAccessAdministration: quem lê ao menos um bloco (conversas, painel do apoio, contestações ou
+  // a conferência das respostas na organização inteira). Cada bloco é conferido no backend.
+  canViewIniaSuccess: capability,
 })
 export type AccessCapabilities = z.infer<typeof accessCapabilitiesSchema>
 /** Capabilities vazias (deny by default) — quando a sessão ainda não foi lida. */

@@ -2,9 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Download, RotateCcw, XCircle } from "lucide-react"
+import { Download, RotateCcw, XCircle } from "lucide-react"
 
 import { useAdminListState } from "@/hooks/use-admin-list-state"
+import { BackLink } from "@/components/ui/back-link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -162,11 +163,7 @@ export function RunDetailPage({ runId }: { runId: string }) {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <Button variant="ghost" size="sm" asChild className="-ml-2">
-            <Link href="/admin/data-hub?tab=runs">
-              <ArrowLeft /> Cargas
-            </Link>
-          </Button>
+          <BackLink href="/admin/data-hub?tab=runs" label="Cargas" />
           <h1 className="text-xl font-semibold tracking-tight">
             Carga de {run.feedName ?? "feed removido"} <span className="font-normal text-muted-foreground">· {run.sourceName ?? "fonte removida"}</span>
           </h1>

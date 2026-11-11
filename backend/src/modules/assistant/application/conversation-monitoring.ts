@@ -186,6 +186,53 @@ export async function listMonitoredConversations(db: Queryable, viewer: Monitori
   }
 }
 
+/**
+ * TEMPO DE RESPOSTA DA INIA NO CHAT DE TEXTO (KPI "tempo médio de resposta" pedido pela gestão em 2026-11-10). Para cada resposta da
+ * INIA no período, o intervalo entre a mensagem do colaborador imediatamente anterior na mesma conversa (gravada ao enviar) e a
+ * resposta gravada (resposta completa, depois do streaming): é o tempo que a pessoa espera pela informação, com tudo o que a INIA fez
+ * no meio (roteamento, especialistas, bases, conferência). Só pares pergunta → resposta do chat de TEXTO: na voz a pergunta e a
+ * resposta são gravadas juntas ao fim da fala (intervalo ~0), então ela não entra. Mesmo alcance e mesmos filtros da lista (dono,
+ * Grupo, Subgrupo, situação, tipo, busca), com o período sobre a data LOCAL da resposta (a lista filtra pela última atividade da
+ * conversa). Média, mediana e o tempo em que 90% das respostas chegaram (percentil por posição: sempre um tempo que aconteceu).
+ */
+export type ResponseTimeFilters = Omit<MonitoringFilters, "page" | "pageSize" | "from" | "to"> & { from: string; to: string }
+export type ResponseTimeSummary = { from: string; to: string; replies: number; averageSeconds: number | null; medianSeconds: number | null; p90Seconds: number | null }
+
+export async function monitoredResponseTimes(db: Queryable, viewer: MonitoringViewer, filters: ResponseTimeFilters): Promise<ResponseTimeSummary> {
+  const params: unknown[] = baseParams(viewer)
+  const extra = filterSql({ ...filters, from: undefined, to: undefined, page: 1, pageSize: 1 }, params)
+  params.push(filters.from, filters.to)
+  const from = `$${params.length - 1}::date`
+  const to = `$${params.length}::date`
+  const result = await db.query<{ replies: number; average: number | null; median: number | null; p90: number | null }>(
+    `${SCOPE_CTE}, visible as (
+       select c.id ${FROM} where ${VISIBLE}${extra}
+     ), bounds as (
+       select (${from})::timestamp at time zone o.timezone starts_at, (${to} + 1)::timestamp at time zone o.timezone ends_at
+         from (select coalesce((select op.timezone from operations op where op.organization_id = $1 order by op.created_at limit 1), '${DEFAULT_ORGANIZATION_TIMEZONE}') timezone) o
+     ), paired as (
+       -- O dia antes do início só serve para achar a pergunta de uma resposta dada logo depois da meia-noite.
+       select i.role, i.channel, i.occurred_at, lag(i.role) over w prev_role, lag(i.channel) over w prev_channel, lag(i.occurred_at) over w prev_at
+         from assistant_interactions i cross join bounds b
+        where i.organization_id = $1 and i.conversation_id in (select id from visible)
+          and i.occurred_at >= b.starts_at - interval '1 day' and i.occurred_at < b.ends_at
+       window w as (partition by i.conversation_id order by i.occurred_at, i.seq)
+     ), replies as (
+       select extract(epoch from p.occurred_at - p.prev_at)::float8 seconds
+         from paired p cross join bounds b
+        where p.role = 'assistant' and p.prev_role = 'user' and p.channel = 'chat' and p.prev_channel = 'chat' and p.occurred_at >= b.starts_at
+     )
+     select count(*)::int replies, avg(seconds)::float8 average,
+            percentile_disc(0.5) within group (order by seconds)::float8 median, percentile_disc(0.9) within group (order by seconds)::float8 p90
+       from replies`,
+    params,
+  )
+  const row = result.rows[0]
+  const replies = row?.replies ?? 0
+  const seconds = (value: number | null | undefined) => (replies > 0 && value !== null && value !== undefined ? Math.max(0, Number(value)) : null)
+  return { from: filters.from, to: filters.to, replies, averageSeconds: seconds(row?.average), medianSeconds: seconds(row?.median), p90Seconds: seconds(row?.p90) }
+}
+
 /** Conversa no alcance do leitor — ou 404 (fora do alcance e inexistente são indistinguíveis). */
 export async function requireMonitoredConversation(db: Queryable, viewer: MonitoringViewer, conversationId: string): Promise<MonitoredConversation> {
   const params = [...baseParams(viewer), conversationId]

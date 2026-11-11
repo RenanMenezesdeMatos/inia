@@ -2,6 +2,9 @@ import type { PdfPageLayout, PdfRun } from "../pdf-markdown/layout.js"
 import type { OcrBox, OcrLine } from "./hocr.js"
 import { isInside } from "./print-regions.js"
 
+/** Páginas digitalizadas lidas por documento; as outras ficam como não lidas. Também limita o prazo da leitura, que cresce por página. */
+export const OCR_MAX_PAGES = 300
+
 /**
  * O que o Tesseract leu, no formato que o conversor de PDF para Markdown já usa: cada palavra vira um trecho de texto na linha de base da linha dela, e o
  * conversor decide títulos, listas, parágrafos e colunas com as mesmas regras de um PDF com texto. Nada de título deduzido do texto: o tamanho da letra é

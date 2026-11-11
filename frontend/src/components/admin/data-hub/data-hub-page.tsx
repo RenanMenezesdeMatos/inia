@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Database, DatabaseZap, FileUp, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/ui/surface"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 
@@ -54,17 +55,12 @@ export function DataHubPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Database className="size-5" />
-          </span>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Central de Dados</h1>
-            <p className="text-sm text-muted-foreground">Como os dados do cliente entram na INIA: fontes, feeds, contratos, mapeamentos, cargas, qualidade e linhagem — num só lugar.</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        icon={Database}
+        title="Central de Dados"
+        description="Como os dados do cliente entram na INIA: fontes, feeds, contratos, mapeamentos, cargas, qualidade e linhagem — num só lugar."
+        actions={
+          <>
           <Button asChild variant="outline">
             <Link href="/admin/data-hub/import">
               <FileUp /> Importar arquivo
@@ -80,8 +76,9 @@ export function DataHubPage() {
               <DatabaseZap /> Conectar banco de dados
             </Link>
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="overflow-x-auto">

@@ -54,6 +54,8 @@ async function storeImage(client: Queryable, owner: ProfileOwner, usage: Profile
   const image = checkedImage(data, usage)
   // A imagem é vista por toda a organização: sem EXIF/GPS, XMP e afins (stripImageMetadata — achado AUTH-11).
   const clean = stripImageMetadata(data, image.mimeType)
+  // Estrutura que o removedor não entende: recusa (nunca grava os bytes originais, com os metadados).
+  if (!clean) throw new DomainError(IMAGE_ERROR_MESSAGES.IMAGE_UNREADABLE, "IMAGE_UNREADABLE", 422, { usage })
   const sha256 = createHash("sha256").update(clean).digest("hex")
   const result = await client.query<{ id: string }>(
     `insert into person_profile_images (organization_id, person_id, usage, mime_type, byte_size, width, height, sha256, data)

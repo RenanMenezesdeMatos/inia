@@ -29,7 +29,7 @@ describe("resolvedor operacional — uma query, valor + evidência", () => {
       if (sql.includes("select avg(m.value)")) return [{ avg_value: "500", min_value: "400", max_value: "600", sample_count: "5", sum_value: "2500", latest_value: "480", weighted_sum: "142639", weight_total: "287", numerator_sum: "142639", denominator_sum: "287", rows_with_components: "5", sample_total: "287", days_with_data: "5" }]
       throw new Error(`não roteado: ${sql.slice(0, 60)}`)
     })
-    const result = await resolveOperationalWindow(db, { indicatorCode: "TMA", subjectIds: ["op-1"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5 })
+    const result = await resolveOperationalWindow(db, { indicatorCode: "TMA", subjectIds: ["op-1"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5 }, { organizationId: "org" })
     expect(result.value).toBe(497.0)
     expect(result.method).toContain("÷")
     expect(result.daysWithData).toBe(5)
@@ -55,7 +55,7 @@ describe("resolvedor operacional — uma query, valor + evidência", () => {
       }
       throw new Error(`não roteado: ${sql.slice(0, 60)}`)
     })
-    const result = await resolveOperationalWindowBySubject(db, { indicatorCode: "X", subjectIds: ["op-1", "op-2", "op-3"], window: WINDOW, aggregation: "AVERAGE", expectedDays: 5 })
+    const result = await resolveOperationalWindowBySubject(db, { indicatorCode: "X", subjectIds: ["op-1", "op-2", "op-3"], window: WINDOW, aggregation: "AVERAGE", expectedDays: 5 }, { organizationId: "org" })
     expect(result.get("op-1")?.value).toBe(10)
     expect(result.get("op-1")?.coverage).toBe(0.4)
     expect(result.get("op-2")?.value).toBe(20)
@@ -76,7 +76,7 @@ describe("resolvedor operacional — uma query, valor + evidência", () => {
       }
       throw new Error(`não roteado: ${sql.slice(0, 60)}`)
     })
-    const result = await resolveOperationalClosedMonths(db, { indicatorCode: "TMA", subjectIds: ["op-1"], months, aggregation: "WEIGHTED_AVERAGE" })
+    const result = await resolveOperationalClosedMonths(db, { organizationId: "org", indicatorCode: "TMA", subjectIds: ["op-1"], months, aggregation: "WEIGHTED_AVERAGE" })
     expect(result.total.value).toBe(450)
     expect(result.monthsWithData).toBe(1)
     expect(result.months[1]!.result.value).toBeNull()

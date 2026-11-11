@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/components/ui/chart"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useMaterialAggregatesQuery } from "@/queries/diagnostics/use-diagnostics-memory"
@@ -120,29 +120,31 @@ function SectionsTable({ sections }: { sections: MaterialSection[] }) {
   const shown = expanded ? sections : sections.slice(0, SECTIONS_SHOWN)
   return (
     <div className="space-y-2">
-      <Table>
-        <TableHeader>
-          <TableRow><TableHead>Seção</TableHead><TableHead>Avaliações</TableHead><TableHead>Desvios</TableHead><TableHead>Acertos</TableHead><TableHead>Indicações no feedback</TableHead></TableRow>
-        </TableHeader>
-        <TableBody>
-          {shown.map((section) => (
-            <TableRow key={section.section ?? "sem-secao"}>
-              <TableCell className="max-w-md space-y-0.5 whitespace-normal">
-                <p className="font-medium">{section.section ?? "Documento inteiro (sem seção)"}</p>
-                {section.points.length > 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    {section.points.slice(0, 3).map((point) => `${point.title} (${point.assessed})`).join(" · ")}{section.points.length > 3 ? ` · +${section.points.length - 3}` : ""}
-                  </p>
-                ) : null}
-              </TableCell>
-              <TableCell className="tabular-nums">{section.assessed}</TableCell>
-              <TableCell className="tabular-nums">{section.deviations}</TableCell>
-              <TableCell className="tabular-nums">{section.met}</TableCell>
-              <TableCell className="tabular-nums">{section.recommended}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className={TABLE_FRAME}>
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead>Seção</TableHead><TableHead>Avaliações</TableHead><TableHead>Desvios</TableHead><TableHead>Acertos</TableHead><TableHead>Indicações no feedback</TableHead></TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((section) => (
+              <TableRow key={section.section ?? "sem-secao"}>
+                <TableCell className="max-w-md space-y-0.5 whitespace-normal">
+                  <p className="font-medium">{section.section ?? "Documento inteiro (sem seção)"}</p>
+                  {section.points.length > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {section.points.slice(0, 3).map((point) => `${point.title} (${point.assessed})`).join(" · ")}{section.points.length > 3 ? ` · +${section.points.length - 3}` : ""}
+                    </p>
+                  ) : null}
+                </TableCell>
+                <TableCell className="tabular-nums">{section.assessed}</TableCell>
+                <TableCell className="tabular-nums">{section.deviations}</TableCell>
+                <TableCell className="tabular-nums">{section.met}</TableCell>
+                <TableCell className="tabular-nums">{section.recommended}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
       {sections.length > SECTIONS_SHOWN ? (
         <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>{expanded ? "Mostrar só as mais avaliadas" : `Mostrar todas as ${sections.length} seções`}</Button>
       ) : null}

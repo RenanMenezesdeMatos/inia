@@ -1,61 +1,71 @@
 "use client"
 
-import { useState } from "react"
-import { Inbox, LifeBuoy, SearchX } from "lucide-react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import type { InfiniteData, UseInfiniteQueryResult } from "@tanstack/react-query"
+import { LifeBuoy, SearchX, Star } from "lucide-react"
 
-import { ListSelectFilter, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
 import { AnalyticsEmptyState } from "@/components/analytics/analytics-states"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatShortDateTime } from "@/lib/format/date"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { dateSeparatorLabel, dayKey, lastActivityLabel } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
-import { useSupportRequestsQuery } from "@/queries/human-support/use-human-support-admin"
-import { REQUEST_ORIGIN_LABELS, REQUEST_STATUS_LABELS, type RequestOrigin, type RequestStatus } from "@/schemas/human-support/catalogs.schema"
-import { durationText, type RequestListItem } from "@/schemas/human-support/monitoring.schema"
-import type { PanelFilter } from "@/services/human-support/human-support-service"
+import { durationText, type RequestList, type RequestListItem } from "@/schemas/human-support/monitoring.schema"
 
 import { PanelError } from "./panel-error"
 import { RequestDetail } from "./request-detail"
+import { messagesLabel, OperatorAvatar, RequestStatusLabel, requestOriginOf } from "./request-presentation"
 
-type ListFilter = PanelFilter & { status?: RequestStatus | undefined; origin?: RequestOrigin | undefined }
+export type RequestsQuery = UseInfiniteQueryResult<InfiniteData<RequestList>, Error>
 
 /**
- * Pedidos › lista do período (mais novos primeiro, "Carregar mais" pelo cursor do servidor) com filtros de estado e origem; escolher um
- * pedido abre o detalhe ao lado (no celular, no lugar da lista). O recorte de quem aparece é do servidor (escopo congelado do pedido).
+ * Pedidos › no formato de "Conversas com a INIA": a barra de filtros em cima; a lista à esquerda, agrupada pelo dia em que o pedido foi
+ * aberto (mais novos primeiro, "Carregar mais" pelo cursor do servidor); o pedido aberto à direita, como uma conversa. No celular, um de
+ * cada vez. O recorte de quem aparece é do servidor (escopo congelado do pedido); a lista não mostra conteúdo da conversa — só ao abrir
+ * o pedido, que grava o registro de leitura (LGPD).
  */
-export function RequestsTab({ filter }: { filter: PanelFilter }) {
-  const [status, setStatus] = useState<RequestStatus | undefined>(undefined)
-  const [origin, setOrigin] = useState<RequestOrigin | undefined>(undefined)
+export function RequestsTab({ query, filtered, toolbar }: { query: RequestsQuery; filtered: boolean; toolbar: ReactNode }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const listFilter: ListFilter = { ...filter, status, origin }
-  const filtered = status !== undefined || origin !== undefined
+  const items = query.data?.pages.flatMap((page) => page.items) ?? []
+  const total = query.data?.pages[0]?.total ?? null
+
+  // No celular o pedido aparece abaixo dos filtros: ao escolher um, a tela vai até ele.
+  const detailRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!selectedId || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1023px)").matches) return
+    detailRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })
+  }, [selectedId])
 
   return (
-    <div className="space-y-3">
-      <div role="group" aria-label="Filtros dos pedidos" className="flex flex-wrap items-center gap-2">
-        <ListSelectFilter value={status} onChange={setStatus} options={optionsFromLabels(REQUEST_STATUS_LABELS)} allLabel="Todos os estados" ariaLabel="Filtrar por estado" />
-        <ListSelectFilter value={origin} onChange={setOrigin} options={optionsFromLabels(REQUEST_ORIGIN_LABELS)} allLabel="Todas as origens" ariaLabel="Filtrar por origem" />
-        {filtered ? (
-          <Button type="button" variant="ghost" size="sm" onClick={() => { setStatus(undefined); setOrigin(undefined) }}>
-            Limpar filtros
-          </Button>
-        ) : null}
-      </div>
-
-      <div className="grid min-h-[30rem] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-border bg-card shadow-xs lg:h-[calc(100dvh-22rem)] lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
-        <div className={cn("min-h-0 overflow-y-auto border-b lg:border-r lg:border-b-0", selectedId ? "hidden lg:block" : "block")}>
-          {/* A chave remonta a lista (volta à primeira página) quando o período ou um filtro muda. */}
-          <RequestList key={JSON.stringify(listFilter)} filter={listFilter} filtered={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+    <div className="space-y-4">
+      {toolbar}
+      <div className="grid min-h-[34rem] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-xl border bg-card lg:h-[calc(100dvh-23rem)] lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
+        <div className={cn("flex min-h-0 flex-col border-b lg:border-r lg:border-b-0", selectedId ? "hidden lg:flex" : "flex")}>
+          {query.isPending ? (
+            <div className="space-y-2 p-3" aria-label="Carregando pedidos">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-20 w-full rounded-lg" />)}</div>
+          ) : !query.data ? (
+            <div className="p-3"><PanelError error={query.error} onRetry={() => void query.refetch()} /></div>
+          ) : items.length === 0 ? (
+            <div className="p-4">
+              <AnalyticsEmptyState icon={filtered ? SearchX : LifeBuoy} title={filtered ? "Nenhum pedido com esses filtros" : "Nenhum pedido no período"} description={filtered ? undefined : "Os pedidos de apoio dos operadores do seu alcance aparecem aqui."} />
+            </div>
+          ) : (
+            <>
+              <RequestList items={items} selectedId={selectedId} onSelect={setSelectedId} />
+              <ListFooter shown={items.length} total={total} query={query} />
+            </>
+          )}
         </div>
-        <div className={cn("min-h-[28rem] min-w-0 lg:min-h-0", selectedId ? "block" : "hidden lg:block")}>
+        <div ref={detailRef} className={cn("min-h-[32rem] min-w-0 scroll-mt-4 lg:min-h-0", selectedId ? "block" : "hidden lg:block")}>
           {selectedId ? (
             <RequestDetail key={selectedId} requestId={selectedId} onBack={() => setSelectedId(null)} />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-              <LifeBuoy className="size-8 text-muted-foreground/60" aria-hidden />
-              <p className="font-medium">Escolha um pedido</p>
-              <p className="max-w-sm text-sm text-muted-foreground">O detalhe mostra o que o operador compartilhou, a conversa com o Anjo, a classificação e a avaliação.</p>
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+              <span className="flex size-12 items-center justify-center rounded-full bg-muted"><LifeBuoy className="size-6 text-muted-foreground" aria-hidden /></span>
+              <div className="space-y-1">
+                <p className="font-medium">Escolha um pedido</p>
+                <p className="max-w-sm text-sm text-muted-foreground">A conversa com o Anjo aparece aqui, como o operador viu — com o que ele compartilhou, os horários, a classificação e a avaliação.</p>
+              </div>
             </div>
           )}
         </div>
@@ -64,43 +74,38 @@ export function RequestsTab({ filter }: { filter: PanelFilter }) {
   )
 }
 
-function RequestList({ filter, filtered, selectedId, onSelect }: { filter: ListFilter; filtered: boolean; selectedId: string | null; onSelect: (id: string) => void }) {
-  const [cursors, setCursors] = useState<(string | null)[]>([null])
+/** Lista agrupada pelo dia em que o pedido foi aberto ("Hoje", "Ontem", data), com o cabeçalho do dia fixo ao rolar. */
+function RequestList({ items, selectedId, onSelect }: { items: RequestListItem[]; selectedId: string | null; onSelect: (id: string) => void }) {
+  const groups: { key: string; label: string; items: RequestListItem[] }[] = []
+  for (const item of items) {
+    const key = dayKey(item.createdAt)
+    const current = groups.at(-1)
+    if (current?.key === key) current.items.push(item)
+    else groups.push({ key, label: dateSeparatorLabel(item.createdAt), items: [item] })
+  }
   return (
-    <ul className="divide-y" aria-label="Pedidos">
-      {cursors.map((cursor, index) => (
-        <RequestPage key={cursor ?? "first"} filter={filter} cursor={cursor} first={index === 0} last={index === cursors.length - 1} filtered={filtered} selectedId={selectedId} onSelect={onSelect} onMore={(next) => setCursors((current) => [...current, next])} />
+    <div className="min-h-0 flex-1 overflow-y-auto" aria-label="Pedidos">
+      {groups.map((group) => (
+        <section key={group.key} aria-label={group.label}>
+          <h2 className="sticky top-0 z-10 border-b bg-card/95 px-4 py-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase backdrop-blur">{group.label}</h2>
+          <ul className="divide-y">
+            {group.items.map((item) => <RequestRow key={item.id} item={item} selected={item.id === selectedId} onSelect={() => onSelect(item.id)} />)}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
   )
 }
 
-function RequestPage(props: { filter: ListFilter; cursor: string | null; first: boolean; last: boolean; filtered: boolean; selectedId: string | null; onSelect: (id: string) => void; onMore: (cursor: string) => void }) {
-  const query = useSupportRequestsQuery({ ...props.filter, cursor: props.cursor })
-  if (query.isPending) return <li className="space-y-2 p-3" aria-label="Carregando pedidos">{Array.from({ length: props.first ? 5 : 2 }).map((_, index) => <Skeleton key={index} className="h-16 w-full rounded-lg" />)}</li>
-  if (query.isError) return <li className="p-3"><PanelError error={query.error} onRetry={() => void query.refetch()} /></li>
-  if (props.first && query.data.items.length === 0) {
-    return (
-      <li className="p-4">
-        <AnalyticsEmptyState icon={props.filtered ? SearchX : Inbox} title={props.filtered ? "Nenhum pedido com esses filtros" : "Nenhum pedido no período"} description={props.filtered ? undefined : "Os pedidos de apoio dos operadores do seu alcance aparecem aqui."} />
-      </li>
-    )
-  }
-  return (
-    <>
-      {query.data.items.map((item) => <RequestRow key={item.id} item={item} selected={item.id === props.selectedId} onSelect={() => props.onSelect(item.id)} />)}
-      {props.last && query.data.nextCursor ? (
-        <li className="p-3 text-center">
-          <Button type="button" variant="outline" size="sm" onClick={() => props.onMore(query.data.nextCursor!)}>
-            Carregar mais
-          </Button>
-        </li>
-      ) : null}
-    </>
-  )
+/** Quem atendeu e em quanto tempo respondeu — sem nada do conteúdo da conversa. */
+function anjoText(item: RequestListItem): string {
+  if (item.anjoNames.length === 0) return item.status === "WAITING" ? "Aguardando um Anjo" : "Nenhum Anjo atendeu"
+  const response = item.firstResponseSeconds !== null ? ` · 1ª resposta em ${durationText(item.firstResponseSeconds)}` : ""
+  return `Anjo: ${item.anjoNames.join(", ")}${response}`
 }
 
 function RequestRow({ item, selected, onSelect }: { item: RequestListItem; selected: boolean; onSelect: () => void }) {
+  const origin = requestOriginOf(item.origin)
   return (
     <li>
       <button
@@ -109,25 +114,55 @@ function RequestRow({ item, selected, onSelect }: { item: RequestListItem; selec
         aria-current={selected ? "true" : undefined}
         data-testid="support-request"
         className={cn(
-          "relative flex w-full flex-col gap-0.5 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted focus-visible:outline-none",
+          "relative flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:bg-muted focus-visible:outline-none",
           selected && "bg-primary/5 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary hover:bg-primary/10",
         )}
       >
-        <span className="flex items-baseline gap-2">
-          <span className="text-sm font-semibold tabular-nums">{item.protocol}</span>
-          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{REQUEST_STATUS_LABELS[item.status]}</Badge>
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{formatShortDateTime(item.createdAt)}</span>
-        </span>
-        <span className="truncate text-sm">
-          {item.operatorName}
-          <span className="text-muted-foreground"> · {[item.teamName, item.subteamName].filter(Boolean).join(" › ") || "Sem Grupo"}</span>
-        </span>
-        <span className="truncate text-xs text-muted-foreground">
-          {REQUEST_ORIGIN_LABELS[item.origin]}
-          {item.anjoNames.length > 0 ? ` · ${item.anjoNames.join(", ")}` : ""}
-          {item.firstResponseSeconds !== null ? ` · 1ª resposta em ${durationText(item.firstResponseSeconds)}` : ""}
+        <OperatorAvatar name={item.operatorName} avatarUrl={item.operatorAvatarUrl} className="mt-0.5 shrink-0" />
+        <span className="min-w-0 flex-1 space-y-0.5">
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{item.operatorName}</span>
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{lastActivityLabel(item.createdAt)}</span>
+          </span>
+          <span className="flex items-center gap-1.5 text-sm">
+            <Tooltip>
+              <TooltipTrigger asChild><origin.icon className="size-3.5 shrink-0 text-primary" aria-label={origin.label} /></TooltipTrigger>
+              <TooltipContent>{origin.label}</TooltipContent>
+            </Tooltip>
+            <span className="min-w-0 truncate">
+              <span className="font-medium tabular-nums">{item.protocol}</span>
+              <span className="text-muted-foreground"> · {origin.label}</span>
+            </span>
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">{anjoText(item)}</span>
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 pt-0.5 text-xs text-muted-foreground">
+            <RequestStatusLabel status={item.status} />
+            <span className="tabular-nums">{messagesLabel(item.messageCount)}</span>
+            {item.stars !== null ? (
+              <span className="inline-flex items-center gap-0.5 tabular-nums" aria-label={`${item.stars} de 5 estrelas`}>
+                <Star className="size-3 fill-amber-400 text-amber-400" aria-hidden />
+                {item.stars}
+              </span>
+            ) : null}
+          </span>
         </span>
       </button>
     </li>
+  )
+}
+
+/** Rodapé da coluna da lista: quantos pedidos estão na tela de quantos há e o "Carregar mais" (cursor do servidor). */
+function ListFooter({ shown, total, query }: { shown: number; total: number | null; query: RequestsQuery }) {
+  if (!query.hasNextPage && !query.isFetchNextPageError) return null
+  return (
+    <div className="flex items-center justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground tabular-nums">
+      <span>{total !== null ? `${shown.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")}` : `${shown.toLocaleString("pt-BR")} pedidos`}</span>
+      <span className="flex items-center gap-2">
+        {query.isFetchNextPageError ? <span className="text-destructive" role="alert">Não foi possível carregar mais.</span> : null}
+        <Button type="button" variant="ghost" size="sm" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+          {query.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+        </Button>
+      </span>
+    </div>
   )
 }

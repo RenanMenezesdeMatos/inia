@@ -31,3 +31,18 @@ export const contestationPageSchema = z.object({ items: z.array(contestationItem
 export type ContestationPage = z.infer<typeof contestationPageSchema>
 
 export const CONTESTATION_RESPONSE_LIMITS = { min: 3, max: 2000 } as const
+
+/**
+ * Taxa de contestação dos feedbacks disponibilizados no período (`GET …/summary?from&to`, backend `contestation-summary.ts`):
+ * `rate` só vem com 5 ou mais feedbacks no período (abaixo disso, só a contagem).
+ */
+export const contestationSummarySchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  delivered: z.number(),
+  contested: z.number(),
+  rate: z.number().nullable(),
+  byReason: z.array(z.object({ reason: feedbackDislikeReasonSchema, label: z.string(), count: z.number() })),
+  byStatus: z.object({ pending: z.number(), ACCEPTED: z.number(), PARTIALLY_ACCEPTED: z.number(), REJECTED: z.number() }),
+})
+export type ContestationSummary = z.infer<typeof contestationSummarySchema>

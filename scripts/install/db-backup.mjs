@@ -53,8 +53,13 @@ try {
 } catch (error) {
   fail(`não conectou ao banco ${target}: ${error.message}`)
 }
-const pgDump = findPgTool("pg_dump", { binDir: values["pg-bin"], minMajor: major })
-const pgRestore = findPgTool("pg_restore", { binDir: values["pg-bin"], minMajor: major })
+let pgDump, pgRestore
+try {
+  pgDump = findPgTool("pg_dump", { binDir: values["pg-bin"], minMajor: major })
+  pgRestore = findPgTool("pg_restore", { binDir: values["pg-bin"], minMajor: major })
+} catch (error) {
+  fail(error.message)
+}
 if (!pgDump || !pgRestore) fail(`pg_dump/pg_restore ${major} ou mais novo não encontrado. Instale as ferramentas do PostgreSQL ${major} ou informe a pasta com --pg-bin.`)
 
 const finalFile = join(dir, `inia-${backupStamp()}.dump`)

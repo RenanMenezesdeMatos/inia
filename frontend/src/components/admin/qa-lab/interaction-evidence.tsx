@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, FileText, Headset, Phone, Search, User, Zap } from "lucide-react"
+import { AlertTriangle, Check, FileText, Headset, Phone, Search, User, Zap } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,8 @@ import { COMPARATOR_LABELS, type Comparator } from "@/schemas/admin/workflow-gra
 
 import { formatDateTime, formatNumber } from "./qa-lab-format"
 import { PersonPicker, type ThresholdHint } from "./test-data-pickers"
-import { DateRangePicker } from "@/components/ui/date-picker"
+import { DateRangePicker, parseCivilDate, presetRangeById, type CivilDateRange } from "@/components/ui/date-picker"
+import { CursorPagination } from "@/components/admin/shared/list/list-pagination"
 
 /** "07m18s" — duração de uma ligação (segundos), nunca confundida com a duração de uma request. */
 export function formatCallDuration(seconds: number | null | undefined): string {
@@ -37,34 +38,19 @@ function flagValueText(value: boolean | number | null | undefined): string {
   return formatNumber(value, 2)
 }
 
-const PERIOD_OPTIONS = [
-  { value: "1", label: "Hoje" },
-  { value: "7", label: "Últimos 7 dias" },
-  { value: "30", label: "Últimos 30 dias" },
-  { value: "custom", label: "Período personalizado" },
-  { value: "all", label: "Qualquer período" },
-] as const
-type PeriodOption = (typeof PERIOD_OPTIONS)[number]["value"]
-const PAGE_SIZE = 10
+/** Opções de "Por página" da busca de interações (a paginação única do app). */
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const NUMERIC_COMPARATORS: Comparator[] = ["LT", "LTE", "EQUALS", "NOT_EQUALS", "GTE", "GT"]
 
-function periodRange(option: PeriodOption, customFrom: string, customTo: string): { from?: string; to?: string } {
-  if (option === "all") return {}
-  if (option === "custom") {
-    const from = customFrom ? new Date(customFrom) : null
-    const to = customTo ? new Date(customTo) : null
-    return {
-      ...(from && !Number.isNaN(from.getTime()) ? { from: from.toISOString() } : {}),
-      // Fim inclusivo: o dia escolhido inteiro.
-      ...(to && !Number.isNaN(to.getTime()) ? { to: new Date(to.getTime() + 24 * 60 * 60 * 1000).toISOString() } : {}),
-    }
+/** Período civil escolhido (datas locais, inclusivas) → instantes da consulta; vazio = qualquer período. */
+function periodRange(range: CivilDateRange): { from?: string; to?: string } {
+  const from = parseCivilDate(range.from)
+  const to = parseCivilDate(range.to)
+  return {
+    ...(from ? { from: from.toISOString() } : {}),
+    // Fim inclusivo: o dia escolhido inteiro.
+    ...(to ? { to: new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1).toISOString() } : {}),
   }
-  if (option === "1") {
-    const start = new Date()
-    start.setHours(0, 0, 0, 0)
-    return { from: start.toISOString() }
-  }
-  return { from: new Date(Date.now() - Number(option) * 24 * 60 * 60 * 1000).toISOString() }
 }
 
 /**
@@ -458,9 +444,8 @@ export function InteractionEvidencePicker({
   value: QaInteraction | null
   onChange: (interaction: QaInteraction | null) => void
 }) {
-  const [period, setPeriod] = useState<PeriodOption>("7")
-  const [customFrom, setCustomFrom] = useState("")
-  const [customTo, setCustomTo] = useState("")
+  const [period, setPeriod] = useState<CivilDateRange>(() => presetRangeById("last-7-days"))
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0])
   const [search, setSearch] = useState("")
   const debouncedSearch = useDebouncedValue(search, 250)
   const [scenario, setScenario] = useState<"ALL" | "MATCH" | "NO_MATCH">("ALL")
@@ -475,17 +460,17 @@ export function InteractionEvidencePicker({
     const filtering = scenario !== "ALL" && (valueType === "BOOLEAN" || threshold !== "")
     return {
       operatorId: operator.id,
-      ...periodRange(period, customFrom, customTo),
+      ...periodRange(period),
       ...(debouncedSearch ? { search: debouncedSearch } : {}),
       ...(filtering
         ? valueType === "BOOLEAN"
           ? { comparator: "EQUALS", thresholdBoolean: booleanValue === "true", negate: scenario === "NO_MATCH" }
           : { comparator, thresholdNumeric: Number(threshold), negate: scenario === "NO_MATCH" }
         : {}),
-      limit: PAGE_SIZE,
+      limit: pageSize,
       offset,
     }
-  }, [operator, period, customFrom, customTo, debouncedSearch, scenario, valueType, comparator, threshold, booleanValue, offset])
+  }, [operator, period, debouncedSearch, scenario, valueType, comparator, threshold, booleanValue, offset, pageSize])
   const query = useQaCompatibleInteractionsQuery(workflowId, params)
   const rows = query.data?.rows ?? []
 
@@ -534,33 +519,17 @@ export function InteractionEvidencePicker({
               <div className="flex flex-wrap items-end gap-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="qa-interaction-period">Período</Label>
-                  <Select
+                  <DateRangePicker
+                    id="qa-interaction-period"
                     value={period}
-                    onValueChange={(next) => {
-                      setPeriod(next as PeriodOption)
+                    placeholder="Qualquer período"
+                    clearable
+                    onChange={(range) => {
+                      setPeriod(range)
                       resetPaging()
                     }}
-                  >
-                    <SelectTrigger id="qa-interaction-period" className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PERIOD_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </div>
-                {period === "custom" ? (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="qa-interaction-period">De – até</Label>
-                      <DateRangePicker id="qa-interaction-period" value={{ from: customFrom || undefined, to: customTo || undefined }} onChange={(range) => (setCustomFrom(range.from ?? ""), setCustomTo(range.to ?? ""), resetPaging())} />
-                    </div>
-                  </>
-                ) : null}
                 <div className="space-y-1.5">
                   <Label htmlFor="qa-interaction-search">Identificador</Label>
                   <div className="relative">
@@ -625,7 +594,7 @@ export function InteractionEvidencePicker({
                   : query.isError
                     ? (query.error as Error).message
                     : query.data
-                      ? `${rows.length}${query.data.hasMore ? "+" : ""} interação(ões) ${query.data.flag ? `compatível(is) com ${query.data.flag.label}` : "do colaborador com transcrição"}${offset > 0 ? ` · página ${offset / PAGE_SIZE + 1}` : ""} — consulta determinística, sem IA.`
+                      ? `${rows.length}${query.data.hasMore ? "+" : ""} interação(ões) ${query.data.flag ? `compatível(is) com ${query.data.flag.label}` : "do colaborador com transcrição"}${offset > 0 ? ` · página ${offset / pageSize + 1}` : ""} — consulta determinística, sem IA.`
                       : ""}
               </p>
               <div className="max-h-64 overflow-y-auto rounded-md border border-border">
@@ -658,15 +627,22 @@ export function InteractionEvidencePicker({
                   </p>
                 ) : null}
               </div>
-              {query.data && (offset > 0 || query.data.hasMore) ? (
-                <div className="flex items-center justify-end gap-1">
-                  <Button type="button" size="sm" variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-                    <ChevronLeft className="h-4 w-4" /> Anteriores
-                  </Button>
-                  <Button type="button" size="sm" variant="ghost" disabled={!query.data.hasMore} onClick={() => setOffset(offset + PAGE_SIZE)}>
-                    Próximas <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+              {query.data && (offset > 0 || rows.length > 0) ? (
+                <CursorPagination
+                  page={offset / pageSize + 1}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  shownCount={rows.length}
+                  hasNext={query.data.hasMore}
+                  isFetching={query.isFetching}
+                  onPrevious={() => setOffset(Math.max(0, offset - pageSize))}
+                  onNext={() => setOffset(offset + pageSize)}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size)
+                    resetPaging()
+                  }}
+                  itemLabel={["interação", "interações"]}
+                />
               ) : null}
             </div>
           )}

@@ -3,9 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
 
 import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
+import { INIA_SUCCESS_PATH } from "@/components/inia-success/inia-success-route"
 import { cn } from "@/lib/utils"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -116,14 +117,17 @@ const GROUPS: NavGroup[] = [
   },
   {
     label: "Monitoramento",
-    // Leitura das conversas reais com a INIA (somente leitura) e Monitoria de usabilidade (uso do produto), no escopo da conta.
+    // Leitura das conversas reais com a INIA (somente leitura), painel do Apoio com Anjo e Monitoria de usabilidade (uso do produto), no escopo da conta.
     entries: [
+      // Primeiro do grupo: o resumo das telas abaixo (tempo de resposta, avaliações, falhas, Anjo, feedbacks e conferência), cada bloco no
+      // alcance da permissão da tela de origem.
+      { href: INIA_SUCCESS_PATH, label: "Indicadores de sucesso da INIA", icon: Goal, capability: "canViewIniaSuccess" },
       { href: "/admin/conversations", label: "Conversas com a INIA", icon: MessagesSquare, capability: "canViewAssistantConversations" },
+      // Logo abaixo das conversas com a INIA (o apoio continua a conversa quando a INIA não resolve). Painel do apoio: funil das respostas da INIA e do apoio, pedidos, tentativas sem Anjo e atividade dos Anjos do escopo.
+      { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Apoio com Anjo", icon: LifeBuoy, capability: "canCoordinateHumanSupport" },
       // Contestações dos colaboradores sobre feedbacks da INIA ("não foi útil") — revisão humana com resposta.
       { href: "/admin/feedback-contestations", label: "Contestações de feedback", icon: MessageSquareWarning, capability: "canReviewFeedbackContestations" },
       { href: "/admin/usability", label: "Monitoria de usabilidade", icon: Activity, capability: "canViewUsability" },
-      // Painel do apoio: funil das respostas da INIA e do apoio, pedidos, tentativas sem Anjo e atividade dos Anjos do escopo.
-      { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Apoio com Anjo", icon: LifeBuoy, capability: "canCoordinateHumanSupport" },
     ],
   },
   {

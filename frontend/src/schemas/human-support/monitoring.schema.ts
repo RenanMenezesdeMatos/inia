@@ -33,6 +33,7 @@ export const requestListItemSchema = z.object({
   id: z.string(),
   protocol: z.string(),
   operatorName: z.string(),
+  operatorAvatarUrl: z.string().nullable(),
   teamName: z.string().nullable(),
   subteamName: z.string().nullable(),
   origin: requestOriginSchema,
@@ -42,13 +43,17 @@ export const requestListItemSchema = z.object({
   endedAt: z.string().nullable(),
   anjoNames: z.array(z.string()),
   firstResponseSeconds: z.number().nullable(),
+  /** Só a contagem das mensagens de operador e Anjo: o conteúdo aparece ao abrir o pedido (registro LGPD). */
+  messageCount: z.number(),
   classificationReason: classificationReasonSchema.nullable(),
   outcome: classificationOutcomeSchema.nullable(),
   resolved: evaluationResolvedSchema.nullable(),
   stars: z.number().nullable(),
 })
 export type RequestListItem = z.infer<typeof requestListItemSchema>
-export const requestListSchema = z.object({ items: z.array(requestListItemSchema), nextCursor: z.string().nullable() })
+/** `total` vem só na primeira página (sem cursor): quantos pedidos atendem aos filtros. */
+export const requestListSchema = z.object({ items: z.array(requestListItemSchema), nextCursor: z.string().nullable(), total: z.number().nullable() })
+export type RequestList = z.infer<typeof requestListSchema>
 
 export const classificationViewSchema = z.object({ reason: classificationReasonSchema, referenceTitle: z.string().nullable(), referenceUrl: z.string().nullable(), otherDescription: z.string().nullable(), outcome: classificationOutcomeSchema })
 export type ClassificationView = z.infer<typeof classificationViewSchema>

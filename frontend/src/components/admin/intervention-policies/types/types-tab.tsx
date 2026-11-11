@@ -1,8 +1,9 @@
 "use client"
 
 import { useId, useState } from "react"
-import { ArrowLeft, Plus, Shapes } from "lucide-react"
+import { Plus, Shapes } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,9 +33,7 @@ export function TypesTab() {
   if (selected) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => setSelectedId(null)}>
-          <ArrowLeft /> Tipos de intervenção
-        </Button>
+        <BackLink onClick={() => setSelectedId(null)} label="Tipos de intervenção" />
         {/* Recomeça quando a versão PUBLICADA muda (publicação) — nunca a cada refetch nem ao salvar o rascunho. */}
         <TypeEditor key={`${selected.id}|${selected.published?.id ?? "-"}`} type={selected} types={types} />
       </div>

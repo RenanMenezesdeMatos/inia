@@ -1,6 +1,9 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Boxes } from "lucide-react"
+
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 
 import { ProductDirectory } from "./product-directory"
 
@@ -11,17 +14,17 @@ import { ProductDirectory } from "./product-directory"
  */
 export function ProductCatalogPage() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Produtos</CardTitle>
-        <CardDescription className="max-w-3xl">
-          O mesmo assunto pode ter orientações diferentes por produto. Cadastre os produtos, como reconhecê-los numa chamada e quais bases valem para cada um. Assim a INIA cobra a orientação certa — e, quando a chamada não deixa claro o produto, não cobra regra que
-          dependa dele.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ProductDirectory />
-      </CardContent>
-    </Card>
+    <section className="space-y-4">
+      <PageHeader
+        icon={Boxes}
+        title="Produtos"
+        description="O mesmo assunto pode ter orientações diferentes por produto. Cadastre os produtos, como reconhecê-los numa chamada e quais bases valem para cada um. Assim a INIA cobra a orientação certa — e, quando a chamada não deixa claro o produto, não cobra regra que dependa dele."
+      />
+      <Card>
+        <CardContent>
+          <ProductDirectory />
+        </CardContent>
+      </Card>
+    </section>
   )
 }

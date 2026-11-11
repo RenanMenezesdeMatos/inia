@@ -8,7 +8,7 @@ import type { AvatarQuality } from "@/lib/avatar/animation/types"
 import { parseUploadTarget } from "@/lib/avatar/lab/demo-recorder"
 import type { LabFixtureId } from "@/lib/avatar/lab/fixture-catalog"
 import { AvatarLabController } from "@/lib/avatar/lab/lab-controller"
-import { MENTORA_MODEL_URL, modelExists, POC_MODEL_URL, type LabModelUrl } from "@/lib/avatar/lab/lab-models"
+import { MENTORA_MODEL_URL, modelExists, parseLabQuery, POC_MODEL_URL, type LabModelUrl, type LabMotionProfile } from "@/lib/avatar/lab/lab-models"
 import { LabAppearancePanel } from "./lab-appearance-panel"
 import { LabAvSyncPanel } from "./lab-av-sync-panel"
 import { LabDiagnostics } from "./lab-diagnostics"
@@ -31,6 +31,8 @@ const readServerSearch = () => ""
  * controlador é criado UMA vez e o avatar recebe sempre o MESMO driver — nenhum controle desta
  * tela re-renderiza o `<Canvas>` (só trocar o modelo, que recria a cena por definição).
  */
+const LAB_VIEWS: readonly AvatarView[] = ["chat", "front", "threequarter", "presenting", "profile", "back", "full"]
+
 export function AvatarLab() {
   const [controller] = useState(() => new AvatarLabController())
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
@@ -42,6 +44,14 @@ export function AvatarLab() {
   const [quality, setQuality] = useState<AvatarQuality | "auto">("auto")
   const search = useSyncExternalStore(subscribeNever, readSearch, readServerSearch)
   const uploadTarget = useMemo(() => parseUploadTarget(search), [search])
+  // `?model=mentora|v02|poc&motion=auto|classic|natural&view=…`: a mesma página nas mesmas condições, só o que se compara muda.
+  const query = useMemo(() => parseLabQuery(search), [search])
+  const [pickedMotion, setPickedMotion] = useState<LabMotionProfile | null>(null)
+  const motion = pickedMotion ?? query.motion ?? "auto"
+  const [pickedView, setPickedView] = useState(false)
+  const [pickedModel, setPickedModel] = useState(false)
+  const effectiveModelUrl = pickedModel || !query.modelUrl ? modelUrl : query.modelUrl
+  const effectiveView = !pickedView && query.view && LAB_VIEWS.includes(query.view as AvatarView) ? (query.view as AvatarView) : view
 
   // Desmontagem (e o ciclo extra do StrictMode): cala e desconecta; o controlador continua utilizável.
   useEffect(() => {
@@ -90,11 +100,12 @@ export function AvatarLab() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_480px]">
         <div className="min-w-0 space-y-4">
           <IniaHumanoidAvatar3D
-            modelUrl={modelUrl}
+            modelUrl={effectiveModelUrl}
             state={displayState}
             driver={controller.driver}
             quality={quality}
-            view={view}
+            view={effectiveView}
+            motionProfile={motion}
             className="h-[min(72vh,640px)]"
             onCanvasReady={handleCanvasReady}
           />
@@ -104,16 +115,22 @@ export function AvatarLab() {
         <div className="min-w-0 space-y-4">
           <LabPlaybackPanel controller={controller} snapshot={snapshot} fixtureId={fixtureId} onFixtureChange={changeFixture} />
           <LabAppearancePanel
-            modelUrl={modelUrl}
+            modelUrl={effectiveModelUrl}
             mentoraAvailable={mentoraAvailable}
             onModelUrl={(url) => {
               userPickedModelRef.current = true
+              setPickedModel(true)
               setModelUrl(url)
             }}
-            view={view}
-            onView={setView}
+            view={effectiveView}
+            onView={(next) => {
+              setPickedView(true)
+              setView(next)
+            }}
             quality={quality}
             onQuality={setQuality}
+            motion={motion}
+            onMotion={setPickedMotion}
           />
           <LabTuningPanel controller={controller} />
           <LabRecorderPanel controller={controller} snapshot={snapshot} uploadTarget={uploadTarget?.href ?? null} />

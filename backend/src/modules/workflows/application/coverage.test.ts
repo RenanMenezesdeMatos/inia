@@ -39,7 +39,7 @@ const QUERY = { kind: "INDICATOR_THRESHOLD_COUNT" as const, indicatorCode: "TMA"
 describe("cobertura mínima operacional — dias com medição ÷ dias elegíveis", () => {
   it("cobertura = dias com dado ÷ dias úteis elegíveis: 5/5, 3/5, 1/5 e 0/5 (fim de semana nunca conta como 'faltou dado')", async () => {
     const db = fakeDb({ full: 5, three: 3, one: 1, none: 0 })
-    const results = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["full", "three", "one", "none"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ })
+    const results = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["full", "three", "one", "none"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ }, { organizationId: "org" })
     expect(results.get("full")!.coverage).toBe(1)
     expect(results.get("full")!.expectedDays).toBe(5)
     expect(results.get("three")!.coverage).toBe(0.6)
@@ -52,7 +52,7 @@ describe("cobertura mínima operacional — dias com medição ÷ dias elegívei
     const eligible = await resolveEligibleDaysBySubject(db, ["newcomer"], WINDOW, TZ)
     expect(eligible.get("newcomer")?.eligibleDays).toBe(3) // 11/09 (sex), 14/09 e 15/09
     expect(eligible.get("newcomer")?.excludedBeforeHire).toBe(2)
-    const results = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["newcomer"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ })
+    const results = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["newcomer"], window: WINDOW, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ }, { organizationId: "org" })
     expect(results.get("newcomer")!.coverage).toBe(1)
   })
 
@@ -67,7 +67,7 @@ describe("cobertura mínima operacional — dias com medição ÷ dias elegívei
     const expectations: [string, string][] = [["full", "true"], ["three", "no_data"], ["one", "no_data"], ["none", "no_data"]]
     const db = fakeDb({ full: 5, three: 3, one: 1, none: 0 })
     for (const [id, branch] of expectations) {
-      const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.7 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: id, subjectIds: [id] }, NOW, { timeZone: TZ })
+      const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.7 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: id, subjectIds: [id] }, NOW, { organizationId: "org", timeZone: TZ })
       expect(result?.branch, id).toBe(branch)
       if (id === "three") {
         expect(result?.evaluation.reason).toBe("BELOW_MINIMUM_COVERAGE")
@@ -76,7 +76,7 @@ describe("cobertura mínima operacional — dias com medição ÷ dias elegívei
       }
       if (id === "none") expect(result?.evaluation.reason).toBe("NO_VALUE")
     }
-    const withoutRule = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "one", subjectIds: ["one"] }, NOW, { timeZone: TZ })
+    const withoutRule = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "one", subjectIds: ["one"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(withoutRule?.branch).toBe("true") // sem mínimo configurado, 1 dia continua sendo dado válido
   })
 
@@ -94,13 +94,13 @@ describe("cobertura mínima operacional — dias com medição ÷ dias elegívei
 
   it("Workflow sobrescreve o padrão do catálogo: catálogo 60%, Workflow 80% → 3/5 (60%) é SEM DADOS; sem valor no Workflow, o runtime NÃO aplica o catálogo por conta própria", async () => {
     const db = fakeDb({ three: 3 })
-    const overridden = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.8 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { timeZone: TZ })
+    const overridden = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.8 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(overridden?.branch).toBe("no_data")
     expect(overridden?.evaluation.reason).toBe("BELOW_MINIMUM_COVERAGE")
     expect((overridden?.evaluation.evidence as { minimumCoverage: number }).minimumCoverage).toBe(0.8)
-    const explicitCatalogValue = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.6 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { timeZone: TZ })
+    const explicitCatalogValue = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.6 }, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(explicitCatalogValue?.branch).toBe("true") // 60% >= 60%
-    const unset = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { timeZone: TZ })
+    const unset = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 400 }, { operatorId: "three", subjectIds: ["three"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(unset?.branch).toBe("true")
     expect((unset?.evaluation.evidence as { minimumCoverage: number | null }).minimumCoverage).toBeNull() // a versão publicada manda; o padrão do catálogo é pré-preenchido pelo editor, nunca aplicado em runtime
   })

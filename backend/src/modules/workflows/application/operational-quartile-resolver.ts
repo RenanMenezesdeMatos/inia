@@ -16,6 +16,8 @@ import { businessDaysInWindow, describePeriod, describeTimeWindow, resolveTimeWi
  * coleção anterior — nunca a empresa inteira por padrão.
  */
 export type OperationalQuartileInput = {
+  /** Organização da execução/de quem lê — a definição do indicador (direção, estratégia, falta) é sempre a DELA. */
+  organizationId: string
   indicatorCode: string
   aggregation: MeasurementAggregation
   period: HistoricalPeriod
@@ -67,9 +69,9 @@ export type OperationalQuartileOutcome = {
   scheduleFreshness: "FRESH" | "STALE" | "UNKNOWN"
 }
 
-/** Chave de cache por (indicador, janela, agregação, cobertura, população) — a prévia do QA e o critério de seleção reutilizam a mesma resolução pra N colaboradores. */
+/** Chave de cache por (organização, indicador, janela, agregação, cobertura, população) — a prévia do QA e o critério de seleção reutilizam a mesma resolução pra N colaboradores. */
 export function operationalQuartileCacheKey(input: OperationalQuartileInput): string {
-  return JSON.stringify([input.indicatorCode, input.aggregation, input.period, input.minimumCoverage ?? null, input.now.toISOString(), input.timeZone, [...input.populationIds].sort()])
+  return JSON.stringify([input.organizationId, input.indicatorCode, input.aggregation, input.period, input.minimumCoverage ?? null, input.now.toISOString(), input.timeZone, [...input.populationIds].sort()])
 }
 
 export async function resolveOperationalQuartiles(db: Database, input: OperationalQuartileInput, cache?: Map<string, Promise<OperationalQuartileOutcome>>): Promise<OperationalQuartileOutcome> {
@@ -83,13 +85,13 @@ export async function resolveOperationalQuartiles(db: Database, input: Operation
 
 async function compute(db: Database, input: OperationalQuartileInput): Promise<OperationalQuartileOutcome> {
   const window = resolveTimeWindow(input.period, input.now, input.timeZone)
-  const definition = input.definition ?? (await loadIndicatorOperationalDefinition(db, input.indicatorCode))
+  const definition = input.definition ?? (await loadIndicatorOperationalDefinition(db, input.organizationId, input.indicatorCode))
   const direction = definition?.direction ?? null
   const [bySubject, eligibility] = await Promise.all([
     resolveOperationalWindowBySubject(
       db,
       { indicatorCode: input.indicatorCode, subjectIds: input.populationIds, window, aggregation: input.aggregation, expectedDays: businessDaysInWindow(window, input.timeZone), timeZone: input.timeZone, now: input.now, ...(input.workdayCache ? { workdayCache: input.workdayCache } : {}) },
-      definition ?? undefined,
+      definition ?? { organizationId: input.organizationId },
     ),
     resolveEligibleDaysBySubject(db, input.populationIds, window, input.timeZone, { now: input.now, ...(input.workdayCache ? { cache: input.workdayCache } : {}) }),
   ])

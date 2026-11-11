@@ -31,4 +31,20 @@ describe("guarda de PDF — fluxos comprimidos medidos antes do parser (auditori
     const chunk = Buffer.from("BT (texto) Tj ET\n".repeat(50_000))
     expect((await inspectPdf(buildPdf(chunk, [chunk]), limits)).ok).toBe(false)
   })
+
+  it("conta linear no tamanho: palavras `stream` soltas com um único `endstream` no fim não travam a thread (auditoria run-2: 1 MiB levava 12 s)", async () => {
+    const tokens = Buffer.from(`%PDF-1.4\n${"stream\n".repeat(150_000)}endstream\n`, "latin1")
+    const started = performance.now()
+    expect(await inspectPdf(tokens)).toEqual({ ok: true, streams: 0, totalInflatedBytes: 0 })
+    expect(performance.now() - started).toBeLessThan(1_000)
+  })
+
+  it("o dicionário de cada fluxo continua sendo o trecho depois do último `obj`: FlateDecode de outro objeto não conta", async () => {
+    const flate = deflateSync(Buffer.from("BT (x) Tj ET\n"))
+    const parts = [
+      Buffer.from("%PDF-1.4\n1 0 obj\n<< /Filter /FlateDecode >>\nendobj\n2 0 obj\n<< /Length 3 >>\nstream\nabc\nendstream\nendobj\n"),
+      Buffer.from(`3 0 obj\n<< /Length ${flate.length} /Filter /FlateDecode >>\nstream\n`), flate, Buffer.from("\nendstream\nendobj\n%%EOF\n"),
+    ]
+    expect(await inspectPdf(Buffer.concat(parts))).toMatchObject({ ok: true, streams: 1 })
+  })
 })

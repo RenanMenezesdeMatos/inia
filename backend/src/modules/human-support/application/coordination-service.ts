@@ -22,7 +22,7 @@ import { humanSupportStats } from "./runtime-stats.js"
  * registro LGPD para o operador e para cada Anjo dele; abrir a presença de Anjos, uma linha por Anjo exibido — sempre depois de ler.
  */
 export type PanelQuery = { from: string; to: string; teamId?: string | undefined; subteamId?: string | undefined }
-type ListQuery = PanelQuery & { status?: string | undefined; origin?: string | undefined; cursor?: string | undefined; limit?: number | undefined }
+type ListQuery = PanelQuery & { search?: string | undefined; status?: string | undefined; origin?: string | undefined; cursor?: string | undefined; limit?: number | undefined }
 
 const notFound = () => new DomainError("Registro não encontrado.", "HUMAN_SUPPORT_NOT_FOUND", 404)
 const pageSize = (limit: number | undefined) => Math.min(Math.max(limit ?? 30, 1), 50)
@@ -49,6 +49,7 @@ type ListRow = {
   subteam_id: string | null
   anjo_ids: string[] | null
   first_response_seconds: number | null
+  message_count: number
   classification_reason: ClassificationReason | null
   outcome: ClassificationOutcome | null
   resolved: EvaluationResolved | null
@@ -59,6 +60,7 @@ const LIST_SELECT = `
   select r.id, r.protocol, r.operator_person_id, t.name team_name, st.name subteam_name, r.origin, r.status, r.end_cause, r.created_at, r.ended_at, r.team_id, r.subteam_id,
          (select array_agg(a.anjo_person_id order by a.started_at) from human_support_attendances a where a.request_id = r.id) anjo_ids,
          (select min(extract(epoch from a.first_anjo_message_at - a.started_at))::float8 from human_support_attendances a where a.request_id = r.id and a.first_anjo_message_at is not null) first_response_seconds,
+         (select count(*)::int from human_support_messages m where m.request_id = r.id and m.author_kind <> 'SYSTEM') message_count,
          last.reason classification_reason, last.outcome, last.resolved, last.stars
     from human_support_requests r
     left join teams t on t.id = r.team_id
@@ -78,6 +80,7 @@ async function toListItems(db: Queryable, organizationId: string, rows: ListRow[
     id: row.id,
     protocol: row.protocol,
     operatorName: nameOf(row.operator_person_id),
+    operatorAvatarUrl: names.get(row.operator_person_id)?.avatarUrl ?? null,
     teamName: row.team_name,
     subteamName: row.subteam_name,
     origin: row.origin,
@@ -87,6 +90,7 @@ async function toListItems(db: Queryable, organizationId: string, rows: ListRow[
     endedAt: row.ended_at?.toISOString() ?? null,
     anjoNames: [...new Set((row.anjo_ids ?? []).map(nameOf))],
     firstResponseSeconds: row.first_response_seconds === null ? null : Math.round(Number(row.first_response_seconds)),
+    messageCount: Number(row.message_count ?? 0),
     classificationReason: row.classification_reason,
     outcome: row.outcome,
     resolved: row.resolved,
@@ -94,7 +98,14 @@ async function toListItems(db: Queryable, organizationId: string, rows: ListRow[
   }))
 }
 
-export async function listRequests(db: Queryable, viewer: Viewer, query: ListQuery): Promise<{ items: RequestListItem[]; nextCursor: string | null }> {
+/** `%`, `_` e `\` digitados na busca valem como texto, não como curinga do `ilike`. */
+const likePattern = (text: string) => `%${text.replace(/[%_\\]/g, (char) => `\\${char}`)}%`
+
+/**
+ * Pedidos do período, mais novos primeiro (cursor). A busca olha o protocolo e o nome do operador (cadastral ou preferido), nunca o
+ * conteúdo da conversa. `total` só na primeira página (sem cursor): quantos pedidos atendem aos filtros, para o cabeçalho da tela.
+ */
+export async function listRequests(db: Queryable, viewer: Viewer, query: ListQuery): Promise<{ items: RequestListItem[]; nextCursor: string | null; total: number | null }> {
   assertPanelPeriod(query)
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
   const params: unknown[] = [viewer.organizationId, query.from, query.to]
@@ -102,13 +113,28 @@ export async function listRequests(db: Queryable, viewer: Viewer, query: ListQue
   const where = [`r.organization_id = $1`, `r.created_at >= ${bounds.start}`, `r.created_at < ${bounds.end}`, coverageClause(coverage, "r", params, query)]
   if (query.status) where.push(`r.status = $${params.push(query.status)}`)
   if (query.origin) where.push(`r.origin = $${params.push(query.origin)}`)
+  const search = query.search?.trim()
+  if (search) {
+    const pattern = `$${params.push(likePattern(search))}`
+    where.push(
+      `(r.protocol ilike ${pattern} or exists (select 1 from people p left join person_profile_preferences pp on pp.organization_id = p.organization_id and pp.person_id = p.id
+         where p.id = r.operator_person_id and (p.name ilike ${pattern} or pp.preferred_name ilike ${pattern})))`,
+    )
+  }
+  const filters = [...where]
+  const filterParams = [...params]
   const cursor = decodeListCursor(query.cursor)
   if (cursor) where.push(`(r.created_at, r.id) < ($${params.push(cursor.at)}::timestamptz, $${params.push(cursor.id)}::uuid)`)
   const limit = pageSize(query.limit)
   const rows = (await db.query<ListRow>(`${LIST_SELECT} where ${where.join(" and ")} order by r.created_at desc, r.id desc limit ${limit + 1}`, params)).rows
   const page = rows.slice(0, limit)
   const last = page.at(-1)
-  return { items: await toListItems(db, viewer.organizationId, page), nextCursor: rows.length > limit && last ? encodeListCursor(last.created_at, last.id) : null }
+  const total = cursor
+    ? null
+    : rows.length <= limit
+      ? page.length
+      : ((await db.query<{ total: number }>(`select count(*)::int total from human_support_requests r where ${filters.join(" and ")}`, filterParams)).rows[0]?.total ?? page.length)
+  return { items: await toListItems(db, viewer.organizationId, page), nextCursor: rows.length > limit && last ? encodeListCursor(last.created_at, last.id) : null, total }
 }
 
 /** Detalhe do pedido com a cópia, a conversa inteira, os atendimentos, a classificação e a avaliação vigente. */

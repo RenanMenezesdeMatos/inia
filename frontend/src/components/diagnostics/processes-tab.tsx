@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useMemorySummaryQuery, useProcessAggregatesQuery } from "@/queries/diagnostics/use-diagnostics-memory"
 import type { MemoryFilters, PracticeSource, ProcessOrder, ProcessRow, ProcessTheme } from "@/schemas/diagnostics/diagnostics-memory.schema"
@@ -139,36 +139,38 @@ function ThemeList({ view, themes, listed, total, filters, onDrill }: { view: Li
 function PointsTable({ view, items, theme, filters, onDrill }: { view: ListView; items: ProcessRow[]; theme: string | null; filters: MemoryFilters; onDrill: (drill: Drill) => void }) {
   const met = view === "MET"
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Ponto</TableHead>
-          {view === "BOTH" ? <><TableHead>Desvios</TableHead><TableHead>Acertos</TableHead></> : <TableHead>{met ? "Acertos" : "Desvios"}</TableHead>}
-          <TableHead>Avaliações</TableHead>
-          <TableHead>{met ? "Taxa de acerto" : "Taxa de desvio"}</TableHead>
-          <TableHead>{met ? "Pessoas que acertaram" : "Pessoas com desvio"}</TableHead>
-          <TableHead />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {items.map((row) => (
-          <TableRow key={row.practiceKey}>
-            <TableCell className="max-w-md space-y-0.5 whitespace-normal">
-              <p className="font-medium">{row.title}</p>
-              {row.description ? <p className="text-xs text-muted-foreground">{row.description}</p> : null}
-              <SourcesLine sources={row.sources} rules={row.rules} />
-            </TableCell>
-            {view === "BOTH"
-              ? <><TableCell className="font-medium tabular-nums">{deviationsOf(row)}</TableCell><TableCell className="font-medium tabular-nums">{row.met}</TableCell></>
-              : <TableCell className="font-medium tabular-nums">{met ? row.met : deviationsOf(row)}</TableCell>}
-            <TableCell className="tabular-nums">{row.assessed}</TableCell>
-            <TableCell className="tabular-nums">{percent(met ? rateOf(row.met, row.assessed) : row.deviationRate)}</TableCell>
-            <TableCell className="tabular-nums">{met ? row.peopleWithMet : row.peopleWithDeviation} de {row.people}</TableCell>
-            <TableCell><Button variant="ghost" size="sm" onClick={() => onDrill({ title: row.title, filters: { ...filters, practiceKey: row.practiceKey }, status: met ? "MET" : "DEVIATION", kind: "POINT", context: theme ?? "Ainda sem tema", description: row.description })}>Ver chamadas</Button></TableCell>
+    <div className={TABLE_FRAME}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Ponto</TableHead>
+            {view === "BOTH" ? <><TableHead>Desvios</TableHead><TableHead>Acertos</TableHead></> : <TableHead>{met ? "Acertos" : "Desvios"}</TableHead>}
+            <TableHead>Avaliações</TableHead>
+            <TableHead>{met ? "Taxa de acerto" : "Taxa de desvio"}</TableHead>
+            <TableHead>{met ? "Pessoas que acertaram" : "Pessoas com desvio"}</TableHead>
+            <TableHead />
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {items.map((row) => (
+            <TableRow key={row.practiceKey}>
+              <TableCell className="max-w-md space-y-0.5 whitespace-normal">
+                <p className="font-medium">{row.title}</p>
+                {row.description ? <p className="text-xs text-muted-foreground">{row.description}</p> : null}
+                <SourcesLine sources={row.sources} rules={row.rules} />
+              </TableCell>
+              {view === "BOTH"
+                ? <><TableCell className="font-medium tabular-nums">{deviationsOf(row)}</TableCell><TableCell className="font-medium tabular-nums">{row.met}</TableCell></>
+                : <TableCell className="font-medium tabular-nums">{met ? row.met : deviationsOf(row)}</TableCell>}
+              <TableCell className="tabular-nums">{row.assessed}</TableCell>
+              <TableCell className="tabular-nums">{percent(met ? rateOf(row.met, row.assessed) : row.deviationRate)}</TableCell>
+              <TableCell className="tabular-nums">{met ? row.peopleWithMet : row.peopleWithDeviation} de {row.people}</TableCell>
+              <TableCell><Button variant="ghost" size="sm" onClick={() => onDrill({ title: row.title, filters: { ...filters, practiceKey: row.practiceKey }, status: met ? "MET" : "DEVIATION", kind: "POINT", context: theme ?? "Ainda sem tema", description: row.description })}>Ver chamadas</Button></TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
 

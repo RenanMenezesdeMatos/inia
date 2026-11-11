@@ -3,6 +3,7 @@ import { z } from "zod"
 import { apiGet } from "@/lib/api/api-client"
 import type { ConversationMessage, ConversationSummary } from "@/lib/realtime/gemini-text-client"
 import { conversationAgentRecordSchema, type ConversationAgentRecord } from "@/schemas/admin/assistant-conversation-agent-record.schema"
+import { responseTimeSummarySchema, type ResponseTimeSummary } from "@/schemas/admin/assistant-response-times.schema"
 
 /**
  * "Conversas com a INIA" (Administração, somente leitura) — `/api/v1/admin/assistant-conversations`. O backend aplica o
@@ -43,6 +44,16 @@ export function fetchMonitoredConversations(filters: MonitoringFilters): Promise
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== "") params.set(key, String(value))
   return apiGet(`${BASE}?${params}`)
+}
+
+/** Filtros do tempo de resposta: os da lista (sem página) e o período obrigatório, sobre a data da resposta. */
+export type ResponseTimeFilters = Omit<MonitoringFilters, "page" | "pageSize" | "from" | "to"> & { from: string; to: string }
+
+/** Tempo de resposta da INIA no chat de texto (média, mediana e 90%), no alcance de quem lê. */
+export async function fetchConversationResponseTimes(filters: ResponseTimeFilters): Promise<ResponseTimeSummary> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) if (value !== undefined && value !== "") params.set(key, String(value))
+  return responseTimeSummarySchema.parse(await apiGet<unknown>(`${BASE}/response-times?${params}`))
 }
 
 export function fetchMonitoredMessages(conversationId: string, options: { before?: string; after?: string; limit?: number } = {}): Promise<{ conversation: MonitoredConversation; messages: ConversationMessage[]; hasMore: boolean }> {

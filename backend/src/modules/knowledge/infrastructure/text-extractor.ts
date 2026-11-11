@@ -4,7 +4,7 @@ import { inspectZip } from "../../../shared/infrastructure/zip-guard.js"
 import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { PDF_OCR_VERSION, type PdfExtraction, type PdfPageLayout } from "../domain/pdf-markdown/layout.js"
 import { pdfLayoutToMarkdown } from "../domain/pdf-markdown/pdf-markdown.js"
-import { ocrPageLayouts } from "../domain/pdf-ocr/ocr-layout.js"
+import { OCR_MAX_PAGES, ocrPageLayouts } from "../domain/pdf-ocr/ocr-layout.js"
 import { PDF_PRINT_RULE } from "../domain/pdf-ocr/print-regions.js"
 import type { DocumentParseJob } from "./document-parser-job.js"
 import { PDF_IMAGE_LIMITS, type ExtractedPdfImage, type PdfImageRead } from "./pdf-image-reader.js"
@@ -120,9 +120,10 @@ const runOcrReading = createIsolatedParser({ maxRunning: 1, maxWaiting: 2 })
 /**
  * Teto da leitura por OCR, no mesmo processo filho com teto de memória das outras leituras do PDF (R-24): o pdf.js desenha a página do arquivo enviado
  * e o Tesseract lê a imagem. O motor ocupa cerca de 80 MB fora do heap, e a página desenhada até 64 MB. O prazo cresce com as páginas: 1,3 s por
- * página neste Mac, com folga para um servidor mais lento e para a segunda leitura das páginas com print.
+ * página neste Mac, com folga para um servidor mais lento e para a segunda leitura das páginas com print. Só contam as páginas que serão lidas
+ * (`OCR_MAX_PAGES`): o resto fica sem leitura, e um arquivo com milhares de páginas digitalizadas não estica o prazo do único leitor.
  */
-export const pdfOcrLimits = (pages: number): IsolatedParserLimits => ({ heapMb: 512, rssMb: 1_536, timeoutMs: 120_000 + pages * 60_000 })
+export const pdfOcrLimits = (pages: number): IsolatedParserLimits => ({ heapMb: 512, rssMb: 1_536, timeoutMs: 120_000 + Math.min(Math.max(pages, 0), OCR_MAX_PAGES) * 60_000 })
 
 /**
  * O texto que a busca e a IA vão usar, e as imagens que só o usuário vê. PDF vira Markdown com o registro das páginas; se a conversão falhar, fica o

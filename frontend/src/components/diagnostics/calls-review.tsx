@@ -1,9 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, ChevronLeft, ChevronRight, MessageSquareQuote, X } from "lucide-react"
+import { MessageSquareQuote, X } from "lucide-react"
+import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 
 import { AnalyticsErrorState, TableSkeleton } from "@/components/analytics/analytics-states"
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
@@ -27,7 +29,7 @@ import { OUTCOME_CHART_CONFIG } from "./outcome-charts"
  * No celular: uma coluna; escolher uma chamada abre o detalhe com "voltar".
  */
 type StatusTab = "DEVIATION" | "MET" | "INCONCLUSIVE" | "ALL"
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 const KIND_LABELS: Record<DrillKind, string> = { POINT: "Ponto do processo", DOCUMENT: "Documento da base", PERSON: "Pessoa", GROUP: "Equipe", SUBJECT: "Assunto" }
 
 export function CallsReviewDialog({ drill, onClose }: { drill: Drill | null; onClose: () => void }) {
@@ -50,12 +52,13 @@ function CallsReview({ drill, onClose }: { drill: Drill; onClose: () => void }) 
   // Filtro extra vindo do painel lateral: uma pessoa (recortes que não são de pessoa) ou um ponto (recorte de uma pessoa).
   const [focus, setFocus] = useState<{ personId?: string; practiceKey?: string; label: string } | null>(null)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [chosenId, setChosenId] = useState<string | null>(null)
   const base: MemoryFilters = { ...drill.filters, status: null }
   const scoped: MemoryFilters = { ...base, ...(focus?.personId ? { personId: focus.personId } : {}), ...(focus?.practiceKey ? { practiceKey: focus.practiceKey } : {}) }
   const summary = useMemorySummaryQuery(base)
   const scopedSummary = useMemorySummaryQuery(scoped)
-  const list = useAssessmentsQuery({ ...scoped, status: status === "ALL" ? null : status }, page, PAGE_SIZE)
+  const list = useAssessmentsQuery({ ...scoped, status: status === "ALL" ? null : status }, page, pageSize)
   const items = list.data?.items ?? []
   const chosen = items.find((item) => item.id === chosenId) ?? (isMobile ? null : items[0] ?? null)
   const reset = () => { setPage(1); setChosenId(null) }
@@ -118,21 +121,31 @@ function CallsReview({ drill, onClose }: { drill: Drill; onClose: () => void }) 
                 {items.map((item) => <CallItem key={item.id} item={item} kind={kind} selected={chosen?.id === item.id} onSelect={() => setChosenId(item.id)} />)}
               </ul>
             </div>
-            {list.data && list.data.total > PAGE_SIZE ? (
-              <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground tabular-nums">
-                <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, list.data.total)} de {list.data.total}</span>
-                <span className="flex gap-1">
-                  <Button variant="ghost" size="icon-sm" disabled={page === 1} onClick={() => { setPage(page - 1); setChosenId(null) }} aria-label="Página anterior"><ChevronLeft /></Button>
-                  <Button variant="ghost" size="icon-sm" disabled={page * PAGE_SIZE >= list.data.total} onClick={() => { setPage(page + 1); setChosenId(null) }} aria-label="Próxima página"><ChevronRight /></Button>
-                </span>
-              </div>
+            {list.data && list.data.total > 0 ? (
+              <ListPagination
+                stacked
+                className="px-4 pb-3"
+                page={page}
+                pageSize={pageSize}
+                total={list.data.total}
+                isFetching={list.isFetching}
+                onPageChange={(next) => {
+                  setPage(next)
+                  setChosenId(null)
+                }}
+                onPageSizeChange={(size) => {
+                  setPageSize(size)
+                  reset()
+                }}
+                itemLabel={["chamada", "chamadas"]}
+              />
             ) : null}
           </aside>
         ) : null}
 
         {showDetail ? (
           <section className="min-h-0 overflow-y-auto p-5" aria-label="Chamada escolhida">
-            {isMobile ? <Button variant="ghost" size="sm" className="mb-3 -ml-2" onClick={() => setChosenId(null)}><ArrowLeft data-icon="inline-start" /> Voltar para a lista</Button> : null}
+            {isMobile ? <BackLink onClick={() => setChosenId(null)} label="Chamadas" className="mb-3" /> : null}
             {chosen ? <ChosenCall row={chosen} /> : list.data ? <p className="pt-10 text-center text-sm text-muted-foreground">Escolha uma chamada na lista para ver o que aconteceu.</p> : null}
           </section>
         ) : null}

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InlineError } from "@/components/ui/states"
 
 import { formatDateTime } from "@/lib/format/date"
 import { useAgentPublishImpactQuery, useAgentVersionQuery, useAgentVersionsQuery, useRevertAgentMutation } from "@/queries/admin/use-agent-queries"
@@ -68,12 +69,7 @@ function RevertImpact({ agentId, versionId, onLoaded }: { agentId: string; versi
   if (impactQuery.data) return <PublishImpactDetails impact={impactQuery.data} />
   if (impactQuery.isError) {
     return (
-      <div className="space-y-2" role="alert">
-        <p className="text-sm text-destructive">Não foi possível carregar quem usa este agente e o que muda. Sem essa conferência, a reversão fica indisponível.</p>
-        <Button type="button" variant="outline" size="sm" onClick={() => void impactQuery.refetch()}>
-          Tentar novamente
-        </Button>
-      </div>
+      <InlineError message="Não foi possível carregar quem usa este agente e o que muda. Sem essa conferência, a reversão fica indisponível." onRetry={() => void impactQuery.refetch()} />
     )
   }
   return (

@@ -14,7 +14,8 @@ import { IconBadge, StatusChip, SURFACE_CARD, PageHeader, SectionLabel, toneSurf
 
 import { AttendanceHistory } from "./attendance-history"
 import { AttendancePane } from "./attendance-pane"
-import { blinkTabTitle, createAttendanceChime, type AttendanceChime } from "./attendance-alert"
+import { pageIsSeen, primeChimeOnFirstGesture } from "@/lib/attention/attention-alert"
+import { blinkTabTitle, createAttendanceChime, NEW_ATTENDANCE_TITLE, newMessageTitle, type AttendanceChime } from "./attendance-alert"
 import { ClassificationForm } from "./classification-form"
 import { PresenceControl } from "./presence-control"
 import { useClock, useElapsed } from "./use-clock"
@@ -50,10 +51,14 @@ export function AnjoWorkspace() {
   const onNewAttendance = useCallback((attendanceIds: string[]) => {
     chimeRef.current?.play()
     stopBlinkRef.current?.()
-    stopBlinkRef.current = blinkTabTitle()
+    stopBlinkRef.current = blinkTabTitle(NEW_ATTENDANCE_TITLE)
     if (attendanceIds[0]) setSelectedId(attendanceIds[0])
   }, [])
   const { anjo, blocked, reconnecting, refresh, applyAnjo, clockOffsetMs } = useAnjoWorkspaceState({ onNewAttendance })
+  const anjoRef = useRef(anjo)
+  useEffect(() => {
+    anjoRef.current = anjo
+  }, [anjo])
   const now = useClock() + clockOffsetMs
 
   useEffect(() => {
@@ -61,12 +66,9 @@ export function AnjoWorkspace() {
     chimeRef.current = chime
     // O navegador só deixa tocar depois de um gesto: o primeiro clique ou tecla na página também prepara o som (quem já estava
     // disponível ao recarregar a página não passa pelo "Ficar disponível").
-    const prime = () => chime.prime()
-    document.addEventListener("pointerdown", prime, { once: true })
-    document.addEventListener("keydown", prime, { once: true })
+    const stopPriming = primeChimeOnFirstGesture(chime)
     return () => {
-      document.removeEventListener("pointerdown", prime)
-      document.removeEventListener("keydown", prime)
+      stopPriming()
       stopBlinkRef.current?.()
       stopBlinkRef.current = null
       chime.dispose()
@@ -75,14 +77,23 @@ export function AnjoWorkspace() {
   }, [])
 
   const primeAudio = useCallback(() => chimeRef.current?.prime(), [])
+  // Mensagem nova do operador fora da vista do Anjo (aba escondida, janela sem foco, outro atendimento aberto ou "Seus atendimentos"):
+  // o contador do atendimento sobe — e então toca o som; com a página fora da vista, o título da aba também pisca até ele voltar.
+  const unreadRef = useRef<Record<string, number>>({})
   const onUnreadChange = useCallback((attendanceId: string, unread: number) => {
-    setUnreadById((current) => {
-      if ((current[attendanceId] ?? 0) === unread) return current
-      const next = { ...current }
-      if (unread > 0) next[attendanceId] = unread
-      else delete next[attendanceId]
-      return next
-    })
+    const before = unreadRef.current[attendanceId] ?? 0
+    if (before === unread) return
+    const next = { ...unreadRef.current }
+    if (unread > 0) next[attendanceId] = unread
+    else delete next[attendanceId]
+    unreadRef.current = next
+    setUnreadById(next)
+    if (unread <= before) return
+    chimeRef.current?.play()
+    if (pageIsSeen()) return
+    const operatorName = anjoRef.current?.attendances.find((attendance) => attendance.id === attendanceId)?.operatorName ?? "o operador"
+    stopBlinkRef.current?.()
+    stopBlinkRef.current = blinkTabTitle(newMessageTitle(operatorName))
   }, [])
   const changeTab = (value: string) => {
     const next: WorkspaceTab = value === "historico" ? "historico" : "atendimento"

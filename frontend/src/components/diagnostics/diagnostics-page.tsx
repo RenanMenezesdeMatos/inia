@@ -9,7 +9,7 @@ import { AnalyticsEmptyState, AnalyticsErrorState, TableSkeleton } from "@/compo
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { formatIndicatorValue } from "@/lib/analytics/format"
@@ -201,20 +201,22 @@ function PeopleTab({ filters, onDrill }: { filters: MemoryFilters; onDrill: (dri
         {query.isPending ? <TableSkeleton /> : null}
         {query.data && query.data.items.length === 0 ? <AnalyticsEmptyState icon={Users} title="Ninguém com chamadas analisadas neste recorte" /> : null}
         {query.data && query.data.items.length > 0 ? (
-          <Table>
-            <TableHeader><TableRow><TableHead>{GROUP_LABELS[groupBy]}</TableHead><TableHead>Chamadas</TableHead>{STATS_HEAD.map((head) => <TableHead key={head}>{head}</TableHead>)}<TableHead>Mais desvios em</TableHead><TableHead /></TableRow></TableHeader>
-            <TableBody>
-              {query.data.items.map((row) => (
-                <TableRow key={row.key ?? row.label}>
-                  <TableCell>{row.label}</TableCell>
-                  <TableCell className="tabular-nums">{row.calls}</TableCell>
-                  <StatsCells stats={row} />
-                  <TableCell className="max-w-sm whitespace-normal text-xs">{row.topDeviations.length === 0 ? "—" : row.topDeviations.map((entry) => `${entry.title} (${entry.deviations} de ${entry.assessed})`).join(" · ")}</TableCell>
-                  <TableCell>{row.key ? <Button variant="ghost" size="sm" onClick={() => onDrill({ title: row.label, filters: drillFilters(row.key), kind: groupBy === "PERSON" ? "PERSON" : "GROUP", context: groupBy === "PERSON" ? null : GROUP_LABELS[groupBy] })}>Ver chamadas</Button> : null}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className={TABLE_FRAME}>
+            <Table>
+              <TableHeader><TableRow><TableHead>{GROUP_LABELS[groupBy]}</TableHead><TableHead>Chamadas</TableHead>{STATS_HEAD.map((head) => <TableHead key={head}>{head}</TableHead>)}<TableHead>Mais desvios em</TableHead><TableHead /></TableRow></TableHeader>
+              <TableBody>
+                {query.data.items.map((row) => (
+                  <TableRow key={row.key ?? row.label}>
+                    <TableCell>{row.label}</TableCell>
+                    <TableCell className="tabular-nums">{row.calls}</TableCell>
+                    <StatsCells stats={row} />
+                    <TableCell className="max-w-sm whitespace-normal text-xs">{row.topDeviations.length === 0 ? "—" : row.topDeviations.map((entry) => `${entry.title} (${entry.deviations} de ${entry.assessed})`).join(" · ")}</TableCell>
+                    <TableCell>{row.key ? <Button variant="ghost" size="sm" onClick={() => onDrill({ title: row.label, filters: drillFilters(row.key), kind: groupBy === "PERSON" ? "PERSON" : "GROUP", context: groupBy === "PERSON" ? null : GROUP_LABELS[groupBy] })}>Ver chamadas</Button> : null}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : null}
         {query.data ? <ListPagination page={paging.page} pageSize={paging.pageSize} total={query.data.total} onPageChange={paging.setPage} onPageSizeChange={paging.setPageSize} itemLabel={groupBy === "PERSON" ? ["pessoa", "pessoas"] : ["equipe", "equipes"]} isFetching={query.isFetching} /> : null}
       </CardContent>
@@ -288,28 +290,30 @@ function IndicatorsTab({ filters, onOpen }: { filters: MemoryFilters; onOpen: (i
         {query.isPending ? <TableSkeleton /> : null}
         {query.data && query.data.items.length === 0 ? <AnalyticsEmptyState icon={Gauge} title="Nenhuma investigação de indicador neste recorte" /> : null}
         {query.data && query.data.items.length > 0 ? (
-          <Table>
-            <TableHeader><TableRow><TableHead>Pessoa</TableHead><TableHead>Indicador</TableHead><TableHead>Resultado</TableHead><TableHead>Conclusão</TableHead><TableHead>Onde mudou</TableHead><TableHead className="w-10"><span className="sr-only">Abrir</span></TableHead></TableRow></TableHeader>
-            <TableBody>
-              {query.data.items.map((row) => (
-                <TableRow key={row.id} className="cursor-pointer" onClick={() => onOpen(row.id)}>
-                  <TableCell className="font-medium">{row.personName}</TableCell>
-                  <TableCell>
-                    <span className="block">{row.indicatorName}</span>
-                    <span className="text-xs text-muted-foreground">{row.periodLabel}</span>
-                  </TableCell>
-                  <TableCell><OfficialCell official={row.official} /></TableCell>
-                  <TableCell>
-                    <Badge variant={ADVERSE_CONCLUSIONS.has(row.conclusion) ? "destructive" : POSITIVE_CONCLUSIONS.has(row.conclusion) ? "secondary" : "outline"} className="h-auto whitespace-normal text-left">{CONCLUSION_LABELS[row.conclusion] ?? row.conclusion}</Badge>
-                  </TableCell>
-                  <TableCell className="max-w-xs whitespace-normal text-sm">{row.focus.map((focus) => focus.label).join(" · ") || <span className="text-muted-foreground">—</span>}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon-sm" aria-label={`Abrir a investigação de ${row.indicatorName} de ${row.personName}`} onClick={(event) => { event.stopPropagation(); onOpen(row.id) }}><ChevronRight /></Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className={TABLE_FRAME}>
+            <Table>
+              <TableHeader><TableRow><TableHead>Pessoa</TableHead><TableHead>Indicador</TableHead><TableHead>Resultado</TableHead><TableHead>Conclusão</TableHead><TableHead>Onde mudou</TableHead><TableHead className="w-10"><span className="sr-only">Abrir</span></TableHead></TableRow></TableHeader>
+              <TableBody>
+                {query.data.items.map((row) => (
+                  <TableRow key={row.id} className="cursor-pointer" onClick={() => onOpen(row.id)}>
+                    <TableCell className="font-medium">{row.personName}</TableCell>
+                    <TableCell>
+                      <span className="block">{row.indicatorName}</span>
+                      <span className="text-xs text-muted-foreground">{row.periodLabel}</span>
+                    </TableCell>
+                    <TableCell><OfficialCell official={row.official} /></TableCell>
+                    <TableCell>
+                      <Badge variant={ADVERSE_CONCLUSIONS.has(row.conclusion) ? "destructive" : POSITIVE_CONCLUSIONS.has(row.conclusion) ? "secondary" : "outline"} className="h-auto whitespace-normal text-left">{CONCLUSION_LABELS[row.conclusion] ?? row.conclusion}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-xs whitespace-normal text-sm">{row.focus.map((focus) => focus.label).join(" · ") || <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon-sm" aria-label={`Abrir a investigação de ${row.indicatorName} de ${row.personName}`} onClick={(event) => { event.stopPropagation(); onOpen(row.id) }}><ChevronRight /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         ) : null}
         {query.data ? <ListPagination page={paging.page} pageSize={paging.pageSize} total={query.data.total} onPageChange={paging.setPage} onPageSizeChange={paging.setPageSize} itemLabel={["investigação", "investigações"]} isFetching={query.isFetching} /> : null}
       </CardContent>

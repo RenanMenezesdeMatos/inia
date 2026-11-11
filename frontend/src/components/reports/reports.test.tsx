@@ -66,10 +66,10 @@ describe("entrega × aviso de não encaminhado", () => {
     expect(screen.queryByText("Análise da INIA")).not.toBeInTheDocument()
   })
 
-  it("análise que falhou: dados continuam válidos e há 'Tentar de novo'", () => {
+  it("análise que falhou: dados continuam válidos e há 'Tentar novamente'", () => {
     render(<ReportDeliveryView model={model({ analysisStatus: "FAILED", analysisText: null })} />)
     expect(screen.getByText(/Análise da INIA indisponível/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Tentar de novo/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Tentar novamente/ })).toBeInTheDocument()
   })
 })
 

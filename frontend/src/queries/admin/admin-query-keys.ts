@@ -38,6 +38,7 @@ export const adminQueryKeys = {
   feedbackContestations: () => [...adminQueryKeys.all, "feedback-contestations"] as const,
   feedbackContestationsList: (params: ListKeyParams) => [...adminQueryKeys.feedbackContestations(), "list", params] as const,
   feedbackContestation: (id: string) => [...adminQueryKeys.feedbackContestations(), "detail", id] as const,
+  feedbackContestationSummary: (period: { from: string; to: string }) => [...adminQueryKeys.feedbackContestations(), "summary", period] as const,
   userDetail: (personId: string) => [...adminQueryKeys.users(), "detail", personId] as const,
   prohibitedTopics: () => [...adminQueryKeys.all, "prohibited-topics"] as const,
   prohibitedTopicsList: (params: ListKeyParams) => [...adminQueryKeys.prohibitedTopics(), "list", params] as const,

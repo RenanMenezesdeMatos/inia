@@ -202,7 +202,7 @@ describe.skipIf(!ENABLED)("correção controlada de indicador com histórico —
     expect(rebuilt.indicator).toMatchObject({ currentValue: 500 })
     expect((await summaryOf("raw")).indicator).toEqual(rebuilt.indicator)
     // Direção nova vale nas comparações; o Workflow lê o mesmo número (Σ 150.000 ÷ Σ 300).
-    const condition = await evaluateDataCondition(db, conditionNode("c", CODES.time, "WEIGHTED_AVERAGE").config as never, { operatorId: OP_A, subjectIds: [...OPERATORS] }, NOW, { timeZone: TZ })
+    const condition = await evaluateDataCondition(db, conditionNode("c", CODES.time, "WEIGHTED_AVERAGE").config as never, { operatorId: OP_A, subjectIds: [...OPERATORS] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(condition!.evaluation.value).toBe(500)
 
     // Nenhuma medição, meta ou fechamento mudou.

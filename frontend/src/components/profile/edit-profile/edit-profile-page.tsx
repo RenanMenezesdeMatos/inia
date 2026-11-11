@@ -2,15 +2,18 @@
 
 import { useEffect, useId, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Camera, Check, ImagePlus, Loader2, RotateCcw, Trash2, TriangleAlert, Upload } from "lucide-react"
+import { Camera, Check, ImagePlus, Loader2, RotateCcw, Trash2, TriangleAlert, Upload, UserRound } from "lucide-react"
 import { toast } from "sonner"
 
 import { CoverArt, CoverPresetArt, COVER_PRESET_LABELS } from "@/components/profile/cover-art"
 import { ProfileHeader, type ProfileHeaderPerson } from "@/components/profile/profile-header"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { BackLink } from "@/components/ui/back-link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ErrorState, LoadingState } from "@/components/ui/states"
+import { PageHeader } from "@/components/ui/surface"
 import { ApiError } from "@/lib/api/api-client"
 import { cn } from "@/lib/utils"
 import { useMyProfileQuery, useUpdateMyProfileMutation } from "@/queries/profile/use-my-profile"
@@ -46,12 +49,9 @@ export function EditProfilePage({ initialProfile, profileHref, initialSection }:
       {profile ? (
         <EditProfileForm profile={profile} profileHref={profileHref} initialSection={initialSection} />
       ) : query.isError ? (
-        <div role="alert" className="flex flex-col items-start gap-3 rounded-2xl bg-card p-6 ring-1 ring-border/60">
-          <p className="text-sm text-muted-foreground">Não foi possível carregar seu perfil.</p>
-          <Button variant="outline" onClick={() => void query.refetch()}><RotateCcw /> Tentar novamente</Button>
-        </div>
+        <ErrorState message="Não foi possível carregar seu perfil." onRetry={() => void query.refetch()} />
       ) : (
-        <p className="p-6 text-sm text-muted-foreground" aria-busy="true">Carregando perfil…</p>
+        <LoadingState label="Carregando perfil…" className="p-6" />
       )}
     </div>
   )
@@ -220,13 +220,13 @@ function EditProfileForm({ profile, profileHref, initialSection }: { profile: My
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
-        <div className="min-w-0">
-          <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">Editar perfil</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Personalize como você aparece na INIA. Matrícula, cargo e equipe continuam sendo mantidos pela empresa.</p>
-        </div>
-        <Button type="button" variant="outline" onClick={leaveToProfile}><ArrowLeft aria-hidden /> Voltar ao perfil</Button>
-      </div>
+      <PageHeader
+        className="mb-4 sm:mb-6"
+        icon={UserRound}
+        title="Editar perfil"
+        description="Personalize como você aparece na INIA. Matrícula, cargo e equipe continuam sendo mantidos pela empresa."
+        back={<BackLink onClick={leaveToProfile} label="Perfil" />}
+      />
 
       <form
         onSubmit={(event) => {

@@ -136,10 +136,14 @@ describe("Calendário da equipe — planejado × observado", () => {
     expect(await screen.findByTestId("calendar-grid")).toBeInTheDocument()
     expect(screen.getByTestId("calendar-evidence-sources").textContent).toContain("interações registradas e indicador(es) TMA")
     expect(screen.getAllByTestId("calendar-person-row")).toHaveLength(2)
-    // Coluna de HOJE demarcada com bordas laterais na cor primária (cabeçalho + células).
-    const todayCells = document.querySelectorAll("[data-today]")
+    // Coluna de HOJE demarcada: bordas laterais na cor primária nas células; no cabeçalho roxo (padrão das tabelas), barra branca sob o dia.
+    const todayCells = [...document.querySelectorAll("[data-today]")]
     expect(todayCells).toHaveLength(3)
-    for (const cell of todayCells) expect(cell.className).toContain("border-x border-primary/40")
+    const [head, ...cells] = todayCells
+    expect(head!.tagName).toBe("TH")
+    expect(head!.className).toContain("bg-topbar")
+    expect(head!.className).toContain("shadow-[inset_0_-3px_0_0_var(--topbar-foreground)]")
+    for (const cell of cells) expect(cell.className).toContain("border-x border-primary/40")
     expect(screen.getAllByTestId("calendar-day-WORKED_OBSERVED").length).toBeGreaterThanOrEqual(2)
     const missing = screen.getByTestId("calendar-day-MISSING_EXPECTED_PRODUCTION")
     expect(missing.textContent).toContain("Sem produção")

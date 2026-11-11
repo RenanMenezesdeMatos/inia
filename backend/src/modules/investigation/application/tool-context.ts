@@ -117,7 +117,7 @@ export type IndicatorInfo = IndicatorOperationalDefinition & { name: string; min
 
 /** Indicador do catálogo (por código) — inexistente é erro da Tool (o modelo recebe a lista real). */
 export async function loadIndicator(context: ToolContext, indicatorCode: string): Promise<IndicatorInfo> {
-  const definition = await loadIndicatorOperationalDefinition(context.db, indicatorCode)
+  const definition = await loadIndicatorOperationalDefinition(context.db, context.organizationId, indicatorCode)
   const row = definition
     ? await context.db.query<{ name: string; minimum_sample_size: number | null; minimum_coverage: string | null; active: boolean; official_closure_supported: boolean; organization_id: string }>(
         `select name, minimum_sample_size, minimum_coverage, active, official_closure_supported, organization_id from indicator_definitions where id = $1`,

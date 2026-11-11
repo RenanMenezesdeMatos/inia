@@ -7,7 +7,7 @@ import { visibleCards } from "../../leadership-analytics/application/leadership-
 import type { LeadershipCard } from "../../leadership-analytics/domain/view-models.js"
 import { PgAnalyticsReadRepository } from "../../performance-analytics/application/analytics-read-repository.js"
 import { loadViewerScope } from "../../performance-analytics/application/viewer-scope.js"
-import { listMonitoredConversations, loadMonitoredMessages, MONITORING_ORIGIN_FILTERS, MONITORING_STATUS_FILTERS, requireMonitoredConversation, type MonitoringViewer, type ReaderCardFilter } from "../application/conversation-monitoring.js"
+import { listMonitoredConversations, loadMonitoredMessages, monitoredResponseTimes, MONITORING_ORIGIN_FILTERS, MONITORING_STATUS_FILTERS, requireMonitoredConversation, type MonitoringViewer, type ReaderCardFilter } from "../application/conversation-monitoring.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -23,6 +23,14 @@ const listSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
 })
+const MAX_RESPONSE_TIME_DAYS = 366
+const dayNumber = (date: string) => Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / 86_400_000
+/** Tempo de resposta: os filtros da lista (sem página) e um período obrigatório de 1 a 366 dias, sobre a data da resposta. */
+const responseTimesSchema = listSchema
+  .omit({ page: true, pageSize: true, from: true, to: true })
+  .extend({ from: localDate, to: localDate })
+  .refine((query) => dayNumber(query.to) >= dayNumber(query.from), { message: "A data inicial precisa ser antes da final.", path: ["from"] })
+  .refine((query) => dayNumber(query.to) - dayNumber(query.from) + 1 <= MAX_RESPONSE_TIME_DAYS, { message: `Escolha um período de até ${MAX_RESPONSE_TIME_DAYS} dias.`, path: ["to"] })
 const messagesSchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(30), before: z.string().max(200).optional(), after: z.string().max(200).optional() })
 const idParam = z.string().uuid()
 
@@ -52,6 +60,10 @@ export function createConversationMonitoringRouter(db: Database, deps: { readerC
     const filters = listSchema.parse(request.query)
     const result = await listMonitoredConversations(db, viewerOf(request), filters)
     response.json({ data: { ...result, page: filters.page, pageSize: filters.pageSize } })
+  })
+  // Antes de "/:conversationId": "response-times" não é id de conversa.
+  router.get("/response-times", async (request, response) => {
+    response.json({ data: await monitoredResponseTimes(db, viewerOf(request), responseTimesSchema.parse(request.query)) })
   })
   router.get("/:conversationId", async (request, response) => {
     response.json({ data: await requireMonitoredConversation(db, viewerOf(request), idParam.parse(request.params.conversationId)) })

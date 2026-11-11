@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -339,82 +340,81 @@ export function ChannelFlagsPage() {
   const channelOptions = (channelsQuery.data ?? []).map((channel) => ({ value: channel, label: channel }))
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Flags de canal</CardTitle>
-            <CardDescription>
-              Catálogo de sinais que já chegam calculados junto com cada interação (ex.: rechamada, nota da URA). Base para os gatilhos que acionam os agentes de monitoria.
-            </CardDescription>
-          </div>
-          {tab === "list" ? (
+    <section className="space-y-4">
+      <PageHeader
+        icon={Flag}
+        title="Flags de canal"
+        description="Catálogo de sinais que já chegam calculados junto com cada interação (ex.: rechamada, nota da URA). Base para os gatilhos que acionam os agentes de monitoria."
+        actions={
+          tab === "list" ? (
             <Button onClick={openCreateForm}>
               <Plus /> Nova flag
             </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
-          <TabsList>
-            <TabsTrigger value="list">Lista</TabsTrigger>
-            <TabsTrigger value="form">{editingFlag ? "Editar flag" : "Nova flag"}</TabsTrigger>
-          </TabsList>
+          ) : null
+        }
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
+            <TabsList>
+              <TabsTrigger value="list">Lista</TabsTrigger>
+              <TabsTrigger value="form">{editingFlag ? "Editar flag" : "Nova flag"}</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="list" className="mt-4 space-y-4">
-            <ListToolbar
-              search={
-                <ListSearchInput
-                  value={list.filters.search}
-                  onChange={(value) => list.setFilter("search", value)}
-                  placeholder="Buscar por nome da flag ou descrição"
-                  ariaLabel="Buscar flag de canal"
-                  pending={list.isSearchPending}
-                />
-              }
-              viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-              hasActiveFilters={list.hasActiveFilters}
-              onClearFilters={list.resetFilters}
-            >
-              <ListMultiSelectFilter label="Canal" values={list.filters.channel} onChange={(values) => list.setFilter("channel", values)} options={channelOptions} />
-              <ListMultiSelectFilter label="Tipo de valor" values={list.filters.valueType} onChange={(values) => list.setFilter("valueType", values)} options={VALUE_TYPE_OPTIONS} />
-              <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativas" falseLabel="Inativas" ariaLabel="Filtrar por status" />
-              <ListDateRangeFilter label="Criada em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
-            </ListToolbar>
+            <TabsContent value="list" className="mt-4 space-y-4">
+              <ListToolbar
+                search={
+                  <ListSearchInput
+                    value={list.filters.search}
+                    onChange={(value) => list.setFilter("search", value)}
+                    placeholder="Buscar por nome da flag ou descrição"
+                    ariaLabel="Buscar flag de canal"
+                    pending={list.isSearchPending}
+                  />
+                }
+                viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+                hasActiveFilters={list.hasActiveFilters}
+                onClearFilters={list.resetFilters}
+              >
+                <ListMultiSelectFilter label="Canal" values={list.filters.channel} onChange={(values) => list.setFilter("channel", values)} options={channelOptions} />
+                <ListMultiSelectFilter label="Tipo de valor" values={list.filters.valueType} onChange={(values) => list.setFilter("valueType", values)} options={VALUE_TYPE_OPTIONS} />
+                <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativas" falseLabel="Inativas" ariaLabel="Filtrar por status" />
+                <ListDateRangeFilter label="Criada em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
+              </ListToolbar>
 
-            <AdminListView
-              state={list}
-              query={pageQuery}
-              errorMessage="Não foi possível carregar as flags."
-              empty={{
-                icon: Flag,
-                title: "Nenhuma flag cadastrada ainda",
-                description: "Cadastre os sinais que chegam junto com as interações para que os workflows possam reagir a eles.",
-                action: (
-                  <Button onClick={openCreateForm}>
-                    <Plus /> Nova flag
-                  </Button>
-                ),
-              }}
-              noResultsTitle="Nenhuma flag corresponde à busca ou aos filtros"
-              itemLabel={["flag", "flags"]}
-              renderList={(flags) => <ChannelFlagsTable flags={flags} onEdit={openEditForm} />}
-              renderCards={(flags) => (
-                <ListCardGrid>
-                  {flags.map((flag) => (
-                    <ChannelFlagCard key={flag.id} flag={flag} onEdit={openEditForm} />
-                  ))}
-                </ListCardGrid>
-              )}
-            />
-          </TabsContent>
+              <AdminListView
+                state={list}
+                query={pageQuery}
+                errorMessage="Não foi possível carregar as flags."
+                empty={{
+                  icon: Flag,
+                  title: "Nenhuma flag cadastrada ainda",
+                  description: "Cadastre os sinais que chegam junto com as interações para que os workflows possam reagir a eles.",
+                  action: (
+                    <Button onClick={openCreateForm}>
+                      <Plus /> Nova flag
+                    </Button>
+                  ),
+                }}
+                noResultsTitle="Nenhuma flag corresponde à busca ou aos filtros"
+                itemLabel={["flag", "flags"]}
+                renderList={(flags) => <ChannelFlagsTable flags={flags} onEdit={openEditForm} />}
+                renderCards={(flags) => (
+                  <ListCardGrid>
+                    {flags.map((flag) => (
+                      <ChannelFlagCard key={flag.id} flag={flag} onEdit={openEditForm} />
+                    ))}
+                  </ListCardGrid>
+                )}
+              />
+            </TabsContent>
 
-          <TabsContent value="form" className="mt-4">
-            <ChannelFlagForm flag={editingFlag ?? undefined} onDone={() => setTab("list")} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+            <TabsContent value="form" className="mt-4">
+              <ChannelFlagForm flag={editingFlag ?? undefined} onDone={() => setTab("list")} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

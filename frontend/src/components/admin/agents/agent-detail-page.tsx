@@ -4,8 +4,9 @@ import { useState } from "react"
 import Link from "next/link"
 import { useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, ChevronDown, Copy } from "lucide-react"
+import { ChevronDown, Copy } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -520,9 +521,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Link href="/admin/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-3.5 w-3.5" /> Agentes
-          </Link>
+          <BackLink href="/admin/agents" label="Agentes" />
           <h1 className="mt-1 text-xl">{isEditing ? agent!.name || "Editar agente" : "Novo agente"}</h1>
         </div>
         <div className="flex items-center gap-3">
@@ -1000,9 +999,7 @@ export function EditAgentPage({ agentId }: { agentId: string }) {
     const message = agentQuery.error instanceof AdminApiError ? agentQuery.error.message : "Não foi possível carregar este agente."
     return (
       <div className="space-y-2">
-        <Link href="/admin/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" /> Agentes
-        </Link>
+        <BackLink href="/admin/agents" label="Agentes" />
         <p className="text-sm text-destructive">{message}</p>
       </div>
     )

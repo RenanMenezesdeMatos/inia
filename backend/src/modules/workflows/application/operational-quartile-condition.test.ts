@@ -50,27 +50,27 @@ const POPULATION_IDS = Object.keys(POPULATION)
 describe("Condition · Quartil operacional (source OPERATIONAL_QUARTILE)", () => {
   it("classifica o colaborador na população do Workflow com a direção oficial: pior TMA = Q4, melhor = Q1", async () => {
     const db = fakeDb(POPULATION)
-    const worst = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const worst = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(worst?.branch).toBe("true")
     expect(worst?.evaluation).toMatchObject({ kind: "operational_quartile", value: "Q4", position: 8, rankedCount: 8, operationalValue: 1000, direction: "LOWER", method: "Média ponderada pelo volume", population: { evaluatedCount: 8, rankedCount: 8, noDataCount: 0, belowCoverageCount: 0 } })
     expect(String(worst?.evaluation.windowLabel)).toContain("10/09/2026")
-    const best = await evaluateDataCondition(db, IS_Q4, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const best = await evaluateDataCondition(db, IS_Q4, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(best?.branch).toBe("false")
     expect(best?.evaluation.value).toBe("Q1")
-    const notQ4 = await evaluateDataCondition(db, { ...IS_Q4, comparator: "NOT_EQUALS" }, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const notQ4 = await evaluateDataCondition(db, { ...IS_Q4, comparator: "NOT_EQUALS" }, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(notQ4?.branch).toBe("true")
   })
 
   it("HIGHER inverte: com direção HIGHER o maior valor é Q1 — mesma regra do Ranking", async () => {
     const db = fakeDb(POPULATION, {}, "HIGHER")
-    const top = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const top = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(top?.evaluation.value).toBe("Q1")
     expect(top?.branch).toBe("false")
   })
 
   it("população menor que 4 com dados → SEM DADOS (INSUFFICIENT_RECURRENCE), nunca Q4", async () => {
     const db = fakeDb({ a: 300, b: 900, c: 1000 })
-    const result = await evaluateDataCondition(db, IS_Q4, { operatorId: "c", subjectIds: ["c"], populationIds: ["a", "b", "c"] }, NOW, { timeZone: TZ })
+    const result = await evaluateDataCondition(db, IS_Q4, { operatorId: "c", subjectIds: ["c"], populationIds: ["a", "b", "c"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(result?.branch).toBe("no_data")
     expect(result?.evaluation.value).toBeNull()
     expect(String(result?.evaluation.reasonText)).toContain("mínimo 4")
@@ -78,33 +78,33 @@ describe("Condition · Quartil operacional (source OPERATIONAL_QUARTILE)", () =>
 
   it("colaborador sem medição na janela → SEM DADOS (NO_VALUE); os outros continuam classificados sem ele", async () => {
     const db = fakeDb({ ...POPULATION, h: null })
-    const missing = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const missing = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(missing?.branch).toBe("no_data")
     expect(missing?.evaluation.reason).toBe("NO_VALUE")
     expect(missing?.evaluation.population).toMatchObject({ evaluatedCount: 8, rankedCount: 7, noDataCount: 1 })
-    const nowWorst = await evaluateDataCondition(db, IS_Q4, { operatorId: "g", subjectIds: ["g"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const nowWorst = await evaluateDataCondition(db, IS_Q4, { operatorId: "g", subjectIds: ["g"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(nowWorst?.evaluation.value).toBe("Q4")
   })
 
   it("indicador TARGET (sem direção) → SEM DADOS, nunca inventa quartil", async () => {
     const db = fakeDb(POPULATION, {}, "TARGET")
-    const result = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const result = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(result?.branch).toBe("no_data")
     expect(String(result?.evaluation.reasonText)).toContain("HIGHER/LOWER")
   })
 
   it("EXEMPLO CRÍTICO: Q4 OFICIAL no último fechamento (performance) E Q4 OPERACIONAL de TMA nos últimos 7 dias → as duas Conditions TRUE, cada uma da sua camada", async () => {
     const db = fakeDb(POPULATION, { h: "Q4", a: "Q1" })
-    const official = await evaluateDataCondition(db, { performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "INDICATOR_QUARTILE", indicatorCode: "TMA" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "h", subjectIds: ["h"] }, NOW, { timeZone: TZ })
+    const official = await evaluateDataCondition(db, { performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "INDICATOR_QUARTILE", indicatorCode: "TMA" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "h", subjectIds: ["h"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(official?.branch).toBe("true")
     expect(official?.evaluation).toMatchObject({ kind: "performance", referencePeriod: "2026-08", value: "Q4" }) // lido da fonte oficial, nunca calculado
-    const operational = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const operational = await evaluateDataCondition(db, IS_Q4, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(operational?.branch).toBe("true")
     expect(operational?.evaluation).toMatchObject({ kind: "operational_quartile", value: "Q4", source: "OPERATIONAL_QUARTILE" })
     // "a" é Q1 nas duas camadas: oficial TRUE só se fosse Q1; operacional Q4 é FALSE.
-    const officialA = await evaluateDataCondition(db, { performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "INDICATOR_QUARTILE", indicatorCode: "TMA" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "a", subjectIds: ["a"] }, NOW, { timeZone: TZ })
+    const officialA = await evaluateDataCondition(db, { performanceQuery: { kind: "EMPLOYEE_PERFORMANCE", metric: "INDICATOR_QUARTILE", indicatorCode: "TMA" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "a", subjectIds: ["a"] }, NOW, { organizationId: "org", timeZone: TZ })
     expect(officialA?.branch).toBe("false")
-    const operationalA = await evaluateDataCondition(db, IS_Q4, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const operationalA = await evaluateDataCondition(db, IS_Q4, { operatorId: "a", subjectIds: ["a"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(operationalA?.branch).toBe("false")
   })
 
@@ -114,7 +114,7 @@ describe("Condition · Quartil operacional (source OPERATIONAL_QUARTILE)", () =>
     const ranked = await runEmployeeRanking(db, "org", ranking, POPULATION_IDS, NOW, { timeZone: TZ })
     const viaCondition: string[] = []
     for (const id of POPULATION_IDS) {
-      const result = await evaluateDataCondition(db, IS_Q4, { operatorId: id, subjectIds: [id], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+      const result = await evaluateDataCondition(db, IS_Q4, { operatorId: id, subjectIds: [id], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
       if (result?.branch === "true") viaCondition.push(id)
     }
     expect(viaCondition.sort()).toEqual([...ranked.memberIds].sort())
@@ -123,7 +123,7 @@ describe("Condition · Quartil operacional (source OPERATIONAL_QUARTILE)", () =>
 
   it("critério de Selecionar colaboradores: N candidatos, UMA resolução em lote (cache por execução, nunca N+1)", async () => {
     const db = fakeDb(POPULATION)
-    const options: EvaluationOptions = { timeZone: TZ }
+    const options: EvaluationOptions = { organizationId: "org", timeZone: TZ }
     const selection = await runEmployeeSelection(db, IS_Q4, POPULATION_IDS, NOW, options)
     expect(selection.memberIds).toEqual(["g", "h"])
     expect(selection.notMatchedCount).toBe(6)
@@ -142,7 +142,7 @@ describe("Condition · Quartil operacional (source OPERATIONAL_QUARTILE)", () =>
         return base.query(sql, params)
       }),
     } as unknown as Database
-    const result = await evaluateDataCondition(db, { ...IS_Q4, historicalQuery: { ...QUARTILE_QUERY, minimumCoverage: 0.6 } }, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { timeZone: TZ })
+    const result = await evaluateDataCondition(db, { ...IS_Q4, historicalQuery: { ...QUARTILE_QUERY, minimumCoverage: 0.6 } }, { operatorId: "h", subjectIds: ["h"], populationIds: POPULATION_IDS }, NOW, { organizationId: "org", timeZone: TZ })
     expect(result?.branch).toBe("no_data")
     expect(result?.evaluation.reason).toBe("BELOW_MINIMUM_COVERAGE")
     expect(result?.evaluation.population).toMatchObject({ rankedCount: 7, belowCoverageCount: 1 })

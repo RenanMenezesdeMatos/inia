@@ -19,7 +19,7 @@ import { autoQuality, detectQualityEnvironment, FrameTimeMonitor, lowerQuality, 
 import type { AvatarView } from "@/lib/avatar/animation/rig-framing"
 import { CameraFramer, viewerFacingDeg } from "@/lib/avatar/animation/rig-framing"
 import { applyStudioEnvironment, configureStudioRenderer, createStudioLights } from "@/lib/avatar/animation/studio-lighting"
-import type { AvatarConversationState, AvatarDriver, AvatarQuality } from "@/lib/avatar/animation/types"
+import type { AvatarConversationState, AvatarDriver, AvatarMotionProfile, AvatarQuality } from "@/lib/avatar/animation/types"
 import { cn } from "@/lib/utils"
 
 export type { AvatarView }
@@ -56,6 +56,11 @@ export type IniaHumanoidAvatar3DProps = {
   backdrop?: "studio" | "none"
   /** Padrão true: o selo de estado no canto. Falso quando a superfície mostra o estado de outro jeito. */
   showStatus?: boolean
+  /**
+   * Padrão "auto": o perfil de movimento é o que o próprio GLB pede (`inia_motion_profile` nos extras do nó `INIA_Rig`;
+   * sem o campo = "classic", o comportamento da Mentora original). O laboratório força um dos dois para comparar.
+   */
+  motionProfile?: "auto" | AvatarMotionProfile
 }
 
 /**
@@ -71,6 +76,7 @@ type LiveInputs = {
   facing: "forward" | "viewer"
   quality: AvatarQuality | "auto"
   reducedMotion: boolean
+  motionProfile: "auto" | AvatarMotionProfile
   onCanvasReady: ((canvas: HTMLCanvasElement, renderer: WebGLRenderer) => void) | undefined
 }
 
@@ -92,18 +98,20 @@ export function IniaHumanoidAvatar3D({
   statusLabel = null,
   backdrop = "studio",
   showStatus = true,
+  motionProfile = "auto",
 }: IniaHumanoidAvatar3DProps) {
   // Resolvido UMA vez: o antialias do WebGL só existe na criação do contexto.
   const [initialQuality] = useState<AvatarQuality>(() => (quality === "auto" ? autoQuality(detectQualityEnvironment()) : quality))
-  const liveRef = useRef<LiveInputs>({ driver, view, facing, quality, reducedMotion: false, onCanvasReady })
+  const liveRef = useRef<LiveInputs>({ driver, view, facing, quality, reducedMotion: false, motionProfile, onCanvasReady })
   useLayoutEffect(() => {
     const live = liveRef.current
     live.driver = driver
     live.view = view
     live.facing = facing
     live.quality = quality
+    live.motionProfile = motionProfile
     live.onCanvasReady = onCanvasReady
-  }, [driver, view, facing, quality, onCanvasReady])
+  }, [driver, view, facing, quality, motionProfile, onCanvasReady])
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
@@ -414,12 +422,23 @@ function StudioLighting() {
 
 type AvatarModelProps = AvatarCanvasProps
 
+/** Perfil de movimento gravado no GLB (extras do nó `INIA_Rig` → `userData`); ausente = "classic". */
+function motionProfileOfModel(scene: Object3D): AvatarMotionProfile {
+  let profile: AvatarMotionProfile = "classic"
+  scene.traverse((object) => {
+    if (object.userData?.inia_motion_profile === "natural") profile = "natural"
+  })
+  return profile
+}
+
 function AvatarModel({ modelUrl, liveRef, initialQuality, onReady }: AvatarModelProps) {
   const gltf = useLoader(GLTFLoader, modelUrl)
   const setDpr = useThree((state) => state.setDpr)
   // Um clone por montagem: o GLTF do cache (por URL) nunca é reparentado nem descartado aqui.
   const rig = useMemo(() => new AvatarRig(cloneAvatarScene(gltf.scene)), [gltf])
   const controller = useMemo(() => new BehaviorController(), [])
+  // O perfil que ESTE modelo pede (só o v02 traz "natural"); lido por quadro junto do que a tela pede.
+  const modelProfile = useMemo(() => motionProfileOfModel(gltf.scene), [gltf])
   const framer = useMemo(() => new CameraFramer(rig.anchors), [rig])
   const monitor = useMemo(() => new FrameTimeMonitor(), [])
   const qualityRef = useRef<{ current: AvatarQuality; applied: AvatarQuality | null }>({ current: initialQuality, applied: null })
@@ -450,6 +469,11 @@ function AvatarModel({ modelUrl, liveRef, initialQuality, onReady }: AvatarModel
       setDpr(Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, QUALITY_SETTINGS[quality.current].maxDpr))
     }
 
+    const profile = live.motionProfile === "auto" ? modelProfile : live.motionProfile
+    controller.setMotionProfile(profile)
+    // Visível no DOM (`data-motion-profile` no canvas): o laboratório e os roteiros de captura conferem qual perfil está valendo.
+    const canvas = state.gl.domElement
+    if (canvas.dataset.motionProfile !== profile) canvas.dataset.motionProfile = profile
     controller.setFacing(live.facing === "viewer" ? viewerFacingDeg(live.view) : 0)
     const frame = controller.update(live.driver, dt, performance.now(), live.reducedMotion)
     rig.applyGesture(frame.gesture)

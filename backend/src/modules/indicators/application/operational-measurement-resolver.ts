@@ -189,10 +189,16 @@ const DEFAULT_DEFINITION: Pick<IndicatorOperationalDefinition, "kind" | "dailySu
 export const OPERATIONAL_DEFINITION_COLUMNS = "id, code, unit, desired_direction, unjustified_absence_policy, operational_aggregation, daily_supported"
 export type OperationalDefinitionRow = { id: string; code: string; unit: string; desired_direction: string; operational_aggregation: string | null; daily_supported: boolean | null; unjustified_absence_policy?: string | null }
 
-export async function loadIndicatorOperationalDefinition(db: Database, indicatorCode: string): Promise<IndicatorOperationalDefinition | null> {
+/**
+ * Definição operacional do indicador NA ORGANIZAÇÃO da execução/de quem lê. O código só é único por
+ * (organização, código): buscar pelo código sozinho devolvia a linha da organização mais antiga — direção,
+ * estratégia e política de falta de OUTRA empresa decidindo quartil, ranking e Condition desta. A
+ * organização é obrigatória de propósito (o compilador cobra cada chamador); sem linha nela = padrão documentado.
+ */
+export async function loadIndicatorOperationalDefinition(db: Database, organizationId: string, indicatorCode: string): Promise<IndicatorOperationalDefinition | null> {
   const result = await db.query<OperationalDefinitionRow>(
-    `select ${OPERATIONAL_DEFINITION_COLUMNS} from indicator_definitions where code = $1 order by created_at limit 1`,
-    [indicatorCode],
+    `select ${OPERATIONAL_DEFINITION_COLUMNS} from indicator_definitions where code = $1 and organization_id = $2 limit 1`,
+    [indicatorCode, organizationId],
   )
   const row = result.rows[0]
   return row ? toOperationalDefinition(row) : null
@@ -212,11 +218,15 @@ export function toOperationalDefinition(row: OperationalDefinitionRow): Indicato
 
 /** Terceiro parâmetro das janelas: só a estratégia (compatibilidade) ou a definição inteira (aplica a política de falta injustificada). */
 export type WindowDefinitionParam = OperationalAggregationKind | Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">
+/** Sem a definição em mãos, a janela a lê do catálogo DA ORGANIZAÇÃO informada — nunca pelo código sozinho. */
+export type DefinitionLookupScope = { organizationId: string }
+/** Terceiro parâmetro OBRIGATÓRIO das janelas: a definição (ou estratégia) já lida, ou a organização onde lê-la. */
+export type WindowDefinitionSource = WindowDefinitionParam | DefinitionLookupScope
 
-async function resolveDefinitionParam(db: Database, indicatorCode: string, param: WindowDefinitionParam | undefined): Promise<Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">> {
-  if (param && typeof param === "object") return param
-  if (param) return { kind: param, unjustifiedAbsencePolicy: "NO_SAMPLE" }
-  const loaded = await loadIndicatorOperationalDefinition(db, indicatorCode)
+async function resolveDefinitionParam(db: Database, indicatorCode: string, param: WindowDefinitionSource): Promise<Pick<IndicatorOperationalDefinition, "kind" | "unjustifiedAbsencePolicy">> {
+  if (typeof param === "string") return { kind: param, unjustifiedAbsencePolicy: "NO_SAMPLE" }
+  if (!("organizationId" in param)) return param
+  const loaded = await loadIndicatorOperationalDefinition(db, param.organizationId, indicatorCode)
   return { kind: loaded?.kind ?? DEFAULT_DEFINITION.kind, unjustifiedAbsencePolicy: loaded?.unjustifiedAbsencePolicy ?? DEFAULT_DEFINITION.unjustifiedAbsencePolicy }
 }
 
@@ -874,7 +884,7 @@ async function eligibilityParams(db: Database, input: Pick<OperationalWindowInpu
 const SQL = eligibleMeasurementSql({ alias: "m", timeZoneParam: "$5", personIdsParam: "$6", fromParam: "$7", toParam: "$8", statusesParam: "$9", absencePersonIdsParam: "$10", absenceDatesParam: "$11" })
 
 /** Janela POOLED: todos os `subjectIds` como uma unidade (Σ numeradores ÷ Σ denominadores da estrutura). */
-export async function resolveOperationalWindow(db: Database, input: OperationalWindowInput, kind?: WindowDefinitionParam): Promise<OperationalWindowResult> {
+export async function resolveOperationalWindow(db: Database, input: OperationalWindowInput, kind: WindowDefinitionSource): Promise<OperationalWindowResult> {
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
   // Um único colaborador: dias elegíveis respeitam a admissão dele. Estrutura pooled: dias esperados informados pelo chamador.
@@ -894,7 +904,7 @@ export async function resolveOperationalWindow(db: Database, input: OperationalW
 }
 
 /** Janela POR COLABORADOR: um resultado por `subjectId`, numa única query (nunca N+1). Quem não tem linha na janela não aparece no mapa. */
-export async function resolveOperationalWindowBySubject(db: Database, input: OperationalWindowInput, kind?: WindowDefinitionParam): Promise<Map<string, OperationalWindowResult>> {
+export async function resolveOperationalWindowBySubject(db: Database, input: OperationalWindowInput, kind: WindowDefinitionSource): Promise<Map<string, OperationalWindowResult>> {
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
   const result = await db.query<MeasurementWindowRow>(
@@ -953,7 +963,7 @@ export function finishWindowBySubject(
  * elegibilidade/predicado das janelas; medições em datas não elegíveis ficam de fora. */
 export type OperationalDailyPoint = { date: string; raw: RawWindowComponents; value: AggregatedWindowValue }
 
-export async function resolveOperationalDailySeries(db: Database, input: OperationalWindowInput, kind?: WindowDefinitionParam): Promise<{ points: OperationalDailyPoint[]; eligibility: EligibilityResult | undefined; ignoredMeasurements: number }> {
+export async function resolveOperationalDailySeries(db: Database, input: OperationalWindowInput, kind: WindowDefinitionSource): Promise<{ points: OperationalDailyPoint[]; eligibility: EligibilityResult | undefined; ignoredMeasurements: number }> {
   const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
   const { eligibility, ranges, absence } = await eligibilityParams(db, input)
   const result = await db.query<MeasurementWindowRow & { local_date: string }>(
@@ -993,10 +1003,10 @@ export type ClosedMonthsResult = {
  */
 export async function resolveOperationalClosedMonths(
   db: Database,
-  input: { indicatorCode: string; subjectIds: string[]; months: { start: Date; end: Date }[]; aggregation: MeasurementAggregation; expectedDaysByMonth?: number[]; timeZone?: string; now?: Date },
+  input: { organizationId: string; indicatorCode: string; subjectIds: string[]; months: { start: Date; end: Date }[]; aggregation: MeasurementAggregation; expectedDaysByMonth?: number[]; timeZone?: string; now?: Date },
   kind?: WindowDefinitionParam,
 ): Promise<ClosedMonthsResult> {
-  const definition = await resolveDefinitionParam(db, input.indicatorCode, kind)
+  const definition = await resolveDefinitionParam(db, input.indicatorCode, kind ?? { organizationId: input.organizationId })
   const union = { start: input.months[input.months.length - 1]!.start, end: input.months[0]!.end }
   const { ranges, absence } = await eligibilityParams(db, { subjectIds: input.subjectIds, window: union, ...(input.timeZone ? { timeZone: input.timeZone } : {}), ...(input.now ? { now: input.now } : {}) })
   const result = await db.query<MeasurementWindowRow & { missing_months: string; months: (MeasurementWindowRow & { month_start: string })[] | null }>(
@@ -1009,7 +1019,7 @@ export async function resolveOperationalClosedMonths(
        from expected e
        join indicator_measurements m
          on m.period_start < e.month_end and m.period_end > e.month_start
-         and m.indicator_definition_id = (select id from indicator_definitions where code = $1 order by created_at limit 1)
+         and m.indicator_definition_id = (select id from indicator_definitions where code = $1 and organization_id = $12 limit 1)
          and m.subject_type = 'PERSON' and m.subject_id = any($2::uuid[])
        ${SQL.join}
      ),
@@ -1023,7 +1033,7 @@ export async function resolveOperationalClosedMonths(
        ${aggregateColumns("m", "$5")},
        (select json_agg(row_to_json(per_month) order by month_start) from per_month) months
      from matched m`,
-    [input.indicatorCode, input.subjectIds, input.months.map((month) => month.start.toISOString()), input.months.map((month) => month.end.toISOString()), input.timeZone ?? DEFAULT_TIMEZONE, ranges.personIds, ranges.from, ranges.to, NON_ELIGIBLE_EMPLOYMENT_STATUSES, absence.personIds, absence.dates],
+    [input.indicatorCode, input.subjectIds, input.months.map((month) => month.start.toISOString()), input.months.map((month) => month.end.toISOString()), input.timeZone ?? DEFAULT_TIMEZONE, ranges.personIds, ranges.from, ranges.to, NON_ELIGIBLE_EMPLOYMENT_STATUSES, absence.personIds, absence.dates, input.organizationId],
   )
   const row = result.rows[0]
   const totalExpected = input.expectedDaysByMonth?.reduce((sum, days) => sum + days, 0)

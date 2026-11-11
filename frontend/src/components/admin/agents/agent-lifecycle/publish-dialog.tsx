@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InlineError } from "@/components/ui/states"
 
 import { cn } from "@/lib/utils"
 import { useAgentPublishImpactQuery, usePublishAgentMutation } from "@/queries/admin/use-agent-queries"
@@ -203,12 +204,7 @@ function PublishDialogBody({ agent, onConflict, onClose }: { agent: Agent; onCon
         {impact ? (
           <PublishImpactDetails impact={impact} />
         ) : impactQuery.isError ? (
-          <div className="space-y-2" role="alert">
-            <p className="text-sm text-destructive">Não foi possível carregar quem usa este agente e o que muda. Sem essa conferência, a publicação fica indisponível.</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => void impactQuery.refetch()}>
-              Tentar novamente
-            </Button>
-          </div>
+          <InlineError message="Não foi possível carregar quem usa este agente e o que muda. Sem essa conferência, a publicação fica indisponível." onRetry={() => void impactQuery.refetch()} />
         ) : (
           <div className="space-y-2" aria-label="Conferindo quem usa este agente e o que muda">
             <Skeleton className="h-12 w-full" />

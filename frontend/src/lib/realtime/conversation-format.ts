@@ -29,29 +29,8 @@ export function conversationStatusLabel(conversation: ConversationLike): string 
   return "Encerrada"
 }
 
-const dayKeyFormatter = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" })
-/** Chave do dia LOCAL (separadores de data). */
-export const dayKey = (iso: string) => dayKeyFormatter.format(new Date(iso))
-
-/** Rótulo do separador de data: "Hoje", "Ontem" ou "29 de setembro de 2026". */
-export function dateSeparatorLabel(iso: string, now: Date = new Date()): string {
-  const key = dayKey(iso)
-  if (key === dayKeyFormatter.format(now)) return "Hoje"
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  if (key === dayKeyFormatter.format(yesterday)) return "Ontem"
-  return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(iso))
-}
-
-export const messageTime = (iso: string) => new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso))
-
-/** Última atividade compacta para listas: hora (hoje), "Ontem" ou a data. */
-export function lastActivityLabel(iso: string, now: Date = new Date()): string {
-  const label = dateSeparatorLabel(iso, now)
-  if (label === "Hoje") return messageTime(iso)
-  if (label === "Ontem") return "Ontem"
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(iso))
-}
+// Rótulos de dia e hora das conversas: moram em `lib/format/date.ts` (também os usa o painel do Apoio com Anjo, que não importa lib/realtime).
+export { dateSeparatorLabel, dayKey, lastActivityLabel, messageTime } from "@/lib/format/date"
 
 /** Identificador opaco para chaves idempotentes do cliente (fallback quando `crypto.randomUUID` não existe). */
 export function newClientKey(): string {

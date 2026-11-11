@@ -58,4 +58,4 @@ export function loadGlbSkeleton(file: string): Object3D | null {
 }
 
 /** Os modelos que existirem no repositório (o `inia-mentora.glb` ainda pode não ter chegado). */
-export const AVATAR_MODEL_FILES = ["inia-avatar-poc.glb", "inia-mentora.glb"].filter((file) => existsSync(modelPath(file)))
+export const AVATAR_MODEL_FILES = ["inia-avatar-poc.glb", "inia-mentora.glb", "inia-mentora-v02.glb"].filter((file) => existsSync(modelPath(file)))

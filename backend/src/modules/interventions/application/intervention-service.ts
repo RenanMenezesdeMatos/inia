@@ -10,6 +10,7 @@ import { resolveOrganizationTimezone } from "../../workflows/application/organiz
 import { resolveByRoleChain } from "../../workflows/application/enrollment-subject.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { CAPABILITY_DEFINITIONS, EVIDENCE_KIND_LABELS, effectiveCapabilities, type EvidenceKind } from "../domain/capabilities.js"
+import { protectStoredLeave } from "../domain/protected-leave.js"
 import { reportNarrativeSchema, type IntelligenceReport, type ReportNarrative } from "../domain/intelligence-report.js"
 import { interventionPlanSchema, planReadinessIssues, type InterventionPlan } from "../domain/intervention-plan.js"
 import {
@@ -231,7 +232,8 @@ export async function loadReport(db: Queryable | Database, organizationId: strin
     id: report.id,
     evaluationId: report.evaluation_id,
     createdAt: report.created_at.toISOString(),
-    structured: report.structured,
+    // Relatório gravado antes da proteção do tipo de afastamento (291bd48c): protegido na leitura, nada é reescrito.
+    structured: protectStoredLeave(report.structured),
     narrative: { status: ready ? "READY" : attempts.length > 0 ? "FAILED" : "NONE", attempts: attempts.length, current: parsed?.success ? parsed.data : null, lastError: attempts[0]?.status === "FAILED" ? attempts[0].error : null, generatedAt: ready?.created_at.toISOString() ?? null },
   }
 }
@@ -288,8 +290,8 @@ export async function getInterventionDetail(db: Database, viewer: Viewer, interv
   return {
     ...summaryOf(row, definition, todayDate),
     revision: row.revision,
-    initialSituation: row.initial_situation,
-    evidence: row.evidence.map((item) => ({ ...item, kindLabel: EVIDENCE_KIND_LABELS[item.kind as EvidenceKind] ?? item.kind })),
+    initialSituation: protectStoredLeave(row.initial_situation),
+    evidence: protectStoredLeave(row.evidence).map((item) => ({ ...item, kindLabel: EVIDENCE_KIND_LABELS[item.kind as EvidenceKind] ?? item.kind })),
     plan: row.plan,
     formValues: row.form_values,
     form: definition.form,

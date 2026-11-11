@@ -216,7 +216,7 @@ describe("WorkflowEditorPage — nomes acessíveis e falha ao abrir", () => {
   it("WF-34: voltar tem nome e os controles do canvas estão em português", async () => {
     stubApi(workflowDetail())
     renderEditor()
-    expect(await screen.findByRole("link", { name: "Voltar para a lista de workflows" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "Workflows" })).toBeInTheDocument()
     expect(await screen.findByRole("button", { name: "Ajustar à tela" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Fit View" })).not.toBeInTheDocument()
   })

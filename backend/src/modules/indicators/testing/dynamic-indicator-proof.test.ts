@@ -141,7 +141,7 @@ describe.skipIf(!ENABLED)("prova arquitetural — indicador e Grupo que o códig
   })
 
   it("o catálogo descreve o indicador novo pela metadata (unidade, direção, estratégia, capacidades)", async () => {
-    const definition = await loadIndicatorOperationalDefinition(db, "TEST_DYNAMIC_RATE")
+    const definition = await loadIndicatorOperationalDefinition(db, ORG, "TEST_DYNAMIC_RATE")
     expect(definition).toMatchObject({ code: "TEST_DYNAMIC_RATE", unit: "PERCENT", direction: "HIGHER", kind: "RATE", dailySupported: true })
     const analytics = await new PgAnalyticsReadRepository(db).loadIndicatorDefinitions(ORG)
     expect(analytics.find((row) => row.code === "TEST_DYNAMIC_RATE")).toMatchObject({ name: "Taxa Dinâmica de Teste", unit: "PERCENT", direction: "HIGHER", capabilities: { operationalEnabled: true, operationalAggregation: "RATE", officialClosureSupported: false } })
@@ -149,17 +149,17 @@ describe.skipIf(!ENABLED)("prova arquitetural — indicador e Grupo que o códig
   })
 
   it("Condition (RATE): Σ 595 ocorrências ÷ Σ 700 elegíveis × 100 = 85 — evidência de numerador/denominador no trace", async () => {
-    const result = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE", "GTE", 80), { operatorId: OP_A, subjectIds: [OP_A] }, NOW, { timeZone: TZ })
+    const result = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE", "GTE", 80), { operatorId: OP_A, subjectIds: [OP_A] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(result).toMatchObject({ branch: "true", matched: true })
     expect(result!.evaluation.value).toBe(85)
     expect(result!.evaluation.evidence).toMatchObject({ aggregation: "WEIGHTED_AVERAGE", numerator: 595, denominator: 700, daysWithData: 7 })
     expect(String((result!.evaluation.evidence as { method: string }).method)).toMatch(/595 ocorrências ÷ Σ 700 elegíveis × 100/)
-    const below = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE", "GTE", 80), { operatorId: OP_E, subjectIds: [OP_E] }, NOW, { timeZone: TZ })
+    const below = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_RATE", "WEIGHTED_AVERAGE", "GTE", 80), { operatorId: OP_E, subjectIds: [OP_E] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(below).toMatchObject({ branch: "false" })
   })
 
   it("Condition (LATEST): o valor da janela é o ÚLTIMO snapshot (35), nunca a soma — trace por estratégia", async () => {
-    const result = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_LATEST", "LATEST", "LTE", 36), { operatorId: OP_A, subjectIds: [OP_A] }, NOW, { timeZone: TZ })
+    const result = await evaluateDataCondition(db, conditionConfig("TEST_DYNAMIC_LATEST", "LATEST", "LTE", 36), { operatorId: OP_A, subjectIds: [OP_A] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(result).toMatchObject({ branch: "true" })
     expect(result!.evaluation.value).toBe(35)
     expect(result!.evaluation.evidence).toMatchObject({ aggregation: "LATEST", method: "último valor da janela (snapshot)", daysWithData: 3 })

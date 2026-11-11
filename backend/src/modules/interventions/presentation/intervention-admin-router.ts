@@ -18,6 +18,7 @@ import { loadPolicyHeader, loadPolicyVersion, loadValidationCatalog, type Policy
 import * as config from "../application/config-service.js"
 import { evaluatePolicy, serializeEvaluation } from "../application/evaluate-policy.js"
 import { canSeeInterventionsOf } from "../application/intervention-access.js"
+import { protectStoredLeave } from "../domain/protected-leave.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 
 /**
@@ -316,7 +317,8 @@ export function createInterventionAdminRouter(db: Database) {
     const policy = await loadPolicyHeader(db, organizationOf(request), row.policy_id)
     // A avaliação gravada decidiu intervenções reais (fatos, decisões e justificativa citam as anteriores): só quem as vê (SCOPE-02).
     if (!policy || !seesPolicy(accessOf(request), policy) || !(await canSimulateWith(db, request, row.person_id)) || !(await canSeeInterventionsOf(db, accessOf(request), row.person_id))) throw new DomainError("Avaliação não encontrada.", "INTERVENTION_EVALUATION_NOT_FOUND", 404)
-    response.json({ data: row })
+    // Avaliação gravada antes da proteção do tipo de afastamento (291bd48c) ainda tem o tipo exato: protegida na leitura.
+    response.json({ data: protectStoredLeave(row) })
   })
   /**
    * REAVALIAÇÃO (correção tardia de dados): mesma versão FIXADA e mesmo instante de referência da avaliação original, fatos

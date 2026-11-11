@@ -212,7 +212,7 @@ describe("Relatório de inteligência", () => {
     render(<IntelligenceReportView report={REPORT} narrative={{ status: "FAILED", attempts: 2, current: null, lastError: "timeout", generatedAt: null }} onRetryNarrative={onRetry} />)
     expect(screen.getByText(/A narrativa da INIA não pôde ser gerada \(2 tentativas\)/)).toBeInTheDocument()
     expect(screen.getByText("Medição diária acima da meta vigente na janela de 30 dias.")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: /Tentar de novo/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Tentar novamente/ }))
     expect(onRetry).toHaveBeenCalled()
   })
 

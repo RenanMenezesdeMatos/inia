@@ -363,12 +363,17 @@ function RatioLine({ label, ratio }: { label: string; ratio: Ratio }) {
   )
 }
 
-function Breakdown({ title, items, hideShares = false }: { title?: string | undefined; items: { key: string; label: string; count: number; value?: number | null | undefined }[]; hideShares?: boolean }) {
+type BreakdownEntry = { key: string; label: string; count: number; value?: number | null | undefined }
+
+/** Itens do detalhamento sempre do maior para o menor; empate mantém a ordem do catálogo (ordenação estável). */
+export const byCountDesc = <T extends { count: number }>(items: readonly T[]): T[] => [...items].sort((a, b) => b.count - a.count)
+
+function Breakdown({ title, items, hideShares = false }: { title?: string | undefined; items: BreakdownEntry[]; hideShares?: boolean }) {
   return (
     <div className="space-y-1.5 border-t pt-2.5">
       {title ? <p className="text-xs font-medium text-muted-foreground">{title}</p> : null}
       <ul className="space-y-1.5 text-sm">
-        {items.map((item) => (
+        {byCountDesc(items).map((item) => (
           <BreakdownItem key={item.key} label={item.label} count={item.count} share={hideShares ? null : (item.value ?? null)} />
         ))}
       </ul>

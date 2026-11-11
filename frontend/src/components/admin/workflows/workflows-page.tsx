@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -350,75 +351,74 @@ export function WorkflowsPage() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Workflows</CardTitle>
-            <CardDescription>
-              Fluxos que começam por uma flag, um indicador, uma agenda ou um clique, analisam com IA, decidem o caminho e entregam o resultado a quem precisa, com revisão humana quando necessário.
-            </CardDescription>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        icon={Zap}
+        title="Workflows"
+        description="Fluxos que começam por uma flag, um indicador, uma agenda ou um clique, analisam com IA, decidem o caminho e entregam o resultado a quem precisa, com revisão humana quando necessário."
+        actions={
           <Button onClick={() => setCreateOpen(true)}>
             <Plus /> Novo workflow
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ListToolbar
-          search={
-            <ListSearchInput
-              value={list.filters.search}
-              onChange={(value) => list.setFilter("search", value)}
-              placeholder="Buscar por nome ou descrição"
-              ariaLabel="Buscar workflow"
-              pending={list.isSearchPending}
+        }
+      />
+      <Card>
+        <CardContent className="space-y-4">
+          <ListToolbar
+            search={
+              <ListSearchInput
+                value={list.filters.search}
+                onChange={(value) => list.setFilter("search", value)}
+                placeholder="Buscar por nome ou descrição"
+                ariaLabel="Buscar workflow"
+                pending={list.isSearchPending}
+              />
+            }
+            viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+            hasActiveFilters={list.hasActiveFilters}
+            onClearFilters={list.resetFilters}
+          >
+            <ListMultiSelectFilter label="Gatilho" values={list.filters.triggerKind} onChange={(values) => list.setFilter("triggerKind", values)} options={TRIGGER_KIND_OPTIONS} />
+            <ListBooleanFilter value={list.filters.published} onChange={(value) => list.setFilter("published", value)} allLabel="Publicados e rascunhos" trueLabel="Publicados" falseLabel="Rascunhos" ariaLabel="Filtrar por publicação" />
+            <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Ligados e desligados" trueLabel="Ligados" falseLabel="Desligados" ariaLabel="Filtrar por interruptor ligado ou desligado" />
+            <ListBooleanFilter value={list.filters.hasActiveEnrollments} onChange={(value) => list.setFilter("hasActiveEnrollments", value)} allLabel="Com ou sem execuções" trueLabel="Com execuções em andamento" falseLabel="Sem execuções em andamento" ariaLabel="Filtrar por execuções em andamento" />
+            <ListOrgScopeFilter
+              teams={teamsQuery.data}
+              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
             />
-          }
-          viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-          hasActiveFilters={list.hasActiveFilters}
-          onClearFilters={list.resetFilters}
-        >
-          <ListMultiSelectFilter label="Gatilho" values={list.filters.triggerKind} onChange={(values) => list.setFilter("triggerKind", values)} options={TRIGGER_KIND_OPTIONS} />
-          <ListBooleanFilter value={list.filters.published} onChange={(value) => list.setFilter("published", value)} allLabel="Publicados e rascunhos" trueLabel="Publicados" falseLabel="Rascunhos" ariaLabel="Filtrar por publicação" />
-          <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Ligados e desligados" trueLabel="Ligados" falseLabel="Desligados" ariaLabel="Filtrar por interruptor ligado ou desligado" />
-          <ListBooleanFilter value={list.filters.hasActiveEnrollments} onChange={(value) => list.setFilter("hasActiveEnrollments", value)} allLabel="Com ou sem execuções" trueLabel="Com execuções em andamento" falseLabel="Sem execuções em andamento" ariaLabel="Filtrar por execuções em andamento" />
-          <ListOrgScopeFilter
-            teams={teamsQuery.data}
-            value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-            onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+            <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
+          </ListToolbar>
+
+          <AdminListView
+            state={list}
+            query={pageQuery}
+            errorMessage="Não foi possível carregar os workflows."
+            empty={{
+              icon: WorkflowIcon,
+              title: "Nenhum workflow criado ainda",
+              description: "Crie um fluxo para reagir a flags, indicadores, horários agendados ou um clique em Executar agora.",
+              action: (
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus /> Novo workflow
+                </Button>
+              ),
+            }}
+            noResultsTitle="Nenhum workflow corresponde à busca ou aos filtros"
+            itemLabel={["workflow", "workflows"]}
+            renderList={(workflows) => <WorkflowsTable workflows={workflows} />}
+            renderCards={(workflows) => (
+              <ListCardGrid>
+                {workflows.map((workflow) => (
+                  <WorkflowCard key={workflow.id} workflow={workflow} />
+                ))}
+              </ListCardGrid>
+            )}
           />
-          <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
-        </ListToolbar>
+        </CardContent>
 
-        <AdminListView
-          state={list}
-          query={pageQuery}
-          errorMessage="Não foi possível carregar os workflows."
-          empty={{
-            icon: WorkflowIcon,
-            title: "Nenhum workflow criado ainda",
-            description: "Crie um fluxo para reagir a flags, indicadores, horários agendados ou um clique em Executar agora.",
-            action: (
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus /> Novo workflow
-              </Button>
-            ),
-          }}
-          noResultsTitle="Nenhum workflow corresponde à busca ou aos filtros"
-          itemLabel={["workflow", "workflows"]}
-          renderList={(workflows) => <WorkflowsTable workflows={workflows} />}
-          renderCards={(workflows) => (
-            <ListCardGrid>
-              {workflows.map((workflow) => (
-                <WorkflowCard key={workflow.id} workflow={workflow} />
-              ))}
-            </ListCardGrid>
-          )}
-        />
-      </CardContent>
-
-      <CreateWorkflowDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => router.push(`/admin/workflows/${id}`)} />
-    </Card>
+        <CreateWorkflowDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={(id) => router.push(`/admin/workflows/${id}`)} />
+      </Card>
+    </section>
   )
 }

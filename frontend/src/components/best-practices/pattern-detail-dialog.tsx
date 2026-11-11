@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InlineError } from "@/components/ui/states"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatCivilDate, formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
@@ -24,8 +25,8 @@ export function PatternDetailDialog({ patternId, onClose }: { patternId: string 
       <DialogContent className="max-h-[92vh] w-[96vw] max-w-4xl overflow-y-auto sm:max-w-4xl">
         {query.data ? <PatternDetailBody pattern={query.data} /> : (
           <>
-            <DialogHeader><DialogTitle>Boa prática</DialogTitle><DialogDescription>Carregando…</DialogDescription></DialogHeader>
-            {query.isError ? <p className="text-sm text-destructive">Não foi possível abrir o padrão.</p> : <Skeleton className="h-64 w-full" />}
+            <DialogHeader><DialogTitle>Boa prática</DialogTitle><DialogDescription>{query.isError ? "Falhou ao abrir." : "Carregando…"}</DialogDescription></DialogHeader>
+            {query.isError ? <InlineError message="Não foi possível abrir o padrão." onRetry={() => void query.refetch()} /> : <Skeleton className="h-64 w-full" />}
           </>
         )}
       </DialogContent>

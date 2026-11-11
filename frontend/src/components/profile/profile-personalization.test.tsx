@@ -82,7 +82,7 @@ describe("Editar perfil (página)", () => {
   it("título, 'Voltar ao perfil', texto de apoio e validação antes de enviar", async () => {
     const { input } = renderPage()
     expect(screen.getByRole("heading", { level: 1, name: "Editar perfil" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Voltar ao perfil/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Perfil" })).toBeInTheDocument()
     expect(screen.getByText(/Esse nome será usado pela INIA e na interface. Seu nome cadastrado pela empresa não será alterado./)).toBeInTheDocument()
     expect(input).toHaveFocus()
     const save = screen.getByRole("button", { name: "Salvar alterações" })
@@ -138,7 +138,7 @@ describe("Editar perfil (página)", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
     expect(service.push).not.toHaveBeenCalled()
     expect(input).toHaveValue("Rascunho")
-    fireEvent.click(screen.getByRole("button", { name: /Voltar ao perfil/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Perfil" }))
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Descartar" }))
     expect(service.push).toHaveBeenCalledWith("/operator")
     expect(service.updateMyProfile).not.toHaveBeenCalled()

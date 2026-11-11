@@ -127,13 +127,29 @@ describe("a cada N minutos ou horas", () => {
 })
 
 describe("a cada N dias", () => {
+  // Relógio fixo às 22:30 de 10/11 em São Paulo (01:30 de 11/11 em UTC): o início padrão é a data CIVIL de quem está vendo, nunca a
+  // de UTC — e o teste não depende do dia nem do fuso da máquina em que roda.
+  const originalTimeZone = process.env.TZ
+  beforeEach(() => {
+    process.env.TZ = "America/Sao_Paulo"
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-11-11T01:30:00.000Z"))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    if (originalTimeZone === undefined) delete process.env.TZ
+    else process.env.TZ = originalTimeZone
+  })
+
   it("escolhe dias, data de início e horário", async () => {
     renderSelect({ kind: "MANUAL" })
     pick(/A cada N dias/)
+    expect(current).toMatchObject({ frequency: { type: "EVERY_N_DAYS", startDate: "2026-11-10" } })
     fireEvent.change(screen.getByLabelText("A cada quantos dias"), { target: { value: "3" } })
-    fireEvent.change(screen.getByLabelText("A partir de"), { target: { value: "2026-11-10" } })
+    fireEvent.click(screen.getByLabelText("A partir de"))
+    fireEvent.click(screen.getByRole("button", { name: /20 de novembro de 2026/ }))
     fireEvent.change(screen.getByLabelText("Horário 1"), { target: { value: "22:00" } })
-    expect(current).toEqual({ kind: "CALENDAR", times: ["22:00"], frequency: { type: "EVERY_N_DAYS", days: 3, startDate: "2026-11-10" } })
+    expect(current).toEqual({ kind: "CALENDAR", times: ["22:00"], frequency: { type: "EVERY_N_DAYS", days: 3, startDate: "2026-11-20" } })
     expect(summary()).toHaveTextContent("A cada 3 dias às 22:00")
     fireEvent.change(screen.getByLabelText("A cada quantos dias"), { target: { value: "" } })
     expect(screen.getByRole("alert")).toHaveTextContent("Informe de 1 a 90 dias.")

@@ -105,7 +105,7 @@ describe.skipIf(!ENABLED)("applyEmployeeStatusSnapshot — histórico de situaç
     }
     await applyEmployeeStatusSnapshot(db, { organizationId: ORG, personId: PERSON, status: "FERIAS", effectiveFrom: "2026-09-16", effectiveTo: "2026-09-18", observedAt: new Date("2026-09-16T09:00:00-03:00"), source: "TEST", timeZone: TZ })
     const window = resolveTimeWindow({ kind: "ROLLING_DAYS", days: 5 }, new Date("2026-09-18T18:00:00-03:00"), TZ) // 14/09 → 18/09
-    const during = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: [PERSON], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ })).get(PERSON)!
+    const during = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: [PERSON], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ }, { organizationId: ORG })).get(PERSON)!
     expect(during.daysWithData).toBe(2)
     expect(during.value).toBe(410) // 900 de 16/09 fora — sem apagar nada
     expect(during.eligibility).toMatchObject({ businessDays: 5, eligibleDays: 2, excludedByStatus: { FERIAS: 3 } })
@@ -114,7 +114,7 @@ describe.skipIf(!ENABLED)("applyEmployeeStatusSnapshot — histórico de situaç
     expect(Number(stillThere.rows[0]!.n)).toBe(3)
     // Correção: férias começaram na quinta (17/09) — a medição de 16/09 volta a contar, intacta.
     await applyEmployeeStatusSnapshot(db, { organizationId: ORG, personId: PERSON, status: "FERIAS", effectiveFrom: "2026-09-17", effectiveTo: "2026-09-18", observedAt: new Date("2026-09-17T09:00:00-03:00"), source: "TEST", timeZone: TZ })
-    const corrected = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: [PERSON], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ })).get(PERSON)!
+    const corrected = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: [PERSON], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: TZ }, { organizationId: ORG })).get(PERSON)!
     expect(corrected.daysWithData).toBe(3)
     expect(corrected.eligibility?.eligibleDays).toBe(3)
     expect(Math.round(corrected.value!)).toBe(573) // (400 + 420 + 900) ÷ 3

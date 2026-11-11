@@ -30,7 +30,8 @@ function png(width: number, height: number): Buffer {
   data.write("IHDR", 12, "latin1")
   data.writeUInt32BE(width, 16)
   data.writeUInt32BE(height, 20)
-  return data
+  // IEND: o removedor de metadados recusa PNG que não fecha (nunca grava os bytes originais).
+  return Buffer.concat([data, Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82])])
 }
 const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T12:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 

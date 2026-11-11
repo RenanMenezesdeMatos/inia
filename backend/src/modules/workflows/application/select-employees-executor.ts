@@ -160,7 +160,7 @@ export async function runEmployeeSelection(
   criterion: EmployeeSelectionCriterion,
   candidateIds: string[],
   now: Date,
-  options: EvaluationOptions = {},
+  options: EvaluationOptions,
 ): Promise<{ memberIds: string[]; notMatchedCount: number; noDataCount: number }> {
   if (!isDataCondition(criterion)) {
     throw new Error(`Critério de seleção sem consulta configurada (histórico ou performance).`)
@@ -245,10 +245,10 @@ function toMemberEvidence(result: OperationalWindowResult, window: TimeWindow, t
  * `resolveHistoricalResult` candidato a candidato (fechamentos mensais, volume pequeno). Quem
  * não tem valor válido no período fica fora — nunca entra como "pior" por omissão.
  */
-async function resolveValues(db: Database, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, timeZone: string): Promise<ValueRow[]> {
+async function resolveValues(db: Database, organizationId: string, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, timeZone: string): Promise<ValueRow[]> {
   if (isOperationalRanking(ranking)) {
     const window = resolveTimeWindow(ranking.period!, now, timeZone)
-    const bySubject = await resolveOperationalWindowBySubject(db, { indicatorCode: ranking.indicatorCode!, subjectIds: candidateIds, window, aggregation: ranking.aggregation as MeasurementAggregation, expectedDays: businessDaysInWindow(window, timeZone), timeZone })
+    const bySubject = await resolveOperationalWindowBySubject(db, { indicatorCode: ranking.indicatorCode!, subjectIds: candidateIds, window, aggregation: ranking.aggregation as MeasurementAggregation, expectedDays: businessDaysInWindow(window, timeZone), timeZone }, { organizationId })
     // Cobertura abaixo do mínimo configurado = fora do ranking como SEM DADOS (nunca "pior" por omissão).
     return candidateIds.flatMap((employeeId) => {
       const result = bySubject.get(employeeId)
@@ -258,7 +258,7 @@ async function resolveValues(db: Database, ranking: EmployeeRankingConfig, candi
   }
   const query: HistoricalQuery = { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: ranking.indicatorCode, aggregation: ranking.aggregation, source: ranking.source, period: ranking.period }
   const resolved = await mapWithConcurrency(candidateIds, CANDIDATE_EVALUATION_CONCURRENCY, async (employeeId) => {
-    const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
+    const result = await resolveHistoricalResult(db, [employeeId], query, now, { organizationId, timeZone })
     return { employeeId, value: result.kind === "aggregate" ? result.value : null }
   })
   return resolved.filter((row): row is ValueRow => row.value !== null)
@@ -273,15 +273,15 @@ async function resolveValues(db: Database, ranking: EmployeeRankingConfig, candi
  * `compareTo: PREVIOUS_PERIOD`, candidato a candidato. Os 3 motivos de SEM DADOS — atual
  * ausente, anterior ausente, anterior=0 — deixam o candidato fora do ranking.
  */
-async function resolveChangeValues(db: Database, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, timeZone: string): Promise<ChangeRow[]> {
+async function resolveChangeValues(db: Database, organizationId: string, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, timeZone: string): Promise<ChangeRow[]> {
   if (isOperationalRanking(ranking)) {
     const window = resolveTimeWindow(ranking.period!, now, timeZone)
     const previousWindow = resolvePreviousTimeWindow(ranking.period!, now, timeZone)
-    const definition = await loadIndicatorOperationalDefinition(db, ranking.indicatorCode!)
+    const definition = await loadIndicatorOperationalDefinition(db, organizationId, ranking.indicatorCode!)
     const input = { indicatorCode: ranking.indicatorCode!, subjectIds: candidateIds, aggregation: ranking.aggregation as MeasurementAggregation, timeZone }
     const [current, previous] = await Promise.all([
-      resolveOperationalWindowBySubject(db, { ...input, window, expectedDays: businessDaysInWindow(window, timeZone) }, definition ?? undefined),
-      resolveOperationalWindowBySubject(db, { ...input, window: previousWindow, expectedDays: businessDaysInWindow(previousWindow, timeZone) }, definition ?? undefined),
+      resolveOperationalWindowBySubject(db, { ...input, window, expectedDays: businessDaysInWindow(window, timeZone) }, definition ?? { organizationId }),
+      resolveOperationalWindowBySubject(db, { ...input, window: previousWindow, expectedDays: businessDaysInWindow(previousWindow, timeZone) }, definition ?? { organizationId }),
     ])
     return candidateIds.flatMap((employeeId) => {
       const now_ = current.get(employeeId)
@@ -302,7 +302,7 @@ async function resolveChangeValues(db: Database, ranking: EmployeeRankingConfig,
     compareTo: { kind: "PREVIOUS_PERIOD", changeMode: "PERCENT" },
   }
   const resolved = await mapWithConcurrency(candidateIds, CANDIDATE_EVALUATION_CONCURRENCY, async (employeeId) => {
-    const result = await resolveHistoricalResult(db, [employeeId], query, now, { timeZone })
+    const result = await resolveHistoricalResult(db, [employeeId], query, now, { organizationId, timeZone })
     if (result.kind !== "aggregate" || result.value === null || result.previousValue === undefined || result.comparisonValue === undefined) return null
     return { employeeId, previousValue: result.previousValue, currentValue: result.value, change: result.comparisonValue }
   })
@@ -454,7 +454,7 @@ export type RankingResult = {
  * de IA (Parte 4 original). `count` é SEMPRE por balde (Parte 26: sem partição, 1 balde = mesmo
  * comportamento de sempre; com partição, N por Grupo/Subgrupo, nunca N total).
  */
-export async function runEmployeeRanking(db: Database, organizationId: string, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, options: EvaluationOptions = {}): Promise<RankingResult> {
+export async function runEmployeeRanking(db: Database, organizationId: string, ranking: EmployeeRankingConfig, candidateIds: string[], now: Date, options: Omit<EvaluationOptions, "organizationId"> = {}): Promise<RankingResult> {
   const timeZone = options.timeZone ?? DEFAULT_ORGANIZATION_TIMEZONE
   if (!ranking.aggregation) throw new Error(`Configuração de ranking sem agregação (Média, Mínimo ou Máximo).`)
   if (!ranking.period) throw new Error(`Configuração de ranking sem período.`)
@@ -476,7 +476,7 @@ export async function runEmployeeRanking(db: Database, organizationId: string, r
     if (ranking.period.kind === "CLOSURES") {
       throw new Error(`"Evolução"/"Queda" não está disponível para "Últimos N fechamentos" — escolha um período com comparação ao período anterior suportada.`)
     }
-    const changeRows = await resolveChangeValues(db, ranking, candidateIds, now, timeZone)
+    const changeRows = await resolveChangeValues(db, organizationId, ranking, candidateIds, now, timeZone)
     const direction = await resolveRankingDirection(db, organizationId, ranking)
     if (direction === null || direction === "TARGET") {
       throw new Error(
@@ -513,7 +513,7 @@ export async function runEmployeeRanking(db: Database, organizationId: string, r
     if (direction === null || direction === "TARGET") {
       throw new Error(`Quartil operacional não está disponível para este indicador — precisa de uma direção de desempenho oficial HIGHER ou LOWER (indicadores TARGET não têm regra de classificação).`)
     }
-    const valueRows = await resolveValues(db, ranking, candidateIds, now, timeZone)
+    const valueRows = await resolveValues(db, organizationId, ranking, candidateIds, now, timeZone)
     const byEmployeeId = new Map(valueRows.map((row) => [row.employeeId, row]))
     let rankedCount = 0
     let noDataCount = 0
@@ -539,7 +539,7 @@ export async function runEmployeeRanking(db: Database, organizationId: string, r
   if (ranking.selection !== "HIGHEST" && ranking.selection !== "LOWEST" && ranking.selection !== "BEST" && ranking.selection !== "WORST") {
     throw new Error(`Configuração de ranking de Valor com uma direção de seleção inválida.`)
   }
-  const valueRows = await resolveValues(db, ranking, candidateIds, now, timeZone)
+  const valueRows = await resolveValues(db, organizationId, ranking, candidateIds, now, timeZone)
   const usesDirection = ranking.selection === "BEST" || ranking.selection === "WORST"
   const direction = usesDirection ? await resolveRankingDirection(db, organizationId, ranking) : null
   if (usesDirection && (direction === null || direction === "TARGET")) {

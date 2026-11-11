@@ -3,13 +3,14 @@
 import { useCallback, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Download, FileWarning, Paperclip } from "lucide-react"
+import { Download, FileWarning, Paperclip } from "lucide-react"
 import { toast } from "sonner"
 
 import { KnowledgeArticleContent } from "@/components/admin/knowledge/knowledge-article-content"
 import { SourceTypeBadge } from "@/components/admin/knowledge/knowledge-meta"
 import { DOCUMENT_HTML_CLASS, formatFileSize } from "@/components/admin/knowledge/knowledge-visuals"
 import { KnowledgeReadingView, READING_VIEW_NOTE, ReadingModeSwitch, type ReadingMode } from "@/components/knowledge-reading/knowledge-reading-view"
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -41,9 +42,7 @@ const KnowledgePdfViewer = dynamic(() => import("@/components/admin/knowledge/kn
 function BackButton() {
   const router = useRouter()
   return (
-    <Button type="button" variant="ghost" size="sm" className="-ml-2" onClick={() => router.back()}>
-      <ArrowLeft /> Voltar
-    </Button>
+    <BackLink onClick={() => router.back()} label="Voltar" />
   )
 }
 

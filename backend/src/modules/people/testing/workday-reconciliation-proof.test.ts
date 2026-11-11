@@ -305,7 +305,7 @@ describe.skipIf(!ENABLED)("PLANEJADO × OBSERVADO — reconciliação, provision
     expect(eligibility).toMatchObject({ eligibleDays: 1, eligibleDates: ["2026-09-15"], excludedByScheduleException: { BANCO_HORAS: 1, AJUSTE_ESCALA: 1 } })
     expect(eligibility.observed).toMatchObject({ justifiedAbsenceDays: 1, workedDataMissingDays: 1, unjustifiedAbsenceDays: 0 })
     // Terça continua esperada como trabalhada e SEM medição: Condition devolve NO_VALUE, nunca zero.
-    const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_VOL", aggregation: "SUM", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 3 } }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { timeZone: TZ })
+    const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_VOL", aggregation: "SUM", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 3 } }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(condition?.branch).toBe("no_data")
     expect(condition?.evaluation.reason).toBe("NO_VALUE")
     // Idempotente: repetir a mesma decisão devolve o estado; "corrigir planejamento" já decidido é recusado.
@@ -338,22 +338,22 @@ describe.skipIf(!ENABLED)("PLANEJADO × OBSERVADO — reconciliação, provision
     const qualId = (await db.query<{ id: string }>(`select id from indicator_definitions where organization_id = $1 and code = 'TH_QUAL'`, [ORG])).rows[0]!.id
     await expect(updateIndicatorDefinition(db, ORG, qualId, { unjustifiedAbsencePolicy: "ZERO_CONTRIBUTION" })).rejects.toMatchObject({ code: "INDICATOR_INVALID_CONFIGURATION" })
     const window3 = { kind: "INDICATOR_THRESHOLD_COUNT" as const, aggregation: "SUM" as const, source: "MEASUREMENT" as const, period: { kind: "ROLLING_DAYS" as const, days: 3 } }
-    const production = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_VOL" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { timeZone: TZ })
+    const production = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_VOL" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { organizationId: ORG, timeZone: TZ })
     // Produção = 0 é resultado CONHECIDO (não "sem dados"): a falta injustificada penaliza a produção.
     expect(production?.branch).toBe("false")
     expect(production?.evaluation.value).toBe(0)
-    const quality = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_QUAL", aggregation: "WEIGHTED_AVERAGE" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { timeZone: TZ })
+    const quality = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_QUAL", aggregation: "WEIGHTED_AVERAGE" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(quality?.branch).toBe("no_data")
     expect(quality?.evaluation.reason).toBe("NO_VALUE")
     // Ranking/quartil: Dani entra na população de Produção com 0 (resultado conhecido), sem linha em indicator_measurements.
-    const bySubject = await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_VOL", subjectIds: [ids.d, ids.e], window: WEEK, aggregation: "SUM", timeZone: TZ, now: NOW, expectedDays: 3 })
+    const bySubject = await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_VOL", subjectIds: [ids.d, ids.e], window: WEEK, aggregation: "SUM", timeZone: TZ, now: NOW, expectedDays: 3 }, { organizationId: ORG })
     expect(bySubject.get(ids.d)).toMatchObject({ value: 0, daysWithData: 1, unjustifiedAbsence: { days: 1, policy: "ZERO_CONTRIBUTION", zeroContributionDays: 1 } })
     expect(bySubject.get(ids.e)?.value).toBe(60)
     expect(await rawCount()).toBe(raw)
     // Atestado chega depois: FALTA INJUSTIFICADA → ATESTADO. A contribuição zero deixa de existir; nada apagado.
     const atestado = await classifyForTeam(db, analytics, sup, { personId: ids.d, date: "2026-09-14", classification: "JUSTIFIED_ABSENCE", reasonCode: "ATESTADO" })
     expect(atestado.current).toMatchObject({ classification: "JUSTIFIED_ABSENCE", reasonCode: "ATESTADO", label: "Ausência justificada · Atestado" })
-    const afterAtestado = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_VOL" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { timeZone: TZ })
+    const afterAtestado = await evaluateDataCondition(db, { historicalQuery: { ...window3, indicatorCode: "TH_VOL" }, comparator: "GT", thresholdNumeric: 0 }, { operatorId: ids.d, subjectIds: [ids.d] }, NOW, { organizationId: ORG, timeZone: TZ })
     expect(afterAtestado?.branch).toBe("no_data")
     expect((await resolveEligibleDaysBySubject(db, [ids.d], WEEK, TZ, { now: NOW })).get(ids.d)).toMatchObject({ eligibleDays: 1, excludedByScheduleException: { ATESTADO: 1, AJUSTE_ESCALA: 1 } })
     expect(await rawCount()).toBe(raw)
@@ -657,7 +657,7 @@ describe.skipIf(!ENABLED)("PLANEJADO × OBSERVADO — reconciliação, provision
   it("nenhuma medição bruta foi apagada em toda a prova; valores só olham dias elegíveis", async () => {
     const rawAfter = await rawCount()
     expect(rawAfter).toBe(rawBefore + 6) // só a carga atrasada de A e as 5 medições dos casos legados entraram; nada saiu
-    const values = await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_VOL", subjectIds: [ids.a, ids.c, ids.e], window: WEEK, aggregation: "SUM", timeZone: TZ, now: NOW, expectedDays: 3 })
+    const values = await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_VOL", subjectIds: [ids.a, ids.c, ids.e], window: WEEK, aggregation: "SUM", timeZone: TZ, now: NOW, expectedDays: 3 }, { organizationId: ORG })
     expect(values.get(ids.a)).toMatchObject({ value: 99, daysWithData: 2 }) // 52 + 47 (qua virou day off — sem medição mesmo)
     expect(values.get(ids.c)).toBeUndefined() // INSS: fora, medição ignorada, não apagada
     expect((await db.query<{ c: number }>(`select count(*)::int c from indicator_measurements where subject_id = $1`, [ids.c])).rows[0]!.c).toBe(1)

@@ -1,8 +1,7 @@
 "use client"
 
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -24,9 +23,7 @@ import { errorCode, errorMessage, latestPublishedVersion } from "./shared/helper
 export function PolicyDetailPage({ policyId }: { policyId: string }) {
   const policyQuery = usePolicyQuery(policyId)
   const back = (
-    <Link href="/admin/intervention-policies" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <ArrowLeft className="size-4" /> Políticas de acompanhamento
-    </Link>
+    <BackLink href="/admin/intervention-policies" label="Políticas de acompanhamento" />
   )
   if (policyQuery.isPending) {
     return (

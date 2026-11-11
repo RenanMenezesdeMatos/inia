@@ -5,7 +5,8 @@ import { Bot, BookOpen, CalendarClock, Plus, ShieldBan, UserRound, Zap } from "l
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
@@ -198,83 +199,84 @@ export function AgentsPage() {
   const canManageInactive = useCurrentUserQuery().data?.access.capabilities.canManageInactiveAgents ?? false
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Agentes</CardTitle>
-            <CardDescription>Configure nome, objetivo, contexto e quais bases de conhecimento cada agente consulta.</CardDescription>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        icon={Bot}
+        title="Agentes"
+        description="Configure nome, objetivo, contexto e quais bases de conhecimento cada agente consulta."
+        actions={
           <Button asChild>
             <Link href="/admin/agents/new">
               <Plus /> Novo agente
             </Link>
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ListToolbar
-          search={
-            <ListSearchInput
-              value={list.filters.search}
-              onChange={(value) => list.setFilter("search", value)}
-              placeholder="Buscar por nome, objetivo ou descrição"
-              ariaLabel="Buscar agente"
-              pending={list.isSearchPending}
+        }
+      />
+      <Card>
+        <CardContent className="space-y-4">
+          <ListToolbar
+            search={
+              <ListSearchInput
+                value={list.filters.search}
+                onChange={(value) => list.setFilter("search", value)}
+                placeholder="Buscar por nome, objetivo ou descrição"
+                ariaLabel="Buscar agente"
+                pending={list.isSearchPending}
+              />
+            }
+            viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+            hasActiveFilters={list.hasActiveFilters}
+            onClearFilters={list.resetFilters}
+          >
+            <ListMultiSelectFilter label="Tipo" values={list.filters.agentType} onChange={(values) => list.setFilter("agentType", values)} options={AGENT_TYPE_OPTIONS} />
+            {canManageInactive ? (
+              <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+            ) : null}
+            <ListOrgScopeFilter
+              teams={teamsQuery.data}
+              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
             />
-          }
-          viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-          hasActiveFilters={list.hasActiveFilters}
-          onClearFilters={list.resetFilters}
-        >
-          <ListMultiSelectFilter label="Tipo" values={list.filters.agentType} onChange={(values) => list.setFilter("agentType", values)} options={AGENT_TYPE_OPTIONS} />
-          {canManageInactive ? (
-            <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
-          ) : null}
-          <ListOrgScopeFilter
-            teams={teamsQuery.data}
-            value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-            onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
-          />
-          <ListSelectFilter
-            value={list.filters.knowledgeDocumentId}
-            onChange={(value) => list.setFilter("knowledgeDocumentId", value)}
-            options={(knowledgeQuery.data ?? []).map((document) => ({ value: document.id, label: document.title }))}
-            allLabel="Qualquer base de conhecimento"
-            ariaLabel="Filtrar por base de conhecimento"
-            className="sm:max-w-64"
-          />
-          <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
-        </ListToolbar>
+            <ListSelectFilter
+              value={list.filters.knowledgeDocumentId}
+              onChange={(value) => list.setFilter("knowledgeDocumentId", value)}
+              options={(knowledgeQuery.data ?? []).map((document) => ({ value: document.id, label: document.title }))}
+              allLabel="Qualquer base de conhecimento"
+              ariaLabel="Filtrar por base de conhecimento"
+              className="sm:max-w-64"
+            />
+            <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
+          </ListToolbar>
 
-        <AdminListView
-          state={list}
-          query={pageQuery}
-          errorMessage="Não foi possível carregar os agentes."
-          empty={{
-            icon: Bot,
-            title: "Nenhum agente cadastrado ainda",
-            description: "Crie o primeiro agente para começar a gerar feedbacks e diagnósticos.",
-            action: (
-              <Button asChild>
-                <Link href="/admin/agents/new">
-                  <Plus /> Novo agente
-                </Link>
-              </Button>
-            ),
-          }}
-          noResultsTitle="Nenhum agente corresponde à busca ou aos filtros"
-          itemLabel={["agente", "agentes"]}
-          renderList={(agents) => <AgentsTable agents={agents} />}
-          renderCards={(agents) => (
-            <ListCardGrid>
-              {agents.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
-              ))}
-            </ListCardGrid>
-          )}
-        />
-      </CardContent>
-    </Card>
+          <AdminListView
+            state={list}
+            query={pageQuery}
+            errorMessage="Não foi possível carregar os agentes."
+            empty={{
+              icon: Bot,
+              title: "Nenhum agente cadastrado ainda",
+              description: "Crie o primeiro agente para começar a gerar feedbacks e diagnósticos.",
+              action: (
+                <Button asChild>
+                  <Link href="/admin/agents/new">
+                    <Plus /> Novo agente
+                  </Link>
+                </Button>
+              ),
+            }}
+            noResultsTitle="Nenhum agente corresponde à busca ou aos filtros"
+            itemLabel={["agente", "agentes"]}
+            renderList={(agents) => <AgentsTable agents={agents} />}
+            renderCards={(agents) => (
+              <ListCardGrid>
+                {agents.map((agent) => (
+                  <AgentCard key={agent.id} agent={agent} />
+                ))}
+              </ListCardGrid>
+            )}
+          />
+        </CardContent>
+      </Card>
+    </section>
   )
 }

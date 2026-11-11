@@ -11,12 +11,13 @@ import { GazeLayer } from "./behavior/gaze"
 import { GestureScheduler } from "./behavior/gesture-scheduler"
 import { HeadMotionLayer } from "./behavior/head-motion"
 import { PostureLayer } from "./behavior/posture"
+import { SecondaryMotionLayer } from "./behavior/secondary-motion"
 import { createBlendshapeWeights, createFaceMixInput, mixFace } from "./face-mixer"
 import type { GestureCommand } from "./gesture-catalog"
 import type { Rng } from "./random"
 import { createRng } from "./random"
 import { damp, writeEffectiveTuning } from "./tuning"
-import type { AvatarConversationState, AvatarDriver, AvatarFrameOutput, AvatarTuning } from "./types"
+import type { AvatarConversationState, AvatarDriver, AvatarFrameOutput, AvatarMotionProfile, AvatarTuning, BoneOffset } from "./types"
 import { DEFAULT_AVATAR_TUNING } from "./types"
 
 /**
@@ -34,6 +35,7 @@ import { DEFAULT_AVATAR_TUNING } from "./types"
 
 export type BehaviorFrame = AvatarFrameOutput & {
   bones: BoneOffsets
+  hair: BoneOffset
   /** Gesto a tocar/parar NESTE quadro (null na imensa maioria dos quadros). */
   gesture: GestureCommand | null
   /** A fala ouvida neste quadro (mesmo objeto a cada quadro). */
@@ -48,7 +50,15 @@ export type BehaviorControllerOptions = {
    * (`scripts/dev/lipsync-dynamics.ts`): as piscadas voltam a ser só aleatórias + de oportunidade.
    */
   prosodicBlinks?: boolean
+  /**
+   * Perfil de movimento (padrão "classic" = comportamento da Mentora original, quadro a quadro igual).
+   * "natural" soma o movimento secundário (`behavior/secondary-motion.ts`) e as piscadas variadas.
+   */
+  motionProfile?: AvatarMotionProfile
 }
+
+/** Semente do gerador próprio do movimento secundário (não consome o gerador das outras camadas). */
+const SECONDARY_SEED_SALT = 0x5ec0da27
 
 /** Passo máximo por quadro: aba que volta do segundo plano não "teletransporta" a animação. */
 export const MAX_FRAME_SECONDS = 0.1
@@ -66,6 +76,8 @@ const PHRASE_END_BLINK_DELAY_SECONDS = 0.04
 export class BehaviorController {
   private readonly seed: number
   private readonly prosodicBlinks: boolean
+  private profile: AvatarMotionProfile
+  private secondary: SecondaryMotionLayer | null = null
   private rng: Rng
   private readonly ctx: BehaviorContext
   private readonly frame: BehaviorFrame
@@ -99,6 +111,8 @@ export class BehaviorController {
   constructor(options: BehaviorControllerOptions = {}) {
     this.seed = options.seed ?? 0x1a1a2026
     this.prosodicBlinks = options.prosodicBlinks ?? true
+    this.profile = options.motionProfile ?? "classic"
+    this.applyProfile()
     this.rng = createRng(this.seed)
     this.head = new HeadMotionLayer(this.rng)
     this.expression = new ExpressionLayer(this.rng)
@@ -114,7 +128,7 @@ export class BehaviorController {
       events: createFrameEvents(),
       userLevel: 0,
     }
-    this.frame = { blendshapes: createBlendshapeWeights(), bones: createBoneOffsets(), gesture: null, speech: this.ctx.speech }
+    this.frame = { blendshapes: createBlendshapeWeights(), bones: createBoneOffsets(), hair: { x: 0, y: 0, z: 0 }, gesture: null, speech: this.ctx.speech }
   }
 
   /** Volta ao início (mesma semente): usado ao remontar a cena e pelo laboratório. */
@@ -130,6 +144,7 @@ export class BehaviorController {
     this.posture.reset()
     this.turn.reset()
     this.gestures.reset()
+    this.applyProfile()
     this.started = false
     this.previousSpeaking = false
     this.awaitingFirstPhrase = false
@@ -148,6 +163,23 @@ export class BehaviorController {
    * Para onde ela fica voltada, em graus (+ = para a esquerda dela). A tela decide (ex.: no palco do feedback, para o cartão
    * que ela apresenta ou para a pessoa); a virada é animada pela camada `BodyTurnLayer` — olhos, cabeça e depois o corpo.
    */
+  /** Troca o perfil de movimento (o laboratório compara os dois no mesmo modelo). Sem mudança = sem efeito. */
+  setMotionProfile(profile: AvatarMotionProfile): void {
+    if (profile === this.profile) return
+    this.profile = profile
+    this.applyProfile()
+  }
+
+  get motionProfile(): AvatarMotionProfile {
+    return this.profile
+  }
+
+  private applyProfile(): void {
+    const natural = this.profile === "natural"
+    this.blink.natural = natural
+    this.secondary = natural ? new SecondaryMotionLayer(createRng((this.seed ^ SECONDARY_SEED_SALT) >>> 0)) : null
+  }
+
   setFacing(degrees: number): void {
     this.facingDeg = Number.isFinite(degrees) ? degrees : 0
   }
@@ -191,6 +223,8 @@ export class BehaviorController {
     }
     this.gaze.update(ctx, this.blink)
     this.head.update(ctx, this.gaze, this.frame.bones)
+    if (this.secondary) this.secondary.update(ctx, this.frame.bones, this.frame.hair)
+    else this.frame.hair.x = this.frame.hair.y = this.frame.hair.z = 0
     this.expression.update(ctx, this.faceInput.expression)
     const blink = this.blink.update(ctx)
     this.frame.gesture = this.gestures.update(ctx)

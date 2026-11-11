@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2, Pause, Play, RefreshCw, Save, Trash2 } from "lucide-react"
+import { Loader2, Pause, Play, RefreshCw, Save, Trash2 } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -117,11 +117,7 @@ function FeedEditor({ feed, onHold, tab, onTabChange }: { feed: LoadedFeed; onHo
       {prompt.dialog}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <Button variant="ghost" size="sm" asChild className="-ml-2">
-            <Link href={feed.source ? `/admin/data-hub/sources/${feed.source.id}` : "/admin/data-hub?tab=feeds"}>
-              <ArrowLeft /> {feed.source?.name ?? "Feeds"}
-            </Link>
-          </Button>
+          <BackLink href={feed.source ? `/admin/data-hub/sources/${feed.source.id}` : "/admin/data-hub?tab=feeds"} label={feed.source?.name ?? "Feeds"} />
           <h1 className="text-xl font-semibold tracking-tight">{feed.name}</h1>
           <div className="flex flex-wrap items-center gap-1.5">
             <FeedStatusBadge status={feed.status} />

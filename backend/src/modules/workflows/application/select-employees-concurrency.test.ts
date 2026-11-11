@@ -41,7 +41,7 @@ describe("Selecionar colaboradores — avaliação por candidato com concorrênc
   it("critério de seleção: nunca mais que o limite em andamento; mesma coleção, na ordem dos candidatos", async () => {
     tracker.peak = 0
     const criterion: EmployeeSelectionCriterion = { comparator: "GTE", thresholdNumeric: 80, historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "QUALIDADE", aggregation: "AVERAGE", period: { kind: "ROLLING_DAYS", days: 30 } } }
-    const result = await runEmployeeSelection(db, criterion, candidates, new Date("2026-10-01T12:00:00Z"))
+    const result = await runEmployeeSelection(db, criterion, candidates, new Date("2026-10-01T12:00:00Z"), { organizationId: "org-1" })
     expect(tracker.peak).toBe(CANDIDATE_EVALUATION_CONCURRENCY)
     expect(result.memberIds).toEqual(candidates.filter((_, index) => index % 3 === 0))
     expect(result.notMatchedCount).toBe(100)

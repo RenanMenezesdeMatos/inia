@@ -129,6 +129,17 @@ async function recheckHiddenValuesUnderLock(client: Queryable, current: DataSour
   await refuseOtherHiddenValues(client, current, next ? sourceHiddenValues(next, current.config as SourceConfig) : sourceHiddenValues(stored))
 }
 
+/**
+ * A credencial vale só para o destino em que foi provada (ou para o qual foi digitada). Entre a leitura de antes (que decidiu o destino,
+ * a prova e a revogação) e a transação de escrita, outra pessoa pode ter trocado o destino da fonte; com a linha travada, confere que o
+ * destino gravado agora é o mesmo da leitura. Senão, recusa sem gravar: gravar a credencial (ou devolver o destino antigo por cima da
+ * troca) ligaria uma credencial a um destino para o qual ela não foi provada.
+ */
+function refuseDestinationChangedSince(snapshot: DataSourceRow, locked: DataSourceRow): void {
+  if (secretTargetOf(locked.config as SourceConfig) === secretTargetOf(snapshot.config as SourceConfig)) return
+  throw new DomainError("Outra pessoa mudou o destino desta fonte enquanto a alteração era conferida. Abra a fonte de novo, confira o destino atual e informe a credencial outra vez.", "DATA_SOURCE_DESTINATION_CHANGED", 409)
+}
+
 async function refuseOtherHiddenValues(db: Queryable, current: DataSourceRow, fields: string[]): Promise<void> {
   const feeds = (await listFeedsOfSource(db, current.organizationId, current.id)).filter((feed) => feedHasHiddenValues(feed.connectorConfig))
   if (fields.length === 0 && feeds.length === 0) return
@@ -172,6 +183,7 @@ export async function updateSource(ctx: DataHubContext, organizationId: string, 
   // guardada para o destino novo, e uma falha na troca deixava os dois assim, sem registro. Quem lê vê o par antigo ou o novo.
   await inTransaction(ctx.db, async (client) => {
     const locked = await assertConfigStillUnlocked(ctx, client, { organizationId, sourceId, session, route: "PATCH /sources/:id" })
+    refuseDestinationChangedSince(current, locked)
     if (recheckHiddenValues) await recheckHiddenValuesUnderLock(client, current, config, locked)
     await client.query(`update data_sources set name = $2, description = $3, config = $4, updated_by = $5, updated_at = now(), connection_health = case when $6 then 'UNKNOWN' else connection_health end where id = $1`, [
       sourceId,
@@ -211,7 +223,10 @@ export async function rotateSourceSecrets(ctx: DataHubContext, organizationId: s
   const recheckHiddenValues = await refuseCredentialChangeOverHiddenValues(ctx, source, config, session)
   const proof = await verifyNewCredential(ctx, source, config, secrets, identified)
   await inTransaction(ctx.db, async (client) => {
-    if (recheckHiddenValues) await recheckHiddenValuesUnderLock(client, source, null, await lockSource(client, organizationId, sourceId))
+    // Sempre trava: a credencial foi provada no destino lido antes da prova, e só pode ser gravada se ele ainda for o da fonte.
+    const locked = await lockSource(client, organizationId, sourceId)
+    refuseDestinationChangedSince(source, locked)
+    if (recheckHiddenValues) await recheckHiddenValuesUnderLock(client, source, null, locked)
     const stored = await storeSecrets(ctx, source, config, secrets, actorId, false, { db: client })
     // A credencial testada é a que vale inteira: uma frase-senha antiga não acompanha a chave nova.
     for (const entry of entries) {

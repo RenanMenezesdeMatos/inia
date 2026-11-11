@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -699,89 +700,90 @@ export function IndicatorsPage() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Indicadores</CardTitle>
-            <CardDescription>Catálogo de indicadores: como cada um se comporta (unidade, direção, medição operacional, fechamento oficial), glossário e regras por grupo/subgrupo.</CardDescription>
-          </div>
-          {tab === "list" ? (
+    <section className="space-y-4">
+      <PageHeader
+        icon={Gauge}
+        title="Indicadores"
+        description="Catálogo de indicadores: como cada um se comporta (unidade, direção, medição operacional, fechamento oficial), glossário e regras por grupo/subgrupo."
+        actions={
+          tab === "list" ? (
             <Button onClick={openCreateForm}>
               <Plus /> Novo indicador
             </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
-          <TabsList>
-            <TabsTrigger value="list">Lista</TabsTrigger>
-            <TabsTrigger value="form">Novo indicador</TabsTrigger>
-          </TabsList>
+          ) : null
+        }
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
+            <TabsList>
+              <TabsTrigger value="list">Lista</TabsTrigger>
+              <TabsTrigger value="form">Novo indicador</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="list" className="mt-4 space-y-4">
-            <ListToolbar
-              search={
-                <ListSearchInput
-                  value={list.filters.search}
-                  onChange={(value) => list.setFilter("search", value)}
-                  placeholder="Buscar por código, nome ou unidade"
-                  ariaLabel="Buscar indicador"
-                  pending={list.isSearchPending}
+            <TabsContent value="list" className="mt-4 space-y-4">
+              <ListToolbar
+                search={
+                  <ListSearchInput
+                    value={list.filters.search}
+                    onChange={(value) => list.setFilter("search", value)}
+                    placeholder="Buscar por código, nome ou unidade"
+                    ariaLabel="Buscar indicador"
+                    pending={list.isSearchPending}
+                  />
+                }
+                viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+                hasActiveFilters={list.hasActiveFilters}
+                onClearFilters={list.resetFilters}
+              >
+                <ListMultiSelectFilter label="Direção" values={list.filters.desiredDirection} onChange={(values) => list.setFilter("desiredDirection", values)} options={DIRECTION_OPTIONS} />
+                <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+                <ListBooleanFilter value={list.filters.hasGlossary} onChange={(value) => list.setFilter("hasGlossary", value)} allLabel="Com ou sem glossário" trueLabel="Com glossário" falseLabel="Sem glossário" ariaLabel="Filtrar por glossário" />
+                <ListBooleanFilter value={list.filters.dailySupported} onChange={(value) => list.setFilter("dailySupported", value)} allLabel="Qualquer medição" trueLabel="Com medição diária" falseLabel="Só fechamento oficial" ariaLabel="Filtrar por medição operacional" />
+                <ListMultiSelectFilter label="Periodicidade das regras" values={list.filters.calculationPeriod} onChange={(values) => list.setFilter("calculationPeriod", values)} options={PERIOD_OPTIONS} />
+                <ListOrgScopeFilter
+                  teams={teamsQuery.data}
+                  globalLabel="Com regra para todos os grupos"
+                  value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+                  onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
                 />
-              }
-              viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-              hasActiveFilters={list.hasActiveFilters}
-              onClearFilters={list.resetFilters}
-            >
-              <ListMultiSelectFilter label="Direção" values={list.filters.desiredDirection} onChange={(values) => list.setFilter("desiredDirection", values)} options={DIRECTION_OPTIONS} />
-              <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
-              <ListBooleanFilter value={list.filters.hasGlossary} onChange={(value) => list.setFilter("hasGlossary", value)} allLabel="Com ou sem glossário" trueLabel="Com glossário" falseLabel="Sem glossário" ariaLabel="Filtrar por glossário" />
-              <ListBooleanFilter value={list.filters.dailySupported} onChange={(value) => list.setFilter("dailySupported", value)} allLabel="Qualquer medição" trueLabel="Com medição diária" falseLabel="Só fechamento oficial" ariaLabel="Filtrar por medição operacional" />
-              <ListMultiSelectFilter label="Periodicidade das regras" values={list.filters.calculationPeriod} onChange={(values) => list.setFilter("calculationPeriod", values)} options={PERIOD_OPTIONS} />
-              <ListOrgScopeFilter
-                teams={teamsQuery.data}
-                globalLabel="Com regra para todos os grupos"
-                value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-                onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
+              </ListToolbar>
+
+              <AdminListView
+                state={list}
+                query={pageQuery}
+                errorMessage="Não foi possível carregar os indicadores."
+                empty={{
+                  icon: CalendarRange,
+                  title: "Nenhum indicador cadastrado ainda",
+                  description: "Cadastre os indicadores da operação para configurar regras de cálculo e glossário.",
+                  action: (
+                    <Button onClick={openCreateForm}>
+                      <Plus /> Novo indicador
+                    </Button>
+                  ),
+                }}
+                noResultsTitle="Nenhum indicador corresponde à busca ou aos filtros"
+                itemLabel={["indicador", "indicadores"]}
+                renderList={(indicators) => <IndicatorsTable indicators={indicators} onManage={(indicator) => setManagingId(indicator.id)} />}
+                renderCards={(indicators) => (
+                  <ListCardGrid>
+                    {indicators.map((indicator) => (
+                      <IndicatorCard key={indicator.id} indicator={indicator} onManage={(entry) => setManagingId(entry.id)} />
+                    ))}
+                  </ListCardGrid>
+                )}
               />
-            </ListToolbar>
+            </TabsContent>
 
-            <AdminListView
-              state={list}
-              query={pageQuery}
-              errorMessage="Não foi possível carregar os indicadores."
-              empty={{
-                icon: CalendarRange,
-                title: "Nenhum indicador cadastrado ainda",
-                description: "Cadastre os indicadores da operação para configurar regras de cálculo e glossário.",
-                action: (
-                  <Button onClick={openCreateForm}>
-                    <Plus /> Novo indicador
-                  </Button>
-                ),
-              }}
-              noResultsTitle="Nenhum indicador corresponde à busca ou aos filtros"
-              itemLabel={["indicador", "indicadores"]}
-              renderList={(indicators) => <IndicatorsTable indicators={indicators} onManage={(indicator) => setManagingId(indicator.id)} />}
-              renderCards={(indicators) => (
-                <ListCardGrid>
-                  {indicators.map((indicator) => (
-                    <IndicatorCard key={indicator.id} indicator={indicator} onManage={(entry) => setManagingId(entry.id)} />
-                  ))}
-                </ListCardGrid>
-              )}
-            />
-          </TabsContent>
+            <TabsContent value="form" className="mt-4">
+              <NewIndicatorForm onDone={() => setTab("list")} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
 
-          <TabsContent value="form" className="mt-4">
-            <NewIndicatorForm onDone={() => setTab("list")} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-
-      <IndicatorManagerSheet indicator={managingIndicator} onOpenChange={(open) => (open ? undefined : setManagingId(null))} />
-    </Card>
+        <IndicatorManagerSheet indicator={managingIndicator} onOpenChange={(open) => (open ? undefined : setManagingId(null))} />
+      </Card>
+    </section>
   )
 }

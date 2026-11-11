@@ -3,12 +3,14 @@
 import { useEffect, useRef } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { usePathname, useSearchParams } from "next/navigation"
-import { ChevronLeft, ChevronRight, Lock, MessagesSquare, Mic, SearchX } from "lucide-react"
+import { MessagesSquare, Mic, SearchX } from "lucide-react"
 
 import { ListDateRangeFilter, ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
+import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { AnalyticsEmptyState } from "@/components/analytics/analytics-states"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ErrorState, InlineError } from "@/components/ui/states"
+import { PageHeader } from "@/components/ui/surface"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 import { ApiError } from "@/lib/api/api-client"
@@ -26,10 +28,11 @@ import {
 
 import { ConversationStatus, conversationKindOf, conversationSubjectOf, messagesLabel, OwnerAvatar } from "./conversation-presentation"
 import { ConversationThread } from "./conversation-thread"
+import { ResponseTimeCard } from "./response-time-card"
 
 /** A lista de conversas se atualiza nesse intervalo (conversas em andamento sobem com a última atividade). */
 export const LIST_POLL_INTERVAL_MS = 20_000
-const PAGE_SIZE = 25
+const PAGE_SIZE = 20
 
 type Filters = { search: string; origin: MonitoringOrigin | undefined; status: MonitoringStatus | undefined; teamId: string | undefined; subteamId: string | undefined; period: DateRangeFilter }
 const DEFAULT_FILTERS: Filters = { search: "", origin: undefined, status: undefined, teamId: undefined, subteamId: undefined, period: {} }
@@ -86,20 +89,15 @@ export function AssistantConversationsPage() {
 
   return (
     <section className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-2">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Conversas com a INIA</h1>
-          <p className="text-sm text-muted-foreground">Leia o que os colaboradores do seu escopo conversaram com a INIA — conversas livres, sessões de feedback e recados. Somente leitura.</p>
-        </div>
-        {query.data ? <p className="text-sm text-muted-foreground tabular-nums">{total.toLocaleString("pt-BR")} {total === 1 ? "conversa" : "conversas"}{list.hasActiveFilters ? " com esses filtros" : ""}</p> : null}
-      </header>
+      <PageHeader
+        icon={MessagesSquare}
+        title="Conversas com a INIA"
+        description="Leia o que os colaboradores do seu escopo conversaram com a INIA — conversas livres, sessões de feedback e recados. Somente leitura."
+        aside={query.data ? <p className="text-sm text-muted-foreground tabular-nums">{total.toLocaleString("pt-BR")} {total === 1 ? "conversa" : "conversas"}{list.hasActiveFilters ? " com esses filtros" : ""}</p> : null}
+      />
 
       {forbidden ? (
-        <div className="flex flex-col items-center rounded-xl border p-8 text-center" role="alert">
-          <Lock className="size-8 text-muted-foreground/60" aria-hidden />
-          <p className="mt-3 font-medium">Sem acesso às conversas com a INIA</p>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">Peça a um administrador o papel “Leitor de conversas da INIA”.</p>
-        </div>
+        <ErrorState forbidden message="Sem acesso às conversas com a INIA" description="Peça a um administrador o papel “Leitor de conversas da INIA”." />
       ) : (
         <>
           <ListToolbar
@@ -114,21 +112,22 @@ export function AssistantConversationsPage() {
             <ListDateRangeFilter label="Última atividade" value={list.filters.period} onChange={(value) => list.setFilter("period", value)} />
           </ListToolbar>
 
+          <ResponseTimeCard filters={{ search: list.params.search, origin: list.filters.origin, status: list.filters.status, teamId: list.filters.teamId, subteamId: list.filters.subteamId }} />
+
           <div className="grid min-h-[34rem] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-xl border bg-card lg:h-[calc(100dvh-20rem)] lg:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
             <div className={cn("flex min-h-0 flex-col border-b lg:border-r lg:border-b-0", selectedId ? "hidden lg:flex" : "flex")}>
               {query.isPending ? (
                 <div className="space-y-2 p-3" aria-label="Carregando conversas">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-20 w-full rounded-lg" />)}</div>
               ) : query.isError ? (
-                <div className="space-y-3 p-6 text-center" role="alert">
-                  <p className="text-sm text-destructive">Não foi possível carregar as conversas.</p>
-                  <Button variant="outline" size="sm" onClick={() => void query.refetch()}>Tentar novamente</Button>
-                </div>
+                <InlineError className="justify-center p-6" message="Não foi possível carregar as conversas." onRetry={() => void query.refetch()} />
               ) : query.data.items.length === 0 ? (
                 <div className="p-4"><AnalyticsEmptyState icon={list.hasActiveFilters ? SearchX : MessagesSquare} title={list.hasActiveFilters ? "Nenhuma conversa com esses filtros" : "Nenhuma conversa no seu escopo"} description={list.hasActiveFilters ? undefined : "As conversas aparecem aqui quando os colaboradores falarem com a INIA."} /></div>
               ) : (
                 <>
                   <ConversationList items={query.data.items} selectedId={selectedId} onSelect={select} />
-                  <CompactPager page={list.page} pageSize={list.pageSize} total={total} isFetching={query.isFetching} onPageChange={list.setPage} />
+                  {total > 0 ? (
+                    <ListPagination stacked className="px-4 pb-3" page={list.page} pageSize={list.pageSize} total={total} isFetching={query.isFetching} onPageChange={list.setPage} onPageSizeChange={list.setPageSize} itemLabel={["conversa", "conversas"]} />
+                  ) : null}
                 </>
               )}
             </div>
@@ -213,21 +212,5 @@ function ConversationRow({ conversation, selected, onSelect }: { conversation: M
         </span>
       </button>
     </li>
-  )
-}
-
-/** Paginação que cabe na coluna da lista: "26–43 de 43" e anterior/próxima. */
-function CompactPager({ page, pageSize, total, isFetching, onPageChange }: { page: number; pageSize: number; total: number; isFetching: boolean; onPageChange: (page: number) => void }) {
-  if (total <= pageSize && page === 1) return null
-  const first = (page - 1) * pageSize + 1
-  const last = Math.min(page * pageSize, total)
-  return (
-    <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground tabular-nums">
-      <span className={cn(isFetching && "opacity-60")}>{first}–{last} de {total}</span>
-      <span className="flex gap-1">
-        <Button variant="ghost" size="icon-sm" disabled={page === 1} onClick={() => onPageChange(page - 1)} aria-label="Página anterior"><ChevronLeft /></Button>
-        <Button variant="ghost" size="icon-sm" disabled={last >= total} onClick={() => onPageChange(page + 1)} aria-label="Próxima página"><ChevronRight /></Button>
-      </span>
-    </div>
   )
 }

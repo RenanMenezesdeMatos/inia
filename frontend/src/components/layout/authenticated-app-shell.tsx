@@ -24,6 +24,7 @@ type ShellState = { profile: AppShellProfile; profileHref: string; canAccessAdmi
 
 export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) {
   const router = useRouter()
+  const navigateTo = useCallback((href: string) => router.push(href), [router])
   const queryClient = useQueryClient()
   const editor = useProfileEditor()
   // Sessão por query invalidável (V1.5.8a): atribuir/revogar papel atualiza "Administração" e "QA Lab" sem logout; salvar o
@@ -108,7 +109,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
       ) : null}
 
       {/* Estado do Apoio com Anjo do operador: UMA chamada por navegador (aba líder), lida pelo chat, pelo selo e pela sala. */}
-      <HumanSupportStateProvider enabled={Boolean(user)}>
+      <HumanSupportStateProvider enabled={Boolean(user)} profileHref={shell?.profileHref ?? null} onNavigate={navigateTo}>
         <main className="min-h-[calc(100vh-3.5rem)]">
           {children}
         </main>

@@ -196,3 +196,13 @@ Diff revisado: da versão publicada (`e0fccf4` no GitHub = commit local `3d64bd5
 - Central: numa fonte em que ninguém sabe a credencial guardada, o cabeçalho oculto da própria fonte só sai cadastrando a fonte de novo. Os conjuntos podem ser excluídos.
 - Workflows: uma versão fixada que não existe, ou que é de outro Orquestrador, continua caindo na versão atual. Sem versão fixada, o alcance do Orquestrador atual não é conferido de novo na execução.
 - Testes da bomba de PDF (`text-extractor-isolated`, `knowledge-router.security`): com a máquina carregada, no macOS, a memória comprimida mantém a memória residente abaixo do teto. Aí o PDF passa, em vez de ser recusado por memória, e o teste falha. Sozinhos, ou na verificação sem outra carga, passam. O processo da API continua isolado do parser.
+
+## 5ª rodada — skill da Cloudflare, run-2 (10–11/11/2026)
+
+Passada parcial sobre o que entrou depois da 4ª rodada (`6b5667ad..4a066be9`) e revalidação dos 22 registros da 4ª. Achados, correções e o que falta conferir no ambiente: `docs/security/relatorio-de-achados.md` § "Quinta rodada" e R-43 em `docs/security/pendencias-e-riscos.md`. Regras que saíram dela e valem daqui em diante:
+
+- PDF não confiável só roda trabalho **linear ou limitado** no processo da API: pré-checagem, reconstrução de tabelas e colunas têm teto de passos/células e testes de custo (`pdf-guard.test.ts`, `pdf-markdown-cost.test.ts`).
+- Troca de credencial e troca de destino (Central de Dados e conexões de IA) acontecem com a **linha travada** e o destino reconferido na mesma transação; nunca decidir revogação num retrato lido antes.
+- Toda busca de definição de indicador por código leva a **organização** (parâmetro obrigatório).
+- Portões de privacidade contam exatamente quem entra no valor publicado; leitor só de agregados não recebe células com menos de 5 pessoas em nenhum recorte.
+- A tela de login limpa o cache do cliente e recarrega uma vez quando a página anterior não era de `/auth` (cobre os redirecionamentos suaves do servidor).

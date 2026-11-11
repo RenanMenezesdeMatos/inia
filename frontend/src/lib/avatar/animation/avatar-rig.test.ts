@@ -156,3 +156,27 @@ describe.each(AVATAR_MODEL_FILES)("AvatarRig — %s (esqueleto real)", (file) =>
     expect(tall.target.z).toBeCloseTo(anchors.face.z, 6)
   })
 })
+
+describe.each(AVATAR_MODEL_FILES)("osso de balanço do cabelo — %s", (file) => {
+  it("gira só com `frame.hair`, não acumula e volta ao repouso; os ossos procedurais não mudam", () => {
+    const root = loadGlbSkeleton(file)!
+    const rig = new AvatarRig(root)
+    const bone = rig.bones.get("hair_02_ph")
+    expect(bone, "o esqueleto do asset base tem o osso").toBeDefined()
+    rig.start()
+    const still = frame()
+    rig.update(1 / 60, still)
+    const rest = bone!.quaternion.clone()
+    const head = rig.bones.get("Head")!.quaternion.clone()
+    const swayed = { ...frame(), hair: { x: 0.03, y: -0.02, z: 0.01 } }
+    rig.update(1 / 60, swayed)
+    const once = bone!.quaternion.clone()
+    expect(once.angleTo(rest)).toBeGreaterThan(0.02)
+    for (let i = 0; i < 30; i++) rig.update(1 / 60, swayed)
+    expect(bone!.quaternion.angleTo(once)).toBeLessThan(1e-6)
+    expect(rig.bones.get("Head")!.quaternion.angleTo(head)).toBeLessThan(1e-6)
+    rig.update(1 / 60, still)
+    expect(bone!.quaternion.angleTo(rest)).toBeLessThan(1e-6)
+    rig.stop()
+  })
+})

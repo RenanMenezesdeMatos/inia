@@ -46,7 +46,7 @@ import type { ChatDislikeInput } from "@/schemas/operator/chat-rating.schema"
 import { SupportRequestDialog, type SupportSource } from "@/components/human-support/operator/request-dialog"
 import { SupportStatusPill, SupportSuggestion } from "@/components/human-support/operator/support-entry"
 import { SupportRoom } from "@/components/human-support/operator/support-room"
-import { useHumanSupportState } from "@/queries/human-support/use-human-support-state"
+import { SUPPORT_ROOM_PARAM, useHumanSupportState, useRegisterSupportChat } from "@/queries/human-support/use-human-support-state"
 import { FAREWELL_TEXT, TEXT_REPLY_FALLBACK_TEXT } from "./operator-inia-chat/voice-context"
 import { ENTRY_OF_MODE, FEEDBACK_PRESENTATION_CUE, LIVE_PRESENTATION_START_TIMEOUT_MS, PRESENT_GESTURE_DELAY_MS, presentationAudioKey, type FeedbackReturn, type FeedbackSession, type LivePresentationHooks, type PresentationPhase, type SessionEntry } from "./operator-inia-chat/feedback-session-model"
 import { createReadingClock, READ_HOLD_MS, READ_WORD_MS, wordsIn } from "./operator-inia-chat/stage-speech"
@@ -177,6 +177,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const searchParams = useSearchParams()
   const targetConversationId = searchParams?.get("iniaConversation") ?? null
   const targetDeliveryId = searchParams?.get("iniaDelivery") ?? null
+  // `iniaSupport=room` abre a sala do apoio (o "Abrir conversa" do aviso de mensagem nova vindo de outra página).
+  const targetSupportRoom = searchParams?.get(SUPPORT_ROOM_PARAM) === "room"
   const queryClient = useQueryClient()
   const inboxQuery = useIniaInboxQuery()
   const inbox = inboxQuery.data
@@ -1906,6 +1908,22 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setSupportSource(null)
     setSupportRoomOpen(true)
   }
+  // Mensagem nova do Anjo com a sala fora da tela: o "Abrir conversa" do aviso abre a sala neste chat (e o link, vindo de outra página).
+  useRegisterSupportChat()
+  const handledRoomRequestRef = useRef(humanSupport.roomOpenRequest)
+  useEffect(() => {
+    if (humanSupport.roomOpenRequest === handledRoomRequestRef.current) return
+    handledRoomRequestRef.current = humanSupport.roomOpenRequest
+    openSupportRoom()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [humanSupport.roomOpenRequest])
+  const handledSupportTargetRef = useRef(false)
+  useEffect(() => {
+    if (!targetSupportRoom || handledSupportTargetRef.current) return
+    handledSupportTargetRef.current = true
+    openSupportRoom()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSupportRoom])
   // Pergunta com NO_REPLY só sugere apoio quando nenhuma mensagem da INIA veio depois dela.
   const answeredQuestions = new Set(messages.flatMap((message, index) => (message.sender === "user" && messages.slice(index + 1).some((later) => later.sender === "assistant" && !later.localError) ? [message.id] : [])))
   const renderSupportSuggestion = (message: ChatMessage) => {
@@ -2141,7 +2159,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         conversationNotice={conversationNotice}
       />
       </div>
-      {supportRoomOpen ? <SupportRoom onBack={() => setSupportRoomOpen(false)} /> : <>
+      {supportRoomOpen ? <SupportRoom onBack={() => setSupportRoomOpen(false)} hidden={hidden} /> : <>
         <SupportStatusPill onOpenRoom={openSupportRoom} />
         <ScrollArea className="min-h-0 flex-1">{messageItems}</ScrollArea>
         <Separator/>

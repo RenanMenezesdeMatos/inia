@@ -5,7 +5,8 @@ import { Bot, FlaskConical, History, MessageSquareText, Waypoints, Zap } from "l
 
 import { FeedbackQualityPanel } from "@/components/feedback-review/feedback-quality-page"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { AgentLab } from "./agent-lab"
@@ -24,13 +25,8 @@ import { WorkflowLab } from "./workflow-lab"
 export function QaLabPage({ feedbackQaEnabled = false }: { feedbackQaEnabled?: boolean }) {
   return (
     <div className="space-y-5">
+      <PageHeader icon={FlaskConical} title="QA Lab" description="Teste Agents, Orchestrators e Workflows de forma isolada, segura e controlada." />
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FlaskConical className="h-5 w-5" /> QA Lab
-          </CardTitle>
-          <CardDescription>Teste Agents, Orchestrators e Workflows de forma isolada, segura e controlada.</CardDescription>
-        </CardHeader>
         <CardContent>
           <Tabs defaultValue="workflow" className="space-y-4">
             <div className="space-y-2">

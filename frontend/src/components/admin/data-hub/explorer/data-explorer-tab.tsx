@@ -1,9 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Ban, ChevronLeft, ChevronRight, Download, FilterX, Hash, Lock, Search, ShieldAlert, TableProperties } from "lucide-react"
+import { Ban, Download, FilterX, Hash, Lock, Search, ShieldAlert, TableProperties } from "lucide-react"
 import { toast } from "sonner"
 
+import { CursorPagination } from "@/components/admin/shared/list/list-pagination"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -262,26 +263,6 @@ function DatasetExplorer({ dataset, limits }: { dataset: ExplorerDataset; limits
             setActionError(null)
           }}
         />
-        <Select
-          value={String(pageSize)}
-          onValueChange={(value) => {
-            setPageSize(Number(value))
-            resetPosition()
-          }}
-        >
-          <SelectTrigger size="sm" className="w-32" aria-label="Registros por página">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {[25, 50, limits.maxPageSize]
-              .filter((size, index, all) => size <= limits.maxPageSize && all.indexOf(size) === index)
-              .map((size) => (
-                <SelectItem key={size} value={String(size)}>
-                  {size} por página
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
         {dataset.cancellable ? (
           <Select
             value={recordStatus}
@@ -365,26 +346,27 @@ function DatasetExplorer({ dataset, limits }: { dataset: ExplorerDataset; limits
               }}
               {...(dataset.canCancel ? { selection: { selected: selectedKeys, onChange: setSelectedKeys } } : {})}
             />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">Página {pageNumber} · {page.data.rows.length} registros · Horários no seu fuso; filtros de data no fuso da organização ({page.data.timeZone})</p>
-              <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="sm" disabled={pageNumber <= 1 || page.isFetching} onClick={() => changePage((current) => current.slice(0, -1))}>
-                  <ChevronLeft data-icon="inline-start" /> Anterior
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!page.data.nextCursor || page.isFetching}
-                  onClick={() => {
-                    const next = page.data?.nextCursor
-                    if (next) changePage((current) => [...current, next])
-                  }}
-                >
-                  Próxima <ChevronRight data-icon="inline-end" />
-                </Button>
-              </div>
-            </div>
+            {/* Paginação única do app, na forma "por posição": o servidor avança pela posição (não pula para a página N). */}
+            <CursorPagination
+              page={pageNumber}
+              pageSize={pageSize}
+              pageSizeOptions={[25, 50, limits.maxPageSize].filter((size, index, all) => size <= limits.maxPageSize && all.indexOf(size) === index)}
+              shownCount={page.data.rows.length}
+              total={count && !count.capped ? count.count : null}
+              hasNext={Boolean(page.data.nextCursor)}
+              onPrevious={() => changePage((current) => current.slice(0, -1))}
+              onNext={() => {
+                const next = page.data?.nextCursor
+                if (next) changePage((current) => [...current, next])
+              }}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                resetPosition()
+              }}
+              itemLabel={["registro", "registros"]}
+              isFetching={page.isFetching}
+            />
+            <p className="text-xs text-muted-foreground">Horários no seu fuso; filtros de data no fuso da organização ({page.data.timeZone}).</p>
           </div>
         )
       ) : null}

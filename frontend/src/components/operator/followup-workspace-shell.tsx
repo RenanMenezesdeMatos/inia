@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { usePrefersReducedMotion } from "@/components/flow/flow-travel-signal"
 import { feedbackSourceKey, type FeedbackSourceRef } from "@/schemas/feedback-applications/feedback-application.schema"
 import { useFeedbackInviteQuery } from "@/queries/feedback-applications/use-feedback-applications"
+import { useHumanSupportState } from "@/queries/human-support/use-human-support-state"
 import { createIniaVoiceEngine, FeedbackWorkspaceContext, type FeedbackOpenRequest, type FeedbackWorkspace } from "./feedback-application/feedback-workspace-context"
 
 type FollowupWorkspaceShellProps = {
@@ -66,6 +67,20 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
   const requestSeqRef = useRef(0)
   const mobileChatRef = useRef<HTMLDivElement>(null)
   const mobileFeedRef = useRef<HTMLDivElement>(null)
+  // Apoio com Anjo: mensagem nova do Anjo com o painel recolhido aparece no painel; o "Abrir conversa" do aviso abre o painel (no
+  // celular, rola até o chat) e o chat abre a sala.
+  const { roomOpenRequest, unreadFromAnjo } = useHumanSupportState()
+  const railNotice = unreadFromAnjo > 0 ? (unreadFromAnjo === 1 ? "o Anjo respondeu no apoio" : `o Anjo mandou ${unreadFromAnjo} mensagens no apoio`) : invitePending ? "há um feedback para conversar" : null
+  const handledRoomRequestRef = useRef(roomOpenRequest)
+  useEffect(() => {
+    if (roomOpenRequest === handledRoomRequestRef.current) return
+    handledRoomRequestRef.current = roomOpenRequest
+    if (layout === "desktop") {
+      if (collapsed) chatRef.current?.expand()
+    } else mobileChatRef.current?.scrollIntoView?.({ block: "start", behavior: reducedMotion ? "auto" : "smooth" })
+    // Só a cada pedido novo (nunca pela mudança do recolhido: ver `toggleChat`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomOpenRequest])
 
   // `onResize` is the single source of truth for `collapsed` (it reflects the
   // panel's real size). Calling collapse/expand only from this click handler
@@ -139,7 +154,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
           <ResizableHandle withHandle/>
           <ResizablePanel panelRef={chatRef} defaultSize="42%" minSize="300px" collapsedSize="64px" collapsible onResize={(size) => setCollapsed(size.inPixels < 120)}>
             {collapsed
-              ? <div className="flex h-full justify-center pt-4"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={toggleChat} aria-label={invitePending ? "Abrir chat da INIA — há um feedback para conversar" : "Abrir chat da INIA"} className="relative"><Bot className="size-5 text-primary"/>{invitePending ? <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" aria-hidden/> : null}</Button></TooltipTrigger><TooltipContent side="left" className="inia-tooltip-genie">{invitePending ? "A INIA tem um feedback para conversar" : "Abrir chat da INIA"}</TooltipContent></Tooltip></div>
+              ? <div className="flex h-full justify-center pt-4"><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" onClick={toggleChat} aria-label={railNotice ? `Abrir chat da INIA — ${railNotice}` : "Abrir chat da INIA"} className="relative"><Bot className="size-5 text-primary"/>{railNotice ? <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" aria-hidden/> : null}</Button></TooltipTrigger><TooltipContent side="left" className="inia-tooltip-genie">{railNotice ? railNotice.charAt(0).toUpperCase() + railNotice.slice(1) : "Abrir chat da INIA"}</TooltipContent></Tooltip></div>
               : null}
             {/* O chat continua montado com o painel recolhido (oculto): a sessão de feedback (card central) abre sem expandir o painel. */}
             <div className={collapsed ? "hidden" : "h-full"}>

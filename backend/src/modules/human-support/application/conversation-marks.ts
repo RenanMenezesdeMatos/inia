@@ -95,11 +95,14 @@ export async function clearTypingOnSend(client: Queryable, requestId: string, si
   await client.query(`update human_support_conversation_marks set ${col} = null, updated_at = statement_timestamp() where request_id = $1 and ${col} is not null`, [requestId])
 }
 
-/** O que cada ponta vê da OUTRA: até onde ela recebeu e viu, e por quantos ms ainda vale o "digitando" (null = não está). */
-export type PeerMarks = { peerReceipts: Receipts; peerTypingMs: number | null }
+/**
+ * O que cada ponta vê da OUTRA: até onde ela recebeu e viu, e por quantos ms ainda vale o "digitando" (null = não está) — e até onde a
+ * PRÓPRIA ponta já leu as mensagens da outra (`ownReadSeq`), para a tela contar as mensagens novas também depois de recarregar.
+ */
+export type PeerMarks = { peerReceipts: Receipts; peerTypingMs: number | null; ownReadSeq: number }
 export type ConversationMarks = { operator: PeerMarks; anjo: PeerMarks }
 
-const NO_MARKS: ConversationMarks = { operator: { peerReceipts: NO_RECEIPTS, peerTypingMs: null }, anjo: { peerReceipts: NO_RECEIPTS, peerTypingMs: null } }
+const NO_MARKS: ConversationMarks = { operator: { peerReceipts: NO_RECEIPTS, peerTypingMs: null, ownReadSeq: 0 }, anjo: { peerReceipts: NO_RECEIPTS, peerTypingMs: null, ownReadSeq: 0 } }
 
 /**
  * Marcas de vários pedidos numa consulta. `operator` = o que o OPERADOR vê (recibos e "digitando" do lado do Anjo); `anjo` = o que o
@@ -123,8 +126,8 @@ export async function loadConversationMarks(db: Queryable, requestIds: readonly 
   ).rows
   for (const row of rows) {
     marks.set(row.request_id, {
-      operator: { peerReceipts: { deliveredSeq: Number(row.anjo_delivered_seq), readSeq: Number(row.anjo_read_seq) }, peerTypingMs: row.anjo_typing_ms === null ? null : Number(row.anjo_typing_ms) },
-      anjo: { peerReceipts: { deliveredSeq: Number(row.operator_delivered_seq), readSeq: Number(row.operator_read_seq) }, peerTypingMs: row.operator_typing_ms === null ? null : Number(row.operator_typing_ms) },
+      operator: { peerReceipts: { deliveredSeq: Number(row.anjo_delivered_seq), readSeq: Number(row.anjo_read_seq) }, peerTypingMs: row.anjo_typing_ms === null ? null : Number(row.anjo_typing_ms), ownReadSeq: Number(row.operator_read_seq) },
+      anjo: { peerReceipts: { deliveredSeq: Number(row.operator_delivered_seq), readSeq: Number(row.operator_read_seq) }, peerTypingMs: row.operator_typing_ms === null ? null : Number(row.operator_typing_ms), ownReadSeq: Number(row.anjo_read_seq) },
     })
   }
   for (const id of requestIds) if (!marks.has(id)) marks.set(id, NO_MARKS)

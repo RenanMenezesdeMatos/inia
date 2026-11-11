@@ -276,7 +276,7 @@ export async function previewConditionForOperators(db: Database, organizationId:
   if (!node || node.type !== "condition") throw new DomainError("Selecione um node de Condição.", "QA_NODE_NOT_CONDITION", 422)
   // Mesmo contexto organizacional (timezone IANA) que a execução real usa — a prévia nunca
   // resolve janela em fuso diferente do motor.
-  const evaluationOptions: EvaluationOptions = { timeZone: await resolveOrganizationTimezone(db, organizationId), quartileCache: new Map() }
+  const evaluationOptions: EvaluationOptions = { organizationId, timeZone: await resolveOrganizationTimezone(db, organizationId), quartileCache: new Map() }
   if (!isDataCondition(node.config)) {
     throw new DomainError(
       "A prévia por colaborador só se aplica a Conditions de performance ou histórico do indicador — para Conditions sobre o valor do gatilho, use os filtros de chamadas/medições.",

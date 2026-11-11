@@ -1,6 +1,9 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ClipboardList } from "lucide-react"
+
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 
@@ -20,35 +23,38 @@ export function InterventionPoliciesPage() {
   const { canAudit } = useInterventionCapabilities()
   const keepMounted = "data-[state=inactive]:hidden"
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Políticas de acompanhamento</CardTitle>
-        <CardDescription>Quando a INIA recomenda ou abre intervenções para um colaborador — com regras explícitas, evidência verificável e decisão humana onde ela é exigida.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="policies">
-          <TabsList>
-            <TabsTrigger value="policies">Políticas</TabsTrigger>
-            <TabsTrigger value="types">Tipos de intervenção</TabsTrigger>
-            <TabsTrigger value="competencies">Competências</TabsTrigger>
-            {canAudit ? <TabsTrigger value="audit">Auditoria</TabsTrigger> : null}
-          </TabsList>
-          <TabsContent value="policies" forceMount className={cn("mt-4", keepMounted)}>
-            <PoliciesTab />
-          </TabsContent>
-          <TabsContent value="types" forceMount className={cn("mt-4", keepMounted)}>
-            <TypesTab />
-          </TabsContent>
-          <TabsContent value="competencies" forceMount className={cn("mt-4", keepMounted)}>
-            <CompetenciesTab />
-          </TabsContent>
-          {canAudit ? (
-            <TabsContent value="audit" className="mt-4">
-              <AuditTab />
+    <section className="space-y-4">
+      <PageHeader
+        icon={ClipboardList}
+        title="Políticas de acompanhamento"
+        description="Quando a INIA recomenda ou abre intervenções para um colaborador — com regras explícitas, evidência verificável e decisão humana onde ela é exigida."
+      />
+      <Card>
+        <CardContent>
+          <Tabs defaultValue="policies">
+            <TabsList>
+              <TabsTrigger value="policies">Políticas</TabsTrigger>
+              <TabsTrigger value="types">Tipos de intervenção</TabsTrigger>
+              <TabsTrigger value="competencies">Competências</TabsTrigger>
+              {canAudit ? <TabsTrigger value="audit">Auditoria</TabsTrigger> : null}
+            </TabsList>
+            <TabsContent value="policies" forceMount className={cn("mt-4", keepMounted)}>
+              <PoliciesTab />
             </TabsContent>
-          ) : null}
-        </Tabs>
-      </CardContent>
-    </Card>
+            <TabsContent value="types" forceMount className={cn("mt-4", keepMounted)}>
+              <TypesTab />
+            </TabsContent>
+            <TabsContent value="competencies" forceMount className={cn("mt-4", keepMounted)}>
+              <CompetenciesTab />
+            </TabsContent>
+            {canAudit ? (
+              <TabsContent value="audit" className="mt-4">
+                <AuditTab />
+              </TabsContent>
+            ) : null}
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

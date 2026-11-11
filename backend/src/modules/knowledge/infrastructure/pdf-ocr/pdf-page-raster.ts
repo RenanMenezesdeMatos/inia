@@ -14,6 +14,15 @@ const MAX_DECODED_PIXELS = 40_000_000
 const WEBP_QUALITY = 90
 /** Folga em volta do print ao pintar de branco para a segunda leitura (pixels): borda que sobra viraria letra solta. */
 const MASK_MARGIN = 2
+/**
+ * Teto do desenho de UMA página. O conteúdo vem do arquivo enviado: uma página de formulários aninhados de poucos bytes levava ~21 s só para ser
+ * desenhada, e o prazo do processo filho cresce com as páginas. Passou disto, o desenho é cancelado e a página fica sem leitura, como qualquer falha.
+ */
+export const OCR_RENDER_TIMEOUT_MS = 20_000
+
+export class PageRenderTimeoutError extends Error {
+  override name = "PageRenderTimeoutError"
+}
 
 type RasterCanvas = { encode(format: "png"): Promise<Buffer>; encode(format: "webp", quality: number): Promise<Buffer> }
 type RasterContext = {
@@ -47,7 +56,8 @@ export type RenderedPage = {
 
 export type RasterDocument = { pageCount: number; render(page: number): Promise<RenderedPage>; close(): Promise<void> }
 
-export async function openRasterDocument(buffer: Buffer): Promise<RasterDocument> {
+export async function openRasterDocument(buffer: Buffer, options: { renderTimeoutMs?: number } = {}): Promise<RasterDocument> {
+  const renderTimeoutMs = options.renderTimeoutMs ?? OCR_RENDER_TIMEOUT_MS
   const document = await getDocument({ data: new Uint8Array(buffer), verbosity: 0, isEvalSupported: false, maxImageSize: MAX_DECODED_PIXELS }).promise
   const factory = document.canvasFactory as unknown as CanvasFactory
   return {
@@ -64,7 +74,24 @@ export async function openRasterDocument(buffer: Buffer): Promise<RasterDocument
       pair.context.fillStyle = "#ffffff"
       pair.context.fillRect(0, 0, pixelWidth, pixelHeight)
       try {
-        await page.render({ canvasContext: pair.context as never, viewport, canvas: pair.canvas as never }).promise
+        const task = page.render({ canvasContext: pair.context as never, viewport, canvas: pair.canvas as never })
+        // O prazo é conferido entre os trechos do desenho (o pdf.js pausa a cada ~15 ms) e também pelo relógio, para a espera dos dados da página.
+        const deadline = performance.now() + renderTimeoutMs
+        let expired = false
+        const expire = () => {
+          if (expired) return
+          expired = true
+          task.cancel()
+        }
+        task.onContinue = (proceed: () => void) => (performance.now() > deadline ? expire() : proceed())
+        const timer = setTimeout(expire, renderTimeoutMs)
+        try {
+          await task.promise
+        } catch (error) {
+          throw expired ? new PageRenderTimeoutError(`A página ${number} passou de ${renderTimeoutMs} ms para ser desenhada.`) : error
+        } finally {
+          clearTimeout(timer)
+        }
       } catch (error) {
         factory.destroy(pair)
         page.cleanup()

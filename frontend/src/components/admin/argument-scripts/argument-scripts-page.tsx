@@ -8,7 +8,8 @@ import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -203,99 +204,98 @@ export function ArgumentScriptsPage() {
   const formLabel = view.tab === "form" && selectedId === null ? "Novo argumentário" : "Argumentário"
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Argumentários</CardTitle>
-            <CardDescription>
-              O que se espera do operador numa situação da chamada: quando vale, o que ele deve ou pode fazer, o que precisa dizer e o que evitar. Cada argumentário tem área responsável, escopo e versões com início de vigência.
-            </CardDescription>
-          </div>
-          {view.tab === "list" ? (
+    <section className="space-y-4">
+      <PageHeader
+        icon={PhoneCall}
+        title="Argumentários"
+        description="O que se espera do operador numa situação da chamada: quando vale, o que ele deve ou pode fazer, o que precisa dizer e o que evitar. Cada argumentário tem área responsável, escopo e versões com início de vigência."
+        actions={
+          view.tab === "list" ? (
             <Button onClick={openCreate}>
               <Plus /> Novo argumentário
             </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={view.tab} onValueChange={(value) => (value === "list" ? backToList() : go({ tab: "form", selectedId }))}>
-          <TabsList>
-            <TabsTrigger value="list">Lista</TabsTrigger>
-            <TabsTrigger value="form">{formLabel}</TabsTrigger>
-          </TabsList>
+          ) : null
+        }
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={view.tab} onValueChange={(value) => (value === "list" ? backToList() : go({ tab: "form", selectedId }))}>
+            <TabsList>
+              <TabsTrigger value="list">Lista</TabsTrigger>
+              <TabsTrigger value="form">{formLabel}</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="list" className="mt-4 space-y-4">
-            <ListToolbar
-              search={
-                <ListSearchInput
-                  value={list.filters.search}
-                  onChange={(value) => list.setFilter("search", value)}
-                  placeholder="Buscar por nome, área, grupo ou subgrupo"
-                  ariaLabel="Buscar argumentário"
-                  pending={list.isSearchPending}
+            <TabsContent value="list" className="mt-4 space-y-4">
+              <ListToolbar
+                search={
+                  <ListSearchInput
+                    value={list.filters.search}
+                    onChange={(value) => list.setFilter("search", value)}
+                    placeholder="Buscar por nome, área, grupo ou subgrupo"
+                    ariaLabel="Buscar argumentário"
+                    pending={list.isSearchPending}
+                  />
+                }
+                viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+                hasActiveFilters={list.hasActiveFilters}
+                onClearFilters={list.resetFilters}
+              >
+                <ListOrgScopeFilter
+                  teams={teamsQuery.data}
+                  value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+                  onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
                 />
-              }
-              viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-              hasActiveFilters={list.hasActiveFilters}
-              onClearFilters={list.resetFilters}
-            >
-              <ListOrgScopeFilter
-                teams={teamsQuery.data}
-                value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-                onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
-              />
-              <ListSelectFilter
-                value={list.filters.businessDomainId}
-                onChange={(value) => list.setFilter("businessDomainId", value)}
-                options={(domainsQuery.data ?? []).map((domain) => ({ value: domain.id, label: domain.name }))}
-                allLabel="Qualquer área"
-                ariaLabel="Filtrar por área responsável"
-              />
-              <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={STATUS_OPTIONS} allLabel="Qualquer status" ariaLabel="Filtrar por status" />
-              <ListBooleanFilter value={list.filters.hasDraft} onChange={(value) => list.setFilter("hasDraft", value)} allLabel="Com ou sem rascunho" trueLabel="Com rascunho" falseLabel="Sem rascunho" ariaLabel="Filtrar por rascunho" />
-              <ListSelectFilter<ArgumentScriptConversion> value={list.filters.conversion} onChange={(value) => list.setFilter("conversion", value)} options={CONVERSION_OPTIONS} allLabel="Qualquer origem" ariaLabel="Filtrar por origem do cadastro" />
-            </ListToolbar>
+                <ListSelectFilter
+                  value={list.filters.businessDomainId}
+                  onChange={(value) => list.setFilter("businessDomainId", value)}
+                  options={(domainsQuery.data ?? []).map((domain) => ({ value: domain.id, label: domain.name }))}
+                  allLabel="Qualquer área"
+                  ariaLabel="Filtrar por área responsável"
+                />
+                <ListSelectFilter value={list.filters.status} onChange={(value) => list.setFilter("status", value)} options={STATUS_OPTIONS} allLabel="Qualquer status" ariaLabel="Filtrar por status" />
+                <ListBooleanFilter value={list.filters.hasDraft} onChange={(value) => list.setFilter("hasDraft", value)} allLabel="Com ou sem rascunho" trueLabel="Com rascunho" falseLabel="Sem rascunho" ariaLabel="Filtrar por rascunho" />
+                <ListSelectFilter<ArgumentScriptConversion> value={list.filters.conversion} onChange={(value) => list.setFilter("conversion", value)} options={CONVERSION_OPTIONS} allLabel="Qualquer origem" ariaLabel="Filtrar por origem do cadastro" />
+              </ListToolbar>
 
-            <AdminListView
-              state={list}
-              query={pageQuery}
-              errorMessage="Não foi possível carregar os argumentários."
-              empty={{
-                icon: PhoneCall,
-                title: "Nenhum argumentário cadastrado ainda",
-                description: "Descreva a situação da chamada e o que se espera do operador nela.",
-                action: (
-                  <Button onClick={openCreate}>
-                    <Plus /> Novo argumentário
-                  </Button>
-                ),
-              }}
-              noResultsTitle="Nenhum argumentário corresponde à busca ou aos filtros"
-              itemLabel={["argumentário", "argumentários"]}
-              renderList={(items) => <ArgumentScriptsTable items={items} onOpen={openItem} />}
-              renderCards={(items) => (
-                <ListCardGrid>
-                  {items.map((item) => (
-                    <ArgumentScriptCard key={item.id} item={item} onOpen={openItem} />
-                  ))}
-                </ListCardGrid>
-              )}
-            />
-          </TabsContent>
+              <AdminListView
+                state={list}
+                query={pageQuery}
+                errorMessage="Não foi possível carregar os argumentários."
+                empty={{
+                  icon: PhoneCall,
+                  title: "Nenhum argumentário cadastrado ainda",
+                  description: "Descreva a situação da chamada e o que se espera do operador nela.",
+                  action: (
+                    <Button onClick={openCreate}>
+                      <Plus /> Novo argumentário
+                    </Button>
+                  ),
+                }}
+                noResultsTitle="Nenhum argumentário corresponde à busca ou aos filtros"
+                itemLabel={["argumentário", "argumentários"]}
+                renderList={(items) => <ArgumentScriptsTable items={items} onOpen={openItem} />}
+                renderCards={(items) => (
+                  <ListCardGrid>
+                    {items.map((item) => (
+                      <ArgumentScriptCard key={item.id} item={item} onOpen={openItem} />
+                    ))}
+                  </ListCardGrid>
+                )}
+              />
+            </TabsContent>
 
-          <TabsContent value="form" className="mt-4">
-            {view.tab === "form" ? (
-              selectedId === null ? (
-                <ArgumentScriptCreateForm onCreated={(id) => go({ tab: "form", selectedId: id })} onCancel={backToList} />
-              ) : (
-                <ArgumentScriptDetailPanel id={selectedId} onBack={backToList} onDeleted={backToList} />
-              )
-            ) : null}
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+            <TabsContent value="form" className="mt-4">
+              {view.tab === "form" ? (
+                selectedId === null ? (
+                  <ArgumentScriptCreateForm onCreated={(id) => go({ tab: "form", selectedId: id })} onCancel={backToList} />
+                ) : (
+                  <ArgumentScriptDetailPanel id={selectedId} onBack={backToList} onDeleted={backToList} />
+                )
+              ) : null}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

@@ -28,7 +28,12 @@ if (!file || !existsSync(file)) fail(values.file ? `Arquivo não encontrado: ${f
 const pg = loadPg(root)
 const url = databaseUrlFrom(root)
 const major = await serverMajor(pg, url).catch((error) => fail(`não conectou ao banco ${describeTarget(url)}: ${error.message}`))
-const pgRestore = findPgTool("pg_restore", { binDir: values["pg-bin"], minMajor: major })
+let pgRestore
+try {
+  pgRestore = findPgTool("pg_restore", { binDir: values["pg-bin"], minMajor: major })
+} catch (error) {
+  fail(error.message)
+}
 if (!pgRestore) fail(`pg_restore ${major} ou mais novo não encontrado. Informe a pasta com --pg-bin.`)
 
 const createdHere = !values["target-db"]

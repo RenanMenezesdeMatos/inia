@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { KeyRound, ShieldCheck, UsersRound } from "lucide-react"
+import { KeyRound, ShieldCheck, Users, UsersRound } from "lucide-react"
 
 import { UsersPage } from "@/components/admin/users/users-page"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { AccessCapabilities } from "@/schemas/auth/auth.schema"
 
@@ -34,21 +35,24 @@ export function UsersAndAccessPage({ capabilities }: { capabilities: AccessCapab
       }
     : undefined
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Usuários e acessos</CardTitle>
-        <CardDescription>Cargo e nível hierárquico vêm da estrutura organizacional e não dão acesso. Acesso ao INIA = papel atribuído a uma conta, com escopo.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab ?? tabs[0]!.value} onValueChange={setTab} className="space-y-4">
-          <TabsList>
-            {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="gap-1"><tab.icon className="size-4" aria-hidden />{tab.label}</TabsTrigger>)}
-          </TabsList>
-          {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView key={accessFocus?.key ?? 0} canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} focus={accessFocus} /></TabsContent> : null}
-          {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} canExportSubjectData={capabilities.canExportSubjectData} onOpenAccess={openAccess} /></TabsContent> : null}
-          {capabilities.canViewRoles ? <TabsContent value="roles"><AccessRolesView /></TabsContent> : null}
-        </Tabs>
-      </CardContent>
-    </Card>
+    <section className="space-y-4">
+      <PageHeader
+        icon={Users}
+        title="Usuários e acessos"
+        description="Cargo e nível hierárquico vêm da estrutura organizacional e não dão acesso. Acesso ao INIA = papel atribuído a uma conta, com escopo."
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={tab ?? tabs[0]!.value} onValueChange={setTab} className="space-y-4">
+            <TabsList>
+              {tabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="gap-1"><tab.icon className="size-4" aria-hidden />{tab.label}</TabsTrigger>)}
+            </TabsList>
+            {capabilities.canViewUsers ? <TabsContent value="access"><AccessUsersView key={accessFocus?.key ?? 0} canManageUsers={capabilities.canManageUsers} canAssignRoles={capabilities.canAssignRoles} focus={accessFocus} /></TabsContent> : null}
+            {capabilities.canManagePeople ? <TabsContent value="people"><UsersPage canViewAccess={capabilities.canViewUsers} canAssignRoles={capabilities.canAssignRoles} canManageAccess={capabilities.canManageUsers} canExportSubjectData={capabilities.canExportSubjectData} onOpenAccess={openAccess} /></TabsContent> : null}
+            {capabilities.canViewRoles ? <TabsContent value="roles"><AccessRolesView /></TabsContent> : null}
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

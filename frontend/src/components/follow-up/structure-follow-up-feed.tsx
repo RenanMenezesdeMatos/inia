@@ -126,7 +126,7 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
           <p role="alert" className="py-5 text-center text-xs text-muted-foreground">
             Não foi possível carregar mais itens.{" "}
             <button type="button" className="underline" onClick={() => void fetchNextPage()}>
-              Tentar de novo
+              Tentar novamente
             </button>
           </p>
         ) : (

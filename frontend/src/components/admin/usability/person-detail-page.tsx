@@ -1,12 +1,12 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, ShieldCheck } from "lucide-react"
+import { ShieldCheck } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { CursorPagination } from "@/components/admin/shared/list/list-pagination"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { useUsabilityContextQuery, useUsabilityPersonQuery, useUsabilityTimelineQuery } from "@/queries/admin/use-usability-queries"
 import type { UsabilityPersonDetail } from "@/schemas/admin/usability.schema"
@@ -42,7 +42,8 @@ export function UsabilityPersonPage({ personId }: { personId: string }) {
   const detailQuery = withoutPaging(query)
   const detail = useUsabilityPersonQuery(personId, detailQuery)
   const [timelinePage, setTimelinePage] = useState(1)
-  const timeline = useUsabilityTimelineQuery(personId, { ...detailQuery, page: String(timelinePage), pageSize: "50" }, detail.isSuccess)
+  const [timelinePageSize, setTimelinePageSize] = useState(50)
+  const timeline = useUsabilityTimelineQuery(personId, { ...detailQuery, page: String(timelinePage), pageSize: String(timelinePageSize) }, detail.isSuccess)
   const navigate = useCallback((next: URLSearchParams) => {
     setTimelinePage(1)
     router.replace(toHref(pathname, next), { scroll: false })
@@ -55,11 +56,7 @@ export function UsabilityPersonPage({ personId }: { personId: string }) {
   const backHref = toHref(USABILITY_PATH, back)
 
   const header = (
-    <Button asChild variant="ghost" size="sm" className="-ml-2">
-      <Link href={backHref}>
-        <ArrowLeft data-icon="inline-start" /> Pessoas e acessos
-      </Link>
-    </Button>
+    <BackLink href={backHref} label="Pessoas e acessos" />
   )
 
   if (contextQuery.isPending || detail.isPending) {
@@ -224,15 +221,21 @@ export function UsabilityPersonPage({ personId }: { personId: string }) {
                   </li>
                 ))}
               </ol>
-              <div className="flex items-center justify-between gap-2">
-                <Button type="button" variant="ghost" size="sm" disabled={timelinePage === 1} onClick={() => setTimelinePage((page) => Math.max(1, page - 1))}>
-                  Mais recentes
-                </Button>
-                <span className="text-xs text-muted-foreground">Página {timelinePage}</span>
-                <Button type="button" variant="ghost" size="sm" disabled={!timeline.data.hasMore} onClick={() => setTimelinePage((page) => page + 1)}>
-                  Mais antigos
-                </Button>
-              </div>
+              {/* Paginação única do app, na forma "por posição": a linha do tempo não tem total, só "há mais antigos". */}
+              <CursorPagination
+                page={timelinePage}
+                pageSize={timelinePageSize}
+                shownCount={timeline.data.items.length}
+                hasNext={timeline.data.hasMore}
+                isFetching={timeline.isFetching}
+                onPrevious={() => setTimelinePage((page) => Math.max(1, page - 1))}
+                onNext={() => setTimelinePage((page) => page + 1)}
+                onPageSizeChange={(size) => {
+                  setTimelinePageSize(size)
+                  setTimelinePage(1)
+                }}
+                itemLabel={["evento", "eventos"]}
+              />
             </div>
           )}
         </Section>

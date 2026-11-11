@@ -3,13 +3,14 @@
 import { useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
+import { ListPagination } from "@/components/admin/shared/list/list-pagination"
 import { Button } from "@/components/ui/button"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatShortDateTime } from "@/lib/format/date"
 import { useResponseCheckSummaryQuery, useResponseChecksQuery } from "@/queries/admin/use-governance-queries"
 import { RESPONSE_CHECK_SURFACE_LABELS, type ResponseCheckEvent, type ResponseCheckSummary } from "@/schemas/admin/governance.schema"
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 20
 
 /** O que a conferência faz no modo em vigor. Só ENFORCE previne; AUDIT e OFF nunca aparecem como prevenção. */
 const MODE_NOTICE: Record<ResponseCheckSummary["mode"], string> = {
@@ -53,8 +54,9 @@ function Summary() {
  */
 export function ResponseChecksPanel() {
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [open, setOpen] = useState<string | null>(null)
-  const list = useResponseChecksQuery({ page, pageSize: PAGE_SIZE })
+  const list = useResponseChecksQuery({ page, pageSize })
   const mode = useResponseCheckSummaryQuery().data?.mode
   const total = list.data?.total ?? 0
   return (
@@ -109,15 +111,19 @@ export function ResponseChecksPanel() {
           </Table>
         </div>
       ) : null}
-      {total > PAGE_SIZE ? (
-        <div className="flex items-center justify-end gap-2">
-          <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Anterior
-          </Button>
-          <Button size="sm" variant="outline" disabled={page * PAGE_SIZE >= total} onClick={() => setPage(page + 1)}>
-            Próxima
-          </Button>
-        </div>
+      {total > 0 ? (
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          isFetching={list.isFetching}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
+          itemLabel={["conferência", "conferências"]}
+        />
       ) : null}
     </div>
   )

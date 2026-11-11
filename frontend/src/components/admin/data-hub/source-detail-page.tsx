@@ -3,9 +3,10 @@
 import { useId, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, ArrowLeft, Copy, FileDown, KeyRound, Pause, Play, Plug, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, FileDown, KeyRound, Pause, Play, Plug, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { BackLink } from "@/components/ui/back-link"
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -274,11 +275,7 @@ export function SourceDetailPage({ sourceId }: { sourceId: string }) {
       {prompt.dialog}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
-          <Button variant="ghost" size="sm" asChild className="-ml-2">
-            <Link href="/admin/data-hub?tab=sources">
-              <ArrowLeft /> Fontes
-            </Link>
-          </Button>
+          <BackLink href="/admin/data-hub?tab=sources" label="Fontes" />
           <h1 className="truncate text-xl font-semibold tracking-tight">{source.name}</h1>
           <div className="flex flex-wrap items-center gap-1.5">
             <SourceKindBadge kind={source.kind} />

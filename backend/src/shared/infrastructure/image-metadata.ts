@@ -3,58 +3,100 @@
  * ou fundo do cenário levava latitude/longitude, aparelho e data a toda a organização. Sem decodificar a imagem (nenhuma
  * dependência nativa): só os blocos de metadados saem — os pixels ficam byte a byte iguais.
  *
- *  - JPEG: saem APP1 (EXIF/XMP), APP3–APP13 e APP15 (IPTC/Photoshop e afins) e comentários; ficam APP0 (JFIF), APP2 (perfil de cor
- *    ICC) e APP14 (Adobe, cor). A ORIENTAÇÃO da foto (tag EXIF 0x0112) volta num EXIF mínimo, só com ela — senão a foto em pé
- *    apareceria deitada.
- *  - PNG: saem os blocos de texto (tEXt, zTXt, iTXt), eXIf e tIME.
+ *  - JPEG: saem APP1 (EXIF/XMP), APP3–APP13 e APP15 (IPTC/Photoshop e afins), comentários e o índice MPF (APP2 "MPF"); ficam
+ *    APP0 (JFIF), APP2 (perfil de cor ICC) e APP14 (Adobe, cor). A ORIENTAÇÃO da foto (tag EXIF 0x0112) volta num EXIF mínimo,
+ *    só com ela — senão a foto em pé apareceria deitada. O arquivo TERMINA no EOI da imagem principal: imagens secundárias do
+ *    MPF (mapa de ganho, prévia, profundidade — cada uma com o próprio EXIF) e o vídeo anexado de "foto com movimento" (com
+ *    local nos átomos do MP4) saem inteiros (achado de 10/11/2026: antes, tudo depois do primeiro SOS era copiado).
+ *  - PNG: saem os blocos de texto (tEXt, zTXt, iTXt), eXIf e tIME; nada depois do IEND.
  *  - WebP: saem os blocos EXIF e XMP (e as marcas deles no VP8X).
- * Formato que não for reconhecido volta igual (quem chama já validou o tipo).
+ * Estrutura que não for entendida (cortada, marcador inválido, sem EOI/IEND) = `null`: quem chama recusa a imagem — nunca grava
+ * os bytes originais com os metadados. Tipo que não for um desses três volta igual (quem chama já validou o tipo).
  */
-export function stripImageMetadata(data: Buffer, mimeType: string): Buffer {
+export function stripImageMetadata(data: Buffer, mimeType: string): Buffer | null {
   try {
     if (mimeType === "image/jpeg") return stripJpeg(data)
     if (mimeType === "image/png") return stripPng(data)
     if (mimeType === "image/webp") return stripWebp(data)
   } catch {
-    // Estrutura inesperada: nada é cortado no escuro — quem chama já validou assinatura e dimensões.
+    return null
   }
   return data
 }
 
 const KEPT_JPEG_APP = new Set([0xe0, 0xe2, 0xee])
 
-function stripJpeg(data: Buffer): Buffer {
-  if (data[0] !== 0xff || data[1] !== 0xd8) return data
+const isStandaloneMarker = (marker: number) => marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)
+const isMpfIndex = (marker: number, segment: Buffer) => marker === 0xe2 && segment.toString("latin1", 4, 8) === "MPF\0"
+const isDroppedSegment = (marker: number, segment: Buffer) => (marker >= 0xe0 && marker <= 0xef && !KEPT_JPEG_APP.has(marker)) || marker === 0xfe || isMpfIndex(marker, segment)
+
+function stripJpeg(data: Buffer): Buffer | null {
+  if (data[0] !== 0xff || data[1] !== 0xd8) return null
   const parts: Buffer[] = [data.subarray(0, 2)]
   let orientation: number | null = null
+  let scanned = false
   let offset = 2
-  while (offset + 4 <= data.length) {
-    if (data[offset] !== 0xff) return data
+  while (offset + 2 <= data.length) {
+    if (data[offset] !== 0xff) return null
     const marker = data[offset + 1]!
-    // Início dos dados da imagem (SOS): daqui ao fim é a imagem comprimida — copiada inteira.
-    if (marker === 0xda) {
-      // Depois do APP0 (JFIF), se houver — a ordem que os leitores esperam.
-      if (orientation && orientation !== 1) parts.splice(parts[1]?.[1] === 0xe0 ? 2 : 1, 0, minimalExifWithOrientation(orientation))
-      parts.push(data.subarray(offset))
+    // Bytes de preenchimento (0xFF repetido) antes de um marcador.
+    if (marker === 0xff) {
+      offset += 1
+      continue
+    }
+    // Fim da imagem principal: o que vier depois (imagens do MPF, vídeo anexado, lixo) não é gravado.
+    if (marker === 0xd9) {
+      if (!scanned) return null
+      parts.push(data.subarray(offset, offset + 2))
       return Buffer.concat(parts)
     }
     // Marcadores sem tamanho (SOI repetido, TEM, RST0–RST7) — os mesmos que a validação (`jpegSize`) aceita: sem tratá-los, um
     // arquivo com um deles antes do SOF passava na validação e voltava inteiro daqui, COM o EXIF/GPS (auditoria AppSec 29/10/2026).
-    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+    if (isStandaloneMarker(marker)) {
       parts.push(data.subarray(offset, offset + 2))
       offset += 2
       continue
     }
+    if (offset + 4 > data.length) return null
     const length = data.readUInt16BE(offset + 2)
     const end = offset + 2 + length
-    if (length < 2 || end > data.length) return data
+    if (length < 2 || end > data.length) return null
     const segment = data.subarray(offset, end)
-    const isApp = marker >= 0xe0 && marker <= 0xef
     if (marker === 0xe1) orientation ??= exifOrientation(segment.subarray(4))
-    if (!(isApp && !KEPT_JPEG_APP.has(marker)) && marker !== 0xfe) parts.push(segment)
+    if (marker === 0xda && !scanned) {
+      // Primeiro SOS: o EXIF mínimo entra antes, depois do APP0 (JFIF), se houver — a ordem que os leitores esperam.
+      if (orientation && orientation !== 1) parts.splice(parts[1]?.[1] === 0xe0 ? 2 : 1, 0, minimalExifWithOrientation(orientation))
+      scanned = true
+    }
+    if (!isDroppedSegment(marker, segment)) parts.push(segment)
     offset = end
+    if (marker === 0xda) {
+      // Dados comprimidos do scan: copiados até o próximo marcador de verdade (0xFF00 é byte escapado; RSTn faz parte do scan).
+      const scanEnd = entropyDataEnd(data, offset)
+      if (scanEnd === null) return null
+      parts.push(data.subarray(offset, scanEnd))
+      offset = scanEnd
+    }
   }
-  return data
+  return null
+}
+
+/** Posição do primeiro marcador depois dos dados comprimidos de um scan (pula 0xFF00, RST0–RST7 e preenchimento), ou null. */
+function entropyDataEnd(data: Buffer, start: number): number | null {
+  let at = start
+  for (;;) {
+    at = data.indexOf(0xff, at)
+    if (at < 0 || at + 1 >= data.length) return null
+    let next = at + 1
+    while (next < data.length && data[next] === 0xff) next += 1
+    if (next >= data.length) return null
+    const marker = data[next]!
+    if (marker === 0x00 || (marker >= 0xd0 && marker <= 0xd7)) {
+      at = next + 1
+      continue
+    }
+    return next - 1
+  }
 }
 
 /** Orientação (1–8) do EXIF de um APP1 (`Exif\0\0` + TIFF), ou null. */
@@ -99,32 +141,32 @@ function minimalExifWithOrientation(orientation: number): Buffer {
 
 const DROPPED_PNG_CHUNKS = new Set(["tEXt", "zTXt", "iTXt", "eXIf", "tIME"])
 
-function stripPng(data: Buffer): Buffer {
+function stripPng(data: Buffer): Buffer | null {
   const parts: Buffer[] = [data.subarray(0, 8)]
   let offset = 8
   while (offset + 12 <= data.length) {
     const length = data.readUInt32BE(offset)
     const type = data.toString("latin1", offset + 4, offset + 8)
     const end = offset + 12 + length
-    if (end > data.length) return data
+    if (end > data.length) return null
     if (!DROPPED_PNG_CHUNKS.has(type)) parts.push(data.subarray(offset, end))
     offset = end
     if (type === "IEND") return Buffer.concat(parts)
   }
-  return data
+  return null
 }
 
 const DROPPED_WEBP_CHUNKS = new Set(["EXIF", "XMP "])
 
-function stripWebp(data: Buffer): Buffer {
-  if (data.toString("latin1", 0, 4) !== "RIFF" || data.toString("latin1", 8, 12) !== "WEBP") return data
+function stripWebp(data: Buffer): Buffer | null {
+  if (data.toString("latin1", 0, 4) !== "RIFF" || data.toString("latin1", 8, 12) !== "WEBP") return null
   const chunks: Buffer[] = []
   let offset = 12
   while (offset + 8 <= data.length) {
     const type = data.toString("latin1", offset, offset + 4)
     const size = data.readUInt32LE(offset + 4)
     const end = offset + 8 + size + (size % 2)
-    if (offset + 8 + size > data.length) return data
+    if (offset + 8 + size > data.length) return null
     if (!DROPPED_WEBP_CHUNKS.has(type)) {
       const chunk = Buffer.from(data.subarray(offset, Math.min(end, data.length)))
       // VP8X: desliga as marcas de EXIF (0x08) e XMP (0x04) — os blocos saíram.

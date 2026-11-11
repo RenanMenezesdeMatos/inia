@@ -122,5 +122,6 @@ export async function operatorRequestView(db: Queryable, request: RequestRow): P
     canClose: request.status === "IN_PROGRESS",
     peerReceipts: seen.peerReceipts,
     peerTypingMs: seen.peerTypingMs,
+    readSeq: seen.ownReadSeq,
   }
 }

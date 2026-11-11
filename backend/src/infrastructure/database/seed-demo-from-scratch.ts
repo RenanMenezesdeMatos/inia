@@ -131,7 +131,7 @@ async function proveUnjustifiedAbsence(db: Database): Promise<AbsenceProof> {
   const person = async (matricula: string) => (await db.query<{ id: string; reports_to_id: string }>(`select id, reports_to_id from people where organization_id = $1 and matricula = $2`, [ORG, matricula])).rows[0]!
   const joana = await person("DEMO-OP-0029")
   const later = await person("DEMO-OP-0030")
-  const definition = async (code: string) => (await loadIndicatorOperationalDefinition(db, code))!
+  const definition = async (code: string) => (await loadIndicatorOperationalDefinition(db, ORG, code))!
   const summarize = async (code: string, aggregation: "SUM" | "WEIGHTED_AVERAGE", personId: string): Promise<WindowSummary> => {
     const result = (await resolveOperationalWindowBySubject(db, { indicatorCode: code, subjectIds: [personId], window, aggregation, timeZone, now, expectedDays: 5 }, await definition(code))).get(personId)
     return { value: result?.value ?? null, sampleCount: result?.sampleCount ?? 0, daysWithData: result?.daysWithData ?? 0, expectedDays: result?.expectedDays ?? null, policy: result?.unjustifiedAbsence.policy ?? "NO_SAMPLE", zeroContributionDays: result?.unjustifiedAbsence.zeroContributionDays ?? 0 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { AlertTriangle, CalendarDays, ExternalLink, Plus, Trash2 } from "lucide-react"
 
+import { PageHeader } from "@/components/ui/surface"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -34,17 +35,11 @@ const ALL = "__all__"
 export function OperationalCalendarPage() {
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <CalendarDays className="size-5" />
-        </span>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Calendário operacional</h1>
-          <p className="text-sm text-muted-foreground">
-            Feriados legais por capital operacional (catálogo-base), datas próprias da organização e a política de feriado. Feriado não é folga automática: call center opera em feriado quando a escala diz que trabalha — a escala informada pela fonte sempre vence.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={CalendarDays}
+        title="Calendário operacional"
+        description="Feriados legais por capital operacional (catálogo-base), datas próprias da organização e a política de feriado. Feriado não é folga automática: call center opera em feriado quando a escala diz que trabalha — a escala informada pela fonte sempre vence."
+      />
 
       <SettingsCard />
 

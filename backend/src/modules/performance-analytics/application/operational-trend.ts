@@ -195,7 +195,7 @@ export async function buildEmployeeOperationalTrends(db: Database, input: Operat
       resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: [input.personId], window, aggregation, expectedDays, timeZone: input.timeZone, workdayCache }, definition),
       resolveOperationalWindow(db, { indicatorCode: definition.code, subjectIds: [input.personId], window: previousWindow, aggregation, expectedDays: previousExpectedDays, timeZone: input.timeZone, workdayCache }, definition),
       // A população do quartil usa a MESMA regra de suficiência do catálogo (cobertura mínima do indicador).
-      resolveOperationalQuartiles(db, { indicatorCode: definition.code, aggregation, period, minimumCoverage: definition.minimumCoverage ?? undefined, populationIds: peers.ids, now: input.now, timeZone: input.timeZone, workdayCache, definition }, quartileCache),
+      resolveOperationalQuartiles(db, { organizationId: input.organizationId, indicatorCode: definition.code, aggregation, period, minimumCoverage: definition.minimumCoverage ?? undefined, populationIds: peers.ids, now: input.now, timeZone: input.timeZone, workdayCache, definition }, quartileCache),
     ])
     const currentView = toWindowView(current, describeTimeWindow(window, input.timeZone))
     const previousView = toWindowView(previous, describeTimeWindow(previousWindow, input.timeZone))

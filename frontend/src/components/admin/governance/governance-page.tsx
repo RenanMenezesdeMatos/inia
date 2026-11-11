@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { BookA, Pencil, Plus, ShieldBan, Trash2 } from "lucide-react"
+import { BookA, Pencil, Plus, ShieldBan, ShieldCheck, Trash2 } from "lucide-react"
 
 import {
   AlertDialog,
@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -500,32 +501,35 @@ export function GovernancePage() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Governança</CardTitle>
-        <CardDescription>Guardrails e termos gerais que orientam a IA, independentemente de grupo ou assunto.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={handleTabChange}>
-          <TabsList>
-            <TabsTrigger value="prohibited">Assuntos proibidos</TabsTrigger>
-            <TabsTrigger value="glossary">Glossário geral</TabsTrigger>
-            <TabsTrigger value="response-checks">Conferência das respostas</TabsTrigger>
-          </TabsList>
+    <section className="space-y-4">
+      <PageHeader
+        icon={ShieldCheck}
+        title="Governança"
+        description="Guardrails e termos gerais que orientam a IA, independentemente de grupo ou assunto."
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={tab} onValueChange={handleTabChange}>
+            <TabsList>
+              <TabsTrigger value="prohibited">Assuntos proibidos</TabsTrigger>
+              <TabsTrigger value="glossary">Glossário geral</TabsTrigger>
+              <TabsTrigger value="response-checks">Conferência das respostas</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="prohibited" className="mt-4">
-            <ProhibitedTopicsPanel />
-          </TabsContent>
+            <TabsContent value="prohibited" className="mt-4">
+              <ProhibitedTopicsPanel />
+            </TabsContent>
 
-          <TabsContent value="glossary" className="mt-4">
-            <GlossaryPanel />
-          </TabsContent>
+            <TabsContent value="glossary" className="mt-4">
+              <GlossaryPanel />
+            </TabsContent>
 
-          <TabsContent value="response-checks" className="mt-4">
-            <ResponseChecksPanel />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+            <TabsContent value="response-checks" className="mt-4">
+              <ResponseChecksPanel />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

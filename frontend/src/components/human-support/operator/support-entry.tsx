@@ -24,19 +24,20 @@ import { IconBadge, toneSurface } from "@/components/ui/surface"
  */
 export const awaitingEvaluation = (evaluation: PendingEvaluation) => evaluation.current.resolved === null && evaluation.current.stars === null
 
-export function supportPillText(operator: ReturnType<typeof useHumanSupportState>["operator"]): string | null {
+/** `unread` = mensagens do Anjo que o operador ainda não viu (a sala fechada): o selo diz quantas. */
+export function supportPillText(operator: ReturnType<typeof useHumanSupportState>["operator"], unread = 0): string | null {
   const open = operator?.openRequest
   if (open?.status === "WAITING") return open.queueExpiresAt ? `Apoio · Na fila até ${formatClockTime(open.queueExpiresAt)}` : "Apoio · Na fila"
-  if (open?.status === "IN_PROGRESS") return `Apoio · com ${open.anjo?.name ?? "o Anjo"}`
+  if (open?.status === "IN_PROGRESS") return `Apoio · com ${open.anjo?.name ?? "o Anjo"}${unread > 0 ? ` · ${unread === 1 ? "1 mensagem nova" : `${unread} mensagens novas`}` : ""}`
   if (operator?.pendingEvaluations.some(awaitingEvaluation)) return "Apoio · encerrado — avalie"
   return null
 }
 
 /** Selo do apoio na vista da INIA. Avisa (título da aba e um som curto, uma vez) quando um Anjo recebe o pedido com a aba oculta. */
 export function SupportStatusPill({ onOpenRoom }: { onOpenRoom: () => void }) {
-  const { operator } = useHumanSupportState()
+  const { operator, unreadFromAnjo } = useHumanSupportState()
   useAssignmentNotice(operator?.openRequest ?? null)
-  const text = supportPillText(operator)
+  const text = supportPillText(operator, unreadFromAnjo)
   if (!text) return null
   // Tom pelo estado: na fila (âmbar), em atendimento (verde), encerrado aguardando avaliação (primária).
   const status = operator?.openRequest?.status
@@ -47,6 +48,7 @@ export function SupportStatusPill({ onOpenRoom }: { onOpenRoom: () => void }) {
       <Button type="button" variant="outline" size="sm" className={cn("h-8 rounded-full border text-xs font-medium shadow-none", tone)} onClick={onOpenRoom} data-testid="support-status-pill">
         <Icon className="size-3.5" />
         {text}
+        {unreadFromAnjo > 0 && status === "IN_PROGRESS" ? <span className="size-2 rounded-full bg-primary" aria-hidden data-testid="support-pill-unread" /> : null}
       </Button>
     </div>
   )

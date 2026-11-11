@@ -82,6 +82,8 @@ export async function buildUsabilityContext(db: Queryable, input: { access: Acce
  * Leitor só de agregados (sem `usability.users.view`): um recorte com menos de `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` pessoas
  * no alcance dele não devolve número nenhum — um escopo de 1–4 pessoas aponta alguém como um nome (achado C18 da 4ª auditoria).
  * Vale para toda consulta de números e para a exportação; as opções de filtro (`/context`) continuam.
+ * A contagem usa `scopePeopleSql`, que para esse leitor já tira as células pequenas (`smallCellPeopleSql`): o recorte contado é o
+ * mesmo dos números.
  */
 export async function assertAggregateCohort(db: Queryable, ctx: UsabilityContext): Promise<void> {
   if (ctx.can.people) return
@@ -121,11 +123,33 @@ export function scopePeopleSql(p: SqlParams, ctx: UsabilityContext, options: { c
   if (f.accountStatus === "NONE") clauses.push(`pop.account_id is null`)
   if (f.accessRole) clauses.push(`exists (select 1 from access_role_assignments ra where ra.user_account_id = pop.account_id and ra.revoked_at is null and ra.role_code = ${p.add(f.accessRole)})`)
   const excluded = excludedClasses(f)
-  if (excluded.length > 0) clauses.push(`not exists (select 1 from usage_population_classifications uc where uc.organization_id = ${p.typed(ctx.organizationId, "uuid")} and uc.person_id = pop.person_id and uc.removed_at is null and uc.classification = any(${p.typed(excluded, "text[]")}))`)
+  if (excluded.length > 0) clauses.push(`not exists (${classifiedSql(p, ctx, "pop", excluded)})`)
+  if (!ctx.can.people) clauses.push(`pop.person_id not in (${smallCellPeopleSql(p, ctx)})`)
   const scope = scopedPeopleSql(p, { organizationId: ctx.organizationId, viewerPersonId: ctx.viewerPersonId, permission: "usability.view" })
   // O alcance vem PRIMEIRO e a população é lida pela chave (pessoa): com `pop.person_id in (alcance)` o planejador comparava
   // cada pessoa com a lista inteira (≈ 100 ms com 2 mil pessoas, em toda consulta).
   return `select pop.person_id from (${scope}) sc join (${populationSql(p, ctx.organizationId)}) pop on pop.person_id = sc.person_id where true${clauses.map((clause) => ` and ${clause}`).join("")}`
+}
+
+const classifiedSql = (p: SqlParams, ctx: UsabilityContext, alias: string, classes: string[]) =>
+  `select 1 from usage_population_classifications uc where uc.organization_id = ${p.typed(ctx.organizationId, "uuid")} and uc.person_id = ${alias}.person_id and uc.removed_at is null and uc.classification = any(${p.typed(classes, "text[]")})`
+
+/**
+ * CÉLULAS PEQUENAS — supressão para quem só vê agregados (desvio do C18 na 2ª rodada: Organização − Grupo A = Grupo B de 2 pessoas).
+ * Barrar só o recorte pedido não basta: dois recortes permitidos (≥ 5) podem ser subtraídos. Os filtros de população abertos a esse
+ * leitor (Grupo, Subgrupo, incluir teste/automação, incluir demonstração; estrutura sempre atual) só escolhem UNIÕES de células
+ * (Grupo × Subgrupo × "é teste/automação" × "é demonstração") dentro do alcance dele, que é fixo para o leitor. Pessoas de célula com
+ * menos de `MINIMUM_SENSITIVE_AGGREGATE_POPULATION` pessoas saem de TODO recorte desse leitor (também dos totais da organização).
+ * Assim qualquer soma ou diferença de respostas permitidas só combina células de 5 ou mais — nunca isola um grupo menor. Quem vê
+ * pessoas identificadas não passa por aqui.
+ */
+export function smallCellPeopleSql(p: SqlParams, ctx: UsabilityContext): string {
+  const scope = scopedPeopleSql(p, { organizationId: ctx.organizationId, viewerPersonId: ctx.viewerPersonId, permission: "usability.view" })
+  const test = `exists (${classifiedSql(p, ctx, "pop", ["TEST", "AUTOMATION"])})`
+  const demo = `exists (${classifiedSql(p, ctx, "pop", ["DEMO"])})`
+  return `select cell.person_id from (select pop.person_id, count(*) over (partition by pop.team_id, pop.subteam_id, ${test}, ${demo}) cell_size
+      from (${scope}) sc join (${populationSql(p, ctx.organizationId)}) pop on pop.person_id = sc.person_id) cell
+    where cell.cell_size < ${MINIMUM_SENSITIVE_AGGREGATE_POPULATION}`
 }
 
 /** Estrutura NO MOMENTO DO FATO (snapshot) — só no modo AT_FACT e só para fatos que guardam o vínculo. */

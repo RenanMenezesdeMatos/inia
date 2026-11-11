@@ -38,12 +38,26 @@ const MEASURES: Measure[] = [
   { id: "M8", kind: "COUNT", main: count(4), conversion: rate(2, 3), breakdown: [{ key: "BUTTON", label: "Botão “Falar com um Anjo”", count: 2 }] },
   { id: "M12", kind: "PERCENTILE", main: count(8), percentiles: { p50: 90, p90: 400, estimate: null }, noResponse: rate(1, 9) },
   { id: "M17", kind: "AVERAGE", main: { numerator: 25, denominator: 6, value: 4.17, status: "OK" }, coverage: rate(6, 10), breakdown: [{ key: "5", label: "5 estrelas", count: 3, value: 0.5 }] },
+  // Motivos na ordem do catálogo, de propósito fora da ordem de quantidade: a tela mostra do maior para o menor.
+  {
+    id: "M14",
+    kind: "DISTRIBUTION",
+    main: { numerator: 10, denominator: null, value: 10, status: "OK" },
+    coverage: rate(10, 12),
+    breakdown: [
+      { key: "NO_PROCESS", label: "Falta de processo cadastrado", count: 1, value: 0.1 },
+      { key: "QUESTION_UNCLEAR", label: "Pergunta mal formulada", count: 0, value: 0 },
+      { key: "NO_TOOL_ACCESS", label: "Sem acesso à ferramenta ou ao sistema", count: 6, value: 0.6 },
+      { key: "TOOL_UNAVAILABLE", label: "Ferramenta ou sistema indisponível", count: 3, value: 0.3 },
+    ],
+    extra: [{ key: "Siebel", label: "Siebel", count: 2 }, { key: "Portal de documentos", label: "Portal de documentos", count: 4 }],
+  },
 ]
 const FUNNEL: FunnelResponse = { period: PERIOD, cutoffs: { dislikeDetailsSince: "2026-10-20T12:00:00.000Z", signalsSince: null, disabledPeriods: [{ from: "2026-10-11T03:00:00.000Z", to: "2026-10-15T15:00:00.000Z" }] }, measures: MEASURES }
 
 const item = (id: string, patch: Partial<RequestListItem> = {}): RequestListItem => ({
-  id, protocol: `AP-${id.toUpperCase()}`, operatorName: "Larissa Monteiro", teamName: "Grupo X", subteamName: "X1", origin: "DISLIKE", status: "CLOSED", endCause: "ANJO_CLOSED", createdAt: "2026-11-02T13:00:00.000Z", endedAt: "2026-11-02T13:20:00.000Z",
-  anjoNames: ["Ana Souza"], firstResponseSeconds: 75, classificationReason: "FOUND_IN_PROCESS", outcome: "RESOLVED", resolved: "YES", stars: 4, ...patch,
+  id, protocol: `AP-${id.toUpperCase()}`, operatorName: "Larissa Monteiro", operatorAvatarUrl: null, teamName: "Grupo X", subteamName: "X1", origin: "DISLIKE", status: "CLOSED", endCause: "ANJO_CLOSED", createdAt: "2026-11-02T13:00:00.000Z", endedAt: "2026-11-02T13:20:00.000Z",
+  anjoNames: ["Ana Souza"], firstResponseSeconds: 75, messageCount: 2, classificationReason: "FOUND_IN_PROCESS", outcome: "RESOLVED", resolved: "YES", stars: 4, ...patch,
 })
 const DETAIL: RequestDetail = {
   ...item("k2qx9"),
@@ -69,6 +83,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date(2026, 10, 9, 10, 0, 0))
   service.fetchSupportFunnel.mockResolvedValue(FUNNEL)
+  service.fetchSupportRequests.mockResolvedValue({ items: [], nextCursor: null, total: 0 })
 })
 afterEach(() => {
   cleanup()
@@ -77,8 +92,23 @@ afterEach(() => {
 })
 
 describe("Painel do apoio › Funil", () => {
+  it("os motivos de cada card aparecem sempre do maior para o menor (zero por último)", async () => {
+    renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
+    const card = await screen.findByTestId("measure-M14")
+    const lists = within(card).getAllByRole("list")
+    expect(within(lists[0]!).getAllByRole("listitem").map((entry) => entry.textContent)).toEqual([
+      "Sem acesso à ferramenta ou ao sistema660%",
+      "Ferramenta ou sistema indisponível330%",
+      "Falta de processo cadastrado110%",
+      "Pergunta mal formulada00%",
+    ])
+    expect(within(lists[1]!).getAllByRole("listitem").map((entry) => entry.textContent)).toEqual(["Portal de documentos4", "Siebel2"])
+  })
+
   it("indicadores em linguagem de operação: sem códigos nem p50/p90, unidade explícita, poucos dados e sem dados nunca viram 0%", async () => {
     renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
     const m2 = await screen.findByTestId("measure-M2")
     expect(m2).toHaveTextContent("Respostas avaliadas")
     expect(m2).toHaveTextContent("40%")
@@ -124,6 +154,7 @@ describe("Painel do apoio › Funil", () => {
 
   it("sem o bloco técnico de datas de corte: a observação curta fica só no indicador afetado", async () => {
     renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
     await screen.findByTestId("measure-M1")
     expect(screen.queryByLabelText("Datas de corte")).not.toBeInTheDocument()
     expect(document.body).not.toHaveTextContent("Sinais desde")
@@ -136,6 +167,7 @@ describe("Painel do apoio › Funil", () => {
 
   it("período no calendário do app com Aplicar: acima de 92 dias não aplica nem consulta; o 422 do servidor também aparece", async () => {
     renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
     await screen.findByTestId("measure-M1")
     const trigger = screen.getByRole("button", { name: "Período" })
     expect(trigger).toHaveTextContent("11/10/2026 – 09/11/2026")
@@ -158,15 +190,18 @@ describe("Painel do apoio › Funil", () => {
 
   it("o Coordenador não tem filtro de Grupo e a tela nunca chama a rota de escopos do Administrador geral", async () => {
     renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
     await screen.findByTestId("measure-M1")
-    expect(screen.queryByRole("combobox", { name: "Filtrar por Grupo ou Subgrupo" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Filtrar por grupo" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Filtrar por subgrupo" })).not.toBeInTheDocument()
     expect(service.fetchSupportScopes).not.toHaveBeenCalled()
   })
 
   it("quem configura o apoio filtra por Grupo/Subgrupo (a árvore da configuração)", async () => {
     service.fetchSupportScopes.mockResolvedValue([{ type: "GROUP", id: "gx", name: "Grupo X", state: "ON", effective: true, effectiveSource: "OWN", anjoCount: 1, warnings: [], children: [{ type: "SUBGROUP", id: "x1", name: "X1", state: "INHERIT", effective: true, effectiveSource: "GROUP", anjoCount: 1, warnings: [] }] }])
     renderWithQuery(<HumanSupportMonitoringPage canFilterByScope />)
-    fireEvent.click(await screen.findByRole("combobox", { name: "Filtrar por Grupo ou Subgrupo" }))
+    openTab("Indicadores")
+    fireEvent.click(await screen.findByRole("combobox", { name: "Filtrar por subgrupo" }))
     fireEvent.click(await screen.findByRole("option", { name: "Grupo X › X1" }))
     await waitFor(() => expect(service.fetchSupportFunnel).toHaveBeenCalledWith({ ...PERIOD, teamId: "gx", subteamId: "x1" }))
   })
@@ -174,10 +209,11 @@ describe("Painel do apoio › Funil", () => {
 
 describe("Painel do apoio › Pedidos", () => {
   it("lista com filtros e 'Carregar mais' pelo cursor", async () => {
-    service.fetchSupportRequests.mockImplementation(async (filter: { cursor?: string | null }) => (filter.cursor === "c2" ? { items: [item("b")], nextCursor: null } : { items: [item("a")], nextCursor: "c2" }))
+    service.fetchSupportRequests.mockImplementation(async (filter: { cursor?: string | null }) => (filter.cursor === "c2" ? { items: [item("b")], nextCursor: null, total: null } : { items: [item("a")], nextCursor: "c2", total: 2 }))
     renderWithQuery(<HumanSupportMonitoringPage />)
     openTab("Pedidos")
     expect(await screen.findByText("AP-A")).toBeInTheDocument()
+    expect(screen.getByText("1 de 2")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Carregar mais" }))
     expect(await screen.findByText("AP-B")).toBeInTheDocument()
     expect(service.fetchSupportRequests).toHaveBeenCalledWith(expect.objectContaining({ ...PERIOD, cursor: "c2" }))
@@ -189,14 +225,14 @@ describe("Painel do apoio › Pedidos", () => {
   })
 
   it("abrir um pedido mostra o que foi compartilhado, a conversa com os três autores, atendimentos, classificação e avaliação", async () => {
-    service.fetchSupportRequests.mockResolvedValue({ items: [item("k2qx9")], nextCursor: null })
+    service.fetchSupportRequests.mockResolvedValue({ items: [item("k2qx9")], nextCursor: null, total: 1 })
     service.fetchSupportRequestDetail.mockResolvedValue(DETAIL)
     renderWithQuery(<HumanSupportMonitoringPage />)
     openTab("Pedidos")
     fireEvent.click(await screen.findByTestId("support-request"))
     const detail = await screen.findByRole("article", { name: "Pedido AP-K2QX9" })
     expect(service.fetchSupportRequestDetail).toHaveBeenCalledWith("k2qx9")
-    expect(within(detail).getByText(/Abrir este pedido fica registrado/)).toBeInTheDocument()
+    expect(within(detail).getByText(/abrir este pedido fica registrado/i)).toBeInTheDocument()
 
     const shared = within(detail).getByRole("region", { name: "O que o operador compartilhou" })
     expect(within(shared).getByText("Como faço a troca de titularidade?")).toBeInTheDocument()
@@ -208,9 +244,13 @@ describe("Painel do apoio › Pedidos", () => {
     const messages = within(detail).getByRole("list", { name: "Mensagens do apoio" })
     const authors = [...messages.querySelectorAll("li")].map((li) => li.getAttribute("data-author"))
     expect(authors).toEqual(["SYSTEM", "ANJO", "OPERATOR"])
-    expect(messages.querySelector('[data-author="OPERATOR"]')).toHaveClass("justify-end")
-    expect(messages.querySelector('[data-author="ANJO"]')).toHaveClass("justify-start")
-    expect(messages.querySelector('[data-author="SYSTEM"]')).toHaveClass("justify-center")
+    // Como numa conversa de "Conversas com a INIA": operador à direita, Anjo à esquerda, sistema ao centro; separador de data.
+    expect(messages.querySelector('[data-author="OPERATOR"] [data-slot="message"]')).toHaveAttribute("data-align", "end")
+    expect(messages.querySelector('[data-author="ANJO"] [data-slot="message"]')).toHaveAttribute("data-align", "start")
+    expect(messages.querySelector('[data-author="SYSTEM"] [data-slot="message"]')).toBeNull()
+    expect(within(messages).getByRole("separator", { name: "2 de novembro de 2026" })).toBeInTheDocument()
+    expect(within(detail).getByRole("heading", { name: "Pedido AP-K2QX9" })).toBeInTheDocument()
+    expect(within(detail).getByText("Larissa Monteiro", { selector: "span" })).toBeInTheDocument()
 
     expect(within(detail).getByRole("region", { name: "Atendimentos" })).toHaveTextContent("Primeira resposta: 1 min")
     const classification = within(detail).getByRole("region", { name: "Classificação do Anjo" })
@@ -220,6 +260,36 @@ describe("Painel do apoio › Pedidos", () => {
     expect(within(detail).queryByRole("link")).not.toBeInTheDocument()
     expect(within(detail).getByRole("region", { name: "Avaliação do operador" })).toHaveTextContent("Sim")
     expect(within(detail).getByLabelText("4 de 5 estrelas")).toBeInTheDocument()
+  })
+
+  it("abre em Pedidos no formato de Conversas com a INIA: total no título, busca, lista por dia com foto, estado e mensagens — sem conteúdo da conversa", async () => {
+    service.fetchSupportRequests.mockResolvedValue({
+      items: [item("k2qx9"), item("w8", { createdAt: "2026-11-01T15:00:00.000Z", status: "WAITING", endCause: null, endedAt: null, anjoNames: [], firstResponseSeconds: null, messageCount: 0, stars: null })],
+      nextCursor: null,
+      total: 2,
+    })
+    renderWithQuery(<HumanSupportMonitoringPage />)
+    expect(screen.getByRole("heading", { level: 1, name: "Apoio com Anjo" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Pedidos" })).toHaveAttribute("aria-selected", "true")
+    expect(await screen.findByText("2 pedidos no período")).toBeInTheDocument()
+
+    const days = screen.getAllByRole("region").filter((region) => region.closest('[aria-label="Pedidos"]'))
+    expect(days.map((day) => day.getAttribute("aria-label"))).toEqual(["2 de novembro de 2026", "1 de novembro de 2026"])
+    const [closed, waiting] = screen.getAllByTestId("support-request")
+    expect(closed).toHaveTextContent("Anjo: Ana Souza · 1ª resposta em 1 min 15 s")
+    expect(closed).toHaveTextContent("Encerrado")
+    expect(closed).toHaveTextContent("2 mensagens")
+    expect(within(closed!).getByLabelText("4 de 5 estrelas")).toBeInTheDocument()
+    expect(waiting).toHaveTextContent("Aguardando um Anjo")
+    expect(waiting).toHaveTextContent("Na fila")
+    // A lista nunca mostra o que foi conversado: isso só aparece ao abrir o pedido (registro LGPD).
+    expect(screen.queryByText(/titularidade/)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar pedido por operador ou protocolo" }), { target: { value: "  larissa " } })
+    await waitFor(() => expect(service.fetchSupportRequests).toHaveBeenCalledWith(expect.objectContaining({ search: "larissa", cursor: null })))
+    expect(await screen.findByText("2 pedidos com esses filtros")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Limpar filtros/ }))
+    expect(screen.getByRole("searchbox", { name: "Buscar pedido por operador ou protocolo" })).toHaveValue("")
   })
 })
 

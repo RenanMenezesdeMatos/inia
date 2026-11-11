@@ -106,7 +106,7 @@ export function IntelligenceReportView({ report, narrative, onRetryNarrative, re
           </span>
           {onRetryNarrative ? (
             <Button size="sm" variant="outline" onClick={onRetryNarrative} disabled={retrying}>
-              <RefreshCw className={cn("size-3.5", retrying && "animate-spin")} /> Tentar de novo
+              <RefreshCw className={cn("size-3.5", retrying && "animate-spin")} /> Tentar novamente
             </Button>
           ) : null}
         </div>

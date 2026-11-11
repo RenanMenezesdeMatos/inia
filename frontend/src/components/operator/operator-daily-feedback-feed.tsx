@@ -117,7 +117,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
 
   return <div ref={rootRef} className="contents"><IniaFeed title="Acompanhamento" description="Feedbacks e monitorias da INIA">
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
-      {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar de novo</button></p> : null}
+      {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isSuccess && timeline.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p> : null}
       {timeline.slice(0, visibleCount).map((entry, index, visible) => {
         const previous = visible[index - 1]
@@ -129,7 +129,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
           <div className={cn("-mx-3 rounded-2xl px-3 transition-[background-color,box-shadow] duration-500 motion-reduce:transition-none", active && "bg-primary/5 ring-1 ring-primary/30", flashKey === entry.key && "bg-primary/10 ring-2 ring-primary/50")}>{renderEntry(entry)}</div>
         </div>
       })}
-      {loadMoreError ? <p role="alert" className="py-4 text-center text-sm text-muted-foreground">Não foi possível carregar feedbacks mais antigos. <button type="button" className="underline" onClick={loadMoreHistory}>Tentar de novo</button></p>
+      {loadMoreError ? <p role="alert" className="py-4 text-center text-sm text-muted-foreground">Não foi possível carregar feedbacks mais antigos. <button type="button" className="underline" onClick={loadMoreHistory}>Tentar novamente</button></p>
       : hasMore ? <div ref={loaderRef} className="space-y-3 py-5" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="size-2 animate-pulse rounded-full bg-primary"/>Carregando feedbacks...</div><div className="flex gap-3"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-32"/><Skeleton className="h-4 w-full"/><Skeleton className="h-4 w-3/4"/></div></div></div> : <p className="py-5 text-center text-xs text-muted-foreground">Fim dos feedbacks deste período.</p>}
   </IniaFeed></div>
 }

@@ -72,7 +72,7 @@ export function ResultsTable({ page, columns, sort, onSort, selection }: { page:
                 <TableHead key={key} className="whitespace-nowrap" aria-sort={active ? (sort.direction === "ASC" ? "ascending" : "descending") : undefined} title={column ? `${COLUMN_TYPE_LABELS[column.type]}${column.description ? `. ${column.description}` : ""}` : undefined}>
                   <span className="inline-flex items-center gap-1">
                     {column?.sortable ? (
-                      <button type="button" className="inline-flex items-center gap-1 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onSort({ column: key, direction: active && sort.direction === "DESC" ? "ASC" : "DESC" })}>
+                      <button type="button" className="inline-flex items-center gap-1 rounded-sm font-semibold underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2" onClick={() => onSort({ column: key, direction: active && sort.direction === "DESC" ? "ASC" : "DESC" })}>
                         {column.label}
                         <Icon className="size-3.5" aria-hidden />
                       </button>

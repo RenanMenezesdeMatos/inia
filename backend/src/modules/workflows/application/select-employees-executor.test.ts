@@ -60,7 +60,7 @@ describe("runEmployeeSelection", () => {
       "op-9": null,
       "op-10": null, // 3 SEM DADOS
     })
-    const result = await runEmployeeSelection(db, AVG_CRITERION, candidateIds, new Date())
+    const result = await runEmployeeSelection(db, AVG_CRITERION, candidateIds, new Date(), { organizationId: "org-1" })
     expect(result.memberIds).toEqual(["op-1", "op-2", "op-3", "op-4"])
     expect(result.notMatchedCount).toBe(3)
     expect(result.noDataCount).toBe(3)
@@ -68,20 +68,20 @@ describe("runEmployeeSelection", () => {
 
   it("nunca oferece 'incluir sem dados' — SEM DADOS sempre fica fora da coleção, mesmo quando é a maioria", async () => {
     const db = fakeAverageDb({ "op-1": null, "op-2": null })
-    const result = await runEmployeeSelection(db, AVG_CRITERION, ["op-1", "op-2"], new Date())
+    const result = await runEmployeeSelection(db, AVG_CRITERION, ["op-1", "op-2"], new Date(), { organizationId: "org-1" })
     expect(result.memberIds).toEqual([])
     expect(result.noDataCount).toBe(2)
   })
 
   it("zero candidatos é um resultado legítimo — coleção vazia, sem erro", async () => {
     const db = fakeAverageDb({})
-    const result = await runEmployeeSelection(db, AVG_CRITERION, [], new Date())
+    const result = await runEmployeeSelection(db, AVG_CRITERION, [], new Date(), { organizationId: "org-1" })
     expect(result).toEqual({ memberIds: [], notMatchedCount: 0, noDataCount: 0 })
   })
 
   it("rejeita um critério sem historicalQuery/performanceQuery — nunca inventa uma avaliação", async () => {
     const db = fakeAverageDb({})
-    await expect(runEmployeeSelection(db, { comparator: "GTE", thresholdNumeric: 1 }, ["op-1"], new Date())).rejects.toThrow(
+    await expect(runEmployeeSelection(db, { comparator: "GTE", thresholdNumeric: 1 }, ["op-1"], new Date(), { organizationId: "org-1" })).rejects.toThrow(
       "Critério de seleção sem consulta configurada",
     )
   })

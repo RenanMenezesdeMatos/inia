@@ -95,6 +95,20 @@ export const PROCEDURAL_BONES = [
   "LeftShoulder", "RightShoulder", "LeftArm", "RightArm", "LeftForeArm", "RightForeArm", "LeftHand", "RightHand",
 ] as const
 
+/**
+ * Osso de balanço do cabelo no esqueleto (do asset base, filho de `Head`). Fica FORA de `PROCEDURAL_BONES`
+ * (a pose base e os gestos não o conhecem): só o perfil "natural" o gira, pelo campo `hair` do quadro, e só
+ * o modelo v02 tem malha pesada nele — nos outros modelos girá-lo não move nada.
+ */
+export const HAIR_SWAY_BONE = "hair_02_ph"
+
+/**
+ * Perfil de movimento. "classic" = o comportamento da Mentora original, inalterado. "natural" = o mesmo
+ * comportamento + movimento secundário (tronco, ombros, braços e cabelo reagindo) e piscadas variadas —
+ * ligado pelo próprio GLB (`inia_motion_profile` nos extras do nó `INIA_Rig`; hoje só o v02).
+ */
+export type AvatarMotionProfile = "classic" | "natural"
+
 export type ProceduralBone = (typeof PROCEDURAL_BONES)[number]
 
 /**
@@ -109,4 +123,6 @@ export type BoneOffset = { x: number; y: number; z: number }
 export type AvatarFrameOutput = {
   blendshapes: BlendshapeWeights
   bones: Partial<Record<ProceduralBone, BoneOffset>>
+  /** Rotação do osso de balanço do cabelo (`HAIR_SWAY_BONE`); ausente ou zero = cabelo rígido na cabeça. */
+  hair?: BoneOffset
 }

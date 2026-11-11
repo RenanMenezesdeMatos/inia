@@ -4,6 +4,7 @@ import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
 import { currentAiOrganizationId, runWithAiOrganization } from "../../../shared/application/model-routing/ai-runtime.js"
 import { generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
+import { protectStoredLeave } from "../domain/protected-leave.js"
 import { narrativeIssues, reportNarrativeSchema, REPORT_NARRATIVE_CONTRACT, type IntelligenceReport, type ReportNarrative } from "../domain/intelligence-report.js"
 
 /**
@@ -78,7 +79,9 @@ export type NarrativeResult = { status: "READY" | "FAILED"; attempt: number; err
 
 /** Gera (ou tenta de novo) a narrativa. Nunca lança por falha do modelo: registra a tentativa e devolve o estado. */
 export async function generateReportNarrative(db: Database, input: { organizationId: string; reportId: string; requestedBy?: string | null }, writer: NarrativeWriter = gatewayNarrativeWriter): Promise<NarrativeResult> {
-  const report = (await db.query<{ structured: IntelligenceReport }>(`select structured from intervention_reports where id = $1 and organization_id = $2`, [input.reportId, input.organizationId])).rows[0]
+  const stored = (await db.query<{ structured: IntelligenceReport }>(`select structured from intervention_reports where id = $1 and organization_id = $2`, [input.reportId, input.organizationId])).rows[0]
+  // Relatório gravado antes da proteção do tipo de afastamento (291bd48c): o modelo nunca recebe o tipo exato.
+  const report = stored ? { structured: protectStoredLeave(stored.structured) } : undefined
   if (!report) throw new DomainError("Relatório não encontrado.", "INTERVENTION_REPORT_NOT_FOUND", 404)
   const ready = (await db.query(`select 1 from intervention_report_narratives where report_id = $1 and status = 'READY'`, [input.reportId])).rowCount
   if (ready) {

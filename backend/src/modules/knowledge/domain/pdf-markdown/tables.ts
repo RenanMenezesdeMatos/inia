@@ -88,22 +88,46 @@ const snap = (values: readonly number[], tolerance: number): number[] => {
 
 /** Grupos de traços que se tocam: cada grupo é uma tabela candidata. */
 function connectedRules(rules: readonly PdfRule[]): PdfRule[][] {
-  const horizontals = rules.filter((rule) => rule.orientation === "H")
-  const verticals = rules.filter((rule) => rule.orientation === "V")
+  const horizontals = rules.flatMap((rule, index) => (rule.orientation === "H" ? [index] : []))
+  const verticals = rules.flatMap((rule, index) => (rule.orientation === "V" ? [index] : []))
   const touches = (h: PdfRule, v: PdfRule) => v.at >= h.from - 2.5 && v.at <= h.to + 2.5 && h.at >= v.from - 2.5 && h.at <= v.to + 2.5
-  const parent = new Map<PdfRule, PdfRule>(rules.map((rule) => [rule, rule]))
-  const find = (rule: PdfRule): PdfRule => {
-    let root = rule
-    while (parent.get(root) !== root) root = parent.get(root)!
+  // União com compressão de caminho e por tamanho, sobre índices: cada consulta é quase constante. Sem isso, uma grade de 4.000 traços levava 37 s
+  // na thread da API.
+  const parent = Int32Array.from(rules, (_, index) => index)
+  const size = new Int32Array(rules.length).fill(1)
+  const find = (index: number): number => {
+    let root = index
+    while (parent[root] !== root) root = parent[root]!
+    for (let node = index; node !== root; ) {
+      const up = parent[node]!
+      parent[node] = root
+      node = up
+    }
     return root
   }
-  for (const h of horizontals) for (const v of verticals) if (touches(h, v)) parent.set(find(h), find(v))
-  const groups = new Map<PdfRule, PdfRule[]>()
-  for (const rule of rules) groups.set(find(rule), [...(groups.get(find(rule)) ?? []), rule])
+  for (const h of horizontals) {
+    for (const v of verticals) {
+      if (!touches(rules[h]!, rules[v]!)) continue
+      const [a, b] = [find(h), find(v)]
+      if (a === b) continue
+      const [big, small] = size[a]! >= size[b]! ? [a, b] : [b, a]
+      parent[small] = big
+      size[big]! += size[small]!
+    }
+  }
+  const groups = new Map<number, PdfRule[]>()
+  rules.forEach((rule, index) => {
+    const root = find(index)
+    const group = groups.get(root)
+    if (group) group.push(rule)
+    else groups.set(root, [rule])
+  })
   return [...groups.values()]
 }
 
 const MAX_RULES = 4_000
+/** Grade com mais células que isso não é tabela de documento (uma página cheia tem poucas centenas): vira texto, e a conta fica limitada. */
+const MAX_GRID_CELLS = 10_000
 
 /** Tabelas com grade desenhada (bordas em linha ou em retângulo fino, como sai do Word). Linha de texto cai na célula pela posição. */
 export function ruledTables(rules: readonly PdfRule[], runs: readonly PdfRun[]): { tables: TableBlock[]; used: Set<PdfRun> } {
@@ -113,7 +137,7 @@ export function ruledTables(rules: readonly PdfRule[], runs: readonly PdfRun[]):
   for (const group of connectedRules(rules)) {
     const xs = snap(group.filter((rule) => rule.orientation === "V").map((rule) => rule.at), 3)
     const ys = snap(group.filter((rule) => rule.orientation === "H").map((rule) => rule.at), 3)
-    if (xs.length < 3 || ys.length < 3) continue
+    if (xs.length < 3 || ys.length < 3 || (xs.length - 1) * (ys.length - 1) > MAX_GRID_CELLS) continue
     const left = xs[0]!
     const right = xs[xs.length - 1]!
     const top = ys[0]!

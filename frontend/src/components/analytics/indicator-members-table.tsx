@@ -9,7 +9,7 @@ import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { formatIndicatorValue, formatPercent } from "@/lib/analytics/format"
 import type { SubjectRef } from "@/lib/analytics/subject-params"
@@ -66,7 +66,7 @@ export function IndicatorMembersTable({ subject, period, code, employeeHref }: {
         query.data.total === 0 ? (
           <AnalyticsEmptyState icon={UserRound} title="Nenhum colaborador encontrado" description={debouncedSearch ? "Ajuste a busca para ver outros colaboradores." : "Esta estrutura não possui colaboradores."} />
         ) : (
-          <div className="overflow-x-auto rounded-xl bg-muted/40" aria-busy={query.isFetching}>
+          <div className={TABLE_FRAME} aria-busy={query.isFetching}>
             <Table>
               <TableHeader>
                 <TableRow>

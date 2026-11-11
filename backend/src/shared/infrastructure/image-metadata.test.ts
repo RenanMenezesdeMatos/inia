@@ -47,7 +47,7 @@ function jpeg(orientation: number): Buffer {
 describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
   it("JPEG: EXIF/GPS, XMP, IPTC e comentário saem; pixels, tabelas e tamanho ficam; a orientação volta num EXIF mínimo", () => {
     const original = jpeg(6)
-    const clean = stripImageMetadata(original, "image/jpeg")
+    const clean = stripImageMetadata(original, "image/jpeg")!
     const text = clean.toString("latin1")
     for (const leaked of ["GPS", "iPhone", "xmpmeta", "Rua X", "IPTC", "comentário"]) expect(text).not.toContain(leaked)
     expect(clean.subarray(-8).equals(original.subarray(-8))).toBe(true)
@@ -58,7 +58,7 @@ describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
     expect(clean.subarray(app1 + 4, app1 + 10).toString("latin1")).toBe("Exif\0\0")
     expect(clean.readUInt16BE(app1 + 10 + 18)).toBe(6)
     // Orientação normal: nenhum EXIF.
-    expect(stripImageMetadata(jpeg(1), "image/jpeg").includes(Buffer.from("Exif", "latin1"))).toBe(false)
+    expect(stripImageMetadata(jpeg(1), "image/jpeg")!.includes(Buffer.from("Exif", "latin1"))).toBe(false)
   })
 
   it("PNG: blocos de texto e eXIf saem; o resto fica igual", () => {
@@ -71,10 +71,11 @@ describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
     ihdr.writeUInt32BE(640, 0)
     ihdr.writeUInt32BE(200, 4)
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("tEXt", Buffer.from("Author\0Ana Lima", "latin1")), chunk("eXIf", Buffer.from("GPS")), chunk("IDAT", Buffer.from([1, 2, 3])), chunk("IEND", Buffer.alloc(0))])
-    const clean = stripImageMetadata(png, "image/png")
+    const clean = stripImageMetadata(Buffer.concat([png, Buffer.from("depois do IEND: GPS")]), "image/png")!
     expect(clean.toString("latin1")).not.toContain("Ana Lima")
     expect(clean.toString("latin1")).not.toContain("eXIf")
     expect(clean.toString("latin1")).toContain("IDAT")
+    expect(clean.toString("latin1")).not.toContain("GPS")
     expect(inspectImage(clean)).toEqual({ mimeType: "image/png", width: 640, height: 200 })
   })
 
@@ -93,7 +94,7 @@ describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
     header.write("RIFF", 0, "latin1")
     header.writeUInt32LE(body.length + 4, 4)
     header.write("WEBP", 8, "latin1")
-    const clean = stripImageMetadata(Buffer.concat([header, body]), "image/webp")
+    const clean = stripImageMetadata(Buffer.concat([header, body]), "image/webp")!
     expect(clean.toString("latin1")).not.toContain("GPS")
     expect(clean.toString("latin1")).not.toContain("XMP ")
     expect(clean[20]! & 0x0c).toBe(0)
@@ -105,13 +106,54 @@ describe("metadados fora da imagem (auditoria 17/10/2026, AUTH-11)", () => {
     const original = jpeg(1)
     const withStandalone = Buffer.concat([original.subarray(0, 2), Buffer.from([0xff, 0xd0, 0xff, 0x01]), original.subarray(2)])
     expect(inspectImage(withStandalone)).toEqual({ mimeType: "image/jpeg", width: 800, height: 600 })
-    const clean = stripImageMetadata(withStandalone, "image/jpeg")
+    const clean = stripImageMetadata(withStandalone, "image/jpeg")!
     for (const leaked of ["GPS", "iPhone", "xmpmeta", "IPTC"]) expect(clean.toString("latin1")).not.toContain(leaked)
     expect(inspectImage(clean)).toEqual({ mimeType: "image/jpeg", width: 800, height: 600 })
   })
 
-  it("estrutura inesperada volta igual (nada é cortado no escuro)", () => {
+  it("estrutura inesperada = null: quem chama recusa, nunca grava os bytes originais com os metadados", () => {
     const broken = Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0x00])
-    expect(stripImageMetadata(broken, "image/jpeg").equals(broken)).toBe(true)
+    expect(stripImageMetadata(broken, "image/jpeg")).toBeNull()
+    // Sem EOI depois do scan (arquivo cortado): o EXIF já teria saído, mas a estrutura não fecha — recusa.
+    expect(stripImageMetadata(jpeg(1).subarray(0, -2), "image/jpeg")).toBeNull()
+    expect(stripImageMetadata(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]), "image/png")).toBeNull()
+  })
+
+  it("JPEG termina no EOI da imagem principal: imagem secundária do MPF (com EXIF próprio) e vídeo anexado saem (10/11/2026)", () => {
+    const primary = Buffer.concat([
+      jpeg(1).subarray(0, 2),
+      segment(0xe2, Buffer.from("MPF\0MM\0\x2a\0\0\0\x08", "latin1")),
+      segment(0xe2, Buffer.from("ICC_PROFILE\0\x01\x01perfil", "latin1")),
+      jpeg(1).subarray(2),
+    ])
+    const secondary = Buffer.concat([Buffer.from([0xff, 0xd8]), segment(0xe1, exifPayload(1)), segment(0xc0, Buffer.from([0x08, 0, 0x10, 0, 0x10, 0x01, 0x01, 0x11, 0])), Buffer.from([0xff, 0xd9])])
+    const motionVideo = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42", "latin1"), Buffer.from("udta ©xyz-23.5505-046.6333/", "latin1")])
+    const clean = stripImageMetadata(Buffer.concat([primary, secondary, motionVideo]), "image/jpeg")!
+    const text = clean.toString("latin1")
+    for (const leaked of ["GPS", "iPhone", "ftyp", "©xyz", "-23.5505", "MPF"]) expect(text).not.toContain(leaked)
+    expect(text).toContain("ICC_PROFILE")
+    expect(clean.subarray(-2).equals(Buffer.from([0xff, 0xd9]))).toBe(true)
+    expect(clean.indexOf(Buffer.from([0xff, 0xd8]), 2)).toBe(-1)
+    expect(inspectImage(clean)).toEqual({ mimeType: "image/jpeg", width: 800, height: 600 })
+  })
+
+  it("JPEG progressivo: bytes escapados (0xFF00), RSTn e vários scans ficam iguais; APP entre scans sai", () => {
+    const base = jpeg(1)
+    const sos = base.indexOf(Buffer.from([0xff, 0xda]))
+    const scan = (bytes: number[]) => Buffer.concat([segment(0xda, Buffer.from([0x01, 0x01, 0x00, 0x00, 0x3f, 0x00])), Buffer.from(bytes)])
+    const progressive = Buffer.concat([
+      base.subarray(0, sos),
+      scan([0x11, 0xff, 0x00, 0xd9, 0xff, 0xd0, 0x22, 0xff, 0xff, 0xd1, 0x33]),
+      segment(0xc4, Buffer.alloc(20, 2)),
+      segment(0xe1, exifPayload(1)),
+      scan([0x44, 0xff, 0x00, 0x55]),
+      Buffer.from([0xff, 0xd9]),
+      Buffer.from("lixo depois do fim GPS", "latin1"),
+    ])
+    const clean = stripImageMetadata(progressive, "image/jpeg")!
+    expect(clean.toString("latin1")).not.toContain("GPS")
+    expect(clean.includes(Buffer.from([0x11, 0xff, 0x00, 0xd9, 0xff, 0xd0, 0x22, 0xff, 0xff, 0xd1, 0x33]))).toBe(true)
+    expect(clean.includes(segment(0xc4, Buffer.alloc(20, 2)))).toBe(true)
+    expect(clean.subarray(-6).equals(Buffer.from([0x44, 0xff, 0x00, 0x55, 0xff, 0xd9]))).toBe(true)
   })
 })

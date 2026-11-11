@@ -268,8 +268,11 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
 
     // Do outro lado: o operador lê a resposta do Anjo e o Anjo vê os dois tiques azuis.
     const reply = (await sendMessage(pool, viewer("A1"), created.id, { clientMessageId: randomUUID(), body: "Claro! Me conta qual é o caso.", viewerIsAnjo: true })).message
+    // Antes de ler, o estado do operador diz até onde ELE leu (a resposta do Anjo é mensagem nova, também depois de recarregar).
+    expect((await operatorSees()).readSeq).toBeLessThan(reply.seq)
     await acknowledgeMessages(pool, viewer("O25"), created.id, { deliveredSeq: reply.seq, readSeq: reply.seq, viewerIsAnjo: false })
     expect((await anjoSees()).peerReceipts).toEqual({ deliveredSeq: reply.seq, readSeq: reply.seq })
+    expect((await operatorSees()).readSeq).toBe(reply.seq)
 
     // Quem não está na conversa não marca nada (404, sem revelar o pedido).
     await expect(signalTyping(pool, viewer("A2"), created.id, { typing: true, viewerIsAnjo: true })).rejects.toMatchObject({ statusCode: 404 })
@@ -502,6 +505,20 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
 
     const listed = await listRequests(pool, viewer("ADMIN"), { from: today(), to: today() })
     expect(listed.items.find((item) => item.id === access.requestId)?.classificationReason).toBe("NO_TOOL_ACCESS")
+    // Lista no formato de "Conversas com a INIA": total na primeira página, só a contagem das mensagens humanas (o conteúdo fica no
+    // detalhe, que grava o registro LGPD) e busca pelo protocolo ou pelo nome do operador; `%` digitado é texto, não curinga.
+    const target = listed.items.find((item) => item.id === access.requestId)!
+    const allToday = (await sql(`select count(*)::int n from human_support_requests where organization_id = $1 and created_at >= ($2::date)::timestamp at time zone analytics_org_timezone($1) and created_at < ($2::date + 1)::timestamp at time zone analytics_org_timezone($1)`, [ORG, today()])).rows[0] as { n: number }
+    expect(listed.total).toBe(allToday.n)
+    if (listed.nextCursor) expect((await listRequests(pool, viewer("ADMIN"), { from: today(), to: today(), cursor: listed.nextCursor })).total).toBeNull()
+    const humanMessages = (await sql(`select count(*)::int n from human_support_messages where request_id = $1 and author_kind <> 'SYSTEM'`, [access.requestId])).rows[0] as { n: number }
+    expect(target.messageCount).toBe(humanMessages.n)
+    const byProtocol = await listRequests(pool, viewer("ADMIN"), { from: today(), to: today(), search: target.protocol.toLowerCase() })
+    expect(byProtocol).toMatchObject({ total: 1, items: [{ id: access.requestId }] })
+    const byName = await listRequests(pool, viewer("ADMIN"), { from: today(), to: today(), search: target.operatorName })
+    expect(byName.items.map((item) => item.id)).toContain(access.requestId)
+    expect(byName.items.every((item) => item.operatorName.includes(target.operatorName))).toBe(true)
+    expect((await listRequests(pool, viewer("ADMIN"), { from: today(), to: today(), search: "%" })).items).toEqual([])
     const m14 = (await supportFunnel(pool, viewer("ADMIN"), { from: today(), to: today() })).measures.find((measure) => measure.id === "M14")!
     const breakdown = new Map((m14.breakdown ?? []).map((entry) => [entry.key, entry]))
     expect(breakdown.get("NO_TOOL_ACCESS")).toMatchObject({ label: "Sem acesso à ferramenta ou ao sistema", count: 1 })

@@ -263,7 +263,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
         { comparator: "GT", thresholdNumeric: 100, historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: indicator.code, aggregation: "AVERAGE", source: "MEASUREMENT", period: { kind: "CALENDAR", unit: "WEEK", phase: "CURRENT" }, minimumCoverage: 0.6 } } as never,
         { operatorId, subjectIds: [operatorId] },
         now,
-        { timeZone: TZ },
+        { organizationId: ORG, timeZone: TZ },
       )
       return result!
     }
@@ -278,7 +278,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
     expect(vacation.branch).toBe("no_data")
     expect(vacation.evaluation.reason).toBe("NO_ELIGIBLE_DAYS")
     // Ranking/quartil operacional: férias explícitas fora (ineligible); sem medição + stale = staleStatusIds; quem produziu entra.
-    const quartiles = await resolveOperationalQuartiles(db, { indicatorCode: indicator.code, aggregation: "AVERAGE", period: { kind: "CALENDAR", unit: "WEEK", phase: "CURRENT" }, populationIds: [op3, op4, op5], now, timeZone: TZ })
+    const quartiles = await resolveOperationalQuartiles(db, { organizationId: ORG, indicatorCode: indicator.code, aggregation: "AVERAGE", period: { kind: "CALENDAR", unit: "WEEK", phase: "CURRENT" }, populationIds: [op3, op4, op5], now, timeZone: TZ })
     expect(quartiles.ineligibleIds.has(op4)).toBe(true)
     expect(quartiles.staleStatusIds.has(op3)).toBe(true)
     expect(quartiles.staleStatusIds.has(op5)).toBe(false)
@@ -343,7 +343,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       expect(eligibility).toMatchObject({ scheduledWorkDays: 5, excludedByStatus: { INSS: 2 }, eligibleDays: 3 })
       const op4 = await personId("TH-OP-04")
       await applyEmployeeStatusSnapshot(db, { organizationId: ORG, personId: op4, status: "MATERNIDADE", effectiveFrom: "2026-08-01", effectiveTo: null, observedAt: NOW, source: "th-rh", timeZone: TZ })
-      const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_TEMPO", aggregation: "WEIGHTED_AVERAGE", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 1 }, { operatorId: op4, subjectIds: [op4] }, new Date("2026-09-13T21:00:00-03:00"), { timeZone: TZ })
+      const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_TEMPO", aggregation: "WEIGHTED_AVERAGE", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 1 }, { operatorId: op4, subjectIds: [op4] }, new Date("2026-09-13T21:00:00-03:00"), { organizationId: ORG, timeZone: TZ })
       expect(condition?.branch).toBe("no_data")
       expect(condition?.evaluation.reason).toBe("NO_ELIGIBLE_DAYS")
     })
@@ -395,7 +395,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       const eligibility = (await resolveEligibleDaysBySubject(db, [op1], window, TZ, { now: NOW })).get(op1)!
       expect(eligibility.statusConfidence.freshness).toBe("FRESH")
       expect(eligibility.scheduleConfidence).toMatchObject({ freshness: "STALE", unconfirmedScheduleDays: 4 }) // 09–12 elegíveis depois da última carga (13 é folga)
-      const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_TEMPO", aggregation: "WEIGHTED_AVERAGE", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 1 }, { operatorId: op1, subjectIds: [op1] }, new Date("2026-09-13T21:00:00-03:00"), { timeZone: TZ })
+      const condition = await evaluateDataCondition(db, { historicalQuery: { kind: "INDICATOR_THRESHOLD_COUNT", indicatorCode: "TH_TEMPO", aggregation: "WEIGHTED_AVERAGE", source: "MEASUREMENT", period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 1 }, { operatorId: op1, subjectIds: [op1] }, new Date("2026-09-13T21:00:00-03:00"), { organizationId: ORG, timeZone: TZ })
       expect(condition?.evaluation.reason).toBe("WORK_SCHEDULE_STALE")
       const overview = await buildOverview(ctx, ORG)
       expect(overview.workSchedule.state).toBe("STALE")
@@ -463,7 +463,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
         await db.query(`insert into indicator_measurements (organization_id, indicator_definition_id, subject_type, subject_id, granularity, period_start, period_end, value, numerator, denominator, sample_count, source) values ($1, $2, 'PERSON', $3, 'DAILY', $4::timestamptz, $4::timestamptz + interval '1 day', $5, $5, 1, 1, 'th-medicoes') on conflict do nothing`, [ORG, indicatorId, op5, `${date}T00:00:00-03:00`, value])
       }
       const rowsBefore = (await db.query<{ c: number }>(`select count(*)::int c from indicator_measurements where subject_id = $1`, [op5])).rows[0]!.c
-      const before = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW })).get(op5)!
+      const before = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW }, { organizationId: ORG })).get(op5)!
       // Quinta 10/09 é folga (corrigida na prova anterior): a medição de 300 s daquele dia já está fora — preservada, ignorada.
       expect(before).toMatchObject({ daysWithData: 5, expectedDays: 5, coverage: 1, ignoredMeasurements: 1 })
       const load = await run(exceptionsFeed, csv([["matricula", "data", "tipo", "motivo", "vigente", "id"], ["TH-OP-05", "2026-09-08", "DO", "Day off concedido", "S", "EXC-1"], ["TH-OP-05", "2026-09-08", "DO", "Day off concedido", "S", "EXC-1"], ["TH-OP-99", "2026-09-08", "DO", "", "S", "EXC-2"], ["TH-OP-04", "2026-09-08", "FERIADO", "", "S", "EXC-3"]]), "th-excecoes.csv")
@@ -472,13 +472,13 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       const eligibility = (await resolveEligibleDaysBySubject(db, [op5], window, TZ, { now: NOW })).get(op5)!
       expect(eligibility).toMatchObject({ scheduledWorkDays: 5, eligibleDays: 4, excludedByScheduleException: { DAY_OFF: 1 }, excludedByScheduledDayOff: 2 })
       expect(eligibility.eligibleDates).not.toContain("2026-09-08")
-      const after = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW })).get(op5)!
+      const after = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW }, { organizationId: ORG })).get(op5)!
       // Terça (900 s) e quinta (300 s, folga corrigida antes) ficam fora: valor só dos 4 dias elegíveis; linhas continuam no banco.
       expect(after).toMatchObject({ daysWithData: 4, expectedDays: 4, coverage: 1, ignoredMeasurements: 2 })
       expect(after.value).toBeCloseTo((400 + 420 + 410 + 430) / 4, 1)
       expect((await db.query(`select count(*)::int c from indicator_measurements where subject_id = $1`, [op5])).rows[0]).toEqual({ c: rowsBefore }) // nenhuma linha apagada
       expect((await db.query(`select value::float value from indicator_measurements where subject_id = $1 and period_start = '2026-09-08T00:00:00-03:00'`, [op5])).rows[0]).toEqual({ value: 900 })
-      const latest = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window: { start: window.start, end: new Date("2026-09-09T00:00:00-03:00") }, aggregation: "LATEST", expectedDays: 2, timeZone: TZ, now: NOW })).get(op5)!
+      const latest = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window: { start: window.start, end: new Date("2026-09-09T00:00:00-03:00") }, aggregation: "LATEST", expectedDays: 2, timeZone: TZ, now: NOW }, { organizationId: ORG })).get(op5)!
       expect(latest.value).toBe(400) // último valor EM DATA ELEGÍVEL (segunda), não a última linha física (terça, day off)
       const row = (await db.query<{ id: string; active: boolean; raw_reason: string }>(`select id, active, raw_reason from employee_schedule_exceptions where person_id = $1 and exception_date = '2026-09-08'`, [op5])).rows[0]!
       expect(row).toMatchObject({ active: true, raw_reason: "Day off concedido" })
@@ -492,7 +492,7 @@ describe.skipIf(!ENABLED)("Hardening — situação funcional × Central de Dado
       const cancel = await run(exceptionsFeed, csv([["matricula", "data", "tipo", "motivo", "vigente", "id"], ["TH-OP-05", "2026-09-08", "DO", "Day off cancelado", "N", "EXC-1"]]), "th-excecoes-3.csv")
       expect(cancel).toMatchObject({ recordsUpdated: 1 })
       expect((await db.query(`select count(*)::int c from employee_schedule_exceptions where person_id = $1`, [op5])).rows[0]).toEqual({ c: 1 })
-      const restored = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW })).get(op5)!
+      const restored = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TH_TEMPO", subjectIds: [op5], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: TZ, now: NOW }, { organizationId: ORG })).get(op5)!
       expect(restored).toMatchObject({ daysWithData: 5, expectedDays: 5, ignoredMeasurements: 1 })
     })
 

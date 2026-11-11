@@ -1413,7 +1413,7 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     id: "req-1", protocol: "AP-7K2QX9", status: "IN_PROGRESS" as const, endCause: null, origin: "BUTTON" as const, createdAt: new Date().toISOString(), queuedAt: new Date().toISOString(), queueExpiresAt: null,
     sharedContext: { question: null, answer: null, dislike: null, note: "Fatura de outubro" }, anjo: { name: "Ana", avatarUrl: null, awaitingFirstResponse: false },
     messages: [{ id: "m1", seq: 1, authorKind: "SYSTEM" as const, authorName: null, body: "Ana (Anjo) recebeu seu pedido. Aguardando a primeira resposta.", systemCode: "ANJO_ASSIGNED", occurredAt: new Date().toISOString() }, { id: "m2", seq: 2, authorKind: "ANJO" as const, authorName: "Ana", body: "Oi! Como posso ajudar?", systemCode: null, occurredAt: new Date().toISOString() }],
-    hasOlder: false, canCancel: false, canClose: true, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null,
+    hasOlder: false, canCancel: false, canClose: true, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null, readSeq: 0,
   }
   const supportState: OperatorView = { enabled: true, availability: null, openRequest, pendingEvaluations: [] }
   function renderWithSupport(operatorView: OperatorView | null) {
@@ -1433,6 +1433,30 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     vi.mocked(textClient.fetchTextReply).mockReset()
     supportService.sendSupportMessage.mockClear()
     setVoiceMuted(false)
+  })
+
+  it("mensagem nova do Anjo fora da tela: o selo conta; o \"Abrir conversa\" do aviso e o link iniaSupport=room abrem a sala", async () => {
+    setVoiceMuted(true)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (roomOpenRequest: number) => (
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <HumanSupportStateValueProvider value={{ operator: supportState, unreadFromAnjo: 1, roomOpenRequest }}>
+            <OperatorIniaChat indicators={indicators} operator={operator}/>
+          </HumanSupportStateValueProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    const view = render(tree(0))
+    expect(await screen.findByTestId("support-status-pill")).toHaveTextContent("Apoio · com Ana · 1 mensagem nova")
+    expect(screen.queryByText("Em atendimento com Ana")).not.toBeInTheDocument()
+    view.rerender(tree(1))
+    expect(await screen.findByText("Em atendimento com Ana")).toBeInTheDocument()
+    view.unmount()
+
+    doubles.searchParams = new URLSearchParams("tab=followup&iniaSupport=room")
+    renderWithSupport(supportState)
+    expect(await screen.findByText("Em atendimento com Ana")).toBeInTheDocument()
   })
 
   it("sem apoio ligado: nem botão nem selo", async () => {

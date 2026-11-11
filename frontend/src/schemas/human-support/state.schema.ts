@@ -61,6 +61,8 @@ export const operatorRequestViewSchema = z.object({
   peerReceipts: receiptsSchema,
   /** Por quantos ms ainda vale o "digitando" do Anjo (null = não está digitando). */
   peerTypingMs: z.number().nullable(),
+  /** Até onde o PRÓPRIO operador já leu (o "lida" que a sala confirmou): mensagens do Anjo depois disso são novas. */
+  readSeq: z.number(),
 })
 export type OperatorRequestView = z.infer<typeof operatorRequestViewSchema>
 

@@ -7,6 +7,7 @@ import { resolveEmployeeStatusAt } from "../../people/application/employment-sta
 import { resolveEmploymentStatusFreshness } from "../../people/application/employment-status-freshness.js"
 import { isOperationallyEligibleStatus } from "../../people/domain/employment-status.js"
 import { isSensitiveLeave } from "../../org-structure/domain/management-metrics.js"
+import { PROTECTED_LEAVE_TEXT, protectLeave } from "../domain/protected-leave.js"
 import { visibleInFollowUpSql } from "../../feedbacks/application/follow-up-visibility.js"
 import { NUMERIC_COMPARATOR_TEXT, numericComparatorMatches, type PolicyCondition } from "../domain/policy-definition.js"
 import type { ConditionOutcome, ConditionResolver, FactReference } from "../domain/policy-evaluation.js"
@@ -58,7 +59,7 @@ function windowText(window: unknown, timeZone: string): string | null {
 async function resolveIndicator(db: Db, subject: PolicySubject, condition: Extract<PolicyCondition, { kind: "INDICATOR" }>, labels: Map<string, { name: string; unit: string }>): Promise<ConditionOutcome> {
   const criterion = condition.criterion
   const config = { ...criterion } as unknown as DataConditionConfig
-  const result = await evaluateDataCondition(db as Database, config, { operatorId: subject.personId, subjectIds: [subject.personId] }, subject.asOf, { timeZone: subject.timeZone, quartileCache: new Map() })
+  const result = await evaluateDataCondition(db as Database, config, { operatorId: subject.personId, subjectIds: [subject.personId] }, subject.asOf, { organizationId: subject.organizationId, timeZone: subject.timeZone, quartileCache: new Map() })
   if (!result) return { status: "INCONCLUSIVE", summary: "Condição de indicador sem consulta avaliável.", facts: {}, reasonCode: "NO_QUERY", references: [] }
   const evaluation = result.evaluation as Record<string, unknown>
   const code = (criterion.historicalQuery?.indicatorCode ?? criterion.performanceQuery?.indicatorCode ?? null) as string | null
@@ -97,29 +98,6 @@ async function resolveIndicator(db: Db, subject: PolicySubject, condition: Extra
     references.push({ kind: "INDICATOR_RESULT", ref, label: summary })
   }
   return { status, summary, facts: { indicatorCode: code, indicatorName: code ? (labels.get(code)?.name ?? null) : null, unit: code ? (labels.get(code)?.unit ?? null) : null, ...evaluation }, ...(status === "INCONCLUSIVE" && typeof evaluation.reason === "string" ? { reasonCode: evaluation.reason } : {}), references }
-}
-
-/**
- * O TIPO do afastamento sensível (INSS, maternidade, paternidade) nunca sai da avaliação de política: a decisão só usa
- * "elegível ou não", e o resumo e os fatos chegam à simulação, à justificativa e ao texto do nó de Workflow — lidos por quem
- * tem o papel de políticas ou `workflows.manage`, sem `people.manage`. Mesma regra do C14 (R-37): achado APPSEC-01, 29/10/2026.
- */
-const PROTECTED_LEAVE = "AFASTAMENTO_PROTEGIDO"
-const PROTECTED_LEAVE_TEXT = "afastamento — motivo protegido"
-const protectedLeaveStatus = (status: string) => (isSensitiveLeave(status) ? PROTECTED_LEAVE : status)
-/** Fatos de QUALQUER condição (a de indicador também traz `eligibility.excludedByStatus` da medição operacional): chave ou valor
- * com o tipo sensível vira AFASTAMENTO_PROTEGIDO, com as contagens somadas. */
-function protectLeave(value: unknown): unknown {
-  if (typeof value === "string") return protectedLeaveStatus(value)
-  if (Array.isArray(value)) return value.map(protectLeave)
-  if (value === null || typeof value !== "object" || value instanceof Date) return value
-  const result: Record<string, unknown> = {}
-  for (const [key, inner] of Object.entries(value)) {
-    const target = protectedLeaveStatus(key)
-    const safe = protectLeave(inner)
-    result[target] = target !== key && typeof result[target] === "number" && typeof safe === "number" ? (result[target] as number) + safe : safe
-  }
-  return result
 }
 
 async function resolveEmployment(db: Db, subject: PolicySubject, condition: Extract<PolicyCondition, { kind: "EMPLOYMENT" }>): Promise<ConditionOutcome> {

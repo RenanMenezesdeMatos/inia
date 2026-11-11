@@ -3,9 +3,9 @@
 import assert from "node:assert/strict"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, win32 } from "node:path"
 import { after, describe, test } from "node:test"
-import { createPrivateFile, restrictBackupDir, windowsRestrictArgs } from "./backup-tools.mjs"
+import { createPrivateFile, findPgTool, restrictBackupDir, windowsRestrictArgs, windowsSystemTool } from "./backup-tools.mjs"
 
 const base = mkdtempSync(join(tmpdir(), "inia-backup-teste-"))
 after(() => rmSync(base, { recursive: true, force: true }))
@@ -51,13 +51,16 @@ describe("pasta das cópias — Windows (icacls simulado)", () => {
     const calls = []
     const run = (command, args) => {
       calls.push([command, ...args])
-      return results[command] ?? { status: 0, stdout: "", stderr: "" }
+      return results[command.replace(/^.*\\/, "").replace(/\.exe$/, "")] ?? { status: 0, stdout: "", stderr: "" }
     }
     return { calls, run }
   }
   const whoami = { status: 0, stdout: '"inia-srv\\\\admin","S-1-5-21-111-222-333-1001"\r\n', stderr: "" }
 
-  test("sem herança, só Administradores, SYSTEM e quem roda a cópia — a pasta herda para dentro, os arquivos não", () => {
+  const whoamiExe = windowsSystemTool("whoami")
+  const icaclsExe = windowsSystemTool("icacls")
+
+  test("sem herança, só Administradores, SYSTEM e quem roda a cópia — a pasta herda para dentro, os arquivos não; pasta que já existia passa a ser dos Administradores e perde as permissões explícitas antigas", () => {
     const dir = join(base, "win")
     mkdirSync(dir)
     writeFileSync(join(dir, "inia-2026-10-20_145818.dump"), "x")
@@ -65,9 +68,21 @@ describe("pasta das cópias — Windows (icacls simulado)", () => {
     const { calls, run } = fake({ whoami })
     restrictBackupDir(dir, { platform: "win32", run })
     assert.deepEqual(calls, [
-      ["whoami", "/user", "/fo", "csv", "/nh"],
-      ["icacls", dir, "/inheritance:r", "/grant:r", "*S-1-5-32-544:(OI)(CI)(F)", "*S-1-5-18:(OI)(CI)(F)", "*S-1-5-21-111-222-333-1001:(OI)(CI)(F)"],
-      ["icacls", join(dir, "inia-2026-10-20_145818.dump"), "/inheritance:r", "/grant:r", "*S-1-5-32-544:(F)", "*S-1-5-18:(F)", "*S-1-5-21-111-222-333-1001:(F)"],
+      [whoamiExe, "/user", "/fo", "csv", "/nh"],
+      [icaclsExe, dir, "/setowner", "*S-1-5-32-544"],
+      [icaclsExe, dir, "/reset"],
+      [icaclsExe, dir, "/inheritance:r", "/grant:r", "*S-1-5-32-544:(OI)(CI)(F)", "*S-1-5-18:(OI)(CI)(F)", "*S-1-5-21-111-222-333-1001:(OI)(CI)(F)"],
+      [icaclsExe, join(dir, "inia-2026-10-20_145818.dump"), "/inheritance:r", "/grant:r", "*S-1-5-32-544:(F)", "*S-1-5-18:(F)", "*S-1-5-21-111-222-333-1001:(F)"],
+    ])
+  })
+
+  test("pasta criada agora: o dono já é quem roda a cópia — sem /setowner nem /reset (backup manual sem prompt elevado continua funcionando)", () => {
+    const dir = join(base, "win-nova")
+    const { calls, run } = fake({ whoami })
+    restrictBackupDir(dir, { platform: "win32", run })
+    assert.deepEqual(calls, [
+      [whoamiExe, "/user", "/fo", "csv", "/nh"],
+      [icaclsExe, dir, "/inheritance:r", "/grant:r", "*S-1-5-32-544:(OI)(CI)(F)", "*S-1-5-18:(OI)(CI)(F)", "*S-1-5-21-111-222-333-1001:(OI)(CI)(F)"],
     ])
   })
 
@@ -79,5 +94,20 @@ describe("pasta das cópias — Windows (icacls simulado)", () => {
     const dir = join(base, "win-falha")
     assert.throws(() => restrictBackupDir(dir, { platform: "win32", run: fake({ whoami, icacls: { status: 5, stdout: "", stderr: "Acesso negado." } }).run }), /icacls não restringiu .*Acesso negado/)
     assert.throws(() => restrictBackupDir(dir, { platform: "win32", run: fake({ whoami: { status: 1, stdout: "", stderr: "" } }).run }), /whoami/)
+  })
+
+  test("whoami e icacls sempre pelo caminho absoluto em System32 (a tarefa roda como SYSTEM na pasta da INIA)", () => {
+    assert.equal(windowsSystemTool("icacls", { systemRoot: "D:\\WINDOWS" }), "D:\\WINDOWS\\System32\\icacls.exe")
+    for (const systemRoot of [undefined, "", "Windows", "..\\x"]) assert.equal(windowsSystemTool("whoami", { systemRoot }), "C:\\Windows\\System32\\whoami.exe")
+  })
+
+  test("pg_dump/pg_restore no Windows: nunca o nome solto; --pg-bin só absoluto", () => {
+    const { calls, run } = fake({ pg_dump: { status: 0, stdout: "pg_dump (PostgreSQL) 17.2", stderr: "" } })
+    assert.deepEqual(findPgTool("pg_dump", { binDir: "D:\\pg\\bin", minMajor: 17, platform: "win32", run }), { path: "D:\\pg\\bin\\pg_dump.exe", major: 17 })
+    const none = fake({ pg_dump: { status: 1, stdout: "", stderr: "" } })
+    assert.equal(findPgTool("pg_dump", { platform: "win32", run: none.run }), null)
+    assert.ok(none.calls.every(([command]) => win32.isAbsolute(command)), JSON.stringify(none.calls))
+    assert.ok(calls.every(([command]) => win32.isAbsolute(command)))
+    assert.throws(() => findPgTool("pg_dump", { binDir: "pg\\bin", platform: "win32", run }), /absoluto/)
   })
 })

@@ -247,5 +247,39 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
   com tempos próprios, contexto recolhido, troca de abas com rascunho e mensagens novas, encerramento e classificação com os dois
   motivos novos, histórico, detalhe do painel e celular (390 px, sem rolagem horizontal). O IT-INIA-016 mostra a tela antiga (prints
   a refazer).
+- **Motivos dos cards do maior para o menor (pedido do responsável em 2026-11-10)**: no painel (aba Indicadores), toda lista de
+  um card — detalhamento e "à parte" (`Breakdown` em `monitoring/funnel-tab.tsx`, `byCountDesc`) — aparece por quantidade decrescente;
+  empate (inclusive os zeros) mantém a ordem do catálogo. Só apresentação: o servidor segue mandando na ordem do catálogo (M10 já vinha
+  ordenado). O resumo por status da "Situação agora" (aba Anjos) continua na ordem fixa dos status, por ser um filtro clicável.
+- **Painel no formato de "Conversas com a INIA" (pedido do responsável em 2026-11-10)**: no menu Monitoramento o painel fica logo
+  abaixo de Conversas com a INIA. A tela abre em Pedidos (antes, Indicadores): título simples com o total ("6 pedidos no período" /
+  "com esses filtros"), a barra de filtros das listas (busca por operador ou protocolo — `search` em `listRequests`, protocolo ou nome
+  cadastral/preferido, `%`/`_` escapados, nunca o conteúdo —, estado, origem, Grupo e Subgrupo em dois seletores para quem configura,
+  período com "Aplicar") e a caixa de entrada: lista por dia à esquerda (`useSupportRequestsInfiniteQuery`, "Carregar mais"
+  com "N de total"; atualiza a cada 20 s só com uma página) e a leitura à direita como a conversa das Conversas (cabeçalho com origem,
+  estado, operador, abertura e mensagens; corpo com o compartilhado, Message/Bubble com separador de dia, operador à direita com a foto
+  e Anjo à esquerda; atendimentos, classificação e avaliação no fim; rodapé "Somente leitura"; na fila ou em atendimento atualiza a
+  cada 10 s). A lista recebe do servidor `operatorAvatarUrl`, `messageCount` (só mensagens humanas) e `total` (só na primeira página);
+  nada do conteúdo vai para a lista — continua só no detalhe, que grava o registro LGPD. Os rótulos de dia/hora (`dayKey`,
+  `dateSeparatorLabel`, `messageTime`, `lastActivityLabel`) foram para `lib/format/date.ts` (o `conversation-format` reexporta), porque
+  `components/human-support/**` não importa `lib/realtime` (teste de isolamento). Prova: cenário de classificação em
+  `human-support-proof` confere total, contagem, busca por protocolo/nome e `%` literal (15 cenários). Conferido na 3000 (1440 px e
+  375 px; no celular a barra de abas rola de lado).
+- **Mensagem nova fora da vista (pedido do responsável em 2026-11-10, sem migration)**: os dois lados avisam mensagem da outra ponta
+  que a pessoa não está vendo. Som e título piscando vêm de `lib/attention/attention-alert.ts` (`createChime`, `blinkTabTitle` — um por
+  aba, para no `focus` ou com a página vista —, `newMessageTitle`, `primeChimeOnFirstGesture`); `anjo/attendance-alert.ts` reexporta.
+  ANJO: o contador de não lidas por atendimento (`useUnreadCount`, já existia) subiu → som; com a página fora da vista, também o título
+  "• Nova mensagem de <operador> — INIA". OPERADOR: o provedor (`use-human-support-state.tsx`) compara cada estado com o anterior (o
+  primeiro é só referência); mensagem nova do Anjo acima do "lida" (`readSeq` NOVO na visão do pedido do operador = `operator_read_seq`
+  das marcas 184, ou o que a sala desta aba acabou de mostrar) → com a sala na tela e a página vista, nada; com a página vista e a sala
+  fechada, som + toast (sonner, `ANJO_MESSAGE_TOAST_ID`) com "Abrir conversa"; fora da vista, título piscando em toda aba não vista e o
+  som só na aba líder, e nada se OUTRA aba do aplicativo estiver sendo vista (presença entre abas no mesmo `BroadcastChannel`:
+  `presence`/`bye`/`read`). "Abrir conversa" abre a sala no chat da página (`roomOpenRequest`; o painel recolhido se abre; no celular
+  rola até o chat) ou, sem chat na página, vai para `<perfil>?tab=followup&iniaSupport=room` pelo roteador do shell. Selo "Apoio · com
+  Ana · 2 mensagens novas" + ponto; ponto no painel recolhido. A sala recebe `hidden` (painel recolhido não conta como lida nem silencia).
+  Testes: `support-attention.test.tsx` (6), Anjo e chat; prova `human-support-proof` confere o `readSeq`. Conferido com duas pessoas na
+  pilha isolada (Playwright, `inia_hsbench`, IA falsa; foco simulado com `hasFocus`/`blur`): toast + selo + som com a sala fechada,
+  "Abrir conversa" abre a sala, título com o nome e som fora da vista dos dois lados, nada com o Anjo olhando. Sem notificação do sistema
+  operacional (pediria permissão do navegador): fica como possível próximo passo.
 - **Não conferido no navegador**: aba oculta (som e título ao chegar atendimento), "Reconectando…" com a API fora do ar e várias APIs
   atrás do IIS (o script de chamada longa no IIS segue pendente antes do piloto).

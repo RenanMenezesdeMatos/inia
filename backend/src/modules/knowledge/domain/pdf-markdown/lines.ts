@@ -126,21 +126,30 @@ function looksLikeProse(fragments: readonly Fragment[]): boolean {
 
 const crosses = (fragment: Fragment, x: number) => fragment.x0 < x - 1 && fragment.x1 > x + 1
 
+/**
+ * Passos da procura do corredor. A largura vem do MediaBox do arquivo enviado, sem teto: o passo é de 2 pontos (toda página real cabe nisso) e cresce
+ * só quando a largura declarada é absurda, para a conta nunca passar disto (largura 1e9 levava 11 s na thread da API).
+ */
+const MAX_GUTTER_STEPS = 1_000
+
 /** O melhor corredor vertical no miolo da página: o x que menos linhas atravessam. */
 function bestGutter(rows: readonly Fragment[][], width: number): number | null {
+  if (!Number.isFinite(width) || width <= 0) return null
   const bothSides = rows.filter((row) => row.length >= 2)
   if (bothSides.length < 4) return null
+  const step = Math.max(2, (width * 0.4) / MAX_GUTTER_STEPS)
+  const crossingsAt = (x: number) => rows.filter((row) => row.some((fragment) => crosses(fragment, x))).length
   let best: { x: number; crossings: number } | null = null
-  for (let x = Math.round(width * 0.3); x <= width * 0.7; x += 2) {
-    const crossings = rows.filter((row) => row.some((fragment) => crosses(fragment, x))).length
+  for (let x = Math.round(width * 0.3); x <= width * 0.7; x += step) {
+    const crossings = crossingsAt(x)
     if (!best || crossings < best.crossings) best = { x, crossings }
   }
   if (!best) return null
   // O vão real: o centro do corredor vazio em volta do melhor ponto.
   let from = best.x
   let to = best.x
-  while (from > width * 0.2 && rows.filter((row) => row.some((fragment) => crosses(fragment, from - 2))).length === best.crossings) from -= 2
-  while (to < width * 0.8 && rows.filter((row) => row.some((fragment) => crosses(fragment, to + 2))).length === best.crossings) to += 2
+  while (from > width * 0.2 && crossingsAt(from - step) === best.crossings) from -= step
+  while (to < width * 0.8 && crossingsAt(to + step) === best.crossings) to += step
   return (from + to) / 2
 }
 

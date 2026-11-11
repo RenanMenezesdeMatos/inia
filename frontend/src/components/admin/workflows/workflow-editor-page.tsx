@@ -19,7 +19,7 @@ import "@xyflow/react/dist/style.css"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { useReactFlowColorMode } from "@/hooks/use-react-flow-color-mode"
-import { ArrowLeft, FlaskConical, Play, Trash2 } from "lucide-react"
+import { FlaskConical, Play, Trash2 } from "lucide-react"
 
 import {
   AlertDialog,
@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -685,12 +686,8 @@ export function WorkflowEditorPage({ workflowId }: { workflowId: string }) {
 
   return (
     <div className="space-y-4">
+      <BackLink href="/admin/workflows" label="Workflows" />
       <div className="flex items-center gap-3">
-        <Button asChild variant="ghost" size="icon">
-          <Link href="/admin/workflows" aria-label="Voltar para a lista de workflows">
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-          </Link>
-        </Button>
         {workflowQuery.data && editable ? (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <WorkflowNameEditor workflow={workflowQuery.data} />

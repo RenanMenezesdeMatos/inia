@@ -2,9 +2,11 @@ import { apiGet, apiPost } from "@/lib/api/api-client"
 import {
   contestationDetailSchema,
   contestationPageSchema,
+  contestationSummarySchema,
   type ContestationDetail,
   type ContestationPage,
   type ContestationStatus,
+  type ContestationSummary,
 } from "@/schemas/admin/feedback-contestation.schema"
 import type { ContestationDecision, FeedbackDislikeReason } from "@/schemas/feedback-ratings/feedback-rating.schema"
 
@@ -25,4 +27,9 @@ export async function fetchContestation(id: string): Promise<ContestationDetail>
 
 export async function reviewContestation(id: string, input: { decision: ContestationDecision; response: string }): Promise<ContestationDetail> {
   return contestationDetailSchema.parse(await apiPost<unknown>(`${BASE}/${encodeURIComponent(id)}/review`, input))
+}
+
+/** Taxa de contestação dos feedbacks disponibilizados no período (datas locais "AAAA-MM-DD", inclusivas). */
+export async function fetchContestationSummary(period: { from: string; to: string }): Promise<ContestationSummary> {
+  return contestationSummarySchema.parse(await apiGet<unknown>(`${BASE}/summary?${new URLSearchParams(period)}`))
 }

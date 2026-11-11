@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, GraduationCap, Plus } from "lucide-react"
+import { GraduationCap, Plus } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -29,9 +30,7 @@ export function CompetenciesTab() {
     const current = editing.id ? (lastSaved?.id === editing.id && (!fromList || lastSaved.updatedAt > fromList.updatedAt) ? lastSaved : (fromList ?? null)) : null
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>
-          <ArrowLeft /> Competências
-        </Button>
+        <BackLink onClick={() => setEditing(null)} label="Competências" />
         <CompetencyEditor key={current ? `${current.id}|${current.updatedAt}` : "new"} competency={current} onSaved={(saved: CompetencyView) => {
             setLastSaved(saved)
             setEditing({ id: saved.id })

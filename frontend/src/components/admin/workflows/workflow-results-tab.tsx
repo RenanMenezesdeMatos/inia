@@ -422,7 +422,8 @@ const PERSON_PAGE_SIZE = 50
 
 function DispatchPersons({ workflowId, dispatch }: { workflowId: string; dispatch: DispatchRow }) {
   const [page, setPage] = useState(1)
-  const detail = useWorkflowDispatchDetailQuery(workflowId, dispatch.rootEnrollmentId, page, PERSON_PAGE_SIZE, true)
+  const [pageSize, setPageSize] = useState(PERSON_PAGE_SIZE)
+  const detail = useWorkflowDispatchDetailQuery(workflowId, dispatch.rootEnrollmentId, page, pageSize, true)
   if (detail.isLoading) return <Skeleton className="h-16 w-full" />
   if (detail.isError || !detail.data) return <p className="text-sm text-destructive">Não foi possível carregar as pessoas deste disparo.</p>
   const { persons, rootUsage } = detail.data
@@ -434,8 +435,19 @@ function DispatchPersons({ workflowId, dispatch }: { workflowId: string; dispatc
           <PersonResultItem key={person.enrollmentId} person={person} />
         ))}
       </Accordion>
-      {persons.total > persons.pageSize ? (
-        <ListPagination page={page} pageSize={persons.pageSize} total={persons.total} onPageChange={setPage} onPageSizeChange={() => undefined} itemLabel={["pessoa", "pessoas"]} isFetching={detail.isFetching} />
+      {persons.total > 0 ? (
+        <ListPagination
+          page={page}
+          pageSize={persons.pageSize}
+          total={persons.total}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
+          itemLabel={["pessoa", "pessoas"]}
+          isFetching={detail.isFetching}
+        />
       ) : null}
       {rootUsage ? (
         <div className="space-y-1">

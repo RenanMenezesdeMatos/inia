@@ -112,7 +112,7 @@ function AnalysisBlock({ model }: { model: DeliveryViewModel }) {
         }}
       >
         <RotateCcw className="size-3" aria-hidden />
-        Tentar de novo
+        Tentar novamente
       </Button>
     </div>
   )

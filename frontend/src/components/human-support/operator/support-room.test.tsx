@@ -21,7 +21,7 @@ const waiting: OperatorRequestView = {
   id: "req-1", protocol: "AP-7K2QX9", status: "WAITING", endCause: null, origin: "BUTTON", createdAt: "2026-11-09T17:00:00.000Z", queuedAt: "2026-11-09T17:00:00.000Z", queueExpiresAt: "2026-11-09T17:20:00.000Z",
   sharedContext: { question: null, answer: null, dislike: null, note: "Fatura" }, anjo: null,
   messages: [{ id: "m1", seq: 1, authorKind: "SYSTEM", authorName: null, body: "Pedido criado. Procurando um Anjo…", systemCode: "QUEUED", occurredAt: "2026-11-09T17:00:00.000Z" }],
-  hasOlder: false, canCancel: true, canClose: false, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null,
+  hasOlder: false, canCancel: true, canClose: false, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null, readSeq: 0,
 }
 const view = (operator: Partial<OperatorView>): OperatorView => ({ enabled: true, availability: { status: "NONE_AVAILABLE", estimate: { kind: "NO_HISTORY" }, queueDeadline: null }, openRequest: null, pendingEvaluations: [], ...operator })
 
@@ -72,6 +72,15 @@ describe("sala de apoio do operador", () => {
     expect(supportPillText(view({ pendingEvaluations: [pending({ resolved: null, stars: null })] }))).toBe("Apoio · encerrado — avalie")
     expect(supportPillText(view({ pendingEvaluations: [pending({ resolved: "YES", stars: null })] }))).toBeNull()
     expect(supportPillText(view({ pendingEvaluations: [pending({ resolved: null, stars: 4 })] }))).toBeNull()
+  })
+
+  it("selo em atendimento diz quantas mensagens do Anjo o operador ainda não viu", () => {
+    const live = { ...waiting, status: "IN_PROGRESS" as const, anjo: { name: "Ana", avatarUrl: null, awaitingFirstResponse: false } }
+    expect(supportPillText(view({ openRequest: live }))).toBe("Apoio · com Ana")
+    expect(supportPillText(view({ openRequest: live }), 1)).toBe("Apoio · com Ana · 1 mensagem nova")
+    expect(supportPillText(view({ openRequest: live }), 3)).toBe("Apoio · com Ana · 3 mensagens novas")
+    // Na fila não há mensagem do Anjo: o selo fica no prazo.
+    expect(supportPillText(view({ openRequest: waiting }), 2)).toBe("Apoio · Na fila até 14:20")
   })
 
   it("aberta pelo selo \"avalie\" sem o pedido em memória (página recarregada): mostra a avaliação, não a sala vazia", () => {

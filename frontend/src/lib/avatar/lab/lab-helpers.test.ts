@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { AlignedPhone, AudioFeatureFrame, PhoneSymbol } from "@/lib/avatar/lipsync/types"
 import { parseUploadTarget, pickRecordingMimeType, recordingFileName } from "./demo-recorder"
 import { FrameStats, percentile } from "./frame-stats"
-import { modelExists, resolveDefaultModelUrl } from "./lab-models"
+import { LAB_MODEL_URLS, modelExists, parseLabQuery, resolveDefaultModelUrl } from "./lab-models"
 import { alignedPhoneAt, energyAt, energyLevel, isMidWord, timelineWindow, timeToX } from "./speech-timeline"
 
 const phone = (symbol: PhoneSymbol, start: number, end: number, wordIndex: number): AlignedPhone => ({
@@ -106,5 +106,16 @@ describe("modelo padrão", () => {
     expect(await resolveDefaultModelUrl(respond(404))).toBe("/models/inia-avatar-poc.glb")
     expect(await modelExists("/x.glb", respond(200, "text/html; charset=utf-8"))).toBe(false)
     expect(await modelExists("/x.glb", (async () => Promise.reject(new TypeError("rede"))) as typeof fetch)).toBe(false)
+  })
+
+  it("o v02 é uma opção do laboratório, nunca o padrão", async () => {
+    expect(LAB_MODEL_URLS.map((model) => model.url)).toEqual(["/models/inia-mentora.glb", "/models/inia-mentora-v02.glb", "/models/inia-avatar-poc.glb"])
+    expect(await resolveDefaultModelUrl((async () => new Response(null, { status: 200, headers: { "content-type": "model/gltf-binary" } })) as typeof fetch)).toBe("/models/inia-mentora.glb")
+  })
+
+  it("atalhos da URL: modelo, perfil de movimento e vista; valor desconhecido é ignorado", () => {
+    expect(parseLabQuery("?model=v02&motion=classic&view=front")).toEqual({ modelUrl: "/models/inia-mentora-v02.glb", motion: "classic", view: "front" })
+    expect(parseLabQuery("?model=outro&motion=turbo")).toEqual({ modelUrl: null, motion: null, view: null })
+    expect(parseLabQuery("")).toEqual({ modelUrl: null, motion: null, view: null })
   })
 })

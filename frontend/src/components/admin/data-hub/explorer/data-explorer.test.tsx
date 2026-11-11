@@ -156,12 +156,12 @@ describe("DataExplorerTab", () => {
 
   it("página seguinte usa a posição do servidor; anterior volta sem recalcular nada", async () => {
     await openDataset()
-    fireEvent.click(screen.getByRole("button", { name: /Próxima/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Próxima página" }))
     await waitFor(() => expect(lastRequest().cursor).toBe("cursor-2"))
-    await screen.findByText(/Página 2/)
+    await screen.findByText(/página 2$/)
     const calls = service.runExplorerQuery.mock.calls.length
-    fireEvent.click(screen.getByRole("button", { name: /Anterior/ }))
-    await screen.findByText(/Página 1/)
+    fireEvent.click(screen.getByRole("button", { name: "Página anterior" }))
+    await screen.findByText(/página 1$/)
     expect(service.runExplorerQuery.mock.calls.length).toBe(calls)
   })
 
@@ -169,7 +169,7 @@ describe("DataExplorerTab", () => {
     await openDataset()
     const table = screen.getByTestId("explorer-results")
     expect(within(table).queryByRole("button", { name: /Valor/ })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: /Próxima/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Próxima página" }))
     await waitFor(() => expect(lastRequest().cursor).toBe("cursor-2"))
     fireEvent.click(within(table).getByRole("button", { name: /Protocolo/ }))
     await waitFor(() => expect(lastRequest().sort).toEqual({ column: "protocol", direction: "DESC" }))
@@ -465,7 +465,7 @@ describe("cancelar registros", () => {
     service.fetchExplorerDataset.mockResolvedValue(CANCELLABLE)
     service.runExplorerQuery.mockResolvedValue({ ...CANCELLABLE_PAGE, nextCursor: "cursor-2", hasMore: true })
     await openDataset()
-    fireEvent.click(screen.getByRole("button", { name: /Próxima/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Próxima página" }))
     await waitFor(() => expect(lastRequest().cursor).toBe("cursor-2"))
     fireEvent.click(screen.getByRole("checkbox", { name: "Selecionar o registro 1" }))
     fireEvent.click(screen.getByRole("button", { name: "Cancelar selecionados (1)" }))
@@ -480,7 +480,7 @@ describe("cancelar registros", () => {
     service.runExplorerQuery.mockResolvedValue({ ...CANCELLABLE_PAGE, nextCursor: "cursor-2", hasMore: true })
     await openDataset()
     fireEvent.click(screen.getByRole("checkbox", { name: "Selecionar o registro 1" }))
-    fireEvent.click(screen.getByRole("button", { name: /Próxima/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Próxima página" }))
     await waitFor(() => expect(screen.getByRole("button", { name: "Cancelar selecionados" })).toBeDisabled())
   })
 

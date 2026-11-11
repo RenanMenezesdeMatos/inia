@@ -76,18 +76,25 @@ export function IconBadge({ tone = "info", icon: Icon, size = "md", className }:
   )
 }
 
-/** Cabeçalho de página: ícone, título e descrição; `aside` à direita (estado, ações). */
-export function PageHeader({ icon, title, description, aside }: { icon: LucideIcon; title: ReactNode; description: ReactNode; aside?: ReactNode }) {
+/**
+ * CABEÇALHO DE PÁGINA — o único do app (decisão do responsável em 2026-11-10): ícone num círculo tingido (o mesmo do menu), título
+ * como `h1` da página, descrição curta e, à direita, as ações da página (`actions`, ex.: "Nova base") ou um estado (`aside`). Com
+ * `back`, o botão de voltar (`BackLink`) fica acima. Toda página de área tem um, fora de qualquer cartão; o conteúdo vem abaixo.
+ */
+export function PageHeader({ icon, title, description, aside, actions, back, className }: { icon: LucideIcon; title: ReactNode; description?: ReactNode; aside?: ReactNode; actions?: ReactNode; back?: ReactNode; className?: string }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex min-w-0 items-start gap-3">
-        <IconBadge icon={icon} size="lg" />
-        <div className="min-w-0 space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">{description}</p>
+    <div className={cn("space-y-2", className)}>
+      {back}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <IconBadge icon={icon} size="lg" />
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+            {description ? <p className="max-w-3xl text-sm text-muted-foreground sm:text-base">{description}</p> : null}
+          </div>
         </div>
+        {actions || aside ? <div className="flex flex-wrap items-center gap-2">{actions}{aside}</div> : null}
       </div>
-      {aside}
     </div>
   )
 }

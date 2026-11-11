@@ -1,12 +1,11 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { AlertTriangle, Lock, type LucideIcon } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { IconBadge } from "@/components/ui/surface"
+import { EmptyState, ErrorState } from "@/components/ui/states"
 import { ApiError } from "@/lib/api/api-client"
 import { cn } from "@/lib/utils"
 
@@ -57,30 +56,18 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   )
 }
 
-export function AnalyticsEmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
-  return (
-    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
-      <IconBadge icon={Icon} tone="info" size="lg" />
-      <p className="mt-3 text-sm font-semibold">{title}</p>
-      {description ? <p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p> : null}
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  )
+/** Vazio das análises — o `EmptyState` do kit (mesma API de sempre). */
+export function AnalyticsEmptyState({ icon, title, description, action }: { icon: LucideIcon; title: string; description?: string; action?: ReactNode }) {
+  return <EmptyState icon={icon} title={title} description={description} action={action} />
 }
 
+/** Erro das análises — o `ErrorState` do kit; 403 de escopo tem mensagem própria (não é falha de rede). */
 export function AnalyticsErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const isForbidden = error instanceof ApiError && error.status === 403
   const message = error instanceof Error ? error.message : "Não foi possível carregar os dados."
-  return (
-    <div role="alert" className={cn("flex flex-col items-center rounded-2xl border p-8 text-center", isForbidden ? "border-border bg-card" : "border-destructive/30 bg-destructive/5")}>
-      <IconBadge icon={isForbidden ? Lock : AlertTriangle} tone={isForbidden ? "neutral" : "danger"} size="lg" />
-      <p className={cn("mt-3 text-sm", isForbidden ? "font-medium" : "text-destructive")}>{isForbidden ? "Sem acesso a esta estrutura" : message}</p>
-      {isForbidden ? <p className="mt-1 max-w-md text-sm text-muted-foreground">Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela.</p> : null}
-      {!isForbidden && onRetry ? (
-        <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
-          Tentar novamente
-        </Button>
-      ) : null}
-    </div>
+  return isForbidden ? (
+    <ErrorState forbidden message="Sem acesso a esta estrutura" description="Você só pode consultar a sua própria estrutura e as pessoas ligadas a ela." />
+  ) : (
+    <ErrorState message={message} onRetry={onRetry} />
   )
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Activity, Info, Lock } from "lucide-react"
 
+import { PageHeader } from "@/components/ui/surface"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { useUsabilityContextQuery } from "@/queries/admin/use-usability-queries"
@@ -151,15 +152,11 @@ export function UsabilityPage() {
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Activity className="size-5" />
-        </span>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Monitoria de usabilidade</h1>
-          <p className="text-sm text-muted-foreground">Quem usa a INIA, onde, com que frequência e onde encontra dificuldade — medido de verdade, com a base e a cobertura de cada número.</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Activity}
+        title="Monitoria de usabilidade"
+        description="Quem usa a INIA, onde, com que frequência e onde encontra dificuldade — medido de verdade, com a base e a cobertura de cada número."
+      />
       {children}
     </div>
   )

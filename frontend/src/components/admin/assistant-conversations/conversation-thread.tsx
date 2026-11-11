@@ -8,11 +8,13 @@ import { LeadershipCards } from "@/components/leadership/leadership-cards"
 import { ClarificationAudit } from "@/components/knowledge-clarification/clarification-audit"
 import { parseClarification } from "@/schemas/knowledge-clarification/clarification.schema"
 import { RichContent } from "@/components/rich-content/rich-content"
+import { BackLink } from "@/components/ui/back-link"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
 import { Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ErrorState } from "@/components/ui/states"
 import { ApiError } from "@/lib/api/api-client"
 import { formatShortDateTime } from "@/lib/format/date"
 import { dateSeparatorLabel, dayKey, messageTime } from "@/lib/realtime/conversation-format"
@@ -154,11 +156,13 @@ export function ConversationThread({ conversationId, onBack }: { conversationId:
   if (status === "error") {
     const denied = error instanceof ApiError && (error.status === 403 || error.status === 404)
     return (
-      <div className="flex flex-col items-center gap-3 p-8 text-center" role="alert">
-        {denied ? <Lock className="size-8 text-muted-foreground/60" aria-hidden /> : null}
-        <p className={denied ? "font-medium" : "text-sm text-destructive"}>{denied ? "Conversa indisponível" : "Não foi possível carregar esta conversa."}</p>
-        {denied ? <p className="max-w-sm text-sm text-muted-foreground">Ela não existe ou está fora do seu escopo de acesso.</p> : <Button variant="outline" size="sm" onClick={() => { setStatus("loading"); setReload((value) => value + 1) }}>Tentar novamente</Button>}
-        {onBack ? <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft />Voltar à lista</Button> : null}
+      <div className="flex flex-col items-center gap-3 p-4">
+        {denied ? (
+          <ErrorState forbidden message="Conversa indisponível" description="Ela não existe ou está fora do seu escopo de acesso." className="w-full border-0" />
+        ) : (
+          <ErrorState message="Não foi possível carregar esta conversa." onRetry={() => { setStatus("loading"); setReload((value) => value + 1) }} className="w-full" />
+        )}
+        {onBack ? <BackLink onClick={onBack} label="Conversas" /> : null}
       </div>
     )
   }

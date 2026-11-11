@@ -63,10 +63,10 @@ describe("Guard central do fechamento oficial — o mês corrente nunca é fecha
       }),
     } as unknown as Database
     const config = { performanceQuery: { kind: "EMPLOYEE_PERFORMANCE" as const, metric: "INDICATOR_QUARTILE" as const, indicatorCode: "TMA" }, comparator: "EQUALS" as const, thresholdText: "Q4" }
-    const midSeptember = await evaluateDataCondition(db, config, { operatorId: "p", subjectIds: ["p"] }, MID_SEPTEMBER, { timeZone: "America/Fortaleza" })
+    const midSeptember = await evaluateDataCondition(db, config, { operatorId: "p", subjectIds: ["p"] }, MID_SEPTEMBER, { organizationId: ORG, timeZone: "America/Fortaleza" })
     expect(midSeptember?.branch).toBe("false")
     expect(midSeptember?.evaluation.referencePeriod).toBe("2026-08")
-    const october = await evaluateDataCondition(db, config, { operatorId: "p", subjectIds: ["p"] }, OCTOBER_FIRST, { timeZone: "America/Fortaleza" })
+    const october = await evaluateDataCondition(db, config, { operatorId: "p", subjectIds: ["p"] }, OCTOBER_FIRST, { organizationId: ORG, timeZone: "America/Fortaleza" })
     expect(october?.branch).toBe("true")
     expect(october?.evaluation.referencePeriod).toBe("2026-09")
   })

@@ -8,6 +8,7 @@ import AdminLayout from "./layout"
 import AdminIndexPage from "./page"
 import HumanSupportPage from "./human-support/page"
 import HumanSupportMonitoringPage from "./human-support-monitoring/page"
+import IniaSuccessRoute from "./inia-success/page"
 
 const state = vi.hoisted(() => ({ pathname: "/admin", user: null as unknown }))
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-inia-pathname": state.pathname }) }))
@@ -21,6 +22,7 @@ vi.mock("@/services/auth/current-user-server", () => ({ getCurrentUserFromCookie
 vi.mock("@/components/admin/admin-sidebar", () => ({ AdminSidebar: () => null }))
 vi.mock("@/components/human-support/admin/human-support-admin-page", () => ({ HumanSupportAdminPage: () => null }))
 vi.mock("@/components/human-support/monitoring/human-support-monitoring-page", () => ({ HumanSupportMonitoringPage: () => null }))
+vi.mock("@/components/inia-success/inia-success-page", () => ({ IniaSuccessPage: () => null }))
 
 function signIn(capabilities: Partial<AccessCapabilities>, pathname = "/admin") {
   state.pathname = pathname
@@ -103,5 +105,18 @@ describe("Páginas do Apoio com Anjo — capability antes de renderizar", () => 
     expect(((await HumanSupportPage()) as ReactElement<{ canGrantRoles: boolean }>).props.canGrantRoles).toBe(true)
     signIn(COORDINATOR)
     expect(await redirectOf(HumanSupportPage)).toBe("/admin")
+  })
+})
+
+describe("Administração — Indicadores de sucesso da INIA", () => {
+  it("abre para quem lê ao menos um bloco, sem abrir outras áreas; a página exige a capability", async () => {
+    const reviewer = { canReviewFeedbackContestations: true, canViewIniaSuccess: true }
+    signIn(reviewer, "/admin/inia-success")
+    expect(await redirectOf(layoutAt)).toBeNull()
+    expect(await redirectOf(IniaSuccessRoute)).toBeNull()
+    signIn(reviewer, "/admin/agents")
+    expect(await redirectOf(layoutAt)).toBe("/admin/feedback-contestations")
+    signIn({ canReviewFeedbackContestations: true }, "/admin/inia-success")
+    expect(await redirectOf(IniaSuccessRoute)).toBe("/admin")
   })
 })

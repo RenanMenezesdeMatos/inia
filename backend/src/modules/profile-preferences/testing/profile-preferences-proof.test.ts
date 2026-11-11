@@ -50,7 +50,8 @@ function png(width: number, height: number): Buffer {
   buffer.write("IHDR", 12, "latin1")
   buffer.writeUInt32BE(width, 16)
   buffer.writeUInt32BE(height, 20)
-  return buffer
+  // IEND: o removedor de metadados recusa PNG que não fecha (nunca grava os bytes originais).
+  return Buffer.concat([buffer, Buffer.from([0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82])])
 }
 
 async function importEmployees(rows: string[][], filename: string) {

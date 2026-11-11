@@ -9,7 +9,7 @@ import type { FramingAnchors } from "./rig-framing"
 import { computeFramingAnchors } from "./rig-framing"
 import { collectBones } from "./rig-bones"
 import type { AvatarFrameOutput, AvatarQuality, ProceduralBone } from "./types"
-import { ARKIT_BLENDSHAPES, PROCEDURAL_BONES } from "./types"
+import { ARKIT_BLENDSHAPES, HAIR_SWAY_BONE, PROCEDURAL_BONES } from "./types"
 
 /**
  * AvatarRig — liga o comportamento (quadro do `BehaviorController`) a UMA cópia da cena do GLB.
@@ -51,6 +51,8 @@ export class AvatarRig {
   private readonly gestureClips: Map<GestureId, AnimationClip>
   private readonly rest: Map<string, Quaternion>
   private readonly procedural: Array<ProceduralBinding | null>
+  /** Osso de balanço do cabelo, se o esqueleto tiver (`mixerResult` aqui guarda o REPOUSO do osso). */
+  private hair: ProceduralBinding | null = null
   private readonly morphs: MorphBinding[]
   private readonly hairCurls: Object3D[]
   private activeGesture: AnimationAction | null = null
@@ -81,6 +83,12 @@ export class AvatarRig {
       const parent = bone.parent ? setup.solver.orientation(bone.parent, new Quaternion()) : new Quaternion()
       return { bone, parent, parentInverse: parent.clone().invert(), mixerResult: bone.quaternion.clone() }
     })
+    // Osso de balanço do cabelo: fora do mixer (nenhum clipe o anima), então volta ao repouso a cada quadro.
+    const hairBone = this.bones.get(HAIR_SWAY_BONE)
+    if (hairBone) {
+      const parent = hairBone.parent ? setup.solver.orientation(hairBone.parent, new Quaternion()) : new Quaternion()
+      this.hair = { bone: hairBone, parent, parentInverse: parent.clone().invert(), mixerResult: hairBone.quaternion.clone() }
+    }
     applyLocal(setup.bones, setup.rest, root)
     setup.solver.refresh()
 
@@ -178,6 +186,17 @@ export class AvatarRig {
       this.q.setFromEuler(this.euler)
       this.q2.copy(binding.parentInverse).multiply(this.q).multiply(binding.parent)
       binding.bone.quaternion.premultiply(this.q2)
+    }
+    const hair = this.hair
+    if (hair) {
+      hair.bone.quaternion.copy(hair.mixerResult)
+      const offset = frame.hair
+      if (offset && (offset.x !== 0 || offset.y !== 0 || offset.z !== 0)) {
+        this.euler.set(offset.x, offset.y, offset.z, "YXZ")
+        this.q.setFromEuler(this.euler)
+        this.q2.copy(hair.parentInverse).multiply(this.q).multiply(hair.parent)
+        hair.bone.quaternion.premultiply(this.q2)
+      }
     }
     const weights = frame.blendshapes
     for (const morph of this.morphs) {

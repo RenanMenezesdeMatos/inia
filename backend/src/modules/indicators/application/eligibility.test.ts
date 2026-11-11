@@ -147,7 +147,7 @@ describe.each(["America/Fortaleza", "America/Sao_Paulo", "UTC"])("dias elegívei
     const db = fakeDb({ periods: [{ personId: "p", status: "FERIAS", from: "2026-09-09", to: "2026-09-11" }], tma: { p: { "2026-09-07": 400, "2026-09-08": 420 } } }, tz)
     const eligibility = (await resolveEligibleDaysBySubject(db, ["p"], window, tz)).get("p")!
     expect(eligibility).toMatchObject({ businessDays: 5, eligibleDays: 2, excludedByStatus: { FERIAS: 3 }, eligibleDates: ["2026-09-07", "2026-09-08"] })
-    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.6 }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { timeZone: tz })
+    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, minimumCoverage: 0.6 }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { organizationId: "org", timeZone: tz })
     expect(result?.branch).toBe("true")
     expect(result?.evaluation.evidence).toMatchObject({ daysWithData: 2, expectedDays: 2, coverage: 1, coverageSatisfied: true, eligibility: { businessDays: 5, eligibleDays: 2, excludedByStatus: { FERIAS: 3 } } })
   })
@@ -156,7 +156,7 @@ describe.each(["America/Fortaleza", "America/Sao_Paulo", "UTC"])("dias elegívei
     const db = fakeDb({ periods: [{ personId: "p", status, from: "2026-09-01", to: "2026-09-20" }], tma: { p: WEEK } }, tz)
     const eligibility = (await resolveEligibleDaysBySubject(db, ["p"], window, tz)).get("p")!
     expect(eligibility).toMatchObject({ eligibleDays: 0, excludedByStatus: { [status]: 5 } })
-    const result = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { timeZone: tz })
+    const result = await evaluateDataCondition(db, { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { organizationId: "org", timeZone: tz })
     expect(result?.branch).toBe("no_data")
     expect(result?.evaluation).toMatchObject({ reason: "NO_ELIGIBLE_DAYS", value: null })
   })
@@ -170,10 +170,10 @@ describe.each(["America/Fortaleza", "America/Sao_Paulo", "UTC"])("dias elegívei
 
   it("medições recebidas durante as férias ficam no banco mas NÃO contam; correção da situação (09–20 → 10–20) recalcula sem tocar a medição", async () => {
     const before = fakeDb({ periods: [{ personId: "p", status: "FERIAS", from: "2026-09-09", to: "2026-09-20" }], tma: { p: WEEK } }, tz)
-    const first = (await resolveOperationalWindowBySubject(before, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: tz })).get("p")!
+    const first = (await resolveOperationalWindowBySubject(before, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: tz }, { organizationId: "org" })).get("p")!
     expect(first).toMatchObject({ daysWithData: 2, expectedDays: 2, coverage: 1 })
     const corrected = fakeDb({ periods: [{ personId: "p", status: "FERIAS", from: "2026-09-10", to: "2026-09-20" }], tma: { p: WEEK } }, tz)
-    const second = (await resolveOperationalWindowBySubject(corrected, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: tz })).get("p")!
+    const second = (await resolveOperationalWindowBySubject(corrected, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", expectedDays: 5, timeZone: tz }, { organizationId: "org" })).get("p")!
     expect(second).toMatchObject({ daysWithData: 3, expectedDays: 3, coverage: 1 })
   })
 
@@ -192,7 +192,7 @@ describe.each(["America/Fortaleza", "America/Sao_Paulo", "UTC"])("dias elegívei
     expect(result.noDataCount).toBe(1)
     expect(result.memberIds).not.toContain("licenca")
     expect(result.memberIds).toEqual(["d", "e"])
-    const quartile = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, source: "OPERATIONAL_QUARTILE" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "licenca", subjectIds: ["licenca"], populationIds: ["a", "b", "c", "d", "e", "licenca"] }, NOW, { timeZone: tz })
+    const quartile = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, source: "OPERATIONAL_QUARTILE" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId: "licenca", subjectIds: ["licenca"], populationIds: ["a", "b", "c", "d", "e", "licenca"] }, NOW, { organizationId: "org", timeZone: tz })
     expect(quartile?.branch).toBe("no_data")
     expect(quartile?.evaluation).toMatchObject({ reason: "NO_ELIGIBLE_DAYS", population: { evaluatedCount: 6, rankedCount: 5, noDataCount: 1 } })
   })
@@ -214,7 +214,7 @@ describe("dias elegíveis — escala real (calendário explícito, regime, feria
   it("6x1 com 6 medições nos 6 dias programados = cobertura 100%; folga não reduz cobertura", async () => {
     const tma = { p: { "2026-09-07": 400, "2026-09-08": 400, "2026-09-10": 400, "2026-09-11": 400, "2026-09-12": 400, "2026-09-13": 400 } }
     const db = fakeDb({ days: weekDays("p", [3]), tma }, tz)
-    const result = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz })).get("p")!
+    const result = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz }, { organizationId: "org" })).get("p")!
     expect(result).toMatchObject({ daysWithData: 6, expectedDays: 6, coverage: 1 })
   })
 
@@ -225,10 +225,10 @@ describe("dias elegíveis — escala real (calendário explícito, regime, feria
     const eligibility = (await resolveEligibleDaysBySubject(full, ["p"], week, tz)).get("p")!
     expect(eligibility).toMatchObject({ calendarDays: 7, scheduledWorkDays: 6, excludedByScheduledDayOff: 1, excludedByStatus: { INSS: 2 }, eligibleDays: 4 })
     expect(eligibility.eligibleDates).toContain("2026-09-12") // sábado programado conta
-    const complete = (await resolveOperationalWindowBySubject(full, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz })).get("p")!
+    const complete = (await resolveOperationalWindowBySubject(full, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz }, { organizationId: "org" })).get("p")!
     expect(complete).toMatchObject({ daysWithData: 4, expectedDays: 4, coverage: 1 })
     const half = fakeDb({ days, periods, tma: { p: { "2026-09-07": 400, "2026-09-10": 400 } } }, tz)
-    const partial = (await resolveOperationalWindowBySubject(half, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz })).get("p")!
+    const partial = (await resolveOperationalWindowBySubject(half, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz }, { organizationId: "org" })).get("p")!
     expect(partial).toMatchObject({ daysWithData: 2, expectedDays: 4, coverage: 0.5 })
   })
 
@@ -257,7 +257,7 @@ describe("dias elegíveis — escala real (calendário explícito, regime, feria
 
   it("janela só com folgas programadas → NO_ELIGIBLE_DAYS (não 0, não Q4)", async () => {
     const db = fakeDb({ days: weekDays("p", [0, 1, 2, 3, 4, 5, 6]), tma: { p: WEEK } }, tz)
-    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { timeZone: tz })
+    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { organizationId: "org", timeZone: tz })
     expect(result?.branch).toBe("no_data")
     expect(result?.evaluation).toMatchObject({ reason: "NO_ELIGIBLE_DAYS" })
   })
@@ -267,7 +267,7 @@ describe("dias elegíveis — escala real (calendário explícito, regime, feria
     const eligibility = (await resolveEligibleDaysBySubject(db, ["p"], week, tz)).get("p")!
     expect(eligibility).toMatchObject({ calendarDays: 7, scheduledWorkDays: 0, eligibleDays: 0, excludedByUnknownSchedule: 7 })
     expect(eligibility.scheduleConfidence).toMatchObject({ basis: "UNKNOWN_SCHEDULE", scheduleType: "SIX_BY_ONE", unknownScheduleDays: 7 })
-    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { timeZone: tz })
+    const result = await evaluateDataCondition(db, { historicalQuery: { ...QUERY, period: { kind: "ROLLING_DAYS", days: 7 } }, comparator: "GT", thresholdNumeric: 300 }, { operatorId: "p", subjectIds: ["p"] }, NOW, { organizationId: "org", timeZone: tz })
     expect(result?.branch).toBe("no_data")
     expect(result?.evaluation.reason).toBe("NO_ELIGIBLE_DAYS")
   })
@@ -314,7 +314,7 @@ describe("exceções individuais de calendário (banco de horas, day off, folga 
   const NOW = new Date("2026-09-13T23:59:59-03:00") // domingo 13/09, fim do dia
   const week = resolveTimeWindow({ kind: "ROLLING_DAYS", days: 7 }, NOW, tz) // seg 07/09 → dom 13/09
   const FULL_WEEK = { ...WEEK, "2026-09-12": 415, "2026-09-13": 425 }
-  const measure = async (db: Database) => (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz })).get("p")!
+  const measure = async (db: Database) => (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation: "WEIGHTED_AVERAGE", expectedDays: 7, timeZone: tz }, { organizationId: "org" })).get("p")!
 
   it.each(["DAY_OFF", "BANCO_HORAS", "FOLGA_EXTRAORDINARIA"] as const)("%s vence a escala 'trabalha': dia sai do denominador e a medição daquele dia sai do valor (sem ser apagada)", async (code) => {
     const db = fakeDb({ days: weekDays("p", [0]), exceptions: [{ personId: "p", date: "2026-09-09", code }], tma: { p: { ...FULL_WEEK, "2026-09-09": 900 } } }, tz)
@@ -351,7 +351,7 @@ describe("medição × calendário: só data ELEGÍVEL entra no cálculo (folga,
   const NOW = new Date("2026-09-13T23:59:59-03:00")
   const week = resolveTimeWindow({ kind: "ROLLING_DAYS", days: 7 }, NOW, tz)
   const FULL_WEEK = { ...WEEK, "2026-09-12": 415, "2026-09-13": 425 }
-  const measure = async (db: Database, aggregation: "WEIGHTED_AVERAGE" | "AVERAGE" | "SUM" | "LATEST" | "COUNT" = "WEIGHTED_AVERAGE") => (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation, expectedDays: 7, timeZone: tz })).get("p")
+  const measure = async (db: Database, aggregation: "WEIGHTED_AVERAGE" | "AVERAGE" | "SUM" | "LATEST" | "COUNT" = "WEIGHTED_AVERAGE") => (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window: week, aggregation, expectedDays: 7, timeZone: tz }, { organizationId: "org" })).get("p")
 
   it("folga programada (6x1 quarta) com TMA 900 na quarta: preservada, ignorada — média usa só os 6 dias programados", async () => {
     const db = fakeDb({ days: weekDays("p", [3]), tma: { p: { ...FULL_WEEK, "2026-09-09": 900 } } }, tz)
@@ -459,7 +459,7 @@ describe("PLANEJADO × OBSERVADO — evidência de produção supera o plano; si
     expect(eligibility.excludedByScheduleException).toEqual({})
     expect(eligibility.observed).toMatchObject({ workedObservedDays: 1, observedDates: ["2026-09-09"], workedDespitePlan: { exception: { DAY_OFF: 1 }, scheduledDayOff: 0, holiday: 0, unknownSchedule: 0 }, productionWithNonEligibleStatusDays: 0 })
     expect(eligibility.observed.evidenceSources).toEqual({ interactions: true, indicatorCodes: [] })
-    const value = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 5 })).get("p")!
+    const value = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 5 }, { organizationId: "org" })).get("p")!
     expect(value.daysWithData).toBe(5)
     expect(value.ignoredMeasurements).toBe(0)
     expect(value.value).toBeCloseTo((400 + 420 + 410 + 430 + 405) / 5, 1)
@@ -470,7 +470,7 @@ describe("PLANEJADO × OBSERVADO — evidência de produção supera o plano; si
     const eligibility = (await resolveEligibleDaysBySubject(db, ["p"], window, tz, { now: NOW })).get("p")!
     expect(eligibility.eligibleDays).toBe(4)
     expect(eligibility.excludedByScheduleException).toEqual({ DAY_OFF: 1 })
-    const value = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 4 })).get("p")!
+    const value = (await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 4 }, { organizationId: "org" })).get("p")!
     expect(value.ignoredMeasurements).toBe(1)
   })
 
@@ -489,7 +489,7 @@ describe("PLANEJADO × OBSERVADO — evidência de produção supera o plano; si
     expect(eligibility.get("p")!.observed.productionWithNonEligibleStatusDays).toBe(1)
     expect(eligibility.get("f")).toMatchObject({ eligibleDays: 0, excludedByStatus: { FERIAS: 7 } })
     expect(eligibility.get("f")!.observed.productionWithNonEligibleStatusDays).toBe(1)
-    const values = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p", "f"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 5 })
+    const values = await resolveOperationalWindowBySubject(db, { indicatorCode: "TMA", subjectIds: ["p", "f"], window, aggregation: "WEIGHTED_AVERAGE", timeZone: tz, now: NOW, expectedDays: 5 }, { organizationId: "org" })
     expect(values.get("p")!.ignoredMeasurements).toBe(2)
     expect(values.get("f")).toBeUndefined() // zero dias elegíveis: fora da população, nunca 0/Q4
   })

@@ -11,7 +11,7 @@ import type { ContestationDetail, ContestationItem } from "@/schemas/admin/feedb
 import { ContestationDetailPanel } from "./contestation-detail"
 import { FeedbackContestationsPage } from "./feedback-contestations-page"
 
-const service = vi.hoisted(() => ({ fetchContestations: vi.fn(), fetchContestation: vi.fn(), reviewContestation: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchContestations: vi.fn(), fetchContestation: vi.fn(), reviewContestation: vi.fn(), fetchContestationSummary: vi.fn() }))
 vi.mock("@/services/admin/feedback-contestation-service", async (original) => ({ ...(await original<object>()), ...service }))
 const navigation = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn() }))
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/feedback-contestations", useSearchParams: () => navigation.params, useRouter: () => ({ replace: navigation.replace, push: vi.fn(), refresh: vi.fn() }) }))
@@ -30,9 +30,12 @@ const ITEM: ContestationItem = {
 const DETAIL: ContestationDetail = { ...ITEM, content: { observedBehavior: "Não confirmou o protocolo.", evidenceFound: "“vou verificar aqui”", relatedProcedure: "Procedimento 35", recommendation: "Informe o protocolo." } }
 
 beforeAll(installJsdomStubs)
+const SUMMARY = { from: "2026-10-12", to: "2026-11-10", delivered: 0, contested: 0, rate: null, byReason: [], byStatus: { pending: 0, ACCEPTED: 0, PARTIALLY_ACCEPTED: 0, REJECTED: 0 } }
+
 beforeEach(() => {
   navigation.params = new URLSearchParams()
   navigation.replace.mockReset()
+  service.fetchContestationSummary.mockResolvedValue(SUMMARY)
 })
 afterEach(() => {
   cleanup()
@@ -93,3 +96,43 @@ describe("Contestações de feedback — responder", () => {
     expect(screen.queryByRole("button", { name: "Enviar resposta" })).not.toBeInTheDocument()
   })
 })
+
+describe("Contestações de feedback — taxa de contestação", () => {
+  it("taxa com 5 ou mais feedbacks, contagem, motivos e respostas do maior para o menor; período padrão = último mês", async () => {
+    service.fetchContestations.mockResolvedValue({ items: [], total: 0, pendingCount: 0 })
+    service.fetchContestationSummary.mockResolvedValue({
+      ...SUMMARY,
+      delivered: 13,
+      contested: 2,
+      rate: 2 / 13,
+      byReason: [{ reason: "UNCLEAR", label: "Pouco claro", count: 1 }, { reason: "INACCURATE", label: "Impreciso", count: 1 }],
+      byStatus: { pending: 0, ACCEPTED: 1, PARTIALLY_ACCEPTED: 0, REJECTED: 1 },
+    })
+    renderWithQuery(<FeedbackContestationsPage />)
+    const card = await screen.findByTestId("contestation-rate-card")
+    expect(await within(card).findByTestId("contestation-rate")).toHaveTextContent("15,4%")
+    expect(card).toHaveTextContent("2 de 13 feedbacks entregues")
+    const lists = within(card).getAllByRole("list")
+    expect(within(lists[0]!).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Pouco claro1", "Impreciso1"])
+    expect(within(lists[1]!).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Contestação procedente1", "Feedback mantido1", "Aguardando resposta0", "Procedente em parte0"])
+    const period = service.fetchContestationSummary.mock.calls[0]![0] as { from: string; to: string }
+    expect((Date.parse(period.to) - Date.parse(period.from)) / 86_400_000).toBe(29)
+  })
+
+  it("menos de 5 feedbacks: só a contagem e o aviso; nenhum entregue: diz isso (nunca 0%)", async () => {
+    service.fetchContestations.mockResolvedValue({ items: [], total: 0, pendingCount: 0 })
+    service.fetchContestationSummary.mockResolvedValueOnce({ ...SUMMARY, delivered: 3, contested: 1, byReason: [{ reason: "OTHER", label: "Outro motivo", count: 1 }], byStatus: { ...SUMMARY.byStatus, pending: 1 } })
+    renderWithQuery(<FeedbackContestationsPage />)
+    const card = await screen.findByTestId("contestation-rate-card")
+    expect(await within(card).findByText("Poucos dados")).toBeInTheDocument()
+    expect(card).toHaveTextContent("1 de 3 feedbacks entregues")
+    expect(card).toHaveTextContent("A porcentagem aparece com 5 feedbacks ou mais no período.")
+    expect(within(card).queryByTestId("contestation-rate")).not.toBeInTheDocument()
+    cleanup()
+    renderWithQuery(<FeedbackContestationsPage />)
+    const empty = await screen.findByTestId("contestation-rate-card")
+    expect(await within(empty).findByText("Nenhum feedback entregue no período.")).toBeInTheDocument()
+    expect(empty).not.toHaveTextContent("0%")
+  })
+})
+

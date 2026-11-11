@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatClockTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useReadAcknowledgement } from "@/queries/human-support/receipt-acks"
-import { useHumanSupportState } from "@/queries/human-support/use-human-support-state"
+import { useHumanSupportState, useSupportRoomOnScreen } from "@/queries/human-support/use-human-support-state"
 import { useTypingSignal } from "@/queries/human-support/use-typing-signal"
 import { SUPPORT_ROOM_NOTICE } from "@/schemas/human-support/catalogs.schema"
 import { AVAILABILITY_TEXT, waitEstimateText, type MessageView, type OperatorRequestView, type Receipts } from "@/schemas/human-support/state.schema"
@@ -47,7 +47,8 @@ export function statusLine(request: OperatorRequestView, ended: boolean): string
   return `Em atendimento com ${request.anjo?.name ?? "o Anjo"}`
 }
 
-export function SupportRoom({ onBack }: { onBack: () => void }) {
+/** `hidden` = o painel do chat está recolhido: a sala continua montada, mas não está na tela (não conta como lida nem silencia o aviso). */
+export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hidden?: boolean }) {
   const { operator, reconnecting, refresh, applyOperator } = useHumanSupportState()
   const open = operator?.openRequest ?? null
   // O pedido aberto do estado é a fonte. Quando ele some (terminou), a sala fica no último pedido mostrado e busca o fim da conversa.
@@ -70,7 +71,8 @@ export function SupportRoom({ onBack }: { onBack: () => void }) {
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const liveId = shown && !ended && (shown.status === "WAITING" || shown.status === "IN_PROGRESS") ? shown.id : null
   const typing = useTypingSignal(liveId && shown?.status === "IN_PROGRESS" ? liveId : null)
-  useReadAcknowledgement(liveId, lastSeqOf(messages), liveId !== null)
+  useReadAcknowledgement(liveId, lastSeqOf(messages), liveId !== null && !hidden)
+  useSupportRoomOnScreen(liveId, lastSeqOf(messages), liveId !== null && !hidden)
   const typingKey = liveId && shown?.peerTypingMs != null ? shown : null
   const addMessages = (requestId: string, incoming: MessageView[], olderDone?: boolean) =>
     setExtra((current) => {

@@ -4,7 +4,9 @@
  *
  * Prova: "não foi útil" avisa no sino quem revisa o colaborador (Grupo dele e "Minha estrutura" do líder), nunca quem revisa
  * outro Grupo nem o próprio colaborador; a fila mostra só o escopo de cada revisor; responder grava, audita, avisa o colaborador
- * (que vê a resposta junto da avaliação) e encerra os avisos; responder de novo = 409; contestação retirada sai da fila.
+ * (que vê a resposta junto da avaliação) e encerra os avisos; responder de novo = 409; contestação retirada sai da fila; a taxa de
+ * contestação do período conta cada feedback disponibilizado uma vez, com a contestação vigente ou respondida (retirada sem resposta
+ * não conta), no escopo de quem revisa, e só mostra porcentagem com 5 ou mais feedbacks.
  */
 import pg from "pg"
 import request from "supertest"
@@ -14,6 +16,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { listContestations, reviewContestation } from "../application/contestation-review-service.js"
+import { contestationSummary } from "../application/contestation-summary.js"
 import { listMyRatings, rateFeedback } from "../application/feedback-rating-service.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -163,5 +166,49 @@ describe.skipIf(!ENABLED)("Contestações de feedback — prova Postgres", () =>
     const secondAlerts = (await alertsOf(person.RevisorGrupo!)).filter((alert) => alert.dedupe_key.includes(second))
     expect(secondAlerts.map((alert) => alert.status)).toEqual(["RESOLVED"])
     await expect(reviewContestation(db(), reviewer("RevisorGrupo"), second, { decision: "REJECTED", response: "Mantido." }, new Date())).rejects.toMatchObject({ code: "FEEDBACK_CONTESTATION_NOT_FOUND" })
+  })
+
+  it("taxa de contestação: cada feedback disponibilizado no período conta uma vez; retirada sem resposta não conta; porcentagem só com 5 ou mais", async () => {
+    const today = (await pool.query<{ day: string }>("select to_char((now() at time zone analytics_org_timezone($1))::date, 'YYYY-MM-DD') as day", [ORG])).rows[0]!.day
+    const period = { from: today, to: today }
+    // Até aqui: 1 feedback da Joana (o original), contestado e respondido como procedente; a segunda contestação foi retirada.
+    const one = await contestationSummary(db(), reviewer("Lider"), period)
+    expect(one).toMatchObject({ delivered: 1, contested: 1, rate: null, byStatus: { pending: 0, ACCEPTED: 1, PARTIALLY_ACCEPTED: 0, REJECTED: 0 } })
+    expect(one.byReason).toEqual([{ reason: "INACCURATE", label: "Impreciso", count: 1 }])
+
+    // Mais 4 feedbacks para a Joana; ela contesta 1 (fica sem resposta) e contesta e retira outro.
+    const more: string[] = []
+    for (let index = 0; index < 4; index += 1) {
+      const id = (await pool.query<{ id: string }>(
+        `insert into feedbacks (organization_id, case_id, operator_id, status, feedback_kind, impacted_indicator, evidence_found, observed_behavior, related_procedure, recommendation, published_at)
+         values ($1,$2,$3,'PUBLISHED','MONITORING','TMA','“trecho”','Comportamento.','Procedimento 35','Recomendação.',now()) returning id`,
+        [ORG, created.cases[0], person.Joana],
+      )).rows[0]!.id
+      created.feedbacks.push(id)
+      more.push(id)
+    }
+    await rateFeedback(db(), joana(), { source: { kind: "PUBLISHED_FEEDBACK", id: more[0]! }, value: "DOWN", reason: "WRONG_PROCESS", comment: "O procedimento citado não é o do meu produto." }, new Date())
+    await rateFeedback(db(), joana(), { source: { kind: "PUBLISHED_FEEDBACK", id: more[1]! }, value: "DOWN", reason: "UNCLEAR", comment: "Não entendi." }, new Date())
+    await rateFeedback(db(), joana(), { source: { kind: "PUBLISHED_FEEDBACK", id: more[1]! }, value: "NONE" }, new Date())
+    await rateFeedback(db(), joana(), { source: { kind: "PUBLISHED_FEEDBACK", id: more[2]! }, value: "UP" }, new Date())
+
+    const five = await contestationSummary(db(), reviewer("Lider"), period)
+    expect(five).toMatchObject({ delivered: 5, contested: 2, rate: 0.4, byStatus: { pending: 1, ACCEPTED: 1, PARTIALLY_ACCEPTED: 0, REJECTED: 0 } })
+    // Empate: ordem do catálogo (processo errado vem antes de impreciso).
+    expect(five.byReason.map((entry) => [entry.reason, entry.count])).toEqual([["WRONG_PROCESS", 1], ["INACCURATE", 1]])
+    // A própria colaboradora (sem o papel) não alcança ninguém; outro dia não tem nada.
+    expect(await contestationSummary(db(), { organizationId: ORG, personId: person.Joana! }, period)).toMatchObject({ delivered: 0, contested: 0, rate: null, byReason: [] })
+    expect(await contestationSummary(db(), reviewer("Lider"), { from: "2020-01-01", to: "2020-01-31" })).toMatchObject({ delivered: 0, contested: 0, rate: null })
+
+    // Pela rota: período obrigatório e de até 366 dias.
+    const app = createApp(pool, { rateLimits: false })
+    const origin = env.allowedOrigins[0]!
+    const agent = request.agent(app)
+    expect((await agent.post("/api/v1/auth/login").set("Origin", origin).send({ email: email.Lider, password: PASSWORD })).status).toBe(200)
+    const viaApi = await agent.get(`/api/v1/admin/feedback-contestations/summary?from=${today}&to=${today}`)
+    expect(viaApi.status).toBe(200)
+    expect(viaApi.body.data).toMatchObject({ delivered: 5, contested: 2, rate: 0.4 })
+    expect((await agent.get("/api/v1/admin/feedback-contestations/summary?from=2026-01-01")).status).toBe(400)
+    expect((await agent.get("/api/v1/admin/feedback-contestations/summary?from=2024-01-01&to=2026-01-01")).status).toBe(400)
   })
 })

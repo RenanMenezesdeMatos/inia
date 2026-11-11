@@ -3,7 +3,7 @@
 // A senha nunca vai na linha de comando (qualquer usuário da máquina veria na lista de processos): vai por PGPASSWORD.
 import { spawnSync } from "node:child_process"
 import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, win32 } from "node:path"
 
 export const DEFAULT_DATABASE_URL = "postgresql://localhost:5432/inia"
 
@@ -55,31 +55,51 @@ export function describeTarget(connectionString) {
   return `${url.hostname}:${url.port || 5432}${url.pathname}`
 }
 
-function versionOf(binary) {
-  const result = spawnSync(binary, ["--version"], { encoding: "utf8" })
+/**
+ * Ferramenta do Windows (whoami, icacls) pelo caminho ABSOLUTO em System32 — nunca pelo nome solto: a tarefa agendada roda como
+ * SYSTEM com a pasta da INIA como diretório de trabalho, e o Windows procura um nome solto PRIMEIRO no diretório de trabalho (um
+ * whoami.exe colocado ali rodaria como SYSTEM). `SystemRoot` relativo ou ausente = C:\Windows.
+ */
+export function windowsSystemTool(name, { systemRoot = process.env.SystemRoot } = {}) {
+  const root = systemRoot && win32.isAbsolute(systemRoot) ? systemRoot : "C:\\Windows"
+  return win32.join(root, "System32", `${name}.exe`)
+}
+
+function versionOf(binary, run) {
+  const result = run(binary, ["--version"], { encoding: "utf8" })
   if (result.status !== 0) return null
   const match = /(\d+)(?:\.(\d+))?/.exec(result.stdout)
   return match ? Number(match[1]) : null
 }
 
 /**
- * Caminho de uma ferramenta do PostgreSQL (pg_dump, pg_restore), da mais nova para a mais velha: a pasta informada, o PATH,
- * as instalações comuns do Windows (C:\Program Files\PostgreSQL\<versão>\bin) e do Homebrew. `minMajor` = versão do servidor:
- * um pg_dump mais velho que o servidor recusa o backup, então ele é pulado.
+ * Caminho de uma ferramenta do PostgreSQL (pg_dump, pg_restore), da mais nova para a mais velha. `minMajor` = versão do
+ * servidor: um pg_dump mais velho que o servidor recusa o backup, então ele é pulado.
+ *  - Windows: só caminhos ABSOLUTOS — a pasta informada (--pg-bin, precisa ser absoluta) e as instalações em
+ *    C:\Program Files\PostgreSQL\<versão>\bin. Nunca o nome solto: o Windows o procuraria primeiro no diretório de trabalho, que
+ *    na tarefa agendada (SYSTEM) é a pasta da INIA. Instalação em outro lugar = informe --pg-bin (-PastaPg no agendar-backup.ps1).
+ *  - Linux/macOS: a pasta informada, o PATH e as instalações comuns (Homebrew, /usr/lib/postgresql).
  */
-export function findPgTool(name, { binDir, minMajor = 0 } = {}) {
-  const exe = process.platform === "win32" ? `${name}.exe` : name
+export function findPgTool(name, { binDir, minMajor = 0, platform = process.platform, run = spawnSync } = {}) {
+  const windows = platform === "win32"
+  const path = windows ? win32 : { join }
+  const exe = windows ? `${name}.exe` : name
   const candidates = []
-  if (binDir) candidates.push(join(binDir, exe))
-  candidates.push(exe)
+  if (binDir) {
+    if (windows && !win32.isAbsolute(binDir)) throw new Error(`--pg-bin precisa ser um caminho absoluto (ex.: C:\\Program Files\\PostgreSQL\\17\\bin), recebido: ${binDir}`)
+    candidates.push(path.join(binDir, exe))
+  }
+  if (!windows) candidates.push(exe)
   const versionDirs = (base, prefix = "") =>
-    existsSync(base) ? readdirSync(base).filter((entry) => entry.startsWith(prefix)).sort((a, b) => Number(b.replace(/\D/g, "")) - Number(a.replace(/\D/g, ""))).map((entry) => join(base, entry)) : []
-  if (process.platform === "win32") for (const dir of versionDirs("C:\\Program Files\\PostgreSQL")) candidates.push(join(dir, "bin", exe))
-  for (const dir of versionDirs("/opt/homebrew/opt", "postgresql@")) candidates.push(join(dir, "bin", exe))
-  for (const dir of versionDirs("/usr/local/opt", "postgresql@")) candidates.push(join(dir, "bin", exe))
-  for (const dir of versionDirs("/usr/lib/postgresql")) candidates.push(join(dir, "bin", exe))
+    existsSync(base) ? readdirSync(base).filter((entry) => entry.startsWith(prefix)).sort((a, b) => Number(b.replace(/\D/g, "")) - Number(a.replace(/\D/g, ""))).map((entry) => path.join(base, entry)) : []
+  if (windows) for (const dir of versionDirs("C:\\Program Files\\PostgreSQL")) candidates.push(win32.join(dir, "bin", exe))
+  else {
+    for (const dir of versionDirs("/opt/homebrew/opt", "postgresql@")) candidates.push(join(dir, "bin", exe))
+    for (const dir of versionDirs("/usr/local/opt", "postgresql@")) candidates.push(join(dir, "bin", exe))
+    for (const dir of versionDirs("/usr/lib/postgresql")) candidates.push(join(dir, "bin", exe))
+  }
   for (const candidate of candidates) {
-    const major = versionOf(candidate)
+    const major = versionOf(candidate, run)
     if (major !== null && major >= minMajor) return { path: candidate, major }
   }
   return null
@@ -122,7 +142,7 @@ export function windowsRestrictArgs(path, { directory, userSid }) {
 }
 
 function currentUserSid(run) {
-  const result = run("whoami", ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" })
+  const result = run(windowsSystemTool("whoami"), ["/user", "/fo", "csv", "/nh"], { encoding: "utf8" })
   const sid = result.status === 0 ? /"(S-1-[\d-]+)"/.exec(result.stdout ?? "")?.[1] : undefined
   if (!sid) throw new Error("não identificou a conta que roda a cópia (whoami /user).")
   return sid
@@ -133,9 +153,13 @@ function currentUserSid(run) {
  * leitura para todos os usuários da máquina) e o arquivo só era fechado depois de pronto, com um chmod que no Windows não faz nada.
  * Agora, ANTES de qualquer escrita, a pasta fica só para o dono (POSIX 0700) ou só para Administradores, SYSTEM e quem roda a
  * cópia (Windows, sem herança) — e também as cópias e o registro da INIA que já estavam nela. Nada mais da pasta é tocado.
+ * No Windows a pasta que JÁ EXISTIA passa a ter Administradores como dono e perde as permissões explícitas antigas antes da
+ * restrição (achado de 10/11/2026): o dono de uma pasta sempre pode reescrever as permissões dela, e o `/grant:r` não tira a
+ * permissão explícita de outra conta — quem criasse a pasta antes daria a si mesmo leitura de toda cópia futura.
  * Não conseguiu restringir = erro: a cópia não é feita numa pasta aberta.
  */
 export function restrictBackupDir(dir, { platform = process.platform, run = spawnSync } = {}) {
+  const existed = existsSync(dir)
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const own = readdirSync(dir).filter((entry) => BACKUP_FILE_PATTERN.test(entry) || PARTIAL_FILE_PATTERN.test(entry) || entry === "backup.log").map((entry) => join(dir, entry))
   if (platform !== "win32") {
@@ -144,9 +168,17 @@ export function restrictBackupDir(dir, { platform = process.platform, run = spaw
     return
   }
   const userSid = currentUserSid(run)
-  for (const [path, directory] of [[dir, true], ...own.map((file) => [file, false])]) {
-    const result = run("icacls", windowsRestrictArgs(path, { directory, userSid }), { encoding: "utf8" })
-    if (result.status !== 0) throw new Error(`icacls não restringiu ${path}: ${(result.stderr || result.stdout || result.error?.message || "").trim().slice(0, 300)}`)
+  const icacls = windowsSystemTool("icacls")
+  // Pasta criada agora: o dono já é quem roda a cópia e não há permissão explícita antiga — trocar o dono exigiria um prompt
+  // elevado à toa (o backup manual sem elevação voltaria a falhar). Pasta que já existia: dono e permissões antigas são resetados.
+  const steps = [
+    ...(existed ? [[[dir, "/setowner", `*${WINDOWS_BACKUP_SIDS[0]}`], dir], [[dir, "/reset"], dir]] : []),
+    [windowsRestrictArgs(dir, { directory: true, userSid }), dir],
+    ...own.map((file) => [windowsRestrictArgs(file, { directory: false, userSid }), file]),
+  ]
+  for (const [args, path] of steps) {
+    const result = run(icacls, args, { encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`icacls não restringiu ${path}${existed && args.includes("/setowner") ? " (pasta já existente: trocar o dono pede um prompt de Administrador)" : ""}: ${(result.stderr || result.stdout || result.error?.message || "").trim().slice(0, 300)}`)
   }
 }
 

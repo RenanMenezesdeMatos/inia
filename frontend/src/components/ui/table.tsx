@@ -8,8 +8,14 @@ import { cn } from "@/lib/utils"
  * MOLDURA DE TABELA do app: superfície de cartão (destaca do fundo da página), borda, cantos `rounded-xl` e a rolagem horizontal
  * POR DENTRO (no `table-container`), para os cantos continuarem arredondados quando a tabela é mais larga que a tela. Use no contêiner
  * que envolve a `<Table>`; para rolagem vertical, some `max-h-* overflow-auto`.
+ *
+ * CABEÇALHO (decisão do responsável em 2026-11-10): o roxo da marca da barra superior (`topbar`, roxo nos dois temas — o `primary` do
+ * escuro é rosa) com texto branco em seminegrito, em TODA tabela do app. A cor fica na célula (`TableHead`), então um `TableHeader`
+ * com fundo próprio não apaga o padrão. Sobre o roxo, caixa de seleção e botão (ordenar) ficam claros e o foco é branco.
  */
 export const TABLE_FRAME = "overflow-hidden rounded-xl border border-border bg-card shadow-xs"
+/** Cores do cabeçalho padrão para tabela de DADOS montada à mão (`<th>` fora do kit, ex.: grade do calendário da equipe). */
+export const TABLE_HEAD_COLORS = "bg-topbar text-topbar-foreground"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
@@ -77,7 +83,8 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle text-xs font-semibold whitespace-nowrap text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 bg-topbar px-2 text-left align-middle text-[0.8125rem] font-semibold whitespace-nowrap text-topbar-foreground [&:has([role=checkbox])]:pr-0",
+        "[&_[role=checkbox]]:border-topbar-foreground/70 [&_[role=checkbox][data-state=checked]]:bg-topbar-foreground [&_[role=checkbox][data-state=checked]]:text-topbar [&_button:focus-visible]:ring-topbar-foreground/70",
         className
       )}
       {...props}

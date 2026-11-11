@@ -15,6 +15,7 @@ const TOC: WikiTocEntry[] = [
   { id: "governanca", label: "Governança" },
   { id: "usuarios", label: "Usuários e acessos" },
   { id: "contestacoes", label: "Contestações de feedback" },
+  { id: "conversas", label: "Conversas com a INIA" },
   { id: "ordem", label: "Em que ordem configurar" },
 ]
 
@@ -34,6 +35,7 @@ const AREAS: { menu: string; area: string; configures: string; href: string }[] 
   { menu: "Automação", area: "Workflows", configures: "Criação, editor (canvas, Configurações do workflow, Salvar rascunho, Publicar), Execuções.", href: "/wiki/workflows/criacao" },
   { menu: "Automação", area: "Políticas de acompanhamento", configures: "Tipos de intervenção (capacidades, responsável, prazo, evidências, aprovação, formulário, conclusão, incompatíveis), competências (diagnóstico → conteúdo aprovado → atividades) e políticas versionadas (regras com prioridade, condições, ações, dados insuficientes, simulação, publicação com vigência, auditoria e reavaliação).", href: "/wiki/administracao/politicas-de-acompanhamento" },
   { menu: "Automação", area: "QA Lab", configures: "Simulação de Workflows, Agents e Orchestrators; Histórico de QA; Feedbacks (QA de feedback). Só com o papel Administrador geral (Feedbacks: papel QA de feedback).", href: "/wiki/qa-lab" },
+  { menu: "Monitoramento", area: "Conversas com a INIA", configures: "Leitura das conversas dos colaboradores do escopo (livres, sessões de feedback e recados) e o Tempo de resposta da INIA no chat de texto (média, mediana e 90% em até, com os filtros da lista e um período próprio).", href: "/wiki/administracao#conversas" },
   { menu: "Monitoramento", area: "Contestações de feedback", configures: "Fila das avaliações “não foi útil” dos colaboradores do escopo (motivo + descrição), o que a INIA disse no feedback e a resposta (Contestação procedente, Procedente em parte, Feedback mantido + texto). Papel Revisor de contestações de feedback (ou Administrador geral).", href: "#contestacoes" },
   { menu: "Plataforma", area: "Usuários e acessos", configures: "Acessos (pessoas identificadas × situação do login — Desabilitado, Aguardando troca de senha, Ativo —; Habilitar acesso com senha temporária, Nova senha temporária, Desabilitar; papéis × escopo), Pessoas (cadastro organizacional: nome, cargo, nível hierárquico, grupo, jornada, situação, capital operacional — o que vem da base do cliente é só leitura; a ficha separa Pertence a de Administra / acessos; Novo usuário com matrícula opcional e Vincular à pessoa da base contra cadastro duplicado) e Papéis (pacotes de permissões).", href: "#usuarios" },
 ]
@@ -184,6 +186,25 @@ export default function AdministrationPage() {
           colaborador recebe um aviso e lê a resposta no próprio feedback (<em>Ver resposta</em>). Responder não altera nem retira o feedback; cada
           contestação é respondida uma vez e a resposta fica auditada com o nome de quem respondeu. Ninguém revisa a própria contestação. É a revisão
           humana prevista na LGPD (art. 20) para avaliações feitas por máquina.
+        </p>
+        <p>
+          Acima da fila, a <strong className="font-medium text-foreground">Taxa de contestação</strong>: dos feedbacks entregues no período a
+          pessoas do seu escopo (feedbacks publicados no Acompanhamento e feedbacks de atendimento), quantos o colaborador marcou como “não foi
+          útil” — contestação vigente ou já respondida; a retirada sem resposta não conta. A porcentagem só aparece com 5 feedbacks ou mais no
+          período; antes disso, a contagem. Ao lado, os motivos e a resposta de quem revisa, do maior para o menor. O período (padrão: último
+          mês) vale só para a taxa; a fila continua com todas as contestações.
+        </p>
+      </WikiSection>
+
+      <WikiSection id="conversas" title="Conversas com a INIA" eyebrow="Leitura e tempo de resposta">
+        <p>
+          Quem tem o papel <strong className="font-medium text-foreground">Leitor de conversas da INIA</strong> lê, sem editar nem enviar nada,
+          as conversas dos colaboradores do seu escopo com a INIA. Acima da lista, o{" "}
+          <strong className="font-medium text-foreground">Tempo de resposta da INIA</strong> no chat de texto: do envio da pergunta até a
+          resposta completa — tudo o que a INIA fez no meio (roteamento, especialistas, bases, conferência). Mostra a média, a mediana (metade
+          das respostas chegou em até) e o tempo em que 90% das respostas chegaram, com os filtros da lista (grupo, subgrupo, tipo, situação e
+          busca) e um período próprio sobre a data da resposta. A voz fica de fora: nela a pergunta e a resposta são gravadas juntas, ao fim da
+          fala. A latência de cada chamada de modelo, separada, fica em IA / Modelos › Visão geral.
         </p>
       </WikiSection>
 

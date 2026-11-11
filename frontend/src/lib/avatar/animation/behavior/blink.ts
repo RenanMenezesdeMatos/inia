@@ -21,6 +21,10 @@ export const BLINK_SECONDS = CLOSE_SECONDS + HOLD_SECONDS + OPEN_SECONDS
 export const BLINK_INTERVAL_MIN = 2
 export const BLINK_INTERVAL_MAX = 6
 const DOUBLE_BLINK_CHANCE = 0.15
+/** Perfil "natural": a abertura dura 0,8–1,7× (piscadas de 150–235 ms) e ~1 em 8 não fecha o olho todo. */
+const NATURAL_OPEN_SCALE: readonly [number, number] = [0.8, 1.7]
+const NATURAL_PARTIAL_CHANCE = 0.12
+const NATURAL_PARTIAL_DEPTH: readonly [number, number] = [0.55, 0.8]
 /** Nenhuma piscada de oportunidade logo depois de outra. */
 const MIN_GAP_SECONDS = 0.8
 /** Fim de frase adianta a piscada agendada que viria em até isto (s, com `blinkRate = 1`). */
@@ -38,6 +42,14 @@ export class BlinkLayer {
   /** Instantes de início de cada piscada (só para testes; limitado). */
   readonly history: number[] = []
   recordHistory = false
+  /**
+   * Perfil "natural" (v02): cada piscada sorteia a duração da abertura e, às vezes, fecha só em parte —
+   * piscadas todas iguais são um dos sinais de "boneco". Desligado (padrão) nada é sorteado a mais: a
+   * sequência do perfil clássico é a de sempre.
+   */
+  natural = false
+  private openSeconds = OPEN_SECONDS
+  private depth = 1
 
   reset(): void {
     this.nextBlinkAt = 1.5
@@ -86,12 +98,12 @@ export class BlinkLayer {
     const t = ctx.time - this.blinkStartedAt
     if (t < CLOSE_SECONDS) {
       const x = t / CLOSE_SECONDS
-      this.value = x * x
+      this.value = x * x * this.depth
     } else if (t < CLOSE_SECONDS + HOLD_SECONDS) {
-      this.value = 1
-    } else if (t < BLINK_SECONDS) {
-      const x = (t - CLOSE_SECONDS - HOLD_SECONDS) / OPEN_SECONDS
-      this.value = 1 - (1 - (1 - x) * (1 - x))
+      this.value = this.depth
+    } else if (t < CLOSE_SECONDS + HOLD_SECONDS + this.openSeconds) {
+      const x = (t - CLOSE_SECONDS - HOLD_SECONDS) / this.openSeconds
+      this.value = (1 - (1 - (1 - x) * (1 - x))) * this.depth
     } else {
       this.value = 0
       this.blinkStartedAt = -1
@@ -103,6 +115,13 @@ export class BlinkLayer {
   private start(ctx: BehaviorContext): void {
     this.blinkStartedAt = ctx.time
     this.lastBlinkAt = ctx.time
+    if (this.natural) {
+      this.openSeconds = OPEN_SECONDS * randRange(ctx.rng, NATURAL_OPEN_SCALE[0], NATURAL_OPEN_SCALE[1])
+      this.depth = chance(ctx.rng, NATURAL_PARTIAL_CHANCE) ? randRange(ctx.rng, NATURAL_PARTIAL_DEPTH[0], NATURAL_PARTIAL_DEPTH[1]) : 1
+    } else {
+      this.openSeconds = OPEN_SECONDS
+      this.depth = 1
+    }
     if (this.recordHistory && this.history.length < 4096) this.history.push(ctx.time)
   }
 

@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/surface"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { IniaSceneBackdrop } from "@/components/inia-scenes/inia-scene-backdrop"
@@ -631,14 +632,12 @@ export function IniaScenesPage() {
   const forbidden = query.error instanceof AdminApiError && query.error.code === "FORBIDDEN"
 
   const header = (
-    <div className="flex flex-wrap items-start gap-3">
-      <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><ImageIcon className="size-5" /></span>
-      <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-semibold tracking-tight">Cenário da INIA</h1>
-        <p className="text-sm text-muted-foreground">O fundo atrás da INIA para os colaboradores — um padrão e, se quiser, cenários de datas especiais com período. Cada cenário pode ter imagens por horário (ex.: dia e noite). Só o Administrador geral altera.</p>
-      </div>
-      {query.data ? <Button onClick={() => setEditor({ scene: null, key: Date.now() })}><Plus aria-hidden />Novo cenário</Button> : null}
-    </div>
+    <PageHeader
+      icon={ImageIcon}
+      title="Cenário da INIA"
+      description="O fundo atrás da INIA para os colaboradores — um padrão e, se quiser, cenários de datas especiais com período. Cada cenário pode ter imagens por horário (ex.: dia e noite). Só o Administrador geral altera."
+      actions={query.data ? <Button onClick={() => setEditor({ scene: null, key: Date.now() })}><Plus aria-hidden />Novo cenário</Button> : null}
+    />
   )
 
   if (forbidden) {

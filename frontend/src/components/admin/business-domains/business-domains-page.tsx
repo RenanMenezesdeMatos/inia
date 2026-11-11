@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -379,69 +380,70 @@ export function BusinessDomainsPage() {
   const editingFresh = editing ? (pageQuery.data?.items.find((domain) => domain.id === editing.id) ?? editing) : null
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Domínios de negócio</CardTitle>
-            <CardDescription>Organize as áreas de conhecimento utilizadas pelos Agents e pelos Orchestrators.</CardDescription>
-          </div>
-          {tab === "list" ? (
+    <section className="space-y-4">
+      <PageHeader
+        icon={Layers}
+        title="Domínios de negócio"
+        description="Organize as áreas de conhecimento utilizadas pelos Agents e pelos Orchestrators."
+        actions={
+          tab === "list" ? (
             <Button onClick={openCreateForm}>
               <Plus /> Novo domínio
             </Button>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
-          <TabsList>
-            <TabsTrigger value="list">Lista</TabsTrigger>
-            <TabsTrigger value="form">{editingFresh ? "Editar domínio" : "Novo domínio"}</TabsTrigger>
-          </TabsList>
+          ) : null
+        }
+      />
+      <Card>
+        <CardContent>
+          <Tabs value={tab} onValueChange={(value) => setTab(value as "list" | "form")}>
+            <TabsList>
+              <TabsTrigger value="list">Lista</TabsTrigger>
+              <TabsTrigger value="form">{editingFresh ? "Editar domínio" : "Novo domínio"}</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="list" className="mt-4 space-y-4">
-            <ListToolbar
-              search={<ListSearchInput value={list.filters.search} onChange={(value) => list.setFilter("search", value)} placeholder="Buscar por nome ou código" ariaLabel="Buscar domínio de negócio" pending={list.isSearchPending} />}
-              viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-              hasActiveFilters={list.hasActiveFilters}
-              onClearFilters={list.resetFilters}
-            >
-              <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Todos" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
-            </ListToolbar>
+            <TabsContent value="list" className="mt-4 space-y-4">
+              <ListToolbar
+                search={<ListSearchInput value={list.filters.search} onChange={(value) => list.setFilter("search", value)} placeholder="Buscar por nome ou código" ariaLabel="Buscar domínio de negócio" pending={list.isSearchPending} />}
+                viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+                hasActiveFilters={list.hasActiveFilters}
+                onClearFilters={list.resetFilters}
+              >
+                <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Todos" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+              </ListToolbar>
 
-            <AdminListView
-              state={list}
-              query={pageQuery}
-              errorMessage="Não foi possível carregar os domínios de negócio."
-              empty={{
-                icon: Layers,
-                title: "Nenhum domínio de negócio cadastrado",
-                description: "Cadastre as áreas de conhecimento (ex.: Faturamento, Logística) para classificar Agents especialistas e restringir Orchestrators.",
-                action: (
-                  <Button onClick={openCreateForm}>
-                    <Plus /> Novo domínio
-                  </Button>
-                ),
-              }}
-              noResultsTitle="Nenhum domínio corresponde à busca ou aos filtros"
-              itemLabel={["domínio", "domínios"]}
-              renderList={(domains) => <BusinessDomainsTable domains={domains} onEdit={openEditForm} />}
-              renderCards={(domains) => (
-                <ListCardGrid>
-                  {domains.map((domain) => (
-                    <BusinessDomainCard key={domain.id} domain={domain} onEdit={openEditForm} />
-                  ))}
-                </ListCardGrid>
-              )}
-            />
-          </TabsContent>
+              <AdminListView
+                state={list}
+                query={pageQuery}
+                errorMessage="Não foi possível carregar os domínios de negócio."
+                empty={{
+                  icon: Layers,
+                  title: "Nenhum domínio de negócio cadastrado",
+                  description: "Cadastre as áreas de conhecimento (ex.: Faturamento, Logística) para classificar Agents especialistas e restringir Orchestrators.",
+                  action: (
+                    <Button onClick={openCreateForm}>
+                      <Plus /> Novo domínio
+                    </Button>
+                  ),
+                }}
+                noResultsTitle="Nenhum domínio corresponde à busca ou aos filtros"
+                itemLabel={["domínio", "domínios"]}
+                renderList={(domains) => <BusinessDomainsTable domains={domains} onEdit={openEditForm} />}
+                renderCards={(domains) => (
+                  <ListCardGrid>
+                    {domains.map((domain) => (
+                      <BusinessDomainCard key={domain.id} domain={domain} onEdit={openEditForm} />
+                    ))}
+                  </ListCardGrid>
+                )}
+              />
+            </TabsContent>
 
-          <TabsContent value="form" className="mt-4">
-            <BusinessDomainForm key={editingFresh?.id ?? "new"} domain={editingFresh ?? undefined} onDone={() => setTab("list")} />
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+            <TabsContent value="form" className="mt-4">
+              <BusinessDomainForm key={editingFresh?.id ?? "new"} domain={editingFresh ?? undefined} onDone={() => setTab("list")} />
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </section>
   )
 }

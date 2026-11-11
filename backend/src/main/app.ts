@@ -94,6 +94,7 @@ import { createSuggestionRecorder } from "../modules/human-support/application/s
 import type { WaiterRegistry } from "../modules/human-support/application/waiters.js"
 import { createHumanSupportAdminRouter } from "../modules/human-support/presentation/human-support-admin-router.js"
 import { createHumanSupportMonitoringRouter } from "../modules/human-support/presentation/human-support-monitoring-router.js"
+import { createIniaSuccessRouter } from "../modules/inia-success/presentation/inia-success-router.js"
 import { createHumanSupportRouter } from "../modules/human-support/presentation/human-support-router.js"
 
 export type CreateAppOptions = {
@@ -444,6 +445,9 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // geral). Montados ANTES do `/api/v1/admin` genérico (que exige `configuration.manage`), como o monitoramento de conversas.
   app.use("/api/v1/admin/human-support", can("human_support.manage", { organizationWide: true }), createHumanSupportAdminRouter(database))
   app.use("/api/v1/admin/human-support-monitoring", can("human_support.coordinate"), createHumanSupportMonitoringRouter(database))
+  // Indicadores de sucesso da INIA (somente leitura, agregados): sem permissão nova — cada bloco confere a permissão da tela de origem
+  // dos dados (conversas, painel do apoio, contestações, conferência das respostas). Montado ANTES do `/api/v1/admin` da governança.
+  app.use("/api/v1/admin/inia-success", requireAuth, createIniaSuccessRouter(database))
   app.use("/api/v1/admin", can("configuration.manage"), orgWideWrites, createGovernanceRouter(database))
   app.use("/api/v1/data-ingestion", createDataIngestionRouter(database, dataHubOverrides))
   app.use("/api/v1/diagnostics", requireAuth, heavyReads("GET", /^\/memory\/export\.csv$/), createDiagnosticsRouter(database))

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
+import { TABLE_HEAD_COLORS } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useCancelScheduleExceptionMutation, useClassificationHistoryQuery, useClassifyWorkdayMutation, useProvisionScheduleExceptionMutation, useScheduleExceptionAuditQuery, useTeamCalendarQuery } from "@/queries/team-calendar/use-team-calendar"
@@ -147,10 +148,10 @@ export function TeamCalendarView({ state, onStateChange, employeeHref, pendingHr
         <AnalyticsCard className="overflow-x-auto p-0">
           <table className="w-full min-w-[720px] border-collapse text-sm" data-testid="calendar-grid">
             <thead>
-              <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
-                <th scope="col" className="sticky left-0 z-10 bg-muted/40 px-3 py-2 text-left font-medium">Colaborador</th>
+              <tr className="text-xs">
+                <th scope="col" className={cn("sticky left-0 z-10 px-3 py-2 text-left font-semibold", TABLE_HEAD_COLORS)}>Colaborador</th>
                 {data.people[0]!.days.map((day) => (
-                  <th key={day.date} scope="col" className={cn("px-1 py-2 text-center font-medium", day.date === currentToday && "border-x border-primary/40 text-primary")} data-today={day.date === currentToday || undefined}>
+                  <th key={day.date} scope="col" className={cn("px-1 py-2 text-center font-semibold", TABLE_HEAD_COLORS, day.date === currentToday && "font-bold shadow-[inset_0_-3px_0_0_var(--topbar-foreground)]")} data-today={day.date === currentToday || undefined}>
                     <span className="block">{WEEKDAY_SHORT[weekdayOf(day.date)]}</span>
                     <span className="block tabular-nums">{day.date.slice(8, 10)}/{day.date.slice(5, 7)}</span>
                   </th>

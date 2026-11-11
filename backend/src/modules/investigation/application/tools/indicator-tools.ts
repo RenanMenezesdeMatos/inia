@@ -403,9 +403,12 @@ export async function comparePopulation(context: ToolContext, args: { indicatorC
   }
   if (!indicator.dailySupported) return { data: { reference: args.reference, status: "NOT_SUPPORTED" }, quality: notSupported("sem medição operacional diária"), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
   // O mínimo de privacidade vale para quem TEM medição na janela, não para a lista de ativos: numa janela em que só um colega
-  // trabalhou, a "referência" seria o valor dele (achado C13 da 4ª auditoria). Zero lógico de falta injustificada não conta.
+  // trabalhou, a "referência" seria o valor dele (achado C13 da 4ª auditoria). Zero lógico de falta injustificada não conta:
+  // a janela por pessoa inclui, na política ZERO_CONTRIBUTION, colegas cujo único "dado" é o zero lógico, mas a referência
+  // pooled só soma medições reais — contar esses colegas deixava 1 colega real + 3 faltas passar o mínimo e devolvia o valor
+  // dele (achado da 2ª rodada). Conta só quem tem dia com medição REAL: o mesmo predicado da referência.
   const peers = await resolveOperationalWindowBySubject(context.db, { indicatorCode: indicator.code, subjectIds: population.ids, window: period, aggregation: defaultMeasurementAggregation(indicator.kind), expectedDays: 0, timeZone: context.timeZone, now: context.now, workdayCache: context.workdayCache }, definitionParam(indicator))
-  const contributors = [...peers.values()].filter((entry) => entry.daysWithData > 0).length
+  const contributors = [...peers.values()].filter((entry) => entry.daysWithData - entry.unjustifiedAbsence.zeroContributionDays > 0).length
   if (contributors < MINIMUM_COMPARISON_POPULATION) {
     return { data: { reference: args.reference, status: "POPULATION_TOO_SMALL", minimum: MINIMUM_COMPARISON_POPULATION }, quality: notSupported(`menos de ${MINIMUM_COMPARISON_POPULATION} colegas com medição na janela — mínimo ${MINIMUM_COMPARISON_POPULATION} (privacidade)`), provenance: { ...provenanceBase, population: population.label, dataSource: "MEASUREMENT" } }
   }

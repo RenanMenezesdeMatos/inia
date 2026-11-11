@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -259,91 +260,89 @@ export function AssistantPage() {
   }, [autoOpen, router])
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle>Orquestrador da INIA</CardTitle>
-            <CardDescription>
-              Quando o operador fala ou digita com a INIA, o agente orquestrador decide sozinho quais especialistas acionar (um ou vários) e sintetiza a
-              resposta final.
-            </CardDescription>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        icon={Waypoints}
+        title="Orquestrador da INIA"
+        description="Quando o operador fala ou digita com a INIA, o agente orquestrador decide sozinho quais especialistas acionar (um ou vários) e sintetiza a resposta final."
+        actions={
           <Button asChild>
             <Link href={NEW_HREF}>
               <Plus /> Novo orquestrador
             </Link>
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ListToolbar
-          search={
-            <ListSearchInput
-              value={list.filters.search}
-              onChange={(value) => list.setFilter("search", value)}
-              placeholder="Buscar por nome ou agente orquestrador"
-              ariaLabel="Buscar orquestrador"
-              pending={list.isSearchPending}
+        }
+      />
+      <Card>
+        <CardContent className="space-y-4">
+          <ListToolbar
+            search={
+              <ListSearchInput
+                value={list.filters.search}
+                onChange={(value) => list.setFilter("search", value)}
+                placeholder="Buscar por nome ou agente orquestrador"
+                ariaLabel="Buscar orquestrador"
+                pending={list.isSearchPending}
+              />
+            }
+            viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+            hasActiveFilters={list.hasActiveFilters}
+            onClearFilters={list.resetFilters}
+          >
+            <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
+            <ListMultiSelectFilter label="Acionamento" values={list.filters.invocationMode} onChange={(values) => list.setFilter("invocationMode", values)} options={INVOCATION_MODE_OPTIONS} />
+            <ListOrgScopeFilter
+              teams={teamsQuery.data}
+              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
             />
-          }
-          viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-          hasActiveFilters={list.hasActiveFilters}
-          onClearFilters={list.resetFilters}
-        >
-          <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
-          <ListMultiSelectFilter label="Acionamento" values={list.filters.invocationMode} onChange={(values) => list.setFilter("invocationMode", values)} options={INVOCATION_MODE_OPTIONS} />
-          <ListOrgScopeFilter
-            teams={teamsQuery.data}
-            value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-            onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
-          />
-          <ListSelectFilter
-            value={list.filters.orchestratorAgentId}
-            onChange={(value) => list.setFilter("orchestratorAgentId", value)}
-            options={orchestratorAgentOptions}
-            allLabel="Qualquer agente orquestrador"
-            ariaLabel="Filtrar por agente orquestrador"
-          />
-          <ListSelectFilter
-            value={list.filters.specialistAgentId}
-            onChange={(value) => list.setFilter("specialistAgentId", value)}
-            options={specialistAgentOptions}
-            allLabel="Qualquer especialista"
-            ariaLabel="Filtrar por especialista"
-          />
-          <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
-        </ListToolbar>
+            <ListSelectFilter
+              value={list.filters.orchestratorAgentId}
+              onChange={(value) => list.setFilter("orchestratorAgentId", value)}
+              options={orchestratorAgentOptions}
+              allLabel="Qualquer agente orquestrador"
+              ariaLabel="Filtrar por agente orquestrador"
+            />
+            <ListSelectFilter
+              value={list.filters.specialistAgentId}
+              onChange={(value) => list.setFilter("specialistAgentId", value)}
+              options={specialistAgentOptions}
+              allLabel="Qualquer especialista"
+              ariaLabel="Filtrar por especialista"
+            />
+            <ListDateRangeFilter label="Criado em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
+          </ListToolbar>
 
-        <AdminListView
-          state={list}
-          query={pageQuery}
-          errorMessage="Não foi possível carregar os orquestradores."
-          empty={{
-            icon: Waypoints,
-            title: "Nenhum orquestrador configurado ainda",
-            description: "Sem orquestrador, a INIA responde com a persona genérica, sem acionar especialistas.",
-            action: (
-              <Button asChild>
-                <Link href={NEW_HREF}>
-                  <Plus /> Novo orquestrador
-                </Link>
-              </Button>
-            ),
-          }}
-          noResultsTitle="Nenhum orquestrador corresponde à busca ou aos filtros"
-          itemLabel={["orquestrador", "orquestradores"]}
-          renderList={(orchestrators) => <OrchestratorsTable orchestrators={orchestrators} />}
-          renderCards={(orchestrators) => (
-            <ListCardGrid>
-              {orchestrators.map((orchestrator) => (
-                <OrchestratorCard key={orchestrator.id} orchestrator={orchestrator} />
-              ))}
-            </ListCardGrid>
-          )}
-        />
-      </CardContent>
+          <AdminListView
+            state={list}
+            query={pageQuery}
+            errorMessage="Não foi possível carregar os orquestradores."
+            empty={{
+              icon: Waypoints,
+              title: "Nenhum orquestrador configurado ainda",
+              description: "Sem orquestrador, a INIA responde com a persona genérica, sem acionar especialistas.",
+              action: (
+                <Button asChild>
+                  <Link href={NEW_HREF}>
+                    <Plus /> Novo orquestrador
+                  </Link>
+                </Button>
+              ),
+            }}
+            noResultsTitle="Nenhum orquestrador corresponde à busca ou aos filtros"
+            itemLabel={["orquestrador", "orquestradores"]}
+            renderList={(orchestrators) => <OrchestratorsTable orchestrators={orchestrators} />}
+            renderCards={(orchestrators) => (
+              <ListCardGrid>
+                {orchestrators.map((orchestrator) => (
+                  <OrchestratorCard key={orchestrator.id} orchestrator={orchestrator} />
+                ))}
+              </ListCardGrid>
+            )}
+          />
+        </CardContent>
 
-    </Card>
+      </Card>
+    </section>
   )
 }

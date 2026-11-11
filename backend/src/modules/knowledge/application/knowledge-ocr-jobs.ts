@@ -79,10 +79,20 @@ type ClaimedJob = { id: string; organization_id: string; document_id: string; ve
 
 class OcrJobCancelled extends Error {}
 
+/**
+ * A próxima leitura, revezando as organizações: vai primeiro a da organização atendida há mais tempo (sem leitura começada no último dia, primeiro de
+ * todas) e, dentro dela, a mais antiga. Há um leitor só no conjunto: com a fila em ordem de chegada, uma organização com vários PDFs longos segurava
+ * as das outras por horas.
+ */
 async function claimNext(db: Queryable): Promise<ClaimedJob | null> {
   return (await db.query<ClaimedJob>(
-    `with next as (
-       select id from knowledge_ocr_jobs where status in ('QUEUED', 'RUNNING') and (lease_until is null or lease_until < now()) order by created_at limit 1 for update skip locked
+    `with served as (
+       select organization_id, max(started_at) as last_started from knowledge_ocr_jobs where started_at > now() - interval '1 day' group by organization_id
+     ),
+     next as (
+       select j.id from knowledge_ocr_jobs j left join served on served.organization_id = j.organization_id
+        where j.status in ('QUEUED', 'RUNNING') and (j.lease_until is null or j.lease_until < now())
+        order by served.last_started nulls first, j.created_at limit 1 for update of j skip locked
      )
      update knowledge_ocr_jobs j set status = 'RUNNING', attempts = j.attempts + 1, lease_until = now() + interval '${LEASE}', started_at = coalesce(j.started_at, now()), updated_at = now()
        from next where j.id = next.id

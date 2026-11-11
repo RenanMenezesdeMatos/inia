@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Cpu } from "lucide-react"
 
+import { PageHeader } from "@/components/ui/surface"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAiCan } from "@/queries/admin/use-ai-management-queries"
 
@@ -48,15 +49,11 @@ export function AiManagementPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Cpu className="size-5" />
-        </span>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">IA / Modelos</h1>
-          <p className="text-sm text-muted-foreground">Conexões com providers de IA, modelos disponíveis, qual modelo atende cada uso da INIA, custo e orçamento — sem deploy.</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Cpu}
+        title="IA / Modelos"
+        description="Conexões com providers de IA, modelos disponíveis, qual modelo atende cada uso da INIA, custo e orçamento — sem deploy."
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="overflow-x-auto">

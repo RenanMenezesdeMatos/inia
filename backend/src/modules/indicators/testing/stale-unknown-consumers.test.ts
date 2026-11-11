@@ -121,7 +121,7 @@ function scenario(): Fixture {
 }
 
 const reasonOf = async (db: Database, operatorId: string, populationIds: string[], source: "MEASUREMENT" | "OPERATIONAL_QUARTILE" = "MEASUREMENT") => {
-  const result = await evaluateDataCondition(db, source === "MEASUREMENT" ? { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 300 } : { historicalQuery: { ...QUERY, source: "OPERATIONAL_QUARTILE" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId, subjectIds: [operatorId], populationIds }, NOW, { timeZone: TZ })
+  const result = await evaluateDataCondition(db, source === "MEASUREMENT" ? { historicalQuery: QUERY, comparator: "GT", thresholdNumeric: 300 } : { historicalQuery: { ...QUERY, source: "OPERATIONAL_QUARTILE" }, comparator: "EQUALS", thresholdText: "Q4" }, { operatorId, subjectIds: [operatorId], populationIds }, NOW, { organizationId: ORG, timeZone: TZ })
   return { branch: result?.branch, reason: result?.evaluation.reason as NoDataReason | undefined, value: result?.evaluation.value }
 }
 
@@ -153,7 +153,7 @@ describe("STALE / UNKNOWN — todos os consumidores distinguem 'não deveria', '
 
   it("Condition (quartil operacional) e quartil: quem não mediu por STALE/UNKNOWN/férias fica FORA da população ranqueada com o motivo — nunca Q4", async () => {
     const db = fakeDb({ ...scenario(), statusFeed: "STALE", scheduleFeed: "FRESH" })
-    const outcome = await resolveOperationalQuartiles(db, { indicatorCode: "TMA", aggregation: "WEIGHTED_AVERAGE", period: QUERY.period, populationIds: POPULATION, now: NOW, timeZone: TZ })
+    const outcome = await resolveOperationalQuartiles(db, { organizationId: ORG, indicatorCode: "TMA", aggregation: "WEIGHTED_AVERAGE", period: QUERY.period, populationIds: POPULATION, now: NOW, timeZone: TZ })
     expect(outcome.rankedCount).toBe(4)
     expect([...outcome.ineligibleIds].sort()).toEqual(["ferias", "unknown"])
     expect(outcome.staleStatusIds.has("stale")).toBe(true)

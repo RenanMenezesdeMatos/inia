@@ -3,8 +3,9 @@
 import { useCallback, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -362,9 +363,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link href={LIST_HREF} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-3.5 w-3.5" /> Orquestrador da INIA
-          </Link>
+          <BackLink href={LIST_HREF} label="Orquestrador da INIA" />
           <h1 className="mt-1 truncate text-xl">{orchestrator ? orchestrator.name || "Editar orquestrador" : "Novo orquestrador"}</h1>
           {orchestrator ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">

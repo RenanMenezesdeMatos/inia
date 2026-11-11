@@ -110,7 +110,9 @@ const panelParams = (filter: PanelFilter & Record<string, string | number | null
 export async function fetchSupportFunnel(filter: PanelFilter) {
   return funnelResponseSchema.parse(await apiGet<unknown>(`${MONITORING}/metrics?${panelParams(filter)}`))
 }
-export async function fetchSupportRequests(filter: PanelFilter & { status?: string | null; origin?: string | null; cursor?: string | null }) {
+/** Lista de pedidos: além do período e do Grupo/Subgrupo, a busca (protocolo ou nome do operador), o estado e a origem. */
+export type RequestListFilter = PanelFilter & { search?: string | null; status?: string | null; origin?: string | null }
+export async function fetchSupportRequests(filter: RequestListFilter & { cursor?: string | null }) {
   return requestListSchema.parse(await apiGet<unknown>(`${MONITORING}/requests?${panelParams(filter)}`))
 }
 export async function fetchSupportRequestDetail(requestId: string) {

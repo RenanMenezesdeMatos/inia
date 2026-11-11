@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InlineError } from "@/components/ui/states"
 import { formatShortDateTime } from "@/lib/format/date"
 import { useConversationAgentRecordsQuery } from "@/queries/admin/use-assistant-conversation-queries"
 import { CONVERSATION_AGENT_OUTCOME_LABELS, CONVERSATION_AGENT_ROLE_LABELS, type ConversationAgentRecord } from "@/schemas/admin/assistant-conversation-agent-record.schema"
@@ -72,14 +73,7 @@ export function ConversationAgentHistory({ conversationId }: { conversationId: s
         {query.isPending ? (
           <Skeleton className="h-16 w-full" />
         ) : query.isError ? (
-          <div className="space-y-2">
-            <p className="text-xs text-destructive" role="alert">
-              Não foi possível carregar o histórico desta conversa.
-            </p>
-            <Button type="button" variant="outline" size="xs" onClick={() => void query.refetch()}>
-              Tentar novamente
-            </Button>
-          </div>
+          <InlineError message="Não foi possível carregar o histórico desta conversa." onRetry={() => void query.refetch()} />
         ) : groups.length === 0 ? (
           <p className="text-xs text-muted-foreground">Nenhum agente registrado nesta conversa.</p>
         ) : (

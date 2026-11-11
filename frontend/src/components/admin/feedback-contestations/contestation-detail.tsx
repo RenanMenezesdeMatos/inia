@@ -1,9 +1,9 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -68,9 +68,7 @@ export function ContestationDetailPanel({ contestationId, onBack }: { contestati
 
 function BackButton({ onBack }: { onBack: () => void }) {
   return (
-    <Button type="button" variant="ghost" size="sm" className="-ml-2 lg:hidden" onClick={onBack}>
-      <ArrowLeft aria-hidden /> Voltar para a lista
-    </Button>
+    <BackLink onClick={onBack} label="Contestações" className="lg:hidden" />
   )
 }
 

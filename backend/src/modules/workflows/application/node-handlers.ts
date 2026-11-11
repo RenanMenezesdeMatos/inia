@@ -144,7 +144,7 @@ export type NodeOutcome =
 async function evaluationOptions(context: ProcessContext): Promise<EvaluationOptions> {
   // `quartileCache` é por execução de nó: um "Selecionar colaboradores" com critério de quartil
   // operacional avalia N candidatos sobre a MESMA população — uma resolução em lote, nunca N+1.
-  return { timeZone: await resolveOrganizationTimezone(context.db, context.enrollment.organization_id), quartileCache: new Map() }
+  return { organizationId: context.enrollment.organization_id, timeZone: await resolveOrganizationTimezone(context.db, context.enrollment.organization_id), quartileCache: new Map() }
 }
 
 /**

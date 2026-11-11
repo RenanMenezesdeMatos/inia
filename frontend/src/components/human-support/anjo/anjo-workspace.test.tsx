@@ -8,7 +8,7 @@ import { ApiError } from "@/lib/api/api-client"
 import type { AnjoAttendanceView, AnjoView } from "@/schemas/human-support/state.schema"
 import type { AnjoWorkspaceState } from "@/queries/human-support/use-anjo-workspace-state"
 
-import { NEW_ATTENDANCE_TITLE } from "./attendance-alert"
+import { NEW_ATTENDANCE_TITLE, newMessageTitle } from "./attendance-alert"
 import { AnjoWorkspace } from "./anjo-workspace"
 
 /** Área do Anjo (Apoio com Anjo, Parte B — design_draft.md seções 6, 11 e 14). */
@@ -322,6 +322,47 @@ describe("AnjoWorkspace", () => {
     rerender(<AnjoWorkspace />)
     await waitFor(() => expect(screen.getByRole("tab", { name: /Atendimento/ })).toHaveTextContent("1 mensagem nova"))
     expect(screen.getByRole("tab", { name: /Bruno/, hidden: true })).toHaveTextContent("1 mensagem nova")
+  })
+
+  it("mensagem nova do operador com a página fora da vista: o título pisca com o nome do operador e toca o som; ao voltar, para", async () => {
+    const tones: string[] = []
+    class FakeAudioContext {
+      state = "running"
+      currentTime = 0
+      destination = {}
+      resume = vi.fn(async () => undefined)
+      close = vi.fn(async () => undefined)
+      createGain() {
+        return { gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() }, connect: vi.fn() }
+      }
+      createOscillator() {
+        tones.push("tone")
+        return { type: "sine", frequency: { setValueAtTime: vi.fn() }, connect: vi.fn(), start: vi.fn(), stop: vi.fn() }
+      }
+    }
+    vi.stubGlobal("AudioContext", FakeAudioContext)
+    const operatorMessage = (seq: number) => ({ id: `m-${seq}`, seq, authorKind: "OPERATOR" as const, authorName: "Bruno", body: `oi ${seq}`, systemCode: null, occurredAt: minutesAgo(0) })
+    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(1), operatorMessage(2)], hasMore: false })
+    document.title = "INIA"
+    const { rerender } = render(<AnjoWorkspace />)
+    await screen.findByText("oi 2")
+    fireEvent.pointerDown(document.body)
+    expect(tones).toHaveLength(0)
+
+    // O Anjo foi para outro sistema: a janela perdeu o foco.
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(3)], hasMore: false })
+    setHook({ anjo: anjoView({ attendances: [attendance({ lastSeq: 3 })] }) })
+    rerender(<AnjoWorkspace />)
+    await waitFor(() => expect(document.title).toBe(newMessageTitle("Bruno")))
+    expect(tones.length).toBeGreaterThan(0)
+
+    focus.mockReturnValue(true)
+    act(() => {
+      window.dispatchEvent(new Event("focus"))
+    })
+    expect(document.title).toBe("INIA")
+    vi.unstubAllGlobals()
   })
 
   it("tempo de atendimento: desde o início real do atendimento, pelo relógio do servidor, um por atendimento", () => {

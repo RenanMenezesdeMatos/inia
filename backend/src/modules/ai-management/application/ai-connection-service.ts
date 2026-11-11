@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AiProviderError } from "../../../shared/application/model-routing/ai-errors.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
@@ -158,9 +159,38 @@ function validateHeaders(provider: AiProviderDefinition, headers: Record<string,
   return headers
 }
 
-async function storeSecret(context: AiAdminContext, actor: Actor, connectionId: string, purpose: "API_KEY" | "CUSTOM_HEADERS", plain: string, hint: string): Promise<void> {
+/** Origem (esquema + host + porta) de um endpoint: é a ela que a chave pertence (achado A-F12). */
+function originOf(value: string | null): string | null {
+  try {
+    return value ? new URL(value).origin : null
+  } catch {
+    return value
+  }
+}
+
+type Queryable = Pick<Database, "query">
+
+/**
+ * Trava a linha da conexão e devolve o endpoint que vale AGORA. Toda gravação de chave/cabeçalho e toda troca de endpoint passam por
+ * esta trava, na própria transação: a decisão de revogar (ou de aceitar a chave) é tomada sobre a linha travada, nunca sobre uma
+ * leitura de antes, que outra pessoa pode ter mudado no meio (achado da 5ª auditoria, irmão do N01).
+ */
+async function lockConnectionEndpoint(client: Queryable, organizationId: string, connectionId: string): Promise<string | null> {
+  const result = await client.query<{ provider_key: string; base_url: string | null }>(`select provider_key, base_url from ai_connections_all where organization_id = $1 and id = $2 and deleted_at is null for update`, [organizationId, connectionId])
+  const row = result.rows[0]
+  if (!row) throw new DomainError("Conexão não encontrada.", "AI_CONNECTION_NOT_FOUND", 404)
+  return row.base_url ?? findAiProvider(row.provider_key)?.defaultBaseUrl ?? null
+}
+
+/**
+ * Grava a chave (ou os cabeçalhos) só se o endpoint travado ainda for `expectedBaseUrl`, o que quem cadastrou estava vendo: se outra
+ * pessoa trocou o endpoint no meio, a chave digitada para o endereço antigo nunca fica ativa no novo — recusa com 409.
+ */
+async function storeSecret(context: AiAdminContext, actor: Actor, connectionId: string, purpose: "API_KEY" | "CUSTOM_HEADERS", plain: string, hint: string, expectedBaseUrl: string | null): Promise<void> {
   const encrypted = encryptAiSecret(plain, { organizationId: actor.organizationId, connectionId, purpose })
   await inTransaction(context.db, async (client) => {
+    const endpoint = await lockConnectionEndpoint(client, actor.organizationId, connectionId)
+    if (originOf(endpoint) !== originOf(expectedBaseUrl)) throw new DomainError("Outra pessoa mudou o endpoint desta conexão enquanto a credencial era cadastrada. Confira o endpoint atual e cadastre a credencial de novo.", "AI_CONNECTION_ENDPOINT_CHANGED", 409)
     await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and purpose = $2 and revoked_at is null`, [connectionId, purpose, context.now()])
     await client.query(`insert into ai_connection_secrets (organization_id, connection_id, purpose, key_version, ciphertext, iv, auth_tag, hint, created_by, created_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [actor.organizationId, connectionId, purpose, encrypted.keyVersion, encrypted.ciphertext, encrypted.iv, encrypted.authTag, hint, actor.personId, context.now()])
   })
@@ -190,8 +220,9 @@ export async function createConnection(context: AiAdminContext, actor: Actor, ra
     if (uniqueViolation(error)) throw new DomainError("Já existe uma conexão com esse nome.", "AI_CONNECTION_NAME_TAKEN", 409)
     throw error
   }
-  if (input.apiKey) await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey))
-  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","))
+  const createdBaseUrl = input.baseUrl ?? provider.defaultBaseUrl ?? null
+  if (input.apiKey) await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey), createdBaseUrl)
+  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","), createdBaseUrl)
   await auditAi(context.db, actor, "AI_CONNECTION_CREATED", "ai_connection", id, { providerKey: provider.key, name: input.name, endpointHost: input.baseUrl ? new URL(input.baseUrl).host : null, credentialConfigured: Boolean(input.apiKey), customHeaderNames: headers ? Object.keys(headers) : [] })
   context.runtime.invalidate(actor.organizationId)
   return getConnection(context, actor.organizationId, id)
@@ -220,23 +251,20 @@ export async function updateConnection(context: AiAdminContext, actor: Actor, id
   // A chave (e os cabeçalhos com credencial) pertencem ao ENDPOINT em que foram cadastrados (achado A-F12): trocar o host
   // revoga as credenciais guardadas — senão bastaria apontar a conexão para um servidor próprio e clicar em "Testar" para
   // receber a chave. Quem administra cadastra a chave de novo para o endpoint novo.
-  const originOf = (value: string | null) => {
-    try {
-      return value ? new URL(value).origin : null
-    } catch {
-      return value
-    }
-  }
-  const endpointChanged = input.baseUrl !== undefined && originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) !== originOf(current.effectiveBaseUrl)
+  const nextBaseUrl = input.baseUrl ?? provider?.defaultBaseUrl ?? null
   const changed = Object.keys(input).filter((key) => key !== "enabled")
   // Endpoint novo e revogação da chave num commit só (achado N01 da 4ª auditoria): com o endpoint já gravado e a chave ainda
   // ativa, um "Testar" no meio-tempo mandava a chave antiga para o endpoint novo.
   try {
     await inTransaction(context.db, async (client) => {
+      // A revogação é decidida sobre a linha travada e o que está gravado agora (não sobre `current`, lido antes e sem trava): uma
+      // chave cadastrada por outra pessoa entre a leitura e esta transação também é revogada, e as gravações de chave esperam esta.
+      const lockedBaseUrl = await lockConnectionEndpoint(client, actor.organizationId, id)
+      const endpointChanged = input.baseUrl !== undefined && originOf(nextBaseUrl) !== originOf(lockedBaseUrl)
       await client.query(`update ai_connections set ${sets.join(", ")} where organization_id = $1 and id = $2`, values)
-      if (endpointChanged && (current.credential.configured || current.customHeaderNames.length > 0)) {
-        await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
-        await auditAi(client, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(current.effectiveBaseUrl), toHost: originOf(input.baseUrl ?? provider?.defaultBaseUrl ?? null) })
+      if (endpointChanged) {
+        const revoked = await client.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and organization_id = $2 and revoked_at is null`, [id, actor.organizationId, context.now()])
+        if ((revoked.rowCount ?? 0) > 0) await auditAi(client, actor, "AI_CONNECTION_SECRET_REVOKED", "ai_connection", id, { reason: "ENDPOINT_CHANGED", fromHost: originOf(lockedBaseUrl), toHost: originOf(nextBaseUrl) })
       }
       if (changed.length > 0) await auditAi(client, actor, "AI_CONNECTION_UPDATED", "ai_connection", id, { fields: changed })
       if (input.enabled !== undefined && input.enabled !== current.enabled) await auditAi(client, actor, input.enabled ? "AI_CONNECTION_ENABLED" : "AI_CONNECTION_DISABLED", "ai_connection", id, { activePolicyUseCases: current.activePolicyUseCases })
@@ -254,7 +282,7 @@ export async function replaceConnectionSecret(context: AiAdminContext, actor: Ac
   const current = await getConnection(context, actor.organizationId, id)
   const provider = findAiProvider(current.providerKey)
   if (provider?.credential === "NONE") throw new DomainError(`${provider.name} não usa credencial.`, "AI_CONNECTION_CREDENTIAL_NOT_ALLOWED", 422)
-  await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey))
+  await storeSecret(context, actor, id, "API_KEY", input.apiKey, maskSecret(input.apiKey), current.effectiveBaseUrl)
   await auditAi(context.db, actor, current.credential.configured ? "AI_CONNECTION_SECRET_REPLACED" : "AI_CONNECTION_SECRET_SET", "ai_connection", id, { purpose: "API_KEY" })
   context.runtime.invalidate(actor.organizationId)
   return getConnection(context, actor.organizationId, id)
@@ -276,7 +304,7 @@ export async function replaceConnectionHeaders(context: AiAdminContext, actor: A
   const provider = findAiProvider(current.providerKey)
   if (!provider) throw new DomainError("Provider desconhecido.", "AI_PROVIDER_UNKNOWN", 422)
   const headers = validateHeaders(provider, input.customHeaders)
-  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","))
+  if (headers) await storeSecret(context, actor, id, "CUSTOM_HEADERS", JSON.stringify(headers), Object.keys(headers).join(","), current.effectiveBaseUrl)
   else await context.db.query(`update ai_connection_secrets set revoked_at = $3 where connection_id = $1 and purpose = $2 and revoked_at is null`, [id, "CUSTOM_HEADERS", context.now()])
   await auditAi(context.db, actor, "AI_CONNECTION_HEADERS_REPLACED", "ai_connection", id, { headerNames: headers ? Object.keys(headers) : [] })
   context.runtime.invalidate(actor.organizationId)

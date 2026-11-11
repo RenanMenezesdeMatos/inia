@@ -1,15 +1,14 @@
 "use client"
 
 import { Suspense } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CheckCircle2, CircleAlert, ClipboardCheck, Target } from "lucide-react"
+import { CheckCircle2, CircleAlert, ClipboardCheck, Target } from "lucide-react"
 
 import { IndicatorsView } from "@/components/analytics/indicators-view"
 import { StructureFollowUpFeed } from "@/components/follow-up/structure-follow-up-feed"
 import { ProfileHeader, type ProfileHeaderPerson } from "@/components/profile/profile-header"
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
@@ -68,11 +67,7 @@ function EmployeeProfileContent({ detail, context, capabilities }: { detail: Sup
 
   const back = backLinkFor(context, detail.profile.id)
   const backAction = (
-    <Button variant="ghost" asChild>
-      <Link href={back.href}>
-        <ArrowLeft aria-hidden /> {back.label}
-      </Link>
-    </Button>
+    <BackLink href={back.href} label={back.label} />
   )
   // Pessoa VISITADA: nome, foto e capa que ELA escolheu (do backend) — nunca as preferências de quem visita, e sem edição.
   // Contexto de gestão: nome cadastral e matrícula ficam visíveis junto do nome escolhido.

@@ -9,7 +9,8 @@ import { useAutoOpenFromQuery } from "@/hooks/use-auto-open-from-query"
 import { useAdminListState } from "@/hooks/use-admin-list-state"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/surface"
+import { Card, CardContent } from "@/components/ui/card"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -188,81 +189,80 @@ export function KnowledgePage() {
   }, [autoOpen, router])
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Base de conhecimento</CardTitle>
-            <CardDescription>
-              Textos e arquivos (PDF, DOCX, TXT, JSON) que orientam os agentes de IA, com alcance por grupo/subgrupo e assunto. O status é o da versão em uso pela IA.
-            </CardDescription>
-          </div>
+    <section className="space-y-4">
+      <PageHeader
+        icon={BookOpen}
+        title="Base de conhecimento"
+        description="Textos e arquivos (PDF, DOCX, TXT, JSON) que orientam os agentes de IA, com alcance por grupo/subgrupo e assunto. O status é o da versão em uso pela IA."
+        actions={
           <Button asChild>
             <Link href="/admin/knowledge/new">
               <Plus /> Nova base
             </Link>
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ListToolbar
-          search={
-            <ListSearchInput
-              value={list.filters.search}
-              onChange={(value) => list.setFilter("search", value)}
-              placeholder="Buscar por título ou nome do arquivo"
-              ariaLabel="Buscar base de conhecimento"
-              pending={list.isSearchPending}
+        }
+      />
+      <Card>
+        <CardContent className="space-y-4">
+          <ListToolbar
+            search={
+              <ListSearchInput
+                value={list.filters.search}
+                onChange={(value) => list.setFilter("search", value)}
+                placeholder="Buscar por título ou nome do arquivo"
+                ariaLabel="Buscar base de conhecimento"
+                pending={list.isSearchPending}
+              />
+            }
+            viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
+            hasActiveFilters={list.hasActiveFilters}
+            onClearFilters={list.resetFilters}
+          >
+            <ListMultiSelectFilter label="Tipo" values={list.filters.documentType} onChange={(values) => list.setFilter("documentType", values)} options={DOCUMENT_TYPE_OPTIONS} />
+            <ListMultiSelectFilter label="Formato" values={list.filters.sourceType} onChange={(values) => list.setFilter("sourceType", values)} options={SOURCE_TYPE_OPTIONS} />
+            <ListMultiSelectFilter label="Status" values={list.filters.status} onChange={(values) => list.setFilter("status", values)} options={STATUS_OPTIONS} />
+            <ListOrgScopeFilter
+              teams={teamsQuery.data}
+              value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
+              onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
             />
-          }
-          viewToggle={<ListViewToggle value={list.view} onChange={list.setView} />}
-          hasActiveFilters={list.hasActiveFilters}
-          onClearFilters={list.resetFilters}
-        >
-          <ListMultiSelectFilter label="Tipo" values={list.filters.documentType} onChange={(values) => list.setFilter("documentType", values)} options={DOCUMENT_TYPE_OPTIONS} />
-          <ListMultiSelectFilter label="Formato" values={list.filters.sourceType} onChange={(values) => list.setFilter("sourceType", values)} options={SOURCE_TYPE_OPTIONS} />
-          <ListMultiSelectFilter label="Status" values={list.filters.status} onChange={(values) => list.setFilter("status", values)} options={STATUS_OPTIONS} />
-          <ListOrgScopeFilter
-            teams={teamsQuery.data}
-            value={{ scopeType: list.filters.scopeType, teamId: list.filters.teamId, subteamId: list.filters.subteamId }}
-            onChange={(scope) => list.patchFilters({ scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId })}
-          />
-          <ListSubjectScopeFilter
-            subjects={subjectsQuery.data}
-            value={{ subjectScopeType: list.filters.subjectScopeType, subjectId: list.filters.subjectId }}
-            onChange={(scope) => list.patchFilters({ subjectScopeType: scope.subjectScopeType, subjectId: scope.subjectId })}
-          />
-          <ListDateRangeFilter label="Criada em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
-        </ListToolbar>
+            <ListSubjectScopeFilter
+              subjects={subjectsQuery.data}
+              value={{ subjectScopeType: list.filters.subjectScopeType, subjectId: list.filters.subjectId }}
+              onChange={(scope) => list.patchFilters({ subjectScopeType: scope.subjectScopeType, subjectId: scope.subjectId })}
+            />
+            <ListDateRangeFilter label="Criada em" value={list.filters.createdAt} onChange={(value) => list.setFilter("createdAt", value)} />
+          </ListToolbar>
 
-        <AdminListView
-          state={list}
-          query={pageQuery}
-          errorMessage="Não foi possível carregar as bases de conhecimento."
-          empty={{
-            icon: BookOpen,
-            title: "Nenhuma base cadastrada ainda",
-            description: "Cadastre um texto ou envie um arquivo para os agentes começarem a consultar.",
-            action: (
-              <Button asChild>
-                <Link href="/admin/knowledge/new">
-                  <Plus /> Nova base
-                </Link>
-              </Button>
-            ),
-          }}
-          noResultsTitle="Nenhuma base corresponde à busca ou aos filtros"
-          itemLabel={["base", "bases"]}
-          renderList={(documents) => <KnowledgeTable documents={documents} />}
-          renderCards={(documents) => (
-            <ListCardGrid>
-              {documents.map((document) => (
-                <KnowledgeCard key={document.id} document={document} products={productScope.labelsOf(document.id)} />
-              ))}
-            </ListCardGrid>
-          )}
-        />
-      </CardContent>
-    </Card>
+          <AdminListView
+            state={list}
+            query={pageQuery}
+            errorMessage="Não foi possível carregar as bases de conhecimento."
+            empty={{
+              icon: BookOpen,
+              title: "Nenhuma base cadastrada ainda",
+              description: "Cadastre um texto ou envie um arquivo para os agentes começarem a consultar.",
+              action: (
+                <Button asChild>
+                  <Link href="/admin/knowledge/new">
+                    <Plus /> Nova base
+                  </Link>
+                </Button>
+              ),
+            }}
+            noResultsTitle="Nenhuma base corresponde à busca ou aos filtros"
+            itemLabel={["base", "bases"]}
+            renderList={(documents) => <KnowledgeTable documents={documents} />}
+            renderCards={(documents) => (
+              <ListCardGrid>
+                {documents.map((document) => (
+                  <KnowledgeCard key={document.id} document={document} products={productScope.labelsOf(document.id)} />
+                ))}
+              </ListCardGrid>
+            )}
+          />
+        </CardContent>
+      </Card>
+    </section>
   )
 }

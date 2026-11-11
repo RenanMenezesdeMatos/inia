@@ -36,6 +36,8 @@ export type OperatorRequestView = {
   peerReceipts: Receipts
   /** Por quantos ms ainda vale o "digitando" do Anjo (null = não está digitando). */
   peerTypingMs: number | null
+  /** Até onde o PRÓPRIO operador já leu as mensagens do pedido (o "lida" que a sala confirmou): o resto do Anjo é mensagem nova. */
+  readSeq: number
 }
 
 export type PendingEvaluation = { attendanceId: string; requestId: string; protocol: string; anjoName: string; openUntil: string; current: { resolved: EvaluationResolved | null; stars: number | null } }
@@ -118,6 +120,8 @@ export type RequestListItem = {
   id: string
   protocol: string
   operatorName: string
+  /** Foto a exibir do operador (personalizada > corporativa > nenhuma), para a lista no formato de "Conversas com a INIA". */
+  operatorAvatarUrl: string | null
   teamName: string | null
   subteamName: string | null
   origin: RequestOrigin
@@ -127,6 +131,8 @@ export type RequestListItem = {
   endedAt: string | null
   anjoNames: string[]
   firstResponseSeconds: number | null
+  /** Mensagens de operador e Anjo (sem as do sistema). Só a contagem: o conteúdo só aparece ao abrir o pedido, que grava o registro LGPD. */
+  messageCount: number
   classificationReason: ClassificationReason | null
   outcome: ClassificationOutcome | null
   resolved: EvaluationResolved | null

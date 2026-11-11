@@ -1,5 +1,5 @@
 import { parseHocr, wordsOf, type OcrBox, type OcrLine } from "../../domain/pdf-ocr/hocr.js"
-import type { OcrPageInput } from "../../domain/pdf-ocr/ocr-layout.js"
+import { OCR_MAX_PAGES, type OcrPageInput } from "../../domain/pdf-ocr/ocr-layout.js"
 import { documentBodyHeight, inkBands, printRegions } from "../../domain/pdf-ocr/print-regions.js"
 import type { PdfPageImage } from "../../domain/pdf-markdown/layout.js"
 import { KNOWLEDGE_IMAGE_MIME_TYPE, PDF_IMAGE_LIMITS, type ExtractedPdfImage } from "../pdf-image-reader.js"
@@ -13,7 +13,7 @@ import { openRasterDocument, type RenderedPage } from "./pdf-page-raster.js"
  *     vez com ele pintado de branco, para o texto da tela não se misturar ao do documento.
  * Página que falha fica sem texto (e aparece assim no registro) sem impedir as outras.
  */
-export const OCR_MAX_PAGES = 300
+export { OCR_MAX_PAGES }
 
 export type OcrProgress = { stage: "READING" | "PRINTS"; done: number; total: number }
 

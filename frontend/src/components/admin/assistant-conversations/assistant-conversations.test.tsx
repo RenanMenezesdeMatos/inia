@@ -12,7 +12,7 @@ import type { MonitoredConversation } from "@/services/admin/assistant-conversat
 import { AssistantConversationsPage } from "./assistant-conversations-page"
 import { ConversationThread, THREAD_POLL_INTERVAL_MS } from "./conversation-thread"
 
-const service = vi.hoisted(() => ({ fetchMonitoredConversations: vi.fn(), fetchMonitoredMessages: vi.fn(), fetchConversationAgentRecords: vi.fn() }))
+const service = vi.hoisted(() => ({ fetchMonitoredConversations: vi.fn(), fetchMonitoredMessages: vi.fn(), fetchConversationAgentRecords: vi.fn(), fetchConversationResponseTimes: vi.fn() }))
 vi.mock("@/services/admin/assistant-conversations-service", async (original) => ({ ...(await original<object>()), ...service }))
 const navigation = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn() }))
 vi.mock("next/navigation", () => ({ usePathname: () => "/admin/conversations", useSearchParams: () => navigation.params, useRouter: () => ({ replace: navigation.replace, push: vi.fn(), refresh: vi.fn() }) }))
@@ -26,7 +26,8 @@ const message = (content: string, role: "user" | "assistant", cursor: string, ov
 const PAGE = (items: MonitoredConversation[]) => ({ items, total: items.length, page: 1, pageSize: 20, filterOptions: { operators: [{ id: "p-larissa", name: "Larissa Monteiro" }], teams: [{ id: "t-b2c", name: "B2C" }], subteams: [{ id: "s-at", name: "Atendimento", teamId: "t-b2c" }] } })
 
 beforeAll(installJsdomStubs)
-beforeEach(() => { navigation.params = new URLSearchParams(); navigation.replace.mockReset() })
+const NO_REPLIES = { from: "2026-10-12", to: "2026-11-10", replies: 0, averageSeconds: null, medianSeconds: null, p90Seconds: null }
+beforeEach(() => { navigation.params = new URLSearchParams(); navigation.replace.mockReset(); service.fetchConversationResponseTimes.mockResolvedValue(NO_REPLIES) })
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers(); window.localStorage.clear() })
 
 describe("Conversas com a INIA — lista", () => {
@@ -67,7 +68,7 @@ describe("Conversas com a INIA — lista", () => {
     service.fetchMonitoredConversations.mockResolvedValue(PAGE([conversation("c1")]))
     renderWithQuery(<AssistantConversationsPage />)
     await screen.findAllByTestId("monitored-conversation")
-    expect(service.fetchMonitoredConversations).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 25, status: undefined, origin: undefined }))
+    expect(service.fetchMonitoredConversations).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 20, status: undefined, origin: undefined }))
     fireEvent.change(screen.getByRole("searchbox", { name: "Buscar conversa por colaborador ou assunto" }), { target: { value: "Lari" } })
     await waitFor(() => expect(service.fetchMonitoredConversations).toHaveBeenLastCalledWith(expect.objectContaining({ search: "Lari" })))
   })
@@ -232,3 +233,38 @@ describe("Conversas com a INIA — leitura da conversa", () => {
     expect(screen.getByText(/fora do seu escopo/)).toBeInTheDocument()
   })
 })
+
+describe("Conversas com a INIA — tempo de resposta", () => {
+  it("média, mediana e 90% do chat de texto, com os filtros da lista e o período do último mês", async () => {
+    service.fetchMonitoredConversations.mockResolvedValue(PAGE([conversation("c1")]))
+    service.fetchConversationResponseTimes.mockResolvedValue({ ...NO_REPLIES, replies: 123, averageSeconds: 20.54, medianSeconds: 17.816, p90Seconds: 34.9 })
+    renderWithQuery(<AssistantConversationsPage />)
+    const card = await screen.findByTestId("response-time-card")
+    expect(await within(card).findByTestId("response-time-average")).toHaveTextContent("20,5 s")
+    expect(card).toHaveTextContent("Mediana17,8 s")
+    expect(card).toHaveTextContent("90% em até34,9 s")
+    expect(card).toHaveTextContent("Respostas123")
+    expect(card).toHaveTextContent("A voz fica de fora")
+    const params = service.fetchConversationResponseTimes.mock.calls[0]![0] as { from: string; to: string; origin?: string }
+    expect((Date.parse(params.to) - Date.parse(params.from)) / 86_400_000).toBe(29)
+    expect(params).not.toHaveProperty("page")
+    // Mudar o tipo na lista muda o cálculo.
+    fireEvent.click(screen.getByRole("combobox", { name: "Filtrar por tipo de conversa" }))
+    fireEvent.click(await screen.findByRole("option", { name: "Conversas livres" }))
+    await waitFor(() => expect(service.fetchConversationResponseTimes).toHaveBeenLastCalledWith(expect.objectContaining({ origin: "USER" })))
+  })
+
+  it("sem respostas no período: diz isso (nunca 0 s); poucas respostas: avisa", async () => {
+    service.fetchMonitoredConversations.mockResolvedValue(PAGE([conversation("c1")]))
+    renderWithQuery(<AssistantConversationsPage />)
+    const card = await screen.findByTestId("response-time-card")
+    expect(await within(card).findByText("Nenhuma resposta da INIA no chat de texto no período.")).toBeInTheDocument()
+    cleanup()
+    service.fetchConversationResponseTimes.mockResolvedValue({ ...NO_REPLIES, replies: 2, averageSeconds: 0.4, medianSeconds: 0.3, p90Seconds: 0.5 })
+    renderWithQuery(<AssistantConversationsPage />)
+    const few = await screen.findByTestId("response-time-card")
+    expect(await within(few).findByTestId("response-time-average")).toHaveTextContent("menos de 1 s")
+    expect(few).toHaveTextContent("Poucos dados")
+  })
+})
+

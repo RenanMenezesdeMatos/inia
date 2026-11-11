@@ -70,7 +70,14 @@ if (-not $node) { Falha "Node.js não encontrado no PATH." }
 Passo "Pasta das cópias"
 New-Item -ItemType Directory -Force -Path $Pasta | Out-Null
 # Só Administradores e SYSTEM (SIDs fixos - funcionam no Windows em português). A tarefa roda como SYSTEM.
-& icacls.exe $Pasta /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)(F)" "*S-1-5-18:(OI)(CI)(F)" | Out-Null
+# icacls pelo caminho absoluto. Pasta que já existia: Administradores viram o dono e as permissões explícitas antigas saem antes da
+# restrição (o dono sempre pode reescrever as permissões, e /grant:r não tira a de outra conta) - o mesmo que o db-backup.mjs faz.
+$icacls = Join-Path $env:SystemRoot "System32\icacls.exe"
+& $icacls $Pasta /setowner "*S-1-5-32-544" | Out-Null
+if ($LASTEXITCODE -ne 0) { Falha "Não consegui passar $Pasta para os Administradores (icacls /setowner)." }
+& $icacls $Pasta /reset | Out-Null
+if ($LASTEXITCODE -ne 0) { Falha "Não consegui limpar as permissões antigas de $Pasta (icacls /reset)." }
+& $icacls $Pasta /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)(F)" "*S-1-5-18:(OI)(CI)(F)" | Out-Null
 if ($LASTEXITCODE -ne 0) { Falha "Não consegui restringir o acesso a $Pasta (icacls)." }
 Ok "$Pasta (acesso só de Administradores e SYSTEM)"
 

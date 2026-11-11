@@ -35,18 +35,45 @@ async function inflatedSize(body: Buffer, cap: number): Promise<number | "TOO_LA
   return "UNREADABLE"
 }
 
+/** Ocorrências de um padrão, consultadas com posições sempre crescentes (cada consulta anda só para a frente). */
+function cursor(text: string, pattern: RegExp) {
+  const found = Array.from(text.matchAll(pattern), (match) => ({ at: match.index, end: match.index + match[0].length }))
+  let first = 0
+  let last = -1
+  return {
+    /** A primeira que começa em `position` ou depois. */
+    firstFrom(position: number): number | undefined {
+      while (first < found.length && found[first]!.at < position) first += 1
+      return found[first]?.at
+    },
+    /** A última que termina até `position`. */
+    lastEndingBy(position: number): number | undefined {
+      while (last + 1 < found.length && found[last + 1]!.end <= position) last += 1
+      return last >= 0 ? found[last]!.at : undefined
+    },
+  }
+}
+
 export async function inspectPdf(buffer: Buffer, limits: PdfLimits = PDF_LIMITS): Promise<PdfInspection> {
   const text = buffer.toString("latin1")
   let streams = 0
   let total = 0
+  // Posições achadas UMA vez e percorridas para a frente: o fim de cada fluxo é o próximo `endstream`, e o dicionário dele vai do último `obj` (até
+  // 2 KB antes) à palavra `stream`. Procurar a partir de cada `stream` fazia um arquivo de palavras `stream` soltas custar tamanho × ocorrências
+  // (1 MiB → 12 s na thread da API); assim a conta é linear no tamanho do arquivo.
+  const ends = cursor(text, /endstream/g)
+  const objs = cursor(text, /obj/g)
+  const flates = cursor(text, /\/FlateDecode\b/g)
   for (const match of text.matchAll(STREAM_KEYWORD)) {
     const start = match.index + match[0].length
-    const end = text.indexOf("endstream", start)
-    if (end < 0) break
-    // Dicionário do fluxo: o trecho entre o último "obj" antes dele e a palavra `stream`.
-    const header = text.slice(Math.max(0, match.index - 2048), match.index)
-    const dictionary = header.slice(header.lastIndexOf("obj") + 1)
-    if (!/\/FlateDecode\b/.test(dictionary)) continue
+    const end = ends.firstFrom(start)
+    if (end === undefined) break
+    const windowStart = Math.max(0, match.index - 2048)
+    const obj = objs.lastEndingBy(match.index)
+    const dictionaryStart = obj !== undefined && obj >= windowStart ? obj + 1 : windowStart
+    const flate = flates.lastEndingBy(match.index)
+    if (flate === undefined || flate < dictionaryStart) continue
+    const dictionary = text.slice(dictionaryStart, match.index)
     streams += 1
     if (streams > limits.maxStreams) return { ok: false, reason: "fluxos comprimidos demais" }
     const image = /\/Subtype\s*\/Image\b/.test(dictionary)

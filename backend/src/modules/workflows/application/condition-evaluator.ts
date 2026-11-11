@@ -175,6 +175,8 @@ export function comparatorMatches(
  */
 /** Opções de avaliação propagadas pelo chamador (contexto organizacional — nunca uma string manual em cada módulo). */
 export type EvaluationOptions = {
+  /** Organização da execução (matrícula/Workflow, prévia do QA, política) — a definição de cada indicador lida pelo código é a DELA, nunca a de outra empresa com o mesmo código. Obrigatória de propósito. */
+  organizationId: string
   /** Timezone IANA da organização (organization-timezone.ts). Ausente = fallback documentado. */
   timeZone?: string
   /** Cache por request/tick das resoluções de quartil operacional (prévia do QA e critérios avaliam N colaboradores sobre a MESMA população — uma query só). */
@@ -358,16 +360,20 @@ type WindowAggregation = { sampleCount: number; value: number | null; avg: numbe
 
 /** Agregação de uma janela: MEASUREMENT vai pelo resolvedor operacional (camada 1, com componentes
  * e evidência); Atingimento/PRV continuam agregando o percentual oficial já pronto (camada 2). */
-async function runHistoricalAggregation(db: Database, query: HistoricalQuery, subjectIds: string[], window: TimeWindow, timeZone: string, now: Date): Promise<WindowAggregation> {
+async function runHistoricalAggregation(db: Database, organizationId: string, query: HistoricalQuery, subjectIds: string[], window: TimeWindow, timeZone: string, now: Date): Promise<WindowAggregation> {
   if (query.source === "MEASUREMENT" || query.source === undefined) {
-    const result = await resolveOperationalWindow(db, {
-      indicatorCode: query.indicatorCode!,
-      subjectIds,
-      window,
-      aggregation: (query.aggregation ?? "AVERAGE") as MeasurementAggregation,
-      expectedDays: businessDaysInWindow(window, timeZone),
-      timeZone,
-    })
+    const result = await resolveOperationalWindow(
+      db,
+      {
+        indicatorCode: query.indicatorCode!,
+        subjectIds,
+        window,
+        aggregation: (query.aggregation ?? "AVERAGE") as MeasurementAggregation,
+        expectedDays: businessDaysInWindow(window, timeZone),
+        timeZone,
+      },
+      { organizationId },
+    )
     return { sampleCount: result.sampleCount, value: result.value, avg: result.value, min: result.value, max: result.value, evidence: toEvidence(result, window, timeZone, query.minimumCoverage) }
   }
   const table = query.source === "INDICATOR_ACHIEVEMENT" ? "employee_indicator_performance" : "employee_prv_performance"
@@ -409,6 +415,7 @@ function labelReferencePeriod(referencePeriod: string): string {
  */
 async function aggregateMeasurementClosedMonths(
   db: Database,
+  organizationId: string,
   query: HistoricalQuery,
   subjectIds: string[],
   count: number,
@@ -419,7 +426,7 @@ async function aggregateMeasurementClosedMonths(
   const aggregation = (query.aggregation ?? "AVERAGE") as MeasurementAggregation
   // UMA query com os N meses esperados: componentes por mês (só-debug + mês sem medição) e o
   // agregado da união (Σ numeradores ÷ Σ denominadores) — nunca "média das médias mensais".
-  const resolved = await resolveOperationalClosedMonths(db, { indicatorCode: query.indicatorCode!, subjectIds, months, aggregation, expectedDaysByMonth: months.map((month) => businessDaysInWindow(month, timeZone)), timeZone })
+  const resolved = await resolveOperationalClosedMonths(db, { organizationId, indicatorCode: query.indicatorCode!, subjectIds, months, aggregation, expectedDaysByMonth: months.map((month) => businessDaysInWindow(month, timeZone)), timeZone })
   const closures: ClosureDetail[] = resolved.months
     .slice()
     .sort((a, b) => a.window.start.getTime() - b.window.start.getTime())
@@ -536,7 +543,7 @@ function isoWindow(window: { start: Date; end: Date }): { start: string; end: st
  * vez) pra obter `.value`, nunca uma segunda implementação e nunca um hack de Condition com
  * threshold infinito (ver select-employees-executor.ts).
  */
-export async function resolveHistoricalResult(db: Database, subjectIds: string[], query: HistoricalQuery, now: Date, options: EvaluationOptions = {}): Promise<HistoricalResult> {
+export async function resolveHistoricalResult(db: Database, subjectIds: string[], query: HistoricalQuery, now: Date, options: EvaluationOptions): Promise<HistoricalResult> {
   const timeZone = options.timeZone ?? DEFAULT_ORGANIZATION_TIMEZONE
   const source = query.source ?? "MEASUREMENT"
   // Defesa em runtime (nunca confia só no publish/schema) — se uma combinação impossível
@@ -591,7 +598,7 @@ export async function resolveHistoricalResult(db: Database, subjectIds: string[]
             // Non-null: dentro do branch MEASUREMENT/ausente, o guard no topo da função já
             // garantiu indicatorCode presente (só PRV_ACHIEVEMENT dispensa) — nunca alcançado
             // com undefined de verdade.
-            const r = await aggregateMeasurementClosedMonths(db, query, subjectIds, requested, now, timeZone)
+            const r = await aggregateMeasurementClosedMonths(db, options.organizationId, query, subjectIds, requested, now, timeZone)
             return { ...r, available: r.monthsWithData, reason: "INSUFFICIENT_CLOSED_MONTHS" as const }
           })()
         : await (async () => {
@@ -611,7 +618,7 @@ export async function resolveHistoricalResult(db: Database, subjectIds: string[]
   }
 
   const window = resolveHistoricalWindow(query, now, timeZone)
-  const current = await runHistoricalAggregation(db, query, subjectIds, window, timeZone, now)
+  const current = await runHistoricalAggregation(db, options.organizationId, query, subjectIds, window, timeZone, now)
   const { sampleCount } = current
   const evidenceFields = current.evidence ? { evidence: current.evidence } : {}
   if (current.evidence?.eligibility && current.evidence.eligibility.eligibleDays === 0) return { kind: "aggregate", value: null, sampleCount: 0, noDataReason: "NO_ELIGIBLE_DAYS", window: isoWindow(window), ...evidenceFields }
@@ -633,7 +640,7 @@ export async function resolveHistoricalResult(db: Database, subjectIds: string[]
   }
   if (query.compareTo?.kind === "PREVIOUS_PERIOD") {
     const previousWindow = resolvePreviousHistoricalWindow(query, now, timeZone)
-    const previous = await runHistoricalAggregation(db, query, subjectIds, previousWindow, timeZone, now)
+    const previous = await runHistoricalAggregation(db, options.organizationId, query, subjectIds, previousWindow, timeZone, now)
     const previousValue = previous.value
     const windows = { window: isoWindow(window), previousWindow: isoWindow(previousWindow), ...evidenceFields, ...(previous.evidence ? { previousEvidence: previous.evidence } : {}) }
     if (value === null) return { kind: "aggregate", value: null, sampleCount: 0, noDataReason: "NO_VALUE", ...windows }
@@ -717,7 +724,7 @@ export function isDataCondition(config: DataConditionConfig): boolean {
  * com o Execution Context). O `evaluation` é o payload de debug (evento `condition_evaluated`,
  * trace do QA Lab, evidência na lista de massa) — sempre com os valores efetivamente resolvidos.
  */
-export async function evaluateDataCondition(db: Database, config: DataConditionConfig, subject: ConditionSubject, now: Date, options: EvaluationOptions = {}): Promise<ConditionEvaluation | null> {
+export async function evaluateDataCondition(db: Database, config: DataConditionConfig, subject: ConditionSubject, now: Date, options: EvaluationOptions): Promise<ConditionEvaluation | null> {
   if (config.group) return null
   const timeZone = options.timeZone ?? DEFAULT_ORGANIZATION_TIMEZONE
 
@@ -860,7 +867,7 @@ async function evaluateOperationalQuartileCondition(db: Database, config: DataCo
   const timeZone = options.timeZone ?? DEFAULT_ORGANIZATION_TIMEZONE
   const outcome = await resolveOperationalQuartiles(
     db,
-    { indicatorCode: query.indicatorCode, aggregation: (query.aggregation ?? "WEIGHTED_AVERAGE") as MeasurementAggregation, period: query.period, minimumCoverage: query.minimumCoverage, populationIds, now, timeZone },
+    { organizationId: options.organizationId, indicatorCode: query.indicatorCode, aggregation: (query.aggregation ?? "WEIGHTED_AVERAGE") as MeasurementAggregation, period: query.period, minimumCoverage: query.minimumCoverage, populationIds, now, timeZone },
     options.quartileCache,
   )
   const member = outcome.members.get(subject.operatorId)

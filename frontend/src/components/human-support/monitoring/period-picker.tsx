@@ -1,9 +1,6 @@
 "use client"
 
-import { useId } from "react"
-
 import { DateRangePicker } from "@/components/ui/date-picker"
-import { Label } from "@/components/ui/label"
 
 /** Período do painel: datas civis ("AAAA-MM-DD", no fuso da organização no servidor), de 1 a 92 dias contando os dois extremos. */
 export type PanelPeriod = { from: string; to: string }
@@ -34,26 +31,19 @@ export function panelPeriodError(period: PanelPeriod): string | null {
 }
 
 /**
- * Período do painel no seletor de período do app (calendário em português, `dd/MM/aaaa`), com "Aplicar": o painel só muda com um
- * período completo e válido (1 a 92 dias); um período inválido não pode ser aplicado e o motivo aparece no próprio calendário.
+ * Período do painel na barra de filtros, como o filtro de data de "Conversas com a INIA" (calendário em português, `dd/MM/aaaa`), mas
+ * com "Aplicar": o painel só muda com um período completo e válido (1 a 92 dias); um período inválido não pode
+ * ser aplicado e o motivo aparece no próprio calendário. Sempre há um período (não tem "limpar").
  */
 export function PeriodPicker({ value, onChange }: { value: PanelPeriod; onChange: (period: PanelPeriod) => void }) {
-  const id = useId()
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">Período</Label>
-      <div className="flex flex-wrap items-center gap-2">
-        <DateRangePicker
-          id={id}
-          value={value}
-          confirm={{ validate: panelPeriodError }}
-          onChange={(next) => {
-            if (next.from && next.to) onChange({ from: next.from, to: next.to })
-          }}
-          className="sm:min-w-60"
-        />
-        <span className="text-xs text-muted-foreground">Até {MAX_PANEL_DAYS} dias.</span>
-      </div>
-    </div>
+    <DateRangePicker
+      value={value}
+      confirm={{ validate: panelPeriodError }}
+      onChange={(next) => {
+        if (next.from && next.to) onChange({ from: next.from, to: next.to })
+      }}
+      aria-label="Período"
+    />
   )
 }

@@ -45,6 +45,7 @@ next-env.d.ts
 
 # INIA Mentora — arquivos intermediários do pipeline do avatar (Blender)
 assets/avatar/inia/mentora/work/
+assets/avatar/inia/realista-v02/work/
 __pycache__/
 
 # Saídas locais (vídeos, capturas, áudios e relatórios gerados) — nunca versionadas.

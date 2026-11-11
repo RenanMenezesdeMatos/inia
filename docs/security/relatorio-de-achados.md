@@ -769,3 +769,39 @@ confere a dona da conversa (`loadMessages` com `ownerPersonId`, na mesma consult
 backend 486 arquivos e **5.282 testes passando**, 0 falhas; provas `read-only-database-proof` (nova),
 `assistant-conversations-proof` (caso novo), `data-hub-proof`, `source-custody-proof` e `person-identity-proof` passam no
 banco descartável.
+
+
+## Quinta rodada (10–11/11/2026, skill da Cloudflare, run-2)
+
+Passada parcial sobre o diff `6b5667ad..4a066be9` (tudo o que entrou depois da 4ª rodada) mais a revalidação dos 22 registros da 4ª rodada. Perfil `standard`, 67 agentes, só código-fonte e checagens locais em sandbox contra um PostgreSQL descartável. Registro completo, fora do repositório: `~/security-audit-skill/inia/run-2/` (`REPORT.md`, `FINDINGS-DETAIL.md`, `NEEDS-VALIDATION.md`, `findings.json`, `coverage-ledger.json`).
+
+Resultado: nenhum achado crítico ou alto; 9 confirmados (3 médios, 6 baixos), 5 que dependem de um fato externo, 1 rejeitado. Dos 22 registros da 4ª rodada, 19 continuam fechados; 3 tinham desvio (C13, C18 e o irmão do N01 na conexão de IA) e entram abaixo. Todos corrigidos com teste que falha no código anterior.
+
+| # | Gravidade | Achado | Correção |
+|---|---|---|---|
+| R5-C01 | Média | A largura declarada da página do PDF (MediaBox) controlava um laço no processo da API (`lines.ts`, `bestGutter`) | no máximo 1.000 passos; largura inválida ou infinita não varre |
+| R5-C02 | Média | Grade de linhas no PDF: união de conjuntos sem compressão (`tables.ts`), ~37 s por página no processo da API | compressão de caminho + união por tamanho; grade acima de 10.000 células fica como texto |
+| R5-C03 | Média | Pré-checagem `inspectPdf` quadrática (1 MiB parava a API 12 s) | posições de `endstream`/`obj`/`/FlateDecode` achadas uma vez e percorridas em ordem (15 MiB em ~56 ms) |
+| R5-C04 | Baixa | Trocar o endpoint de uma conexão de IA decidia a revogação num retrato lido antes da transação; a chave digitada ao mesmo tempo ficava ativa no endpoint novo (irmão do N01) | linha travada (`for update`); revoga pelo endpoint travado; gravar chave confere o endpoint visto (409 `AI_CONNECTION_ENDPOINT_CHANGED`) |
+| R5-C05 | Baixa | `compare_population` contava colegas só com zero lógico (ausência injustificada) no mínimo de 4, mas o valor de referência não os soma (desvio do C13) | o portão conta só quem contribui para o valor |
+| R5-C06 | Baixa | Fila de OCR única para todas as organizações, sem limite por página; o prazo crescia com páginas que nem são lidas | prazo por no máximo 300 páginas, 20 s por página, organização atendida há mais tempo primeiro |
+| R5-C07 | Baixa | Rotação de credencial do Data Hub (rota sem senha da fonte) gravava a credencial provada no destino antigo sobre um destino trocado em paralelo | linha travada e destino reconferido; 409 `DATA_SOURCE_DESTINATION_CHANGED` |
+| R5-C08 | Baixa | Definição operacional do indicador buscada só pelo código: Ranking, Quartil operacional e condições de medição usavam direção/agregação de outra organização com o mesmo código | organização obrigatória em toda busca por código (tipos obrigam os chamadores) |
+| R5-C09 | Baixa | Leitor só de agregados da usabilidade reconstruía um grupo pequeno subtraindo dois recortes permitidos (desvio do C18) | para esse leitor, pessoas de células (Grupo × Subgrupo × classe) com menos de 5 saem de todos os recortes, inclusive dos totais |
+
+Dependem de fato externo (endurecidos de forma segura mesmo assim):
+
+- **R5-N01** avaliações de política gravadas antes de `291bd48c` guardam o tipo exato de afastamento — agora protegido na leitura (sem reescrever o banco); falta contar se há linhas antigas no homolog/VM.
+- **R5-N02** limpeza de metadados de JPEG copiava tudo depois do primeiro SOS (imagem secundária MPF, vídeo anexado) — agora corta no fim da imagem principal e recusa (422) o que não consegue ler; falta testar com foto real de celular.
+- **R5-N03** sessão encerrada no servidor: o Voltar ainda mostrava páginas da conta anterior (16 redirecionamentos suaves para o login) — a tela de login limpa o cache e recarrega uma vez quando a página veio de fora de `/auth`; falta o roteiro no navegador.
+- **R5-N04 / R5-N05** backup no Windows: pasta pré-existente mantinha o dono; a tarefa SYSTEM chamava `whoami`/`icacls`/`pg_dump` pelo nome a partir de `C:\inia` — agora caminhos absolutos (`%SystemRoot%\System32`, `--pg-bin` absoluto ou Program Files), `/setowner` Administradores + `/reset` antes da restrição; falta conferir ACLs na VM.
+
+Limites conhecidos das correções (revisão independente de 11/11/2026):
+
+- R5-N01: a proteção na leitura cobre avaliação, dados estruturados do relatório e detalhe da intervenção; o texto que a IA já tinha escrito antes de 29/10 (`narrative.current`), as saídas antigas do nó "Avaliar política de acompanhamento" e payloads de eventos antigos continuam como foram gravados — regenerar a narrativa resolve o primeiro.
+- Backup no Windows: `pg_dump`/`pg_restore` não são mais procurados no PATH; instalação do PostgreSQL fora de `Program Files` precisa de `--pg-bin` (ou `-PastaPg` ao agendar). Pasta de backup que já existia exige prompt de Administrador para trocar o dono (a tarefa agendada roda como SYSTEM e não é afetada); pasta nova não muda nada.
+- Imagens: JPEG sem marcador de fim (EOI) ou PNG sem IEND agora são recusados (422) em vez de aceitos sem limpeza.
+
+Rejeitado: recarregar um registro cancelado o reativa (comportamento documentado em `docs/dev/central-de-dados-consulta.md`; quem tem `data_hub.manage` já grava qualquer resultado por carga).
+
+Adiadas para a próxima rodada (parada antecipada explícita): leitura e retry de execuções de Workflow conferem só o escopo atual do Workflow; `DELETE` de Agent sem conferir o escopo do rascunho/versões e `/references` devolvendo Agents inativos sem `agents.inactive.manage`.

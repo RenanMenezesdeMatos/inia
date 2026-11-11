@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import { z } from "zod"
-import { ArrowLeft, Pencil } from "lucide-react"
+import { Pencil } from "lucide-react"
 
+import { BackLink } from "@/components/ui/back-link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -13,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ErrorState } from "@/components/ui/states"
 
 import { ProductScopeCard, ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
@@ -190,16 +192,11 @@ export function ArgumentScriptDetailPanel({ id, onBack, onDeleted }: { id: strin
   if (detailQuery.isLoading) return <Skeleton className="h-64 w-full" />
   if (detailQuery.isError || !detailQuery.data) {
     return (
-      <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-        <p className="text-sm text-destructive">Não foi possível carregar o argumentário.</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onBack}>
-            Voltar para a lista
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => detailQuery.refetch()}>
-            Tentar novamente
-          </Button>
-        </div>
+      <div className="space-y-3">
+        <ErrorState message="Não foi possível carregar o argumentário." onRetry={() => void detailQuery.refetch()} />
+        <Button variant="outline" size="sm" onClick={onBack}>
+          Voltar para a lista
+        </Button>
       </div>
     )
   }
@@ -293,9 +290,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
 
   return (
     <div className="max-w-4xl space-y-4">
-      <Button variant="ghost" size="sm" onClick={onBack}>
-        <ArrowLeft data-icon="inline-start" /> Voltar para a lista
-      </Button>
+      <BackLink onClick={onBack} label="Argumentários" />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">

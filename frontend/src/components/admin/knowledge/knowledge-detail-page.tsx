@@ -2,8 +2,10 @@
 
 import { useCallback, useState } from "react"
 import Link from "next/link"
+
+import { BackLink as KitBackLink } from "@/components/ui/back-link"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Download, FileWarning, Paperclip } from "lucide-react"
+import { Download, FileWarning, Paperclip } from "lucide-react"
 
 import { KnowledgeReadingView, READING_VIEW_NOTE, ReadingModeSwitch, type ReadingMode } from "@/components/knowledge-reading/knowledge-reading-view"
 import { Badge } from "@/components/ui/badge"
@@ -32,11 +34,7 @@ import { formatFileSize, versionLabel } from "./knowledge-visuals"
 const LIST_HREF = "/admin/knowledge"
 
 function BackLink() {
-  return (
-    <Link href={LIST_HREF} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <ArrowLeft className="h-3.5 w-3.5" /> Base de conhecimento
-    </Link>
-  )
+  return <KitBackLink href={LIST_HREF} label="Base de conhecimento" />
 }
 
 function DetailSkeleton() {
