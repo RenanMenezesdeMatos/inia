@@ -23,8 +23,11 @@ import {
   classificationFieldLabels,
   END_CAUSE_LABELS,
   HUMAN_SUPPORT_TEXT_LIMITS,
+  PERTINENCE_LABELS,
+  PERTINENCES,
   type ClassificationOutcome,
   type ClassificationReason,
+  type Pertinence,
 } from "@/schemas/human-support/catalogs.schema"
 import type { AnjoView } from "@/schemas/human-support/state.schema"
 import { classifySupportAttendance, type ClassificationInput } from "@/services/human-support/human-support-service"
@@ -36,13 +39,14 @@ import { classifySupportAttendance, type ClassificationInput } from "@/services/
  * encaminhado ou resolvido). Título do processo, sistema ou IA obrigatório quando a informação existia (FOUND_IN_PROCESS,
  * AVAILABLE_ELSEWHERE), opcional em pergunta mal formulada e não pedido nos demais; nos impedimentos operacionais (sem acesso,
  * ferramenta indisponível) o mesmo campo é a "Ferramenta ou sistema afetado" e a descrição vira "Detalhes", os dois opcionais; link
- * opcional, só http(s); descrição obrigatória em "Outro". As mesmas regras valem no servidor (422); 409
+ * opcional, só http(s); descrição obrigatória em "Outro". Pertinência do acionamento (migration 191): escolha obrigatória entre
+ * Pertinente, Não pertinente e Não avaliado. As mesmas regras valem no servidor (422); 409
  * `HUMAN_SUPPORT_ALREADY_CLASSIFIED` mostra o aviso e atualiza as pendências.
  */
 export type PendingClassification = AnjoView["pendingClassifications"][number]
 
-type Draft = { reason: ClassificationReason | null; title: string; url: string; description: string; outcome: ClassificationOutcome | null }
-type Field = "reason" | "title" | "url" | "description" | "outcome"
+type Draft = { reason: ClassificationReason | null; title: string; url: string; description: string; outcome: ClassificationOutcome | null; pertinence: Pertinence | null }
+type Field = "reason" | "title" | "url" | "description" | "outcome" | "pertinence"
 export type ClassificationErrors = Partial<Record<Field, string>>
 
 const TITLE_LIMITS = HUMAN_SUPPORT_TEXT_LIMITS.classificationTitle
@@ -81,12 +85,14 @@ export function validateClassification(draft: Draft): { input: ClassificationInp
   else if (descriptionRule !== "hidden" && description.length > 0 && (description.length < DESCRIPTION_LIMITS.min || description.length > DESCRIPTION_LIMITS.max))
     errors.description = descriptionRule === "required" ? `A descrição precisa ter de ${DESCRIPTION_LIMITS.min} a ${DESCRIPTION_LIMITS.max} caracteres.` : `Os detalhes precisam ter de ${DESCRIPTION_LIMITS.min} a ${DESCRIPTION_LIMITS.max} caracteres.`
   if (!draft.outcome) errors.outcome = "Escolha o resultado do atendimento."
-  if (Object.keys(errors).length > 0 || !draft.reason || !draft.outcome) return { input: null, errors }
+  if (!draft.pertinence) errors.pertinence = "Diga se o acionamento foi pertinente (ou marque Não avaliado)."
+  if (Object.keys(errors).length > 0 || !draft.reason || !draft.outcome || !draft.pertinence) return { input: null, errors }
   return {
     errors,
     input: {
       reason: draft.reason,
       outcome: draft.outcome,
+      pertinence: draft.pertinence,
       ...(titleRule !== "hidden" && title ? { referenceTitle: title } : {}),
       ...(url ? { referenceUrl: url } : {}),
       ...(descriptionRule !== "hidden" && description ? { otherDescription: description } : {}),
@@ -102,7 +108,7 @@ export type ClassificationFormProps = {
 
 export function ClassificationForm({ pending, onDone }: ClassificationFormProps) {
   const id = useId()
-  const [draft, setDraft] = useState<Draft>({ reason: null, title: "", url: "", description: "", outcome: null })
+  const [draft, setDraft] = useState<Draft>({ reason: null, title: "", url: "", description: "", outcome: null, pertinence: null })
   const [showErrors, setShowErrors] = useState(false)
   const [sending, setSending] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -236,6 +242,22 @@ export function ClassificationForm({ pending, onDone }: ClassificationFormProps)
           ))}
         </RadioGroup>
         {fieldError("outcome")}
+      </fieldset>
+
+      <fieldset className="rounded-2xl border border-border bg-muted/30 p-4" aria-describedby={describedBy("pertinence")}>
+        <legend className="float-left mb-1 w-full text-sm font-semibold">Pertinência do acionamento</legend>
+        <p className="clear-both mb-3 text-xs text-muted-foreground">O operador precisava mesmo de um Anjo para isto? Se não der para dizer, marque Não avaliado.</p>
+        <RadioGroup className="grid gap-2 sm:grid-cols-3" value={draft.pertinence ?? ""} onValueChange={(value) => update({ pertinence: value as Pertinence })} aria-invalid={visibleErrors.pertinence ? true : undefined}>
+          {PERTINENCES.map((pertinence) => (
+            <div key={pertinence} className="flex items-start gap-3 rounded-xl border border-border bg-card px-3 py-2.5 transition-colors hover:bg-muted has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/5">
+              <RadioGroupItem id={`${id}-pertinence-${pertinence}`} value={pertinence} className="mt-0.5" />
+              <Label htmlFor={`${id}-pertinence-${pertinence}`} className="flex-1 cursor-pointer font-normal leading-snug">
+                {PERTINENCE_LABELS[pertinence]}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+        {fieldError("pertinence")}
       </fieldset>
 
       {serverError ? (

@@ -1,7 +1,7 @@
 import { Router, type Request } from "express"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { gatewayAnalysisWriter } from "../application/report-analysis.js"
+import { gatewayAnalysisWriter, reportAnalysisGuard } from "../application/report-analysis.js"
 import { listReceivedDeliveries, loadDeliveryDetail, markDeliveryRead } from "../application/report-deliveries-reader.js"
 import { createPostgresProposalStore } from "../application/report-proposals.js"
 import { createPostgresReportRuntime } from "../application/report-runtime.js"
@@ -26,6 +26,7 @@ export function createReportsRouter(db: Database, overrides: Partial<ReportServi
     runtime: overrides.runtime ?? createPostgresReportRuntime(db),
     proposals: overrides.proposals ?? createPostgresProposalStore(db),
     analysisWriter: overrides.analysisWriter ?? gatewayAnalysisWriter,
+    analysisGuard: overrides.analysisGuard ?? reportAnalysisGuard(db),
     now: overrides.now ?? (() => new Date()),
   }
   const actorOf = (request: Request): ReportActor => ({ organizationId: sessionUser(request).organizationId, accountId: sessionUser(request).sub, personId: sessionUser(request).personId })

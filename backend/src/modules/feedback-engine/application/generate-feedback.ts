@@ -1,3 +1,5 @@
+import { RESPONSE_CHECK_UNAVAILABLE_CODE, type ContentDecision } from "../../governance/application/response-compliance.js"
+import type { FeedbackView } from "../domain/feedback-view.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { CALL_ALREADY_MONITORED, PERIOD_ALREADY_DELIVERED } from "../domain/delivery-guards.js"
 import { startOfLocalDate } from "../../workflows/application/time-window.js"
@@ -27,6 +29,7 @@ import type { FeedbackMemoryStore, FeedbackMessageStore, MaterialRecommendation,
  * lança erro classificado — o motor do Workflow aplica a política de nova tentativa; a análise já gravada continua lá.
  */
 export const MESSAGE_LEASE_SECONDS = 600
+export const RULE_VIOLATION_REASON = "RULE_VIOLATION"
 export const HISTORY_WINDOW_DAYS = 90
 
 export type GenerateFeedbackRequest = {
@@ -61,6 +64,8 @@ export type GenerateFeedbackDeps = {
   investigate: InvestigateIndicatorDeps
   loadDocumentTitles: (organizationId: string, documentIds: readonly string[]) => Promise<Map<string, string>>
   loadAgentConfiguredAt: (organizationId: string, agentId: string) => Promise<string | null>
+  /** Conferência da mensagem pronta contra os assuntos proibidos e os limites (PEN-018). Ausente = não confere. */
+  responseCheck?: (input: { organizationId: string; messageId: string; enrollmentId: string | null; agentId: string | null; view: FeedbackView; brief: FeedbackBrief }) => Promise<ContentDecision>
   now: () => Date
   /** Medidor do orçamento da execução (o mesmo do modelo) — o resumo vai para as métricas da mensagem. */
   meter?: { summary(): unknown }
@@ -411,6 +416,14 @@ export async function generateFeedback(deps: GenerateFeedbackDeps, request: Gene
     const view = bestPractices ? { ...assembled.view, bestPractices: withCitedInText(bestPractices, citedPracticeIdsOf(brief, assembled.communicatedRefs)) } : assembled.view
     // A mensagem persistida é o contrato da tela; o que a trava retirou dos detalhes vai na auditoria da composição.
     const message = { card: assembled.card, paragraphs: assembled.paragraphs, sentences: assembled.sentences, view, text: assembled.text, source: assembled.source, communicatedRefs: assembled.communicatedRefs, ...(assembled.trusted ? { trusted: assembled.trusted } : {}) }
+    // PEN-018: a mensagem pronta é conferida contra as regras antes de ficar publicável. Só lê a mensagem. Em AUDIT (o padrão) ela segue e fica o registro; em
+    // ENFORCE, violação é abstenção com motivo (a análise continua na memória) e falha da conferência volta pela política de novas tentativas: nada é publicado sem conferir.
+    const conference = deps.responseCheck ? await deps.responseCheck({ organizationId: request.organizationId, messageId, enrollmentId: request.enrollmentId, agentId: sourceAgentIdOf(request.sourceNodeOutput, request.configuredAgentId), view, brief }) : null
+    if (conference?.decision === "VIOLATION") {
+      const record = await deps.messages.completeMessage(request.organizationId, messageId, { ...base, status: "ABSTAINED", abstainReason: `NO_SAFE_MESSAGE:${RULE_VIOLATION_REASON}`, findingKeys: [], brief, composition: { ...audit, responseCheck: { rules: conference.hits, reason: conference.reason, rejectedText: assembled.text } } as unknown as Record<string, unknown>, suppressed: brief.suppressed, metrics: { ...metricsSummaryOf(metrics), durationMs: deps.now().getTime() - now.getTime(), limited: brief.tone === "INFORMATIVE", ...(deps.meter ? { budget: deps.meter.summary() } : {}) } }, deps.now())
+      return resultOf(record, false)
+    }
+    if (conference?.decision === "CHECK_FAILED") throw new DomainError("A conferência da mensagem não pôde ser concluída. Nada foi publicado.", RESPONSE_CHECK_UNAVAILABLE_CODE, 503)
     // Só o que a mensagem COMUNICOU conta como entregue (o resto continua disponível para outro retorno).
     const communicated = new Set(assembled.communicatedRefs)
     const findingKeys = [...brief.developments, ...brief.strengths].filter((finding) => communicated.has(finding.ref)).flatMap((finding) => [finding.findingKey, ...(finding.memberFindingKeys ?? [])])

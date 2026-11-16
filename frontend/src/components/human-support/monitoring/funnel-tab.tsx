@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { CircleAlert, Clock, Hash, Info, Percent, Star, type LucideIcon } from "lucide-react"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { IconBadge, SectionLabel, SURFACE_CARD, toneSurface } from "@/components/ui/surface"
+import { IconBadge, SURFACE_CARD, toneSurface } from "@/components/ui/surface"
 import { formatCivilDate, formatDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { useSupportFunnelQuery } from "@/queries/human-support/use-human-support-admin"
@@ -12,6 +12,11 @@ import { durationText, percentText, type FunnelResponse, type Measure, type Rati
 import type { WaitEstimate } from "@/schemas/human-support/state.schema"
 import type { PanelFilter } from "@/services/human-support/human-support-service"
 
+import type { CardWidth, GridCard, GridSection } from "@/components/ui/customizable-grid/layout"
+import { PersistedCustomizableView } from "@/components/view-layouts/persisted-customizable-view"
+
+import { useAbandonmentSection } from "../history/abandonment-block"
+import { useDemandSection } from "./demand-section"
 import { PanelError } from "./panel-error"
 import { civilToday } from "./period-picker"
 
@@ -78,8 +83,15 @@ const KIND_ICON: Record<Kind, { icon: LucideIcon; label: string }> = {
 
 const ESTIMATE_BASIS = { SUBGROUP: "do Subgrupo", GROUP: "do Grupo", ORGANIZATION: "da organização" } as const
 const REPLY = ["M1", "M2", "M3", "M4", "M5", "M6"]
-const REQUESTS = ["M7", "M8", "M9", "M10", "M11", "M12", "M13"]
-const EVALUATION = ["M14", "M15", "M16", "M17"]
+/**
+ * Indicadores = o que acontece ANTES do Anjo e o que o operador diz dele: respostas da INIA, demanda e fila, avaliação do operador.
+ * O trabalho do Anjo — primeira resposta e duração (M12/M13), motivos de acionamento (M14) e resultado declarado (M15) — fica na aba
+ * "Jornada e atendimentos", na visão geral e por Anjo (pedido do responsável em 2026-11-12: nada repetido entre as duas abas).
+ */
+const REQUESTS = ["M7", "M8", "M9", "M10", "M11"]
+const EVALUATION = ["M16", "M17"]
+/** Cartões do Anjo que a aba "Jornada e atendimentos" mostra na visão geral. */
+export const ANJO_WORK_MEASURES = ["M14", "M15"]
 
 const plural = (count: number, [one, many]: [string, string]) => `${count.toLocaleString("pt-BR")} ${count === 1 ? one : many}`
 const number = (value: number) => value.toLocaleString("pt-BR")
@@ -114,28 +126,37 @@ function rateText(ratio: Ratio, unit: [string, string]): string {
   return `${percentText(ratio.value)} · ${counts}`
 }
 
+/**
+ * ABA INDICADORES — visão personalizável (padrão do app, `anjos.indicadores`): Resumo do período, Abandonos no período, Acionamentos do
+ * período, Respostas da INIA, Pedidos e atendimentos, Avaliação do atendimento do Anjo. Cada cartão é um card que a pessoa reposiciona,
+ * redimensiona em blocos e esconde; fica salvo para ela.
+ */
 export function FunnelTab({ filter }: { filter: PanelFilter }) {
   const query = useSupportFunnelQuery(filter)
-  if (query.isPending) {
-    return (
-      <div className="space-y-4" aria-label="Carregando os indicadores" aria-busy>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-28 rounded-2xl" />)}</div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-40 rounded-2xl" />)}</div>
-      </div>
-    )
-  }
+  const abandonment = useAbandonmentSection({
+    id: "abandonos",
+    filter,
+    title: "Abandonos no período",
+    description: "Na espera: o operador desistiu antes de um Anjo assumir. No atendimento: alguém saiu, caiu ou parou de responder — encerramento normal não conta. O de hoje, ao vivo, está na Monitoria Online.",
+  })
+  const demand = useDemandSection(filter)
+  const byId = new Map((query.data?.measures ?? []).map((measure) => [measure.id, measure]))
+  const notes = query.data ? notesFor(query.data) : {}
+  const state = (render: () => ReactNode, height = "h-28") =>
+    query.isPending ? <Skeleton className={cn(height, "w-full rounded-2xl")} aria-label="Carregando os indicadores" /> : query.isError ? <PanelError error={query.error} onRetry={() => void query.refetch()} /> : render()
+  const measureCards = (ids: string[], width: CardWidth): GridCard[] =>
+    ids.map((id) => ({ id: id.toLowerCase(), title: COPY[id]?.title ?? id, defaultWidth: width, widths: [3, 4, 6, 8, 12] as const, render: () => state(() => (byId.has(id) ? <MeasureCard measure={byId.get(id)!} note={notes[id]} /> : <p className="text-sm text-muted-foreground">Sem dados no período.</p>), "h-40") }))
+  const catalog: GridSection[] = [
+    { id: "resumo", title: "Resumo do período", cards: summaryCards(byId).map((card) => ({ ...card, defaultWidth: 3, widths: [3, 4, 6, 12] as const, render: () => state(card.render) })) },
+    abandonment,
+    demand,
+    { id: "respostas-inia", title: "Respostas da INIA", description: "Como as respostas da INIA no chat foram avaliadas. Estas avaliações são da resposta da INIA, não do atendimento do Anjo.", cards: measureCards(REPLY, 4) },
+    { id: "pedidos", title: "Pedidos e atendimentos", description: "Do oferecimento do apoio ao fim do atendimento.", cards: measureCards(REQUESTS, 4) },
+    { id: "avaliacao", title: "Avaliação do atendimento do Anjo", description: "Avaliação feita pelo operador sobre o atendimento, não sobre a resposta da INIA. Os tempos, os motivos e o resultado declarado pelo Anjo estão em Jornada e atendimentos.", cards: measureCards(EVALUATION, 6) },
+  ]
+  // Falha da leitura principal (ex.: período longo demais): um aviso só, em vez de um por card.
   if (query.isError) return <PanelError error={query.error} onRetry={() => void query.refetch()} />
-  const byId = new Map(query.data.measures.map((measure) => [measure.id, measure]))
-  const pick = (ids: string[]) => ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
-  const notes = notesFor(query.data)
-  return (
-    <div className="space-y-8">
-      <Summary byId={byId} />
-      <MeasureSection id="reply" title="Respostas da INIA" description="Como as respostas da INIA no chat foram avaliadas. Estas avaliações são da resposta da INIA, não do atendimento do Anjo." measures={pick(REPLY)} notes={notes} />
-      <MeasureSection id="requests" title="Pedidos e atendimentos" description="Do oferecimento do apoio ao fim do atendimento." measures={pick(REQUESTS)} notes={notes} />
-      <MeasureSection id="evaluation" title="Avaliação do atendimento do Anjo" description="Classificação feita pelo Anjo e avaliação feita pelo operador sobre o atendimento, não sobre a resposta da INIA." measures={pick(EVALUATION)} notes={notes} />
-    </div>
-  )
+  return <PersistedCustomizableView viewKey="anjos.indicadores" label="Indicadores" catalog={catalog} />
 }
 
 /** Observações curtas, só onde mudam a leitura de um indicador (datas em que a coleta começou e períodos com o apoio desligado). */
@@ -155,20 +176,22 @@ function notesFor(data: FunnelResponse): Record<string, string> {
   return notes
 }
 
-function Summary({ byId }: { byId: Map<string, Measure> }) {
+/** Os quatro cartões do resumo, cada um um card da área "Resumo do período". */
+function summaryCards(byId: Map<string, Measure>): { id: string; title: string; render: () => ReactNode }[] {
   const requests = byId.get("M8")
   const wait = byId.get("M11")
   const response = byId.get("M12")
   const resolved = byId.get("M16")
   const yes = resolved?.breakdown?.find((item) => item.key === "YES")
   const resolvedBase = resolved?.main.numerator ?? 0
-  return (
-    <section aria-labelledby="funnel-summary-title" className="space-y-3">
-      <SectionLabel id="funnel-summary-title">Resumo do período</SectionLabel>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile kind="count" title="Pedidos de apoio" value={requests ? number(requests.main.numerator ?? 0) : null} unit={requests && (requests.main.numerator ?? 0) === 1 ? "pedido" : "pedidos"} note={requests?.conversion && requests.conversion.status === "OK" && requests.conversion.value !== null ? `${percentText(requests.conversion.value)} das sugestões viraram pedido` : null} />
-        <SummaryTile kind="duration" title="Espera de 90% dos pedidos" value={wait && (wait.main.numerator ?? 0) > 0 ? durationText(wait.percentiles?.p90 ?? null) : null} note={wait && (wait.main.numerator ?? 0) > 0 ? "90% receberam um Anjo em até esse tempo." : null} small={wait ? (wait.main.numerator ?? 0) > 0 && (wait.main.numerator ?? 0) < MIN_SAMPLE : false} />
-        <SummaryTile kind="duration" title="Primeira resposta do Anjo" value={response && (response.main.numerator ?? 0) > 0 ? durationText(response.percentiles?.p50 ?? null) : null} note={response && (response.main.numerator ?? 0) > 0 ? "Metade dos atendimentos teve resposta em até esse tempo." : null} small={response ? (response.main.numerator ?? 0) > 0 && (response.main.numerator ?? 0) < MIN_SAMPLE : false} />
+  return [
+    { id: "pedidos-de-apoio", title: "Pedidos de apoio", render: () => <SummaryTile kind="count" title="Pedidos de apoio" value={requests ? number(requests.main.numerator ?? 0) : null} unit={requests && (requests.main.numerator ?? 0) === 1 ? "pedido" : "pedidos"} note={requests?.conversion && requests.conversion.status === "OK" && requests.conversion.value !== null ? `${percentText(requests.conversion.value)} das sugestões viraram pedido` : null} /> },
+    { id: "espera-90", title: "Espera de 90% dos pedidos", render: () => <SummaryTile kind="duration" title="Espera de 90% dos pedidos" value={wait && (wait.main.numerator ?? 0) > 0 ? durationText(wait.percentiles?.p90 ?? null) : null} note={wait && (wait.main.numerator ?? 0) > 0 ? "90% receberam um Anjo em até esse tempo." : null} small={wait ? (wait.main.numerator ?? 0) > 0 && (wait.main.numerator ?? 0) < MIN_SAMPLE : false} /> },
+    { id: "primeira-resposta", title: "Primeira resposta do Anjo", render: () => <SummaryTile kind="duration" title="Primeira resposta do Anjo" value={response && (response.main.numerator ?? 0) > 0 ? durationText(response.percentiles?.p50 ?? null) : null} note={response && (response.main.numerator ?? 0) > 0 ? "Metade dos atendimentos teve resposta em até esse tempo." : null} small={response ? (response.main.numerator ?? 0) > 0 && (response.main.numerator ?? 0) < MIN_SAMPLE : false} /> },
+    {
+      id: "duvida-resolvida",
+      title: "Dúvida resolvida",
+      render: () => (
         <SummaryTile
           kind="percent"
           title="Dúvida resolvida"
@@ -177,15 +200,15 @@ function Summary({ byId }: { byId: Map<string, Measure> }) {
           note={resolvedBase === 0 ? null : resolvedBase < MIN_SAMPLE ? `Poucos dados: ${plural(resolvedBase, ["resposta", "respostas"])}. A porcentagem aparece com 5 ou mais.` : `Segundo ${plural(resolvedBase, ["operador que respondeu", "operadores que responderam"])}.`}
           emptyText={resolvedBase > 0 && resolvedBase < MIN_SAMPLE ? "Poucos dados" : undefined}
         />
-      </div>
-    </section>
-  )
+      ),
+    },
+  ]
 }
 
 function SummaryTile({ kind, title, value, unit, note, small = false, emptyText }: { kind: Kind; title: string; value: string | null; unit?: string | undefined; note?: string | null; small?: boolean; emptyText?: string | undefined }) {
   const icon = KIND_ICON[kind]
   return (
-    <article className={cn(SURFACE_CARD, "flex flex-col gap-2 p-4")} aria-label={title}>
+    <article className={cn(SURFACE_CARD, "flex h-full flex-col gap-2 p-4")} aria-label={title}>
       <div className="flex items-center gap-2">
         <IconBadge icon={icon.icon} size="sm" tone="info" />
         <h3 className="text-sm font-medium">{title}</h3>
@@ -204,27 +227,12 @@ function SummaryTile({ kind, title, value, unit, note, small = false, emptyText 
   )
 }
 
-function MeasureSection({ id, title, description, measures, notes }: { id: string; title: string; description: string; measures: Measure[]; notes: Record<string, string> }) {
-  if (measures.length === 0) return null
-  return (
-    <section className="space-y-3" aria-labelledby={`funnel-${id}-title`}>
-      <div className="space-y-0.5">
-        <SectionLabel id={`funnel-${id}-title`}>{title}</SectionLabel>
-        <p className="text-sm text-muted-foreground">{description}</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {measures.map((measure) => <MeasureCard key={measure.id} measure={measure} note={notes[measure.id]} />)}
-      </div>
-    </section>
-  )
-}
-
-function MeasureCard({ measure, note }: { measure: Measure; note?: string | undefined }) {
+export function MeasureCard({ measure, note }: { measure: Measure; note?: string | undefined }) {
   const copy = COPY[measure.id] ?? { title: "Indicador", help: "", kind: "count" as const, unit: ["caso", "casos"] as [string, string] }
   const side = SIDE_LABELS[measure.id] ?? {}
   const icon = KIND_ICON[copy.kind]
   return (
-    <article className={cn(SURFACE_CARD, "flex flex-col gap-3 p-4")} aria-label={copy.title} data-testid={`measure-${measure.id}`}>
+    <article className={cn(SURFACE_CARD, "flex h-full flex-col gap-3 p-4")} aria-label={copy.title} data-testid={`measure-${measure.id}`}>
       <header className="flex items-start gap-3">
         <IconBadge icon={icon.icon} size="sm" tone="neutral" />
         <div className="min-w-0 space-y-0.5">

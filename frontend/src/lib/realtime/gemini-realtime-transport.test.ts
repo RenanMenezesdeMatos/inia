@@ -135,6 +135,7 @@ beforeEach(() => {
   events = {
     onConnectionChange: vi.fn(),
     onStateChange: vi.fn((state: string) => { states.push(state) }),
+    onToolActivity: vi.fn(),
     onInputTranscript: vi.fn(),
     onOutputTranscript: vi.fn(),
     onTurnComplete: vi.fn(),
@@ -284,6 +285,61 @@ describe("GeminiRealtimeTransport — resposta", () => {
       await tick()
       await tick()
       expect(events.onSpecialistResult).toHaveBeenCalledWith("TMA 320 s", [], expect.objectContaining({ conversationId: "33333333-3333-4333-8333-333333333333" }), undefined, { interactionId: "44444444-4444-4444-8444-444444444444" })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("consulta da voz: avisa o começo e o fim, sem mudar o pedido nem a resposta ao modelo", async () => {
+    let answer: (value: unknown) => void = () => {}
+    const order: string[] = []
+    const fetchMock = vi.fn(() => {
+      order.push("fetch")
+      return new Promise((resolve) => { answer = resolve })
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      const { transport, socket } = await connectedTransport()
+      if (!socket) throw new Error("o transporte não abriu o socket")
+      await transport.startTurn()
+      transport.endTurn()
+      await replyArrives(socket, "Vou consultar.")
+      vi.mocked(events.onToolActivity).mockImplementation((phase) => { order.push(phase) })
+      vi.mocked(events.getToolCallContext).mockReturnValueOnce({ conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-abc", utterance: "qual o TMA?" })
+      socket.receive({ toolCall: { functionCalls: [{ id: "c1", name: "consultar", args: { query: "TMA" } }] } })
+      await tick()
+      expect(order).toEqual(["started", "fetch"])
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body) as Record<string, unknown>
+      expect(body).toMatchObject({ toolName: "consultar", query: "TMA", conversationId: "33333333-3333-4333-8333-333333333333", turnId: "voice-turn-abc", utterance: "qual o TMA?" })
+      expect(JSON.stringify(body)).not.toMatch(/activity|progress|status/i)
+      answer({ ok: true, json: async () => ({ data: { text: "TMA 320 s", modelText: "TMA 320 s" } }) })
+      await tick()
+      await tick()
+      expect(order).toEqual(["started", "fetch", "finished"])
+      expect(socket.sent.at(-1)).toEqual({ toolResponse: { functionResponses: [{ id: "c1", name: "consultar", response: { result: "TMA 320 s" } }] } })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("consulta de uma resposta interrompida: o fim dela não mexe no indicador do que veio depois", async () => {
+    let answer: (value: unknown) => void = () => {}
+    vi.stubGlobal("fetch", vi.fn(() => new Promise((resolve) => { answer = resolve })))
+    try {
+      const { transport, socket } = await connectedTransport()
+      if (!socket) throw new Error("o transporte não abriu o socket")
+      await transport.startTurn()
+      transport.endTurn()
+      await replyArrives(socket, "Vou consultar.")
+      socket.receive({ toolCall: { functionCalls: [{ id: "c1", name: "consultar", args: { query: "TMA" } }] } })
+      await tick()
+      transport.interruptResponse()
+      answer({ ok: true, json: async () => ({ data: { text: "tarde demais" } }) })
+      await tick()
+      await tick()
+      expect(vi.mocked(events.onToolActivity).mock.calls).toEqual([["started"]])
     } finally {
       vi.unstubAllGlobals()
     }

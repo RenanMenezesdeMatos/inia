@@ -281,6 +281,63 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
   pilha isolada (Playwright, `inia_hsbench`, IA falsa; foco simulado com `hasFocus`/`blur`): toast + selo + som com a sala fechada,
   "Abrir conversa" abre a sala, título com o nome e som fora da vista dos dois lados, nada com o Anjo olhando. Sem notificação do sistema
   operacional (pediria permissão do navegador): fica como possível próximo passo.
+- **Área do Anjo como aba do perfil e indicador de não lidas (pedido do responsável em 2026-11-11, sem migration)**: a área saiu da
+  rota própria e do seletor de área e virou a aba **"Apoio"** do próprio perfil, a ÚLTIMA (depois de Organograma), só para quem tem
+  `canAttendHumanSupport` (`profileTabsFor(..., anjo)`); `/apoio` redireciona para `<perfil>?tab=apoio`. A aba monta na primeira vez
+  que é aberta e fica montada escondida (rascunho e posição ficam); a aba interna passou a `?apoio=historico` (o `tab` é do perfil).
+  - **Conexão no shell** (`queries/human-support/anjo-workspace-provider.tsx`, `AnjoWorkspaceProvider` em volta do cabeçalho e do
+    conteúdo): a chamada longa `workspace=anjo`, a trava de aba única, o som e o título piscando saíram da tela e vivem no app inteiro.
+    Motivo: com a área numa aba, trocar para Acompanhamento derrubaria a conexão e, depois da carência, os atendimentos voltariam à fila.
+    Só liga depois de a pessoa abrir a aba "Apoio" nesta aba do navegador (`arm`, marcado em `sessionStorage` — sobrevive a recarregar;
+    outra aba do INIA aberta por acaso não toma a trava). Conferido: na tela de Diagnóstico o `lease_until` continuou renovado.
+  - **Não lidas pelo servidor**: `AnjoAttendanceView.unreadCount` = mensagens do operador com `seq > anjo_read_seq` (marcas da 184),
+    em `state-service.ts › loadAnjoView`. Ler (`acknowledgeMessages` com `readSeq` avançando) agora sobe também a versão da PRÓPRIA
+    ponta, para o contador zerar na hora. Na área, o atendimento à vista conta como visto sem esperar a volta (`unreadById`); o provedor
+    sabe o que está à vista (`setViewing`) e não toca som para ele.
+  - **Indicador**: número na aba "Apoio" (tom primário; sem mensagem nova, ponto para "atendimento sem resposta") e o atalho
+    `anjo/anjo-shortcut.tsx` no cabeçalho, ao lado do sino, no mesmo visual dele (número vermelho ou ponto), com o nome acessível
+    "Área do Anjo — 1 atendimento em andamento, 2 mensagens novas…"; some com a área na tela (`areaVisible`).
+  - **Estado na aba desde a entrada** (mesmo dia, pedido do responsável): selo colorido com o ícone do estado ao lado de "Apoio" —
+    Disponível = verde + `CircleCheck`, Em pausa = âmbar + ícone do motivo, Indisponível = vermelho + `CircleStop` (`presenceIcon` e
+    `STATUS_TONE` de `anjo/presence-icons.ts`, os mesmos do cartão "Seu estado") —, e o NOME e o ÍCONE da aba na cor do estado, também
+    com ela aberta (`STATUS_TEXT`: claro `emerald-700` / `yellow-700` / `red-700`, escuro `emerald-400` / `yellow-400` / `red-400`; o
+    amarelo do claro é o mostarda porque um amarelo mais claro não passa do contraste mínimo de leitura — o `amber-700` ficou laranja
+    demais na conferência), texto para leitor de tela e dica (`anjoStatusText`
+    em `profile-tabs.tsx`: estado, o que significa e a programação). Para saber o estado sem conectar, a chamada de estado ganhou
+    `workspace=anjo-status` (devolve a visão do Anjo sem `renewAnjoLease`); o provedor a usa ao entrar, ao voltar para a aba do
+    navegador e a cada minuto enquanto a conexão não está nesta aba. Se a leitura mostra o Anjo em serviço ou com atendimento, o
+    provedor liga a conexão (`arm`) sozinho. A dica fica num invólucro em volta da aba: o `TooltipTrigger asChild` gravaria o próprio
+    `data-state` na aba e apagaria o "active" (teste "a dica da aba Apoio não apaga o destaque" falha sem o invólucro).
+  - **Provas**: `anjo-workspace-provider.test.tsx` (lê o estado sem conectar; Indisponível fica desligado e em serviço liga sozinho; só liga depois de abrir; volta armado ao recarregar; som e título com atendimento
+    novo e mensagem nova; nada com o atendimento à vista), `anjo-shortcut.test.tsx`, `profile-tabs.test.tsx`, `anjo-workspace.test.tsx`
+    (embutida, `arm`, `setViewing`, contagem do servidor) e o cenário 184 de `human-support-proof` (`unreadCount` 1 → entregue continua
+    1 → lida 0 e a versão do próprio Anjo sobe; mensagem do próprio Anjo nunca conta). Conferido no navegador na pilha isolada
+    (`inia_hs188ui`): redirecionamento de `/apoio`, contador 2 na aba e no atalho a partir de Indicadores, atalho em Diagnóstico com a
+    conexão viva, atalho leva à área, contador zera ao ler (`anjo_read_seq` = última), celular sem rolagem lateral; depois, entrada com o
+    Anjo Indisponível (selo vermelho, dica, `lease_until` continua nulo), Disponível (verde), Em pausa · Lanche (âmbar, aba ativa
+    destacada) e recarregar em pausa sem a marca da aba (a conexão ligou sozinha). Prova no banco: `anjo-status` não renova o `lease`.
+- **Som em toda mensagem, entregue pela conexão, "Em atendimento" e "Enviar avaliação" (pedido do responsável em 2026-11-11)**:
+  - **Som**: toda mensagem recebida toca, dos dois lados, também com a conversa na tela (antes só fora da vista). Operador
+    (`use-human-support-state.tsx`): um som por navegador (a aba vista; sem nenhuma, a líder); só o aviso "Abrir conversa" continua
+    condicionado à sala fechada; mensagem que JÁ chega lida pelo servidor (`readSeq`, lida em outro aparelho) não toca. Anjo
+    (`anjo-workspace-provider.tsx`): o contador do servidor subiu = som; o `setViewing` que silenciava o atendimento à vista saiu.
+  - **Entregue do lado do Anjo** (defeito do passo anterior, corrigido): com a conexão no shell, a área podia nem estar montada, e o
+    "entregue" só saía quando ela lia as mensagens — o operador ficava com um tique só. Agora o provedor confirma `deliveredSeq =
+    lastSeq` de cada atendimento a cada estado (`acknowledgeOnce`, só quando avança). Lida continua sendo da área na tela.
+  - **Validado com duas contas reais** (pilha isolada, Anjo em `127.0.0.1:3621` e operadora em `localhost:3622`, cada um com a própria
+    sessão; API com `CORS_ORIGIN` das duas): 1ª mensagem com o Anjo na aba Apoio = lida (dois azuis); 2ª com o Anjo em Indicadores =
+    `anjo_delivered_seq 4`, `anjo_read_seq 3`, dois cinza na tela da operadora, "1" na aba e no atalho e o som do Anjo (contador de
+    tons do `AudioContext` 4 → 6); Anjo volta à aba = número some, atalho some, as duas viram lidas; resposta do Anjo com a sala da
+    operadora aberta = som da operadora (0 → 2) e "Lida" para o Anjo. Atenção: no painel do navegador do app, a aba de FUNDO se declara
+    `visible` + `hasFocus` — para separar entregue de lida na conferência, tire a área da tela (outra aba do perfil), não a aba do navegador.
+  - **"Em atendimento" na aba**: azul (`sky-700` / `sky-400`) com `Headset`, quando Disponível com atendimento aberto — a mesma regra do
+    painel "Situação dos Anjos agora"; em pausa continua "Em pausa". `anjoStatusOf` em `profile-tabs.tsx` (estilos por estado em
+    `STATUS_STYLE`); a contagem vem do provedor (da conexão ou da leitura sem conexão).
+  - **Avaliação**: escolher só marca; "Enviar avaliação" grava resposta e estrelas numa chamada, mostra "Avaliação enviada. Obrigado!",
+    e na sala volta para a INIA com o mesmo aviso; já enviada, "Atualizar avaliação" (ativo só com mudança). Teste
+    `support-evaluation.test.tsx` (nenhuma gravação antes do envio; uma chamada com as duas respostas). Conferido: nada gravado antes do
+    clique, `YES|5` depois. O selo "encerrado — avalie" que continuou na conferência era de OUTRAS duas avaliações sem resposta do banco
+    de teste (correto).
 - **Pausa e indisponibilidade programadas (pedido do responsável em 2026-11-11, migration 188)**: sem atendimento em andamento, pausa
   e Indisponível valem na hora (como antes). COM atendimento, "Pausa" (estando Disponível) e "Ficar indisponível" (Disponível ou Em
   pausa) viram PROGRAMAÇÃO — antes a pausa entrava na hora e Indisponível era recusado com 409 `HUMAN_SUPPORT_ACTIVE_ATTENDANCES`
@@ -337,5 +394,156 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
     `SESSION_IDLE` forçado → login com `voltar=/apoio`. Senha descartável só nesse clone (Anjo `supervisor02.demo`, operadoras
     `camila.pereira` e `ana.lima`). A 188 está aplicada em `inia` (dev) e `inia_test`. Não conferido no navegador: queda além da
     carência e inatividade (só na prova no banco), celular e tema claro.
+- **Transferência de atendimento pela coordenação (pedido do responsável em 2026-11-11, migration 190)**: quando o Anjo precisa sair,
+  o operador não fica sem atendimento. No painel (Monitoramento › Apoio com Anjo), pedido EM ATENDIMENTO → "Transferir atendimento".
+  - **Quem**: Coordenador de Anjos nos pedidos do alcance dele e Administrador geral (`human_support.coordinate`); fora do alcance o
+    pedido "não existe" (404). O próprio Anjo não transfere nem devolve.
+  - **Para onde**: um Anjo que pode receber AGORA — a mesma regra da distribuição (`domain/transfer.ts` usa `canReceiveAssignment`:
+    papel cobrindo o Grupo/Subgrupo do pedido, Disponível, com a área aberta, sem pausa/indisponibilidade programada, com vaga, nunca o
+    próprio operador nem o Anjo atual); os outros aparecem DESABILITADOS com o motivo (`TRANSFER_NOT_ELIGIBLE_TEXT`). Sem nenhum, a
+    opção "Devolver à frente da fila": mantém o `queued_at` (volta na frente), prazo de fila novo e `avoid_anjo_person_id` (a
+    distribuição não o devolve ao Anjo que saiu). Destino escolhido por padrão: o primeiro que pode receber (lista do mais livre);
+    sem nenhum, a fila.
+  - **Motivo**: obrigatório, 3–500 caracteres (aparado no serviço e na rota), guardado em `human_support_transfers` e na auditoria
+    (`HUMAN_SUPPORT_ATTENDANCE_TRANSFERRED`); NUNCA chega ao operador.
+  - **O que acontece** (`application/transfer-service.ts`, uma transação sob a trava da organização): o atendimento atual termina
+    com a causa `TRANSFERRED` — sem classificação nem avaliação (como `ANJO_LOST`: `UNFINISHED_ATTENDANCE_END_CAUSES`), fora das
+    durações e do "encerrado sem interrupção" das métricas, rótulo "Transferido pela coordenação"; se era o último do Anjo, a pausa ou
+    indisponibilidade programada dele entra. Mesmo pedido, protocolo, mensagens e recibos; na transferência direta, atendimento NOVO
+    para o outro Anjo (prazo de inatividade recomeça), evento `IN_PROGRESS → IN_PROGRESS` com causa `TRANSFERRED` e registro LGPD de
+    que o novo Anjo passou a ler a conversa (depois do commit). Na devolução, evento para `WAITING` e a distribuição roda em seguida.
+  - **Textos** (mensagens de sistema por leitor): `ANJO_TRANSFERRED` — operador "Seu atendimento foi passado para X (Anjo), que
+    continua a conversa daqui."; novo Anjo "Você recebeu este atendimento por transferência da coordenação. A conversa anterior está
+    acima."; painel "Atendimento transferido para X pela coordenação.". `TRANSFER_REQUEUED` — operador "Seu atendimento voltou para a
+    frente da fila: outro Anjo vai continuar a conversa.". O novo Anjo lê o histórico inteiro; as mensagens de sistema do atendimento
+    de OUTRO Anjo ele lê em terceira pessoa (`loadMessageViews` com `anjoPersonId`).
+  - **Rotas**: `GET /api/v1/admin/human-support-monitoring/requests/:id/transfer-candidates` e `POST …/requests/:id/transfer`
+    (`{ toAnjoPersonId: uuid | null, reason }`; recusas 409 `HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS | _SAME_ANJO |
+    _TARGET_UNAVAILABLE`, catálogo de erros regenerado). Interface: `monitoring/transfer-dialog.tsx` no cabeçalho do pedido.
+  - **Atenção na devolução à fila**: vale a regra de abandono de sempre — se o operador saiu da tela (presença do operador vencida,
+    `operator_seen_at` é renovado também durante o atendimento), a distribuição seguinte encerra o pedido como ABANDONADO. Visto no
+    navegador com a operadora de teste offline; com o operador presente, a prova mostra o pedido indo para outro Anjo.
+  - **Provas**: `domain/transfer.test.ts`; cenário "transferência pela coordenação (190)…" em `human-support-proof` (17 cenários:
+    recusas, 404 fora do alcance, registro e auditoria, LGPD, pausa programada do Anjo que saiu entrando, textos sem o motivo,
+    terceira pessoa, sem classificação/avaliação, devolução indo para outro Anjo com o mesmo `queued_at`); `transfer-dialog.test.tsx`.
+    No navegador (`inia_hs188ui`, coordenador `supervisor03.demo`, Anjos `supervisor02/04/05.demo` com senha descartável só nesse
+    clone): diálogo com o livre marcado, pausado e atual desabilitados, transferência direta e devolução à fila conferidas no banco.
+    Não conferido no navegador: a visão do operador e do novo Anjo depois da transferência (só na prova), celular e tema claro.
+  - **Ordem na VM** (a 190 só acrescenta: causa e códigos novos nos checks, coluna anulável e tabela nova; o código anterior funciona
+    com ela aplicada): mesma receita da 188 — backup; `db:migrate` com o código novo copiado; conferir `max(name)` =
+    `190_human_support_transfers.sql` (a 171, a 188 e a 189 vêm antes, se ainda não estiverem lá); publicar API e worker e depois a
+    interface. A 190 está aplicada em `inia` (dev), `inia_test` e `inia_hs188ui`.
+- **Histórico de indicadores e painel em tempo real da operação do Anjo (pedido do responsável em 2026-11-11, migration 191)**.
+  - **Decisões do responsável (11/11)**: a atribuição continua DIRETA (D2 mantida: o acolhimento é a atribuição — não há oferta, aceite,
+    prazo de oferta nem oferta expirada; "tempo de acolhimento" não se aplica e o tempo até a 1ª resposta mede a demora real);
+    "online" = a área do Anjo aberta com sessão válida; pertinência = campo novo da classificação.
+  - **Comportamento encontrado antes**: a conexão (`lease_until`, 75 s, renovada só pela chamada de estado com `workspace=anjo`) só era
+    registrada como evento com o Anjo Disponível/Em pausa ou com atendimento; vencida a conexão, o operador era avisado e, 3 min depois,
+    o atendimento era Interrompido (`ANJO_LOST`) e voltava à frente da fila (mesmo `queued_at`) e o Anjo ficava Indisponível
+    (`LEASE_EXPIRED`). Sessão expirada (401) caía no MESMO caminho, sem distinção. A janela de recuperação já existia: até 75 s + 3 min a
+    reconexão mantém o atendimento ("O Anjo voltou"); passou disso, interrompe. Não havia nada para separar indisponível voluntário de
+    offline, nem pertinência, nem o "sem Anjo logado".
+  - **O que mudou (191, só acrescenta)**: conexão registrada em QUALQUER estado, no instante real (`CONNECTION_LOST`/`SESSION_ENDED`
+    com o `lease_until`; `CONNECTION_RESTORED` com a renovação; abrir a área de novo também conta); a presença guarda a sessão que
+    renovou (`session_jti`, `session_account_id`, `session_expires_at`) e `auth/application/session-ended.ts` diz se ela já tinha
+    terminado (prazo do login, logout, inatividade, conta desligada) → `SESSION_ENDED`; o atendimento interrompido ganha
+    `lost_cause` (CONNECTION | SESSION | ROLE_REVOKED); o pedido que sai da fila sem atendimento (expirado, abandonado, cancelado pelo
+    operador ou pelo escopo) guarda `anjos_in_service_at_end`; a classificação ganha `pertinence` (a tela pede a escolha; sem ela =
+    Não avaliado). O último evento de conexão é lido pela ORDEM DE GRAVAÇÃO (`id`), não pelo horário.
+  - **Jornada** (`domain/journey.ts`, pura): estados exclusivos com precedência offline (sem conexão; Indisponível do sistema; ou
+    Indisponível declarado antes da 191) > em atendimento (sobrepostos uma vez) > em pausa (por tipo) > indisponível voluntário >
+    disponível. Base = disponível + atendimento + pausa + indisponível voluntário; dias cortados à meia-noite no fuso da organização
+    (`generate_series` + `analytics_org_timezone` no banco) e no filtro/agora; percentuais do período = soma das durações ÷ soma das
+    bases; média diária entre os dias com tempo online. Critério das 8 h provado (37,5 / 21,875 / 75 / 3,125).
+  - **Indicadores de atendimento** (`domain/attendance-indicators.ts`, puros): espera do operador (`created_at` → 1º acolhimento),
+    1ª resposta, TMA (concluídos × outros por causa), motivos com "Sem classificação" (interrompidos e transferidos fora), pertinência
+    sobre os avaliados, falta de retorno (INACTIVITY ÷ encerrados sem os transferidos; de quem faltou pela última mensagem humana),
+    abandono depois do acolhimento (`OPERATOR_ABSENT`), interrupções por causa; da operação: sem Anjo logado (`anjos_in_service_at_end`
+    = 0; null = sem registro), abandono antes do acolhimento (fechou a INIA / cancelou), expirados.
+  - **Onde**: `application/operation-history.ts` (COORDENAÇÃO: alcance D11, filtro de Anjo, consolidado e operação, registro LGPD;
+    SELF: só o próprio). Rotas `GET /api/v1/admin/human-support-monitoring/history` e `GET /api/v1/human-support/anjo/history`;
+    "agora": `GET …/anjos/now` ganhou `connection`, `scheduled` e `queue` (aguardando desde a entrada original; acolhidos sem 1ª
+    resposta) e `GET /api/v1/human-support/anjo/operation-now` dá o mesmo para os escopos do próprio Anjo. Tela: aba "Jornada e
+    atendimentos" no painel (`components/human-support/history/*`), abas "Operação agora" e "Sua jornada" na área do Anjo; "Situação
+    agora" com 5 estados (Indisponível × Offline), sessão encerrada, programação, pausas por tipo e a fila; atualiza a cada 5 s e ao
+    voltar conexão/foco. Foto: o Anjo recebe `operatorAvatarUrl` (cabeçalho e mensagens do operador); o operador já via a do Anjo.
+  - **Cobertura**: base (atendimentos, pausas, disponibilidade) desde a 182; indisponível voluntário × offline, sessão encerrada,
+    `lost_cause`, "sem Anjo logado" e pertinência desde a data em que a 191 foi aplicada no banco (`schema_migrations.applied_at`,
+    mostrada na tela). Antes dela, Indisponível conta como offline.
+  - **Provas**: `journey.test.ts` (8 h, meia-noite, simultâneos, programada, queda, cobertura, vários dias), `attendance-indicators.test.ts`
+    e o cenário "histórico da operação (191)" em `human-support-proof` (18 cenários; mutação na cobertura conferida): direto com foto
+    e 35 s/4 min, falta de retorno, fila sem elegível + abandono antes (1 em serviço), abandono depois, programação na situação agora,
+    painel do Anjo sem outro Grupo, queda de rede (causa, sem Anjo logado = 0, volta no instante da renovação), sessão encerrada,
+    jornada pelo banco com meia-noite e cobertura, permissões (Coordenador do G1 → 404 no Anjo do G2). Navegador (`inia_hs188ui`):
+    painel com fila e 5 estados, aba "Jornada e atendimentos" com detalhe por Anjo, área do Anjo com foto do operador, "Operação
+    agora" e "Sua jornada". Não conferido no navegador: aceite concorrente (não existe aceite — a atribuição única já é provada pela
+    distribuição sob a trava), celular e tema claro.
+  - **Limitação**: com transferência, as mensagens do Anjo anterior aparecem ao operador com a foto do Anjo atual.
+  - **Ajustes do responsável (11/11, mesma data, depois da entrega acima — valem sobre ela)**:
+    - **Nomes**: Monitoramento › "Painel dos Anjos"; Plataforma › "Configuração dos Anjos" (antes os dois eram "Apoio com Anjo").
+    - **"Operação agora" só da coordenação** (Coordenador de Anjos e Administrador geral): a aba saiu da área do Anjo e a rota
+      `GET /human-support/anjo/operation-now` foi APAGADA (o servidor também não serve). No painel, a seção "Situação agora" virou
+      "Operação agora"; o indicador de fila, com fila, abre a tabela de quem aguarda (`GET …/human-support-monitoring/queue`:
+      operador, Grupo › Subgrupo, protocolo, "voltou à fila", há quanto tempo desde a entrada original).
+    - **Indisponível = offline**: um estado só no rótulo, nas contagens, nos filtros e na jornada. A jornada perdeu o "indisponível
+      voluntário": tempo ONLINE (base) = Disponível + Em atendimento + Em pausa; Indisponível (declarado, sem conexão ou sessão
+      encerrada) fica fora e aparece só em horas na tabela do dia de UM Anjo. O critério antigo das 8 h (3,125% indisponível) não vale
+      mais; o teste usa 8 h online (37,5 / 37,5 / 25 / 75) e prova que 15 min Indisponível saem da base.
+    - **Login não deixa Disponível**: `SESSION_ENDED` agora também é causa de ESTADO — a distribuição põe o Anjo Indisponível na hora
+      em que a sessão que mantinha a área já tinha terminado; e `state-service.ts › closeEndedSession` faz o mesmo quando OUTRA sessão
+      abre a área e a anterior já terminou (logout e login antes de a conexão vencer). Outra sessão válida (duas abas) não muda nada.
+      Atendimentos abertos seguem a regra de reconexão (3 min). Provado no banco (cenários 7b e 7c) e no navegador (`inia_hs188ui`:
+      sessão do Ricardo expirada por inatividade → login → Indisponível com o pedido na fila parado → "Ficar disponível" → recebeu).
+    - **Cronômetro**: Disponível sem atendimento conta do fim do último atendimento, se veio depois da última troca de estado
+      (`loadAnjoView`).
+    - **Indicadores × Jornada sem repetição**: Indicadores = a operação (nova seção "Acionamentos do período", `GET …/demand` e
+      `domain/demand.ts`: produtivos × não produtivos pela pertinência, clicável e filtrando a seção; curva por hora local; espera
+      por dia com média/p50/p90; top 5 operadores, Grupos e Subgrupos; sem Anjo logado, abandonos e expirados) + os cartões M1–M17 que
+      já existiam. Jornada e atendimentos = as pessoas (tempo online de todos e de cada Anjo em gráfico empilhado por dia; tabela por
+      Anjo; detalhe do Anjo com motivos e pertinência DELE). Saíram da Jornada o bloco "Operação no período", os indicadores de
+      atendimento consolidados e o ranking consolidado de motivos (já cobertos pelos cartões de Indicadores).
+    - **Nomes dos tempos**: a coluna "Tempo médio" era a duração média dos atendimentos → "Tempo médio de atendimento" (acolhimento →
+      encerramento). "Tempo médio de acolhimento" = da atribuição à PRIMEIRA RESPOSTA do Anjo (com a atribuição direta, o instante
+      do acolhimento coincide com a atribuição; o que mede a demora real é a primeira resposta). Dicas ⓘ (`history/term-hint.tsx`)
+      em Online, Disponível, Em atendimento, Indisponível, Dia produtivo e nos tempos médios.
+    - **Reorganização de 12/11**: o trabalho do Anjo fica SÓ em "Jornada e atendimentos": nova "Visão geral — todos os Anjos" com
+      os 8 cartões de atendimento somados (`AttendanceBlock scope="all"`), os cartões M14 (motivos, com as ferramentas citadas) e M15
+      (resultado) reaproveitados do funil (`ANJO_WORK_MEASURES`, `MeasureCard`) e o tempo online. Indicadores perdeu os cartões
+      M12–M15 (o resumo do topo continua com a mediana da 1ª resposta). A tabela por dia ficou recolhida sob o gráfico.
+    - **Filtros de "Por Anjo" (12/11)**: nome, Grupo, Subgrupo e a linha de chefia ATUAL do Anjo — supervisor, coordenador, gerente,
+      gerente sênior: o líder mais próximo de cada cargo subindo por `reports_to_id` (a própria pessoa, se tem o cargo), a mesma regra
+      do ranking de uso de IA. O servidor manda `structure` por Anjo só na visão da coordenação (`operation-history.ts ›
+      loadStructures`); o filtro é na tela e vale só para a lista "Por Anjo" (a visão geral continua de todos do alcance).
+    - **Online × histórico (12/11)**: a aba "Anjos" virou **Monitoria Online** (`online-monitoring-tab.tsx`): só o agora — "Operação
+      agora" e os **abandonos de hoje** (relidos a cada 5 s), sem seletor de período (só Grupo/Subgrupo para o Administrador geral).
+      A tabela "Operadores na fila" (quem aguarda e há quanto tempo) fica SEMPRE à vista logo abaixo dos indicadores da fila (antes só
+      abria clicando no indicador).
+      Todos os tempos da Monitoria Online são CRONÔMETROS AO VIVO (`monitoring/live-timer.tsx`, reaproveita `useElapsed` e
+      `formatElapsed` da área do Anjo): o servidor manda só o instante de início e o próprio relógio; o navegador conta a cada segundo
+      (só o cronômetro redesenha), sem consulta nova — os dados seguem relidos a cada 5 s. Formato "05:07" e "1:25:07".
+      Tudo o que é histórico fica nas abas com período. A antiga tabela "No período" (M18, `anjos-activity-tab.tsx`) foi APAGADA da tela
+      e a rota `GET …/anjos` removida (a função `anjosActivity` segue só para a prova); o que só ela tinha foi para a Jornada: estrelas
+      (média com 5 notas ou mais, `attendance.stars`) na tabela e no detalhe, e a linha do tempo da presença no detalhe do Anjo.
+    - **Visão personalizável (12/11)**: as três abas (Indicadores `anjos.indicadores`, Monitoria Online `anjos.monitoria-online`,
+      Jornada e atendimentos `anjos.jornada`) usam o padrão do kit `CustomizableView` (ver "Painel personalizável" em
+      `visual-do-app.md`): cada cartão, gráfico e tabela é um card do catálogo (`useOperationNowSection`, `useAbandonmentSection`,
+      `useDemandSection`, `summaryCards`, `attendanceMetricCards`, `journeyTileCards`); a disposição fica por pessoa (migration 192).
+      Na Jornada as áreas são "Atendimentos — todos os Anjos", "Principais motivos de acionamento", "Tempo online — todos os Anjos" e
+      "Por Anjo" (o detalhe do Anjo não é personalizável).
+    - **Abandonos** (`domain/abandonment.ts`, `GET …/abandonment`, `history/abandonment-block.tsx`): o mesmo bloco em Indicadores (período)
+      e na Monitoria Online (hoje). Na espera (coorte dos pedidos criados no recorte): fechou a INIA + cancelou; expirado à parte. No
+      atendimento (coorte dos acolhidos no recorte, encerrados, sem transferidos): operador saiu da INIA / parou de responder; Anjo caiu
+      (rede, sessão, papel) / parou de responder. Encerramento normal nunca conta. Em Indicadores, os cartões de abandono e expirados
+      saíram do bloco da fila de "Acionamentos" para não repetir.
+    - **Visual da Jornada (12/11, "cinza sobre cinza")**: nada de painel `muted` em volta de cartões. Cada bloco ("Visão geral — todos
+      os Anjos", "Por Anjo") tem cabeçalho forte (`BlockHeader`: ícone tingido, `h2`, descrição) e divisória entre eles; os grupos
+      (Atendimentos, Principais motivos, Tempo online) têm `SubHeading` (rótulo em caixa alta + linha). Cartões brancos (`SURFACE_CARD`)
+      direto na página; o gráfico e a tabela do dia num cartão branco próprio; o Anjo escolhido com faixa roxa à esquerda, foto, nome e
+      "Fechar".
+    - **Gráficos** (kit `components/ui/chart.tsx`, modelo shadcn): acionamentos por hora, espera por dia (segundos quando curta,
+      minutos senão) e tempo online por dia empilhado.
+  - **Ordem na VM**: como a 188/190 — backup; `db:migrate` (171, 188, 189, 190, 191 e 192 antes do código); conferir `max(name)` =
+    `191_human_support_operation_history.sql`; publicar API e worker e depois a interface. A 191 está em `inia` (dev), `inia_test` e
+    `inia_hs188ui`.
 - **Não conferido no navegador**: aba oculta (som e título ao chegar atendimento), "Reconectando…" com a API fora do ar e várias APIs
   atrás do IIS (o script de chamada longa no IIS segue pendente antes do piloto).

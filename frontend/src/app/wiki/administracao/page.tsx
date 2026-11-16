@@ -86,12 +86,14 @@ export default function AdministrationPage() {
           conversa com a INIA (chat, voz, “Ouvir com a INIA” e chat sem Orquestrador). Para limitar um Agent específico, use os{" "}
           <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink> no próprio Agent — os dois se somam.{" "}
           <strong className="font-medium text-foreground">Glossário geral</strong> define termos e como aplicá-los no feedback, independentemente de
-          grupo ou assunto. O motor de feedback (“Gerar feedback”) usa regras próprias e não lê assuntos proibidos nem limites de atuação.
+          grupo ou assunto. A análise e o redator do motor de feedback (“Gerar feedback”) não leem assuntos proibidos nem limites de atuação; a mensagem
+          pronta é conferida contra eles.
         </p>
         <p>
           A aba <strong className="font-medium text-foreground">Conferência das respostas</strong> mostra o que foi bloqueado antes da entrega, o que só
           foi detectado depois dela e quando a conferência falhou, com um resumo dos últimos 30 dias. Ela usa as regras já cadastradas aqui e nos Agents:
-          nada se cadastra de novo. Só quem tem alcance de organização vê esse registro. Ver{" "}
+          nada se cadastra de novo. Só quem tem alcance de organização vê esse registro, e o texto de feedbacks, reports, intervenções e boas práticas fica
+          na origem, com quem já pode lê-la. Ver{" "}
           <WikiLink href="/wiki/seguranca#ia">IA e segurança</WikiLink>.
         </p>
         <p>

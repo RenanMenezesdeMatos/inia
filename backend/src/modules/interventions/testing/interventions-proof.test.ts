@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import pg from "pg"
 import request from "supertest"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import { env } from "../../../config/env.js"
 import { createApp } from "../../../main/app.js"
 import { setProofAccountPassword } from "../../auth/testing/proof-account-password.js"
@@ -150,6 +150,18 @@ function contextFor(enrollmentId: string, personId: string, effects = production
 }
 
 const count = async (table: string, personId: string) => Number((await pool.query<{ n: number }>(`select count(*)::int n from ${table} where person_id = $1`, [personId])).rows[0]!.n)
+
+const compliance = vi.hoisted(() => ({ reply: null as null | ((system: string) => string) }))
+vi.mock("../../../shared/application/model-routing/llm-gateway.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../shared/application/model-routing/llm-gateway.js")>()
+  const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0, thinkingTokens: 0 }
+  const generateForRoute = async (gatewayRequest: Parameters<typeof original.generateForRoute>[0]) => {
+    if (gatewayRequest.classification?.purpose !== "RESPONSE_COMPLIANCE") return original.generateForRoute(gatewayRequest)
+    if (!compliance.reply) throw new Error("provedor fora")
+    return { kind: "text", text: compliance.reply(gatewayRequest.systemPrompt ?? ""), usage, durationMs: 1, model: "simulado", cache: { cacheable: false, hit: false } }
+  }
+  return { ...original, generateForRoute }
+})
 
 describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — percurso completo (banco de teste real)", () => {
   beforeAll(async () => {
@@ -421,8 +433,33 @@ describe.skipIf(!ENABLED)("Políticas de acompanhamento e intervenções — per
     expect(failed).toMatchObject({ status: "FAILED", attempt: 1 })
     const invented = await generateReportNarrative(pool, { organizationId: ORG, reportId: report }, async () => JSON.stringify({ situation: { text: "Situação com fato inventado F99 e mais texto.", refs: ["F99"] }, analysis: [{ text: "Análise que cita fonte inexistente no relatório.", refs: ["S77"] }], hypotheses: [], leaderGuidance: [] }))
     expect(invented).toMatchObject({ status: "FAILED", attempt: 2 })
+    // PEN-018: a narrativa recebe a regra na instrução e é conferida antes de ficar pronta. Barrada ou sem conferência, é uma tentativa com falha, e o relatório não muda.
+    const VALID_NARRATIVE = JSON.stringify({ situation: { text: "A colaboradora ficou no pior quartil oficial nos dois últimos fechamentos.", refs: ["F1"] }, analysis: [{ text: "O resultado oficial sustenta abrir o plano; não há diagnóstico de causa.", refs: ["F1", "S1"] }], hypotheses: [{ text: "Pode haver concentração em atendimentos longos.", refs: ["F1"], toConfirm: "Investigar a composição das chamadas." }], leaderGuidance: [{ action: "A1", text: "Aprove o plano e acompanhe o checkpoint." }] })
+    const TOPIC = "Prova Intervenção · Regra"
+    await pool.query(`insert into prohibited_topics (organization_id, name, required_behavior) values ($1, $2, 'Não orientar sobre o tema.')`, [ORG, TOPIC])
+    vi.stubEnv("INIA_RESPONSE_CHECK_CONTENT", "ENFORCE")
+    const systems: string[] = []
+    const writer = async (input: { system: string }) => {
+      systems.push(input.system)
+      return VALID_NARRATIVE
+    }
+    compliance.reply = (system) => JSON.stringify({ verdict: "VIOLATION", violated: [new RegExp(`(R\\d+) \\[Assunto proibido\\] ${TOPIC}`).exec(system)![1]], excerpt: "pior quartil oficial", reason: "Apontamento da prova." })
+    const blocked = await generateReportNarrative(pool, { organizationId: ORG, reportId: report }, writer)
+    expect(blocked).toMatchObject({ status: "FAILED", attempt: 3 })
+    expect(blocked.error).toContain(TOPIC)
+    expect(systems[0]).toContain(TOPIC)
+    compliance.reply = null
+    expect(await generateReportNarrative(pool, { organizationId: ORG, reportId: report }, writer)).toMatchObject({ status: "FAILED", attempt: 4 })
+    const registry = (await pool.query<{ outcome: string; action: string; control: string; flagged_content: string | null; reason: string | null }>(`select outcome, action, control, flagged_content, reason from response_compliance_checks where surface = 'INTERVENTION_NARRATIVE' and source_ref = $1 order by created_at`, [report])).rows
+    expect(registry.map((row) => [row.outcome, row.action, row.control])).toEqual([["VIOLATION", "BLOCKED", "PREVENTIVE"], ["CHECK_FAILED", "BLOCKED", "PREVENTIVE"]])
+    expect(registry.every((row) => row.flagged_content === null)).toBe(true)
+    expect(registry[0]!.reason).toBeNull()
+    await pool.query(`delete from response_compliance_checks where source_ref = $1`, [report])
+    await pool.query(`delete from prohibited_topics where organization_id = $1 and name = $2`, [ORG, TOPIC])
+    vi.unstubAllEnvs()
+    expect(await count("interventions", ids.operator)).toBe(interventionsBefore)
     const ok = await generateReportNarrative(pool, { organizationId: ORG, reportId: report }, async () => JSON.stringify({ situation: { text: "A colaboradora ficou no pior quartil oficial nos dois últimos fechamentos.", refs: ["F1"] }, analysis: [{ text: "O resultado oficial sustenta abrir o plano; não há diagnóstico de causa.", refs: ["F1", "S1"] }], hypotheses: [{ text: "Pode haver concentração em atendimentos longos.", refs: ["F1"], toConfirm: "Investigar a composição das chamadas." }], leaderGuidance: [{ action: "A1", text: "Aprove o plano e acompanhe o checkpoint." }] }))
-    expect(ok).toMatchObject({ status: "READY", attempt: 3 })
+    expect(ok).toMatchObject({ status: "READY", attempt: 5 })
     expect(await count("interventions", ids.operator)).toBe(interventionsBefore)
     const structured = (await pool.query<{ n: number }>(`select count(*)::int n from intervention_reports where id = $1`, [report])).rows[0]!.n
     expect(structured).toBe(1)

@@ -125,7 +125,7 @@ const GROUPS: NavGroup[] = [
       { href: INIA_SUCCESS_PATH, label: "Indicadores de sucesso da INIA", icon: Goal, capability: "canViewIniaSuccess" },
       { href: "/admin/conversations", label: "Conversas com a INIA", icon: MessagesSquare, capability: "canViewAssistantConversations" },
       // Logo abaixo das conversas com a INIA (o apoio continua a conversa quando a INIA não resolve). Painel do apoio: funil das respostas da INIA e do apoio, pedidos, tentativas sem Anjo e atividade dos Anjos do escopo.
-      { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Apoio com Anjo", icon: LifeBuoy, capability: "canCoordinateHumanSupport" },
+      { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Painel dos Anjos", icon: LifeBuoy, capability: "canCoordinateHumanSupport" },
       // Contestações dos colaboradores sobre feedbacks da INIA ("não foi útil") — revisão humana com resposta.
       { href: "/admin/feedback-contestations", label: "Contestações de feedback", icon: MessageSquareWarning, capability: "canReviewFeedbackContestations" },
       { href: "/admin/usability", label: "Monitoria de usabilidade", icon: Activity, capability: "canViewUsability" },
@@ -137,8 +137,9 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/users", label: "Usuários e acessos", icon: Users, capability: "canOpenUsersAndAccess" },
       // Cenário atrás do avatar (padrão e sazonais) — só o Administrador geral.
       { href: "/admin/inia-scenes", label: "Cenário da INIA", icon: ImageIcon, capability: "canManageIniaScenes" },
-      // Chave geral, escopos (Grupo › Subgrupos) e capacidade dos Anjos — só o Administrador geral.
-      { href: HUMAN_SUPPORT_ADMIN_PATH, label: "Apoio com Anjo", icon: HeartHandshake, capability: "canManageHumanSupport" },
+      // Chave geral, escopos (Grupo › Subgrupos) e capacidade dos Anjos — só o Administrador geral. Nome diferente do painel em
+      // Monitoramento ("Painel dos Anjos") para a pessoa saber em qual área está (pedido do responsável em 2026-11-11).
+      { href: HUMAN_SUPPORT_ADMIN_PATH, label: "Configuração dos Anjos", icon: HeartHandshake, capability: "canManageHumanSupport" },
       // Catálogo de códigos de erro e ocorrências (código + referência copiados da tela) — escopo de organização.
       { href: ERROR_DIAGNOSTICS_PATH, label: "Diagnóstico de erros", icon: SearchCode, capability: "canViewErrorDiagnostics" },
     ],

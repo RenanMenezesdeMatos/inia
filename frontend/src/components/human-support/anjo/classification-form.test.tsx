@@ -38,6 +38,7 @@ describe("ClassificationForm", () => {
     await submit()
     expect(screen.getByText("Escolha o motivo do encaminhamento.")).toBeInTheDocument()
     expect(screen.getByText("Escolha o resultado do atendimento.")).toBeInTheDocument()
+    expect(screen.getByText("Diga se o acionamento foi pertinente (ou marque Não avaliado).")).toBeInTheDocument()
     expect(service.classifySupportAttendance).not.toHaveBeenCalled()
   })
 
@@ -69,10 +70,10 @@ describe("ClassificationForm", () => {
   })
 
   it("link só http(s)", () => {
-    const base = { reason: "NO_PROCESS" as const, title: "", description: "", outcome: "GUIDED" as const }
+    const base = { reason: "NO_PROCESS" as const, title: "", description: "", outcome: "GUIDED" as const, pertinence: "PERTINENT" as const }
     expect(validateClassification({ ...base, url: "javascript:alert(1)" }).errors.url).toBe("Use um endereço que comece com http:// ou https://.")
     expect(validateClassification({ ...base, url: "ftp://intranet/proc" }).input).toBeNull()
-    expect(validateClassification({ ...base, url: " https://intranet/proc " }).input).toEqual({ reason: "NO_PROCESS", outcome: "GUIDED", referenceUrl: "https://intranet/proc" })
+    expect(validateClassification({ ...base, url: " https://intranet/proc " }).input).toEqual({ reason: "NO_PROCESS", outcome: "GUIDED", pertinence: "PERTINENT", referenceUrl: "https://intranet/proc" })
   })
 
   it("envia o corpo limpo, avisa que foi enviada e atualiza as pendências", async () => {
@@ -81,8 +82,9 @@ describe("ClassificationForm", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Informação que poderia ter sido obtida pelo sistema ou por outra IA" }))
     fireEvent.change(screen.getByLabelText(TITLE), { target: { value: "  IAjuda  " } })
     fireEvent.click(screen.getByRole("radio", { name: "Orientado, depende de ação do operador" }))
+    fireEvent.click(screen.getByRole("radio", { name: "Não pertinente" }))
     await submit()
-    expect(service.classifySupportAttendance).toHaveBeenCalledWith("att-1", { reason: "AVAILABLE_ELSEWHERE", referenceTitle: "IAjuda", outcome: "GUIDED" })
+    expect(service.classifySupportAttendance).toHaveBeenCalledWith("att-1", { reason: "AVAILABLE_ELSEWHERE", referenceTitle: "IAjuda", outcome: "GUIDED", pertinence: "NOT_PERTINENT" })
     expect(screen.getByRole("status")).toHaveTextContent("Classificação de AP-7K2QX9 enviada.")
     expect(onDone).toHaveBeenCalled()
   })
@@ -92,6 +94,7 @@ describe("ClassificationForm", () => {
     const { onDone } = renderForm()
     fireEvent.click(screen.getByRole("radio", { name: "Falta de alinhamento ou orientação disponível" }))
     fireEvent.click(screen.getByRole("radio", { name: "Encaminhado à liderança ou a outra área" }))
+    fireEvent.click(screen.getByRole("radio", { name: "Pertinente" }))
     await submit()
     expect(screen.getByRole("alert")).toHaveTextContent("Este atendimento já foi classificado.")
     expect(onDone).toHaveBeenCalled()
@@ -117,17 +120,18 @@ describe("ClassificationForm", () => {
     fireEvent.change(screen.getByLabelText("Ferramenta ou sistema afetado (opcional)"), { target: { value: "  Siebel " } })
     fireEvent.change(screen.getByLabelText("Detalhes (opcional)"), { target: { value: " Perfil sem a permissão de troca de titularidade. " } })
     fireEvent.click(screen.getByRole("radio", { name: "Encaminhado à liderança ou a outra área" }))
+    fireEvent.click(screen.getByRole("radio", { name: "Não avaliado" }))
     await submit()
-    expect(service.classifySupportAttendance).toHaveBeenCalledWith("att-1", { reason: "NO_TOOL_ACCESS", referenceTitle: "Siebel", otherDescription: "Perfil sem a permissão de troca de titularidade.", outcome: "FORWARDED" })
+    expect(service.classifySupportAttendance).toHaveBeenCalledWith("att-1", { reason: "NO_TOOL_ACCESS", referenceTitle: "Siebel", otherDescription: "Perfil sem a permissão de troca de titularidade.", outcome: "FORWARDED", pertinence: "NOT_EVALUATED" })
     expect(onDone).toHaveBeenCalled()
   })
 
   it("impedimento sem ferramenta nem detalhes é aceito; detalhes curtos demais não", () => {
-    const base = { reason: "TOOL_UNAVAILABLE" as const, title: "", url: "", outcome: "GUIDED" as const }
-    expect(validateClassification({ ...base, description: "" }).input).toEqual({ reason: "TOOL_UNAVAILABLE", outcome: "GUIDED" })
+    const base = { reason: "TOOL_UNAVAILABLE" as const, title: "", url: "", outcome: "GUIDED" as const, pertinence: "PERTINENT" as const }
+    expect(validateClassification({ ...base, description: "" }).input).toEqual({ reason: "TOOL_UNAVAILABLE", outcome: "GUIDED", pertinence: "PERTINENT" })
     expect(validateClassification({ ...base, description: "ab" }).errors.description).toBe("Os detalhes precisam ter de 3 a 1000 caracteres.")
     expect(validateClassification({ ...base, title: "ab", description: "" }).errors.title).toBe("O nome da ferramenta ou sistema precisa ter de 3 a 200 caracteres.")
     // Detalhes digitados antes de trocar para um motivo que não os pede não vão para o servidor.
-    expect(validateClassification({ ...base, reason: "NO_PROCESS", description: "sobrou" }).input).toEqual({ reason: "NO_PROCESS", outcome: "GUIDED" })
+    expect(validateClassification({ ...base, reason: "NO_PROCESS", description: "sobrou" }).input).toEqual({ reason: "NO_PROCESS", outcome: "GUIDED", pertinence: "PERTINENT" })
   })
 })

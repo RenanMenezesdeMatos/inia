@@ -77,10 +77,10 @@ describe("AdminSidebar — organização", () => {
   it("Apoio com Anjo: o painel em Monitoramento (Coordenador de Anjos) e a configuração em Plataforma (Administrador geral)", () => {
     renderSidebar(everything)
     const groupOf = (label: string) => screen.getByText(label, { selector: '[data-sidebar="group-label"] span' }).closest<HTMLElement>('[data-sidebar="group"]')!
-    expect(within(groupOf("Monitoramento")).getByRole("link", { name: "Apoio com Anjo" })).toHaveAttribute("href", "/admin/human-support-monitoring")
-    expect(within(groupOf("Plataforma")).getByRole("link", { name: "Apoio com Anjo" })).toHaveAttribute("href", "/admin/human-support")
+    expect(within(groupOf("Monitoramento")).getByRole("link", { name: "Painel dos Anjos" })).toHaveAttribute("href", "/admin/human-support-monitoring")
+    expect(within(groupOf("Plataforma")).getByRole("link", { name: "Configuração dos Anjos" })).toHaveAttribute("href", "/admin/human-support")
     // Os Indicadores de sucesso abrem o grupo (resumo das telas abaixo); o painel do apoio fica logo abaixo de Conversas com a INIA.
-    expect(within(groupOf("Monitoramento")).getAllByRole("link").map((item) => item.textContent)).toEqual(["Indicadores de sucesso da INIA", "Conversas com a INIA", "Apoio com Anjo", "Contestações de feedback", "Monitoria de usabilidade"])
+    expect(within(groupOf("Monitoramento")).getAllByRole("link").map((item) => item.textContent)).toEqual(["Indicadores de sucesso da INIA", "Conversas com a INIA", "Painel dos Anjos", "Contestações de feedback", "Monitoria de usabilidade"])
   })
 
   it("Indicadores de sucesso da INIA: aparece para quem lê ao menos um bloco, sem abrir as outras áreas", () => {
@@ -94,7 +94,7 @@ describe("AdminSidebar — organização", () => {
     at("/admin/human-support-monitoring")
     renderSidebar(caps({ canCoordinateHumanSupport: true }))
     expect(screen.getAllByRole("link").map((item) => item.getAttribute("href"))).toEqual(["/admin/human-support-monitoring"])
-    expect(link("Apoio com Anjo")).toHaveAttribute("aria-current", "page")
+    expect(link("Painel dos Anjos")).toHaveAttribute("aria-current", "page")
   })
 
   it("Governança (Assuntos proibidos · Glossário geral) fica em Atendimento com IA", () => {

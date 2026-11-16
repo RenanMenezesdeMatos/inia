@@ -4,4 +4,4 @@
  */
 export { blinkTabTitle, createChime as createAttendanceChime, newMessageTitle, type Chime as AttendanceChime } from "@/lib/attention/attention-alert"
 
-export const NEW_ATTENDANCE_TITLE = "• Novo atendimento — INIA"
+export { NEW_ATTENDANCE_TITLE } from "@/queries/human-support/anjo-workspace-provider"

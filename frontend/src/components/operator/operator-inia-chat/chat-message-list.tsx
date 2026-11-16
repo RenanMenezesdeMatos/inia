@@ -49,10 +49,11 @@ type ChatMessageListProps = {
   textReplyPending: boolean
   liveTextReply: string | null
   /** Progresso verdadeiro da resposta por escrito antes do primeiro pedaço de texto (null = só o indicador de digitação). */
-  textReplyStatus?: string | null
+  /** O que a INIA está fazendo agora, pela atividade real (null = nada a indicar): o único indicador da conversa. */
+  activityLabel?: string | null
   askSuggestion: (event: React.MouseEvent<HTMLButtonElement>) => void
   switchToGeneralConversation: (reason: FeedbackReturn["reason"]) => void
-  /** Perguntas para começar (liderança: derivadas das prioridades do dia) — só no estado vazio da conversa geral. */
+  /** Perguntas para começar, das prioridades do dia da liderança — só no estado vazio da conversa geral. */
   starterSuggestions?: string[]
   /** Pergunta vinda de um cartão (ex.: "Perguntar à INIA" numa prioridade) — nada é enviado sozinho, só no clique. */
   askQuestion?: (question: string) => void
@@ -67,8 +68,10 @@ type ChatMessageListProps = {
   renderSupportSuggestion?: (message: ChatMessage) => React.ReactNode
 }
 
+const daySeparator = (label: string) => <div className="flex justify-center" role="separator" aria-label={label}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{label}</span></div>
+
 /** Mensagens da conversa exibida: a geral no painel; a da aplicação de feedback (e a complementar) na sessão. */
-export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, textReplyStatus = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
+export function ChatMessageList({ sessionApplication, messages, messagesContentRef, sessionOpen, loadState, readOnlyConversation, openPastConversation, loadCurrentConversation, olderCursor, loadOlderMessages, loadingOlder, olderError, operator, greeting, stageHiddenIds, feedbackCompleted, workflowConversation, rate, resumeMarkerId, conversationState, liveAssistantText, textReplyPending, liveTextReply, activityLabel = null, askSuggestion, switchToGeneralConversation, starterSuggestions = [], askQuestion, answerClarification, saveDislike, onRequestSupport, renderSupportSuggestion }: ChatMessageListProps) {
   const busy = textReplyPending || conversationState !== "idle"
   // Escolher no formulário enquanto a INIA FALA é como falar por cima dela (a fala é interrompida e a escolha segue): o formulário só
   // espera enquanto ela PENSA (uma consulta em andamento) ou uma resposta escrita está a caminho.
@@ -77,6 +80,7 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
   const latestClarificationId = [...messages].reverse().find((message) => message.clarification)?.id ?? null
   const suggestions = sessionApplication?.script?.suggestions ?? []
   const firstFollowUpIndex = messages.findIndex((message) => message.segment === "followup")
+  const emptyView = loadState === "ready" && !readOnlyConversation && !sessionOpen && messages.length === 0
   return <div ref={messagesContentRef} className={sessionOpen ? "space-y-6 pt-5" : "space-y-6 px-5 py-6"} data-testid={sessionOpen ? "feedback-session-messages" : undefined}>
     {loadState === "loading" ? (
       <div className="space-y-4" aria-label="Carregando conversa"><Skeleton className="h-12 w-3/4 rounded-2xl"/><Skeleton className="ml-auto h-10 w-1/2 rounded-2xl"/><Skeleton className="h-16 w-4/5 rounded-2xl"/></div>
@@ -92,10 +96,10 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
         {olderError ? <p className="mt-1 text-xs text-destructive" role="alert">Não foi possível carregar as mensagens anteriores.</p> : null}
       </div>
     ) : null}
-    {loadState === "ready" && messages.length === 0 && !readOnlyConversation && !sessionOpen ? (
+    {emptyView ? (
       <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={greeting}/></TypingBubble>
     ) : null}
-    {loadState === "ready" && messages.length === 0 && !readOnlyConversation && !sessionOpen && starterSuggestions.length > 0 ? (
+    {emptyView && starterSuggestions.length > 0 ? (
       <div className="flex flex-wrap gap-2 pl-10" data-testid="starter-suggestions" aria-label="Perguntas sugeridas">
         {starterSuggestions.map((suggestion) => (
           <Button key={suggestion} type="button" size="xs" variant="outline" className="h-auto max-w-full rounded-full py-1 text-left whitespace-normal" disabled={busy} data-suggestion={suggestion} onClick={askSuggestion}>{suggestion}</Button>
@@ -116,7 +120,7 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
       const dislikeForm = assistant && saveDislike && !sessionOpen && !workflowConversation && !message.origin && message.interactionId ? message.interactionId : null
       return <div key={message.id} className="space-y-6">
       {index === firstFollowUpIndex ? <FollowUpSeparator/> : null}
-      {showSeparator ? <div className="flex justify-center" role="separator" aria-label={dateSeparatorLabel(message.occurredAt)}><span className="rounded-full bg-muted px-3 py-0.5 text-[11px] font-medium text-muted-foreground">{dateSeparatorLabel(message.occurredAt)}</span></div> : null}
+      {showSeparator ? daySeparator(dateSeparatorLabel(message.occurredAt)) : null}
       {/* `data-message-id`: onde a fala da INIA pousa no palco (a mensagem inteira nasce do balão). */}
       {/* `data-support-signals`: sinais calculados pelo servidor (Apoio com Anjo) — a sugestão de falar com um Anjo parte deles. */}
       <Message align={assistant ? "start" : "end"} data-message-id={message.id} data-support-signals={message.signals && message.signals.length > 0 ? message.signals.join(",") : undefined}>
@@ -140,9 +144,8 @@ export function ChatMessageList({ sessionApplication, messages, messagesContentR
       </div>
     }) : null}
     {sessionOpen && feedbackCompleted && loadState === "ready" && firstFollowUpIndex === -1 ? <FollowUpSeparator hint/> : null}
-    {conversationState === "thinking" && liveAssistantText === null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><Skeleton className="h-3 w-32"/></TypingBubble> : null}
     {liveAssistantText !== null ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={liveAssistantText}/><span aria-hidden className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-current align-middle"/></TypingBubble> : null}
-    {textReplyPending && liveTextReply === null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted>{textReplyStatus ? <span role="status" aria-live="polite" className="animate-pulse text-xs text-muted-foreground" data-testid="text-reply-status">{textReplyStatus}</span> : <Skeleton className="h-3 w-32"/>}</TypingBubble> : null}
+    {activityLabel ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><span role="status" aria-live="polite" aria-atomic="true" className="animate-pulse text-xs text-muted-foreground motion-reduce:animate-none" data-testid="text-reply-status">{activityLabel}</span></TypingBubble> : null}
     {liveTextReply !== null && !sessionOpen ? <TypingBubble align="start" name="INIA" avatarSrc={operator.assistantImage} muted><RichContent text={liveTextReply}/><span aria-hidden className="ml-0.5 inline-block h-3.5 w-1 animate-pulse bg-current align-middle"/></TypingBubble> : null}
     {sessionOpen && sessionApplication && loadState === "ready" ? (
       <div className="flex flex-wrap gap-2" data-testid="feedback-suggestions" aria-label="Perguntas sugeridas">

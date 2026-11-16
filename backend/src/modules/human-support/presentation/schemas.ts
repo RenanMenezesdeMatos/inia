@@ -6,7 +6,7 @@ import { SCOPE_STATES } from "../domain/enablement.js"
 const id = z.string().uuid()
 const int = (min: number, max: number) => z.coerce.number().int().min(min).max(max)
 
-export const stateQuerySchema = z.object({ since: z.string().regex(/^\d{1,18}$/).optional(), wait: int(0, HUMAN_SUPPORT_LIMITS.longPollMaxSeconds).default(0), workspace: z.enum(["anjo", "none"]).default("none") }).strict()
+export const stateQuerySchema = z.object({ since: z.string().regex(/^\d{1,18}$/).optional(), wait: int(0, HUMAN_SUPPORT_LIMITS.longPollMaxSeconds).default(0), workspace: z.enum(["anjo", "anjo-status", "none"]).default("none") }).strict()
 export const sourceSchema = z.object({ interactionId: id.optional(), ratingId: id.optional() }).strict()
 export const createRequestSchema = z.object({ clientRequestId: id, interactionId: id.optional(), ratingId: id.optional(), note: z.string().max(HUMAN_SUPPORT_LIMITS.noteMaxChars * 2).transform((value) => value.trim()).pipe(z.string().max(HUMAN_SUPPORT_LIMITS.noteMaxChars)).optional() }).strict()
 export const messagesQuerySchema = z.object({ after: int(0, 1_000_000).optional(), before: int(1, 1_000_000).optional(), limit: int(1, HUMAN_SUPPORT_LIMITS.messagesPageMax).optional() }).strict()
@@ -34,4 +34,15 @@ export const panelListQuerySchema = panelQuerySchema.extend({ search: z.string()
 export const attemptsQuerySchema = panelQuerySchema.extend({ cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const anjosNowQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()
 export const timelineQuerySchema = z.object({ from: civilDate, to: civilDate }).strict()
+/** Acionamentos do período (aba Indicadores): o filtro opcional de produtivo × não produtivo × não avaliado. */
+export const demandQuerySchema = panelQuerySchema.extend({ productivity: z.enum(["PRODUCTIVE", "NOT_PRODUCTIVE", "NOT_EVALUATED"]).optional() }).strict()
+/** Histórico da operação do Anjo (migration 191): período, Grupo/Subgrupo e um Anjo (coordenação); o próprio Anjo só o período. */
+export const historyQuerySchema = panelQuerySchema.extend({ anjoPersonId: id.optional() }).strict()
 export const idParamSchema = id
+/** Transferência pela coordenação (migration 190): para um Anjo (`toAnjoPersonId`) ou de volta à frente da fila (`null`), com motivo. */
+export const transferSchema = z
+  .object({
+    toAnjoPersonId: id.nullable(),
+    reason: z.string().max(HUMAN_SUPPORT_LIMITS.transferReasonMax * 2).transform((value) => value.trim()).pipe(z.string().min(HUMAN_SUPPORT_LIMITS.transferReasonMin).max(HUMAN_SUPPORT_LIMITS.transferReasonMax)),
+  })
+  .strict()

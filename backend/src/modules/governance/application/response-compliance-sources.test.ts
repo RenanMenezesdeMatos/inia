@@ -9,6 +9,7 @@ import {
   renderComplianceSourcesSystem,
   replyComplianceSources,
   toolDataSources,
+  RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_LIMIT_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_MAX_PRIOR_ANSWERS,
@@ -63,6 +64,13 @@ describe("qual versão da conferência vale", () => {
     expect(calls[0]!.user).toContain('<fonte origem="base">\nTítulo: Reparo — Linha Móvel › Prazo\nAbra a análise de rede, com prazo de até 72 horas.\n</fonte>')
     expect(calls[0]!.user.indexOf("<fontes>")).toBeLessThan(calls[0]!.user.indexOf("<resposta>"))
     expect(calls[0]!.system).toContain("R1 [Assunto proibido] Promessa financeira não autorizada: Não criar valores, descontos ou prazos")
+  })
+
+  it("conteúdo marcado (PEN-018) continua na V2, sem fontes", async () => {
+    const { calls, model } = modelReplying(ALLOW)
+    const result = await ask(model, { sources: [KB], content: { marked: ANSWER, protectedSpans: [] } })
+    expect(result).toMatchObject({ outcome: "ALLOWED", promptVersion: RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION })
+    expect(calls[0]!.user).not.toContain("<fontes>")
   })
 
   it("sem regra cadastrada, nenhuma chamada, com ou sem fonte", async () => {

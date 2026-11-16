@@ -28,6 +28,7 @@ function attendance(overrides: Partial<AnjoAttendanceView> = {}): AnjoAttendance
     requestId: "req-1",
     protocol: "AP-7K2QX9",
     operatorName: "Bruno",
+    operatorAvatarUrl: null,
     teamName: "Grupo X",
     subteamName: null,
     startedAt: at(3, 20),
@@ -37,6 +38,7 @@ function attendance(overrides: Partial<AnjoAttendanceView> = {}): AnjoAttendance
     sharedContext: { question: "Linha 1\nLinha 2 <b>sem html</b>", answer: null, dislike: { reason: "WRONG_INFORMATION", reasonLabel: "Informação errada", comment: "O prazo mudou." }, note: null },
     peerReceipts: { deliveredSeq: 0, readSeq: 0 },
     peerTypingMs: null,
+    unreadCount: 0,
     ...overrides,
   }
 }
@@ -189,20 +191,28 @@ describe("AttendancePane", () => {
     expect(service.signalSupportTyping).not.toHaveBeenCalledWith("req-1", false)
   })
 
-  it("tela grande: contexto à esquerda e conversa à direita; recolher libera a largura toda para a conversa e fica a linha da pergunta", async () => {
+  it("tela grande: contexto à esquerda e conversa à direita; recolher deixa o cartão no lugar, como faixa estreita, com transição", async () => {
     renderPane()
     await screen.findByText("mensagem 2")
     const article = screen.getByRole("article", { name: "Atendimento AP-7K2QX9" })
     expect(article).toHaveAttribute("data-context", "open")
     const grid = screen.getByRole("region", { name: "Conversa com Bruno" }).parentElement!
-    expect(grid.className).toContain("lg:grid-cols-")
+    expect(grid.className).toContain("lg:grid-cols-[20rem_minmax(0,1fr)]")
+    // A largura da coluna muda com transição (desligada com movimento reduzido).
+    expect(grid.className).toContain("lg:transition-[grid-template-columns]")
+    expect(grid.className).toContain("motion-reduce:lg:transition-none")
     const card = () => screen.getByRole("region", { name: "O que o operador compartilhou" })
     expect(card().compareDocumentPosition(screen.getByRole("region", { name: "Conversa com Bruno" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     fireEvent.click(within(card()).getByRole("button", { name: "Recolher o que o operador compartilhou" }))
-    expect(within(card()).queryByText("Informação errada")).not.toBeInTheDocument()
-    expect(within(card()).getByText(/Linha 1/)).toHaveClass("truncate")
+    // Recolhido: o corpo fica escondido (sem foco nem leitura), o cabeçalho mostra a pergunta numa linha e, em tela grande, a coluna
+    // vira a faixa de 3,25 rem — o cartão continua à esquerda da conversa (nunca acima).
+    expect(screen.getByTestId("shared-context-body")).toHaveAttribute("aria-hidden", "true")
+    expect(screen.getByTestId("shared-context-body")).toHaveAttribute("inert")
+    expect(within(card()).queryByRole("term")).not.toBeInTheDocument()
+    expect(within(card()).getAllByText(/Linha 1/).some((element) => element.classList.contains("truncate"))).toBe(true)
     expect(article).toHaveAttribute("data-context", "collapsed")
-    expect(grid.className).not.toContain("lg:grid-cols-")
+    expect(grid.className).toContain("lg:grid-cols-[3.25rem_minmax(0,1fr)]")
+    expect(card().compareDocumentPosition(screen.getByRole("region", { name: "Conversa com Bruno" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     // Recolher não muda nem perde nada do que foi compartilhado.
     fireEvent.click(within(card()).getByRole("button", { name: "Mostrar o que o operador compartilhou" }))
     expect(within(card()).getByText("Informação errada")).toBeInTheDocument()

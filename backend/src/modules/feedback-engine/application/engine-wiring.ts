@@ -1,5 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { buildFeedbackBestPractices } from "../../best-practices/application/feedback-section.js"
+import { checkContentBeforeDelivery } from "../../governance/application/response-compliance.js"
+import { feedbackMessageContent } from "../domain/response-check-content.js"
 import type { DeliveredMonitoring, DeliverySkip } from "../domain/delivery-guards.js"
 import type { PublishEngineResult } from "../infrastructure/publish-engine-feedback.js"
 import { deliverySkipFromMemory } from "./delivery-skip.js"
@@ -77,6 +79,10 @@ export function createEngineDeps(input: { db: Database; model?: EngineModelPort;
     loadDocumentTitles: (organizationId, documentIds) => loadDocumentTitles(input.db, organizationId, documentIds),
     loadAgentConfiguredAt: async (organizationId, agentId) => (await loadAgentProfile(input.db, organizationId, agentId))?.updatedAt.toISOString() ?? null,
     bestPractices: (practiceInput) => buildFeedbackBestPractices(input.db, practiceInput),
+    responseCheck: (check) => {
+      const built = feedbackMessageContent(check.view, check.brief)
+      return checkContentBeforeDelivery(input.db, { organizationId: check.organizationId, text: built.text, content: built.content, agentId: check.agentId, surface: "FEEDBACK_MESSAGE", group: "FEEDBACK", source: "FEEDBACK_WRITER", sourceRef: check.messageId, workflowEnrollmentId: check.enrollmentId })
+    },
     now: () => clock.now(),
   }
 }

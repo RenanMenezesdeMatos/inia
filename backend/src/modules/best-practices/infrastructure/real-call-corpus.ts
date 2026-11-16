@@ -89,7 +89,7 @@ export function createRealCallCorpus(db: Database, input: { organizationId: stri
            from knowledge_documents d
            left join lateral (select version, content, content_hash from knowledge_versions where document_id = d.id and status = 'PUBLISHED' and coalesce(effective_from, created_at) <= $3 order by version desc limit 1) f on true
            left join lateral (select version, content, content_hash from knowledge_versions where document_id = d.id and status = 'PUBLISHED' order by version desc limit 1) l on true
-          where d.organization_id = $1 and d.deleted_at is null and d.document_type in ('PROCEDURE', 'MANUAL')
+          where d.organization_id = $1 and d.deleted_at is null and d.document_type in ('PROCEDURE', 'MANUAL', 'WORK_INSTRUCTION')
             and (not exists (select 1 from knowledge_document_org_scopes s where s.knowledge_document_id = d.id)
                  or exists (select 1 from knowledge_document_org_scopes s where s.knowledge_document_id = d.id and (s.scope_type = 'ALL_TEAMS' or s.team_id = $2 or s.subteam_id = $4)))
           order by d.title, d.id`,

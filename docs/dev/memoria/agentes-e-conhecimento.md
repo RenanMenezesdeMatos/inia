@@ -217,11 +217,11 @@ Detalhes em [docs/dev/bases-de-conhecimento-versoes.md](../bases-de-conhecimento
 - Versão antiga: quem lê precisa alcançar a base hoje e o alcance que a versão tinha.
 - Prova: `INIA_DB_PROOF=1 npx vitest run knowledge-version-lifecycle-proof`.
 
-### Conferência das respostas (2026-11-04, migration 169, PEN-017 e PEN-078)
+### Conferência das respostas (2026-11-04, migrations 169 e 171, PEN-017, PEN-078 e PEN-018)
 
-Detalhes em [docs/dev/conferencia-das-respostas.md](../conferencia-das-respostas.md); evidências em ESP-INIA-03 §4.5. Em desenvolvimento, não publicada em produção. A IA decide pelo sentido; o código só confere regra e trecho. Prevenção nos canais do servidor; a fala do modelo de voz tem só detecção posterior; motor de feedback, reports, intervenções, treino e boas práticas ficam sem cobertura, ligados à PEN-018. Não é proteção integral. `ENFORCE` é o padrão e o único modo que previne.
+Detalhes em [docs/dev/conferencia-das-respostas.md](../conferencia-das-respostas.md); evidências em ESP-INIA-03 §4.5. Em desenvolvimento, não publicada em produção. A IA decide pelo sentido, e o código só confere regra, trecho e origem. Julga a voz própria da INIA: citação da chamada e regra citada não sustentam violação sozinhas, e fala sugerida é julgada. Não é proteção integral. `INIA_RESPONSE_CHECK_FEEDBACK` fica em `AUDIT` até autorização (PEN-079), e o treino só entra na retomada (PEN-080).
 
-Desde 05/11/2026, chat, voz e agentes mostram à conferência de onde a resposta veio (`RESPONSE_COMPLIANCE_V3`): a V1 barrava repasse correto de prazo e valor da base (12 de 52 certos × 82 de 82). A fonte não isenta nada por código, e o limite de atuação é conferido à parte, sem as fontes. Toda mudança no prompt precisa ser medida de novo com os casos de `docs/dev/conferencia-das-respostas-casos/`.
+Desde 05/11/2026, chat, voz e agentes mostram à conferência de onde a resposta veio (`RESPONSE_COMPLIANCE_V3`): a V1 barrava repasse correto de prazo e valor da base (12 de 52 certos × 82 de 82). A fonte não isenta nada por código, e o limite de atuação é conferido à parte, sem as fontes (`RESPONSE_COMPLIANCE_V4`): às cegas, barrou 60 de 60 fora do limite e deixou passar 47 de 60 dentro dele, melhor que a V1 nos dois lados (39 de 40 e 26 de 40). Toda mudança no prompt precisa ser medida de novo com os casos de `docs/dev/conferencia-das-respostas-casos/`.
 
 ### PDF → Markdown nas bases (2026-11-06, migration 176)
 
@@ -282,3 +282,21 @@ Pedido: PDF que não deixa selecionar o texto (a página é uma imagem) precisa 
 **Medido (07/11/2026).** Leitura de 97–98% das palavras reais. Prints achados: 132 de 141 nos manuais do ajuste, 43 de 159 e 84 de 159 nos inéditos. Nenhuma palavra real perdida em página limpa. No escaneamento simulado, duas áreas de texto pequeno com fundo (tabela, quadro) foram cortadas como imagem: 105 de 57.021 e 26 de 56.957 palavras. Elas aparecem como imagem no lugar, e o aviso pede conferência. **Não verificado:** velocidade na VM, Windows Server 2016 (ensaiar na homologação da Azure antes) e um escaneado de verdade.
 
 **Provas:** `hocr.test.ts`, `print-regions.test.ts`, `ocr-layout.test.ts`, `pdf-ocr-reader.test.ts` (motor de verdade, com o PDF digitalizado montado no próprio teste por `testing/scanned-pdf-fixture.ts`), `INIA_DB_PROOF=1 npx vitest run knowledge-ocr-proof` e `pdf-markdown-proof`, que agora roda a fila antes de publicar. Na interface: `knowledge-lifecycle.test.tsx`, `knowledge-ai-preview.test.tsx` e `knowledge-reading-view.test.tsx`.
+### PENDÊNCIA OBRIGATÓRIA antes da VM — busca nas bases em escala (registrada 2026-11-13, não implementada)
+
+**Decisão do responsável (13/11/2026):** a INIA vai ter pelo menos **1000 bases de conhecimento grandes**. O caminho atual — a IA escolhe as seções olhando a base (com BM25 como apoio) — não escala para esse volume (custo, tempo e contexto). A busca em escala abaixo é **obrigatória antes de instalar na VM**.
+
+**Abordagem recomendada (quatro camadas, cada uma reduz o universo da seguinte):**
+
+1. **Escopo antes de buscar, sem IA e exato:** grupo/subgrupo da pessoa, bases vinculadas ao agente, produto identificado (ver [Produtos e aplicabilidade](produtos-e-aplicabilidade.md)), domínio de negócio, versão publicada e vigência. De 1000 bases para dezenas.
+2. **Candidatos com foco em cobertura:** união de **embedding** (significado, sinônimos, paráfrase) com o **BM25** que já existe (termos exatos, códigos, nomes de produto, números) → ~30 a 50 trechos. Objetivo da etapa: não perder o trecho necessário, não acertar de primeira.
+3. **A IA decide sobre poucos trechos:** o modelo de chat escolhe o que se aplica — é ele quem resolve negação, exceção e regra conflitante (ponto fraco do vetor). Mesmo mecanismo de hoje, sobre os candidatos em vez da base inteira.
+4. **Motor de feedback lê o procedimento inteiro:** ficha-resumo por documento → embedding + IA acham **qual** procedimento se aplica → o motor carrega o procedimento **inteiro**, como hoje. Nunca recortar a regra que o feedback cobra.
+
+**Infraestrutura:** vetores gerados na publicação de cada versão da base e regerados só quando o documento muda (encaixa no versionamento de `knowledge_versions`). Onde guardar: pgvector no PostgreSQL da INIA (dados ficam com a INIA; exige a extensão nas instalações Windows) ou a base vetorial do provedor (menos manutenção; conteúdo sai da INIA — avaliar confidencialidade e rede). Custo estimado de ordem de grandeza: ~100 milhões de tokens para 1000 bases de algumas centenas de páginas → poucos dólares (embedding pequeno) a algumas dezenas (grande), uma única vez. O modelo de embedding é escolhido pela tela de IA, como qualquer modelo (nunca no código).
+
+**Como decidir sem chutar:** conjunto de avaliação com gabarito de "quais trechos/procedimentos deveriam ser usados" (aproveitar a bateria do motor de feedback e os testes do chat); métrica principal = cobertura do trecho necessário comparada ao fluxo atual — **qualidade não pode cair** (regra "qualidade antes de velocidade"); depois tempo e custo; piloto com volume em escala em dev antes das bases reais. Validações pagas com teto.
+
+**Contexto que pesou:** nos testes anteriores com bases pequenas, a busca não era o gargalo (o tempo está na geração) e os vetores sozinhos perderam trechos importantes nos argumentários — por isso o embedding entra como etapa de **cobertura**, nunca como juiz final.
+
+**Em aberto:** as 1000 bases são de procedimento (regra que o feedback cobra → camada 4 pesa) ou de consulta (FAQ, manuais, ofertas → trechos bastam)? Definir antes de desenhar a implementação.

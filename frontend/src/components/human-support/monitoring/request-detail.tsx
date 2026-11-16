@@ -17,6 +17,7 @@ import { durationText, type RequestDetail as RequestDetailView } from "@/schemas
 import type { MessageView, SharedContext } from "@/schemas/human-support/state.schema"
 
 import { PanelError } from "./panel-error"
+import { TransferDialog } from "./transfer-dialog"
 import { messagesLabel, OperatorAvatar, RequestStatusLabel, requestOriginOf } from "./request-presentation"
 
 const seconds = (from: string, to: string) => Math.max(0, (Date.parse(to) - Date.parse(from)) / 1000)
@@ -25,7 +26,8 @@ const placeText = (team: string | null, subteam: string | null) => [team, subtea
 /**
  * Leitura de UM pedido no painel do apoio, no formato da conversa em "Conversas com a INIA": o cabeçalho com a origem, o estado e
  * quem pediu; no corpo, o que o operador compartilhou, a conversa (operador à direita, Anjo à esquerda, sistema ao centro — o texto já
- * vem do servidor como o leitor deve ver) e, no fim, os atendimentos, a classificação do Anjo e a avaliação vigente. Somente leitura.
+ * vem do servidor como o leitor deve ver) e, no fim, os atendimentos, a classificação do Anjo e a avaliação vigente. A conversa é só
+ * leitura; com o pedido em atendimento, "Transferir atendimento" passa o atendimento para outro Anjo ou o devolve à fila.
  * Abrir grava o registro de leitura (LGPD) no servidor; na fila ou em atendimento, a leitura se atualiza sozinha.
  */
 export function RequestDetail({ requestId, onBack }: { requestId: string; onBack?: () => void }) {
@@ -73,7 +75,7 @@ function RequestThread({ detail, onBack }: { detail: RequestDetailView; onBack: 
       </div>
       <p className="flex items-center justify-center gap-1.5 border-t px-4 py-2 text-center text-[11px] text-muted-foreground">
         <Lock className="size-3 shrink-0" aria-hidden />
-        Somente leitura — abrir este pedido fica registrado (quem viu os dados).
+        A conversa é somente leitura — abrir este pedido fica registrado (quem viu os dados).
       </p>
     </article>
   )
@@ -94,7 +96,11 @@ function ThreadHeader({ detail, onBack }: { detail: RequestDetailView; onBack: (
               {detail.endCause ? <span>· {END_CAUSE_LABELS[detail.endCause] ?? detail.endCause}</span> : null}
             </span>
           </div>
-          <h2 className="text-lg leading-snug font-semibold tabular-nums">Pedido {detail.protocol}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg leading-snug font-semibold tabular-nums">Pedido {detail.protocol}</h2>
+            {/* Em atendimento, a coordenação pode passar o atendimento para outro Anjo (ou devolvê-lo à fila) sem deixar o operador sem resposta. */}
+            {detail.status === "IN_PROGRESS" ? <TransferDialog requestId={detail.id} protocol={detail.protocol} /> : null}
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">

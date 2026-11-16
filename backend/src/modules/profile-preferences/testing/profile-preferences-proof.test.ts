@@ -70,6 +70,7 @@ async function account(organizationId: string, person: string, email: string) {
 async function cleanup() {
   for (const org of [ORG, OTHER_ORG]) {
     await db.query(`delete from person_profile_preferences where organization_id = $1`, [org])
+    await db.query(`delete from person_view_layouts where organization_id = $1`, [org])
     await db.query(`delete from person_profile_images where organization_id = $1`, [org])
     await db.query(`delete from user_accounts where organization_id = $1`, [org])
     await db.query(`delete from data_sources where organization_id = $1`, [org])
@@ -171,6 +172,28 @@ describe.skipIf(!ENABLED)("Preferências do perfil — prova Postgres", () => {
     expect((await outra.get(larissaAvatar)).status).toBe(404)
     expect((await loadPersonPresentations(db, OTHER_ORG, [larissaId])).size).toBe(0)
     expect((await request(createApp(db)).get(larissaAvatar)).status).toBe(401)
+  })
+
+  it("disposição personalizada (192): cada pessoa salva, lê e restaura a sua; forma inválida e visão desconhecida nunca gravam", async () => {
+    const paula = await login("pp.paula@proof.inia.local")
+    const larissa = await login("pp.larissa@proof.inia.local")
+    const layout = { version: 1, sections: [{ id: "abandonos", hidden: false, cards: [{ id: "espera", hidden: true, w: 6, h: null }] }, { id: "resumo", cards: [{ id: "pedidos", w: 3 }] }] }
+    expect((await paula.get("/api/v1/me/view-layouts/anjos.indicadores")).body.data).toEqual({ layout: null, updatedAt: null })
+    const saved = await paula.put("/api/v1/me/view-layouts/anjos.indicadores").send(layout)
+    expect(saved.status).toBe(200)
+    expect((await paula.get("/api/v1/me/view-layouts/anjos.indicadores")).body.data.layout.sections[1]).toEqual({ id: "resumo", hidden: false, cards: [{ id: "pedidos", hidden: false, w: 3, h: null }] })
+    // Outra pessoa não vê a disposição da Paula; outra visão continua no padrão.
+    expect((await larissa.get("/api/v1/me/view-layouts/anjos.indicadores")).body.data.layout).toBeNull()
+    expect((await paula.get("/api/v1/me/view-layouts/anjos.jornada")).body.data.layout).toBeNull()
+    // Largura fora dos blocos, visão desconhecida e campo extra: 400, nada muda.
+    expect((await paula.put("/api/v1/me/view-layouts/anjos.indicadores").send({ ...layout, sections: [{ id: "x", cards: [{ id: "y", w: 5 }] }] })).status).toBe(400)
+    expect((await paula.put("/api/v1/me/view-layouts/outra.tela").send(layout)).status).toBe(400)
+    expect((await paula.put("/api/v1/me/view-layouts/anjos.indicadores").send({ ...layout, personId: "x" })).status).toBe(400)
+    expect((await paula.get("/api/v1/me/view-layouts/anjos.indicadores")).body.data.layout.sections[0].cards[0].hidden).toBe(true)
+    // Restaurar padrão.
+    expect((await paula.delete("/api/v1/me/view-layouts/anjos.indicadores")).status).toBe(204)
+    expect((await paula.get("/api/v1/me/view-layouts/anjos.indicadores")).body.data.layout).toBeNull()
+    expect((await request(createApp(db)).get("/api/v1/me/view-layouts/anjos.indicadores")).status).toBe(401)
   })
 
   it("validação, substituição e remoção de imagem; valores inválidos nunca gravam", async () => {

@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 import { ApiError } from "@/lib/api/api-client"
-import type { AnjoActivity, FunnelResponse, Measure, RequestDetail, RequestListItem } from "@/schemas/human-support/monitoring.schema"
+import type { Abandonment, FunnelResponse, Measure, RequestDetail, RequestListItem } from "@/schemas/human-support/monitoring.schema"
 
 import { HumanSupportMonitoringPage } from "./human-support-monitoring-page"
 
@@ -15,14 +15,18 @@ const service = vi.hoisted(() => ({
   fetchSupportRequests: vi.fn(),
   fetchSupportRequestDetail: vi.fn(),
   fetchUnavailableAttempts: vi.fn(),
-  fetchAnjosActivity: vi.fn(),
+  fetchSupportAbandonment: vi.fn(),
   fetchAnjosNow: vi.fn(),
   fetchAnjoPresenceTimeline: vi.fn(),
   fetchSupportScopes: vi.fn(),
   fetchSupportSettings: vi.fn(),
   fetchSupportAnjos: vi.fn(),
+  fetchSupportDemand: vi.fn(),
+  fetchQueueWaiting: vi.fn(),
+  fetchOperationHistory: vi.fn(),
 }))
 vi.mock("@/services/human-support/human-support-service", () => service)
+vi.mock("@/services/view-layouts/view-layout-service", () => ({ fetchViewLayout: vi.fn().mockResolvedValue({ layout: null, updatedAt: null }), saveViewLayout: vi.fn(), resetViewLayout: vi.fn() }))
 
 const PERIOD = { from: "2026-10-11", to: "2026-11-09" }
 const count = (value: number) => ({ numerator: value, denominator: null, value, status: "OK" as const })
@@ -70,16 +74,58 @@ const DETAIL: RequestDetail = {
   attendances: [{ id: "at1", anjoName: "Ana Souza", startedAt: "2026-11-02T13:00:05.000Z", firstAnjoMessageAt: "2026-11-02T13:01:20.000Z", endedAt: "2026-11-02T13:20:00.000Z", endCause: "ANJO_CLOSED" }],
   classification: { reason: "FOUND_IN_PROCESS", referenceTitle: "Processo de titularidade", referenceUrl: "https://intranet.exemplo/processos/titularidade", otherDescription: null, outcome: "RESOLVED" },
 }
-const ACTIVITY: AnjoActivity[] = [
-  { personId: "p-ana", name: "Ana Souza", hoursAvailable: 32.5, hoursPaused: { LUNCH: 4, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 1.5 }, hoursDisconnected: 2, attendances: 14, firstResponse: { p50Seconds: 60, p90Seconds: 240, withoutResponse: 1 }, averageStars: null },
-]
+const ABANDONMENT = (patch: Partial<Abandonment["waiting"]> = {}): Abandonment => ({
+  period: PERIOD,
+  waiting: { requests: 10, closedInia: 2, cancelled: 1, abandoned: 3, rate: { numerator: 3, denominator: 10, value: 0.3, status: "OK" }, expired: 1, ...patch },
+  attendance: { ended: 8, byOperator: { leftInia: 1, noReply: 1, total: 2 }, byAnjo: { connection: 1, session: 1, roleRevoked: 0, unknownDrop: 0, noReply: 0, total: 2 }, abandoned: 4, rate: { numerator: 4, denominator: 8, value: 0.5, status: "OK" } },
+})
 
 function openTab(name: string) {
   fireEvent.mouseDown(screen.getByRole("tab", { name }), { button: 0 })
 }
 
 beforeAll(installJsdomStubs)
+const ZERO_AVG = { averageSeconds: null, count: 0 }
+const HISTORY_FIXTURE = {
+  period: PERIOD,
+  serverTime: "2026-11-09T13:00:00.000Z",
+  coverage: { baseSince: null, connectionSince: null },
+  days: [],
+  anjos: [],
+  consolidated: {
+    journey: { total: { availableMs: 0, attendanceMs: 0, pausedMs: { LUNCH: 0, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0 }, unavailableMs: 0 }, baseMs: 0, shares: { available: null, attendance: null, pausedTotal: null, paused: { LUNCH: null, PERSONAL: null, PROCESS_ACTIVITY: null, MEETING: null }, productive: null }, daysWithOnline: 0, dailyAverage: null },
+    attendance: {
+      acolhimentos: 0,
+      operatorWait: ZERO_AVG,
+      firstResponse: ZERO_AVG,
+      handling: { ...ZERO_AVG, normal: ZERO_AVG, other: ZERO_AVG, otherByCause: {} },
+      reasons: { total: 0, items: [] },
+      pertinence: { pertinent: 0, notPertinent: 0, notEvaluated: 0, rate: rate(0, 0) },
+      noReply: { rate: rate(0, 0), anjoSide: 0, operatorSide: 0 },
+      abandonedAfterAcolhimento: 0,
+      interruptedBySystem: { connection: 0, session: 0, roleRevoked: 0, unknown: 0 },
+      stars: { average: null, count: 0 },
+    },
+    operation: { requests: 0, acolhidos: 0, waiting: 0, inProgress: 0, endedWithoutAcolhimento: 0, noAnjoLogged: { count: 0, withAnjos: 0, unrecorded: 0 }, abandonedBeforeAcolhimento: { abandoned: 0, cancelled: 0 }, expired: 0, endedInQueueAfterAcolhimento: 0 },
+  },
+}
+const OPERATION = { requests: 9, acolhidos: 6, waiting: 0, inProgress: 0, endedWithoutAcolhimento: 3, noAnjoLogged: { count: 1, withAnjos: 2, unrecorded: 0 }, abandonedBeforeAcolhimento: { abandoned: 1, cancelled: 1 }, expired: 1, endedInQueueAfterAcolhimento: 0 }
+const demand = (patch: Record<string, unknown> = {}) => ({
+  period: PERIOD,
+  productivity: { PRODUCTIVE: 5, NOT_PRODUCTIVE: 2, NOT_EVALUATED: 2 },
+  filter: null,
+  total: 9,
+  byHour: Array.from({ length: 24 }, (_, hour) => (hour === 10 ? 5 : hour === 14 ? 4 : 0)),
+  wait: { averageSeconds: 75, p50Seconds: 60, p90Seconds: 180, count: 6, byDay: [{ day: "2026-11-08", averageSeconds: 60, count: 3 }, { day: "2026-11-09", averageSeconds: 90, count: 3 }] },
+  top: { operators: [{ key: "o1", label: "Larissa Monteiro", count: 4, share: 4 / 9 }], groups: [{ key: "g1", label: "Grupo X", count: 9, share: 1 }], subgroups: [{ key: "s1", label: "X1", count: 7, share: 7 / 9 }] },
+  operation: OPERATION,
+  ...patch,
+})
+
 beforeEach(() => {
+  service.fetchQueueWaiting.mockResolvedValue([])
+  service.fetchSupportAbandonment.mockResolvedValue(ABANDONMENT())
+  service.fetchSupportDemand.mockImplementation(async (filter: { productivity?: string | null }) => (filter.productivity === "NOT_PRODUCTIVE" ? demand({ filter: "NOT_PRODUCTIVE", total: 2, top: { operators: [{ key: "o2", label: "Rui Prado", count: 2, share: 1 }], groups: [], subgroups: [] } }) : demand()))
   vi.useFakeTimers({ toFake: ["Date"] })
   vi.setSystemTime(new Date(2026, 10, 9, 10, 0, 0))
   service.fetchSupportFunnel.mockResolvedValue(FUNNEL)
@@ -92,10 +138,33 @@ afterEach(() => {
 })
 
 describe("Painel do apoio › Funil", () => {
-  it("os motivos de cada card aparecem sempre do maior para o menor (zero por último)", async () => {
+  it("acionamentos do período: produtivos × não produtivos (clicar filtra), pico por horário, espera e quem mais aciona", async () => {
     renderWithQuery(<HumanSupportMonitoringPage />)
     openTab("Indicadores")
-    const card = await screen.findByTestId("measure-M14")
+    expect(await screen.findByTestId("productivity-PRODUCTIVE")).toHaveTextContent("5Produtivos · 55,6%")
+    expect(screen.getByTestId("hourly-chart")).toHaveTextContent("Horário com mais acionamentos: 10h (5).")
+    expect(screen.getByTestId("wait-summary")).toHaveTextContent("Média 1 min 15 s · metade em até 1 min · 90% em até 3 min · 6 acolhidos")
+    expect(screen.getByTestId("top-operators")).toHaveTextContent("Larissa Monteiro")
+    expect(screen.getByTestId("top-subgroups")).toHaveTextContent("X1")
+    expect(screen.getByTestId("metric-no-anjo")).toHaveTextContent("1")
+    fireEvent.click(screen.getByTestId("productivity-NOT_PRODUCTIVE"))
+    expect(await within(screen.getByTestId("top-operators")).findByText("Rui Prado")).toBeInTheDocument()
+    expect(screen.getByTestId("productivity-NOT_PRODUCTIVE")).toHaveAttribute("aria-pressed", "true")
+    expect(service.fetchSupportDemand).toHaveBeenLastCalledWith(expect.objectContaining({ productivity: "NOT_PRODUCTIVE" }))
+  })
+
+  it("motivos de acionamento na visão geral da Jornada (do maior para o menor, zero por último); fora de Indicadores", async () => {
+    service.fetchOperationHistory.mockResolvedValue(HISTORY_FIXTURE)
+    renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
+    await screen.findByTestId("measure-M2")
+    expect(screen.queryByTestId("measure-M14")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("measure-M12")).not.toBeInTheDocument()
+    openTab("Jornada e atendimentos")
+    const overview = await screen.findByRole("region", { name: "Atendimentos — todos os Anjos" })
+    expect(await within(overview).findByTestId("metric-welcome")).toBeInTheDocument()
+    expect(within(overview).getByText("Espera dos operadores")).toBeInTheDocument()
+    const card = await within(await screen.findByRole("region", { name: "Principais motivos de acionamento" })).findByTestId("measure-M14")
     const lists = within(card).getAllByRole("list")
     expect(within(lists[0]!).getAllByRole("listitem").map((entry) => entry.textContent)).toEqual([
       "Sem acesso à ferramenta ou ao sistema660%",
@@ -131,11 +200,6 @@ describe("Painel do apoio › Funil", () => {
     expect(within(notCollected).getByText("50%")).toBeInTheDocument()
     // Conversão com denominador 3: sem porcentagem. Tempos com o nome do evento e legíveis. Estrelas: média só com 5 notas ou mais.
     expect(screen.getByTestId("measure-M8")).toHaveTextContent("Sugestões que viraram pedido2 de 3 · poucos dados")
-    const m12 = screen.getByTestId("measure-M12")
-    expect(m12).toHaveTextContent("Tempo mediano de primeira resposta1 min 30 s")
-    expect(m12).toHaveTextContent("Metade dos atendimentos teve a primeira resposta do Anjo em até esse tempo.")
-    expect(m12).toHaveTextContent("Primeira resposta de 90% dos atendimentos6 min 40 s")
-    expect(m12).toHaveTextContent("Encerrados sem nenhuma resposta do Anjo1 de 9 · 11,1%")
     expect(screen.getByTestId("measure-M17")).toHaveTextContent("4,17de 5 · 6 notas")
     expect(screen.getByTestId("measure-M17")).toHaveTextContent("Atendimentos com estrelas6 de 10 · 60%")
     // Resumo: o que existe e "Sem dados no período" para o que não há (a espera não veio nesta resposta).
@@ -269,7 +333,7 @@ describe("Painel do apoio › Pedidos", () => {
       total: 2,
     })
     renderWithQuery(<HumanSupportMonitoringPage />)
-    expect(screen.getByRole("heading", { level: 1, name: "Apoio com Anjo" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 1, name: "Painel dos Anjos" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Pedidos" })).toHaveAttribute("aria-selected", "true")
     expect(await screen.findByText("2 pedidos no período")).toBeInTheDocument()
 
@@ -310,7 +374,6 @@ describe("Painel do apoio › Sem Anjo em serviço e Anjos", () => {
   })
 
   it("situação dos Anjos agora: cadastro separado do status, ícone e texto, pausa com motivo, tempo desde a transição real, indisponível sem contador; resumo e filtro", async () => {
-    service.fetchAnjosActivity.mockResolvedValue([])
     const base = { scopes: [{ type: "GROUP" as const, id: "gx", name: "Grupo X" }], pauseReason: null, connected: true, connectionLostSince: null, attendances: { active: 0, capacity: 2 } }
     service.fetchAnjosNow.mockResolvedValue({
       // Relógio do servidor = relógio da tela (10:00 em São Paulo): os tempos contam a partir de cada transição.
@@ -323,25 +386,27 @@ describe("Painel do apoio › Sem Anjo em serviço e Anjos", () => {
       ],
     })
     renderWithQuery(<HumanSupportMonitoringPage />)
-    openTab("Anjos")
+    openTab("Monitoria Online")
     const ana = await screen.findByTestId("anjo-now-a1")
     expect(ana).toHaveTextContent("Ativo")
     expect(ana).toHaveTextContent("Disponível")
-    expect(ana).toHaveTextContent("há 12 min")
+    expect(ana).toHaveTextContent("12:00")
     expect(ana).toHaveTextContent("Atende: Grupo X")
-    expect(screen.getByTestId("anjo-now-a2")).toHaveTextContent("Em atendimentohá 8 min1 de 2")
+    expect(screen.getByTestId("anjo-now-a2")).toHaveTextContent("Em atendimento08:001 de 2")
     const carla = screen.getByTestId("anjo-now-a3")
     expect(carla).toHaveTextContent("Em pausa — Lanche")
-    expect(carla).toHaveTextContent("há 23 min")
-    expect(carla).toHaveTextContent("Sem conexão há 2 min")
+    expect(carla).toHaveTextContent("23:00")
+    expect(carla).toHaveTextContent("Sem conexão · 02:00")
     const davi = screen.getByTestId("anjo-now-a4")
     expect(davi).toHaveTextContent("Inativo")
+    // Indisponível e offline são o mesmo estado: um rótulo só.
     expect(davi).toHaveTextContent("Indisponível")
     expect(within(davi).getByTestId("anjo-now-since")).toHaveTextContent("—")
     expect(within(davi).getByTestId("anjo-now-since")).not.toHaveTextContent("há")
     // Resumo só com os ativos; o inativo aparece à parte.
     const summary = screen.getByRole("group", { name: /Quantos Anjos ativos em cada status/ })
-    expect(within(summary).getByRole("button", { name: /Indisponível/ })).toHaveTextContent("0")
+    expect(within(summary).getByRole("button", { name: /^\d+\s*Indisponível$/ })).toHaveTextContent("0")
+    expect(within(summary).getByRole("button", { name: "O que é Indisponível" })).toBeInTheDocument()
     expect(screen.getByText(/1 Anjo inativo no cadastro/)).toBeInTheDocument()
     // Clicar num status filtra a lista.
     fireEvent.click(within(summary).getByRole("button", { name: /Em pausa/ }))
@@ -351,24 +416,64 @@ describe("Painel do apoio › Sem Anjo em serviço e Anjos", () => {
     expect(service.fetchAnjosNow).toHaveBeenCalledWith({ teamId: null, subteamId: null })
   })
 
-  it("M18 por Anjo: horas, pausas por motivo, primeira resposta e estrelas '—' abaixo de 5 notas; 'Ver presença' carrega a linha do tempo", async () => {
-    service.fetchAnjosActivity.mockResolvedValue(ACTIVITY)
-    service.fetchAnjoPresenceTimeline.mockResolvedValue({ events: [{ occurredAt: "2026-11-03T12:00:00.000Z", fromStatus: "AVAILABLE", toStatus: "PAUSED", pauseReason: "LUNCH", cause: "ANJO" }] })
+  it("operação agora: fila com a maior espera e, sempre à vista, quem aguarda e há quanto tempo, 1ª resposta pendente, Indisponível = offline, sessão encerrada e mudança programada", async () => {
+    const base = { scopes: [{ type: "GROUP" as const, id: "gx", name: "Grupo X" }], pauseReason: null, connected: true, connectionLostSince: null, attendances: { active: 0, capacity: 2 }, active: true, since: null }
+    service.fetchAnjosNow.mockResolvedValue({
+      serverTime: new Date(2026, 10, 9, 10, 0, 0).toISOString(),
+      items: [
+        { ...base, personId: "v1", name: "Vera", status: "UNAVAILABLE", connection: "CONNECTED", scheduled: null },
+        { ...base, personId: "o1", name: "Otto", status: "UNAVAILABLE", connected: false, connection: "CLOSED", scheduled: null },
+        { ...base, personId: "s1", name: "Sara", status: "AVAILABLE", connected: false, connection: "SESSION_ENDED", connectionLostSince: new Date(2026, 10, 9, 9, 55).toISOString(), scheduled: null },
+        { ...base, personId: "b1", name: "Beto", status: "IN_ATTENDANCE", connection: "CONNECTED", scheduled: { status: "PAUSED", pauseReason: "MEETING" }, attendances: { active: 1, capacity: 2 } },
+      ],
+      queue: { waiting: 3, oldestWaitingSince: new Date(2026, 10, 9, 9, 46).toISOString(), awaitingFirstResponse: 1, oldestAwaitingSince: new Date(2026, 10, 9, 9, 58).toISOString() },
+    })
+    // A tabela de quem está na fila fica sempre à vista (sem clicar): quem aguarda e há quanto tempo, desde a entrada original.
+    service.fetchQueueWaiting.mockResolvedValue([
+      { requestId: "r1", protocol: "AP-AAA222", operatorName: "Larissa Monteiro", operatorAvatarUrl: null, teamName: "Grupo X", subteamName: "X1", origin: "BUTTON", waitingSince: new Date(2026, 10, 9, 9, 46).toISOString(), requeued: false },
+      { requestId: "r2", protocol: "AP-BBB333", operatorName: "Rui Prado", operatorAvatarUrl: null, teamName: "Grupo X", subteamName: null, origin: "DISLIKE", waitingSince: new Date(2026, 10, 9, 9, 55).toISOString(), requeued: true },
+    ])
     renderWithQuery(<HumanSupportMonitoringPage />)
-    openTab("Anjos")
-    const row = await screen.findByTestId("anjo-activity-p-ana")
-    expect(row).toHaveTextContent("32,5 h")
-    expect(row).toHaveTextContent("Lanche 4 h · Reunião 1,5 h")
-    expect(row).toHaveTextContent("1 min")
-    expect(row).toHaveTextContent("4 min")
-    expect(within(row).getByText("—")).toBeInTheDocument()
-    expect(screen.getByText(/Abrir esta aba e a presença de um Anjo fica registrado/)).toBeInTheDocument()
-    expect(service.fetchAnjoPresenceTimeline).not.toHaveBeenCalled()
+    openTab("Monitoria Online")
+    expect(await screen.findByTestId("queue-waiting")).toHaveTextContent("3 operadores aguardam um Anjo")
+    expect(screen.getByTestId("queue-waiting")).toHaveTextContent("Maior espera: 14:00")
+    expect(screen.getByTestId("queue-awaiting")).toHaveTextContent("1 atendimento aguarda a 1ª resposta")
+    expect(screen.getByTestId("anjo-now-v1")).toHaveTextContent("Indisponível")
+    expect(screen.getByTestId("anjo-now-o1")).toHaveTextContent("Indisponível")
+    expect(screen.getByTestId("anjo-now-o1")).not.toHaveTextContent("Offline")
+    expect(screen.getByTestId("anjo-now-s1")).toHaveTextContent("Sessão encerrada · 05:00")
+    expect(screen.getByTestId("anjo-now-b1")).toHaveTextContent("Em atendimento")
+    expect(screen.getByTestId("anjo-now-b1")).toHaveTextContent("Pausa programada — Reunião")
+    const summary = screen.getByRole("group", { name: /Quantos Anjos ativos em cada status/ })
+    expect(within(summary).getByRole("button", { name: /^\d+\s*Indisponível$/ })).toHaveTextContent("2")
+    expect(within(summary).queryByRole("button", { name: /Offline/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/1 com a sessão encerrada/)).toBeInTheDocument()
+    expect(screen.getByText(/1 com pausa ou indisponibilidade programada/)).toBeInTheDocument()
+    const queueTable = await screen.findByRole("table", { name: "Operadores na fila" })
+    expect(within(queueTable).getByTestId("queue-row-r1")).toHaveTextContent("Larissa MonteiroGrupo X › X1AP-AAA22214:00")
+    expect(within(queueTable).getByTestId("queue-row-r2")).toHaveTextContent("(voltou à fila)")
+    expect(within(queueTable).getByTestId("queue-row-r2")).toHaveTextContent("05:00")
+  })
 
-    fireEvent.click(within(row).getByRole("button", { name: "Ver presença" }))
-    const timeline = await screen.findByRole("list", { name: "Presença de Ana Souza" })
-    expect(service.fetchAnjoPresenceTimeline).toHaveBeenCalledWith("p-ana", PERIOD)
-    expect(timeline).toHaveTextContent("Disponível → Em pausa (Lanche)")
-    expect(timeline).toHaveTextContent("pelo Anjo")
+  it("Monitoria Online: só o agora — Operação agora e os abandonos de HOJE (sem período); Indicadores: os abandonos do período", async () => {
+    service.fetchAnjosNow.mockResolvedValue({ serverTime: new Date(2026, 10, 9, 10, 0, 0).toISOString(), items: [], queue: { waiting: 0, oldestWaitingSince: null, awaitingFirstResponse: 0, oldestAwaitingSince: null } })
+    service.fetchSupportAbandonment.mockResolvedValue(ABANDONMENT())
+    renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Monitoria Online")
+    const waiting = await screen.findByTestId("abandon-waiting")
+    expect(waiting).toHaveTextContent("Abandonos na espera3")
+    expect(waiting).toHaveTextContent("3 de 10 (30%)")
+    expect(waiting).toHaveTextContent("Fechou a INIA antes de ser atendido2")
+    expect(waiting).toHaveTextContent("Cancelou o pedido1")
+    expect(screen.getByTestId("abandon-attendance")).toHaveTextContent("Anjo caiu — rede 1 · sessão 12")
+    expect(screen.getByText("Abandonos de hoje")).toBeInTheDocument()
+    // Hoje no fuso de quem vê, sem o período do painel; nada de seletor de período nesta aba.
+    expect(service.fetchSupportAbandonment).toHaveBeenCalledWith({ from: "2026-11-09", to: "2026-11-09", teamId: null, subteamId: null })
+    expect(screen.queryByRole("button", { name: /Período/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/Abrir esta aba fica registrado/)).toBeInTheDocument()
+
+    openTab("Indicadores")
+    expect(await screen.findByText("Abandonos no período")).toBeInTheDocument()
+    expect(service.fetchSupportAbandonment).toHaveBeenLastCalledWith({ ...PERIOD, teamId: null, subteamId: null })
   })
 })

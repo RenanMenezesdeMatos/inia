@@ -20,6 +20,9 @@ export default defineConfig({
   test: {
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // Conferência das respostas nos conteúdos entregues sem conversa (PEN-018): desligada por padrão nos testes, para nenhuma prova sem provedor simulado fazer chamada real.
+    // Quem testa a conferência liga com `vi.stubEnv`.
+    env: { INIA_RESPONSE_CHECK_CONTENT: "OFF", INIA_RESPONSE_CHECK_FEEDBACK: "OFF" },
     // Provas de banco (INIA_DB_PROOF=1) só rodam com o banco de teste em dia com as migrations; sem a variável, não faz nada.
     globalSetup: ["./src/infrastructure/database/testing/proof-database-setup.ts"],
   },

@@ -24,6 +24,7 @@ import { acknowledgeOnce, useReadAcknowledgement } from "@/queries/human-support
 import { useTypingSignal } from "@/queries/human-support/use-typing-signal"
 import { closeSupportRequestAsAnjo } from "@/services/human-support/human-support-service"
 
+import { PersonAvatar } from "@/components/profile/person-avatar"
 import { StatusChip } from "@/components/ui/surface"
 import { PeerTyping } from "../conversation/peer-typing"
 import { lastSeqOf } from "../conversation/receipts"
@@ -97,6 +98,7 @@ export function AttendancePane({ attendance, now, clockOffsetMs = 0, active = tr
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
+            <PersonAvatar name={attendance.operatorName} avatarUrl={attendance.operatorAvatarUrl} className="size-8" />
             <h2 className="truncate text-lg font-semibold">{attendance.operatorName}</h2>
             <StatusChip tone="neutral" className="font-mono">
               {attendance.protocol}
@@ -123,10 +125,16 @@ export function AttendancePane({ attendance, now, clockOffsetMs = 0, active = tr
         </div>
       </header>
 
-      <div className={cn("grid gap-4", contextOpen && "lg:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)] xl:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]")}>
-        {/* Aberto em tela grande: o painel não define a altura da linha (fica absoluto dentro da coluna) e rola por dentro. */}
-        <div className={cn("min-w-0", contextOpen && "lg:relative")}>
-          <SharedContextCard context={attendance.sharedContext} open={contextOpen} onOpenChange={setContextOpen} className={cn(contextOpen && "lg:absolute lg:inset-0")} />
+      {/* Em tela grande, o compartilhado é sempre a coluna da esquerda: aberto, 20–24 rem; recolhido, a faixa de 3,25 rem — a largura
+          da coluna muda com transição e a conversa acompanha. Não define a altura da linha (fica absoluto dentro da coluna). */}
+      <div
+        className={cn(
+          "grid gap-4 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-out motion-reduce:lg:transition-none",
+          contextOpen ? "lg:grid-cols-[20rem_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)]" : "lg:grid-cols-[3.25rem_minmax(0,1fr)]",
+        )}
+      >
+        <div className="min-w-0 lg:relative">
+          <SharedContextCard context={attendance.sharedContext} open={contextOpen} onOpenChange={setContextOpen} className="lg:absolute lg:inset-0" />
         </div>
 
         <section aria-label={`Conversa com ${attendance.operatorName}`} className="flex min-w-0 flex-col gap-3">
@@ -139,6 +147,7 @@ export function AttendancePane({ attendance, now, clockOffsetMs = 0, active = tr
             <SupportMessageList
               messages={thread.messages}
               operatorName={attendance.operatorName}
+              operatorAvatarUrl={attendance.operatorAvatarUrl}
               attendanceStartedAt={attendance.startedAt}
               peerReceipts={attendance.peerReceipts}
               className="h-[min(30rem,56dvh)] lg:h-[clamp(24rem,calc(100dvh-25rem),40rem)]"

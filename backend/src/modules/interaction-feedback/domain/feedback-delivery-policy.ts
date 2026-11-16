@@ -43,7 +43,8 @@ export type AutonomyBlocker =
 export type PolicyHoldReason = "PILOT_HOLD_ALL_FOR_QA" | "RISK_POLICY_SECTION" | "RISK_POLICY_FINDING_KIND"
   /** V1.5.9: o tipo de achado ainda não foi LIBERADO para autonomia (sem evidência de revisão humana suficiente). */
   | "FINDING_KIND_NOT_RELEASED_FOR_AUTONOMY"
-export type DispositionReason = StructuralBlockReason | AutonomyBlocker | PolicyHoldReason | "AUTONOMY_CRITERIA_MET"
+/** `RESPONSE_CHECK_FLAGGED` (PEN-018): a conferência das respostas apontou uma regra ou não pôde ser concluída. */
+export type DispositionReason = StructuralBlockReason | AutonomyBlocker | PolicyHoldReason | "AUTONOMY_CRITERIA_MET" | "RESPONSE_CHECK_FLAGGED"
 
 /**
  * Política de entrega (dados, versionada). Trocar a política NÃO exige mexer no InteractionFeedback nem no Writer: o

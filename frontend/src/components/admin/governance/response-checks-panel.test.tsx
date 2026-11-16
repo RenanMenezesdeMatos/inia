@@ -14,7 +14,7 @@ const service = vi.hoisted(() => ({ fetchResponseCheckSummary: vi.fn(), fetchRes
 vi.mock("@/services/admin/governance-service", () => service)
 
 // Exemplos FICTÍCIOS de teste.
-const event = (id: string, over: Partial<ResponseCheckEvent>): ResponseCheckEvent => ({ id, surface: "CHAT", control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", rules: [{ kind: "PROHIBITED_TOPIC", name: "Política" }], reason: "Opinou sobre política.", errorCode: null, flaggedContent: "Vote no candidato X.", conversationId: "c1", agentId: null, agentName: null, createdAt: "2026-11-04T12:00:00.000Z", ...over })
+const event = (id: string, over: Partial<ResponseCheckEvent>): ResponseCheckEvent => ({ id, surface: "CHAT", control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", rules: [{ kind: "PROHIBITED_TOPIC", name: "Política" }], reason: "Opinou sobre política.", errorCode: null, sourceRef: null, flaggedContent: "Vote no candidato X.", conversationId: "c1", agentId: null, agentName: null, createdAt: "2026-11-04T12:00:00.000Z", ...over })
 
 beforeAll(installJsdomStubs)
 afterEach(() => {
@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe("registro da conferência das respostas", () => {
   it("prevenção e detecção nunca se confundem; a falha da conferência aparece como falha; a fala vem marcada como já falada", async () => {
-    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "ENFORCE", checked: 120, delivered: 116, blocked: 2, detected: 1, failed: 1 })
+    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "ENFORCE", modes: { conversation: "ENFORCE", content: "ENFORCE", feedback: "AUDIT" }, checked: 120, delivered: 116, blocked: 2, detected: 1, failed: 1 })
     service.fetchResponseChecksPage.mockResolvedValue({
       items: [
         event("a", {}),
@@ -45,7 +45,10 @@ describe("registro da conferência das respostas", () => {
     expect(within(rows[2]!).getByText("Agente de Prova")).toBeInTheDocument()
     expect(screen.getByText("Bloqueadas antes da entrega").nextSibling).toHaveTextContent("2")
     expect(await screen.findByText(/só é conferido depois de falado/)).toBeInTheDocument()
-    expect(screen.getByText(/não cobre o motor de feedback, os reports, as intervenções, o treino nem as boas práticas/)).toBeInTheDocument()
+    const coverage = screen.getByTestId("response-check-coverage")
+    expect(coverage).toHaveTextContent("Reports, intervenções e boas práticas: conferidos antes de ficarem disponíveis")
+    expect(coverage).toHaveTextContent("Mensagens de feedback: modo de auditoria: nada é impedido antes da entrega")
+    expect(coverage).toHaveTextContent("Sem cobertura: a análise interna do motor de feedback, o Diagnóstico da liderança")
     expect(screen.queryByText("Vote no candidato X.")).not.toBeInTheDocument()
     fireEvent.click(within(rows[0]!).getByRole("button", { name: "Ver texto" }))
     expect(screen.getByText("Vote no candidato X.")).toBeInTheDocument()
@@ -53,20 +56,33 @@ describe("registro da conferência das respostas", () => {
 
   it("AUDIT e OFF nunca aparecem como prevenção, e a tela continua dizendo o que não é coberto", async () => {
     service.fetchResponseChecksPage.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
-    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "AUDIT", checked: 5, delivered: 5, blocked: 0, detected: 0, failed: 0 })
+    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "AUDIT", modes: { conversation: "AUDIT", content: "AUDIT", feedback: "AUDIT" }, checked: 5, delivered: 5, blocked: 0, detected: 0, failed: 0 })
     const { unmount } = renderWithQuery(<ResponseChecksPanel />)
-    expect(await screen.findByText(/nada é impedido antes da entrega/)).toBeInTheDocument()
-    expect(screen.queryByText(/Antes de entregar, a INIA confere/)).not.toBeInTheDocument()
-    expect(screen.getByText(/não cobre o motor de feedback/)).toBeInTheDocument()
+    const audit = await screen.findByTestId("response-check-coverage")
+    expect(audit).toHaveTextContent("nada é impedido antes da entrega")
+    expect(audit).not.toHaveTextContent("conferidos antes")
+    expect(audit).not.toHaveTextContent("conferidas antes")
+    expect(audit).toHaveTextContent("Sem cobertura")
     unmount()
-    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "OFF", checked: 0, delivered: 0, blocked: 0, detected: 0, failed: 0 })
+    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "OFF", modes: { conversation: "OFF", content: "OFF", feedback: "OFF" }, checked: 0, delivered: 0, blocked: 0, detected: 0, failed: 0 })
     renderWithQuery(<ResponseChecksPanel />)
-    expect(await screen.findByText(/A conferência está desligada/)).toBeInTheDocument()
-    expect(screen.queryByText(/Antes de entregar, a INIA confere/)).not.toBeInTheDocument()
+    const off = await screen.findByTestId("response-check-coverage")
+    expect(off).toHaveTextContent("conferência desligada")
+    expect(off).not.toHaveTextContent("conferidos antes")
+  })
+
+  it("nos fluxos restritos, o registro não traz o texto e diz que ele fica na origem", async () => {
+    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "ENFORCE", modes: { conversation: "ENFORCE", content: "ENFORCE", feedback: "ENFORCE" }, checked: 1, delivered: 0, blocked: 1, detected: 0, failed: 0 })
+    service.fetchResponseChecksPage.mockResolvedValue({ items: [event("f", { surface: "FEEDBACK_MESSAGE", reason: null, flaggedContent: null, sourceRef: "m1", conversationId: null })], total: 1, page: 1, pageSize: 20 })
+    renderWithQuery(<ResponseChecksPanel />)
+    const row = (await screen.findAllByTestId("response-check-row"))[0]!
+    expect(within(row).getByText("Mensagem de feedback")).toBeInTheDocument()
+    expect(within(row).getByText("O conteúdo fica na origem, com quem já pode lê-la.")).toBeInTheDocument()
+    expect(within(row).queryByRole("button", { name: "Ver texto" })).toBeNull()
   })
 
   it("sem ocorrências, diz isso; sem alcance da organização, mostra o motivo do servidor", async () => {
-    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "ENFORCE", checked: 5, delivered: 5, blocked: 0, detected: 0, failed: 0 })
+    service.fetchResponseCheckSummary.mockResolvedValue({ days: 30, mode: "ENFORCE", modes: { conversation: "ENFORCE", content: "ENFORCE", feedback: "AUDIT" }, checked: 5, delivered: 5, blocked: 0, detected: 0, failed: 0 })
     service.fetchResponseChecksPage.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
     const { unmount } = renderWithQuery(<ResponseChecksPanel />)
     expect(await screen.findByText("Nenhuma resposta bloqueada, detectada ou sem conferência.")).toBeInTheDocument()

@@ -1,4 +1,5 @@
 /** @vitest-environment jsdom */
+import { ApiError } from "@/lib/api/api-client"
 import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
@@ -82,6 +83,21 @@ describe("detalhe do padrão", () => {
     fireEvent.change(screen.getByLabelText("Como você confirmou?"), { target: { value: "Procedimentos revisados: não é exigido." } })
     fireEvent.click(confirm)
     await vi.waitFor(() => expect(service.reviewPattern).toHaveBeenCalledWith("p-1", { action: "CONFIRM_NOT_OBLIGATION", reason: "Procedimentos revisados: não é exigido." }))
+  })
+
+  it("conferência (PEN-018): com regra apontada, aprovar pede o motivo, que vai ao servidor; sem motivo, o botão fica parado", async () => {
+    service.reviewPattern.mockRejectedValueOnce(new ApiError("A conferência apontou uma regra neste texto (Política). Para aprovar mesmo assim, informe o motivo.", 422, "BEST_PRACTICE_RULE_VIOLATION"))
+    service.reviewPattern.mockResolvedValue({ id: "p-1", reviewStatus: "APPROVED", obligationConfirmedByReview: true })
+    renderWithQuery(inDialog(<PatternDetailBody pattern={{ ...PATTERN, obligationStatus: "OPTIONAL", obligationConfirmedByReview: true }} />))
+    fireEvent.click(screen.getByRole("button", { name: /^Aprovar$/ }))
+    const panel = await screen.findByTestId("rule-override")
+    expect(panel).toHaveTextContent("A conferência apontou uma regra neste texto (Política)")
+    const confirm = screen.getByRole("button", { name: "Aprovar mesmo assim" })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Por que aprovar mesmo assim?"), { target: { value: "Aqui o tema é outro." } })
+    fireEvent.click(confirm)
+    await vi.waitFor(() => expect(service.reviewPattern).toHaveBeenLastCalledWith("p-1", { action: "APPROVE", ruleOverrideReason: "Aqui o tema é outro." }))
+    await vi.waitFor(() => expect(screen.queryByTestId("rule-override")).toBeNull())
   })
 
   it("BEST_PRACTICE_HOW_IT_HELPS_V1: o rascunho da IA aparece marcado para conferir; sem texto, a tela diz que o feedback não liga a prática ao resultado", () => {

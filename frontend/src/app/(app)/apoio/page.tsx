@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation"
 
-import { AnjoWorkspace } from "@/components/human-support/anjo/anjo-workspace"
-import { landingRouteFor } from "@/services/auth/auth-service"
+import { landingRouteFor, myProfileHrefFor } from "@/services/auth/auth-service"
 import { getCurrentUserFromCookies } from "@/services/auth/current-user-server"
 
-/** Área do Anjo (Apoio com Anjo): só para quem tem o papel Anjo em algum escopo. A API aplica a mesma regra em cada rota. */
+/** `/apoio` (endereço antigo da área do Anjo): leva à aba "Apoio" do próprio perfil. Sem o papel Anjo, à tela inicial da pessoa. */
 export default async function Page() {
   const user = await getCurrentUserFromCookies()
   if (!user) redirect("/auth/login")
   if (!user.access.capabilities.canAttendHumanSupport) redirect(landingRouteFor(user))
-  return <AnjoWorkspace />
+  redirect(`${myProfileHrefFor(user)}?tab=apoio`)
 }

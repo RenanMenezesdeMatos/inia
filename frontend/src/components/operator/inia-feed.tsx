@@ -8,9 +8,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { OperatorDateFilter } from "./operator-date-filter"
 import { publicAsset } from "@/lib/assets/public-asset"
+import { cn } from "@/lib/utils"
 
-export function IniaFeed({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
-  return <section className="flex h-full min-h-0 flex-col bg-card"><header className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-semibold">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div><OperatorDateFilter defaultMode="today"/></header><Separator/><ScrollArea className="min-h-0 flex-1"><div className="px-5 py-2">{children}</div></ScrollArea></section>
+/** `titleInToggle`: em tela pequena a alternância acima do feed já diz onde a pessoa está; o título fica só para leitor de tela e a altura vai para o conteúdo. */
+export function IniaFeed({ title, description, children, titleInToggle = false }: { title: string; description: string; children: React.ReactNode; titleInToggle?: boolean }) {
+  return <section className="flex h-full min-h-0 flex-col bg-card"><header className={cn("flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between", titleInToggle && "max-lg:flex-row max-lg:justify-end max-lg:py-2")}><div className={titleInToggle ? "max-lg:sr-only" : undefined}><h2 className="text-lg font-semibold">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div><OperatorDateFilter defaultMode="today"/></header><Separator/><ScrollArea className="min-h-0 flex-1"><div className="px-5 py-2">{children}</div></ScrollArea></section>
 }
 
 /**

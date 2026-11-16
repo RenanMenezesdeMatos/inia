@@ -3,6 +3,10 @@ import { OperatorDailyFeedbackFeed } from "./operator-daily-feedback-feed"
 import { OperatorIniaChat } from "./operator-inia-chat"
 import { FollowupWorkspaceShell } from "./followup-workspace-shell"
 
+/**
+ * Acompanhamento do PRÓPRIO operador (perfil visitado por outra pessoa não usa este componente): os feedbacks e recados à esquerda e o
+ * painel da INIA à direita, na área que para logo abaixo das abas (`docked`).
+ */
 export function OperatorFollowupWorkspace({ indicators, operator }: { indicators: OperatorIndicatorsData; operator: OperatorProfile }) {
-  return <FollowupWorkspaceShell feedbackInvites feed={<OperatorDailyFeedbackFeed indicators={indicators}/>} renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={indicators} operator={operator} onCollapse={onCollapse} hidden={hidden}/>}/>
+  return <FollowupWorkspaceShell docked feedbackInvites feed={<OperatorDailyFeedbackFeed indicators={indicators}/>} renderChat={({ onCollapse, hidden }) => <OperatorIniaChat indicators={indicators} operator={operator} onCollapse={onCollapse} hidden={hidden}/>}/>
 }

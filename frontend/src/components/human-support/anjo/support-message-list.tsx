@@ -3,7 +3,8 @@
 import { useEffect, useRef, type ReactNode } from "react"
 
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
-import { Message, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message"
+import { PersonAvatar } from "@/components/profile/person-avatar"
+import { Message, MessageAvatar, MessageContent, MessageFooter, MessageHeader } from "@/components/ui/message"
 import { formatShortDateTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import type { MessageView, Receipts } from "@/schemas/human-support/state.schema"
@@ -21,6 +22,8 @@ import { receiptStatus } from "../conversation/receipts"
 export type SupportMessageListProps = {
   messages: MessageView[]
   operatorName: string
+  /** Foto cadastrada do operador (migration 191); ausente ou null = iniciais. */
+  operatorAvatarUrl?: string | null
   /** Início deste atendimento: mensagens de Anjo a partir daqui são da pessoa que está vendo. */
   attendanceStartedAt: string
   /** Até onde o operador recebeu e viu (tiques das mensagens deste Anjo). Ausente = sem tiques (histórico). */
@@ -31,7 +34,7 @@ export type SupportMessageListProps = {
   className?: string
 }
 
-export function SupportMessageList({ messages, operatorName, attendanceStartedAt, peerReceipts, after, scrollKey, className }: SupportMessageListProps) {
+export function SupportMessageList({ messages, operatorName, operatorAvatarUrl = null, attendanceStartedAt, peerReceipts, after, scrollKey, className }: SupportMessageListProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const lastSeq = messages.at(-1)?.seq ?? 0
   useEffect(() => {
@@ -59,6 +62,11 @@ export function SupportMessageList({ messages, operatorName, attendanceStartedAt
         const author = !anjo ? (message.authorName ?? operatorName) : mine ? "Você" : `${message.authorName ?? "Anjo"} · Anjo`
         return (
           <Message key={message.id} align={anjo ? "end" : "start"} data-author={anjo ? "anjo" : "operator"} data-seq={message.seq}>
+            {!anjo ? (
+              <MessageAvatar>
+                <PersonAvatar name={author} avatarUrl={operatorAvatarUrl} className="size-7" />
+              </MessageAvatar>
+            ) : null}
             <MessageContent className="max-w-[85%]">
               <MessageHeader className="px-1">
                 <span className="font-medium text-foreground">{author}</span>

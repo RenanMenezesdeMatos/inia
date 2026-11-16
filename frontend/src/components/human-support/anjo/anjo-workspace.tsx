@@ -1,11 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { ClipboardCheck, HeartHandshake, History, Inbox, MessagesSquare, RefreshCw, Timer } from "lucide-react"
+import { ChartNoAxesColumn, ClipboardCheck, HeartHandshake, History, Inbox, MessagesSquare, RefreshCw, Timer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAnjoWorkspaceState } from "@/queries/human-support/use-anjo-workspace-state"
+import { useAnjoWorkspace } from "@/queries/human-support/anjo-workspace-provider"
 import { describeElapsed } from "@/lib/format/date"
 import type { AnjoView } from "@/schemas/human-support/state.schema"
 import { cn } from "@/lib/utils"
@@ -13,95 +13,73 @@ import { loginWithReturn } from "@/lib/auth/safe-return"
 
 import { IconBadge, StatusChip, SURFACE_CARD, PageHeader, SectionLabel, toneSurface } from "@/components/ui/surface"
 
+import { MyAnjoHistory } from "../history/my-anjo-history"
 import { AttendanceHistory } from "./attendance-history"
 import { AttendancePane } from "./attendance-pane"
-import { pageIsSeen, primeChimeOnFirstGesture } from "@/lib/attention/attention-alert"
-import { blinkTabTitle, createAttendanceChime, NEW_ATTENDANCE_TITLE, newMessageTitle, type AttendanceChime } from "./attendance-alert"
 import { ClassificationForm } from "./classification-form"
 import { PresenceControl } from "./presence-control"
 import { useClock, useElapsed } from "./use-clock"
 
 /**
- * ÁREA DO ANJO (`/apoio`, design_draft.md seção 14). A chamada longa própria (`workspace=anjo`) mantém o Anjo conectado enquanto esta
- * aba do navegador estiver aberta — só uma por navegador (as outras mostram o aviso). Leitura na ordem: (1) o estado do Anjo e as
- * vagas, sempre visíveis; depois duas abas —
- *  - "Atendimento": os atendimentos em andamento (um por aba interna) e as classificações pendentes;
+ * ÁREA DO ANJO — a aba "Apoio" do próprio perfil (`?tab=apoio`; `/apoio` leva até ela). A conexão do Anjo e os avisos de som e título
+ * vivem no shell (`AnjoWorkspaceProvider`): abrir esta área liga a conexão nesta aba do navegador, e ela continua nas outras abas do
+ * perfil e nas outras telas do app — só uma aba do navegador por vez (as outras mostram o aviso). Leitura na ordem: (1) o estado do
+ * Anjo e as vagas, sempre visíveis; depois duas abas internas —
+ *  - "Atendimento": os atendimentos em andamento (um por aba) e as classificações pendentes;
  *  - "Seus atendimentos": o histórico dos próprios atendimentos (D5).
  * As duas ficam montadas (só a inativa é escondida): trocar de aba não encerra nada, não perde mensagens nem o texto digitado e não
- * reinicia contadores (todos contam do servidor). Fora da aba "Atendimento", ela sinaliza quantos atendimentos estão abertos e, em
- * destaque, quando há mensagem nova do operador ou atendimento sem resposta; atendimento novo continua com o som curto (preparado no
- * clique em "Ficar disponível"), o título da aba do navegador piscando até ter foco e a aba interna dele selecionada. A aba escolhida
- * fica na URL (`?tab=historico`) para sobreviver a uma atualização da página.
+ * reinicia contadores (todos contam do servidor). As mensagens novas por atendimento vêm do servidor (`unreadCount`): fora da vista,
+ * a contagem sobe; com o atendimento na tela, zera assim que a leitura é confirmada. Atendimento novo seleciona a aba dele. A aba
+ * interna fica na URL (`?apoio=historico`) para sobreviver a uma atualização da página. `embedded` = dentro do perfil (sem o título
+ * e as margens de página); `visible` = a aba do perfil está na tela (fora dela nada conta como lido).
  */
-type WorkspaceTab = "atendimento" | "historico"
-const TAB_PARAM = "tab"
+/**
+ * Abas da área: atendimento, os atendimentos já feitos e a própria jornada (migration 191). "Operação agora" (os outros Anjos e a fila)
+ * é só da coordenação — Coordenador de Anjos e Administrador geral, no painel —, nunca da área do Anjo.
+ */
+type WorkspaceTab = "atendimento" | "historico" | "jornada"
+const TAB_PARAM = "apoio"
+const WORKSPACE_TABS: readonly WorkspaceTab[] = ["atendimento", "historico", "jornada"]
+const asTab = (value: string | null): WorkspaceTab => (WORKSPACE_TABS.includes(value as WorkspaceTab) ? (value as WorkspaceTab) : "atendimento")
 
 function initialTab(): WorkspaceTab {
   if (typeof window === "undefined") return "atendimento"
-  return new URLSearchParams(window.location.search).get(TAB_PARAM) === "historico" ? "historico" : "atendimento"
+  return asTab(new URLSearchParams(window.location.search).get(TAB_PARAM))
 }
 
-export function AnjoWorkspace() {
-  const chimeRef = useRef<AttendanceChime | null>(null)
-  const stopBlinkRef = useRef<(() => void) | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+export function AnjoWorkspace({ embedded = false, visible = true }: { embedded?: boolean; visible?: boolean }) {
+  // Escolha da pessoa (com o instante) × chegada de atendimento novo (do provedor): vale a mais recente, sem efeito que copie estado.
+  const [picked, setPicked] = useState<{ attendanceId: string | null; at: number }>({ attendanceId: null, at: 0 })
+  const select = useCallback((attendanceId: string) => setPicked({ attendanceId, at: Date.now() }), [])
   const [tab, setTab] = useState<WorkspaceTab>(initialTab)
-  const [unreadById, setUnreadById] = useState<Record<string, number>>({})
   const classifyFocusRef = useRef<string | null>(null)
-
-  const onNewAttendance = useCallback((attendanceIds: string[]) => {
-    chimeRef.current?.play()
-    stopBlinkRef.current?.()
-    stopBlinkRef.current = blinkTabTitle(NEW_ATTENDANCE_TITLE)
-    if (attendanceIds[0]) setSelectedId(attendanceIds[0])
-  }, [])
-  const { anjo, blocked, reconnecting, sessionEnded, refresh, applyAnjo, clockOffsetMs } = useAnjoWorkspaceState({ onNewAttendance })
-  const anjoRef = useRef(anjo)
-  useEffect(() => {
-    anjoRef.current = anjo
-  }, [anjo])
+  const { anjo, blocked, reconnecting, sessionEnded, refresh, applyAnjo, clockOffsetMs, arm, setAreaVisible, arrival, attention, primeAudio } = useAnjoWorkspace()
   const now = useClock() + clockOffsetMs
 
+  // Abrir a área liga a conexão do Anjo nesta aba do navegador (e ela segue nas outras telas).
   useEffect(() => {
-    const chime = createAttendanceChime()
-    chimeRef.current = chime
-    // O navegador só deixa tocar depois de um gesto: o primeiro clique ou tecla na página também prepara o som (quem já estava
-    // disponível ao recarregar a página não passa pelo "Ficar disponível").
-    const stopPriming = primeChimeOnFirstGesture(chime)
-    return () => {
-      stopPriming()
-      stopBlinkRef.current?.()
-      stopBlinkRef.current = null
-      chime.dispose()
-      chimeRef.current = null
-    }
-  }, [])
+    arm()
+  }, [arm])
+  useEffect(() => {
+    setAreaVisible(visible)
+    return () => setAreaVisible(false)
+  }, [visible, setAreaVisible])
+  // Atendimento novo: a aba dele fica selecionada (o som e o título vêm do provedor, em qualquer tela).
+  const selectedId = arrival && arrival.nonce > picked.at ? arrival.attendanceId : picked.attendanceId
 
-  const primeAudio = useCallback(() => chimeRef.current?.prime(), [])
-  // Mensagem nova do operador fora da vista do Anjo (aba escondida, janela sem foco, outro atendimento aberto ou "Seus atendimentos"):
-  // o contador do atendimento sobe — e então toca o som; com a página fora da vista, o título da aba também pisca até ele voltar.
-  const unreadRef = useRef<Record<string, number>>({})
-  const onUnreadChange = useCallback((attendanceId: string, unread: number) => {
-    const before = unreadRef.current[attendanceId] ?? 0
-    if (before === unread) return
-    const next = { ...unreadRef.current }
-    if (unread > 0) next[attendanceId] = unread
-    else delete next[attendanceId]
-    unreadRef.current = next
-    setUnreadById(next)
-    if (unread <= before) return
-    chimeRef.current?.play()
-    if (pageIsSeen()) return
-    const operatorName = anjoRef.current?.attendances.find((attendance) => attendance.id === attendanceId)?.operatorName ?? "o operador"
-    stopBlinkRef.current?.()
-    stopBlinkRef.current = blinkTabTitle(newMessageTitle(operatorName))
-  }, [])
+  const attendances = anjo?.attendances ?? []
+  const activeId = attendances.some((attendance) => attendance.id === selectedId) ? selectedId! : (attendances[0]?.id ?? null)
+  const onScreen = visible && tab === "atendimento"
+  const viewingId = onScreen ? activeId : null
+  // Mensagens novas por atendimento (do servidor); o que está na tela conta como visto na hora, sem esperar a confirmação voltar.
+  const unreadById: Record<string, number> = Object.fromEntries(attendances.map((attendance) => [attendance.id, attendance.id === viewingId ? 0 : attendance.unreadCount]))
+
   const changeTab = (value: string) => {
-    const next: WorkspaceTab = value === "historico" ? "historico" : "atendimento"
+    const next = asTab(value)
     setTab(next)
     try {
       const url = new URL(window.location.href)
-      if (next === "historico") url.searchParams.set(TAB_PARAM, next)
+      if (next !== "atendimento") url.searchParams.set(TAB_PARAM, next)
       else url.searchParams.delete(TAB_PARAM)
       window.history.replaceState(window.history.state, "", url)
     } catch {
@@ -124,8 +102,8 @@ export function AnjoWorkspace() {
     // 401 na chamada de estado: tentar de novo não adianta. Sem a área aberta a conexão do Anjo cai; depois da carência o servidor o
     // deixa Indisponível e devolve os atendimentos à fila (regra da distribuição).
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8">
-        <WorkspaceTitle />
+      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
+        {embedded ? null : <WorkspaceTitle />}
         <div role="alert" className={cn(toneSurface("warning"), "p-5")}>
           <p className="font-medium">Sua sessão terminou</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -141,8 +119,8 @@ export function AnjoWorkspace() {
 
   if (blocked) {
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8">
-        <WorkspaceTitle />
+      <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
+        {embedded ? null : <WorkspaceTitle />}
         <div role="alert" className={cn(toneSurface("warning"), "p-5")}>
           <p className="font-medium">A área do Anjo está aberta em outra aba</p>
           <p className="mt-1 text-sm text-muted-foreground">Continue os atendimentos na outra aba. Para usar esta, feche a outra e recarregue esta página.</p>
@@ -155,21 +133,29 @@ export function AnjoWorkspace() {
     )
   }
 
-  const unreadTotal = anjo ? anjo.attendances.reduce((total, attendance) => total + (unreadById[attendance.id] ?? 0), 0) : 0
-  const awaitingResponse = anjo ? anjo.attendances.some((attendance) => attendance.firstAnjoMessageAt === null) : false
+  const unreadTotal = Object.values(unreadById).reduce((total, count) => total + count, 0)
+  const awaitingResponse = attention.awaitingResponse
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8">
+    <div className={embedded ? "space-y-6" : "mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:py-8"}>
       <header className="flex flex-col gap-5">
-        <WorkspaceTitle
-          aside={
-            reconnecting ? (
-              <StatusChip tone="warning" icon={RefreshCw} role="status">
-                Reconectando…
-              </StatusChip>
-            ) : null
-          }
-        />
+        {embedded ? (
+          reconnecting ? (
+            <StatusChip tone="warning" icon={RefreshCw} role="status" className="self-start">
+              Reconectando…
+            </StatusChip>
+          ) : null
+        ) : (
+          <WorkspaceTitle
+            aside={
+              reconnecting ? (
+                <StatusChip tone="warning" icon={RefreshCw} role="status">
+                  Reconectando…
+                </StatusChip>
+              ) : null
+            }
+          />
+        )}
         {anjo ? (
           <div className={cn(SURFACE_CARD, "p-4 sm:p-5")}>
             <PresenceControl
@@ -210,19 +196,22 @@ export function AnjoWorkspace() {
               <History className="size-4" aria-hidden />
               Seus atendimentos
             </TabsTrigger>
+            <TabsTrigger value="jornada">
+              <ChartNoAxesColumn className="size-4" aria-hidden />
+              Sua jornada
+            </TabsTrigger>
           </TabsList>
 
           {/* As duas abas ficam montadas: a inativa só é escondida (nada recomeça ao voltar). */}
           <TabsContent value="atendimento" forceMount className="mt-5 flex flex-col gap-8 data-[state=inactive]:hidden">
             <AttendancesSection
               anjo={anjo}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              activeId={activeId}
+              onSelect={select}
               now={now}
               clockOffsetMs={clockOffsetMs}
-              workspaceActive={tab === "atendimento"}
+              workspaceActive={onScreen}
               unreadById={unreadById}
-              onUnreadChange={onUnreadChange}
               onApplyAnjo={applyAnjo}
               onRefresh={refresh}
               onClosed={focusClassificationOf}
@@ -253,6 +242,9 @@ export function AnjoWorkspace() {
 
           <TabsContent value="historico" forceMount className="mt-5 data-[state=inactive]:hidden">
             <AttendanceHistory reloadKey={[...anjo.attendances.map((attendance) => attendance.id), "|", ...anjo.pendingClassifications.map((pending) => pending.attendanceId)].join(",")} />
+          </TabsContent>
+          <TabsContent value="jornada" className="mt-5">
+            <MyAnjoHistory />
           </TabsContent>
         </Tabs>
       )}
@@ -300,22 +292,20 @@ function FinalDuration({ startedAt, endedAt }: { startedAt: string; endedAt: str
 
 type AttendancesSectionProps = {
   anjo: AnjoView
-  selectedId: string | null
+  activeId: string | null
   onSelect: (attendanceId: string) => void
   now: number
   clockOffsetMs: number
   /** A aba "Atendimento" é a que está na tela. */
   workspaceActive: boolean
   unreadById: Record<string, number>
-  onUnreadChange: (attendanceId: string, unread: number) => void
   onApplyAnjo: (anjo: AnjoView) => void
   onRefresh: () => void
   onClosed: (attendanceId: string) => void
 }
 
-function AttendancesSection({ anjo, selectedId, onSelect, now, clockOffsetMs, workspaceActive, unreadById, onUnreadChange, onApplyAnjo, onRefresh, onClosed }: AttendancesSectionProps) {
+function AttendancesSection({ anjo, activeId, onSelect, now, clockOffsetMs, workspaceActive, unreadById, onApplyAnjo, onRefresh, onClosed }: AttendancesSectionProps) {
   const { attendances } = anjo
-  const activeId = attendances.some((attendance) => attendance.id === selectedId) ? selectedId! : (attendances[0]?.id ?? "")
   return (
     <section aria-labelledby="anjo-attendances-title" className="flex flex-col gap-3">
       <SectionLabel id="anjo-attendances-title">Atendimentos em andamento</SectionLabel>
@@ -331,7 +321,7 @@ function AttendancesSection({ anjo, selectedId, onSelect, now, clockOffsetMs, wo
           </p>
         </div>
       ) : (
-        <Tabs value={activeId} onValueChange={onSelect}>
+        <Tabs value={activeId ?? ""} onValueChange={onSelect}>
           <TabsList aria-label="Atendimentos em andamento" className="max-w-full overflow-x-auto">
             {attendances.map((attendance) => {
               const unread = unreadById[attendance.id] ?? 0
@@ -365,7 +355,6 @@ function AttendancesSection({ anjo, selectedId, onSelect, now, clockOffsetMs, wo
                 active={workspaceActive && attendance.id === activeId}
                 onApplyAnjo={onApplyAnjo}
                 onRefresh={onRefresh}
-                onUnreadChange={onUnreadChange}
                 onClosed={onClosed}
               />
             </TabsContent>

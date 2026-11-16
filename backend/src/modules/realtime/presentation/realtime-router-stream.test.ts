@@ -96,7 +96,7 @@ describe("chat em fluxo — SSE", () => {
     expect(response.headers["x-accel-buffering"]).toBe("no")
     const sse = events(response.text)
     expect(sse.map((item) => item.event)).toEqual(["conversation", "status", "status", "chunk", "chunk", "persisted", "done"])
-    expect(sse.filter((item) => item.event === "status").map((item) => item.data.label)).toEqual(["Consultando as bases de conhecimento…", "Escrevendo a resposta…"])
+    expect(sse.filter((item) => item.event === "status").map((item) => item.data.label)).toEqual(["Chamando especialista…", "Preparando resposta…"])
     expect(screen(sse)).toBe("Para contestar, abra a contestação.")
     expect(memory.messages.at(-1)!.content).toBe("Para contestar, abra a contestação.")
     const timing = JSON.parse(logs.find((line) => line.includes('"chat_turn_timing"'))!) as Record<string, unknown>
@@ -181,7 +181,7 @@ describe("chat em fluxo — SSE", () => {
       },
       {
         clarification: async (input) => {
-          input.stream!.status!("Escrevendo a resposta com as fontes…")
+          input.stream!.status!("Preparando resposta…", "WRITING")
           input.stream!.text("Abra a contestação ")
           input.stream!.text("pelo protocolo [1]")
           return answered("Abra a contestação pelo protocolo [1].")
@@ -242,11 +242,11 @@ describe("peças do fluxo", () => {
 
   it("rótulo do progresso: palavras de quem usa, nunca nomes internos", () => {
     const isData = (name: string) => name === "my_results"
-    expect(progressLabel({ stage: "TOOLS", tools: ["agent_faturamento"] }, isData)).toBe("Consultando as bases de conhecimento…")
+    expect(progressLabel({ stage: "TOOLS", tools: ["agent_faturamento"] }, isData)).toBe("Chamando especialista…")
     expect(progressLabel({ stage: "TOOLS", tools: ["my_results"] }, isData)).toBe("Consultando os dados…")
-    expect(progressLabel({ stage: "TOOLS", tools: ["my_results", "agent_x"] }, isData)).toBe("Consultando os dados e as bases de conhecimento…")
+    expect(progressLabel({ stage: "TOOLS", tools: ["my_results", "agent_x"] }, isData)).toBe("Consultando os dados e chamando especialista…")
     expect(progressLabel({ stage: "TOOLS", tools: ["leadership_process"] }, () => true)).toBe("Consultando o processo nas bases de conhecimento…")
-    expect(progressLabel({ stage: "WRITING" }, isData)).toBe("Escrevendo a resposta…")
+    expect(progressLabel({ stage: "WRITING" }, isData)).toBe("Preparando resposta…")
   })
 
   it("falha DEPOIS de o fluxo começar (status já 200): evento `error` com código e referência, registrada como ocorrência", async () => {

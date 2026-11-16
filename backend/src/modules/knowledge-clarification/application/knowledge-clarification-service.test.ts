@@ -4,7 +4,7 @@ import { AiProviderError } from "../../../shared/application/model-routing/ai-er
 import { DEFAULT_NAVIGATION_BUDGET, type NavigationBudget } from "../domain/knowledge-workspace.js"
 import { KNOWLEDGE_CLARIFICATION_VERSION, optionIdFor, stepIdFor, type ClarificationState, type ClarificationStep } from "../domain/clarification-state.js"
 import { FailAfterStreaming, TEST_ORCHESTRATOR_AGENT, TEST_ORG, TEST_OTHER_SPECIALIST_AGENT, TEST_PERSON, TEST_SPECIALIST_AGENT, fixtureKnowledge, refOf, refsInPrompt, scriptedModel, type ScriptedCall } from "../testing/clarification-fixtures.js"
-import { ANSWER_DRAFTING_STATUS, createKnowledgeClarification, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "./knowledge-clarification-service.js"
+import { ANSWER_DRAFTING_STATUS, READING_STATUS, createKnowledgeClarification, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "./knowledge-clarification-service.js"
 
 /**
  * Esclarecimento pelas bases de ponta a ponta: o catálogo REAL (autorização, acesso, sumários, leitura de seções), a navegação em
@@ -395,6 +395,30 @@ describe("esclarecimento pelas bases — resposta em fluxo no chat de texto", ()
     { text: "Só é possível com cobertura celular no novo endereço.", document: "Linha FWT", heading: "Cobertura" },
     { text: "O prazo é imediato depois da validação da cobertura.", document: "Linha FWT", heading: "Prazo" },
   ])
+
+  it("progresso: avisa a leitura e a redação só quando acontecem, com as mesmas chamadas ao modelo e os mesmos pedidos de quem não recebe aviso", async () => {
+    const script = (call: ScriptedCall, index: number) => {
+      if (index === 0) return { decision: "READ", read: [refOf(call.prompt, "Mudança de endereço — Linha FWT", "Prazo")] }
+      return call.stage === "PLANNER" ? planAnswer(call) : goodAnswer(call)
+    }
+    const withStream = setup(script)
+    const tela = screen()
+    await withStream.ask("Qual o prazo da mudança de endereço da linha FWT?", { stream: tela.stream })
+    const silent = setup(script)
+    await silent.ask("Qual o prazo da mudança de endereço da linha FWT?")
+    expect(tela.events.filter((event) => event[0] === "status")).toEqual([["status", READING_STATUS], ["status", ANSWER_DRAFTING_STATUS]])
+    expect(withStream.calls.map((call) => [call.stage, call.system, call.user])).toEqual(silent.calls.map((call) => [call.stage, call.system, call.user]))
+  })
+
+  it("progresso: consulta que só abre bases, sem ler seção, não diz que está lendo", async () => {
+    const { ask } = setup((call, index) => {
+      if (index === 0) return { decision: "READ", read: [refOf(call.prompt, "Mudança de endereço — Linha FWT")] }
+      return { decision: "INSUFFICIENT", questionFacts: [], insufficient: { reason: "Falta.", ask: null }, conflicts: [] }
+    }, { budget: { fullOutlineChars: 0, sampleSectionsPerBase: 1 } })
+    const tela = screen()
+    await ask("Como faço a mudança de endereço?", { stream: tela.stream })
+    expect(tela.events.filter((event) => event[0] === "status")).toEqual([])
+  })
 
   it("a redação aparece em pedaços, já numerada, e o que apareceu é exatamente a resposta validada; a decisão nunca vai para a tela", async () => {
     const { ask, calls } = setup((call) => (call.stage === "PLANNER" ? planAnswer(call) : goodAnswer(call)))

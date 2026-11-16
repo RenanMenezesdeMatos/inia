@@ -12,11 +12,15 @@ import { env } from "../../../config/env.js"
 import { exportSubjectData } from "../../data-lifecycle/application/subject-data-export.js"
 import { classifyAttendance } from "../application/classification-service.js"
 import { acknowledgeMessages, signalTyping } from "../application/conversation-marks.js"
-import { anjosActivity, anjosNow, listRequests, listUnavailableAttempts, requestDetail } from "../application/coordination-service.js"
+import { anjosActivity, anjosNow, listRequests, queueWaiting, listUnavailableAttempts, requestDetail } from "../application/coordination-service.js"
 import { dispatchOrganization } from "../application/dispatch.js"
 import { evaluateAttendance } from "../application/evaluation-service.js"
 import { anjoAttendanceHistory } from "../application/history-service.js"
 import { listMessages, sendMessage } from "../application/message-service.js"
+import { operationHistory } from "../application/operation-history.js"
+import { supportDemand } from "../application/demand-service.js"
+import { supportAbandonment } from "../application/abandonment-service.js"
+import { transferAttendance, transferCandidates } from "../application/transfer-service.js"
 import { supportFunnel } from "../application/metrics-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest } from "../application/request-service.js"
 import { listAnjos, listScopes, updateAnjoCapacity, updateScopeState, updateSettings } from "../application/settings-service.js"
@@ -88,7 +92,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
   afterAll(async () => {
     if (!pool) return
     const byOrg = [
-      "human_support_inbox_versions", "human_support_conversation_marks", "human_support_entry_events", "human_support_evaluations", "human_support_classifications", "human_support_messages", "human_support_attendances",
+      "human_support_transfers", "human_support_inbox_versions", "human_support_conversation_marks", "human_support_entry_events", "human_support_evaluations", "human_support_classifications", "human_support_messages", "human_support_attendances",
       "human_support_request_events", "human_support_requests", "human_support_presence_events", "human_support_agent_presence", "human_support_setting_events", "human_support_scope_settings",
       "human_support_settings", "assistant_conversations", "personal_data_access_log", "audit_logs", "access_role_assignments", "user_accounts", "analytics_operational_dirty", "people", "subteams", "teams", "operations",
     ]
@@ -239,6 +243,8 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     // Enviar tira o "digitando" de quem escreveu.
     const sent = (await sendMessage(pool, viewer("O25"), created.id, { clientMessageId: randomUUID(), body: "Oi, preciso de ajuda com a segunda via.", viewerIsAnjo: false })).message
     expect((await anjoSees()).peerTypingMs).toBeNull()
+    // Mensagem nova para o Anjo, contada pelo servidor (vale fora da área e depois de recarregar) até a leitura dele.
+    expect((await anjoSees()).unreadCount).toBe(1)
 
     // O Anjo começa e desiste sem enviar: o aviso some; parar de novo, sem aviso valendo, não acorda o operador.
     await signalTyping(pool, viewer("A1"), created.id, { typing: true, viewerIsAnjo: true })
@@ -261,13 +267,21 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     const unchanged = await versionOf("O25")
     await acknowledgeMessages(pool, viewer("A1"), created.id, { deliveredSeq: sent.seq, viewerIsAnjo: true })
     expect(await versionOf("O25")).toBe(unchanged)
-    // Lida: um seq além da última mensagem fica na última; confirmação atrasada não volta.
+    // Entregue não é lida: a mensagem continua nova para o Anjo.
+    expect((await anjoSees()).unreadCount).toBe(1)
+    // Lida: um seq além da última mensagem fica na última; confirmação atrasada não volta. Ler avisa também a PRÓPRIA tela do Anjo
+    // (o contador de mensagens novas dele zera na hora).
+    const anjoBeforeRead = await versionOf("A1")
     expect(await acknowledgeMessages(pool, viewer("A1"), created.id, { readSeq: 9_999, viewerIsAnjo: true })).toEqual({ deliveredSeq: sent.seq, readSeq: sent.seq })
+    expect(await versionOf("A1")).not.toBe(anjoBeforeRead)
+    expect((await anjoSees()).unreadCount).toBe(0)
     expect(await acknowledgeMessages(pool, viewer("A1"), created.id, { deliveredSeq: 1, readSeq: 1, viewerIsAnjo: true })).toEqual({ deliveredSeq: sent.seq, readSeq: sent.seq })
     expect((await operatorSees()).peerReceipts).toEqual({ deliveredSeq: sent.seq, readSeq: sent.seq })
 
     // Do outro lado: o operador lê a resposta do Anjo e o Anjo vê os dois tiques azuis.
     const reply = (await sendMessage(pool, viewer("A1"), created.id, { clientMessageId: randomUUID(), body: "Claro! Me conta qual é o caso.", viewerIsAnjo: true })).message
+    // A mensagem do PRÓPRIO Anjo nunca conta como nova para ele.
+    expect((await anjoSees()).unreadCount).toBe(0)
     // Antes de ler, o estado do operador diz até onde ELE leu (a resposta do Anjo é mensagem nova, também depois de recarregar).
     expect((await operatorSees()).readSeq).toBeLessThan(reply.seq)
     await acknowledgeMessages(pool, viewer("O25"), created.id, { deliveredSeq: reply.seq, readSeq: reply.seq, viewerIsAnjo: false })
@@ -470,6 +484,13 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(await presenceOf()).toMatchObject({ status: "OFFLINE", scheduled_status: null })
     expect((await request(dropped.id)).status).toBe("WAITING")
 
+    // Só ler o estado (o indicador da aba "Apoio" ao entrar) não conecta o Anjo; a área aberta conecta.
+    await sql(`update human_support_agent_presence set lease_until = null where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
+    const peek = await loadState(pool, viewer("A1"), { workspace: "anjo-status" })
+    expect(peek.anjo!.presence).toMatchObject({ status: "OFFLINE", connected: false })
+    expect(((await sql(`select lease_until from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A1])).rows[0] as { lease_until: Date | null }).lease_until).toBeNull()
+    expect((await loadState(pool, viewer("A1"), { workspace: "anjo" })).anjo!.presence.connected).toBe(true)
+
     await resetOpen()
     await updateAnjoCapacity(pool, viewer("ADMIN"), ids.A1!, null)
     await sql(`delete from human_support_requests where id = any($1::uuid[])`, [created])
@@ -560,7 +581,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     const closed = await closeRequest(pool, viewer("A3"), created.id, { viewerIsAnjo: true })
     expect(closed.request).toMatchObject({ status: "CLOSED", end_cause: "ANJO_CLOSED" })
     const attendanceId = ((await sql(`select id from human_support_attendances where request_id = $1`, [created.id])).rows[0] as { id: string }).id
-    const classification = classificationInputSchema.parse({ reason: "FOUND_IN_PROCESS", referenceTitle: "Contestação de fatura", outcome: "RESOLVED" })
+    const classification = classificationInputSchema.parse({ reason: "FOUND_IN_PROCESS", referenceTitle: "Contestação de fatura", outcome: "RESOLVED", pertinence: "PERTINENT" })
     await classifyAttendance(pool, viewer("A3"), attendanceId, classification)
     await expect(classifyAttendance(pool, viewer("A3"), attendanceId, classification)).rejects.toMatchObject({ code: "HUMAN_SUPPORT_ALREADY_CLASSIFIED" })
     expect(await evaluateAttendance(pool, viewer("O15"), attendanceId, { resolved: "YES" })).toEqual({ resolved: "YES", stars: null })
@@ -657,4 +678,276 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     }
     await resetOpen()
   }, 60_000)
+
+  it("transferência pela coordenação (190): para um Anjo que pode receber, recusas, alcance, conversa contínua com leitura certa, sem classificação/avaliação do transferido e devolução à fila sem voltar ao mesmo Anjo", async () => {
+    await resetOpen()
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.A1!, 2)
+    await available("A1")
+    const { request: made } = await ask("O24")
+    expect(made.status).toBe("IN_PROGRESS")
+    await sendMessage(pool, viewer("O24"), made.id, { clientMessageId: randomUUID(), body: "Preciso de ajuda com o estorno.", viewerIsAnjo: false })
+    await sendMessage(pool, viewer("A1"), made.id, { clientMessageId: randomUUID(), body: "Vou verificar.", viewerIsAnjo: true })
+    // O A1 programou uma pausa: a transferência encerra o atendimento dele, e a pausa entra.
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "MEETING" })
+
+    // Destinos: o A2 ainda não pode (Indisponível); o A1 é o atual; nada de Anjo de outro Grupo.
+    const before = await transferCandidates(pool, viewer("COORD"), made.id)
+    expect(before.currentAnjoName).toBe("Proof HS A1")
+    expect(before.candidates.find((candidate) => candidate.personId === ids.A1)).toMatchObject({ canReceive: false, reason: "Atende este pedido agora" })
+    expect(before.candidates.find((candidate) => candidate.personId === ids.A2)).toMatchObject({ canReceive: false, reason: "Indisponível" })
+    expect(before.candidates.some((candidate) => candidate.personId === ids.A4)).toBe(false)
+    await expect(transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "ANJO", anjoPersonId: ids.A2! }, reason: "Anjo precisou sair" })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_TRANSFER_TARGET_UNAVAILABLE", statusCode: 409 })
+    await expect(transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "ANJO", anjoPersonId: ids.A1! }, reason: "Anjo precisou sair" })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_TRANSFER_SAME_ANJO" })
+    // O Anjo do Grupo 2 não atende o Grupo 1: recusado como não Anjo deste pedido.
+    await available("A4")
+    await expect(transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "ANJO", anjoPersonId: ids.A4! }, reason: "Anjo precisou sair" })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_TRANSFER_TARGET_UNAVAILABLE" })
+    // Coordenador sem alcance (um "Anjo" só do Grupo 2 não coordena) — e quem não alcança o pedido recebe 404.
+    await expect(transferCandidates(pool, viewer("A4"), made.id)).rejects.toMatchObject({ statusCode: 404 })
+
+    // Transfere para o A2 (Disponível, conectado, com vaga).
+    await available("A2")
+    const detail = await transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "ANJO", anjoPersonId: ids.A2! }, reason: "  Anjo precisou sair  " })
+    expect(detail.status).toBe("IN_PROGRESS")
+    expect(detail.protocol).toBe(made.protocol)
+    expect(detail.attendances.map((attendance) => [attendance.anjoName, attendance.endCause])).toEqual([["Proof HS A1", "TRANSFERRED"], ["Proof HS A2", null]])
+    const transfer = (await sql(`select from_anjo_person_id, to_anjo_person_id, actor_person_id, reason from human_support_transfers where request_id = $1`, [made.id])).rows[0] as { from_anjo_person_id: string; to_anjo_person_id: string; actor_person_id: string; reason: string }
+    expect(transfer).toEqual({ from_anjo_person_id: ids.A1, to_anjo_person_id: ids.A2, actor_person_id: ids.COORD, reason: "Anjo precisou sair" })
+    expect(((await sql(`select count(*)::int total from audit_logs where organization_id = $1 and action = 'HUMAN_SUPPORT_ATTENDANCE_TRANSFERRED' and entity_id = $2`, [ORG, made.id])).rows[0] as { total: number }).total).toBe(1)
+    expect(((await sql(`select count(*)::int total from personal_data_access_log where organization_id = $1 and viewer_person_id = $2 and resource_id = $3`, [ORG, ids.A2, made.id])).rows[0] as { total: number }).total).toBeGreaterThanOrEqual(1)
+    // A pausa programada do A1 entrou (era o último atendimento dele).
+    expect(((await sql(`select status, pause_reason from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A1])).rows[0] as { status: string; pause_reason: string })).toEqual({ status: "PAUSED", pause_reason: "MEETING" })
+
+    // O operador: mesma conversa, com o aviso (sem o motivo); o A2 lê tudo, o que era do A1 em terceira pessoa; o A1 não tem o que
+    // classificar nem o operador o que avaliar desse atendimento transferido.
+    const operatorView = (await loadOperatorView(pool, viewer("O24"))).openRequest!
+    expect(operatorView.anjo?.name).toBe("Proof HS A2")
+    const operatorTexts = operatorView.messages.map((message) => message.body)
+    expect(operatorTexts).toContain("Seu atendimento foi passado para Proof HS A2 (Anjo), que continua a conversa daqui.")
+    expect(JSON.stringify(operatorView)).not.toContain("precisou sair")
+    const a2 = (await listMessages(pool, viewer("A2"), made.id, { viewerIsAnjo: true })).messages.map((message) => message.body)
+    expect(a2).toContain("Preciso de ajuda com o estorno.")
+    expect(a2).toContain("Vou verificar.")
+    expect(a2).toContain("Proof HS A1 recebeu o pedido.")
+    expect(a2).not.toContain("Você recebeu este pedido.")
+    expect(a2).toContain("Você recebeu este atendimento por transferência da coordenação. A conversa anterior está acima.")
+    expect((await loadAnjoView(pool, viewer("A1"))).pendingClassifications.some((pending) => pending.protocol === made.protocol)).toBe(false)
+    expect((await loadAnjoView(pool, viewer("A2"))).attendances.map((attendance) => attendance.protocol)).toContain(made.protocol)
+    expect((await loadOperatorView(pool, viewer("O24"))).pendingEvaluations.some((evaluation) => evaluation.requestId === made.id)).toBe(false)
+
+    // Devolver à frente da fila: volta com o mesmo queued_at, prazo novo, e a distribuição não o entrega ao A2 de novo — vai ao A3.
+    const queuedAt = ((await sql(`select queued_at from human_support_requests where id = $1`, [made.id])).rows[0] as { queued_at: Date }).queued_at
+    await available("A3")
+    const requeued = await transferAttendance(pool, viewer("ADMIN"), made.id, { target: { kind: "QUEUE" }, reason: "Reorganizar a fila" })
+    expect(requeued.attendances.at(-2)).toMatchObject({ anjoName: "Proof HS A2", endCause: "TRANSFERRED" })
+    expect(requeued.attendances.at(-1)?.anjoName).toBe("Proof HS A3")
+    expect(((await sql(`select queued_at from human_support_requests where id = $1`, [made.id])).rows[0] as { queued_at: Date }).queued_at.getTime()).toBe(queuedAt.getTime())
+    expect((await loadOperatorView(pool, viewer("O24"))).openRequest!.messages.map((message) => message.body)).toContain("Seu atendimento voltou para a frente da fila: outro Anjo vai continuar a conversa.")
+    // Com o pedido de volta em atendimento, não dá para transferir um pedido na fila; encerrado, também não.
+    await closeRequest(pool, viewer("O24"), made.id, { viewerIsAnjo: false })
+    await expect(transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "QUEUE" }, reason: "Tarde demais" })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS" })
+
+    await resetOpen()
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.A1!, null)
+    await sql(`delete from human_support_requests where id = $1`, [made.id])
+  }, 60_000)
+
+  it("histórico da operação (191): espera, tempo de atendimento, pertinência e foto; falta de retorno; abandono antes e depois; sem Anjo logado; programação; queda de rede e sessão encerrada; fila agora; jornada com meia-noite e cobertura; permissões", async () => {
+    await resetOpen()
+    for (const key of ["AW", "AH", "AS", "AJ"]) {
+      await person(key, { team: "G1", subteam: "S1" }, true)
+      await grant(key, "ANJO", { type: "GROUP", team: "G1" })
+    }
+    for (const key of ["H1", "H2", "H3", "H4", "H5", "H6"]) await person(key, { team: "G1", subteam: "S1" })
+    const attendanceOf = (requestId: string) => sql(`select id, status, end_cause, lost_cause, started_at, ended_at from human_support_attendances where request_id = $1 order by started_at desc limit 1`, [requestId]).then((result) => result.rows[0] as { id: string; status: string; end_cause: string | null; lost_cause: string | null; started_at: Date; ended_at: Date | null })
+    const history = (key: string, anjo: string) => operationHistory(pool, viewer(key), { from: today(), to: today(), anjoPersonId: ids[anjo] }, "COORDINATION")
+
+    // 1. Atendimento direto com foto dos dois lados, 35 s de espera (da entrada ao acolhimento), 4 min de atendimento e pertinência.
+    await sql(`update people set avatar_url = '/proof/h1.png' where id = $1`, [ids.H1])
+    await sql(`update people set avatar_url = '/proof/aw.png' where id = $1`, [ids.AW])
+    await available("AW")
+    const { request: direct } = await ask("H1")
+    expect(direct.status).toBe("IN_PROGRESS")
+    expect((await loadAnjoView(pool, viewer("AW"))).attendances[0]).toMatchObject({ operatorName: "Proof HS H1", operatorAvatarUrl: "/proof/h1.png" })
+    expect((await loadOperatorView(pool, viewer("H1"))).openRequest?.anjo).toMatchObject({ avatarUrl: "/proof/aw.png" })
+    await sql(`update human_support_requests set created_at = now() - interval '300 seconds' where id = $1`, [direct.id])
+    await sql(`update human_support_attendances a set started_at = r.created_at + interval '35 seconds' from human_support_requests r where r.id = a.request_id and a.request_id = $1`, [direct.id])
+    await closeRequest(pool, viewer("AW"), direct.id, { viewerIsAnjo: true })
+    await sql(`update human_support_attendances set ended_at = started_at + interval '240 seconds' where request_id = $1`, [direct.id])
+    await classifyAttendance(pool, viewer("AW"), (await attendanceOf(direct.id)).id, classificationInputSchema.parse({ reason: "NO_PROCESS", outcome: "RESOLVED", pertinence: "NOT_PERTINENT" }))
+    const aw = (await history("ADMIN", "AW")).anjos[0]!
+    expect(aw.attendance).toMatchObject({ acolhimentos: 1, operatorWait: { averageSeconds: 35, count: 1 }, handling: { averageSeconds: 240, count: 1, normal: { count: 1 } }, pertinence: { pertinent: 0, notPertinent: 1, notEvaluated: 0 } })
+    expect(aw.attendance.reasons.items).toEqual([expect.objectContaining({ key: "NO_PROCESS", count: 1 })])
+    // Estrutura do Anjo para os filtros de "Por Anjo": Grupo/Subgrupo do cadastro e o líder mais próximo de cada cargo.
+    await person("SUP", { team: "G1" })
+    await person("MGR", { team: "G1" })
+    await sql(`update people set role = 'MANAGER' where id = $1`, [ids.MGR])
+    await sql(`update people set role = 'SUPERVISOR', reports_to_id = $2 where id = $1`, [ids.SUP, ids.MGR])
+    await sql(`update people set reports_to_id = $2 where id = $1`, [ids.AW, ids.SUP])
+    expect((await history("ADMIN", "AW")).anjos[0]!.structure).toMatchObject({
+      team: { id: ids.G1 },
+      subteam: { id: ids.S1 },
+      leaders: { SUPERVISOR: { id: ids.SUP, name: "Proof HS SUP" }, COORDINATOR: null, MANAGER: { id: ids.MGR }, SENIOR_MANAGER: null },
+    })
+    await changePresence(pool, viewer("AW"), { status: "OFFLINE" })
+
+    // 2. Falta de retorno: o operador escreveu, o Anjo nunca respondeu, 15 min sem mensagem → encerrado; faltou retorno do Anjo.
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AH!, 1)
+    await renewAnjoLease(pool, viewer("AH"), { jti: randomUUID(), accountId: ids["AH:account"]!, expiresAt: new Date(Date.now() + 3_600_000) })
+    await changePresence(pool, viewer("AH"), { status: "AVAILABLE" })
+    const { request: silent } = await ask("H2")
+    await sendMessage(pool, viewer("H2"), silent.id, { clientMessageId: randomUUID(), body: "Alguém aí?", viewerIsAnjo: false })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [silent.id])
+    await dispatchOrganization(pool, ORG)
+    expect(await attendanceOf(silent.id)).toMatchObject({ end_cause: "INACTIVITY" })
+
+    // 3. Fila sem outro Anjo elegível (o AH está cheio, capacidade 1) → o operador sai antes do acolhimento: abandono, com 1 Anjo em serviço.
+    const { request: absent } = await ask("H3")
+    const { request: queued } = await ask("H4")
+    expect(queued.status).toBe("WAITING")
+    await sql(`update human_support_requests set operator_seen_at = now() - interval '3 minutes' where id = $1`, [queued.id])
+    await dispatchOrganization(pool, ORG)
+    expect(await sql(`select status, anjos_in_service_at_end from human_support_requests where id = $1`, [queued.id]).then((result) => result.rows[0])).toEqual({ status: "ABANDONED", anjos_in_service_at_end: 1 })
+    // 4. Abandono DEPOIS do acolhimento: o operador fechou a INIA no meio do atendimento (atribuído ao Anjo).
+    await sql(`update human_support_requests set operator_seen_at = now() - interval '6 minutes' where id = $1`, [absent.id])
+    await closeRequest(pool, viewer("AH"), absent.id, { cause: "OPERATOR_ABSENT", viewerIsAnjo: true })
+
+    // 5. Pausa programada durante o atendimento: continua Em atendimento, com a mudança sinalizada; a fila agora mostra quem espera.
+    const { request: busy } = await ask("H5")
+    expect(busy.status).toBe("IN_PROGRESS")
+    await changePresence(pool, viewer("AH"), { status: "PAUSED", pauseReason: "LUNCH" })
+    const { request: last } = await ask("H6")
+    expect(last.status).toBe("WAITING")
+    const now = await anjosNow(pool, viewer("COORD"), {})
+    expect(now.items.find((item) => item.personId === ids.AH)).toMatchObject({ status: "IN_ATTENDANCE", connection: "CONNECTED", scheduled: { status: "PAUSED", pauseReason: "LUNCH" } })
+    expect(now.queue.waiting).toBeGreaterThanOrEqual(1)
+    expect(now.queue.awaitingFirstResponse).toBeGreaterThanOrEqual(1)
+    // Clicar na fila: quem aguarda e desde quando (entrada original), para o Coordenador e o Administrador geral.
+    const waitingList = await queueWaiting(pool, viewer("COORD"), {})
+    expect(waitingList.find((item) => item.requestId === last.id)).toMatchObject({ operatorName: "Proof HS H6", requeued: false, waitingSince: (await request(last.id)).created_at.toISOString() })
+    expect((await queueWaiting(pool, viewer("ADMIN"), {})).some((item) => item.requestId === last.id)).toBe(true)
+
+    // 6. Queda de rede além da carência: atendimento interrompido (causa: rede), o Anjo sai; o pedido na fila que vence agora fica
+    //    registrado SEM Anjo em serviço.
+    await sql(`update human_support_agent_presence set lease_until = now() - interval '4 minutes' where person_id = $1`, [ids.AH])
+    await sql(`update human_support_requests set queue_expires_at = now() - interval '1 second' where id = $1`, [last.id])
+    await dispatchOrganization(pool, ORG)
+    expect(await attendanceOf(busy.id)).toMatchObject({ end_cause: "ANJO_LOST", lost_cause: "CONNECTION" })
+    expect(await sql(`select status, anjos_in_service_at_end from human_support_requests where id = $1`, [last.id]).then((result) => result.rows[0])).toEqual({ status: "EXPIRED", anjos_in_service_at_end: 0 })
+    const lostEvent = (await sql(`select cause, occurred_at from human_support_presence_events where person_id = $1 and cause in ('CONNECTION_LOST', 'SESSION_ENDED') order by id desc limit 1`, [ids.AH])).rows[0] as { cause: string; occurred_at: Date }
+    expect(lostEvent.cause).toBe("CONNECTION_LOST")
+    // Reconexão: a volta é registrada no instante da renovação.
+    await renewAnjoLease(pool, viewer("AH"))
+    const restoredAt = ((await sql(`select connection_restored_at from human_support_agent_presence where person_id = $1`, [ids.AH])).rows[0] as { connection_restored_at: Date }).connection_restored_at
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select occurred_at from human_support_presence_events where person_id = $1 and cause = 'CONNECTION_RESTORED' order by id desc limit 1`, [ids.AH])).rows[0]).toEqual({ occurred_at: restoredAt })
+    const ah = (await history("ADMIN", "AH")).anjos[0]!.attendance
+    expect(ah.noReply).toMatchObject({ rate: { numerator: 1, denominator: 3 }, anjoSide: 1, operatorSide: 0 })
+    expect(ah.abandonedAfterAcolhimento).toBe(1)
+    expect(ah.interruptedBySystem).toMatchObject({ connection: 1, session: 0 })
+    // Abandonos de hoje (Monitoria Online) no alcance do Coordenador do G1: o operador que fechou a INIA na fila, o que saiu no meio do
+    // atendimento, a falta de retorno do Anjo e a queda do Anjo — nunca os encerramentos normais.
+    const gone = await supportAbandonment(pool, viewer("COORD"), { from: today(), to: today() })
+    expect(gone.waiting.closedInia).toBeGreaterThanOrEqual(1)
+    expect(gone.attendance.byOperator.leftInia).toBeGreaterThanOrEqual(1)
+    expect(gone.attendance.byAnjo.noReply).toBeGreaterThanOrEqual(1)
+    expect(gone.attendance.byAnjo.connection).toBeGreaterThanOrEqual(1)
+    expect(gone.attendance.abandoned).toBe(gone.attendance.byOperator.total + gone.attendance.byAnjo.total)
+    expect(gone.attendance.abandoned).toBeLessThan(gone.attendance.ended)
+
+    // 7. Sessão encerrada (o prazo do login venceu 10 min atrás; a área parou de dar sinal 4 min atrás — a sessão acabou antes):
+    //    evento e interrupção marcados como SESSÃO.
+    await renewAnjoLease(pool, viewer("AS"), { jti: randomUUID(), accountId: ids["AS:account"]!, expiresAt: new Date(Date.now() - 10 * 60_000) })
+    await changePresence(pool, viewer("AS"), { status: "AVAILABLE" })
+    await dispatchOrganization(pool, ORG)
+    expect((await attendanceOf(busy.id)).status).toBe("ACTIVE")
+    await sql(`update human_support_agent_presence set lease_until = now() - interval '4 minutes' where person_id = $1`, [ids.AS])
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select cause from human_support_presence_events where person_id = $1 and cause in ('CONNECTION_LOST', 'SESSION_ENDED') order by id desc limit 1`, [ids.AS])).rows[0]).toEqual({ cause: "SESSION_ENDED" })
+    expect(await attendanceOf(busy.id)).toMatchObject({ end_cause: "ANJO_LOST", lost_cause: "SESSION" })
+    expect((await history("ADMIN", "AS")).anjos[0]!.attendance.interruptedBySystem).toMatchObject({ session: 1, connection: 0 })
+    expect((await anjosNow(pool, viewer("COORD"), {})).items.find((item) => item.personId === ids.AS)).toMatchObject({ connection: "SESSION_ENDED" })
+
+    // 7b. A sessão encerrada deixou o AS Indisponível na hora. Ele entra de novo e abre a área: continua Indisponível e NÃO recebe
+    //     o pedido que está na fila; só depois de escolher Disponível.
+    expect((await sql(`select status from human_support_agent_presence where person_id = $1`, [ids.AS])).rows[0]).toEqual({ status: "OFFLINE" })
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AS!, 1)
+    await renewAnjoLease(pool, viewer("AS"), { jti: randomUUID(), accountId: ids["AS:account"]!, expiresAt: new Date(Date.now() + 3_600_000) })
+    await dispatchOrganization(pool, ORG)
+    expect((await request(busy.id)).status).toBe("WAITING")
+    expect((await loadAnjoView(pool, viewer("AS"))).presence).toMatchObject({ status: "OFFLINE", connected: true })
+    await changePresence(pool, viewer("AS"), { status: "AVAILABLE" })
+    expect((await attendanceOf(busy.id))).toMatchObject({ status: "ACTIVE" })
+    expect((await sql(`select anjo_person_id from human_support_attendances where request_id = $1 and status = 'ACTIVE'`, [busy.id])).rows[0]).toEqual({ anjo_person_id: ids.AS })
+    // Ao concluir o atendimento, o cronômetro de "Disponível" recomeça do fim dele.
+    await closeRequest(pool, viewer("AS"), busy.id, { viewerIsAnjo: true })
+    const endedAt = (await attendanceOf(busy.id)).ended_at!
+    expect((await loadAnjoView(pool, viewer("AS"))).presence).toMatchObject({ status: "AVAILABLE", since: endedAt.toISOString() })
+    // 7c. Logout e login de novo ANTES de a conexão vencer: a sessão anterior foi revogada → Indisponível ao abrir a área.
+    const oldJti = ((await sql(`select session_jti from human_support_agent_presence where person_id = $1`, [ids.AS])).rows[0] as { session_jti: string }).session_jti
+    await sql(`insert into auth_revoked_sessions (jti, account_id, expires_at) values ($1, $2, now() + interval '1 hour')`, [oldJti, ids["AS:account"]])
+    const fresh = { jti: randomUUID(), accountId: ids["AS:account"]!, expiresAt: new Date(Date.now() + 3_600_000) }
+    const relogged = await loadState(pool, viewer("AS"), { workspace: "anjo", anjo: true, session: fresh })
+    expect(relogged.anjo?.presence).toMatchObject({ status: "OFFLINE", connected: true })
+    expect((await sql(`select cause, to_status from human_support_presence_events where person_id = $1 order by id desc limit 1`, [ids.AS])).rows[0]).toEqual({ cause: "SESSION_ENDED", to_status: "OFFLINE" })
+    // Outra aba com a MESMA sessão (ou outra sessão válida) não derruba nada.
+    await changePresence(pool, viewer("AS"), { status: "AVAILABLE" })
+    await loadState(pool, viewer("AS"), { workspace: "anjo", anjo: true, session: { ...fresh, jti: randomUUID() } })
+    expect((await loadAnjoView(pool, viewer("AS"))).presence.status).toBe("AVAILABLE")
+    await sql(`delete from auth_revoked_sessions where jti = $1`, [oldJti])
+    await changePresence(pool, viewer("AS"), { status: "OFFLINE" })
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AS!, null)
+
+    // 8. Jornada pelo banco: dois dias civis no fuso da organização, um atendimento que atravessa a meia-noite; Indisponível = offline.
+    const at = async (dayOffset: number, time: string) => ((await sql(`select ((now() at time zone analytics_org_timezone($1))::date + $2::int + $3::time)::timestamp at time zone analytics_org_timezone($1) at`, [ORG, dayOffset, time])).rows[0] as { at: Date }).at
+    const event = async (when: Date, cause: string, to: string, pause: string | null = null) =>
+      sql(`insert into human_support_presence_events (organization_id, person_id, from_status, to_status, pause_reason, cause, occurred_at) values ($1, $2, null, $3, $4, $5, $6)`, [ORG, ids.AJ, to, pause, cause, when])
+    const span = async (start: Date, end: Date) => {
+      const { request: made } = await ask("H6")
+      await sql(`insert into human_support_attendances (organization_id, request_id, anjo_person_id, operator_person_id, status, end_cause, started_at, last_human_message_at, ended_at) values ($1, $2, $3, $4, 'ENDED', 'ANJO_CLOSED', $5, $5, $6)`, [ORG, made.id, ids.AJ, ids.H6, start, end])
+      await sql(`update human_support_requests set status = 'CLOSED', end_cause = 'ANJO_CLOSED', ended_at = $2 where id = $1`, [made.id, end])
+    }
+    await renewAnjoLease(pool, viewer("AW"))
+    await changePresence(pool, viewer("AW"), { status: "AVAILABLE" })
+    await event(await at(-2, "23:00"), "CONNECTION_RESTORED", "OFFLINE")
+    await event(await at(-2, "23:00"), "ANJO", "AVAILABLE")
+    await span(await at(-2, "23:30"), await at(-1, "00:30"))
+    await event(await at(-1, "01:00"), "CONNECTION_LOST", "AVAILABLE")
+    await event(await at(-1, "08:00"), "CONNECTION_RESTORED", "AVAILABLE")
+    await span(await at(-1, "09:00"), await at(-1, "12:00"))
+    await event(await at(-1, "12:00"), "ANJO", "PAUSED", "LUNCH")
+    await event(await at(-1, "13:30"), "ANJO", "AVAILABLE")
+    await event(await at(-1, "15:30"), "ANJO", "PAUSED", "PERSONAL")
+    await event(await at(-1, "15:45"), "ANJO", "OFFLINE")
+    await event(await at(-1, "16:00"), "CONNECTION_LOST", "OFFLINE")
+    const two = (await sql(`select to_char((now() at time zone analytics_org_timezone($1))::date - 2, 'YYYY-MM-DD') d2, to_char((now() at time zone analytics_org_timezone($1))::date - 1, 'YYYY-MM-DD') d1`, [ORG])).rows[0] as { d2: string; d1: string }
+    const journey = (await operationHistory(pool, viewer("AJ"), { from: two.d2, to: two.d1 }, "SELF"))
+    expect(journey.consolidated).toBeNull()
+    expect(journey.anjos.map((anjo) => anjo.personId)).toEqual([ids.AJ])
+    const [d2, d1] = journey.anjos[0]!.journey.days
+    const H = 3_600_000
+    expect(d2).toMatchObject({ day: two.d2, availableMs: 0.5 * H, attendanceMs: 0.5 * H, baseMs: 1 * H })
+    expect(d1).toMatchObject({ day: two.d1, availableMs: 3.5 * H, attendanceMs: 3.5 * H, baseMs: 8.75 * H })
+    expect(d1!.pausedMs).toMatchObject({ LUNCH: 1.5 * H, PERSONAL: 0.25 * H })
+    // Indisponível = offline (o declarado 15:45–16:00 e o sem conexão): o resto do dia, fora do tempo online.
+    expect(d1!.unavailableMs).toBe(24 * H - 8.75 * H)
+    expect(journey.anjos[0]!.journey.summary).toMatchObject({ daysWithOnline: 2, baseMs: 9.75 * H })
+    expect(journey.coverage.connectionSince).not.toBeNull()
+
+    // 9. Permissões: o Coordenador do Grupo 1 não lê o histórico do Anjo do Grupo 2; o Administrador geral lê.
+    await expect(history("COORD", "A4")).rejects.toMatchObject({ statusCode: 404 })
+    expect((await history("ADMIN", "A4")).anjos.map((anjo) => anjo.personId)).toEqual([ids.A4])
+    const operation = (await operationHistory(pool, viewer("ADMIN"), { from: today(), to: today() }, "COORDINATION")).consolidated!.operation
+    expect(operation.noAnjoLogged.count).toBeGreaterThanOrEqual(1)
+    expect(operation.abandonedBeforeAcolhimento.abandoned).toBeGreaterThanOrEqual(1)
+    // Indicadores › acionamentos: o pedido classificado Não pertinente entra em "não produtivos"; filtrar mostra só eles.
+    const demand = await supportDemand(pool, viewer("ADMIN"), { from: today(), to: today(), productivity: "NOT_PRODUCTIVE" })
+    expect(demand.productivity.NOT_PRODUCTIVE).toBeGreaterThanOrEqual(1)
+    expect(demand.total).toBe(demand.productivity.NOT_PRODUCTIVE)
+    expect(demand.top.operators.some((item) => item.label === "Proof HS H1")).toBe(true)
+    expect(demand.byHour.reduce((sum, value) => sum + value, 0)).toBe(demand.total)
+    await expect(supportDemand(pool, viewer("COORD"), { from: today(), to: today() })).resolves.toMatchObject({ period: { from: today() } })
+
+    await resetOpen()
+    await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AH!, null)
+  }, 90_000)
 })

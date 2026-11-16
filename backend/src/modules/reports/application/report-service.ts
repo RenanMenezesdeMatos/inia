@@ -3,7 +3,7 @@ import { describePeriod, reportAnalysisSchema, reportAudienceSchema, reportDefin
 import { describeSchedule, nextRunAfter, upcomingRuns } from "../domain/report-schedule.js"
 import { buildVisualizationData, compatibleVisualizations, describeType, staticCompatibility, suggestVisualization } from "../domain/visualization.js"
 import type { AnalysisWriter } from "./report-analysis.js"
-import { analyzeDelivery } from "./report-analysis.js"
+import { analyzeDelivery, type AnalysisGuard } from "./report-analysis.js"
 import type { ProposalStore } from "./report-proposals.js"
 import type { DistributionScope, RecipientContext, ReportRuntime } from "./report-runtime.js"
 import type { DeliveryRecord, ReportConfig, ReportRecord, ReportStore } from "./report-store.js"
@@ -16,7 +16,7 @@ import type { DeliveryRecord, ReportConfig, ReportRecord, ReportStore } from "./
  *  - entrega: só quem recebeu abre (inclusive o dono de um report distribuído só vê o que ele mesmo recebeu).
  */
 export type ReportActor = { organizationId: string; accountId: string; personId: string }
-export type ReportServiceDeps = { store: ReportStore; runtime: ReportRuntime; proposals: ProposalStore; analysisWriter: AnalysisWriter; now: () => Date }
+export type ReportServiceDeps = { analysisGuard?: AnalysisGuard; store: ReportStore; runtime: ReportRuntime; proposals: ProposalStore; analysisWriter: AnalysisWriter; now: () => Date }
 
 export type ReportAccess = { canUse: boolean; canCreateForSelf: boolean; canDistribute: boolean; distribution: DistributionScope | null; context: RecipientContext | null; timeZone: string }
 
@@ -248,7 +248,7 @@ export async function retryDeliveryAnalysis(deps: ReportServiceDeps, actor: Repo
   if (delivery.kind !== "DELIVERY" || delivery.analysisStatus !== "FAILED") return { analysisStatus: delivery.analysisStatus }
   const report = await deps.store.getReport(delivery.reportId, actor.organizationId)
   // MANUAL: só reivindica se continua FAILED — dois cliques (ou dois destinatários) juntos fazem uma chamada; o outro vê PENDING.
-  if (report) await analyzeDelivery(deps.store, deps.analysisWriter, delivery, report, "MANUAL")
+  if (report) await analyzeDelivery(deps.store, deps.analysisWriter, delivery, report, "MANUAL", deps.analysisGuard)
   const updated = await deps.store.getDelivery(delivery.id, actor.organizationId)
   return { analysisStatus: updated?.analysisStatus ?? delivery.analysisStatus }
 }

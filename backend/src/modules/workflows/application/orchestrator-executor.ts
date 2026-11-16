@@ -47,6 +47,9 @@ export type OrchestratorNodeOutput = OrchestratedReply & {
 }
 export type OrchestratorExecutionResult = { nodeOutput: OrchestratorNodeOutput }
 
+/** Só a análise do motor passando direto fica de fora: qualquer texto escrito pela IA na etapa é conferido. */
+export const orchestratorStepNeedsCheck = (outputContract: string | undefined, synthesisMode: string | undefined) => outputContract !== "PROCESS_ASSESSMENT" || synthesisMode !== "PASSTHROUGH"
+
 /** O que uma etapa de orquestrador entrega ao próximo passo: o texto e o resultado estruturado, quando há. */
 function complianceTextOf(reply: { text: string; structuredResult?: unknown }): string {
   return reply.structuredResult ? `${reply.text}\n\n${JSON.stringify(reply.structuredResult)}` : reply.text
@@ -129,8 +132,9 @@ export async function executeOrchestrator(
     },
   )
     if (context.engine) await context.engine.effects.recordWorkflowKnowledgeUsage(context.db, context.engine.enrollmentId)
-    // Conferência antes de a saída seguir (PEN-017). A avaliação de processo roda no motor de feedback, que não recebe as regras: depende da PEN-018.
-    if (config.specialistOutputContract !== "PROCESS_ASSESSMENT") {
+    // Conferência antes de a saída seguir (PEN-017). Na avaliação de processo, o que passa direto é a análise do motor, escrita pelo sistema e fora da
+    // conferência (PEN-018). Quando a IA escreve uma síntese, ela é voz própria e é conferida como nas outras etapas.
+    if (orchestratorStepNeedsCheck(config.specialistOutputContract, orchestrated.orchestration?.synthesis.mode)) {
       await enforceResponseBeforeNextStep(context.db, { organizationId: context.organizationId, text: complianceTextOf(orchestrated), agentId: orchestrator.orchestratorAgentId || null, surface: "WORKFLOW_ORCHESTRATOR", source: "WORKFLOW_ORCHESTRATOR", workflowEnrollmentId: context.engine?.enrollmentId, sources: replyComplianceSources(orchestrated, orchestrator) })
     }
     return orchestrated

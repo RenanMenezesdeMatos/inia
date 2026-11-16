@@ -4,7 +4,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { booleanParam, respondList, searchParam, SqlFilter } from "../../../shared/presentation/list-query.js"
 import { canOrganizationWide } from "../../access/domain/access-decision.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
-import { responseCheckMode } from "../domain/response-compliance.js"
+import { responseCheckMode, responseCheckModeOf } from "../domain/response-compliance.js"
 
 const topicSchema = z.object({ name: z.string().trim().min(2), requiredBehavior: z.string().trim().min(5) })
 const topicUpdateSchema = z.object({ name: z.string().trim().min(2).optional(), requiredBehavior: z.string().trim().min(5).optional(), active: z.boolean().optional() })
@@ -28,7 +28,7 @@ const DELETE_TOPIC = DELETE_WITH_AUDIT("prohibited_topics", "prohibited_topic", 
 const DELETE_GLOSSARY_TERM = DELETE_WITH_AUDIT("glossary_terms", "glossary_term", `jsonb_build_object('term', term, 'definition', definition, 'active', active)`)
 
 /** O registro da conferência das respostas (PEN-017): só o que foi barrado, detectado ou não pôde ser conferido. */
-const SELECT_RESPONSE_CHECKS = `select c.id, c.surface, c.control, c.outcome, c.action, c.rules, c.reason, c.error_code "errorCode", c.flagged_content "flaggedContent", c.conversation_id "conversationId", c.agent_id "agentId", a.name "agentName", c.created_at "createdAt"
+const SELECT_RESPONSE_CHECKS = `select c.id, c.surface, c.control, c.outcome, c.action, c.rules, c.reason, c.error_code "errorCode", c.source_ref "sourceRef", c.flagged_content "flaggedContent", c.conversation_id "conversationId", c.agent_id "agentId", a.name "agentName", c.created_at "createdAt"
   from response_compliance_checks c left join agents_all a on a.id = c.agent_id and a.organization_id = c.organization_id
   where c.organization_id=$1 and c.outcome <> 'ALLOWED'`
 const RESPONSE_CHECK_SUMMARY_DAYS = 30
@@ -52,7 +52,7 @@ export function createGovernanceRouter(db: Database) {
       [organizationId, RESPONSE_CHECK_SUMMARY_DAYS],
     )).rows[0]
     // O modo em vigor vai junto: a tela nunca apresenta AUDIT ou OFF como prevenção.
-    response.json({ data: { days: RESPONSE_CHECK_SUMMARY_DAYS, mode: responseCheckMode(), ...row } })
+    response.json({ data: { days: RESPONSE_CHECK_SUMMARY_DAYS, mode: responseCheckMode(), modes: { conversation: responseCheckModeOf("CONVERSATION"), content: responseCheckModeOf("CONTENT"), feedback: responseCheckModeOf("FEEDBACK") }, ...row } })
   })
   router.get("/response-checks", async (request, response) => {
     if (!requireOrganizationWide(request, response)) return

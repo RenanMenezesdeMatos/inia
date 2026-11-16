@@ -8,8 +8,20 @@
  */
 import pg from "pg"
 import request from "supertest"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import "../../feedback-engine/testing/no-external-ai.js"
+
+const compliance = vi.hoisted(() => ({ reply: null as null | (() => string) }))
+vi.mock("../../../shared/application/model-routing/llm-gateway.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../shared/application/model-routing/llm-gateway.js")>()
+  const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0, thinkingTokens: 0 }
+  const generateForRoute = async (gatewayRequest: Parameters<typeof original.generateForRoute>[0]) => {
+    if (gatewayRequest.classification?.purpose !== "RESPONSE_COMPLIANCE") return original.generateForRoute(gatewayRequest)
+    if (!compliance.reply) throw new Error("provedor fora")
+    return { kind: "text", text: compliance.reply(), usage, durationMs: 1, model: "simulado", cache: { cacheable: false, hit: false } }
+  }
+  return { ...original, generateForRoute }
+})
 import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { createApp } from "../../../main/app.js"
@@ -127,7 +139,28 @@ describe.skipIf(!ENABLED)("Base de boas práticas — prova Postgres", () => {
     expect(detail.canManage).toBe(false)
     // Revisão do sintético: só a organização inteira; aprovado continua FORA das recomendações de produção.
     expect((await asAdminA.post(`/api/v1/best-practices/patterns/${resumeSynthetic.id}/review`).send({ action: "APPROVE" })).status).toBe(403)
-    expect((await asGeral.post(`/api/v1/best-practices/patterns/${resumeSynthetic.id}/review`).send({ action: "APPROVE" })).body.data.reviewStatus).toBe("APPROVED")
+    // PEN-018: a conferência aponta uma regra no texto. Aprovar exige motivo, que fica registrado; sem conferência, não aprova. Nos dois casos, com provedor simulado.
+    vi.stubEnv("INIA_RESPONSE_CHECK_CONTENT", "ENFORCE")
+    const review = (body: Record<string, unknown>) => asGeral.post(`/api/v1/best-practices/patterns/${resumeSynthetic.id}/review`).send(body)
+    await db.query(`insert into prohibited_topics (organization_id, name, required_behavior) values ($1, 'Prova Prática · Regra', 'Não orientar sobre o tema.')`, [ORG])
+    compliance.reply = null
+    const unavailable = await review({ action: "APPROVE" })
+    expect(unavailable.status).toBe(503)
+    expect(unavailable.body.error.code).toBe("RESPONSE_CHECK_UNAVAILABLE")
+    compliance.reply = () => JSON.stringify({ verdict: "VIOLATION", violated: ["R1"], excerpt: resumeSynthetic.name, reason: "Apontamento da prova." })
+    const flagged = await review({ action: "APPROVE" })
+    expect(flagged.status).toBe(422)
+    expect(flagged.body.error.code).toBe("BEST_PRACTICE_RULE_VIOLATION")
+    expect((await asGeral.get(`/api/v1/best-practices/patterns/${resumeSynthetic.id}`)).body.data.reviewStatus).toBe("PENDING_REVIEW")
+    const overridden = await review({ action: "APPROVE", ruleOverrideReason: "Aqui o tema é outro." })
+    expect(overridden.body.data.reviewStatus).toBe("APPROVED")
+    const lastReview = (await db.query<{ reason: string }>(`select reason from best_practice_pattern_reviews where pattern_id = $1 and action = 'APPROVE' order by created_at desc limit 1`, [resumeSynthetic.id])).rows[0]!
+    expect(lastReview.reason).toContain("Aqui o tema é outro.")
+    const registry = (await db.query<{ control: string; outcome: string; action: string; flagged_content: string | null; reason: string | null; source_ref: string }>(`select control, outcome, action, flagged_content, reason, source_ref from response_compliance_checks where surface = 'BEST_PRACTICE' and source_ref = $1 order by created_at`, [resumeSynthetic.id])).rows
+    expect(registry.map((row) => [row.outcome, row.action])).toEqual([["CHECK_FAILED", "BLOCKED"], ["VIOLATION", "BLOCKED"], ["VIOLATION", "DELIVERED"]])
+    expect(registry.every((row) => row.flagged_content === null && row.control === "PREVENTIVE")).toBe(true)
+    await db.query(`delete from prohibited_topics where organization_id = $1 and name = 'Prova Prática · Regra'`, [ORG])
+    vi.unstubAllEnvs()
     expect((await asGeral.get(`/api/v1/best-practices/patterns/${resumeSynthetic.id}`)).body.data).toMatchObject({ available: false, unavailabilityReasons: [expect.stringMatching(/sintético/)] })
     const preview = (await asGeral.get(`/api/v1/best-practices/preview?datasetId=${datasetId}&operatorRef=SINT-OP-02&indicatorId=${tma}`)).body.data
     expect(preview.text).toMatch(/DADO SINTÉTICO/)

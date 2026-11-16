@@ -117,7 +117,7 @@ export function OperatorDailyFeedbackFeed({ indicators }: { indicators: Operator
         </IniaFeedItem>
   }
 
-  return <div ref={rootRef} className="contents"><IniaFeed title="Acompanhamento" description="Feedbacks e monitorias da INIA">
+  return <div ref={rootRef} className="contents"><IniaFeed titleInToggle title="Acompanhamento" description="Feedbacks e monitorias da INIA">
       {delivered.isPending ? <div className="flex gap-3 py-5" aria-busy="true" aria-label="Carregando feedbacks de atendimento"><Skeleton className="size-9 shrink-0 rounded-full"/><div className="flex-1 space-y-2"><Skeleton className="h-4 w-40"/><Skeleton className="h-4 w-full"/></div></div> : null}
       {delivered.isError ? <p role="alert" className="py-4 text-sm text-muted-foreground">Não foi possível carregar os feedbacks de atendimento. <button type="button" className="underline" onClick={() => void delivered.refetch()}>Tentar novamente</button></p> : null}
       {delivered.isSuccess && timeline.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Nenhum feedback por enquanto.</p> : null}

@@ -122,7 +122,7 @@ export async function loadKnowledgeVersion(db: Queryable, organizationId: string
   return { id: row.id, number: row.version, status: row.status, content: row.content, textAvailable: row.text_status === "AVAILABLE", config: parseKnowledgeVersionConfig(row.config), fileId: row.file_id, changeSummary: row.change_summary, publishedAt: row.published_at, extraction: parseKnowledgeExtraction(row.extraction) }
 }
 
-const DOCUMENT_TYPE_LABELS: Record<string, string> = { PROCEDURE: "Procedimento", MANUAL: "Manual", FAQ: "Perguntas frequentes", RULE: "Regra", FLOW: "Fluxo" }
+const DOCUMENT_TYPE_LABELS: Record<string, string> = { PROCEDURE: "Procedimento", MANUAL: "Manual", FAQ: "Perguntas frequentes", RULE: "Regra", FLOW: "Fluxo", WORK_INSTRUCTION: "IT - Instrução de trabalho" }
 
 /** Nomes de Grupo, Subgrupo, assunto e produto citados nas configurações (só da organização). */
 async function loadConfigNames(db: Queryable, organizationId: string, configs: readonly KnowledgeVersionConfig[]) {

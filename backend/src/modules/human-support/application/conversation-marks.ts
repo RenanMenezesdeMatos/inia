@@ -84,7 +84,8 @@ export async function acknowledgeMessages(db: TransactionSource & Queryable, vie
     const next = receiptsAfterAck(current, input, participants.lastSeq)
     if (sameReceipts(current, next)) return current
     await client.query(`update human_support_conversation_marks set ${prefix}_delivered_seq = $2, ${prefix}_read_seq = $3, updated_at = statement_timestamp() where request_id = $1`, [requestId, next.deliveredSeq, next.readSeq])
-    await bumpInboxVersions(client, viewer.organizationId, [peerPersonOf(participants, side)])
+    // Lida avançou: a PRÓPRIA ponta também é avisada (o contador de mensagens novas dela, que vem do servidor, zera na hora).
+    await bumpInboxVersions(client, viewer.organizationId, next.readSeq > current.readSeq ? [peerPersonOf(participants, side), viewer.personId] : [peerPersonOf(participants, side)])
     return next
   })
 }

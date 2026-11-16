@@ -9,7 +9,7 @@ import { MIN_SAMPLE, presenceHours, type PresenceEvent, type PresenceState } fro
 import { operationalStatusOf } from "../domain/anjo-now.js"
 import { effectiveCapacity } from "../domain/presence.js"
 import { nearestRank } from "../domain/queue-history.js"
-import type { AnjoActivity, AnjoNowItem, AnjoScopeView, AnjosNow, PresenceTimeline, RequestDetail, RequestListItem, SharedContext, UnavailableAttempt } from "../domain/views.js"
+import type { AnjoActivity, AnjoNowItem, AnjoScopeView, AnjosNow, QueueNow, QueueWaitingItem, PresenceTimeline, RequestDetail, RequestListItem, SharedContext, UnavailableAttempt } from "../domain/views.js"
 import { assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
 import { loadSettings } from "./eligibility.js"
 import type { Queryable } from "./locks.js"
@@ -202,7 +202,7 @@ async function panelFilterCovers(db: Queryable, filter: PanelScopeFilter): Promi
 }
 
 /** Anjos que quem lê alcança (D11), filtrados pelo escopo que atendem, quando há filtro. */
-async function reachableAnjos(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter) {
+export async function reachableAnjos(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter) {
   const scopes = await assignmentScopesOf(db, viewer.organizationId, "human_support.attend", await personIdsWithPermission(db, viewer.organizationId, "human_support.attend"))
   const covers = await panelFilterCovers(db, filter)
   return [...scopes.entries()].filter(([, list]) => reachesAnjo(coverage, list) && covers(list))
@@ -215,7 +215,60 @@ async function reachableAnjos(db: Queryable, viewer: Viewer, coverage: Coordinat
  * atualização automática da tela não multiplica linhas).
  */
 export async function anjosNow(db: Queryable, viewer: Viewer, filter: PanelScopeFilter): Promise<AnjosNow> {
+  return anjosNowFor(db, viewer, await coordinatorScopesOf(db, viewer.organizationId, viewer.personId), filter)
+}
+
+/**
+ * QUEM ESTÁ NA FILA AGORA (clicar no indicador de fila da "Operação agora"; Coordenador de Anjos no alcance dele e Administrador
+ * geral): cada pedido aguardando um Anjo, do que espera há mais tempo — desde a ENTRADA ORIGINAL (o pedido devolvido à fila mantém o
+ * horário). Nome e foto do operador, Grupo e Subgrupo do pedido; nunca o conteúdo da conversa.
+ */
+export async function queueWaiting(db: Queryable, viewer: Viewer, filter: PanelScopeFilter): Promise<QueueWaitingItem[]> {
   const coverage = await coordinatorScopesOf(db, viewer.organizationId, viewer.personId)
+  const params: unknown[] = [viewer.organizationId]
+  const where = coverageClause(coverage, "r", params, filter)
+  const rows = (
+    await db.query<{ id: string; protocol: string; operator_person_id: string; origin: RequestOrigin; created_at: Date; team_name: string | null; subteam_name: string | null; requeued: boolean }>(
+      `select r.id, r.protocol, r.operator_person_id, r.origin, r.created_at, t.name team_name, st.name subteam_name,
+              exists (select 1 from human_support_attendances a where a.request_id = r.id) requeued
+         from human_support_requests r
+         left join teams t on t.id = r.team_id
+         left join subteams st on st.id = r.subteam_id
+        where r.organization_id = $1 and r.status = 'WAITING' and ${where}
+        order by r.created_at, r.id limit 200`,
+      params,
+    )
+  ).rows
+  const names = await loadPersonPresentations(db, viewer.organizationId, rows.map((row) => row.operator_person_id))
+  return rows.map((row) => ({
+    requestId: row.id,
+    protocol: row.protocol,
+    operatorName: names.get(row.operator_person_id)?.displayName ?? "Operador",
+    operatorAvatarUrl: names.get(row.operator_person_id)?.avatarUrl ?? null,
+    teamName: row.team_name,
+    subteamName: row.subteam_name,
+    origin: row.origin,
+    waitingSince: row.created_at.toISOString(),
+    requeued: row.requeued,
+  }))
+}
+
+async function queueNow(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter): Promise<QueueNow> {
+  const params: unknown[] = [viewer.organizationId]
+  const where = coverageClause(coverage, "r", params, filter)
+  const row = (
+    await db.query<{ waiting: number; oldest_waiting: Date | null; awaiting: number; oldest_awaiting: Date | null }>(
+      `select (select count(*)::int from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) waiting,
+              (select min(r.created_at) from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) oldest_waiting,
+              (select count(*)::int from human_support_attendances a join human_support_requests r on r.id = a.request_id where a.organization_id = $1 and a.status = 'ACTIVE' and a.first_anjo_message_at is null and ${where}) awaiting,
+              (select min(a.started_at) from human_support_attendances a join human_support_requests r on r.id = a.request_id where a.organization_id = $1 and a.status = 'ACTIVE' and a.first_anjo_message_at is null and ${where}) oldest_awaiting`,
+      params,
+    )
+  ).rows[0]!
+  return { waiting: Number(row.waiting), oldestWaitingSince: row.oldest_waiting?.toISOString() ?? null, awaitingFirstResponse: Number(row.awaiting), oldestAwaitingSince: row.oldest_awaiting?.toISOString() ?? null }
+}
+
+async function anjosNowFor(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter): Promise<AnjosNow> {
   const [holders, covers, settings, clock] = await Promise.all([
     permissionHoldersWithSituation(db, viewer.organizationId, "human_support.attend"),
     panelFilterCovers(db, filter),
@@ -224,12 +277,16 @@ export async function anjosNow(db: Queryable, viewer: Viewer, filter: PanelScope
   ])
   const now = clock.rows[0]?.now ?? new Date()
   const reached = [...holders.entries()].filter(([, holder]) => reachesAnjo(coverage, holder.scopes) && covers(holder.scopes))
-  if (reached.length === 0) return { serverTime: now.toISOString(), items: [] }
+  const queue = await queueNow(db, viewer, coverage, filter)
+  if (reached.length === 0) return { serverTime: now.toISOString(), items: [], queue }
   const ids = reached.map(([personId]) => personId)
   const [presence, attendances, structure, names] = await Promise.all([
-    db.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; status_since: Date | null; connected: boolean; connection_lost_at: Date | null; max_concurrent: number | null }>(
-      `select person_id, status, pause_reason, status_since, coalesce(lease_until > statement_timestamp(), false) connected, connection_lost_at, max_concurrent
-         from human_support_agent_presence where organization_id = $1 and person_id = any($2::uuid[])`,
+    db.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; status_since: Date | null; connected: boolean; connection_lost_at: Date | null; max_concurrent: number | null; scheduled_status: "PAUSED" | "OFFLINE" | null; scheduled_pause_reason: PauseReason | null; last_connection_cause: string | null }>(
+      `select p.person_id, p.status, p.pause_reason, p.status_since, coalesce(p.lease_until > statement_timestamp(), false) connected, p.connection_lost_at, p.max_concurrent,
+              p.scheduled_status, p.scheduled_pause_reason,
+              (select e.cause from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause in ('CONNECTION_LOST', 'SESSION_ENDED', 'CONNECTION_RESTORED')
+                order by e.id desc limit 1) last_connection_cause
+         from human_support_agent_presence p where p.organization_id = $1 and p.person_id = any($2::uuid[])`,
       [viewer.organizationId, ids],
     ),
     // Atendimentos em andamento e os encerrados nas últimas 24 h (bastam para achar o início da sequência atual e o último fim).
@@ -265,11 +322,14 @@ export async function anjosNow(db: Queryable, viewer: Viewer, filter: PanelScope
       since: operational.since?.toISOString() ?? null,
       connected,
       connectionLostSince: !connected && operational.status !== "UNAVAILABLE" ? (row?.connection_lost_at?.toISOString() ?? null) : null,
+      // Sem conexão: a sessão terminou (logout, prazo, inatividade); ou, Indisponível, a área fechada (offline); ou queda de rede.
+      connection: connected ? "CONNECTED" : row?.last_connection_cause === "SESSION_ENDED" ? "SESSION_ENDED" : operational.status === "UNAVAILABLE" ? "CLOSED" : "CONNECTION_LOST",
+      scheduled: row?.scheduled_status ? { status: row.scheduled_status, pauseReason: row.scheduled_pause_reason } : null,
       attendances: { active: spans.filter((span) => span.endedAt === null).length, capacity: effectiveCapacity(row?.max_concurrent == null ? null : Number(row.max_concurrent), settings.defaultCapacity) },
     }
   })
   await logAccess(db, viewer, ids, "HUMAN_SUPPORT_PRESENCE", null)
-  return { serverTime: now.toISOString(), items: items.sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) }
+  return { serverTime: now.toISOString(), items: items.sort((a, b) => a.name.localeCompare(b.name, "pt-BR")), queue }
 }
 
 async function presenceStateAt(db: Queryable, organizationId: string, personId: string, at: string): Promise<PresenceState> {

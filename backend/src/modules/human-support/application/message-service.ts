@@ -53,7 +53,7 @@ export async function sendMessage(db: TransactionSource & Queryable, viewer: Vie
     await bumpInboxVersions(client, viewer.organizationId, [request.operator_person_id, attendance?.anjo_person_id])
     return { seq, created: true, reader: author }
   })
-  const page = await loadMessageViews(db, viewer.organizationId, requestId, result.reader, { after: result.seq - 1, limit: 1 })
+  const page = await loadMessageViews(db, viewer.organizationId, requestId, result.reader, { after: result.seq - 1, limit: 1, anjoPersonId: viewer.personId })
   return { message: page.messages[0]!, created: result.created }
 }
 
@@ -68,10 +68,10 @@ export async function listMessages(db: Queryable, viewer: Viewer, requestId: str
   if (!query.viewerIsAnjo) throw notFound()
   const attended = (await db.query<{ active: boolean; ended_at: Date | null }>(`select status = 'ACTIVE' active, ended_at from human_support_attendances where request_id = $1 and anjo_person_id = $2`, [requestId, viewer.personId])).rows
   if (attended.length === 0) throw notFound()
-  if (attended.some((row) => row.active)) return loadMessageViews(db, viewer.organizationId, requestId, "ANJO", query)
+  if (attended.some((row) => row.active)) return loadMessageViews(db, viewer.organizationId, requestId, "ANJO", { ...query, anjoPersonId: viewer.personId })
   const lastEnd = new Date(Math.max(...attended.map((row) => row.ended_at?.getTime() ?? 0)))
   const maxSeq = Number((await db.query<{ seq: number | null }>(`select max(seq) seq from human_support_messages where request_id = $1 and occurred_at <= $2`, [requestId, lastEnd])).rows[0]?.seq ?? 0)
-  return loadMessageViews(db, viewer.organizationId, requestId, "ANJO", { ...query, maxSeq })
+  return loadMessageViews(db, viewer.organizationId, requestId, "ANJO", { ...query, maxSeq, anjoPersonId: viewer.personId })
 }
 
 /** Nome preferido de uma pessoa (cabeçalhos e mensagens). */

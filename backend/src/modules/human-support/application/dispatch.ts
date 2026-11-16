@@ -1,11 +1,12 @@
 import type pg from "pg"
 import { assignmentScopesOf, personIdsWithPermissionCovering } from "../../access/application/permission-holders.js"
 import type { AccessScope } from "../../access/domain/access-scope.js"
+import { endedSessions } from "../../auth/application/session-ended.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { inTransaction, type TransactionSource } from "../../../shared/infrastructure/database/transaction.js"
 import { HUMAN_SUPPORT_LIMITS, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
 import { effectiveCapacity } from "../domain/presence.js"
-import { enabledWith, loadScopeStates, loadSettings, queueDeadlineFor } from "./eligibility.js"
+import { anjosInServiceCount, enabledWith, loadScopeStates, loadSettings, queueDeadlineFor } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
 import { tryOrganizationLock, type Queryable } from "./locks.js"
 import { humanSupportStats, recordDeadlineLag } from "./runtime-stats.js"
@@ -15,12 +16,16 @@ import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, re
  * DISTRIBUIÇÃO (design_draft.md seção 8). Roda depois do commit de cada comando e pela tarefa periódica `human-support-dispatch`
  * (3 s, uma instância por vez no conjunto), em transação própria com `pg_try_advisory_xact_lock` na chave da organização: se outro
  * processo já distribui, pula. É ela quem cumpre os prazos e quem conta ao operador o que aconteceu com o Anjo. Passos, em ordem:
- *  1. conexão do Anjo vencida → aviso ao operador; conexão de volta → "O Anjo voltou";
+ *  1. conexão do Anjo vencida → aviso ao operador; conexão de volta → "O Anjo voltou". Desde a migration 191 a conexão é registrada em
+ *     QUALQUER estado (também Indisponível: separa o indisponível com a área aberta do offline), com o instante real (o prazo que
+ *     venceu, a renovação que a trouxe de volta) e com a causa: `SESSION_ENDED` quando a sessão que mantinha a área já tinha
+ *     terminado (logout, prazo do login, inatividade, conta desligada), `CONNECTION_LOST` quando foi a rede;
  *  2. sem conexão há mais de 3 min além do prazo → Indisponível (LEASE_EXPIRED);
- *  3. atendimento cujo Anjo sumiu (3 min além do prazo) ou perdeu o papel no escopo do pedido → Interrompido, pedido de volta à frente
- *     da fila com novo prazo;
+ *  3. atendimento cujo Anjo sumiu (3 min além do prazo) ou perdeu o papel no escopo do pedido → Interrompido (`lost_cause`: rede,
+ *     sessão ou papel), pedido de volta à frente da fila com novo prazo;
  *  4. 15 min sem mensagem humana → Encerrado (INACTIVITY), também sem resposta do Anjo;
- *  5. fila: escopo desligado → Cancelado; operador sem chamar há 2 min → Abandonado; prazo vencido → Expirado;
+ *  5. fila: escopo desligado → Cancelado; operador sem chamar há 2 min → Abandonado; prazo vencido → Expirado — guardando quantos Anjos
+ *     estavam em serviço no escopo nesse instante (`anjos_in_service_at_end`: zero = encerrado sem Anjo logado);
  *  6. Anjo sem o papel em nenhum escopo → Indisponível (ROLE_REVOKED);
  *  7. cada pedido da fila, por ordem de chegada, vai ao Anjo que pode receber (Disponível, conectado, com vaga e SEM pausa ou
  *     indisponibilidade programada) com menos atendimentos e, no empate, ao que recebeu
@@ -98,29 +103,42 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     }
   }
 
-  // 1. Conexão perdida (o prazo de 75 s passou) e conexão de volta.
+  // 1. Conexão perdida (o prazo de 75 s passou) e conexão de volta — em qualquer estado (migration 191), no instante real.
   const lost = (
-    await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null }>(
+    await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; lease_until: Date; session_jti: string | null; session_account_id: string | null; session_expires_at: Date | null }>(
       `update human_support_agent_presence p set connection_lost_at = p.lease_until
         where p.organization_id = $1 and p.connection_lost_at is null and p.lease_until is not null and p.lease_until <= statement_timestamp()
-          and (p.status <> 'OFFLINE' or exists (select 1 from human_support_attendances a where a.organization_id = p.organization_id and a.anjo_person_id = p.person_id and a.status = 'ACTIVE'))
-        returning p.person_id, p.status, p.pause_reason`,
+        returning p.person_id, p.status, p.pause_reason, p.lease_until, p.session_jti, p.session_account_id, p.session_expires_at`,
       [organizationId],
     )
   ).rows
+  const sessionsEnded = await endedSessions(client, lost.flatMap((presence) => (presence.session_jti ? [{ jti: presence.session_jti, accountId: presence.session_account_id, expiresAt: presence.session_expires_at, at: presence.lease_until }] : [])))
   for (const presence of lost) {
-    await recordPresenceEvent(client, { organizationId, personId: presence.person_id, from: presence.status, to: presence.status, pauseReason: presence.pause_reason, cause: "CONNECTION_LOST" })
+    const cause = presence.session_jti && sessionsEnded.has(presence.session_jti) ? "SESSION_ENDED" : "CONNECTION_LOST"
+    if (cause === "SESSION_ENDED") {
+      // A sessão terminou: Indisponível na hora (a programação some). Os atendimentos abertos seguem a regra de reconexão (3 min).
+      await client.query(
+        `update human_support_agent_presence set status = 'OFFLINE', pause_reason = null, status_since = $3, version = version + 1, scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null
+          where organization_id = $1 and person_id = $2`,
+        [organizationId, presence.person_id, presence.lease_until],
+      )
+      touched.add(presence.person_id)
+    }
+    await recordPresenceEvent(client, { organizationId, personId: presence.person_id, from: presence.status, to: cause === "SESSION_ENDED" ? "OFFLINE" : presence.status, pauseReason: cause === "SESSION_ENDED" ? null : presence.pause_reason, cause, occurredAt: presence.lease_until })
     await noticeActiveAttendances(presence.person_id, "ANJO_CONNECTION_LOST")
     summary.connectionLost += 1
   }
   const restored = (
-    await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null }>(
-      `update human_support_agent_presence set connection_restored_at = null where organization_id = $1 and connection_restored_at is not null returning person_id, status, pause_reason`,
+    await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; restored_at: Date }>(
+      `update human_support_agent_presence p set connection_restored_at = null
+         from (select person_id, connection_restored_at from human_support_agent_presence where organization_id = $1 and connection_restored_at is not null for update) old
+        where p.organization_id = $1 and p.person_id = old.person_id
+        returning p.person_id, p.status, p.pause_reason, old.connection_restored_at restored_at`,
       [organizationId],
     )
   ).rows
   for (const presence of restored) {
-    await recordPresenceEvent(client, { organizationId, personId: presence.person_id, from: presence.status, to: presence.status, pauseReason: presence.pause_reason, cause: "CONNECTION_RESTORED" })
+    await recordPresenceEvent(client, { organizationId, personId: presence.person_id, from: presence.status, to: presence.status, pauseReason: presence.pause_reason, cause: "CONNECTION_RESTORED", occurredAt: presence.restored_at })
     await noticeActiveAttendances(presence.person_id, "ANJO_CONNECTION_RESTORED")
     summary.connectionRestored += 1
   }
@@ -154,9 +172,12 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
 
   // 3. Atendimentos cujo Anjo sumiu ou perdeu o papel no escopo do pedido → Interrompidos; pedido de volta à frente da fila.
   const active = (
-    await client.query<{ id: string; request_id: string; anjo_person_id: string; operator_person_id: string; team_id: string | null; subteam_id: string | null; lost: boolean }>(
+    await client.query<{ id: string; request_id: string; anjo_person_id: string; operator_person_id: string; team_id: string | null; subteam_id: string | null; lost: boolean; session_ended: boolean }>(
       `select a.id, a.request_id, a.anjo_person_id, a.operator_person_id, r.team_id, r.subteam_id,
-              (p.lease_until is null or p.lease_until < statement_timestamp() - make_interval(secs => $2::int)) lost
+              (p.lease_until is null or p.lease_until < statement_timestamp() - make_interval(secs => $2::int)) lost,
+              coalesce((select e.cause = 'SESSION_ENDED' from human_support_presence_events e
+                         where e.organization_id = a.organization_id and e.person_id = a.anjo_person_id and e.cause in ('CONNECTION_LOST', 'SESSION_ENDED', 'CONNECTION_RESTORED')
+                         order by e.id desc limit 1), false) session_ended
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
          left join human_support_agent_presence p on p.organization_id = a.organization_id and p.person_id = a.anjo_person_id
@@ -175,6 +196,8 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     }
     if ((await lockRequestRow(client, attendance.request_id)) !== "IN_PROGRESS") continue
     await endAttendance(client, attendance.id, "ANJO_LOST")
+    // Por que o sistema interrompeu: papel retirado no escopo, sessão encerrada ou queda de rede (migration 191).
+    await client.query(`update human_support_attendances set lost_cause = $2 where id = $1`, [attendance.id, !covers ? "ROLE_REVOKED" : attendance.session_ended ? "SESSION" : "CONNECTION"])
     const deadline = await queueDeadlineFor(client, organizationId, { teamId: attendance.team_id, subteamId: attendance.subteam_id })
     await client.query(
       `update human_support_requests set status = 'WAITING', queue_expires_at = statement_timestamp() + make_interval(mins => $2::int), queue_deadline_basis = $3 where id = $1 and status = 'IN_PROGRESS'`,
@@ -208,8 +231,8 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
 
   // 5. Fila: escopo desligado, operador sem chamar há 2 min, prazo vencido.
   const waiting = (
-    await client.query<{ id: string; operator_person_id: string; team_id: string | null; subteam_id: string | null; expired: boolean; abandoned: boolean; expired_lag_ms: number }>(
-      `select r.id, r.operator_person_id, r.team_id, r.subteam_id,
+    await client.query<{ id: string; operator_person_id: string; team_id: string | null; subteam_id: string | null; avoid_anjo_person_id: string | null; expired: boolean; abandoned: boolean; expired_lag_ms: number }>(
+      `select r.id, r.operator_person_id, r.team_id, r.subteam_id, r.avoid_anjo_person_id,
               r.queue_expires_at <= statement_timestamp() expired,
               r.operator_seen_at < statement_timestamp() - make_interval(secs => $2::int) abandoned,
               extract(epoch from statement_timestamp() - r.queue_expires_at)::float8 * 1000 expired_lag_ms
@@ -229,6 +252,7 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
       continue
     }
     await endRequest(client, ref, { from: "WAITING", cause, actorPersonId: null })
+    await client.query(`update human_support_requests set anjos_in_service_at_end = $2 where id = $1`, [request.id, await anjosInServiceCount(client, organizationId, { teamId: request.team_id, subteamId: request.subteam_id }, request.operator_person_id)])
     touched.add(request.operator_person_id)
     if (cause === "SCOPE_DISABLED") summary.cancelled += 1
     else if (cause === "OPERATOR_ABANDONED") summary.abandoned += 1
@@ -264,7 +288,8 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     )
     for (const request of queue) {
       const candidates = (coverage.get(`${request.team_id ?? ""}:${request.subteam_id ?? ""}`) ?? [])
-        .filter((personId) => personId !== request.operator_person_id)
+        // Nunca o próprio operador; nem o Anjo de quem a coordenação tirou este pedido (devolução à fila, migration 190).
+        .filter((personId) => personId !== request.operator_person_id && personId !== request.avoid_anjo_person_id)
         .flatMap((personId) => {
           const state = presence.get(personId)
           // Quem programou pausa ou indisponibilidade termina os atendimentos que tem e não recebe novos.
@@ -313,7 +338,8 @@ export async function dispatchAllOrganizations(db: TransactionSource & Queryable
     await db.query<{ organization_id: string }>(
       `select organization_id from human_support_settings
        union select organization_id from human_support_requests where status in ('WAITING', 'IN_PROGRESS')
-       union select organization_id from human_support_agent_presence where status <> 'OFFLINE' or connection_lost_at is not null or connection_restored_at is not null`,
+       union select organization_id from human_support_agent_presence
+              where status <> 'OFFLINE' or connection_restored_at is not null or (connection_lost_at is null and lease_until is not null and lease_until <= statement_timestamp())`,
     )
   ).rows
   let assigned = 0

@@ -80,6 +80,8 @@ export const anjoAttendanceViewSchema = z.object({
   requestId: z.string(),
   protocol: z.string(),
   operatorName: z.string(),
+  /** Foto cadastrada do operador (migration 191); null = iniciais. */
+  operatorAvatarUrl: z.string().nullable().default(null),
   teamName: z.string().nullable(),
   subteamName: z.string().nullable(),
   startedAt: z.string(),
@@ -91,6 +93,8 @@ export const anjoAttendanceViewSchema = z.object({
   peerReceipts: receiptsSchema,
   /** Por quantos ms ainda vale o "digitando" do operador (null = não está digitando). */
   peerTypingMs: z.number().nullable(),
+  /** Mensagens do operador que o Anjo ainda não viu (pelo "lida" gravado no servidor). Ausente (API anterior) = 0. */
+  unreadCount: z.number().int().min(0).default(0),
 })
 export type AnjoAttendanceView = z.infer<typeof anjoAttendanceViewSchema>
 

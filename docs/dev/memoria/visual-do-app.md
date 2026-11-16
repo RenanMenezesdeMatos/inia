@@ -106,6 +106,18 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   de DADOS montada à mão usa `TABLE_HEAD_COLORS` (grade do calendário da equipe: "hoje" vira uma barra branca sob o dia). Ficam
   com visual próprio: gráficos em forma de tabela (mapa de calor e coorte da Monitoria de usabilidade) e tabelas DENTRO de
   conteúdo (Markdown das respostas, artigo da base, comparação de texto, tabelinhas do diagnóstico de PRV num feedback).
+- **Painel personalizável** (aprovado pelo responsável em 2026-11-12) — o padrão único para telas com áreas e cards que a pessoa
+  reposiciona, redimensiona e esconde. Kit: `components/ui/customizable-grid/` — `layout.ts` (catálogo × disposição: juntar o salvo
+  com o catálogo, mover, larguras em blocos 3/4/6/8/9/12 de uma grade de 12 colunas, altura em blocos de 1 a 8 linhas de 72 px — ou automática — para QUALQUER card, classes) e
+  `customizable-view.tsx` (@dnd-kit 6.3.1/sortable 10.0.0: arrastar área e card com mouse ou teclado — espaço, setas, espaço —, avisos
+  em português ao leitor de tela; redimensionar pelo canto do card — largura e altura juntas, encaixando no bloco mais próximo, com a prévia "Metade · 3 blocos" — ou pelo menu "Tamanho"; o conteúdo do card estica e ocupa o bloco inteiro (pedido de 12/11: só horizontal e card sem ocupar o bloco não serviam); esconder
+  com ×, "Adicionar card" e "Mostrar <área>"; Concluir/Cancelar/Restaurar padrão com `AlertDialog`; em edição a barra do card fica
+  ACIMA do conteúdo, nunca por cima). Persistência: `components/view-layouts/persisted-customizable-view.tsx` →
+  `GET/PUT/DELETE /api/v1/me/view-layouts/:viewKey` (`person_view_layouts`, migration 192; chave registrada em
+  `profile-preferences/domain/view-layout.ts` e `schemas/view-layouts/`). A tela só declara o catálogo (`GridSection[]` com
+  `GridCard{id,title,defaultWidth,widths?,defaultRows?,render({rows})}`; gráfico: `chartHeightPx(rows, reserva)`); falha da leitura principal = um aviso só, não um por card.
+  Rejeitados: react-grid-layout (posição absoluta, teclado fraco) e guardar só no navegador. `react-resizable-panels` continua só para
+  divisórias de painel. Primeiro uso: Painel dos Anjos — Indicadores, Monitoria Online, Jornada e atendimentos.
 - **Confirmação** — `AlertDialog` (50 telas; nenhum `window.confirm`). Dialog só quando a confirmação pede campos (motivo,
   digitar o código).
 - **Lista/Cards** — `ListViewToggle` (13 telas, já uniforme).

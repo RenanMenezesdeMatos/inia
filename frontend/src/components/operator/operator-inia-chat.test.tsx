@@ -1165,13 +1165,148 @@ describe("OperatorIniaChat — caracterização do comportamento", () => {
   })
 })
 
+describe("OperatorIniaChat — indicador de atividade", () => {
+  beforeEach(() => {
+    vi.mocked(textClient.fetchTextReply).mockReset()
+    vi.mocked(textClient.fetchTextReply).mockResolvedValue({ text: "", supportMaterials: [], interactionId: null, conversationId: "c", persisted: true })
+    doubles.connectError = null
+  })
+  const status = () => screen.queryAllByTestId("text-reply-status")
+  const sendTyped = async (text: string) => {
+    fireEvent.change(composer(), { target: { value: text } })
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+  }
+
+  it("com a voz aberta: aparece no envio e segue a consulta real, num indicador só, na conversa e na etiqueta da chamada", async () => {
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    await sendTyped("qual o prazo?")
+    await waitFor(() => expect(transport.calls).toContain("sendText:qual o prazo?"))
+    expect(status()).toHaveLength(1)
+    expect(status()[0]).toHaveTextContent("Pensando…")
+    expect(status()[0]).toHaveAttribute("role", "status")
+    expect(status()[0]).toHaveAttribute("aria-atomic", "true")
+    act(() => transport.events.onToolActivity?.("started"))
+    expect(status()[0]).toHaveTextContent("Consultando as informações…")
+    expect(screen.getAllByText(/Consultando as informações…/).length).toBeGreaterThanOrEqual(1)
+    act(() => transport.events.onToolActivity?.("finished"))
+    expect(status()[0]).toHaveTextContent("Preparando resposta…")
+    act(() => transport.events.onStateChange?.("speaking"))
+    expect(status()).toHaveLength(0)
+    expect(vi.mocked(textClient.fetchTextReply).mock.calls.filter(([input]) => input.text === "qual o prazo?")).toEqual([])
+  })
+
+  it("com a voz aberta: a resposta da consulta na conversa encerra o indicador, antes de a fala começar", async () => {
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    await sendTyped("qual o prazo?")
+    act(() => transport.events.onToolActivity?.("started"))
+    await act(async () => { transport.events.onSpecialistResult?.("O prazo é de 24 horas.", [], { conversationId: CONV, created: false, closed: false, activeConversationId: null }) })
+    act(() => transport.events.onToolActivity?.("finished"))
+    expect(screen.getByText("O prazo é de 24 horas.")).toBeInTheDocument()
+    expect(status()).toHaveLength(0)
+  })
+
+  it("com a voz aberta e no mudo: o pedido segue pelo texto e o indicador continua visível, mesmo com a sessão pensando", async () => {
+    let report: (label: string) => void = () => {}
+    const pending = deferred<Awaited<ReturnType<typeof textClient.fetchTextReply>>>()
+    vi.mocked(textClient.fetchTextReply).mockImplementation((_input, _onChunk, _onConversation, options) => {
+      report = (label) => options?.onStatus?.({ stage: "KNOWLEDGE", label })
+      return pending.promise
+    })
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
+    await sendTyped("como contesto?")
+    expect(textClient.fetchTextReply).toHaveBeenCalledTimes(1)
+    expect(status()).toHaveLength(1)
+    expect(status()[0]).toHaveTextContent("Pensando…")
+    act(() => report("Consultando a base de conhecimento…"))
+    expect(status()[0]).toHaveTextContent("Consultando a base de conhecimento…")
+    act(() => transport.events.onStateChange?.("thinking"))
+    expect(status()).toHaveLength(1)
+    act(() => transport.events.onStateChange?.("idle"))
+    act(() => report("Lendo as seções encontradas…"))
+    expect(status()[0]).toHaveTextContent("Lendo as seções encontradas…")
+    await act(async () => { pending.resolve({ text: "Resposta.", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true }) })
+    expect(status()).toHaveLength(0)
+  })
+
+  it("encerra quando o texto começa e quando o pedido falha", async () => {
+    let chunk: (text: string) => void = () => {}
+    const pending = deferred<Awaited<ReturnType<typeof textClient.fetchTextReply>>>()
+    vi.mocked(textClient.fetchTextReply).mockImplementationOnce((_input, onChunk) => {
+      chunk = (text) => onChunk(text)
+      return pending.promise
+    })
+    renderChat()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
+    await sendTyped("primeira")
+    expect(status()).toHaveLength(1)
+    act(() => chunk("Começou"))
+    expect(status()).toHaveLength(0)
+    await act(async () => { pending.resolve({ text: "Começou", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true }) })
+
+    vi.mocked(textClient.fetchTextReply).mockRejectedValueOnce(new Error("queda"))
+    await sendTyped("segunda")
+    await waitFor(() => expect(status()).toHaveLength(0))
+  })
+
+  it("trocar de conversa encerra e ignora o que chegar do pedido antigo", async () => {
+    let report: (label: string) => void = () => {}
+    const pending = deferred<Awaited<ReturnType<typeof textClient.fetchTextReply>>>()
+    vi.mocked(textClient.fetchTextReply).mockImplementation((_input, _onChunk, _onConversation, options) => {
+      report = (label) => options?.onStatus?.({ stage: "KNOWLEDGE", label })
+      return pending.promise
+    })
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
+    await sendTyped("vai demorar")
+    expect(status()).toHaveLength(1)
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Nova conversa" })) })
+    expect(status()).toHaveLength(0)
+    act(() => report("Evento antigo…"))
+    expect(screen.queryByText("Evento antigo…")).toBeNull()
+    await act(async () => { pending.resolve({ text: "atrasada", supportMaterials: [], interactionId: "i", conversationId: CONV, persisted: true }) })
+    expect(status()).toHaveLength(0)
+  })
+
+  it("com a voz aberta, trocar de conversa no meio da consulta encerra; o fim dela não reabre o indicador", async () => {
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    await sendTyped("qual o prazo?")
+    act(() => transport.events.onToolActivity?.("started"))
+    expect(status()).toHaveLength(1)
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Nova conversa" })) })
+    expect(status()).toHaveLength(0)
+  })
+
+  it("voz que não conecta: o pedido segue por escrito, com um indicador só", async () => {
+    doubles.connectError = null
+    const pending = deferred<Awaited<ReturnType<typeof textClient.fetchTextReply>>>()
+    vi.mocked(textClient.fetchTextReply).mockImplementation(() => pending.promise)
+    const transport = await openVoice()
+    act(() => transport.events.onStateChange?.("idle"))
+    doubles.connectError = new Error("sem voz")
+    await sendTyped("qual o prazo?")
+    await waitFor(() => expect(textClient.fetchTextReply).toHaveBeenCalledTimes(1))
+    expect(status()).toHaveLength(1)
+    doubles.connectError = null
+    await act(async () => { pending.resolve({ text: "Resposta.", supportMaterials: [], interactionId: "i1", conversationId: CONV, persisted: true }) })
+    expect(status()).toHaveLength(0)
+  })
+})
+
 describe("OperatorIniaChat — resposta por escrito em fluxo", () => {
   it("antes do primeiro texto mostra o progresso verdadeiro do servidor; o texto retirado some; trocar de conversa cancela o pedido", async () => {
     let finish: () => void = () => {}
+    let reportStatus: () => void = () => {}
     let signal: AbortSignal | undefined
     vi.mocked(textClient.fetchTextReply).mockImplementation(async (_input, onChunk, _onConversation, options) => {
       signal = options?.signal
-      options?.onStatus?.({ stage: "TOOLS", label: "Consultando as bases de conhecimento…" })
+      reportStatus = () => options?.onStatus?.({ stage: "TOOLS", label: "Consultando as bases de conhecimento…" })
       await new Promise<void>((resolve) => {
         finish = resolve
       })
@@ -1185,6 +1320,8 @@ describe("OperatorIniaChat — resposta por escrito em fluxo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Silenciar a INIA" }))
     fireEvent.change(composer(), { target: { value: "como contesto?" } })
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
+    expect(await screen.findByTestId("text-reply-status")).toHaveTextContent("Pensando…")
+    act(() => reportStatus())
     expect(await screen.findByTestId("text-reply-status")).toHaveTextContent("Consultando as bases de conhecimento…")
     await act(async () => { finish() })
     expect(await screen.findByText("Resposta final.")).toBeInTheDocument()

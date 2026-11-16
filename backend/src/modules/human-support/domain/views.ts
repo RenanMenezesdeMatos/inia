@@ -49,6 +49,8 @@ export type AnjoAttendanceView = {
   requestId: string
   protocol: string
   operatorName: string
+  /** Foto cadastrada do operador (migration 191: o Anjo vê com quem conversa); null = iniciais. */
+  operatorAvatarUrl: string | null
   teamName: string | null
   subteamName: string | null
   startedAt: string
@@ -61,6 +63,8 @@ export type AnjoAttendanceView = {
   peerReceipts: Receipts
   /** Por quantos ms ainda vale o "digitando" do operador (null = não está digitando). */
   peerTypingMs: number | null
+  /** Mensagens do operador depois do "lida" do lado do Anjo: o que ele ainda não viu, mesmo fora da área ou depois de recarregar. */
+  unreadCount: number
 }
 
 export type AnjoView = {
@@ -177,7 +181,21 @@ export type AnjoNowItem = {
   /** A área do Anjo está aberta agora (Disponível/Em pausa sem conexão = não recebe atendimento). */
   connected: boolean
   connectionLostSince: string | null
+  /**
+   * Conexão (migration 191): aberta; caiu por rede; caiu porque a SESSÃO terminou (logout, prazo do login, inatividade); ou fechada
+   * (Indisponível sem a área aberta = offline). Indisponível com a área aberta = indisponível voluntário.
+   */
+  connection: "CONNECTED" | "CONNECTION_LOST" | "SESSION_ENDED" | "CLOSED"
+  /** Pausa ou indisponibilidade programada (entra ao terminar o último atendimento). */
+  scheduled: { status: "PAUSED" | "OFFLINE"; pauseReason: PauseReason | null } | null
   attendances: { active: number; capacity: number }
 }
-export type AnjosNow = { serverTime: string; items: AnjoNowItem[] }
+/**
+ * Fila agora no alcance de quem lê: pedidos aguardando um Anjo (com a espera desde a ENTRADA ORIGINAL — o pedido que voltou à fila
+ * mantém o horário) e atendimentos acolhidos ainda sem a primeira resposta do Anjo (a atribuição é direta: não há oferta pendente).
+ */
+export type QueueNow = { waiting: number; oldestWaitingSince: string | null; awaitingFirstResponse: number; oldestAwaitingSince: string | null }
+export type AnjosNow = { serverTime: string; items: AnjoNowItem[]; queue: QueueNow }
+/** Um pedido aguardando um Anjo (detalhe da fila, só para a coordenação); `waitingSince` = entrada original na fila. */
+export type QueueWaitingItem = { requestId: string; protocol: string; operatorName: string; operatorAvatarUrl: string | null; teamName: string | null; subteamName: string | null; origin: RequestOrigin; waitingSince: string; requeued: boolean }
 export type PresenceTimeline = { events: { occurredAt: string; fromStatus: PresenceStatus | null; toStatus: PresenceStatus; pauseReason: PauseReason | null; cause: string }[] }

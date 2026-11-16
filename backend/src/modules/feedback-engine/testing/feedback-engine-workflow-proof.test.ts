@@ -11,7 +11,18 @@ import type { AgentConfig } from "../../agents/domain/agent-config.js"
 import type { EngineModelRequest } from "../application/ports.js"
 import { CHECKLIST_V1, PROCEDURE_V1, TRANSCRIPT } from "./fixtures.js"
 
-const control = vi.hoisted(() => ({ model: null as null | { generate: (request: unknown) => Promise<unknown> } }))
+const control = vi.hoisted(() => ({ model: null as null | { generate: (request: unknown) => Promise<unknown> }, compliance: null as null | ((system: string) => string) }))
+// A conferência da mensagem (PEN-018) passa pelo gateway único: aqui, só ela é simulada.
+vi.mock("../../../shared/application/model-routing/llm-gateway.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../../shared/application/model-routing/llm-gateway.js")>()
+  const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0, thinkingTokens: 0 }
+  const generateForRoute = async (gatewayRequest: Parameters<typeof original.generateForRoute>[0]) => {
+    if (gatewayRequest.classification?.purpose !== "RESPONSE_COMPLIANCE") return original.generateForRoute(gatewayRequest)
+    if (!control.compliance) throw new Error("provedor fora")
+    return { kind: "text", text: control.compliance(gatewayRequest.systemPrompt ?? ""), usage, durationMs: 1, model: "simulado", cache: { cacheable: false, hit: false } }
+  }
+  return { ...original, generateForRoute }
+})
 vi.mock("../infrastructure/gateway-engine-model.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../infrastructure/gateway-engine-model.js")>()
   return { ...original, createGatewayEngineModel: () => ({ generate: (request: unknown) => control.model!.generate(request) }) }
@@ -908,5 +919,53 @@ describe.skipIf(!ENABLED)("Motor de feedback no Workflow — prova Postgres (zer
     expect(await countNow()).toEqual({ findings: 0, practices: 0 })
     await pool.query("update feedback_follow_up_hides set restored_at = now(), restore_reason = 'prova' where feedback_id = $1 and restored_at is null", [feedback.id])
     expect(await countNow()).toEqual(before)
+  })
+
+  it("Q) conferência da mensagem (PEN-018): em auditoria publica e registra; em prevenção, violação vira abstenção e falha da conferência não publica; a análise fica na memória", async () => {
+    const TOPIC = "Proof Engine · Regra da conferência"
+    const violating = (system: string) => JSON.stringify({ verdict: "VIOLATION", violated: [new RegExp(`(R\\d+) \\[Assunto proibido\\] ${TOPIC}`).exec(system)![1]], excerpt: "data de nascimento", reason: "Apontamento da prova." })
+    await pool.query("insert into prohibited_topics (organization_id, name, required_behavior) values ($1, $2, 'Não orientar sobre o tema.')", [ORG, TOPIC])
+    const messageOf = async (enrollment: string) => (await pool.query<{ id: string; status: string; abstain_reason: string | null; composition: { responseCheck?: { rejectedText: string } } | null }>("select id, status, abstain_reason, composition from feedback_engine_messages where enrollment_id = $1", [enrollment])).rows[0]!
+    const registryOf = async (messageId: string) => (await pool.query<{ surface: string; control: string; outcome: string; action: string; flagged_content: string | null; reason: string | null }>("select surface, control, outcome, action, flagged_content, reason from response_compliance_checks where source_ref = $1", [messageId])).rows
+    const wf = await insertWorkflow("Proof Engine · conferência")
+    try {
+      useModel()
+      control.compliance = violating
+      vi.stubEnv("INIA_RESPONSE_CHECK_FEEDBACK", "AUDIT")
+      const audited = await enroll(wf, await insertInteraction(new Date("2026-10-20T13:00:00Z")))
+      const beforeAudit = (await feedbacksOf()).length
+      expect(await drive(audited)).toMatchObject({ status: "completed" })
+      const auditedMessage = await messageOf(audited)
+      expect(auditedMessage.status).toBe("PUBLISHABLE")
+      expect((await feedbacksOf()).length).toBe(beforeAudit + 1)
+      expect(await registryOf(auditedMessage.id)).toEqual([{ surface: "FEEDBACK_MESSAGE", control: "DETECTIVE", outcome: "VIOLATION", action: "RECORDED", flagged_content: null, reason: null }])
+
+      vi.stubEnv("INIA_RESPONSE_CHECK_FEEDBACK", "ENFORCE")
+      const interactionBlocked = await insertInteraction(new Date("2026-10-21T13:00:00Z"))
+      const blocked = await enroll(wf, interactionBlocked)
+      const beforeBlocked = (await feedbacksOf()).length
+      await drive(blocked)
+      const blockedMessage = await messageOf(blocked)
+      expect(blockedMessage).toMatchObject({ status: "ABSTAINED", abstain_reason: "NO_SAFE_MESSAGE:RULE_VIOLATION" })
+      expect(blockedMessage.composition?.responseCheck?.rejectedText).toContain("data de nascimento")
+      expect((await feedbacksOf()).length).toBe(beforeBlocked)
+      expect(await currentCriteria(interactionBlocked)).not.toHaveLength(0)
+      expect(await registryOf(blockedMessage.id)).toEqual([{ surface: "FEEDBACK_MESSAGE", control: "PREVENTIVE", outcome: "VIOLATION", action: "BLOCKED", flagged_content: null, reason: null }])
+
+      control.compliance = null
+      const unavailable = await enroll(wf, await insertInteraction(new Date("2026-10-22T13:00:00Z")))
+      const beforeFailed = (await feedbacksOf()).length
+      for (let step = 0; step < 6 && (await state(unavailable)).attempts === 0; step += 1) await processEnrollment(pool, await claimed(unavailable)).catch(() => undefined)
+      expect((await feedbacksOf()).length).toBe(beforeFailed)
+      const failedMessage = await messageOf(unavailable)
+      expect(failedMessage.status).not.toBe("PUBLISHABLE")
+      const events = (await pool.query<{ payload: { errorCode?: string } }>("select payload from workflow_enrollment_events where enrollment_id = $1 and event_type = 'node_failed'", [unavailable])).rows
+      expect(events.some((event) => event.payload.errorCode === "RESPONSE_CHECK_UNAVAILABLE")).toBe(true)
+    } finally {
+      vi.unstubAllEnvs()
+      control.compliance = null
+      await pool.query("delete from response_compliance_checks where source_ref in (select id::text from feedback_engine_messages where workflow_id = $1)", [wf.workflow])
+      await pool.query("delete from prohibited_topics where organization_id = $1 and name = $2", [ORG, TOPIC])
+    }
   })
 })

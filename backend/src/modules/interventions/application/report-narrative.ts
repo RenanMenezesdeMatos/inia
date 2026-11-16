@@ -4,6 +4,8 @@ import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
 import { currentAiOrganizationId, runWithAiOrganization } from "../../../shared/application/model-routing/ai-runtime.js"
 import { generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
+import { checkContentBeforeDelivery, contentRulesInstruction } from "../../governance/application/response-compliance.js"
+import { contentWithoutCitations } from "../../governance/domain/response-compliance.js"
 import { protectStoredLeave } from "../domain/protected-leave.js"
 import { narrativeIssues, reportNarrativeSchema, REPORT_NARRATIVE_CONTRACT, type IntelligenceReport, type ReportNarrative } from "../domain/intelligence-report.js"
 
@@ -75,6 +77,14 @@ export function parseNarrative(raw: string, report: IntelligenceReport): { ok: t
   return { ok: true, narrative: parsed.data }
 }
 
+/** O que a IA escreveu numa resposta estruturada, sem os marcadores e as escolhas fechadas. Fatos copiados por código não passam por aqui. */
+export function ownTextsOf(value: unknown): string[] {
+  if (typeof value === "string") return value.trim() ? [value] : []
+  if (Array.isArray(value)) return value.flatMap(ownTextsOf)
+  if (value && typeof value === "object") return Object.entries(value).flatMap(([key, item]) => (key === "refs" || key === "action" || key === "content" || key === "owner" ? [] : ownTextsOf(item)))
+  return []
+}
+
 export type NarrativeResult = { status: "READY" | "FAILED"; attempt: number; error: string | null }
 
 /** Gera (ou tenta de novo) a narrativa. Nunca lança por falha do modelo: registra a tentativa e devolve o estado. */
@@ -90,9 +100,16 @@ export async function generateReportNarrative(db: Database, input: { organizatio
   }
   let outcome: { ok: true; narrative: ReportNarrative } | { ok: false; error: string }
   try {
-    outcome = parseNarrative(await writer({ organizationId: input.organizationId, system: REPORT_NARRATIVE_SYSTEM, user: narrativeInput(report.structured), stage: "REPORT_NARRATIVE" }), report.structured)
+    outcome = parseNarrative(await writer({ organizationId: input.organizationId, system: `${REPORT_NARRATIVE_SYSTEM}${await contentRulesInstruction(db, input.organizationId)}`, user: narrativeInput(report.structured), stage: "REPORT_NARRATIVE" }), report.structured)
   } catch (error) {
     outcome = { ok: false, error: `Falha ao gerar a narrativa: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1000) }
+  }
+  // PEN-018: a narrativa é voz própria da IA e é conferida antes de ficar pronta. Barrada ou sem conferência, vira uma tentativa com falha; o relatório estruturado não muda.
+  if (outcome.ok) {
+    const text = ownTextsOf(outcome.narrative).join("\n")
+    const decision = await checkContentBeforeDelivery(db, { organizationId: input.organizationId, text, content: contentWithoutCitations(text), agentId: null, surface: "INTERVENTION_NARRATIVE", group: "CONTENT", source: "INTERVENTION", sourceRef: input.reportId })
+    if (decision.decision === "VIOLATION") outcome = { ok: false, error: `A conferência barrou a narrativa (${decision.hits.map((hit) => hit.name).join(", ")}). ${decision.reason}`.slice(0, 1000) }
+    if (decision.decision === "CHECK_FAILED") outcome = { ok: false, error: decision.message }
   }
   // Duas tentativas simultâneas: o número da tentativa é único por relatório; a que perde recalcula o próximo.
   for (let retry = 0; retry < 3; retry += 1) {

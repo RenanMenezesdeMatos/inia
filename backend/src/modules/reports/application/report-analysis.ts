@@ -1,7 +1,10 @@
+import type { Database } from "../../../infrastructure/database/pool.js"
 import { withLlmScope } from "../../../shared/application/llm-telemetry.js"
 import { currentAiOrganizationId, runWithAiOrganization } from "../../../shared/application/model-routing/ai-runtime.js"
 import { generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
+import { checkContentBeforeDelivery, contentRulesInstruction, type ContentDecision } from "../../governance/application/response-compliance.js"
+import { contentWithoutCitations } from "../../governance/domain/response-compliance.js"
 import { queryTableMarkdown } from "../../leadership-analytics/application/query-common.js"
 import { topChanges, type MetricChange } from "../domain/comparison.js"
 import { describePeriod } from "../domain/report-definition.js"
@@ -79,20 +82,37 @@ export function analysisInput(report: ReportRecord, delivery: DeliveryRecord): s
   })
 }
 
+/**
+ * PEN-018: a análise recebe os assuntos proibidos na instrução e é conferida antes de ficar pronta. Só o parágrafo da IA vai à conferência: a tabela é dado
+ * calculado e chega de qualquer forma. Barrada ou sem conferência, a análise fica como falha, com as novas tentativas limitadas de sempre.
+ */
+export type AnalysisGuard = {
+  instruction: (organizationId: string) => Promise<string>
+  check: (input: { organizationId: string; text: string; deliveryId: string }) => Promise<ContentDecision>
+}
+export const reportAnalysisGuard = (db: Pick<Database, "query">): AnalysisGuard => ({
+  instruction: (organizationId) => contentRulesInstruction(db, organizationId),
+  check: (input) => checkContentBeforeDelivery(db, { organizationId: input.organizationId, text: input.text, content: contentWithoutCitations(input.text), agentId: null, surface: "REPORT_ANALYSIS", group: "CONTENT", source: "REPORT", sourceRef: input.deliveryId }),
+})
+
 /** Análise de uma entrega (logo depois de gravada, ou "Tentar de novo" com MANUAL): sem posse, não chama a IA. */
-export async function analyzeDelivery(store: ReportStore, writer: AnalysisWriter, delivery: DeliveryRecord, report: ReportRecord, mode: AnalysisClaimMode = "AUTOMATIC"): Promise<void> {
+export async function analyzeDelivery(store: ReportStore, writer: AnalysisWriter, delivery: DeliveryRecord, report: ReportRecord, mode: AnalysisClaimMode = "AUTOMATIC", guard?: AnalysisGuard): Promise<void> {
   if (delivery.kind !== "DELIVERY" || !delivery.dataset) return
   const claimed = await store.claimAnalysis(delivery.id, mode)
-  if (claimed) await runClaimedAnalysis(store, writer, claimed, report)
+  if (claimed) await runClaimedAnalysis(store, writer, claimed, report, guard)
 }
 
-async function runClaimedAnalysis(store: ReportStore, writer: AnalysisWriter, claimed: DeliveryRecord, report: ReportRecord | null): Promise<void> {
+async function runClaimedAnalysis(store: ReportStore, writer: AnalysisWriter, claimed: DeliveryRecord, report: ReportRecord | null, guard?: AnalysisGuard): Promise<void> {
   let result: { status: "READY" | "FAILED"; text: string | null; error: string | null }
   try {
     if (!report) throw new Error("Report não encontrado.")
-    const text = (await writer({ organizationId: report.organizationId, system: REPORT_ANALYSIS_SYSTEM, user: analysisInput(report, claimed) })).trim()
+    const system = `${REPORT_ANALYSIS_SYSTEM}${guard ? await guard.instruction(report.organizationId) : ""}`
+    const text = (await writer({ organizationId: report.organizationId, system, user: analysisInput(report, claimed) })).trim().slice(0, 6_000)
     if (!text) throw new Error("A IA não devolveu texto.")
-    result = { status: "READY", text: text.slice(0, 6_000), error: null }
+    const decision = guard ? await guard.check({ organizationId: report.organizationId, text, deliveryId: claimed.id }) : null
+    if (decision?.decision === "VIOLATION") throw new Error(`A conferência barrou a análise: ${decision.hits.map((hit) => hit.name).join(", ")}.`)
+    if (decision?.decision === "CHECK_FAILED") throw new Error(decision.message)
+    result = { status: "READY", text, error: null }
   } catch (error) {
     result = { status: "FAILED", text: null, error: (error as Error).message?.slice(0, 300) ?? "Falha da IA." }
   }
@@ -107,7 +127,7 @@ async function runClaimedAnalysis(store: ReportStore, writer: AnalysisWriter, cl
  * (o prazo da posse conta a partir da chamada, não do começo da rodada); a "em análise" abandonada que não volta mais à fila vira
  * FAILED. Com `signal` abortado (a tarefa periódica perdeu a trava), para antes da próxima reivindicação.
  */
-export async function retryPendingAnalyses(store: ReportStore, writer: AnalysisWriter, options: { limit?: number; signal?: AbortSignal } = {}): Promise<number> {
+export async function retryPendingAnalyses(store: ReportStore, writer: AnalysisWriter, options: { limit?: number; signal?: AbortSignal; guard?: AnalysisGuard } = {}): Promise<number> {
   await store.closeAbandonedAnalyses()
   const limit = options.limit ?? 10
   let analyzed = 0
@@ -115,7 +135,7 @@ export async function retryPendingAnalyses(store: ReportStore, writer: AnalysisW
     const claimed = await store.claimNextAnalysis()
     if (!claimed) break
     analyzed += 1
-    await runClaimedAnalysis(store, writer, claimed, await store.getReport(claimed.reportId, claimed.organizationId))
+    await runClaimedAnalysis(store, writer, claimed, await store.getReport(claimed.reportId, claimed.organizationId), options.guard)
   }
   return analyzed
 }

@@ -2,17 +2,24 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ScopeState, SettingsView } from "@/schemas/human-support/admin.schema"
+import type { Productivity } from "@/schemas/human-support/monitoring.schema"
 import {
   fetchAnjoPresenceTimeline,
-  fetchAnjosActivity,
+  fetchSupportAbandonment,
   fetchAnjosNow,
+  fetchMyAnjoHistory,
+  fetchQueueWaiting,
+  fetchSupportDemand,
+  fetchOperationHistory,
   fetchSupportAnjos,
   fetchSupportFunnel,
   fetchSupportRequestDetail,
   fetchSupportRequests,
   fetchSupportScopes,
   fetchSupportSettings,
+  fetchTransferCandidates,
   fetchUnavailableAttempts,
+  transferSupportAttendance,
   saveAnjoCapacity,
   saveSupportScopeState,
   saveSupportSettings,
@@ -66,10 +73,43 @@ export const useSupportRequestDetailQuery = (requestId: string | null) =>
     enabled: Boolean(requestId),
     refetchInterval: (query) => (query.state.data?.status === "WAITING" || query.state.data?.status === "IN_PROGRESS" ? REQUEST_DETAIL_REFRESH_MS : false),
   })
+/** Destinos da transferência: só com o diálogo aberto, e lidos de novo a cada 10 s (o estado dos Anjos muda). */
+export const useTransferCandidatesQuery = (requestId: string, enabled: boolean) =>
+  useQuery({ queryKey: [...MONITORING_KEY, "transfer-candidates", requestId], queryFn: () => fetchTransferCandidates(requestId), enabled, refetchInterval: enabled ? 10_000 : false })
+export function useTransferAttendanceMutation(requestId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { toAnjoPersonId: string | null; reason: string }) => transferSupportAttendance(requestId, input),
+    onSuccess: (detail) => queryClient.setQueryData([...MONITORING_KEY, "request", requestId], detail),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: MONITORING_KEY }),
+  })
+}
 export const useUnavailableAttemptsQuery = (filter: PanelFilter & { cursor?: string | null }) => useQuery({ queryKey: [...MONITORING_KEY, "attempts", filter], queryFn: () => fetchUnavailableAttempts(filter) })
-export const useAnjosActivityQuery = (filter: PanelFilter) => useQuery({ queryKey: [...MONITORING_KEY, "anjos", filter], queryFn: () => fetchAnjosActivity(filter) })
+/** Abandonos: `live` = Monitoria Online (o dia de hoje, relido junto com a "Operação agora"); sem ele, o período de Indicadores. */
+export const useSupportAbandonmentQuery = (filter: PanelFilter, live = false) =>
+  useQuery({ queryKey: [...MONITORING_KEY, "abandonment", filter], queryFn: () => fetchSupportAbandonment(filter), refetchInterval: live ? ANJOS_NOW_REFRESH_MS : false, refetchOnReconnect: live ? "always" : true })
 /** Situação dos Anjos agora: atualiza sozinha a cada 15 s (e ao voltar para a aba), como a lista de Anjos da configuração. */
-export const ANJOS_NOW_REFRESH_MS = 15_000
+/** Situação agora: relê a cada 5 s e, ao voltar a conexão ou o foco, na hora (o servidor é a fonte da verdade). */
+export const ANJOS_NOW_REFRESH_MS = 5_000
 export const useAnjosNowQuery = (filter: { teamId?: string | null; subteamId?: string | null }) =>
-  useQuery({ queryKey: [...MONITORING_KEY, "anjos-now", filter], queryFn: () => fetchAnjosNow(filter), refetchInterval: ANJOS_NOW_REFRESH_MS })
+  useQuery({
+    queryKey: [...MONITORING_KEY, "anjos-now", filter],
+    queryFn: () => fetchAnjosNow(filter),
+    refetchInterval: ANJOS_NOW_REFRESH_MS,
+    refetchOnReconnect: "always",
+    refetchOnWindowFocus: "always",
+  })
+/** Acionamentos do período (aba Indicadores). */
+export const useSupportDemandQuery = (filter: PanelFilter & { productivity?: Productivity | null }) =>
+  // Ao clicar em produtivos/não produtivos, o resto da seção continua na tela até o novo recorte chegar.
+  useQuery({ queryKey: [...MONITORING_KEY, "demand", filter], queryFn: () => fetchSupportDemand(filter), placeholderData: (previous) => previous })
+/** Quem está na fila (aberto ao clicar no indicador de fila); relê junto com a "Operação agora". */
+export const useQueueWaitingQuery = (filter: { teamId?: string | null; subteamId?: string | null }, enabled: boolean) =>
+  useQuery({ queryKey: [...MONITORING_KEY, "queue", filter], queryFn: () => fetchQueueWaiting(filter), enabled, refetchInterval: enabled ? ANJOS_NOW_REFRESH_MS : false })
+/** Histórico da operação: da coordenação (alcance de quem lê, com o consolidado) ou o próprio, do Anjo. */
+export const useOperationHistoryQuery = (filter: PanelFilter & { anjoPersonId?: string | null }, source: "coordination" | "anjo" = "coordination") =>
+  useQuery({
+    queryKey: source === "anjo" ? ["human-support", "anjo", "history", filter.from, filter.to] : [...MONITORING_KEY, "history", filter],
+    queryFn: () => (source === "anjo" ? fetchMyAnjoHistory({ from: filter.from, to: filter.to }) : fetchOperationHistory(filter)),
+  })
 export const useAnjoPresenceTimelineQuery = (personId: string | null, period: { from: string; to: string }) => useQuery({ queryKey: [...MONITORING_KEY, "presence", personId, period], queryFn: () => fetchAnjoPresenceTimeline(personId!, period), enabled: Boolean(personId) })

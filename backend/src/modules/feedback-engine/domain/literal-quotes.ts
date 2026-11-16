@@ -85,6 +85,29 @@ function literalRunsOf(source: string): string[] {
 const QUOTED = /“([^”]+)”|"([^"\n]+)"|«([^»]+)»|‘([^’]+)’|(?<![\p{L}\p{N}])'([^'\n]{2,}?)'(?![\p{L}\p{N}])/gu
 export const quotedSegmentsOf = (text: string) => [...text.matchAll(QUOTED)].map((match) => (match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "").trim()).filter(Boolean)
 
+/** De onde vem cada citação (PEN-018): fala da chamada e regra citada são referência; a fala sugerida orienta. Texto igual nas duas pontas conta como sugestão. */
+export type QuoteOrigin = "CALL" | "RULE" | "SUGGESTED"
+function quoteOriginsOf(brief: FeedbackBrief): Map<string, QuoteOrigin> {
+  const origins = new Map<string, QuoteOrigin>()
+  const add = (texts: readonly string[], origin: QuoteOrigin) => {
+    for (const text of texts) for (const run of literalRunsOf(text)) origins.set(run, origin)
+  }
+  const rules = rulesOfBrief(brief)
+  add(rules.flatMap((rule) => [rule.text, ...(rule.leadIn ? [rule.leadIn] : [])]).flatMap((text) => text.split("\n")).map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/u, "")), "RULE")
+  add(callQuoteTextsOf(brief), "CALL")
+  add([...rules.flatMap((rule) => (rule.phrasing ? [rule.phrasing.text] : [])), ...(brief.basePractices ?? []).flatMap((practice) => (practice.suggestedPhrasing ? [practice.suggestedPhrasing] : []))], "SUGGESTED")
+  return origins
+}
+/** Troca cada trecho entre aspas pelo que `render` devolver, sabendo a origem. Trecho sem origem conhecida fica como está: é voz de quem escreveu. */
+export function replaceQuotesWithOrigin(text: string, brief: FeedbackBrief, render: (origin: QuoteOrigin, segment: string, original: string) => string): string {
+  const origins = quoteOriginsOf(brief)
+  return text.replace(QUOTED, (original: string, ...groups: (string | undefined)[]) => {
+    const segment = groups.slice(0, 5).find((group) => group !== undefined)?.trim() ?? ""
+    const origin = origins.get(normalized(segment))
+    return origin ? render(origin, segment, original) : original
+  })
+}
+
 /** Trechos entre aspas que NÃO são literais da chamada, da regra nem do argumentário (vazio = tudo certo). */
 export function nonLiteralQuotesOf(text: string, brief: FeedbackBrief): string[] {
   const segments = quotedSegmentsOf(text)

@@ -63,9 +63,10 @@ const subjectScopeSchema = z.object({
   scopeType: z.enum(["ALL_SUBJECTS", "SUBJECT"]),
   subjectId: z.string().uuid().optional(),
 })
+const knowledgeDocumentTypeSchema = z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW", "WORK_INSTRUCTION"])
 const createKnowledgeSchema = z.object({
   title: z.string().trim().min(2),
-  documentType: z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW"]),
+  documentType: knowledgeDocumentTypeSchema,
   content: z.string().trim().min(10).optional(),
   orgScopes: z.array(orgScopeSchema).default([{ scopeType: "ALL_TEAMS" }]),
   subjectScopes: z.array(subjectScopeSchema).default([{ scopeType: "ALL_SUBJECTS" }]),
@@ -77,7 +78,7 @@ const knowledgeListStatusSchema = z.enum(["DRAFT", "APPROVED", "PROCESSING", "FA
 
 const listKnowledgeSchema = orgScopeFilterSchema.extend({
   search: searchParam,
-  documentType: listParam(z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW"])),
+  documentType: listParam(knowledgeDocumentTypeSchema),
   sourceType: listParam(z.enum(["TEXT", "PDF", "DOCX", "TXT", "JSON"])),
   status: listParam(knowledgeListStatusSchema),
   subjectScopeType: z.enum(["ALL_SUBJECTS"]).optional(),
@@ -88,7 +89,7 @@ const listKnowledgeSchema = orgScopeFilterSchema.extend({
 })
 const updateKnowledgeSchema = z.object({
   title: z.string().trim().min(2).optional(),
-  documentType: z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW"]).optional(),
+  documentType: knowledgeDocumentTypeSchema.optional(),
   content: z.string().trim().min(10).optional(),
   status: knowledgeStatusSchema.optional(),
   /** Com `status: PUBLISHED` em base arquivada: a confirmação explícita de que ela volta a valer. Sem isso, 409. */

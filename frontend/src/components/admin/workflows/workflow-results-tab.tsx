@@ -142,6 +142,7 @@ const ENGINE_REASON_LABELS: Record<string, string> = {
 }
 /** Motivos técnicos do detalhe da abstenção que têm leitura própria (os demais aparecem como vieram). */
 const ENGINE_DETAIL_LABELS: Record<string, string> = {
+  RULE_VIOLATION: "a conferência apontou um assunto proibido ou um limite no texto da mensagem",
   PRODUCT_NOT_ESTABLISHED: "o que havia para avaliar dependia de um produto que a gravação não estabeleceu — nada foi cobrado nem reconhecido",
   PRODUCT_DEPENDENT_POINTS_SUSPENDED: "pontos que dependiam do produto ficaram sem avaliação",
 }

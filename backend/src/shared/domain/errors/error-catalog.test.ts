@@ -6,7 +6,7 @@ import { renderCatalogJson, renderCatalogMarkdown } from "../../infrastructure/e
 import { renderDomainCodesModule, scanDomainErrorCodes } from "../../infrastructure/errors/scan-error-codes.js"
 import { ERROR_CATALOG, ERROR_FAMILIES } from "./error-catalog.js"
 import { DOMAIN_ERROR_CODES } from "./domain-error-codes.generated.js"
-import { explainCode, familyForStatus, severityFor } from "./error-lookup.js"
+import { explainCode, familyForStatus, searchCodes, severityFor } from "./error-lookup.js"
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..")
 const repoRoot = path.resolve(backendRoot, "..")
@@ -84,5 +84,15 @@ describe("catálogo de erros — fonte de verdade", () => {
     expect(familyForStatus(418).id).toBe("FAMILIA-DEPENDENCIA")
     expect(severityFor("INIA-BANCO-INDISPONIVEL", 500)).toBe("critical")
     expect(severityFor("ALGUM_CODIGO", 503)).toBe("error")
+  })
+})
+
+describe("busca de códigos (Diagnóstico de erros)", () => {
+  it("devolve cada código uma vez, com a mesma precedência de explainCode", () => {
+    const all = searchCodes("", 100_000)
+    expect(new Set(all.map((item) => item.code)).size).toBe(all.length)
+    const validation = searchCodes("VALIDATION_ERROR").filter((item) => item.code === "VALIDATION_ERROR")
+    expect(validation).toHaveLength(1)
+    expect(validation[0]?.kind).toBe(explainCode("VALIDATION_ERROR")?.kind)
   })
 })

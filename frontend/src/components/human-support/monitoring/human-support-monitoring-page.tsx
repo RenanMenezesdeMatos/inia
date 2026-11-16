@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { Filter, FilterX, HeartHandshake, Inbox, UserX } from "lucide-react"
+import { ChartNoAxesColumn, Filter, FilterX, Inbox, RadioTower, UserX } from "lucide-react"
 
 import { ListSearchInput, ListSelectFilter, ListToolbar, optionsFromLabels } from "@/components/admin/shared/list/list-filters"
 import type { ScopeFilterValue } from "@/components/human-support/admin/scope-filter"
@@ -12,21 +12,23 @@ import { useSupportRequestsInfiniteQuery, useSupportScopesQuery } from "@/querie
 import { REQUEST_ORIGIN_LABELS, REQUEST_STATUS_LABELS, type RequestOrigin, type RequestStatus } from "@/schemas/human-support/catalogs.schema"
 import type { PanelFilter, RequestListFilter } from "@/services/human-support/human-support-service"
 
-import { AnjosActivityTab } from "./anjos-activity-tab"
+import { OperationHistoryTab } from "../history/operation-history"
 import { FunnelTab } from "./funnel-tab"
+import { OnlineMonitoringTab } from "./online-monitoring-tab"
 import { defaultPanelPeriod, PeriodPicker, type PanelPeriod } from "./period-picker"
 import { RequestsTab } from "./requests-tab"
 import { UnavailableAttemptsTab } from "./unavailable-attempts-tab"
 
-type PanelTab = "requests" | "funnel" | "attempts" | "anjos"
+type PanelTab = "requests" | "funnel" | "attempts" | "online" | "history"
 type RequestFilters = { search: string; status: RequestStatus | undefined; origin: RequestOrigin | undefined }
 const NO_REQUEST_FILTERS: RequestFilters = { search: "", status: undefined, origin: undefined }
 
 /**
  * Administração › Monitoramento › Apoio com Anjo — o painel do apoio (Coordenador de Anjos e Administrador geral; D7), no formato de
  * "Conversas com a INIA": título, barra de filtros e os pedidos como caixa de entrada (lista à esquerda, conversa à direita). Pedidos ·
- * Indicadores · Sem Anjo em serviço · Anjos (situação agora + atividade no período). O período e o Grupo/Subgrupo valem para as quatro
- * abas; busca, estado e origem, só para os pedidos. Tudo no alcance de quem lê, decidido pelo servidor.
+ * Indicadores · Sem Anjo em serviço · Monitoria Online · Jornada e atendimentos. Regra do responsável (12/11/2026): tudo o que é
+ * ONLINE (agora) fica na Monitoria Online, sem período; tudo o que é HISTÓRICO, nas abas com período. O Grupo/Subgrupo vale para
+ * todas; busca, estado e origem, só para os pedidos. Tudo no alcance de quem lê, decidido pelo servidor.
  *
  * Filtro por Grupo/Subgrupo: só para quem configura o apoio (`canFilterByScope`), com a árvore da configuração. O Coordenador de Anjos
  * não tem rota que liste a estrutura, e a tela nunca chama por ele uma rota que só o Administrador geral pode chamar.
@@ -68,8 +70,8 @@ export function HumanSupportMonitoringPage({ canFilterByScope = false }: { canFi
     <section className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Apoio com Anjo</h1>
-          <p className="text-sm text-muted-foreground">Leia os pedidos de apoio dos operadores do seu alcance e a conversa de cada um com o Anjo. Somente leitura.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Painel dos Anjos</h1>
+          <p className="text-sm text-muted-foreground">Leia os pedidos de apoio dos operadores do seu alcance e a conversa de cada um com o Anjo. A conversa é só leitura; um atendimento em andamento pode ser transferido para outro Anjo.</p>
         </div>
         {tab === "requests" && total !== null ? (
           <p className="text-sm text-muted-foreground tabular-nums">
@@ -85,7 +87,8 @@ export function HumanSupportMonitoringPage({ canFilterByScope = false }: { canFi
           <TabsTrigger value="requests" className="gap-1"><Inbox className="size-4" aria-hidden />Pedidos</TabsTrigger>
           <TabsTrigger value="funnel" className="gap-1"><Filter className="size-4" aria-hidden />Indicadores</TabsTrigger>
           <TabsTrigger value="attempts" className="gap-1"><UserX className="size-4" aria-hidden />Sem Anjo em serviço</TabsTrigger>
-          <TabsTrigger value="anjos" className="gap-1"><HeartHandshake className="size-4" aria-hidden />Anjos</TabsTrigger>
+          <TabsTrigger value="online" className="gap-1"><RadioTower className="size-4" aria-hidden />Monitoria Online</TabsTrigger>
+          <TabsTrigger value="history" className="gap-1"><ChartNoAxesColumn className="size-4" aria-hidden />Jornada e atendimentos</TabsTrigger>
         </TabsList>
         <TabsContent value="requests">
           <RequestsTab
@@ -117,7 +120,15 @@ export function HumanSupportMonitoringPage({ canFilterByScope = false }: { canFi
         </TabsContent>
         <TabsContent value="funnel" className="space-y-4">{panelFilters}<FunnelTab filter={filter} /></TabsContent>
         <TabsContent value="attempts" className="space-y-4">{panelFilters}<UnavailableAttemptsTab filter={filter} /></TabsContent>
-        <TabsContent value="anjos" className="space-y-4">{panelFilters}<AnjosActivityTab filter={filter} /></TabsContent>
+        <TabsContent value="online" className="space-y-4">
+          {canFilterByScope ? (
+            <PanelFilters active={scopeActive} onClear={() => setScope({})}>
+              <AdminScopeFilters value={scope} onChange={setScope} />
+            </PanelFilters>
+          ) : null}
+          <OnlineMonitoringTab scope={{ teamId: scope.teamId ?? null, subteamId: scope.subteamId ?? null }} />
+        </TabsContent>
+        <TabsContent value="history" className="space-y-4">{panelFilters}<OperationHistoryTab filter={filter} /></TabsContent>
       </Tabs>
     </section>
   )

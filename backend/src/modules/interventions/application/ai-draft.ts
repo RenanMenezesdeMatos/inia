@@ -6,7 +6,9 @@ import type { IntelligenceReport } from "../domain/intelligence-report.js"
 import type { InterventionPlan } from "../domain/intervention-plan.js"
 import { recordInterventionEvent } from "./apply-evaluation.js"
 import { getInterventionDetail, type InterventionDetail, type Viewer } from "./intervention-service.js"
-import { gatewayNarrativeWriter, type NarrativeWriter } from "./report-narrative.js"
+import { checkContentBeforeDelivery, contentRulesInstruction } from "../../governance/application/response-compliance.js"
+import { contentWithoutCitations } from "../../governance/domain/response-compliance.js"
+import { gatewayNarrativeWriter, ownTextsOf, type NarrativeWriter } from "./report-narrative.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 
 /**
@@ -103,7 +105,7 @@ export async function draftInterventionWithAi(db: Database, viewer: Viewer, inte
     state = { ...base, kind: "TRAINING", status: "INVESTIGATION_NEEDED", message: !hasDiagnosis ? "Não há diagnóstico sustentado para este colaborador: investigue a causa antes de definir um treinamento." : "O diagnóstico não está ligado a nenhuma competência com conteúdo aprovado na base: vincule a competência na administração." }
   } else {
     try {
-      const raw = await writer({ organizationId: viewer.organizationId, system: SYSTEM[kind], user: JSON.stringify({ colaborador: detail.person.name, intervencao: detail.type.name, fatos: sources }), stage: "INTERVENTION_DRAFT" })
+      const raw = await writer({ organizationId: viewer.organizationId, system: `${SYSTEM[kind]}${await contentRulesInstruction(db, viewer.organizationId)}`, user: JSON.stringify({ colaborador: detail.person.name, intervencao: detail.type.name, fatos: sources }), stage: "INTERVENTION_DRAFT" })
       let json: unknown
       try {
         json = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, ""))
@@ -112,6 +114,13 @@ export async function draftInterventionWithAi(db: Database, viewer: Viewer, inte
       }
       const verified = verify(json, kind, sources)
       state = verified.ok ? { ...base, status: "PROPOSED", facts, sources, proposal: verified.value } : { ...base, status: "FAILED", error: verified.error }
+      if (verified.ok) {
+        // PEN-018: o que a IA escreveu é conferido antes de virar proposta. Os fatos e as fontes são copiados pelo código e ficam de fora.
+        const text = ownTextsOf(verified.value).join("\n")
+        const decision = await checkContentBeforeDelivery(db, { organizationId: viewer.organizationId, text, content: contentWithoutCitations(text), agentId: null, surface: "INTERVENTION_DRAFT", group: "CONTENT", source: "INTERVENTION", sourceRef: detail.id })
+        if (decision.decision === "VIOLATION") state = { ...base, status: "FAILED", error: `A conferência barrou o rascunho (${decision.hits.map((hit) => hit.name).join(", ")}). ${decision.reason}`.slice(0, 1000) }
+        if (decision.decision === "CHECK_FAILED") state = { ...base, status: "FAILED", error: decision.message }
+      }
     } catch (error) {
       state = { ...base, status: "FAILED", error: `Falha ao gerar o rascunho: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1000) }
     }

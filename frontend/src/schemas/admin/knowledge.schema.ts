@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-export const knowledgeDocumentTypeSchema = z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW"])
+export const knowledgeDocumentTypeSchema = z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW", "WORK_INSTRUCTION"])
 export type KnowledgeDocumentType = z.infer<typeof knowledgeDocumentTypeSchema>
 
 export const knowledgeSourceTypeSchema = z.enum(["TEXT", "PDF", "DOCX", "TXT", "JSON"])
@@ -308,6 +308,7 @@ export const DOCUMENT_TYPE_LABELS: Record<KnowledgeDocumentType, string> = {
   FAQ: "FAQ",
   RULE: "Regra",
   FLOW: "Fluxo",
+  WORK_INSTRUCTION: "IT - Instrução de trabalho",
 }
 
 export const KNOWLEDGE_STATUS_LABELS: Record<KnowledgeStatus, string> = {

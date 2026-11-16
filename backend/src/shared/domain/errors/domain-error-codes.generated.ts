@@ -4809,7 +4809,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "Registro não encontrado."
     ],
     "refs": [
-      "backend/src/modules/human-support/application/coordination-service.ts"
+      "backend/src/modules/human-support/application/coordination-service.ts",
+      "backend/src/modules/human-support/application/operation-history.ts"
     ]
   },
   {
@@ -4864,7 +4865,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "refs": [
       "backend/src/modules/human-support/application/conversation-marks.ts",
       "backend/src/modules/human-support/application/message-service.ts",
-      "backend/src/modules/human-support/application/request-service.ts"
+      "backend/src/modules/human-support/application/request-service.ts",
+      "backend/src/modules/human-support/application/transfer-service.ts"
     ]
   },
   {
@@ -4878,6 +4880,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/human-support/application/request-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS",
+    "module": "human-support",
+    "statuses": [
+      409
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/human-support/application/transfer-service.ts"
     ]
   },
   {
@@ -9814,8 +9827,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/modules/human-support/application/coverage.ts",
       "backend/src/modules/human-support/application/request-service.ts",
       "backend/src/modules/human-support/application/settings-service.ts",
-      "backend/src/modules/indicators/presentation/employee-performance-router.ts",
-      "backend/src/modules/workflows/domain/draft-graph.ts"
+      "backend/src/modules/human-support/application/transfer-service.ts",
+      "backend/src/modules/indicators/presentation/employee-performance-router.ts"
     ]
   },
   {

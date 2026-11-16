@@ -38,7 +38,7 @@ O chat grava curtir/descurtir sem motivo (`backend/migrations/158_assistant_inte
 * Campo novo no prompt para o modelo declarar "não sei".
 * Anjo atendendo por "Minha estrutura".
 * Pedido de apoio feito pela liderança em nome de um operador.
-* Anjo devolver ou transferir um pedido para outro Anjo.
+* Anjo devolver ou transferir um pedido para outro Anjo (a transferência pela COORDENAÇÃO entrou em 2026-11-11, migration 190 — ver `docs/dev/memoria/apoio-com-anjo.md`).
 * Sugestão de Anjo na sessão de feedback e em conversas de recado.
 * Integração com a IAjuda ou outra IA.
 * Ligar a Monitoria de usabilidade.
@@ -98,7 +98,7 @@ Termos de produto. Códigos entre parênteses.
 Respostas de 09/11/2026 às decisões abertas da v3.1:
 
 * **D1.** Entrega em duas partes, A antes de B.
-* **D2.** **Atribuição direta** (substitui a oferta com 30 s para aceitar, decidida no brainstorm): o pedido vai direto a um Anjo disponível com vaga e já fica Em atendimento; se o Anjo não responder, continua Em atendimento; o tempo até a primeira resposta do Anjo é medido (M12) — inclusive por Anjo (M18).
+* **D2.** **Atribuição direta** (substitui a oferta com 30 s para aceitar, decidida no brainstorm; reafirmada pelo dono do produto em 11/11/2026, no histórico de indicadores da migration 191 — o acolhimento é a atribuição): o pedido vai direto a um Anjo disponível com vaga e já fica Em atendimento; se o Anjo não responder, continua Em atendimento; o tempo até a primeira resposta do Anjo é medido (M12) — inclusive por Anjo (M18).
 * **D3.** Com todos os Anjos em serviço em pausa, o pedido entra na fila e o operador vê "Nenhum Anjo disponível no momento. Aguarde: seu pedido está na fila."
 * **D4.** Sem Anjo em serviço, o botão "Pedir ajuda" fica desabilitado; a tentativa é registrada e aparece no painel do apoio (lista "Sem Anjo em serviço" e M9), para Coordenador de Anjos e Administrador geral.
 * **D5.** O Anjo relê os atendimentos que fez (enquanto tiver o papel de Anjo).
@@ -736,7 +736,7 @@ DDL completo no [Apêndice B](#apêndice-b--ddl). Nada é apagado fora da reten�
 * Resumo diário do funil se o período ou o volume crescerem.
 * Motivos de pausa e lista de resultado administráveis.
 * Notificação do sistema operacional quando um atendimento chega ao Anjo.
-* Anjo devolver ou transferir um pedido.
+* Anjo devolver ou transferir um pedido (pela coordenação: feito em 2026-11-11, migration 190).
 * Usar a classificação do Anjo para priorizar lacunas das bases.
 
 ### Apêndice A — parâmetros

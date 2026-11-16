@@ -24,7 +24,7 @@ export function HumanSupportAdminPage({ canGrantRoles }: { canGrantRoles: boolea
 
   return (
     <section className="space-y-6">
-      <PageHeader icon={HeartHandshake} title="Apoio com Anjo" description="Quando a INIA não resolve, o operador pode pedir ajuda a uma pessoa da equipe de apoio. Aqui você liga o apoio, escolhe onde ele vale e acompanha quem atende." />
+      <PageHeader icon={HeartHandshake} title="Configuração dos Anjos" description="Quando a INIA não resolve, o operador pode pedir ajuda a uma pessoa da equipe de apoio. Aqui você liga o apoio, escolhe onde ele vale e acompanha quem atende." />
       <Tabs value={tab} onValueChange={(value) => setTab(value as AdminTab)} className="space-y-5">
         <TabsList>
           <TabsTrigger value="settings" className="gap-1"><SlidersHorizontal className="size-4" aria-hidden />Configuração</TabsTrigger>

@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { EVALUATION_RESOLVED, HUMAN_SUPPORT_LIMITS, type AttendanceEndCause, type EvaluationResolved } from "./catalogs.js"
+import { EVALUATION_RESOLVED, HUMAN_SUPPORT_LIMITS, UNFINISHED_ATTENDANCE_END_CAUSES, type AttendanceEndCause, type EvaluationResolved } from "./catalogs.js"
 
 /**
  * AVALIAÇÃO DO ATENDIMENTO PELO OPERADOR (design_draft.md seção 12): "Sua dúvida foi resolvida?" (Sim / Em parte / Não) e as
@@ -16,7 +16,8 @@ export type EvaluationCurrent = { resolved: EvaluationResolved | null; stars: nu
 
 /** Até quando o atendimento aceita avaliação (null = não aceita: em andamento ou Interrompido). */
 export function evaluationOpenUntil(attendance: { endedAt: Date | null; endCause: AttendanceEndCause | null }): Date | null {
-  if (!attendance.endedAt || !attendance.endCause || attendance.endCause === "ANJO_LOST") return null
+  // Interrompido e transferido não são avaliados: quem avalia é o atendimento que concluiu o caso.
+  if (!attendance.endedAt || !attendance.endCause || UNFINISHED_ATTENDANCE_END_CAUSES.includes(attendance.endCause)) return null
   return new Date(attendance.endedAt.getTime() + HUMAN_SUPPORT_LIMITS.evaluationWindowMs)
 }
 

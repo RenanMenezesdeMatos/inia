@@ -100,12 +100,13 @@ export async function applyScheduledPresenceIfIdle(client: Queryable, organizati
   return scheduled
 }
 
-export async function recordPresenceEvent(client: Queryable, input: { organizationId: string; personId: string; from: PresenceStatus | null; to: PresenceStatus; pauseReason: PauseReason | null; cause: PresenceEventCause; sameInstantAsPresence?: boolean }): Promise<void> {
+export async function recordPresenceEvent(client: Queryable, input: { organizationId: string; personId: string; from: PresenceStatus | null; to: PresenceStatus; pauseReason: PauseReason | null; cause: PresenceEventCause; sameInstantAsPresence?: boolean; occurredAt?: Date | null }): Promise<void> {
   // `sameInstantAsPresence`: o evento leva o `status_since` que acabou de ser gravado na presença (a transição efetiva).
+  // `occurredAt`: o instante real do fato quando a distribuição o registra depois (a conexão venceu ou voltou — migration 191).
   await client.query(
     `insert into human_support_presence_events (organization_id, person_id, from_status, to_status, pause_reason, cause, occurred_at)
-     values ($1, $2, $3, $4, $5, $6, case when $7::boolean then (select status_since from human_support_agent_presence where organization_id = $1 and person_id = $2) else statement_timestamp() end)`,
-    [input.organizationId, input.personId, input.from, input.to, input.pauseReason, input.cause, input.sameInstantAsPresence === true],
+     values ($1, $2, $3, $4, $5, $6, case when $7::boolean then (select status_since from human_support_agent_presence where organization_id = $1 and person_id = $2) else coalesce($8::timestamptz, statement_timestamp()) end)`,
+    [input.organizationId, input.personId, input.from, input.to, input.pauseReason, input.cause, input.sameInstantAsPresence === true, input.occurredAt ?? null],
   )
 }
 

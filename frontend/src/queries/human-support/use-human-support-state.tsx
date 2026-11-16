@@ -15,10 +15,11 @@ import { startStatePoller, type StatePoller } from "./state-poller"
  * chama sozinha. Chamada longa só com pedido aberto ou avaliação pendente. A líder confirma ao servidor que as mensagens do pedido
  * aberto CHEGARAM a este aplicativo (o tique de entregue que o Anjo vê); lida é a sala que confirma, quando está na tela.
  *
- * MENSAGEM NOVA DO ANJO FORA DA VISTA: conta como nova a mensagem do Anjo depois do "lida" do operador (`readSeq` do servidor, ou o que
- * a sala desta aba acabou de ver). Ao chegar uma, com a sala na tela e a página vista, nada (ela já aparece); com a página vista e a
- * sala fora da tela, um som e um aviso na tela com "Abrir conversa"; com a página fora da vista (aba escondida, janela sem foco) e
- * nenhuma outra aba do aplicativo sendo vista, o título da aba pisca até a pessoa voltar e a aba líder toca o som (um por navegador).
+ * MENSAGEM NOVA DO ANJO: TODA mensagem que chega toca o som (pedido do responsável em 11/11/2026), um por navegador — a aba vista toca;
+ * sem nenhuma aba vista, a líder —, menos a que já chega lida pelo servidor (lida em outro aparelho). Além do som: com a página vista e a sala fora da tela (e a mensagem ainda não lida — `readSeq` do
+ * servidor ou o que a sala desta aba acabou de ver), um aviso na tela com "Abrir conversa"; com a sala na tela, só o som (ela já
+ * aparece); com a página fora da vista (aba escondida, janela sem foco) e nenhuma outra aba do aplicativo sendo vista, o título da aba
+ * pisca até a pessoa voltar.
  */
 type HumanSupportState = {
   /** null = ainda não carregado (ou sem sessão). */
@@ -233,11 +234,13 @@ export function HumanSupportStateProvider({ children, enabled = true, profileHre
     const previous = lastAnjoSeqRef.current
     lastAnjoSeqRef.current = open ? { requestId: open.id, seq: latest } : null
     if (!open || !previous || previous.requestId !== open.id || latest <= previous.seq) return
-    if (latest <= Math.max(open.readSeq, localReadRef.current[open.id] ?? 0)) return
+    // Já lida em outro aparelho quando o estado chegou (o "lida" do SERVIDOR já a cobre): nada toca aqui.
+    if (latest <= open.readSeq) return
     const anjoName = open.anjo?.name ?? "o Anjo"
     if (pageIsSeen()) {
-      if (roomsOnScreenRef.current > 0) return
       chimeRef.current?.play()
+      // A sala na tela já mostra a mensagem (e outra aba pode já tê-la lido): só o som, sem o aviso.
+      if (roomsOnScreenRef.current > 0 || latest <= Math.max(open.readSeq, localReadRef.current[open.id] ?? 0)) return
       toast(`${anjoName} respondeu no apoio`, {
         id: ANJO_MESSAGE_TOAST_ID,
         description: "Abra a conversa para ler e responder.",

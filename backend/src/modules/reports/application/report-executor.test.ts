@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import type { QueryTableCard } from "../../leadership-analytics/domain/view-models.js"
 import { reportAnalysisSchema, reportDefinitionSchema, reportScheduleSchema, reportVisualizationSchema, type ReportAudience } from "../domain/report-definition.js"
 import { createFakeRuntime, createMemoryReportStore, testStructure, type FakePerson } from "../testing/memory-report-store.js"
-import { analyzeDelivery } from "./report-analysis.js"
+import type { ContentDecision } from "../../governance/application/response-compliance.js"
+import { analyzeDelivery, type AnalysisGuard } from "./report-analysis.js"
 import { executeReportRun, scopeKeyOf } from "./report-executor.js"
 import { processRun } from "./report-scheduler.js"
 import type { ReportStore } from "./report-store.js"
@@ -249,5 +250,27 @@ describe("sem duplicidade e falhas", () => {
     await analyzeDelivery(memory.store, async (input) => (input.user.includes("melhora") ? "**Resumo** TMA melhorou." : ""), memory.deliveries[0]!, report, "MANUAL")
     expect(memory.deliveries).toHaveLength(1)
     expect(memory.deliveries[0]).toMatchObject({ analysisStatus: "READY", analysisText: "**Resumo** TMA melhorou." })
+  })
+
+  it("conferência da análise (PEN-018): a regra vai na instrução; barrada ou sem conferência, a entrega fica sem a análise e a tabela não muda", async () => {
+    const { memory, report, run } = await setup({ people: [person("sara", "Sara", { own: SARA })], owner: "sara" })
+    await run()
+    const dataset = memory.deliveries[0]!.dataset
+    const systems: string[] = []
+    const writer = async (input: { system: string }) => {
+      systems.push(input.system)
+      return "Texto da análise."
+    }
+    const guard = (decision: ContentDecision): AnalysisGuard => ({ instruction: async () => "\n\nREGRAS DA EMPRESA", check: async () => decision })
+    await analyzeDelivery(memory.store, writer, memory.deliveries[0]!, report, "AUTOMATIC", guard({ decision: "VIOLATION", hits: [{ kind: "PROHIBITED_TOPIC", name: "Política" }], reason: "Opina." }))
+    expect(systems[0]).toContain("REGRAS DA EMPRESA")
+    expect(memory.deliveries[0]).toMatchObject({ kind: "DELIVERY", analysisStatus: "FAILED", analysisText: null })
+    expect(memory.deliveries[0]!.dataset).toEqual(dataset)
+    // Depois da falha, só "Tentar de novo" (MANUAL) reivindica a análise de novo: a automática fica para a recuperação periódica.
+    await analyzeDelivery(memory.store, writer, memory.deliveries[0]!, report, "MANUAL", guard({ decision: "CHECK_FAILED", code: "X", message: "Sem conferência." }))
+    expect(memory.deliveries[0]).toMatchObject({ analysisStatus: "FAILED", analysisText: null })
+    await analyzeDelivery(memory.store, writer, memory.deliveries[0]!, report, "MANUAL", guard({ decision: "DELIVER", result: null }))
+    expect(memory.deliveries[0]).toMatchObject({ analysisStatus: "READY", analysisText: "Texto da análise." })
+    expect(memory.deliveries).toHaveLength(1)
   })
 })

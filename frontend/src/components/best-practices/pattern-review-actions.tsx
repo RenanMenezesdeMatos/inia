@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
+import { ApiError } from "@/lib/api/api-client"
 import { useReviewPatternMutation } from "@/queries/best-practices/use-best-practices"
 import type { PatternDetail, ReviewAction } from "@/schemas/best-practices/best-practices.schema"
 
@@ -26,21 +27,46 @@ const REASON_COPY: Record<ReasonAction, { label: string; title: string; placehol
 export function PatternReviewActions({ pattern }: { pattern: PatternDetail }) {
   const review = useReviewPatternMutation(pattern.id)
   const [editing, setEditing] = useState(false)
+  /** A conferência apontou uma regra no texto: quem revisa decide, e o motivo fica registrado (o backend exige). */
+  const [flagged, setFlagged] = useState<{ action: "APPROVE" | "REACTIVATE"; message: string } | null>(null)
+  const goLive = (action: "APPROVE" | "REACTIVATE", ruleOverrideReason?: string) =>
+    review.mutate(ruleOverrideReason ? { action, ruleOverrideReason } : { action }, {
+      onSuccess: () => setFlagged(null),
+      onError: (error) => { if (error instanceof ApiError && error.code === "BEST_PRACTICE_RULE_VIOLATION") setFlagged({ action, message: error.message }) },
+    })
   const status = pattern.reviewStatus
   const obligationPending = pattern.obligationStatus === "UNDETERMINED" && !pattern.obligationConfirmedByReview
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         {(status === "PENDING_REVIEW" || status === "REJECTED") && (
-          <Button size="sm" disabled={review.isPending || obligationPending} title={obligationPending ? "Confirme antes que não é obrigação do processo." : undefined} onClick={() => review.mutate({ action: "APPROVE" })}><Check /> Aprovar</Button>
+          <Button size="sm" disabled={review.isPending || obligationPending} title={obligationPending ? "Confirme antes que não é obrigação do processo." : undefined} onClick={() => goLive("APPROVE")}><Check /> Aprovar</Button>
         )}
-        {status === "INACTIVE" && <Button size="sm" disabled={review.isPending || obligationPending} onClick={() => review.mutate({ action: "REACTIVATE" })}><RotateCcw /> Reativar</Button>}
+        {status === "INACTIVE" && <Button size="sm" disabled={review.isPending || obligationPending} onClick={() => goLive("REACTIVATE")}><RotateCcw /> Reativar</Button>}
         {obligationPending && <ReasonButton action="CONFIRM_NOT_OBLIGATION" icon={<ShieldCheck />} pending={review.isPending} onConfirm={(reason) => review.mutate({ action: "CONFIRM_NOT_OBLIGATION", reason })} />}
         {(status === "PENDING_REVIEW" || status === "APPROVED") && <ReasonButton action="REJECT" icon={<X />} pending={review.isPending} onConfirm={(reason) => review.mutate({ action: "REJECT", reason })} />}
         {status === "APPROVED" && <ReasonButton action="DEACTIVATE" icon={<Power />} pending={review.isPending} onConfirm={(reason) => review.mutate({ action: "DEACTIVATE", reason })} />}
         {(status === "PENDING_REVIEW" || status === "APPROVED") && !editing && <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><Pencil /> Editar texto</Button>}
       </div>
+      {flagged ? <RuleOverride message={flagged.message} pending={review.isPending} onCancel={() => setFlagged(null)} onConfirm={(reason) => goLive(flagged.action, reason)} /> : null}
       {editing ? <EditForm pattern={pattern} pending={review.isPending} onCancel={() => setEditing(false)} onSave={(changes) => review.mutate({ action: "EDIT", changes }, { onSuccess: () => setEditing(false) })} /> : null}
+    </div>
+  )
+}
+
+function RuleOverride({ message, pending, onCancel, onConfirm }: { message: string; pending: boolean; onCancel: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState("")
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3" role="alert" data-testid="rule-override">
+      <p className="text-sm">{message}</p>
+      <div className="space-y-1">
+        <Label htmlFor="bp-rule-override">Por que aprovar mesmo assim?</Label>
+        <Textarea id="bp-rule-override" rows={2} value={reason} placeholder="Ex.: aqui, diagnóstico é o de um problema técnico da linha." onChange={(event) => setReason(event.target.value)} />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancelar</Button>
+        <Button size="sm" disabled={pending || reason.trim().length < 3} onClick={() => onConfirm(reason.trim())}>Aprovar mesmo assim</Button>
+      </div>
     </div>
   )
 }

@@ -1,24 +1,41 @@
-# Conferência das respostas (PEN-017 e PEN-078)
+# Conferência das respostas (PEN-017, PEN-078 e PEN-018)
 
-Implementada em desenvolvimento (migration 169). **Não publicada em produção.** Decidida em 04/11/2026. Critérios e evidências por canal: ESP-INIA-03 §4.1 e §4.5.
+Implementada em desenvolvimento (migrations 169 e 171). **Não publicada em produção.** Critérios e evidências por canal: ESP-INIA-03 §4.1 e §4.5.
 
 **Não é proteção integral.** Cada canal tem uma cobertura, e elas não se misturam:
 
 | Cobertura | Onde | O que significa |
 |---|---|---|
-| Prevenção | Chat, voz pelo servidor, agente, especialista com limites, orquestrador em Workflow | Confere antes de entregar ou seguir |
-| Detecção posterior | Fala gerada pelo modelo de voz | Confere depois de falada. Não impede a fala nem retira o que foi dito |
-| Sem cobertura | Motor de feedback (inclusive `PROCESS_ASSESSMENT`), reports, intervenções, treino, boas práticas | Não recebem as regras nem são conferidos. Decisão ligada à PEN-018; não é exceção aprovada |
+| Prevenção | Chat, voz pelo servidor, agente, especialista com limites, orquestrador em Workflow (inclusive a síntese na avaliação de processo), análise de report, narrativa e rascunho de intervenção, aprovação de boa prática | Confere antes de entregar ou seguir |
+| Detecção posterior | Fala gerada pelo modelo de voz. Mensagem do motor de feedback e caminho antigo, enquanto a prevenção não for autorizada (PEN-079) | Confere e registra, sem impedir a entrega |
+| Sem cobertura, por decisão | Análise do motor, Diagnóstico da liderança, descoberta e codificação de boas práticas, apresentação falada em "Ouvir com a INIA", conteúdo já publicado | Não são conferidos |
+| Fora de escopo | Treino (PEN-080) | Frente descontinuada e removida do código em 11/11/2026 (não será implementada); nada a conferir |
 
-## Modos (`INIA_RESPONSE_CHECK`, lido a cada resposta)
+## Modos
 
-| Modo | Quando vale | O que faz | É prevenção? |
-|---|---|---|---|
-| `ENFORCE` | Padrão, inclusive sem valor ou com valor desconhecido | Confere antes de entregar | Sim, nos canais de prevenção |
-| `AUDIT` | Valor explícito | Entrega e confere depois; a violação sai da conversa com aviso | Não, só detecção |
-| `OFF` | Valor explícito | Não confere nem registra | Não, nem detecção |
+| Variável | Grupo | Sem valor |
+|---|---|---|
+| `INIA_RESPONSE_CHECK` | Chat, voz, agentes, especialistas, orquestradores. `OFF` aqui desliga tudo | `ENFORCE` |
+| `INIA_RESPONSE_CHECK_CONTENT` | Reports, intervenções, boas práticas | `ENFORCE` |
+| `INIA_RESPONSE_CHECK_FEEDBACK` | Mensagem do motor, caminho antigo | `AUDIT` (a prevenção exige valor explícito) |
 
-`GET /api/v1/admin/response-checks/summary` devolve `mode`, e a aba da Governança descreve o modo em vigor e os fluxos sem cobertura. O registro marca `control`: `PREVENTIVE` ou `DETECTIVE`.
+`ENFORCE` previne. `AUDIT` entrega e registra: é detecção. `OFF` não confere nem registra. Nos testes, os dois grupos de conteúdo ficam em `OFF` (`vitest.config.ts`), para nenhuma prova fazer chamada real; quem testa liga com `vi.stubEnv`.
+
+`GET /api/v1/admin/response-checks/summary` devolve `modes`, e a aba da Governança descreve o modo de cada grupo e o que fica sem cobertura.
+
+## Voz própria × citação (RESPONSE_COMPLIANCE_V2)
+
+Conteúdos entregues sem conversa usam a V2. O chat, a voz e os agentes usam a V1, a V3 (próxima seção) ou a V5, quando há dados calculados entre as fontes. O código marca a origem, e a decisão continua sendo da IA, pelo sentido, sem lista de palavras.
+
+| Trecho | Marca | Tratamento |
+|---|---|---|
+| Texto sem marca | — | Voz da INIA: é julgado |
+| Fala da chamada | `<fala_da_chamada>` | Protegida: sozinha, não sustenta violação |
+| Regra citada | `<regra_citada>` | Protegida |
+| Fala sugerida (`[[Bn]]`, "como dizer") | `<fala_sugerida>` | Orienta: é julgada |
+| Tabela, fatos copiados por código | Não é enviado | Não é julgado |
+
+As citações ficam visíveis, porque a voz em volta delas pode endossar o que foi dito. `parseComplianceVerdict` recusa como violação um trecho que só existe dentro de citação protegida (`citationOnly`). Texto da fonte nunca abre nem fecha uma marca (`neutralizeMarks`).
 
 ## Fontes da resposta (RESPONSE_COMPLIANCE_V3, 05/11/2026)
 
@@ -37,6 +54,7 @@ Implementada em desenvolvimento (migration 169). **Não publicada em produção.
 | Com fonte e sem limite | V3 com os assuntos proibidos e as fontes |
 | Com limite de atuação ligado | Em paralelo: os assuntos proibidos como acima (V1 ou V3) e o limite na V4, sem as fontes |
 | Só limite, sem assunto proibido cadastrado | V4 |
+| Conteúdo marcado (PEN-018) | V2, sem fontes |
 
 Na combinação, violação em qualquer parte é violação; sem violação, a falha de uma parte impede a resposta. A versão usada fica em `prompt_version`, com as duas partes quando houve duas (`RESPONSE_COMPLIANCE_V3+RESPONSE_COMPLIANCE_V4`).
 
@@ -100,33 +118,37 @@ A V4 rodou 3 vezes por caso, e a V1, 2 vezes. Os outros 66 casos de limite, já 
 
 **Prova:** `response-compliance-sources.test.ts` ("dados calculados pelo sistema como fonte") e `realtime-router-response-check.test.ts` (chat e `self_ask` mandam `DATA`; a consulta de processo não).
 
-## Decisões (PEN-078)
+## Decisões (PEN-078 e PEN-018)
 
-1. Chat: confere antes de entregar. Com regra aplicável, a exibição gradual dá lugar à entrega depois da conferência.
-2. Resposta bloqueada: mensagem fixa, compreensível e sem conteúdo restrito (`RESPONSE_BLOCKED_TEXT`).
-3. Falha da conferência: a resposta não sai sem verificação (`RESPONSE_CHECK_UNAVAILABLE_TEXT`).
-4. Voz: aceita a detecção posterior da fala gerada pelo modelo (`SPOKEN_VIOLATION_NOTICE`).
-5. Demais fluxos: cobertura decidida junto da PEN-018.
+- Chat: confere antes de entregar, com a entrega depois da conferência quando há regra aplicável. Resposta bloqueada: mensagem fixa. Falha da conferência: a resposta não sai.
+- Voz: detecção posterior na fala do modelo, que não previne a fala nem a retira.
+- Mensagem do motor: violação vira abstenção, sem reescrita. O redator e as etapas de análise não recebem as regras.
+- Report e intervenção: os redatores recebem as regras na instrução, e o conteúdo é conferido. O que é barrado vira falha, com o caminho de sempre.
+- Boas práticas: aprovar com violação apontada exige motivo registrado. Sem conferência, não aprova.
+- Registro nos fluxos restritos: regra, resultado, canal e `source_ref`, sem copiar o texto nem o motivo.
 
 ## Código
 
 - **Regras:** as de sempre (`loadAgentGuardrails`). Nenhum cadastro novo. Sem regra, nenhuma chamada à IA.
-- **Núcleo:** `governance/domain/response-compliance.ts` (regras, prompt `RESPONSE_COMPLIANCE_V1`, contrato, textos fixos) e `governance/application/response-compliance.ts` (`checkResponse`, `recordResponseCheck`, `enforceResponseBeforeNextStep`). Use Case `RESPONSE_COMPLIANCE`.
+- **Núcleo:** `governance/domain/response-compliance.ts` (regras, prompts, contrato, marcas, fontes, textos fixos, modos) e `governance/application/response-compliance.ts` (`checkResponse`, `recordResponseCheck`, `enforceResponseBeforeNextStep`, `checkContentBeforeDelivery`, `contentRulesInstruction`). Use Case `RESPONSE_COMPLIANCE`.
 - **Limite:** `renderComplianceLimitSystem` e a divisão em partes em `checkResponse` (`combineJudgements`).
 - **Fontes:** `complianceSourcesOfExcerpts`, `replyComplianceSources`, `priorAnswerSources` e `limitComplianceSources`, no domínio. O esclarecimento devolve `groundedOn` só no turno: o estado gravado continua guardando referências, nunca o texto.
-- **Chat:** `/messages` retém `chunk` e `retract` em `send`, e `persistReply` confere antes de soltar. Texto do sistema usa `deterministic`.
-- **Voz:** `guardVoiceText` no `/tool-call`, antes do modelo de voz. `/voice-turn` confere o que foi falado (`assistantText` ou `spokenText`).
-- **Agente e Workflow:** `enforceResponseBeforeNextStep` antes de concluir. Violação é `ModelOutputContractError` (sem nova tentativa). Falha é `RESPONSE_CHECK_UNAVAILABLE` (etapa repete).
+- **Chat:** `/messages` retém `chunk` e `retract` em `send`, e `persistReply` confere antes de soltar.
+- **Voz:** `guardVoiceText` no `/tool-call`. `/voice-turn` confere o que foi falado.
+- **Agente e Workflow:** `enforceResponseBeforeNextStep`. Na etapa de orquestrador, `orchestratorStepNeedsCheck`.
 - **Especialista:** `guardSpecialistLimits`, só com limites ligados.
-- **Registro:** `response_compliance_checks`; o texto só é guardado em violação ou falha. Leitura em `GET /api/v1/admin/response-checks` (alcance de organização) e no monitoramento da conversa.
+- **Motor:** `feedback-engine/domain/response-check-content.ts` monta o texto marcado, e `generate-feedback.ts` confere antes de gravar como publicável (`deps.responseCheck`).
+- **Report:** `reportAnalysisGuard` em `report-analysis.ts`. **Intervenção:** `report-narrative.ts`, `ai-draft.ts`. **Boas práticas:** `conferPatternBeforeGoingLive` em `pattern-service.ts`. **Caminho antigo:** `interaction-feedback-pipeline.ts`.
+- **Registro:** `response_compliance_checks`. Leitura em `GET /api/v1/admin/response-checks` (alcance de organização) e no monitoramento da conversa.
 
 ## Provas
 
-- `INIA_DB_PROOF=1 npx vitest run response-compliance-proof`: 11 cenários, banco e motor reais, provedor simulado. O bloqueio do chat é provado aqui, porque o simulador escreve o texto indevido. No teste com provedor real, o próprio modelo recusou: aquilo não prova o bloqueio.
-- `npx vitest run response-compliance realtime-router-response-check`. As fontes estão em `response-compliance-sources.test.ts`, `realtime-router-response-check.test.ts` e nos testes de esclarecimento do chat e da voz.
-- **Provas com provedor simulado:** quando houver regra ativa, o simulador precisa responder a `classification.purpose === "RESPONSE_COMPLIANCE"` com `{"verdict":"ALLOW","violated":[]}`. Sem isso a conferência falha e barra a resposta, às vezes sem derrubar o teste. Prova sem simulador usa `vi.stubEnv("INIA_RESPONSE_CHECK", "OFF")`, senão faz chamada real.
+- `INIA_DB_PROOF=1 npx vitest run response-compliance-proof`: canais da PEN-017, banco e motor reais, provedor simulado. O bloqueio do chat é provado aqui. No teste com provedor real, o próprio modelo recusou: aquilo não prova o bloqueio.
+- `INIA_DB_PROOF=1 npx vitest run feedback-engine-workflow-proof` (cenário Q), `interventions-proof`, `best-practices-proof`, `feedback-delivery-proof`: fluxos da PEN-018.
+- `npx vitest run response-compliance response-check-content generate-feedback report-executor`. As fontes estão em `response-compliance-sources.test.ts`, `realtime-router-response-check.test.ts` e nos testes de esclarecimento do chat e da voz.
+- **Provas com provedor simulado:** quando houver regra ativa, o simulador precisa responder a `classification.purpose === "RESPONSE_COMPLIANCE"`. Sem isso, a conferência falha e barra a resposta, às vezes sem derrubar o teste. Prova sem simulador usa `vi.stubEnv("INIA_RESPONSE_CHECK", "OFF")`, senão faz chamada real.
 - **Testes com banco falso:** nunca devolva as mesmas linhas para qualquer SQL. A leitura de `prohibited_topics` as toma por regras, liga a conferência e, sem simulador, a chamada vai ao provedor por `generateAgentReplyWithUsage`. Com chave no `.env`, o teste paga a chamada e o resultado depende do modelo; sem chave, falha com `RESPONSE_CHECK_UNAVAILABLE` (visto em 06/11/2026 em `orchestrator-executor.test.ts`, que tem o `dbAnswering` como modelo).
-- **Sessão real de voz:** para a fala violar uma regra, crie a regra de teste depois de a sessão abrir, porque a instrução da sessão fica congelada e só a conferência lê a regra nova. Apague a regra e a conversa por id ao final.
+- **Sessão real de voz:** para a fala violar uma regra, crie a regra de teste depois de a sessão abrir, porque a instrução da sessão fica congelada. Apague a regra e a conversa por id ao final.
 
 ## Limitações
 
@@ -134,8 +156,8 @@ A V4 rodou 3 vezes por caso, e a V1, 2 vezes. Os outros 66 casos de limite, já 
 - A sessão de voz já aberta mantém o que disse.
 - A conferência é decisão de IA e pode errar nos dois sentidos, e o resultado varia entre rodadas. Foi o que a medição mostrou, antes de o texto ser reforçado.
 - Resposta acima de 60 mil caracteres conta como falha.
-- O monitoramento foi validado visualmente no banco de teste. No banco de desenvolvimento, não: faltou conta disponível com a permissão.
 - Limite de atuação: a V4 não vê as bases. Um limite como "somente os processos cadastrados nas bases" separa trabalho de assunto sem relação, mas não confere se aquele processo está mesmo cadastrado. Ela também pode barrar a mais, como no caso M31.
 - A V4 ainda barra a mais: na bateria neutra às cegas, 13 de 60 julgamentos de respostas dentro do limite. Para a pessoa, isso aparece como "Não posso tratar disso por aqui". Não houve resposta fora do limite passando nessa bateria (60 de 60).
 - O modelo é sensível ao texto: nas medições, ajustes em uma regra mudaram o resultado de casos de outra (J24, H26). Depois de qualquer ajuste, repita todos os casos, não só o que motivou a mudança.
 - Não contam como fonte: resultados consolidados na síntese de Workflow e trechos que um especialista busca só durante a investigação (`query_knowledge`). Uma resposta apoiada só neles pode ser barrada como antes. Os números das ferramentas de dados contam desde a V5 (seção acima).
+- O monitoramento foi validado visualmente no banco de teste. No banco de desenvolvimento, não: faltou conta disponível com a permissão.

@@ -17,6 +17,7 @@ import type { OperatorIndicatorsData, OperatorProfile } from "@/schemas/operator
 import { useAnalyticsContextQuery } from "@/queries/analytics/use-analytics-queries"
 import { useMyProfileQuery } from "@/queries/profile/use-my-profile"
 import { profileImageSrc } from "@/lib/profile/profile-image-src"
+import { cn } from "@/lib/utils"
 import type { MyProfile } from "@/schemas/profile/my-profile.schema"
 import type { AnalyticsContext } from "@/schemas/analytics/analytics.schema"
 import { NO_ACCESS_CAPABILITIES, profileLinksFor, type AccessCapabilities } from "@/schemas/auth/auth.schema"
@@ -28,6 +29,8 @@ import { SupervisorBroadcastDialog, type BroadcastDraft } from "./broadcast/supe
 // avatar — continua importado direto.
 import { IndicatorsView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
 import { ProfileTabsList, profileTabsFor } from "./profile-tabs"
+import { AnjoWorkspace } from "@/components/human-support/anjo/anjo-workspace"
+import { useAnjoWorkspace } from "@/queries/human-support/anjo-workspace-provider"
 
 /** Dados da Surface Acompanhamento do PRÓPRIO operador (feed + contexto do chat) — só existem no
  * perfil de Operador; gestores usam o feed da estrutura. */
@@ -69,8 +72,15 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   const contextQuery = useAnalyticsContextQuery(null, initialContext)
   const context = contextQuery.data ?? null
   const [notices, setNotices] = useState<LocalNotice[]>([])
-  const tabs = context ? profileTabsFor(context.capabilities, context.pendingActionCount) : []
+  // Apoio com Anjo: a área do Anjo é uma aba do perfil para quem tem o papel (capability do backend); o número vem do provedor no shell.
+  const anjoWorkspace = useAnjoWorkspace()
+  const isAnjo = capabilities.canAttendHumanSupport && anjoWorkspace.available
+  const tabs = context ? profileTabsFor(context.capabilities, context.pendingActionCount, isAnjo ? { unread: anjoWorkspace.attention.unread, awaitingResponse: anjoWorkspace.attention.awaitingResponse, attendances: anjoWorkspace.attention.attendances, presence: anjoWorkspace.presence } : null) : []
   const activeTab: ProfileTab = tabs.some((tab) => tab.value === state.tab) ? state.tab : "followup"
+  // A área do Anjo só monta na primeira vez que a aba é aberta e depois fica montada (escondida): trocar de aba não perde o texto
+  // digitado nem a posição das conversas. A conexão do Anjo não depende disso (vive no shell).
+  const [anjoOpened, setAnjoOpened] = useState(false)
+  if (activeTab === "apoio" && !anjoOpened) setAnjoOpened(true)
   const leadsStructure = context?.capabilities.peopleTabLabel !== null && context?.capabilities.peopleTabLabel !== undefined
 
   function publishBroadcast(draft: BroadcastDraft) {
@@ -87,15 +97,23 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
           {context ? (
             <Tabs value={activeTab} onValueChange={(value) => update({ tab: value as ProfileTab })} className="min-w-0">
               <ProfileTabsList tabs={tabs} active={activeTab} />
+              {/* Acompanhamento do próprio operador: o feed à esquerda e o painel da INIA à direita. Fora dele o painel sai da árvore
+                  no mesmo commit da troca de aba (ver o comentário do Acompanhamento abaixo). */}
+              {/* A página rola: o cabeçalho sai de cena e a área para logo abaixo das abas fixas, ocupando o resto da janela
+                  (janela − barra global 56 − abas 48 − margem 16 − respiro do fim 20). O piso vale para janelas muito baixas. */}
+              {operatorSurface && activeTab === "followup" ? (
+                <div role="tabpanel" aria-label={tabs.find((tab) => tab.value === activeTab)?.label} className="mt-4 h-[calc(100dvh-8.75rem)] min-h-[28rem]">
+                  <OperatorFollowupWorkspace indicators={operatorSurface.indicators} operator={profile} />
+                </div>
+              ) : null}
               {/* A Surface só é renderizada enquanto a aba está ativa, e não via o ciclo de
                   desmontagem do Radix Presence: ela carrega o Canvas WebGL do avatar, que precisa
                   sair da árvore no MESMO commit da troca de aba — no ciclo adiado do Presence o
                   R3F ainda recebe uma remedição de tamanho e reconfigura um canvas prestes a
-                  morrer (ver inia-humanoid-avatar-3d.tsx). */}
-              <TabsContent value="followup" className="mt-4 pb-8">
-                {activeTab !== "followup" ? null : operatorSurface ? (
-                  <OperatorFollowupWorkspace indicators={operatorSurface.indicators} operator={profile} />
-                ) : !context.defaultSubject ? (
+                  morrer (ver inia-humanoid-avatar-3d.tsx). No perfil do operador este painel fica vazio (a área dele é a de cima) e não
+                  pode ocupar espaço: margem + respiro vazios somavam 48 px à faixa em branco no fim da página. */}
+              <TabsContent value="followup" className={cn("mt-4 pb-8", operatorSurface && "hidden")}>
+                {activeTab !== "followup" || operatorSurface ? null : !context.defaultSubject ? (
                   <NoStructureState />
                 ) : (
                   <FollowupWorkspaceShell
@@ -104,6 +122,11 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
                   />
                 )}
               </TabsContent>
+              {isAnjo ? (
+                <TabsContent value="apoio" forceMount className="mt-4 pb-8 data-[state=inactive]:hidden">
+                  {anjoOpened ? <AnjoWorkspace embedded visible={activeTab === "apoio"} /> : null}
+                </TabsContent>
+              ) : null}
               <TabsContent value="indicators" className="mt-4 pb-8">
                 {context.defaultSubject ? (
                   <IndicatorsView context={context} state={{ subject: state.subject, period: state.period, comparison: state.comparison, indicator: state.indicator, groupBy: state.groupBy }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} canSeeLineage={links.canSeeLineage} />

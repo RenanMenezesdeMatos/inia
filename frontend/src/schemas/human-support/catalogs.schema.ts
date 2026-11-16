@@ -24,6 +24,7 @@ export const END_CAUSE_LABELS: Record<string, string> = {
   OPERATOR_ABSENT: "Operador sem a INIA aberta",
   INACTIVITY: "Falta de mensagens",
   ANJO_LOST: "Interrompido (Anjo sem conexão)",
+  TRANSFERRED: "Transferido pela coordenação",
 }
 
 export const PRESENCE_STATUSES = ["AVAILABLE", "PAUSED", "OFFLINE"] as const
@@ -35,6 +36,12 @@ export const PAUSE_REASONS = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING"
 export const pauseReasonSchema = z.enum(PAUSE_REASONS)
 export type PauseReason = z.infer<typeof pauseReasonSchema>
 export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião" }
+
+/** Pertinência do acionamento, marcada pelo Anjo ao classificar (`PERTINENCE_V1`, migration 191). */
+export const PERTINENCES = ["PERTINENT", "NOT_PERTINENT", "NOT_EVALUATED"] as const
+export const pertinenceSchema = z.enum(PERTINENCES)
+export type Pertinence = z.infer<typeof pertinenceSchema>
+export const PERTINENCE_LABELS: Record<Pertinence, string> = { PERTINENT: "Pertinente", NOT_PERTINENT: "Não pertinente", NOT_EVALUATED: "Não avaliado" }
 
 /**
  * Motivo do encaminhamento (`CLASSIFICATION_CATALOG_V2`, migration 185): os seis da V1 (falta de informação) e os dois impedimentos

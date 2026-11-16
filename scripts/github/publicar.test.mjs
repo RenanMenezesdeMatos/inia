@@ -25,6 +25,7 @@ import {
   messageLeaks,
   MIN_SECRET_LENGTH,
   parseAllowedPatternHits,
+  parseConfidentialList,
   parseEnv,
   parseExclusions,
   publishedLocalCommit,
@@ -201,6 +202,33 @@ describe("snapshot num repositório descartável", () => {
     assert.deepEqual(findKeyPatterns(repo, snapshot.tree, allowed), [])
     // Liberar o arquivo inteiro não basta: a liberação é por trecho.
     assert.equal(findKeyPatterns(repo, snapshot.tree, parseAllowedPatternHits("src/keys.ts\n")).length, 2)
+  })
+
+  test("lista confidencial local: barra a marca no conteúdo e na mensagem, tira o arquivo do snapshot e ignora padroes-permitidos", () => {
+    const lista = parseConfidentialList("# marcas de teste\nconteudo: MARCA-SIGILOSA-[0-9]+\narquivo: **/*sigiloso*\n")
+    assert.deepEqual(lista.rules, ["**/*sigiloso*"])
+    assert.deepEqual(messageLeaks("veja MARCA-SIGILOSA-42 no documento", [], lista.patterns), ["material confidencial da lista local"])
+    assert.deepEqual(messageLeaks("texto comum", [], lista.patterns), [])
+    const proprio = mkdtempSync(join(tmpdir(), "inia-publicar-confidencial-"))
+    try {
+      mkdirSync(join(proprio, "docs"), { recursive: true })
+      writeFileSync(join(proprio, "notas.md"), "ref MARCA-SIGILOSA-7\n")
+      writeFileSync(join(proprio, "docs/manual-sigiloso.pdf"), "x")
+      const identity = { GIT_AUTHOR_NAME: "Teste", GIT_AUTHOR_EMAIL: "teste@example.com", GIT_COMMITTER_NAME: "Teste", GIT_COMMITTER_EMAIL: "teste@example.com" }
+      git(proprio, ["init", "--quiet", "--initial-branch=main"])
+      git(proprio, ["add", "-A"])
+      git(proprio, ["commit", "--quiet", "-m", "inicial"], { env: identity })
+      const snapshot = buildSnapshot(proprio, "HEAD", { rules: lista.rules, exceptions: [] })
+      assert.equal(snapshot.files.some((file) => file.path === "docs/manual-sigiloso.pdf"), false)
+      const hit = findKeyPatterns(proprio, snapshot.tree, new Set(), lista.patterns).find((item) => item.name === "material confidencial da lista local")
+      assert.ok(hit)
+      // Nem uma linha em padroes-permitidos.txt libera a marca.
+      assert.ok(findKeyPatterns(proprio, snapshot.tree, new Set(hit.hits), lista.patterns).some((item) => item.name === "material confidencial da lista local"))
+    } finally {
+      rmSync(proprio, { recursive: true, force: true })
+    }
+    assert.throws(() => parseConfidentialList("arquivo: **/*x*\n"))
+    assert.throws(() => parseConfidentialList("qualquer coisa\n"))
   })
 
   test("encontra os .env locais, inclusive em subpastas, e ignora os de exemplo e node_modules", () => {

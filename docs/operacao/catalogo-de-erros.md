@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (878)
+## Códigos dos módulos (879)
 
 ### Módulo `access`
 
@@ -2518,14 +2518,15 @@ já diz a regra; a família do status diz como investigar.
 | `HUMAN_SUPPORT_DISABLED` | 409 | FAMILIA-CONFLITO | O apoio com Anjo ainda não está disponível para sua equipe. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_EVALUATION_CLOSED` | 409 | FAMILIA-CONFLITO | A avaliação deste atendimento não está mais aberta. | `backend/src/modules/human-support/application/evaluation-service.ts` |
 | `HUMAN_SUPPORT_NO_ANJO_IN_SERVICE` | 409 | FAMILIA-CONFLITO | Nenhum Anjo em serviço agora. | `backend/src/modules/human-support/application/request-service.ts` |
-| `HUMAN_SUPPORT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Registro não encontrado. | `backend/src/modules/human-support/application/coordination-service.ts` |
+| `HUMAN_SUPPORT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Registro não encontrado. | `backend/src/modules/human-support/application/coordination-service.ts`<br>`backend/src/modules/human-support/application/operation-history.ts` |
 | `HUMAN_SUPPORT_OPERATOR_PRESENT` | 409 | FAMILIA-CONFLITO | O operador ainda está com a INIA aberta. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_REQUEST_ALREADY_OPEN` | 409 | FAMILIA-CONFLITO | Você já tem um pedido de apoio aberto. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_REQUEST_ENDED` | 409 | FAMILIA-CONFLITO | Este atendimento já foi encerrado. | `backend/src/modules/human-support/application/message-service.ts`<br>`backend/src/modules/human-support/application/request-service.ts` |
-| `HUMAN_SUPPORT_REQUEST_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pedido de apoio não encontrado. | `backend/src/modules/human-support/application/conversation-marks.ts`<br>`backend/src/modules/human-support/application/message-service.ts`<br>`backend/src/modules/human-support/application/request-service.ts` |
+| `HUMAN_SUPPORT_REQUEST_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pedido de apoio não encontrado. | `backend/src/modules/human-support/application/conversation-marks.ts`<br>`backend/src/modules/human-support/application/message-service.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/transfer-service.ts` |
 | `HUMAN_SUPPORT_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Mensagem não encontrada. | `backend/src/modules/human-support/application/request-service.ts` |
+| `HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | (mensagem montada no código) | `backend/src/modules/human-support/application/transfer-service.ts` |
 | `PERIOD_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha um período de até 92 dias. | `backend/src/modules/human-support/application/coverage.ts` |
-| `VALIDATION_ERROR` | 400, 422 | FAMILIA-REGRA-DE-NEGOCIO | Dados inválidos. | `backend/src/main/app.ts`<br>`backend/src/modules/human-support/application/coverage.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/settings-service.ts`<br>`backend/src/modules/indicators/presentation/employee-performance-router.ts`<br>`backend/src/modules/workflows/domain/draft-graph.ts` |
+| `VALIDATION_ERROR` | 400, 422 | FAMILIA-REGRA-DE-NEGOCIO | Dados inválidos. | `backend/src/main/app.ts`<br>`backend/src/modules/human-support/application/coverage.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/settings-service.ts`<br>`backend/src/modules/human-support/application/transfer-service.ts`<br>`backend/src/modules/indicators/presentation/employee-performance-router.ts` |
 
 ### Módulo `profile-preferences`
 

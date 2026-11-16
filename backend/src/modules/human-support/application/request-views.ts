@@ -42,7 +42,9 @@ export async function loadMessageViews(
   organizationId: string,
   requestId: string,
   reader: MessageReader,
-  options: { after?: number | undefined; before?: number | undefined; limit?: number | undefined; maxSeq?: number | null | undefined } = {},
+  /** `anjoPersonId` (leitor ANJO): mensagens de sistema do atendimento de OUTRO Anjo do mesmo pedido (antes de uma transferência ou de
+   * o pedido voltar à fila) são lidas em terceira pessoa, com o nome dele — nunca "Você recebeu este pedido" para quem não recebeu. */
+  options: { after?: number | undefined; before?: number | undefined; limit?: number | undefined; maxSeq?: number | null | undefined; anjoPersonId?: string | undefined } = {},
 ): Promise<{ messages: MessageView[]; hasMore: boolean }> {
   const limit = Math.min(Math.max(options.limit ?? HUMAN_SUPPORT_LIMITS.messagesPageMax, 1), HUMAN_SUPPORT_LIMITS.messagesPageMax)
   const params: unknown[] = [organizationId, requestId]
@@ -74,7 +76,7 @@ export async function loadMessageViews(
       seq: Number(row.seq),
       authorKind: row.author_kind,
       authorName: row.author_kind === "SYSTEM" ? null : nameOf(row.author_person_id),
-      body: row.author_kind === "SYSTEM" && row.system_code ? systemMessageText(row.system_code, reader, { anjoName: nameOf(row.attendance_anjo_id) }) : row.body,
+      body: row.author_kind === "SYSTEM" && row.system_code ? systemMessageText(row.system_code, reader === "ANJO" && options.anjoPersonId && row.attendance_anjo_id && row.attendance_anjo_id !== options.anjoPersonId ? "OBSERVER" : reader, { anjoName: nameOf(row.attendance_anjo_id) }) : row.body,
       systemCode: row.system_code,
       occurredAt: row.occurred_at.toISOString(),
     })),

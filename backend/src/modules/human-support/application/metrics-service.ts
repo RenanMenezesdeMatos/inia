@@ -117,7 +117,9 @@ async function supportCounts(db: Queryable, organizationId: string, coverage: Co
     if (row.status === "ENDED") {
       counts.endedAttendances += 1
       if (row.response_seconds === null && row.end_cause) counts.endedWithoutResponseByCause[row.end_cause] = (counts.endedWithoutResponseByCause[row.end_cause] ?? 0) + 1
+      // Interrompido conta à parte; transferido não concluiu o caso (o atendimento seguinte é que conta).
       if (row.end_cause === "ANJO_LOST") counts.interruptedAttendances += 1
+      else if (row.end_cause === "TRANSFERRED") continue
       else {
         counts.endedNotInterrupted += 1
         if (row.duration_seconds !== null) counts.durationSeconds.push(Math.max(0, Number(row.duration_seconds)))

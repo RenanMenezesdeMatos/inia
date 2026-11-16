@@ -43,12 +43,19 @@ export function severityFor(code: string | null, status: number | null): ErrorCa
   return familyForStatus(status).severity
 }
 
-/** Busca por prefixo/trecho (lista da Administração). */
+/**
+ * Busca por prefixo/trecho (lista da Administração). Cada código aparece uma vez, com a mesma precedência de
+ * `explainCode` (entrada › apelido › inventário dos módulos): códigos como VALIDATION_ERROR estão no catálogo e no
+ * inventário gerado.
+ */
 export function searchCodes(query: string, limit = 30): { code: string; module: string; title: string; kind: "ENTRY" | "ALIAS" | "DOMAIN" }[] {
   const needle = normalizeCode(query)
   const results: { code: string; module: string; title: string; kind: "ENTRY" | "ALIAS" | "DOMAIN" }[] = []
+  const seen = new Set<string>()
   const push = (item: (typeof results)[number]) => {
-    if (results.length < limit && (!needle || item.code.includes(needle))) results.push(item)
+    if (results.length >= limit || seen.has(item.code) || (needle && !item.code.includes(needle))) return
+    seen.add(item.code)
+    results.push(item)
   }
   for (const entry of ERROR_CATALOG) push({ code: entry.code, module: entry.module, title: entry.publicMessage, kind: "ENTRY" })
   for (const entry of ERROR_CATALOG) for (const alias of entry.aliases ?? []) push({ code: alias, module: entry.module, title: `Ver ${entry.code}`, kind: "ALIAS" })

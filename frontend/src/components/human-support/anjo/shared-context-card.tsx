@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { ChevronDown, ChevronUp, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Sparkles, StickyNote, ThumbsDown, type LucideIcon } from "lucide-react"
+import { ChevronDown, MessageCircleQuestion, PanelLeftClose, PanelLeftOpen, Sparkles, StickyNote, ThumbsDown, type LucideIcon } from "lucide-react"
 
 import { RichContent } from "@/components/rich-content/rich-content"
 import { Button } from "@/components/ui/button"
@@ -16,8 +16,14 @@ import { SectionLabel } from "@/components/ui/surface"
  * resposta da INIA — texto gerado por IA para leitura humana — passa pelo `RichContent` (regra do projeto).
  *
  * Aberto, é um painel: em telas grandes ocupa a coluna da esquerda da altura da conversa e rola por dentro (texto longo nunca
- * comprime nem estica o chat); em telas menores fica acima da conversa, com altura limitada. Recolhido, vira uma linha com a pergunta
- * e o botão "Mostrar" — a conversa ganha o espaço. Recolher só esconde: nada do que foi compartilhado muda (vem pronto do servidor).
+ * comprime nem estica o chat); em telas menores fica acima da conversa, com altura limitada. Recolher NÃO muda o cartão de lugar:
+ *  - em telas grandes ele vira uma faixa estreita no mesmo lugar (botão de abrir + o título na vertical) e a COLUNA encolhe com
+ *    transição (`attendance-pane.tsx`), a conversa ganhando a largura; o conteúdo tem largura mínima própria e é só recortado durante
+ *    a transição (não se reorganiza aos pedaços);
+ *  - em telas menores ele continua acima da conversa: o corpo fecha deslizando (linhas da grade de 1fr para 0fr) e o cabeçalho mostra
+ *    a pergunta numa linha com "Mostrar".
+ * Com movimento reduzido, sem transição. Um botão só alterna (o mesmo nome acessível em qualquer largura). Recolher só esconde: nada
+ * do que foi compartilhado muda (vem pronto do servidor).
  */
 export type SharedContextCardProps = {
   context: SharedContext
@@ -30,62 +36,77 @@ export function SharedContextCard({ context, open, onOpenChange, className }: Sh
   const empty = !context.question && !context.answer && !context.dislike && !context.note
   const summary = empty ? "Sem conversa com a INIA nem nota." : (context.question ?? context.note ?? context.dislike?.reasonLabel ?? "Resposta da INIA")
 
-  if (!open) {
-    return (
-      <section aria-label="O que o operador compartilhou" data-state="closed" className={cn("flex items-center gap-3 rounded-2xl border border-border bg-muted/50 px-4 py-2.5", className)}>
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <SectionLabel as="h3">O que o operador compartilhou</SectionLabel>
-          <p className="truncate text-sm text-muted-foreground">{summary}</p>
-        </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" aria-expanded={false} aria-label="Mostrar o que o operador compartilhou" onClick={() => onOpenChange(true)}>
-          <PanelLeftOpen className="hidden lg:block" aria-hidden />
-          <ChevronDown className="lg:hidden" aria-hidden />
-          Mostrar
-        </Button>
-      </section>
-    )
-  }
-
   return (
-    <section aria-label="O que o operador compartilhou" data-state="open" className={cn("flex min-h-0 flex-col rounded-2xl border border-border bg-muted/50", className)}>
-      <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
-        <SectionLabel as="h3" className="min-w-0 flex-1">
-          O que o operador compartilhou
-        </SectionLabel>
-        <Button type="button" variant="ghost" size="sm" className="shrink-0 text-primary dark:text-chart-4" aria-expanded aria-label="Recolher o que o operador compartilhou" onClick={() => onOpenChange(false)}>
-          <PanelLeftClose className="hidden lg:block" aria-hidden />
-          <ChevronUp className="lg:hidden" aria-hidden />
-          Recolher
+    <section aria-label="O que o operador compartilhou" data-state={open ? "open" : "closed"} className={cn("flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-muted/50", className)}>
+      {/* Cabeçalho. Recolhido em tela grande, vira a faixa: botão no alto e o título na vertical. */}
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-3 px-4 py-2.5",
+          open ? "border-b border-border" : "lg:h-full lg:flex-col-reverse lg:items-center lg:justify-end lg:gap-4 lg:px-0 lg:py-3",
+        )}
+      >
+        <div className={cn("min-w-0 flex-1 space-y-0.5", !open && "lg:flex-none")}>
+          <SectionLabel as="h3" className={cn(!open && "lg:rotate-180 lg:whitespace-nowrap lg:[writing-mode:vertical-rl]")}>
+            O que o operador compartilhou
+          </SectionLabel>
+          {!open ? <p className="truncate text-sm text-muted-foreground lg:hidden">{summary}</p> : null}
+        </div>
+        <Button
+          type="button"
+          variant={open ? "ghost" : "outline"}
+          size="sm"
+          className={cn("shrink-0", open ? "text-primary dark:text-chart-4" : "lg:size-8 lg:px-0")}
+          aria-expanded={open}
+          aria-label={open ? "Recolher o que o operador compartilhou" : "Mostrar o que o operador compartilhou"}
+          onClick={() => onOpenChange(!open)}
+        >
+          {open ? <PanelLeftClose className="hidden lg:block" aria-hidden /> : <PanelLeftOpen className="hidden lg:block" aria-hidden />}
+          <ChevronDown className={cn("transition-transform duration-300 motion-reduce:transition-none lg:hidden", open && "rotate-180")} aria-hidden />
+          <span className={cn(!open && "lg:sr-only")}>{open ? "Recolher" : "Mostrar"}</span>
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 max-lg:max-h-72">
-        {empty ? (
-          <p className="text-sm text-muted-foreground">O operador pediu ajuda sem compartilhar a conversa com a INIA nem escrever uma nota.</p>
-        ) : (
-          <dl className="flex flex-col gap-4 text-sm">
-            {context.question ? (
-              <ContextField icon={MessageCircleQuestion} label="Pergunta à INIA">
-                <span className="whitespace-pre-wrap">{context.question}</span>
-              </ContextField>
-            ) : null}
-            {context.answer ? (
-              <ContextField icon={Sparkles} label="Resposta da INIA">
-                <div className="rounded-xl border border-border bg-card px-3 py-2">
-                  <RichContent text={context.answer} />
-                </div>
-              </ContextField>
-            ) : null}
-            {context.dislike ? (
-              <ContextField icon={ThumbsDown} label="Motivo da descurtida">
-                <span className="font-medium">{context.dislike.reasonLabel}</span>
-                {context.dislike.comment ? <span className="mt-1 block whitespace-pre-wrap text-muted-foreground">{context.dislike.comment}</span> : null}
-              </ContextField>
-            ) : null}
-            <ContextField icon={StickyNote} label="Nota do operador">
-              {context.note ? <span className="whitespace-pre-wrap">{context.note}</span> : <span className="text-muted-foreground">Sem nota.</span>}
-            </ContextField>
-          </dl>
+      {/* Corpo: abre e fecha deslizando em telas menores; em telas grandes fica no lugar (a coluna é que encolhe) e, recolhido,
+          sai de cena pela faixa que ocupa o cartão inteiro. Recolhido, não recebe foco nem leitura. */}
+      <div
+        className={cn(
+          "grid min-h-0 transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+          open ? "flex-1 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
+        aria-hidden={!open}
+        inert={!open}
+        data-testid="shared-context-body"
+      >
+        <div className="min-h-0 overflow-y-auto px-4 lg:min-w-[17rem]">
+          <div className="py-3 max-lg:max-h-72">
+            {empty ? (
+              <p className="text-sm text-muted-foreground">O operador pediu ajuda sem compartilhar a conversa com a INIA nem escrever uma nota.</p>
+            ) : (
+              <dl className="flex flex-col gap-4 text-sm">
+                {context.question ? (
+                  <ContextField icon={MessageCircleQuestion} label="Pergunta à INIA">
+                    <span className="whitespace-pre-wrap">{context.question}</span>
+                  </ContextField>
+                ) : null}
+                {context.answer ? (
+                  <ContextField icon={Sparkles} label="Resposta da INIA">
+                    <div className="rounded-xl border border-border bg-card px-3 py-2">
+                      <RichContent text={context.answer} />
+                    </div>
+                  </ContextField>
+                ) : null}
+                {context.dislike ? (
+                  <ContextField icon={ThumbsDown} label="Motivo da descurtida">
+                    <span className="font-medium">{context.dislike.reasonLabel}</span>
+                    {context.dislike.comment ? <span className="mt-1 block whitespace-pre-wrap text-muted-foreground">{context.dislike.comment}</span> : null}
+                  </ContextField>
+                ) : null}
+                <ContextField icon={StickyNote} label="Nota do operador">
+                  {context.note ? <span className="whitespace-pre-wrap">{context.note}</span> : <span className="text-muted-foreground">Sem nota.</span>}
+                </ContextField>
+              </dl>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   )

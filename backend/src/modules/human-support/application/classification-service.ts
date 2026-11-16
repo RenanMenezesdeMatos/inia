@@ -17,13 +17,13 @@ export async function classifyAttendance(db: TransactionSource, viewer: Viewer, 
     if (!attendance) throw new DomainError("Atendimento não encontrado.", "HUMAN_SUPPORT_ATTENDANCE_NOT_FOUND", 404)
     if (attendance.status !== "ENDED") throw new DomainError("Classifique o atendimento depois de encerrá-lo.", "HUMAN_SUPPORT_ATTENDANCE_ACTIVE", 409)
     const inserted = await client.query(
-      `insert into human_support_classifications (attendance_id, organization_id, anjo_person_id, operator_person_id, reason, reference_title, reference_url, other_description, outcome, catalog_version, created_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, statement_timestamp())
+      `insert into human_support_classifications (attendance_id, organization_id, anjo_person_id, operator_person_id, reason, reference_title, reference_url, other_description, outcome, catalog_version, pertinence, created_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, statement_timestamp())
        on conflict (attendance_id) do nothing`,
-      [attendanceId, viewer.organizationId, viewer.personId, attendance.operator_person_id, classification.reason, classification.referenceTitle, classification.referenceUrl, classification.otherDescription, classification.outcome, CLASSIFICATION_CATALOG_VERSION],
+      [attendanceId, viewer.organizationId, viewer.personId, attendance.operator_person_id, classification.reason, classification.referenceTitle, classification.referenceUrl, classification.otherDescription, classification.outcome, CLASSIFICATION_CATALOG_VERSION, classification.pertinence],
     )
     if (inserted.rowCount !== 1) throw new DomainError("Este atendimento já foi classificado.", "HUMAN_SUPPORT_ALREADY_CLASSIFIED", 409)
-    await recordHumanSupportAudit(client, { organizationId: viewer.organizationId, actorPersonId: viewer.personId, action: "HUMAN_SUPPORT_ATTENDANCE_CLASSIFIED", entityType: "human_support_attendance", entityId: attendanceId, payload: { reason: classification.reason, outcome: classification.outcome, catalogVersion: CLASSIFICATION_CATALOG_VERSION } })
+    await recordHumanSupportAudit(client, { organizationId: viewer.organizationId, actorPersonId: viewer.personId, action: "HUMAN_SUPPORT_ATTENDANCE_CLASSIFIED", entityType: "human_support_attendance", entityId: attendanceId, payload: { reason: classification.reason, outcome: classification.outcome, pertinence: classification.pertinence, catalogVersion: CLASSIFICATION_CATALOG_VERSION } })
     await bumpInboxVersions(client, viewer.organizationId, [viewer.personId])
     return classification
   })

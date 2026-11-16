@@ -24,6 +24,7 @@ import { createSupervisorRouter } from "../modules/reporting/presentation/superv
 import { createOperatorRouter } from "../modules/reporting/presentation/operator-router.js"
 import { createAuthRouter } from "../modules/auth/presentation/auth-router.js"
 import { createMyProfileRouter, createProfileImageRouter } from "../modules/profile-preferences/presentation/profile-preferences-router.js"
+import { createMyViewLayoutRouter } from "../modules/profile-preferences/presentation/view-layout-router.js"
 import { createIniaSceneAdminRouter, createIniaSceneRouter } from "../modules/inia-scenes/presentation/inia-scene-router.js"
 import { createRequireAuth } from "../modules/auth/presentation/require-auth.js"
 import { createIniaDeliveriesRouter } from "../modules/conversational-delivery/presentation/inia-deliveries-router.js"
@@ -383,6 +384,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   const profileWrites = limit({ name: "profile-writes-account", windowMs: 60_000, max: "profileWritesPerAccount", key: accountKey, message: "Muitas alterações de perfil em pouco tempo. Aguarde um instante." })
   app.use("/api/v1/me/profile", requireAuth, onlyMethods(["PUT", "POST", "PATCH", "DELETE"], profileWrites), createMyProfileRouter(database))
   app.use("/api/v1/profile-images", requireAuth, createProfileImageRouter(database))
+  // Disposição personalizada das telas (áreas e cards reposicionáveis), da própria pessoa — migration 192.
+  app.use("/api/v1/me/view-layouts", requireAuth, onlyMethods(["PUT", "DELETE"], profileWrites), createMyViewLayoutRouter(database))
   // Cenário da INIA (fundo atrás do avatar): qualquer pessoa autenticada vê o que vale hoje; só o Administrador geral configura.
   app.use("/api/v1/inia-scenes", requireAuth, createIniaSceneRouter(database))
   app.use("/api/v1/supervision-cases", requireAuth, createCaseRouter(new PgCaseRepository(database), (request) => loadCaseVisibility(database, request.user!), (organizationId, caseId) => loadCaseAgentRecords(database, organizationId, caseId)))

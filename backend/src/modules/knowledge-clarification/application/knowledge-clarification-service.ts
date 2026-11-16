@@ -82,9 +82,10 @@ export type ClarificationRequest = {
  * marcadores passa (`answer-stream.ts`). Quem decide continua sendo a validação final: recusada (ou a chamada falhou), o que
  * apareceu é retirado (`retract`) ANTES da correção ou do caminho de sempre. `status`: o que está acontecendo (nunca conteúdo).
  */
-export type ClarificationStream = { text(chunk: string): void; retract(): void; status?(label: string): void }
+export type ClarificationStream = { text(chunk: string): void; retract(): void; status?(label: string, stage?: "READING" | "WRITING"): void }
 
-export const ANSWER_DRAFTING_STATUS = "Escrevendo a resposta com as fontes…"
+export const READING_STATUS = "Lendo as seções encontradas…"
+export const ANSWER_DRAFTING_STATUS = "Preparando resposta…"
 
 export type ClarificationMode = "NEW" | "ANSWER" | "REVISE" | "PENDING_TEXT"
 export type ClarificationPassReason = "NO_AGENTS" | "NO_KNOWLEDGE" | "NOT_APPLICABLE" | "KNOWLEDGE_UNAVAILABLE" | "PLANNER_FAILED" | "ANSWER_FAILED"
@@ -265,6 +266,8 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       if (!validation || !validation.ok || validation.plan.decision !== "READ") return validation
       workspace.open(validation.plan.read.documentIds)
       workspace.read(validation.plan.read.sections)
+      // Só avisa: o que vai para o modelo não muda.
+      if (validation.plan.read.sections.length > 0) request.stream?.status?.(READING_STATUS, "READING")
     }
   }
 
@@ -346,7 +349,7 @@ export function createKnowledgeClarification(deps: KnowledgeClarificationDeps) {
       const system = [ANSWER_SYSTEM, request.sessionContext ? SESSION_ANSWER_RULE : null, instructions, guardrails].filter(Boolean).join("\n\n")
       const evidence = new Map(sections.map((section) => [section.ref, section.source]))
       record.answerAttempts = 1
-      request.stream?.status?.(ANSWER_DRAFTING_STATUS)
+      request.stream?.status?.(ANSWER_DRAFTING_STATUS, "WRITING")
       // Falha passageira do provedor: UMA nova tentativa por mensagem (vale para a redação e para a correção).
       let providerRetried = false
       const draft = async (input: Omit<Parameters<ClarificationModel>[0], "onText">, label: string) => {

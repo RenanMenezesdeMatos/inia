@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { CLASSIFICATION_OUTCOMES, CLASSIFICATION_REASONS, TOOL_IMPEDIMENT_REASONS, type ClassificationOutcome, type ClassificationReason } from "./catalogs.js"
+import { CLASSIFICATION_OUTCOMES, CLASSIFICATION_REASONS, PERTINENCE_V1, TOOL_IMPEDIMENT_REASONS, type ClassificationOutcome, type ClassificationReason, type Pertinence } from "./catalogs.js"
 
 /**
  * CLASSIFICAÇÃO DO ATENDIMENTO PELO ANJO (design_draft.md seção 12; `CLASSIFICATION_CATALOG_V2`). Uma por atendimento, definitiva
@@ -9,7 +9,9 @@ import { CLASSIFICATION_OUTCOMES, CLASSIFICATION_REASONS, TOOL_IMPEDIMENT_REASON
  *    nos impedimentos operacionais (NO_TOOL_ACCESS, TOOL_UNAVAILABLE: a ferramenta ou o sistema afetado), não pedido nos demais
  *    (descartado);
  *  - link: opcional, só http(s), até 500 caracteres (a tela o mostra como texto, com aviso de link externo);
- *  - descrição (3–1000): obrigatória em OTHER, opcional nos impedimentos operacionais (detalhes), descartada nos demais.
+ *  - descrição (3–1000): obrigatória em OTHER, opcional nos impedimentos operacionais (detalhes), descartada nos demais;
+ *  - pertinência do acionamento (migration 191): Pertinente, Não pertinente ou Não avaliado — a tela pede a escolha; ausente (tela
+ *    anterior à 191) = Não avaliado.
  */
 const TITLE_REQUIRED: readonly ClassificationReason[] = ["FOUND_IN_PROCESS", "AVAILABLE_ELSEWHERE"]
 const TITLE_ALLOWED: readonly ClassificationReason[] = [...TITLE_REQUIRED, "QUESTION_UNCLEAR", ...TOOL_IMPEDIMENT_REASONS]
@@ -35,6 +37,7 @@ export const classificationInputSchema = z
       .optional(),
     otherDescription: optionalText(3, 1000),
     outcome: z.enum(CLASSIFICATION_OUTCOMES),
+    pertinence: z.enum(PERTINENCE_V1).optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -47,6 +50,7 @@ export const classificationInputSchema = z
     referenceUrl: input.referenceUrl ? input.referenceUrl : null,
     otherDescription: DESCRIPTION_ALLOWED.includes(input.reason) && input.otherDescription ? input.otherDescription : null,
     outcome: input.outcome,
+    pertinence: input.pertinence ?? "NOT_EVALUATED",
   }))
 
-export type Classification = { reason: ClassificationReason; referenceTitle: string | null; referenceUrl: string | null; otherDescription: string | null; outcome: ClassificationOutcome }
+export type Classification = { reason: ClassificationReason; referenceTitle: string | null; referenceUrl: string | null; otherDescription: string | null; outcome: ClassificationOutcome; pertinence: Pertinence }

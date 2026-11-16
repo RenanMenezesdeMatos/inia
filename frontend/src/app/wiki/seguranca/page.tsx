@@ -119,18 +119,19 @@ export default function SecurityPage() {
             eles, nunca os substituem. Ver <WikiLink href="/wiki/agents#limites-atuacao">Limites de atuação</WikiLink>.
           </li>
           <li>
-            Nos canais cobertos, a resposta pronta também é conferida contra essas regras, por uma IA que decide pelo sentido. Isso não protege todos os
-            fluxos de IA. <strong className="font-medium text-foreground">Prevenção:</strong> no chat, nas respostas de voz que passam pelo servidor, nos
-            Agents e nas etapas de Orquestrador, a conferência vem antes da entrega; com violação, a pessoa recebe uma mensagem fixa, e com falha da
-            conferência a resposta não sai. <strong className="font-medium text-foreground">Detecção posterior:</strong> o que o modelo de voz fala vai
-            direto do provedor para o navegador, então só é conferido depois de ouvido, pela transcrição que o navegador envia. O texto sai da conversa e a
-            pessoa é avisada, mas isso não impede a fala nem retira o que já foi dito.{" "}
-            <strong className="font-medium text-foreground">Sem cobertura:</strong> motor de feedback, reports, intervenções, treino e boas práticas. A
-            cobertura deles ainda será decidida; isso não é uma exceção aprovada. Como a conferência é uma decisão de IA, ela pode errar nos dois sentidos.
+            Nos canais cobertos, o texto pronto também é conferido contra essas regras, por uma IA que decide pelo sentido. Isso não protege todos os fluxos
+            de IA. Mencionar um assunto proibido não é violação: uma monitoria pode citar o que foi dito na chamada. Viola quando a INIA opina, orienta ou
+            aprova com a própria voz. <strong className="font-medium text-foreground">Prevenção:</strong> no chat, nas respostas de voz que passam pelo
+            servidor, nos Agents, nas etapas de Orquestrador, na análise de reports, na narrativa e no rascunho de intervenções e na aprovação de boas
+            práticas, a conferência vem antes da entrega. <strong className="font-medium text-foreground">Detecção posterior:</strong> a fala do modelo de
+            voz só é conferida depois de ouvida, pela transcrição que o navegador envia, e isso não impede a fala nem retira o que já foi dito. A mensagem de
+            feedback também está só em detecção: é publicada, e o que for apontado fica registrado, até a prevenção ser autorizada.{" "}
+            <strong className="font-medium text-foreground">Sem cobertura:</strong> a análise interna do motor, o Diagnóstico da liderança e a apresentação
+            falada em &quot;Ouvir com a INIA&quot;. Como a conferência é uma decisão de IA, ela pode errar nos dois sentidos.
           </li>
           <li>
-            O modo vem de <code>INIA_RESPONSE_CHECK</code>. <code>ENFORCE</code> é o padrão e o único que previne. <code>AUDIT</code> entrega e confere
-            depois: é só detecção. <code>OFF</code> não confere nem registra.
+            <code>ENFORCE</code> é o único modo que previne. <code>AUDIT</code> entrega e confere depois: é só detecção. <code>OFF</code> não confere nem
+            registra. A aba Conferência das respostas, na Governança, mostra o modo em vigor em cada grupo de fluxos.
           </li>
           <li>Chaves e credenciais nunca fazem parte do prompt; o QA Lab redige segredos antes de persistir o prompt final.</li>
           <li>Texto gerado por IA é exibido formatado sem executar HTML embutido; links perigosos são neutralizados.</li>

@@ -26,7 +26,12 @@ const LOCK = "inia-anjo-workspace"
 /** Quanto a aba espera na fila da trava antes de concluir que outra aba está com a área do Anjo. */
 const LOCK_WAIT_MS = 1_500
 
-export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceIds: string[]) => void } = {}): AnjoWorkspaceState {
+/**
+ * `enabled` = esta aba do navegador mantém a conexão do Anjo (a trava de aba única e a chamada longa só começam com ele). Desligar
+ * solta a trava e para a chamada.
+ */
+export function useAnjoWorkspaceState(options: { enabled?: boolean; onNewAttendance?: (attendanceIds: string[]) => void } = {}): AnjoWorkspaceState {
+  const enabled = options.enabled ?? true
   const [anjo, setAnjo] = useState<AnjoView | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
@@ -40,6 +45,7 @@ export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceId
   }, [options.onNewAttendance])
 
   useEffect(() => {
+    if (!enabled) return
     let disposed = false
     let releaseLock: (() => void) | null = null
     const onState = (state: StateResponse) => {
@@ -98,7 +104,7 @@ export function useAnjoWorkspaceState(options: { onNewAttendance?: (attendanceId
       pollerRef.current = null
       releaseLock?.()
     }
-  }, [])
+  }, [enabled])
 
   const refresh = useCallback(() => pollerRef.current?.refresh(), [])
   const applyAnjo = useCallback((next: AnjoView) => {

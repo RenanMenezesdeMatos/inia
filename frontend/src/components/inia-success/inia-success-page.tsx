@@ -172,7 +172,7 @@ export function IniaSuccessPage() {
 function sourceLinks(context: SuccessContext) {
   return [
     context.sections.responseTime ? { href: ASSISTANT_CONVERSATIONS_PATH, label: "Conversas com a INIA" } : null,
-    context.sections.support ? { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Apoio com Anjo" } : null,
+    context.sections.support ? { href: HUMAN_SUPPORT_MONITORING_PATH, label: "Painel dos Anjos" } : null,
     context.sections.feedback ? { href: FEEDBACK_CONTESTATIONS_PATH, label: "Contestações de feedback" } : null,
     context.sections.compliance
       ? {

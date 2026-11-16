@@ -92,6 +92,8 @@ export type RealtimeTransportEvents = {
    * `feedbackApplicationId`, a consulta é de dentro de uma sessão de feedback: o backend decide a conversa e emoldura o especialista.
    * `utterance` = as palavras da pessoa neste turno (digitadas ou a transcrição da fala), das quais o esclarecimento pelas bases parte
    * — nunca da `query` reescrita pelo modelo; `clarification` = a escolha feita no formulário do esclarecimento neste turno. */
+  /** Consulta da voz começou ou terminou, só da geração em curso. Apenas informa: não muda pedido nem resposta. */
+  onToolActivity?: (phase: "started" | "finished") => void
   getToolCallContext?: () => { conversationId: string | null; turnId: string; feedbackApplicationId?: string | null; utterance?: string; clarification?: ClarificationAnswer }
   onError?: (message: string) => void
 }
@@ -919,6 +921,7 @@ export class GeminiRealtimeTransport {
     const generationSeq = generation.seq
     const stillCurrent = () => session === this.session && generationSeq === this.generationSeq
     generation.toolCallsInFlight += 1
+    this.events.onToolActivity?.("started")
     void Promise.all(
       calls.map(async (call) => {
         const query = typeof call.args?.query === "string" ? call.args.query : JSON.stringify(call.args ?? {})
@@ -957,7 +960,9 @@ export class GeminiRealtimeTransport {
       }),
     ).then((functionResponses) => {
       generation.toolCallsInFlight -= 1
-      if (stillCurrent()) this.send({ toolResponse: { functionResponses } })
+      if (!stillCurrent()) return
+      this.events.onToolActivity?.("finished")
+      this.send({ toolResponse: { functionResponses } })
     })
   }
 }

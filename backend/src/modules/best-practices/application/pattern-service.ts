@@ -1,3 +1,5 @@
+import { checkContentBeforeDelivery, RESPONSE_CHECK_UNAVAILABLE_CODE } from "../../governance/application/response-compliance.js"
+import { patternCheckContent, type PatternTexts } from "../domain/pattern-check-content.js"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -127,16 +129,38 @@ export async function getPatternDetail(db: Database, organizationId: string, id:
 }
 
 const text = (min: number, max: number) => z.string().trim().min(min).max(max)
+export const BEST_PRACTICE_RULE_VIOLATION_CODE = "BEST_PRACTICE_RULE_VIOLATION"
+
 export const reviewSchema = z.object({
   action: z.enum(["APPROVE", "REJECT", "DEACTIVATE", "REACTIVATE", "CONFIRM_NOT_OBLIGATION", "EDIT"]),
   reason: z.string().trim().max(1000).nullish(),
+  /** Decisão humana de aprovar mesmo com a conferência apontando uma regra: fica registrada com o motivo (PEN-018, decisão 6). */
+  ruleOverrideReason: z.string().trim().min(3).max(1000).optional(),
   changes: z.object({ name: text(3, 160).optional(), description: text(3, 2000).optional(), guidance: text(3, 2000).optional(), suggestedPhrasing: z.string().trim().max(600).nullable().optional(), notApplicableWhen: z.string().trim().max(600).nullable().optional(), howItHelps: z.string().trim().max(1000).nullable().optional().refine((value) => !value || value.length >= 3, "Escreva ao menos 3 caracteres ou deixe vazio.") }).optional(),
 })
 
 const ACTION_AUDIT: Record<ReviewAction, string> = { APPROVE: "BEST_PRACTICE_PATTERN_APPROVED", REJECT: "BEST_PRACTICE_PATTERN_REJECTED", DEACTIVATE: "BEST_PRACTICE_PATTERN_DEACTIVATED", REACTIVATE: "BEST_PRACTICE_PATTERN_REACTIVATED", CONFIRM_NOT_OBLIGATION: "BEST_PRACTICE_PATTERN_OBLIGATION_CONFIRMED", EDIT: "BEST_PRACTICE_PATTERN_EDITED" }
 
+/**
+ * PEN-018: o texto da prática é conferido quando ela vai ficar disponível. Editar devolve à revisão, então aprovar sempre confere o texto final. Como a IA pode
+ * errar e já há uma pessoa decidindo, a violação não trava de vez: aprovar exige motivo registrado. Sem conferência, não aprova.
+ */
+async function conferPatternBeforeGoingLive(db: Database, actor: AnalysisActor, scopes: ManageableScopes, id: string, input: z.infer<typeof reviewSchema>): Promise<{ rules: string; reason: string } | null> {
+  const pattern = await loadPattern(db, actor.organizationId, id)
+  if (!canManagePattern(scopes, pattern)) throw new DomainError("Você não administra a população deste padrão.", "BEST_PRACTICE_SCOPE_DENIED", 403)
+  nextReviewState(pattern, input.action, input.reason ?? null)
+  const built = patternCheckContent(pattern as unknown as PatternTexts)
+  const overriding = Boolean(input.ruleOverrideReason)
+  const decision = await checkContentBeforeDelivery(db, { organizationId: actor.organizationId, text: built.text, content: built.content, agentId: null, surface: "BEST_PRACTICE", group: "CONTENT", source: "BEST_PRACTICES", sourceRef: id, acceptViolation: overriding })
+  if (decision.decision === "VIOLATION") throw new DomainError(`A conferência apontou uma regra neste texto (${decision.hits.map((hit) => hit.name).join(", ")}). ${decision.reason} Para aprovar mesmo assim, informe o motivo.`, BEST_PRACTICE_RULE_VIOLATION_CODE, 422)
+  if (decision.decision === "CHECK_FAILED") throw new DomainError("A conferência do texto não pôde ser concluída. Tente aprovar de novo em instantes.", RESPONSE_CHECK_UNAVAILABLE_CODE, 503)
+  const hits = decision.result?.outcome === "VIOLATION" ? decision.result.hits : []
+  return overriding && hits.length > 0 ? { rules: hits.map((hit) => hit.name).join(", "), reason: input.ruleOverrideReason! } : null
+}
+
 export async function reviewPattern(db: Database, actor: AnalysisActor, scopes: ManageableScopes, id: string, body: unknown) {
   const input = reviewSchema.parse(body)
+  const ruleOverride = input.action === "APPROVE" || input.action === "REACTIVATE" ? await conferPatternBeforeGoingLive(db, actor, scopes, id, input) : null
   return inTransaction(db, async (client) => {
     const pattern = await loadPattern(client, actor.organizationId, id)
     if (!canManagePattern(scopes, pattern)) throw new DomainError("Você não administra a população deste padrão.", "BEST_PRACTICE_SCOPE_DENIED", 403)
@@ -160,9 +184,9 @@ export async function reviewPattern(db: Database, actor: AnalysisActor, scopes: 
     if (updated.rowCount !== 1) throw new DomainError("O padrão mudou enquanto você revisava. Atualize e tente de novo.", "BEST_PRACTICE_REVIEW_CONFLICT", 409)
     await client.query(
       `insert into best_practice_pattern_reviews (organization_id, pattern_id, action, from_status, to_status, reason, changes, actor_person_id) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [actor.organizationId, id, input.action, pattern.reviewStatus, next.reviewStatus, input.reason?.trim() || null, Object.keys(changes).length > 0 ? JSON.stringify(changes) : null, actor.personId],
+      [actor.organizationId, id, input.action, pattern.reviewStatus, next.reviewStatus, (ruleOverride ? `Aprovada apesar da conferência (${ruleOverride.rules}): ${ruleOverride.reason}` : input.reason?.trim()) || null, Object.keys(changes).length > 0 ? JSON.stringify(changes) : null, actor.personId],
     )
-    await client.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, 'best_practice_pattern', $4, $5)`, [actor.organizationId, actor.personId, ACTION_AUDIT[input.action], id, JSON.stringify({ from: pattern.reviewStatus, to: next.reviewStatus, reason: input.reason ?? null, changes })])
+    await client.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, 'best_practice_pattern', $4, $5)`, [actor.organizationId, actor.personId, ACTION_AUDIT[input.action], id, JSON.stringify({ from: pattern.reviewStatus, to: next.reviewStatus, reason: input.reason ?? null, changes, ...(ruleOverride ? { ruleOverride } : {}) })])
     return { id, reviewStatus: next.reviewStatus, obligationConfirmedByReview: next.obligationConfirmedByReview }
   })
 }

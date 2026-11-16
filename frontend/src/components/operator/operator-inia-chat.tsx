@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, useReducer } from "react"
 import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
@@ -36,6 +36,7 @@ import { FeedbackSessionContent, FeedbackSessionMaterials } from "./feedback-app
 import { FeedbackSessionDialog } from "./feedback-application/feedback-session-dialog"
 import { IniaSceneBackdrop } from "@/components/inia-scenes/inia-scene-backdrop"
 import { IniaCallControls, IniaCallEndedCompact, IniaCallExpandToggle, IniaCallPlaceholder, IniaCallStatus, IniaCallTile } from "./inia-call-tile"
+import { NO_VOICE_ACTIVITY, THINKING_LABEL, nextVoiceActivity, voiceActivityLabel } from "./operator-inia-chat/voice-activity"
 import { useCurrentIniaScene } from "@/queries/inia-scenes/use-inia-scenes"
 import { FeedbackInviteCard } from "./feedback-application/feedback-invite-card"
 import { feedbackApplicationsKey, feedbackInviteKey, useFeedbackInviteQuery } from "@/queries/feedback-applications/use-feedback-applications"
@@ -120,8 +121,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   const [liveTextReply, setLiveTextReply] = useState<string | null>(null)
   // A resposta em fluxo é a do esclarecimento pelas bases (traz marcadores de fonte, que saem do que a pessoa lê).
   const [liveTextCitations, setLiveTextCitations] = useState(false)
-  // Progresso verdadeiro da resposta por escrito enquanto o texto não começa ("Consultando as bases de conhecimento…").
+  // Progresso verdadeiro da resposta por escrito enquanto o texto não começa ("Consultando a base de conhecimento…").
   const [textReplyStatus, setTextReplyStatus] = useState<string | null>(null)
+  // Progresso da resposta pela voz, pelos eventos reais da sessão (ver `voice-activity.ts`).
+  const [voiceActivity, dispatchVoiceActivity] = useReducer(nextVoiceActivity, NO_VOICE_ACTIVITY)
   const {
     stageUtterance, stageUtteranceRef, stageTranscriptRef, stageHiddenIds, presentationLandRef, stageGreeting, setStageGreeting,
     setStage, hideOnStage, revealOnStage, beginStageUtterance, appendStageText, endStageUtterance, attachStageMessage,
@@ -139,9 +142,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
   // do painel usa só o PRIMEIRO nome — a mesma regra da saudação dos feedbacks (decisão de produto de 05/10/2026).
   const addressName = operator.addressName ?? registeredFirstNameOf(operator.name)
   const greetingName = registeredFirstNameOf(addressName)
-  const greeting = context === "team" ? `Olá, ${greetingName}. Posso mostrar onde atuar hoje, consultar os indicadores e as pessoas da sua estrutura ou explicar um processo.` : `Olá, ${greetingName}. Vi seus feedbacks de hoje. Quer conversar sobre algum deles?`
   // Liderança: perguntas para começar derivadas das prioridades do dia (a mesma leitura do cartão "Onde atuar hoje").
   const leadershipHome = useLeadershipHomeQuery(context === "team")
+  const greeting = context === "team" ? `Olá, ${greetingName}. Posso mostrar onde atuar hoje, consultar os indicadores e as pessoas da sua estrutura ou explicar um processo.` : `Olá, ${greetingName}. Vi seus feedbacks de hoje. Quer conversar sobre algum deles?`
+  // Só a liderança recebe perguntas prontas: no painel do operador elas ocupavam espaço e tiravam a cara de chat (04/11/2026).
   const starterSuggestions = context === "team" && leadershipHome.data?.enabled ? leadershipHome.data.suggestions : []
   // Conversa persistida (backend). `null` = conversa nova ainda não iniciada: a primeira mensagem a cria.
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -362,6 +366,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     transport?.disconnect()
     setSessionConnected(false)
     setLiveAssistantText(null)
+    dispatchVoiceActivity({ type: "RESET" })
     pendingAssistantTranscriptRef.current = ""
     pendingUserTranscriptRef.current = ""
     lastUserTurnTextRef.current = ""
@@ -1127,6 +1132,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     conversationStateRef.current = state
     voice.driver.setState(state)
     setConversationState(state)
+    dispatchVoiceActivity({ type: "STATE", state })
     // "Turno" para o avatar = a fala da INIA (gesto de abertura, assentar no fim).
     if (state === "speaking" && previous !== "speaking") voice.driver.pushCue({ type: "turn-started" })
     if (previous === "speaking" && state !== "speaking") voice.driver.pushCue({ type: "turn-ended" })
@@ -1216,9 +1222,11 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         // "fala" uma tabela markdown — então esse é o único jeito de o
         // operador ver a resposta completa do especialista (tabelas,
         // listas) quando fala por voz, em vez de só ouvir o resumo.
+        onToolActivity: (phase) => dispatchVoiceActivity({ type: phase === "started" ? "TOOL_STARTED" : "TOOL_FINISHED" }),
         onSpecialistResult: (text, supportMaterials, conversation, analytics = [], extras = {}) => {
           flushUserTranscript()
           specialistAnsweredThisTurnRef.current = true
+          dispatchVoiceActivity({ type: "ANSWER_SHOWN" })
           // Algo falado antes da tool ("vou verificar…") some: a resposta é o balão do especialista.
           setLiveAssistantText(null)
           const id = nextMessageId()
@@ -1343,6 +1351,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setMessages((current) => [...current, { id, sender: "user", text, time: nowTime(), occurredAt: new Date().toISOString(), channel: "chat", ...currentSegment() }])
     if (fromComposer) setQuestion("")
     if (textareaRef.current) textareaRef.current.style.height = "auto"
+    // Aparece já no envio, antes de a sessão conectar; os eventos reais trocam o rótulo.
+    dispatchVoiceActivity({ type: "TURN_SENT" })
     scrollToLatest()
     lastUserTurnTextRef.current = text
     typedVoiceTurnRef.current = true
@@ -1358,6 +1368,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       },
       () => {
         if (generation !== viewGenerationRef.current) return
+        dispatchVoiceActivity({ type: "RESET" })
         lastUserTurnTextRef.current = ""
         typedVoiceTurnRef.current = false
         turnMessageIdsRef.current = turnMessageIdsRef.current.filter((item) => item !== id)
@@ -1436,7 +1447,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     setTextReplyPending(true)
     setLiveTextReply(null)
     setLiveTextCitations(false)
-    setTextReplyStatus(null)
+    setTextReplyStatus(THINKING_LABEL)
     scrollToLatest()
     textReplyAbortRef.current?.abort()
     const abort = new AbortController()
@@ -1500,7 +1511,8 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
         {
           signal: abort.signal,
           onStatus: (status) => {
-            if (current()) setTextReplyStatus(status.label)
+            // Evento de um pedido que já foi substituído nunca mexe no indicador do atual.
+            if (current() && textReplyAbortRef.current === abort) setTextReplyStatus(status.label)
           },
           // O texto mostrado deixou de ser a resposta: some da tela (e do palco) e os próximos pedaços recomeçam.
           onRetract: () => {
@@ -1556,8 +1568,10 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
       const noReply = userMessageId && !inFeedback && !workflowConversation && !abort.signal.aborted ? { questionInteractionId: userMessageId, signals: ["NO_REPLY" as const] } : {}
       setMessages((list) => [...list, { id: nextMessageId(), sender: "assistant", time: nowTime(), occurredAt: new Date().toISOString(), text: TEXT_REPLY_FALLBACK_TEXT, localError: true, ...noReply }])
     } finally {
-      if (textReplyAbortRef.current === abort) textReplyAbortRef.current = null
-      if (current()) {
+      const latest = textReplyAbortRef.current === abort
+      if (latest) textReplyAbortRef.current = null
+      // O fim de um pedido substituído não encerra o indicador do novo.
+      if (current() && latest) {
         setTextReplyPending(false)
         setLiveTextReply(null)
         setTextReplyStatus(null)
@@ -1582,6 +1596,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     transport?.disconnect()
     setSessionConnected(false)
     setLiveAssistantText(null)
+    dispatchVoiceActivity({ type: "RESET" })
     pendingAssistantTranscriptRef.current = ""
     // Fala parcial do usuário (microfone aberto ao encerrar) não vaza para a próxima conversa.
     if (userTranscriptTimerRef.current) { clearTimeout(userTranscriptTimerRef.current); userTranscriptTimerRef.current = null }
@@ -1850,21 +1865,25 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
 
   // No PAINEL a INIA é uma chamada de vídeo: nome e estado no canto, controles de chamada embaixo (microfone, silenciar a INIA,
   // câmera, sair). Na sessão, os controles ficam abaixo dela.
-  const callStatus = <IniaCallStatus inline={avatarCompact} state={conversationState} muted={voiceMuted}/>
+  // Um indicador só: a resposta por escrito em andamento vale mais que a voz; termina quando o texto ou a fala começa.
+  const activityLabel = textReplyPending
+    ? liveTextReply === null ? textReplyStatus || THINKING_LABEL : null
+    : liveAssistantText === null ? voiceActivityLabel(voiceActivity, conversationState, { fallback: !sessionOpen }) : null
+  const callStatus = <IniaCallStatus inline={avatarCompact} state={textReplyPending && liveTextReply === null && conversationState === "idle" ? "thinking" : conversationState} muted={voiceMuted} activity={activityLabel}/>
   const callControls = <IniaCallControls
-      compact={avatarCompact}
-      micOpen={micOpen}
-      micDisabled={micDisabled}
-      micLabel={micLabel}
-      onMic={handleMicClick}
-      micPulseRef={(element) => { micPulseRefs.current[0] = element }}
-      micPulseStyle={MIC_PULSE_REST_STYLE}
-      muted={voiceMuted}
-      onToggleMute={toggleVoiceMuted}
-      cameraOn={cameraOn}
-      onToggleCamera={() => setCameraOn((value) => !value)}
-      onEnd={endCall}
-    />
+    compact={avatarCompact}
+    micOpen={micOpen}
+    micDisabled={micDisabled}
+    micLabel={micLabel}
+    onMic={handleMicClick}
+    micPulseRef={(element) => { micPulseRefs.current[0] = element }}
+    micPulseStyle={MIC_PULSE_REST_STYLE}
+    muted={voiceMuted}
+    onToggleMute={toggleVoiceMuted}
+    cameraOn={cameraOn}
+    onToggleCamera={() => setCameraOn((value) => !value)}
+    onEnd={endCall}
+  />
   // Ampliar tira altura das mensagens: quem estava vendo o fim da conversa continua vendo o fim.
   const avatarPinToEndRef = useRef(false)
   // As mensagens só aparecem com a conversa pronta: o quadro pedido antes disso (`scrollToLatest`) às vezes rolava uma lista ainda vazia,
@@ -1959,7 +1978,7 @@ export function OperatorIniaChat({ indicators, operator, onCollapse, context = "
     conversationState={conversationState}
     liveAssistantText={liveAssistantText}
     textReplyPending={textReplyPending}
-    textReplyStatus={textReplyStatus}
+    activityLabel={activityLabel}
     liveTextReply={liveTextReply !== null && liveTextCitations ? withoutLiveSourceMarkers(liveTextReply) : liveTextReply}
     askSuggestion={askSuggestion}
     switchToGeneralConversation={switchToGeneralConversation}

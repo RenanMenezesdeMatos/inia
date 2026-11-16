@@ -91,6 +91,26 @@ describe.skipIf(!ENABLED)("Entrega ao Acompanhamento — prova Postgres (concorr
     expect(ack.acknowledgedAt).toEqual(expect.any(String))
   })
 
+  it("PEN-018: no caminho antigo, o que a conferência apontou ou não pôde conferir não sai sozinho e vai para a revisão humana", async () => {
+    const org = (await pool.query<{ id: string }>("select id from organizations limit 1")).rows[0]!
+    const operator = (await pool.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, 'Proof Conferência Operador', 'OPERATOR') returning id", [org.id])).rows[0]!.id
+    created.people.push(operator)
+    const store = createPostgresInteractionFeedbackStore(pool)
+    const now = () => new Date()
+    const context = { organizationId: org.id, collaboratorId: operator, teamId: null, interactionId: null, occurredAt: new Date("2026-03-14T12:00:00Z") }
+    const deps = { enabled: true, writer, store, now, deliveryPolicy: FEEDBACK_AUTONOMOUS_DELIVERY_POLICY }
+    const dispositions = (result: Awaited<ReturnType<typeof runInteractionFeedbackPipeline>>) => (result.status === "RECORDED" ? result.decisions.map((entry) => entry.decision.disposition) : [])
+    const free = await runInteractionFeedbackPipeline({ ...deps, responseCheck: async () => ({ decision: "DELIVER", result: null }) }, feedback(), context)
+    expect(dispositions(free)).toContain("AUTO_DELIVER")
+    const flagged = await runInteractionFeedbackPipeline({ ...deps, responseCheck: async () => ({ decision: "VIOLATION", hits: [], reason: "Promete valor." }) }, feedback(), context)
+    expect(dispositions(flagged)).not.toContain("AUTO_DELIVER")
+    expect(dispositions(flagged)).toContain("HOLD_FOR_QA")
+    const failed = await runInteractionFeedbackPipeline({ ...deps, responseCheck: async () => ({ decision: "CHECK_FAILED", code: "X", message: "Sem conferência." }) }, feedback(), context)
+    expect(dispositions(failed)).not.toContain("AUTO_DELIVER")
+    // Esta prova não entra nas métricas do cenário seguinte.
+    await pool.query("delete from interaction_feedback_runs where collaborator_id = $1", [operator])
+  })
+
   it("V1.5.9 — política AUTÔNOMA no Postgres: AUTO_DELIVER → varredor → Acompanhamento SEM QA; métricas por política/tipo/motivo/QA", async () => {
     const org = (await pool.query<{ id: string }>("select id from organizations limit 1")).rows[0]!
     const operator = (await pool.query<{ id: string }>("insert into people (organization_id, name, role) values ($1, 'Proof Autônomo Operador', 'OPERATOR') returning id", [org.id])).rows[0]!.id

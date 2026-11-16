@@ -6,22 +6,14 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { ApiError } from "@/lib/api/api-client"
 import type { AnjoAttendanceView, AnjoView } from "@/schemas/human-support/state.schema"
-import type { AnjoWorkspaceState } from "@/queries/human-support/use-anjo-workspace-state"
+import type { AnjoWorkspaceContextValue } from "@/queries/human-support/anjo-workspace-provider"
 
-import { NEW_ATTENDANCE_TITLE, newMessageTitle } from "./attendance-alert"
 import { AnjoWorkspace } from "./anjo-workspace"
 
-/** Área do Anjo (Apoio com Anjo, Parte B — design_draft.md seções 6, 11 e 14). */
-const hook = vi.hoisted(() => ({
-  value: null as unknown as AnjoWorkspaceState,
-  options: null as null | { onNewAttendance?: (ids: string[]) => void },
-}))
-vi.mock("@/queries/human-support/use-anjo-workspace-state", () => ({
-  useAnjoWorkspaceState: (options: { onNewAttendance?: (ids: string[]) => void }) => {
-    hook.options = options
-    return hook.value
-  },
-}))
+/** Área do Anjo (Apoio com Anjo, Parte B — design_draft.md seções 6, 11 e 14). A conexão, o som e o título vivem no provedor do shell
+ * (testes em `queries/human-support/anjo-workspace-provider.test.tsx`); aqui, a tela que lê dele. */
+const hook = vi.hoisted(() => ({ value: null as unknown as AnjoWorkspaceContextValue }))
+vi.mock("@/queries/human-support/anjo-workspace-provider", () => ({ useAnjoWorkspace: () => hook.value }))
 const service = vi.hoisted(() => ({
   signalSupportTyping: vi.fn(async () => undefined), acknowledgeSupportMessages: vi.fn(async () => ({ deliveredSeq: 0, readSeq: 0 })),
   changeAnjoPresence: vi.fn(),
@@ -50,6 +42,7 @@ function attendance(overrides: Partial<AnjoAttendanceView> = {}): AnjoAttendance
     requestId: "req-1",
     protocol: "AP-7K2QX9",
     operatorName: "Bruno",
+    operatorAvatarUrl: null,
     teamName: "Grupo X",
     subteamName: "X1",
     startedAt: minutesAgo(2),
@@ -59,6 +52,7 @@ function attendance(overrides: Partial<AnjoAttendanceView> = {}): AnjoAttendance
     sharedContext: { question: "Como faço o estorno?", answer: "**Não encontrei** essa informação.", dislike: null, note: "Cliente na linha" },
     peerReceipts: { deliveredSeq: 0, readSeq: 0 },
     peerTypingMs: null,
+    unreadCount: 0,
     ...overrides,
   }
 }
@@ -74,8 +68,13 @@ function anjoView(overrides: Partial<AnjoView> = {}): AnjoView {
   }
 }
 
-function setHook(overrides: Partial<AnjoWorkspaceState> = {}) {
-  hook.value = { anjo: anjoView(), blocked: false, reconnecting: false, sessionEnded: false, refresh: vi.fn(), applyAnjo: vi.fn(), clockOffsetMs: 0, ...overrides }
+function setHook(overrides: Partial<AnjoWorkspaceContextValue> = {}) {
+  hook.value = {
+    anjo: anjoView(), blocked: false, reconnecting: false, sessionEnded: false, refresh: vi.fn(), applyAnjo: vi.fn(), clockOffsetMs: 0,
+    available: true, armed: true, arm: vi.fn(), areaVisible: false, setAreaVisible: vi.fn(), presence: null, arrival: null,
+    attention: { attendances: 1, unread: 0, awaitingResponse: true }, primeAudio: vi.fn(),
+    ...overrides,
+  }
   return hook.value
 }
 
@@ -153,42 +152,22 @@ describe("AnjoWorkspace", () => {
     expect(state.applyAnjo).toHaveBeenCalledWith(paused)
   })
 
-  it("atendimento novo: abre a aba dele, pisca o título até a aba ter foco e toca o som", async () => {
-    vi.spyOn(document, "hasFocus").mockReturnValue(false)
-    const oscillators: string[] = []
-    class FakeAudioContext {
-      state = "running"
-      currentTime = 0
-      destination = {}
-      resume = vi.fn(async () => undefined)
-      close = vi.fn(async () => undefined)
-      createGain() {
-        return { gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() }, connect: vi.fn() }
-      }
-      createOscillator() {
-        oscillators.push("tone")
-        return { type: "sine", frequency: { setValueAtTime: vi.fn() }, connect: vi.fn(), start: vi.fn(), stop: vi.fn() }
-      }
-    }
-    vi.stubGlobal("AudioContext", FakeAudioContext)
-    document.title = "INIA"
+  it("atendimento novo (aviso do provedor): a aba dele fica selecionada e na tela", () => {
     const { rerender } = render(<AnjoWorkspace />)
-    // O gesto da pessoa prepara o som.
-    fireEvent.pointerDown(document.body)
-
-    setHook({ anjo: anjoView({ capacity: { max: 2, used: 2 }, attendances: [attendance(), attendance({ id: "att-2", requestId: "req-2", protocol: "AP-NEW222", operatorName: "Carla" })] }) })
-    act(() => hook.options?.onNewAttendance?.(["att-2"]))
+    setHook({ anjo: anjoView({ capacity: { max: 2, used: 2 }, attendances: [attendance(), attendance({ id: "att-2", requestId: "req-2", protocol: "AP-NEW222", operatorName: "Carla" })] }), arrival: { attendanceId: "att-2", nonce: 1 } })
     rerender(<AnjoWorkspace />)
-
     expect(screen.getByRole("tab", { name: /Carla/ })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByRole("article", { name: "Atendimento AP-NEW222" })).toBeVisible()
-    expect(document.title).toBe(NEW_ATTENDANCE_TITLE)
-    expect(oscillators.length).toBeGreaterThan(0)
-    act(() => {
-      window.dispatchEvent(new Event("focus"))
-    })
-    expect(document.title).toBe("INIA")
-    vi.unstubAllGlobals()
+  })
+
+  it("abrir a área liga a conexão nesta aba do navegador e diz ao provedor que a área está na tela; dentro do perfil, sem o título", () => {
+    const state = setHook()
+    const { rerender } = render(<AnjoWorkspace embedded visible />)
+    expect(state.arm).toHaveBeenCalled()
+    expect(state.setAreaVisible).toHaveBeenLastCalledWith(true)
+    expect(screen.queryByRole("heading", { name: "Área do Anjo" })).not.toBeInTheDocument()
+    rerender(<AnjoWorkspace embedded visible={false} />)
+    expect(state.setAreaVisible).toHaveBeenLastCalledWith(false)
   })
 
   it("encerrar pede confirmação e aplica a área devolvida pelo servidor", async () => {
@@ -372,66 +351,21 @@ describe("AnjoWorkspace", () => {
     expect(history).toHaveAttribute("data-state", "active")
     expect(await within(history).findByText("Você ainda não fez nenhum atendimento.")).toBeInTheDocument()
     expect(screen.getByRole("article", { hidden: true, name: "Atendimento AP-7K2QX9" }).closest("[role=tabpanel][data-slot=tabs-content][data-state]")!.parentElement!.closest("[role=tabpanel]")).toHaveAttribute("data-state", "inactive")
-    expect(window.location.search).toBe("?tab=historico")
+    expect(window.location.search).toBe("?apoio=historico")
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Atendimento/ }), { button: 0 })
     expect(screen.getByLabelText("Mensagem para o operador")).toHaveValue("Rascunho que não pode sumir")
     expect(window.location.search).toBe("")
   })
 
-  it("mensagem nova do operador com o Anjo em outra aba: a aba \"Atendimento\" e a do atendimento sinalizam", async () => {
-    const operatorMessage = (seq: number) => ({ id: `m-${seq}`, seq, authorKind: "OPERATOR" as const, authorName: "Bruno", body: `oi ${seq}`, systemCode: null, occurredAt: minutesAgo(0) })
-    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(1), operatorMessage(2)], hasMore: false })
-    const { rerender } = render(<AnjoWorkspace />)
-    await screen.findByText("oi 2")
+  it("mensagens novas vêm do servidor: com o Anjo em \"Seus atendimentos\", a aba \"Atendimento\" e a do atendimento sinalizam; na tela, zeram", () => {
+    setHook({ anjo: anjoView({ attendances: [attendance({ lastSeq: 3, unreadCount: 2, firstAnjoMessageAt: minutesAgo(1) })] }) })
+    render(<AnjoWorkspace />)
+    // Na tela (aba "Atendimento" com o atendimento aberto): o que está à vista conta como visto, sem esperar a confirmação voltar.
+    expect(screen.getByRole("tab", { name: /^Atendimento/ })).not.toHaveTextContent("mensagens novas")
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Seus atendimentos/ }), { button: 0 })
-
-    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(3)], hasMore: false })
-    setHook({ anjo: anjoView({ attendances: [attendance({ lastSeq: 3 })] }) })
-    rerender(<AnjoWorkspace />)
-    await waitFor(() => expect(screen.getByRole("tab", { name: /Atendimento/ })).toHaveTextContent("1 mensagem nova"))
-    expect(screen.getByRole("tab", { name: /Bruno/, hidden: true })).toHaveTextContent("1 mensagem nova")
-  })
-
-  it("mensagem nova do operador com a página fora da vista: o título pisca com o nome do operador e toca o som; ao voltar, para", async () => {
-    const tones: string[] = []
-    class FakeAudioContext {
-      state = "running"
-      currentTime = 0
-      destination = {}
-      resume = vi.fn(async () => undefined)
-      close = vi.fn(async () => undefined)
-      createGain() {
-        return { gain: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() }, connect: vi.fn() }
-      }
-      createOscillator() {
-        tones.push("tone")
-        return { type: "sine", frequency: { setValueAtTime: vi.fn() }, connect: vi.fn(), start: vi.fn(), stop: vi.fn() }
-      }
-    }
-    vi.stubGlobal("AudioContext", FakeAudioContext)
-    const operatorMessage = (seq: number) => ({ id: `m-${seq}`, seq, authorKind: "OPERATOR" as const, authorName: "Bruno", body: `oi ${seq}`, systemCode: null, occurredAt: minutesAgo(0) })
-    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(1), operatorMessage(2)], hasMore: false })
-    document.title = "INIA"
-    const { rerender } = render(<AnjoWorkspace />)
-    await screen.findByText("oi 2")
-    fireEvent.pointerDown(document.body)
-    expect(tones).toHaveLength(0)
-
-    // O Anjo foi para outro sistema: a janela perdeu o foco.
-    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(false)
-    service.fetchSupportMessages.mockResolvedValueOnce({ messages: [operatorMessage(3)], hasMore: false })
-    setHook({ anjo: anjoView({ attendances: [attendance({ lastSeq: 3 })] }) })
-    rerender(<AnjoWorkspace />)
-    await waitFor(() => expect(document.title).toBe(newMessageTitle("Bruno")))
-    expect(tones.length).toBeGreaterThan(0)
-
-    focus.mockReturnValue(true)
-    act(() => {
-      window.dispatchEvent(new Event("focus"))
-    })
-    expect(document.title).toBe("INIA")
-    vi.unstubAllGlobals()
+    expect(screen.getByRole("tab", { name: /^Atendimento/ })).toHaveTextContent("2 mensagens novas")
+    expect(screen.getByRole("tab", { name: /Bruno/, hidden: true })).toHaveTextContent("2 mensagens novas")
   })
 
   it("tempo de atendimento: desde o início real do atendimento, pelo relógio do servidor, um por atendimento", () => {

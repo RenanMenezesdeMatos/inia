@@ -5,13 +5,14 @@ import { evaluationInputSchema } from "../domain/evaluation.js"
 import { classifyAttendance } from "../application/classification-service.js"
 import { evaluateAttendance } from "../application/evaluation-service.js"
 import { anjoAttendanceHistory, myRequests } from "../application/history-service.js"
+import { operationHistory } from "../application/operation-history.js"
 import { acknowledgeMessages, signalTyping } from "../application/conversation-marks.js"
 import { listMessages, sendMessage } from "../application/message-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest, type Viewer } from "../application/request-service.js"
 import { operatorRequestView } from "../application/request-views.js"
 import { cancelScheduledPresence, changePresence, isAnjo, loadAnjoView, loadState } from "../application/state-service.js"
 import type { WaiterRegistry } from "../application/waiters.js"
-import { closeSchema, createRequestSchema, idParamSchema, listQuerySchema, messagesQuerySchema, presenceSchema, receiptsSchema, sendMessageSchema, sourceSchema, stateQuerySchema, typingSchema } from "./schemas.js"
+import { closeSchema, createRequestSchema, idParamSchema, listQuerySchema, messagesQuerySchema, presenceSchema, receiptsSchema, sendMessageSchema, sourceSchema, stateQuerySchema, timelineQuerySchema, typingSchema } from "./schemas.js"
 
 /**
  * ROTAS DO OPERADOR E DO ANJO (`/api/v1/human-support`, montadas com `requireAuth`; design_draft.md seção 16). Dono e organização
@@ -48,8 +49,12 @@ export function createHumanSupportRouter(db: Database, deps: HumanSupportRouterD
   router.get("/me/state", async (request, response) => {
     const query = stateQuerySchema.parse(request.query)
     const viewer = viewerOf(request)
-    const anjo = query.workspace === "anjo" && (await isAnjo(db, viewer))
-    const options = { workspace: anjo ? ("anjo" as const) : ("none" as const), anjo }
+    // `anjo` = a área do Anjo mantém a conexão; `anjo-status` = só lê o estado (o indicador da aba "Apoio" ao entrar), sem conectar.
+    const anjo = query.workspace !== "none" && (await isAnjo(db, viewer))
+    // A sessão desta chamada fica na presença: se a área parar de dar sinal, a distribuição sabe se foi a rede ou o fim da sessão.
+    const user = request.user!
+    const session = { jti: user.jti ?? null, accountId: user.sub, expiresAt: typeof user.exp === "number" ? new Date(user.exp * 1000) : null }
+    const options = { workspace: anjo ? query.workspace : ("none" as const), anjo, session }
     const waiters = deps.waiters ?? null
     // No dreno do processo (desligamento): responde na hora e o navegador reconecta em outra instância.
     if (waiters?.draining) return void response.json({ data: { ...(await loadState(db, viewer, options)), reconnect: true } })
@@ -129,6 +134,11 @@ export function createHumanSupportRouter(db: Database, deps: HumanSupportRouterD
   // Desfaz a pausa ou indisponibilidade programada (o estado atual fica).
   router.delete("/anjo/presence/scheduled", requireAttend, presenceLimiter, async (request, response) => {
     response.json({ data: { anjo: await cancelScheduledPresence(db, viewerOf(request)) } })
+  })
+
+  // O próprio histórico (jornada e indicadores de atendimento); nunca o de outro Anjo.
+  router.get("/anjo/history", requireAttend, async (request, response) => {
+    response.json({ data: await operationHistory(db, viewerOf(request), timelineQuerySchema.parse(request.query), "SELF") })
   })
 
   router.get("/anjo/attendances", requireAttend, async (request, response) => {

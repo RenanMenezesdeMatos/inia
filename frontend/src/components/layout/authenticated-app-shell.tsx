@@ -15,6 +15,7 @@ import { CREATE_PASSWORD_ROUTE, logout, logoutEverywhere, myProfileHrefFor } fro
 import { loadSessionDocument } from "@/lib/auth/session-navigation"
 import { shutdownUsageForLogout, UsageAnalyticsProvider } from "@/lib/usage/usage-provider"
 import { HumanSupportStateProvider } from "@/queries/human-support/use-human-support-state"
+import { AnjoWorkspaceProvider } from "@/queries/human-support/anjo-workspace-provider"
 
 type AuthenticatedAppShellProps = {
   children: React.ReactNode
@@ -60,7 +61,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
         canViewDiagnostics: user.access.capabilities.canViewDiagnostics,
         canUseReports: user.access.capabilities.canUseReports,
         canViewBestPractices: user.access.capabilities.canViewBestPractices,
-        // Apoio com Anjo: "Área do Anjo" no seletor de área (o Anjo atende em /apoio).
+        // Apoio com Anjo: atalho com o contador no cabeçalho (a área do Anjo é a aba "Apoio" do perfil).
         canAttendHumanSupport: user.access.capabilities.canAttendHumanSupport,
       }
     : null
@@ -91,6 +92,8 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
   return (
     <UsageAnalyticsProvider>
     <SessionIdleGuard timeoutMinutes={user?.sessionIdleTimeoutMinutes ?? 0} onExpired={handleIdleExpired} />
+    {/* Apoio com Anjo, lado do ANJO: a conexão e os avisos valem em qualquer tela do app (cabeçalho e conteúdo), não só na aba "Apoio". */}
+    <AnjoWorkspaceProvider available={Boolean(user?.access.capabilities.canAttendHumanSupport)}>
     <div className="min-h-screen overflow-x-clip bg-canvas text-foreground">
       {shell ? (
         <AppTopBar
@@ -115,6 +118,7 @@ export function AuthenticatedAppShell({ children }: AuthenticatedAppShellProps) 
         </main>
       </HumanSupportStateProvider>
     </div>
+    </AnjoWorkspaceProvider>
     </UsageAnalyticsProvider>
   )
 }

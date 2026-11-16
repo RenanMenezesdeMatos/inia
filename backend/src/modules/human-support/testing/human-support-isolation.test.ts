@@ -45,6 +45,8 @@ describe("isolamento do Apoio com Anjo (servidor)", () => {
       /^\.\.\/\.\.\/assistant\/domain\/assistant-interaction-rating\.js$/,
       /^\.\.\/\.\.\/access\/application\/permission-holders\.js$/,
       /^\.\.\/\.\.\/access\/domain\/access-scope\.js$/,
+      // Migration 191: a sessão que mantinha a área do Anjo já tinha terminado? (separa sessão encerrada de queda de rede)
+      /^\.\.\/\.\.\/auth\/application\/session-ended\.js$/,
       /^\.\.\/\.\.\/profile-preferences\/application\/person-presentation-loader\.js$/,
       /^\.\.\/\.\.\/data-lifecycle\/application\/(personal-data-access-log|subject-data-export)\.js$/,
       /^\.\.\/\.\.\/\.\.\/(shared|infrastructure|config)\//,

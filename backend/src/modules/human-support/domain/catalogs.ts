@@ -16,11 +16,14 @@ export const isFinalStatus = (status: RequestStatus) => !OPEN_REQUEST_STATUSES.i
 
 export const REQUEST_END_CAUSES = ["OPERATOR_CANCELLED", "SCOPE_DISABLED", "QUEUE_EXPIRED", "OPERATOR_ABANDONED", "OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY"] as const
 export type RequestEndCause = (typeof REQUEST_END_CAUSES)[number]
-export const ATTENDANCE_END_CAUSES = ["OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY", "ANJO_LOST"] as const
+/** `TRANSFERRED` (migration 190) = a coordenação passou o atendimento para outro Anjo ou o devolveu à fila. */
+export const ATTENDANCE_END_CAUSES = ["OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY", "ANJO_LOST", "TRANSFERRED"] as const
+/** Atendimentos que terminaram sem que o Anjo concluísse o caso (sem classificação nem avaliação): interrompido e transferido. */
+export const UNFINISHED_ATTENDANCE_END_CAUSES: readonly AttendanceEndCause[] = ["ANJO_LOST", "TRANSFERRED"]
 export type AttendanceEndCause = (typeof ATTENDANCE_END_CAUSES)[number]
 
 /** Causas gravadas em `human_support_request_events` (`REQUEST_EVENT_CAUSES_V1`). */
-export const REQUEST_EVENT_CAUSES_V1 = ["CREATED", "ASSIGNED", "ANJO_LOST", "REQUEUED", ...REQUEST_END_CAUSES] as const
+export const REQUEST_EVENT_CAUSES_V1 = ["CREATED", "ASSIGNED", "ANJO_LOST", "REQUEUED", "TRANSFERRED", ...REQUEST_END_CAUSES] as const
 export type RequestEventCause = (typeof REQUEST_EVENT_CAUSES_V1)[number]
 
 export const REQUEST_ORIGINS = ["BUTTON", "DISLIKE", "SIGNAL"] as const
@@ -36,10 +39,19 @@ export const PAUSE_REASONS_V1 = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETI
 export type PauseReason = (typeof PAUSE_REASONS_V1)[number]
 export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião" }
 
-/** `ANJO_SCHEDULED` = a pausa ou indisponibilidade que o Anjo programou entrou ao terminar o último atendimento (migration 188). */
-export const PRESENCE_EVENT_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED"] as const
-/** Causas que mudam o estado declarado (as outras só falam da conexão). */
-export const PRESENCE_STATUS_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED"] as const satisfies readonly PresenceEventCause[]
+/**
+ * `ANJO_SCHEDULED` = a pausa ou indisponibilidade que o Anjo programou entrou ao terminar o último atendimento (migration 188).
+ * `SESSION_ENDED` = a área do Anjo parou de dar sinal porque a SESSÃO terminou (logout, prazo do login, inatividade ou conta
+ * desligada), separado da queda de rede `CONNECTION_LOST` (migration 191). Os dois marcam o instante em que a conexão venceu.
+ */
+export const PRESENCE_EVENT_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED", "SESSION_ENDED"] as const
+/** Causas da conexão (as outras mudam o estado declarado; `SESSION_ENDED` faz as duas coisas). */
+export const CONNECTION_EVENT_CAUSES = ["CONNECTION_LOST", "CONNECTION_RESTORED", "SESSION_ENDED"] as const satisfies readonly PresenceEventCause[]
+/**
+ * Causas que mudam o estado declarado (as outras só falam da conexão). `SESSION_ENDED` (decisão do responsável em 11/11/2026): a
+ * sessão terminou → o Anjo fica Indisponível na hora; entrar de novo e abrir a área NÃO o deixa Disponível — ele escolhe Disponível.
+ */
+export const PRESENCE_STATUS_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "SESSION_ENDED"] as const satisfies readonly PresenceEventCause[]
 export type PresenceEventCause = (typeof PRESENCE_EVENT_CAUSES)[number]
 
 /**
@@ -74,6 +86,18 @@ export const CLASSIFICATION_OUTCOME_LABELS: Record<ClassificationOutcome, string
   NOT_RESOLVED: "Não resolvido",
 }
 
+/**
+ * Pertinência do acionamento, marcada pelo Anjo ao classificar (`PERTINENCE_V1`, migration 191). Classificação anterior à 191 não
+ * tem o campo e é lida como Não avaliado. A taxa de pertinência usa só os avaliados (Pertinente ÷ (Pertinente + Não pertinente)).
+ */
+export const PERTINENCE_V1 = ["PERTINENT", "NOT_PERTINENT", "NOT_EVALUATED"] as const
+export type Pertinence = (typeof PERTINENCE_V1)[number]
+export const PERTINENCE_LABELS: Record<Pertinence, string> = { PERTINENT: "Pertinente", NOT_PERTINENT: "Não pertinente", NOT_EVALUATED: "Não avaliado" }
+
+/** Por que o sistema interrompeu um atendimento (`ANJO_LOST`, migration 191): rede, sessão encerrada ou papel retirado. */
+export const LOST_CAUSES = ["CONNECTION", "SESSION", "ROLE_REVOKED"] as const
+export type LostCause = (typeof LOST_CAUSES)[number]
+
 export const EVALUATION_RESOLVED = ["YES", "PARTIAL", "NO"] as const
 export type EvaluationResolved = (typeof EVALUATION_RESOLVED)[number]
 export const EVALUATION_RESOLVED_LABELS: Record<EvaluationResolved, string> = { YES: "Sim", PARTIAL: "Em parte", NO: "Não" }
@@ -93,6 +117,9 @@ export const SYSTEM_MESSAGE_CODES_V1 = [
   "CANCELLED_SCOPE_DISABLED",
   "EXPIRED",
   "ABANDONED",
+  // Migration 190: transferência pela coordenação.
+  "ANJO_TRANSFERRED",
+  "TRANSFER_REQUEUED",
 ] as const
 export type SystemMessageCode = (typeof SYSTEM_MESSAGE_CODES_V1)[number]
 /** Quem lê a conversa: o operador, o Anjo do atendimento ou quem acompanha (Coordenador de Anjos, Administrador geral). */
@@ -130,6 +157,12 @@ export function systemMessageText(code: SystemMessageCode, reader: MessageReader
       return reader === "OPERATOR" ? "Nenhum Anjo pôde atender a tempo. O pedido expirou — você pode pedir de novo." : "O pedido expirou na fila."
     case "ABANDONED":
       return reader === "OPERATOR" ? "O pedido foi encerrado porque a INIA ficou fechada." : "Pedido encerrado: o operador fechou a INIA."
+    // A mensagem da transferência direta pertence ao atendimento NOVO (`anjoName` = quem recebeu); a da devolução, ao que terminou.
+    // O motivo da transferência nunca aparece aqui (fica no registro, para a coordenação).
+    case "ANJO_TRANSFERRED":
+      return reader === "ANJO" ? "Você recebeu este atendimento por transferência da coordenação. A conversa anterior está acima." : reader === "OPERATOR" ? `Seu atendimento foi passado para ${anjo} (Anjo), que continua a conversa daqui.` : `Atendimento transferido para ${anjo} pela coordenação.`
+    case "TRANSFER_REQUEUED":
+      return reader === "OPERATOR" ? "Seu atendimento voltou para a frente da fila: outro Anjo vai continuar a conversa." : reader === "ANJO" ? "A coordenação devolveu este atendimento à fila." : `Atendimento de ${anjo} devolvido à frente da fila pela coordenação.`
   }
 }
 
@@ -173,6 +206,9 @@ export const HUMAN_SUPPORT_LIMITS = {
   stateMessages: 50,
   /** "Digitando" vale por este prazo depois do último sinal da tela (que renova a cada 4 s enquanto a pessoa escreve). */
   typingTtlSeconds: 8,
+  /** Motivo da transferência pela coordenação (migration 190): obrigatório, curto, nunca visto pelo operador. */
+  transferReasonMin: 3,
+  transferReasonMax: 500,
 } as const
 
 /** Protocolo legível do pedido: `AP-` + 6 símbolos sem 0/O/1/I (mesmo padrão do `check` da migration). */

@@ -1,3 +1,5 @@
+import { checkContentBeforeDelivery } from "../../governance/application/response-compliance.js"
+import { contentWithoutCitations } from "../../governance/domain/response-compliance.js"
 import { env } from "../../../config/env.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { systemClock, type Clock } from "../../../shared/domain/clock.js"
@@ -19,7 +21,9 @@ import { prepareInteractionForFeedback } from "./prepare-interaction-for-feedbac
  */
 export function createInteractionFeedbackPipelineDeps(input: { db: Pick<Database, "query">; writer?: FeedbackWriterPort; clock?: Clock }): PipelineDeps {
   const clock = input.clock ?? systemClock
-  return { enabled: env.INIA_INTERACTION_FEEDBACK_PIPELINE === "ON", writer: input.writer ?? createGeminiFeedbackWriter(), store: createPostgresInteractionFeedbackStore(input.db), now: () => clock.now(), deliveryPolicy: FEEDBACK_DELIVERY_POLICIES[env.INIA_FEEDBACK_DELIVERY_POLICY] }
+  return {
+    responseCheck: (check) => checkContentBeforeDelivery(input.db, { organizationId: check.organizationId, text: check.text, content: contentWithoutCitations(check.text), agentId: null, surface: "INTERACTION_FEEDBACK", group: "FEEDBACK", source: "FEEDBACK_WRITER", sourceRef: check.runId }),
+    enabled: env.INIA_INTERACTION_FEEDBACK_PIPELINE === "ON", writer: input.writer ?? createGeminiFeedbackWriter(), store: createPostgresInteractionFeedbackStore(input.db), now: () => clock.now(), deliveryPolicy: FEEDBACK_DELIVERY_POLICIES[env.INIA_FEEDBACK_DELIVERY_POLICY] }
 }
 
 /** A MESMA decisão que monta as rotas em app.ts e a que o publish/executor do Workflow consultam (V1.5.10). */

@@ -15,6 +15,12 @@ export const RESPONSE_CHECK_SURFACE_LABELS: Record<string, string> = {
   AGENT_RUN: "Execução de agente",
   SPECIALIST: "Especialista",
   WORKFLOW_ORCHESTRATOR: "Orquestrador em Workflow",
+  FEEDBACK_MESSAGE: "Mensagem de feedback",
+  REPORT_ANALYSIS: "Análise de report",
+  INTERVENTION_NARRATIVE: "Narrativa de intervenção",
+  INTERVENTION_DRAFT: "Rascunho de intervenção",
+  BEST_PRACTICE: "Boa prática",
+  INTERACTION_FEEDBACK: "Feedback de atendimento (caminho antigo)",
 }
 
 export const responseCheckEventSchema = z.object({
@@ -26,6 +32,8 @@ export const responseCheckEventSchema = z.object({
   rules: z.array(z.object({ kind: z.string(), name: z.string() })),
   reason: z.string().nullable(),
   errorCode: z.string().nullable(),
+  /** Onde está o conteúdo, nos fluxos em que o registro não copia o texto. */
+  sourceRef: z.string().nullable(),
   flaggedContent: z.string().nullable(),
   conversationId: z.string().nullable(),
   agentId: z.string().nullable(),
@@ -34,7 +42,8 @@ export const responseCheckEventSchema = z.object({
 })
 export type ResponseCheckEvent = z.infer<typeof responseCheckEventSchema>
 
-export const responseCheckSummarySchema = z.object({ days: z.number(), mode: z.enum(["ENFORCE", "AUDIT", "OFF"]), checked: z.number(), delivered: z.number(), blocked: z.number(), detected: z.number(), failed: z.number() })
+const responseCheckModeSchema = z.enum(["ENFORCE", "AUDIT", "OFF"])
+export const responseCheckSummarySchema = z.object({ days: z.number(), mode: responseCheckModeSchema, modes: z.object({ conversation: responseCheckModeSchema, content: responseCheckModeSchema, feedback: responseCheckModeSchema }), checked: z.number(), delivered: z.number(), blocked: z.number(), detected: z.number(), failed: z.number() })
 export type ResponseCheckSummary = z.infer<typeof responseCheckSummarySchema>
 
 export const glossaryTermSchema = z.object({

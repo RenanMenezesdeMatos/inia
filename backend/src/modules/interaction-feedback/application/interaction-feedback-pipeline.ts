@@ -1,3 +1,5 @@
+import type { ContentDecision } from "../../governance/application/response-compliance.js"
+import { ownTextsOf } from "../../interventions/application/report-narrative.js"
 import { buildFeedbackWriterInput, resolveFeedbackWording, type ItemWording } from "../../investigation/domain/interaction-feedback-writer.js"
 import { checkHumanEdit, type HumanEditViolation } from "../domain/review-view.js"
 import { COLLABORATOR_SECTIONS, INTERACTION_FEEDBACK_CONTRACT, type InteractionFeedbackV1 } from "../../investigation/domain/interaction-feedback.js"
@@ -21,7 +23,7 @@ import type { DeliveryDecisionRecord, FeedbackWriterPort, InteractionFeedbackSto
 export const INTERACTION_FEEDBACK_PIPELINE_VERSION = "INTERACTION_FEEDBACK_PIPELINE_V1_5_5" as const
 export const WRITER_REJECTED_FALLBACK_USED = "WRITER_REJECTED_FALLBACK_USED" as const
 
-export type PipelineDeps = { enabled: boolean; writer: FeedbackWriterPort; store: InteractionFeedbackStore; now: () => Date; deliveryPolicy: FeedbackDeliveryPolicy }
+export type PipelineDeps = { responseCheck?: (input: { organizationId: string; runId: string; text: string }) => Promise<ContentDecision>; enabled: boolean; writer: FeedbackWriterPort; store: InteractionFeedbackStore; now: () => Date; deliveryPolicy: FeedbackDeliveryPolicy }
 type RecordedCommon = { runId: string; decisions: DeliveryDecisionRecord[]; delivery: RunDeliverySummary; occurrences: number; recommendations: number }
 export type PipelineResult =
   | { status: "SKIPPED_FLAG_OFF" }
@@ -84,6 +86,12 @@ export async function runInteractionFeedbackPipeline(deps: PipelineDeps, feedbac
     const outcome = resolution ? { invoked: true, writerError, source: resolution.source, violations: resolution.violations, wording: resolution.wording, claimModes: { effect: prepared.input.effectClaimMode, action: writerItem!.actionClaimMode } } : null
     return { itemIndex, writerItem, resolution, decision: decideItemDelivery(feedback.items[itemIndex]!, feedback, outcome, deps.deliveryPolicy) }
   })
+  // PEN-018, decisão 7: o caminho antigo passa pela mesma conferência enquanto houver Workflow usando. Em AUDIT (o padrão) só registra. Em ENFORCE, o que foi apontado
+  // ou não pôde ser conferido não sai sozinho: vai para a revisão humana que este caminho já tem.
+  const conference = deps.responseCheck ? await deps.responseCheck({ organizationId: context.organizationId, runId, text: planned.flatMap((entry) => (entry.resolution ? ownTextsOf(entry.resolution.wording) : [])).join("\n") }) : null
+  if (conference && conference.decision !== "DELIVER") {
+    for (const entry of planned) if (entry.decision.disposition === "AUTO_DELIVER") entry.decision = { ...entry.decision, disposition: "HOLD_FOR_QA", reasons: ["RESPONSE_CHECK_FLAGGED"] }
+  }
   const withWording = planned.filter((entry) => entry.decision.structural === "STRUCTURALLY_DELIVERABLE" && entry.writerItem && entry.resolution)
   const reviews = await deps.store.createItemReviews(withWording.map(({ itemIndex, writerItem, resolution, decision }) => ({
     organizationId: context.organizationId, runId, slot: writerItem!.slot, itemIndex, section: writerItem!.section, findingKind: writerItem!.interpretation.kind, guidanceSource: writerItem!.guidance.source,

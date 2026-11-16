@@ -1,0 +1,995 @@
+{
+ "partes": {
+  "todos": {
+   "n": 143,
+   "charsPorToken": 4.693,
+   "entradaAnalise": 42834,
+   "entradaRevisao": 50867,
+   "sistemaA": 2047,
+   "sistemaR": 2469,
+   "especialista": 342,
+   "procedimentos": 17314,
+   "argumentarios": 22336,
+   "catalogoProduto": 197,
+   "transcricao": 465,
+   "fixoAnalise": 42248,
+   "fixoRevisao": 42328,
+   "pctFixoAnalise": 98.6
+  },
+  "10-05..06": {
+   "n": 100,
+   "charsPorToken": 5.082,
+   "entradaAnalise": 42217,
+   "entradaRevisao": 50809,
+   "sistemaA": 1457,
+   "sistemaR": 2096,
+   "especialista": 364,
+   "procedimentos": 19811,
+   "argumentarios": 19997,
+   "catalogoProduto": 0,
+   "transcricao": 467,
+   "fixoAnalise": 41641,
+   "fixoRevisao": 41915,
+   "pctFixoAnalise": 98.6
+  },
+  "10-20..22": {
+   "n": 43,
+   "charsPorToken": 3.788,
+   "entradaAnalise": 44269,
+   "entradaRevisao": 51004,
+   "sistemaA": 3417,
+   "sistemaR": 3337,
+   "especialista": 291,
+   "procedimentos": 11506,
+   "argumentarios": 27774,
+   "catalogoProduto": 655,
+   "transcricao": 462,
+   "fixoAnalise": 43659,
+   "fixoRevisao": 43287,
+   "pctFixoAnalise": 98.5
+  },
+  "10-21..22 (modo produto)": {
+   "n": 30,
+   "charsPorToken": 3.706,
+   "entradaAnalise": 50421,
+   "entradaRevisao": 58015,
+   "sistemaA": 4103,
+   "sistemaR": 3640,
+   "especialista": 346,
+   "procedimentos": 15540,
+   "argumentarios": 28734,
+   "catalogoProduto": 939,
+   "transcricao": 589,
+   "fixoAnalise": 49677,
+   "fixoRevisao": 48868,
+   "pctFixoAnalise": 98.3
+  }
+ },
+ "meanK": 3.782,
+ "rodadas": 147,
+ "reconstruidas": 146,
+ "puladas": 1,
+ "fidelidade": {
+  "todas": {
+   "n": 146,
+   "ordemIgual": 86,
+   "charsIguais": 44,
+   "charsAte1pct": 44
+  },
+  "desde_10_20": {
+   "n": 43,
+   "ordemIgual": 42,
+   "charsIguais": 43,
+   "charsAte1pct": 43
+  }
+ },
+ "calibracao": {
+  "n": 42,
+  "charsPorToken_p50": 3.992,
+  "p10": 3.392,
+  "p90": 4.02,
+  "revisao_p50": 3.158
+ },
+ "variacao": {
+  "ordensDistintasNoPeriodo": {
+   "todos": {
+    "runs": 146,
+    "primeiroDoc": 13,
+    "kbOrdem": 48,
+    "kbEstavel": 37,
+    "agentes": 12,
+    "omitidos": 4,
+    "docs": 4.9
+   },
+   "10-05..06": {
+    "runs": 103,
+    "primeiroDoc": 7,
+    "kbOrdem": 29,
+    "kbEstavel": 20,
+    "agentes": 6,
+    "omitidos": 4.9,
+    "docs": 4.6
+   },
+   "10-20..22": {
+    "runs": 43,
+    "primeiroDoc": 9,
+    "kbOrdem": 20,
+    "kbEstavel": 18,
+    "agentes": 8,
+    "omitidos": 1.9,
+    "docs": 5.6
+   },
+   "10-21..22 (modo produto)": {
+    "runs": 30,
+    "primeiroDoc": 4,
+    "kbOrdem": 11,
+    "kbEstavel": 9,
+    "agentes": 3,
+    "omitidos": 2.7,
+    "docs": 7.3
+   }
+  }
+ },
+ "composicaoChars": {
+  "todos": {
+   "n": 146,
+   "sysA": 8894,
+   "sysR": 11080,
+   "sysC": 6196,
+   "spec": 1596,
+   "transcript": 2131,
+   "proc": 81255,
+   "scr": 101324,
+   "prodMeta": 23,
+   "prodCat": 711,
+   "turn": 187621
+  },
+  "10-05..06": {
+   "n": 103,
+   "sysA": 7286,
+   "sysR": 10478,
+   "sysC": 6100,
+   "spec": 1824,
+   "transcript": 2298,
+   "proc": 98568,
+   "scr": 99988,
+   "prodMeta": 0,
+   "prodCat": 0,
+   "turn": 203278
+  },
+  "10-20..22": {
+   "n": 43,
+   "sysA": 12747,
+   "sysR": 12521,
+   "sysC": 6427,
+   "spec": 1050,
+   "transcript": 1732,
+   "proc": 39784,
+   "scr": 104524,
+   "prodMeta": 79,
+   "prodCat": 2413,
+   "turn": 150118
+  },
+  "10-21..22 (modo produto)": {
+   "n": 30,
+   "sysA": 15113,
+   "sysR": 13406,
+   "sysC": 6568,
+   "spec": 1230,
+   "transcript": 2192,
+   "proc": 53621,
+   "scr": 105820,
+   "prodMeta": 113,
+   "prodCat": 3459,
+   "turn": 166949
+  }
+ },
+ "tokensRegistrados": {
+  "todos": {
+   "analise": 42834,
+   "revisao": 50867,
+   "confirmacao": 2856
+  },
+  "10-05..06": {
+   "analise": 42217,
+   "revisao": 50809,
+   "confirmacao": 2485
+  },
+  "10-20..22": {
+   "analise": 44269,
+   "revisao": 51004,
+   "confirmacao": 3580
+  },
+  "10-21..22 (modo produto)": {
+   "analise": 50421,
+   "revisao": 58015,
+   "confirmacao": 3835
+  }
+ },
+ "lcpAnalise": {
+  "todos": {
+   "atual": {
+    "pares": 145,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2409,
+     "p90": 4202,
+     "media": 2703
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 2419,
+     "p90": 4246,
+     "media": 2528
+    },
+    "media_seguidas_chars": 10222
+   },
+   "baseAntes_ordemPorChamada": {
+    "pares": 145,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2427,
+     "p90": 34812,
+     "media": 12002
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 21109,
+     "p90": 56101,
+     "media": 28255
+    },
+    "media_seguidas_chars": 45391
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 145,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2526,
+     "p90": 50511,
+     "media": 11887
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 34855,
+     "p90": 56373,
+     "media": 32124
+    },
+    "media_seguidas_chars": 44958
+   }
+  },
+  "10-05..06": {
+   "atual": {
+    "pares": 102,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2409,
+     "p90": 2409,
+     "media": 2343
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 2409,
+     "p90": 2430,
+     "media": 2286
+    },
+    "media_seguidas_chars": 8860
+   },
+   "baseAntes_ordemPorChamada": {
+    "pares": 102,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2427,
+     "p90": 22879,
+     "media": 9856
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 22879,
+     "p90": 56101,
+     "media": 31439
+    },
+    "media_seguidas_chars": 37278
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 102,
+    "seguidas_tokens": {
+     "p10": 1938,
+     "p50": 2526,
+     "p90": 50511,
+     "media": 9170
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 1938,
+     "p50": 55470,
+     "p90": 56373,
+     "media": 36544
+    },
+    "media_seguidas_chars": 34683
+   }
+  },
+  "10-20..22": {
+   "atual": {
+    "pares": 42,
+    "seguidas_tokens": {
+     "p10": 1940,
+     "p50": 4202,
+     "p90": 4497,
+     "media": 3596
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 4202,
+     "p90": 4497,
+     "media": 3177
+    },
+    "media_seguidas_chars": 13599
+   },
+   "baseAntes_ordemPorChamada": {
+    "pares": 42,
+    "seguidas_tokens": {
+     "p10": 1940,
+     "p50": 10209,
+     "p90": 34812,
+     "media": 17452
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 16605,
+     "p90": 35597,
+     "media": 21194
+    },
+    "media_seguidas_chars": 66003
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 42,
+    "seguidas_tokens": {
+     "p10": 1940,
+     "p50": 4595,
+     "p90": 35597,
+     "media": 18721
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 29430,
+     "p90": 58768,
+     "media": 22154
+    },
+    "media_seguidas_chars": 70806
+   }
+  },
+  "10-21..22 (modo produto)": {
+   "atual": {
+    "pares": 29,
+    "seguidas_tokens": {
+     "p10": 4168,
+     "p50": 4202,
+     "p90": 4497,
+     "media": 4327
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 4246,
+     "p90": 4497,
+     "media": 3897
+    },
+    "media_seguidas_chars": 16364
+   },
+   "baseAntes_ordemPorChamada": {
+    "pares": 29,
+    "seguidas_tokens": {
+     "p10": 4496,
+     "p50": 34795,
+     "p90": 35597,
+     "media": 24375
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 34811,
+     "p90": 60394,
+     "media": 27127
+    },
+    "media_seguidas_chars": 92188
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 29,
+    "seguidas_tokens": {
+     "p10": 4595,
+     "p50": 34795,
+     "p90": 58768,
+     "media": 26214
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 34811,
+     "p90": 60394,
+     "media": 28517
+    },
+    "media_seguidas_chars": 99144
+   }
+  }
+ },
+ "lcpRevisao": {
+  "todos": {
+   "atual": {
+    "pares": 145,
+    "seguidas_tokens": {
+     "p10": 2778,
+     "p50": 2778,
+     "p90": 3593,
+     "media": 3289
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 2778,
+     "p50": 2811,
+     "p90": 3594,
+     "media": 3078
+    },
+    "media_seguidas_chars": 12441
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 145,
+    "seguidas_tokens": {
+     "p10": 2802,
+     "p50": 2893,
+     "p90": 50790,
+     "media": 12184
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 2802,
+     "p50": 34158,
+     "p90": 56737,
+     "media": 32736
+    },
+    "media_seguidas_chars": 46081
+   }
+  },
+  "10-05..06": {
+   "atual": {
+    "pares": 102,
+    "seguidas_tokens": {
+     "p10": 2778,
+     "p50": 2778,
+     "p90": 2811,
+     "media": 3276
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 2778,
+     "p50": 2811,
+     "p90": 2825,
+     "media": 3187
+    },
+    "media_seguidas_chars": 12390
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 102,
+    "seguidas_tokens": {
+     "p10": 2893,
+     "p50": 2893,
+     "p90": 50790,
+     "media": 9698
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 2893,
+     "p50": 55833,
+     "p90": 56737,
+     "media": 37541
+    },
+    "media_seguidas_chars": 36677
+   }
+  },
+  "10-20..22": {
+   "atual": {
+    "pares": 42,
+    "seguidas_tokens": {
+     "p10": 2778,
+     "p50": 3577,
+     "p90": 3596,
+     "media": 3334
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 3577,
+     "p90": 3597,
+     "media": 2885
+    },
+    "media_seguidas_chars": 12610
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 42,
+    "seguidas_tokens": {
+     "p10": 2795,
+     "p50": 3667,
+     "p90": 34670,
+     "media": 18446
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 30144,
+     "p90": 57818,
+     "media": 21845
+    },
+    "media_seguidas_chars": 69765
+   }
+  },
+  "10-21..22 (modo produto)": {
+   "atual": {
+    "pares": 29,
+    "seguidas_tokens": {
+     "p10": 3552,
+     "p50": 3593,
+     "p90": 3597,
+     "media": 3584
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 3594,
+     "p90": 3597,
+     "media": 3216
+    },
+    "media_seguidas_chars": 13555
+   },
+   "baseAntes_ordemEstavel": {
+    "pares": 29,
+    "seguidas_tokens": {
+     "p10": 3667,
+     "p50": 34157,
+     "p90": 57818,
+     "media": 25443
+    },
+    "melhorNaJanela_tokens": {
+     "p10": 0,
+     "p50": 34157,
+     "p90": 59462,
+     "media": 27809
+    },
+    "media_seguidas_chars": 96229
+   }
+  }
+ },
+ "replay": {
+  "todos": {
+   "A: só instruções (texto igual)": {
+    "analise": {
+     "chamadas": 146,
+     "chaves": 2,
+     "criacoes": 19,
+     "acertos": 127,
+     "pctAcerto": 87,
+     "custoSem": 0.2238,
+     "custoCom": 0.0675,
+     "liquido": 0.1564,
+     "liquidoPorChamada": 0.001071
+    },
+    "revisao": {
+     "chamadas": 146,
+     "chaves": 2,
+     "criacoes": 19,
+     "acertos": 127,
+     "pctAcerto": 87,
+     "custoSem": 0.271,
+     "custoCom": 0.0783,
+     "liquido": 0.1927,
+     "liquidoPorChamada": 0.00132
+    }
+   },
+   "B: base antes da chamada, ordem por chamada": {
+    "analise": {
+     "chamadas": 146,
+     "chaves": 48,
+     "criacoes": 84,
+     "acertos": 62,
+     "pctAcerto": 42,
+     "custoSem": 4.6488,
+     "custoCom": 4.0844,
+     "liquido": 0.5644,
+     "liquidoPorChamada": 0.003866
+    }
+   },
+   "C: base antes da chamada, ordem estável (TTL 30)": {
+    "analise": {
+     "chamadas": 146,
+     "chaves": 37,
+     "criacoes": 70,
+     "acertos": 76,
+     "pctAcerto": 52,
+     "custoSem": 4.6488,
+     "custoCom": 3.4558,
+     "liquido": 1.193,
+     "liquidoPorChamada": 0.008171
+    },
+    "revisao": {
+     "chamadas": 146,
+     "chaves": 36,
+     "criacoes": 69,
+     "acertos": 77,
+     "pctAcerto": 53,
+     "custoSem": 4.6582,
+     "custoCom": 3.4225,
+     "liquido": 1.2357,
+     "liquidoPorChamada": 0.008464
+    }
+   },
+   "C: TTL 5": {
+    "analise": {
+     "chamadas": 146,
+     "chaves": 37,
+     "criacoes": 104,
+     "acertos": 42,
+     "pctAcerto": 29,
+     "custoSem": 4.6488,
+     "custoCom": 4.0095,
+     "liquido": 0.6393,
+     "liquidoPorChamada": 0.004379
+    },
+    "revisao": {
+     "chamadas": 146,
+     "chaves": 36,
+     "criacoes": 104,
+     "acertos": 42,
+     "pctAcerto": 29,
+     "custoSem": 4.6582,
+     "custoCom": 4.0188,
+     "liquido": 0.6394,
+     "liquidoPorChamada": 0.004379
+    }
+   },
+   "C: TTL 60": {
+    "analise": {
+     "chamadas": 146,
+     "chaves": 37,
+     "criacoes": 59,
+     "acertos": 87,
+     "pctAcerto": 60,
+     "custoSem": 4.6488,
+     "custoCom": 3.5177,
+     "liquido": 1.1311,
+     "liquidoPorChamada": 0.007748
+    },
+    "revisao": {
+     "chamadas": 146,
+     "chaves": 36,
+     "criacoes": 58,
+     "acertos": 88,
+     "pctAcerto": 60,
+     "custoSem": 4.6582,
+     "custoCom": 3.4768,
+     "liquido": 1.1814,
+     "liquidoPorChamada": 0.008092
+    }
+   }
+  },
+  "10-05..06": {
+   "A: só instruções (texto igual)": {
+    "analise": {
+     "chamadas": 103,
+     "chaves": 1,
+     "criacoes": 9,
+     "acertos": 94,
+     "pctAcerto": 91,
+     "custoSem": 0.1136,
+     "custoCom": 0.0242,
+     "liquido": 0.0894,
+     "liquidoPorChamada": 0.000868
+    },
+    "revisao": {
+     "chamadas": 103,
+     "chaves": 1,
+     "criacoes": 9,
+     "acertos": 94,
+     "pctAcerto": 91,
+     "custoSem": 0.1634,
+     "custoCom": 0.0348,
+     "liquido": 0.1286,
+     "liquidoPorChamada": 0.001249
+    }
+   },
+   "B: base antes da chamada, ordem por chamada": {
+    "analise": {
+     "chamadas": 103,
+     "chaves": 29,
+     "criacoes": 59,
+     "acertos": 44,
+     "pctAcerto": 43,
+     "custoSem": 3.2408,
+     "custoCom": 2.7446,
+     "liquido": 0.4963,
+     "liquidoPorChamada": 0.004818
+    }
+   },
+   "C: base antes da chamada, ordem estável (TTL 30)": {
+    "analise": {
+     "chamadas": 103,
+     "chaves": 20,
+     "criacoes": 46,
+     "acertos": 57,
+     "pctAcerto": 55,
+     "custoSem": 3.2408,
+     "custoCom": 2.1815,
+     "liquido": 1.0593,
+     "liquidoPorChamada": 0.010285
+    },
+    "revisao": {
+     "chamadas": 103,
+     "chaves": 19,
+     "criacoes": 45,
+     "acertos": 58,
+     "pctAcerto": 56,
+     "custoSem": 3.2622,
+     "custoCom": 2.1561,
+     "liquido": 1.106,
+     "liquidoPorChamada": 0.010738
+    }
+   },
+   "C: TTL 5": {
+    "analise": {
+     "chamadas": 103,
+     "chaves": 20,
+     "criacoes": 74,
+     "acertos": 29,
+     "pctAcerto": 28,
+     "custoSem": 3.2408,
+     "custoCom": 2.7656,
+     "liquido": 0.4753,
+     "liquidoPorChamada": 0.004614
+    },
+    "revisao": {
+     "chamadas": 103,
+     "chaves": 19,
+     "criacoes": 74,
+     "acertos": 29,
+     "pctAcerto": 28,
+     "custoSem": 3.2622,
+     "custoCom": 2.7838,
+     "liquido": 0.4783,
+     "liquidoPorChamada": 0.004644
+    }
+   },
+   "C: TTL 60": {
+    "analise": {
+     "chamadas": 103,
+     "chaves": 20,
+     "criacoes": 38,
+     "acertos": 65,
+     "pctAcerto": 63,
+     "custoSem": 3.2408,
+     "custoCom": 2.2089,
+     "liquido": 1.032,
+     "liquidoPorChamada": 0.010019
+    },
+    "revisao": {
+     "chamadas": 103,
+     "chaves": 19,
+     "criacoes": 37,
+     "acertos": 66,
+     "pctAcerto": 64,
+     "custoSem": 3.2622,
+     "custoCom": 2.1737,
+     "liquido": 1.0884,
+     "liquidoPorChamada": 0.010567
+    }
+   }
+  },
+  "10-20..22": {
+   "A: só instruções (texto igual)": {
+    "analise": {
+     "chamadas": 43,
+     "chaves": 2,
+     "criacoes": 10,
+     "acertos": 33,
+     "pctAcerto": 77,
+     "custoSem": 0.1102,
+     "custoCom": 0.0433,
+     "liquido": 0.0669,
+     "liquidoPorChamada": 0.001556
+    },
+    "revisao": {
+     "chamadas": 43,
+     "chaves": 2,
+     "criacoes": 10,
+     "acertos": 33,
+     "pctAcerto": 77,
+     "custoSem": 0.1076,
+     "custoCom": 0.0435,
+     "liquido": 0.0641,
+     "liquidoPorChamada": 0.00149
+    }
+   },
+   "B: base antes da chamada, ordem por chamada": {
+    "analise": {
+     "chamadas": 43,
+     "chaves": 20,
+     "criacoes": 25,
+     "acertos": 18,
+     "pctAcerto": 42,
+     "custoSem": 1.408,
+     "custoCom": 1.3398,
+     "liquido": 0.0681,
+     "liquidoPorChamada": 0.001585
+    }
+   },
+   "C: base antes da chamada, ordem estável (TTL 30)": {
+    "analise": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 24,
+     "acertos": 19,
+     "pctAcerto": 44,
+     "custoSem": 1.408,
+     "custoCom": 1.2743,
+     "liquido": 0.1337,
+     "liquidoPorChamada": 0.003109
+    },
+    "revisao": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 24,
+     "acertos": 19,
+     "pctAcerto": 44,
+     "custoSem": 1.396,
+     "custoCom": 1.2664,
+     "liquido": 0.1297,
+     "liquidoPorChamada": 0.003015
+    }
+   },
+   "C: TTL 5": {
+    "analise": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 30,
+     "acertos": 13,
+     "pctAcerto": 30,
+     "custoSem": 1.408,
+     "custoCom": 1.244,
+     "liquido": 0.164,
+     "liquidoPorChamada": 0.003814
+    },
+    "revisao": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 30,
+     "acertos": 13,
+     "pctAcerto": 30,
+     "custoSem": 1.396,
+     "custoCom": 1.2349,
+     "liquido": 0.1611,
+     "liquidoPorChamada": 0.003746
+    }
+   },
+   "C: TTL 60": {
+    "analise": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 21,
+     "acertos": 22,
+     "pctAcerto": 51,
+     "custoSem": 1.408,
+     "custoCom": 1.3088,
+     "liquido": 0.0992,
+     "liquidoPorChamada": 0.002306
+    },
+    "revisao": {
+     "chamadas": 43,
+     "chaves": 18,
+     "criacoes": 21,
+     "acertos": 22,
+     "pctAcerto": 51,
+     "custoSem": 1.396,
+     "custoCom": 1.303,
+     "liquido": 0.093,
+     "liquidoPorChamada": 0.002162
+    }
+   }
+  },
+  "10-21..22 (modo produto)": {
+   "A: só instruções (texto igual)": {
+    "analise": {
+     "chamadas": 30,
+     "chaves": 1,
+     "criacoes": 6,
+     "acertos": 24,
+     "pctAcerto": 80,
+     "custoSem": 0.0923,
+     "custoCom": 0.034,
+     "liquido": 0.0584,
+     "liquidoPorChamada": 0.001945
+    },
+    "revisao": {
+     "chamadas": 30,
+     "chaves": 1,
+     "criacoes": 6,
+     "acertos": 24,
+     "pctAcerto": 80,
+     "custoSem": 0.0819,
+     "custoCom": 0.0301,
+     "liquido": 0.0518,
+     "liquidoPorChamada": 0.001726
+    }
+   },
+   "B: base antes da chamada, ordem por chamada": {
+    "analise": {
+     "chamadas": 30,
+     "chaves": 11,
+     "criacoes": 15,
+     "acertos": 15,
+     "pctAcerto": 50,
+     "custoSem": 1.1177,
+     "custoCom": 1.0074,
+     "liquido": 0.1104,
+     "liquidoPorChamada": 0.00368
+    }
+   },
+   "C: base antes da chamada, ordem estável (TTL 30)": {
+    "analise": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 14,
+     "acertos": 16,
+     "pctAcerto": 53,
+     "custoSem": 1.1177,
+     "custoCom": 0.9418,
+     "liquido": 0.1759,
+     "liquidoPorChamada": 0.005864
+    },
+    "revisao": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 14,
+     "acertos": 16,
+     "pctAcerto": 53,
+     "custoSem": 1.0995,
+     "custoCom": 0.9269,
+     "liquido": 0.1726,
+     "liquidoPorChamada": 0.005753
+    }
+   },
+   "C: TTL 5": {
+    "analise": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 19,
+     "acertos": 11,
+     "pctAcerto": 37,
+     "custoSem": 1.1177,
+     "custoCom": 0.9528,
+     "liquido": 0.1649,
+     "liquidoPorChamada": 0.005498
+    },
+    "revisao": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 19,
+     "acertos": 11,
+     "pctAcerto": 37,
+     "custoSem": 1.0995,
+     "custoCom": 0.9376,
+     "liquido": 0.1619,
+     "liquidoPorChamada": 0.005398
+    }
+   },
+   "C: TTL 60": {
+    "analise": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 11,
+     "acertos": 19,
+     "pctAcerto": 63,
+     "custoSem": 1.1177,
+     "custoCom": 0.9005,
+     "liquido": 0.2173,
+     "liquidoPorChamada": 0.007242
+    },
+    "revisao": {
+     "chamadas": 30,
+     "chaves": 9,
+     "criacoes": 11,
+     "acertos": 19,
+     "pctAcerto": 63,
+     "custoSem": 1.0995,
+     "custoCom": 0.8862,
+     "liquido": 0.2134,
+     "liquidoPorChamada": 0.007112
+    }
+   }
+  }
+ }
+}

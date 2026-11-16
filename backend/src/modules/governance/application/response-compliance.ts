@@ -6,25 +6,30 @@ import { generateForRoute, routeFor, type GatewayRequest } from "../../../shared
 import { estimateTokens } from "../../../shared/application/model-routing/token-estimate.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
-import { loadAgentGuardrails, type AgentGuardrails } from "../../agents/application/agent-guardrails.js"
+import { loadAgentGuardrails, renderConversationGuardrails, type AgentGuardrails } from "../../agents/application/agent-guardrails.js"
 import { QaWriteBlockedError } from "../../qa-lab/application/read-only-database.js"
 import {
   complianceRulesOf,
   limitComplianceSources,
   parseComplianceVerdict,
+  renderComplianceContentSystem,
   renderComplianceInput,
   renderComplianceLimitSystem,
   renderComplianceSourcesSystem,
   renderComplianceSystem,
+  RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_LIMIT_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_MAX_CHARS,
   RESPONSE_COMPLIANCE_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_SOURCES_PROMPT_VERSION,
   RESPONSE_COMPLIANCE_DATA_PROMPT_VERSION,
   responseCheckMode,
+  responseCheckModeOf,
   type ComplianceHit,
   type ComplianceRule,
   type ComplianceSource,
+  type MarkedContent,
+  type ResponseCheckGroup,
 } from "../domain/response-compliance.js"
 
 /**
@@ -63,6 +68,8 @@ export type ResponseCheckRequest = {
   /** Regras já lidas neste turno: a resposta usa as mesmas que foram para a instrução. */
   guardrails?: AgentGuardrails | null | undefined
   source: LlmRequestSource
+  /** Conteúdo com a origem de cada trecho marcada (PEN-018). Presente, usa a V2 da conferência; `text` continua sendo o texto puro. */
+  content?: MarkedContent | undefined
   /** O que sustentou a resposta (trechos de base, respostas anteriores já conferidas). Com alguma fonte, usa a V3 da conferência. */
   sources?: readonly ComplianceSource[] | undefined
 }
@@ -70,7 +77,7 @@ export type ResponseCheckRequest = {
 /** `promptVersion`: a versão da conferência usada neste resultado, gravada no registro. */
 export type ResponseCheckResult =
   | { outcome: "NOT_APPLICABLE" }
-  | { outcome: "ALLOWED"; model: string | null; durationMs: number; promptVersion?: string }
+  | { outcome: "ALLOWED"; citationOnly?: true; model: string | null; durationMs: number; promptVersion?: string }
   | { outcome: "VIOLATION"; hits: ComplianceHit[]; reason: string; model: string | null; durationMs: number; promptVersion?: string }
   | { outcome: "CHECK_FAILED"; code: string; message: string; model: string | null; durationMs: number; cause?: unknown; promptVersion?: string }
 
@@ -95,14 +102,14 @@ export const checkResponse: ResponseCheck = async (db, request, model = gatewayC
   const rules = complianceRulesOf(guardrails)
   if (rules.length === 0) return { outcome: "NOT_APPLICABLE" }
   if (request.text.length > RESPONSE_COMPLIANCE_MAX_CHARS) return failure("RESPONSE_CHECK_TEXT_TOO_LONG", "A resposta é longa demais para ser conferida.", startedAt)
-  const sources = limitComplianceSources(request.sources ?? [])
+  const sources = request.content ? [] : limitComplianceSources(request.sources ?? [])
   const judge = async (judged: readonly ComplianceRule[], system: string, promptVersion: string, withSources: readonly ComplianceSource[]): Promise<Exclude<ResponseCheckResult, { outcome: "NOT_APPLICABLE" }>> => {
-    const user = renderComplianceInput({ question: request.question, response: request.text, sources: withSources })
+    const user = renderComplianceInput({ question: request.question, response: request.content?.marked ?? request.text, responseIsMarked: request.content !== undefined, sources: withSources })
     let last: Extract<ResponseCheckResult, { outcome: "CHECK_FAILED" }> = { outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_FAILED", message: "A conferência da resposta falhou.", model: null, durationMs: 0 }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const reply = await model({ organizationId: request.organizationId, agentId: request.agentId ?? null, system, user, source: request.source })
-        const verdict = parseComplianceVerdict(reply.text, judged, request.text)
+        const verdict = parseComplianceVerdict(reply.text, judged, request.text, request.content?.protectedSpans ?? [])
         if (verdict) return { ...verdict, model: reply.model, durationMs: Date.now() - startedAt, promptVersion }
         last = { outcome: "CHECK_FAILED", code: "RESPONSE_CHECK_INVALID_OUTPUT", message: "A conferência devolveu uma resposta fora do contrato.", model: reply.model, durationMs: Date.now() - startedAt }
       } catch (error) {
@@ -112,6 +119,7 @@ export const checkResponse: ResponseCheck = async (db, request, model = gatewayC
     }
     return { ...last, promptVersion }
   }
+  if (request.content) return judge(rules, renderComplianceContentSystem(rules), RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION, [])
   // Os assuntos proibidos vão com as fontes, quando há (V3 ou V5), ou como sempre (V1). O limite de atuação vai sempre à parte (V4): ele não depende de onde a informação veio.
   const topicRules = complianceRulesOf({ actionLimits: null, prohibitedTopics: guardrails.prohibitedTopics })
   const limitRules = complianceRulesOf({ actionLimits: guardrails.actionLimits, prohibitedTopics: [] })
@@ -139,7 +147,8 @@ function combineJudgements(topics: Judgement, limits: Judgement): ResponseCheckR
   return { outcome: "ALLOWED", model: topics.model, durationMs, promptVersion }
 }
 
-export type ResponseCheckSurface = "CHAT" | "VOICE_TOOL" | "VOICE_SPOKEN" | "AGENT_RUN" | "SPECIALIST" | "WORKFLOW_ORCHESTRATOR"
+export type ContentSurface = "FEEDBACK_MESSAGE" | "REPORT_ANALYSIS" | "INTERVENTION_NARRATIVE" | "INTERVENTION_DRAFT" | "BEST_PRACTICE" | "INTERACTION_FEEDBACK"
+export type ResponseCheckSurface = "CHAT" | "VOICE_TOOL" | "VOICE_SPOKEN" | "AGENT_RUN" | "SPECIALIST" | "WORKFLOW_ORCHESTRATOR" | ContentSurface
 export type ResponseCheckRecord = {
   organizationId: string
   surface: ResponseCheckSurface
@@ -153,6 +162,11 @@ export type ResponseCheckRecord = {
   agentId?: string | null | undefined
   agentRunId?: string | null | undefined
   workflowEnrollmentId?: string | null | undefined
+  /** Onde está o conteúdo, nos fluxos com acesso mais restrito que o do registro. */
+  sourceRef?: string | null | undefined
+  /** Registro sem o texto e sem o motivo, que pode repetir o texto: o conteúdo fica só com quem já podia ler a origem. */
+  withoutContent?: boolean | undefined
+  promptVersion?: string | undefined
 }
 
 /** Só registro: falhar aqui não muda o que já foi decidido. O QA Lab (só leitura) não grava nada. */
@@ -162,8 +176,8 @@ export async function recordResponseCheck(db: Pick<Database, "query">, record: R
   if (flagged) console.warn(JSON.stringify({ event: "response_check_flagged", outcome: result.outcome, surface: record.surface, control: record.control, action: record.action, code: result.outcome === "CHECK_FAILED" ? result.code : null, conversationId: record.conversationId ?? null }))
   try {
     await db.query(
-      `insert into response_compliance_checks (organization_id, surface, control, outcome, action, rules, reason, error_code, flagged_content, conversation_id, interaction_id, agent_id, agent_run_id, workflow_enrollment_id, prompt_version, model, duration_ms)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      `insert into response_compliance_checks (organization_id, surface, control, outcome, action, rules, reason, error_code, flagged_content, conversation_id, interaction_id, agent_id, agent_run_id, workflow_enrollment_id, prompt_version, model, duration_ms, source_ref)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
       [
         record.organizationId,
         record.surface,
@@ -171,17 +185,18 @@ export async function recordResponseCheck(db: Pick<Database, "query">, record: R
         result.outcome,
         record.action,
         JSON.stringify(result.outcome === "VIOLATION" ? result.hits : []),
-        result.outcome === "VIOLATION" ? result.reason : result.outcome === "CHECK_FAILED" ? result.message : null,
+        result.outcome === "VIOLATION" ? (record.withoutContent ? null : result.reason) : result.outcome === "CHECK_FAILED" ? result.message : null,
         result.outcome === "CHECK_FAILED" ? result.code : null,
-        flagged ? record.text : null,
+        flagged && !record.withoutContent ? record.text : null,
         record.conversationId ?? null,
         record.interactionId ?? null,
         record.agentId ?? null,
         record.agentRunId ?? null,
         record.workflowEnrollmentId ?? null,
-        result.promptVersion ?? RESPONSE_COMPLIANCE_PROMPT_VERSION,
+        record.promptVersion ?? result.promptVersion ?? RESPONSE_COMPLIANCE_PROMPT_VERSION,
         result.model,
         result.durationMs,
+        record.sourceRef ?? null,
       ],
     )
   } catch (error) {
@@ -198,6 +213,38 @@ export function responseCheckToolCall(result: Exclude<ResponseCheckResult, { out
 
 export const RESPONSE_BLOCKED_BY_RULES_CODE = "RESPONSE_BLOCKED_BY_RULES"
 export const RESPONSE_CHECK_UNAVAILABLE_CODE = "RESPONSE_CHECK_UNAVAILABLE"
+
+export type ContentDecision =
+  | { decision: "DELIVER"; result: ResponseCheckResult | null }
+  | { decision: "VIOLATION"; hits: ComplianceHit[]; reason: string }
+  | { decision: "CHECK_FAILED"; code: string; message: string }
+
+/**
+ * Conteúdo entregue sem conversa (PEN-018): feedback, report, intervenção, boa prática. Quem chama decide o que fazer com a decisão, porque cada fluxo já tem o
+ * próprio caminho de falha ou abstenção. Em AUDIT sempre entrega e só registra: é detecção, nunca prevenção. O registro não copia o conteúdo.
+ * `acceptViolation` é a decisão humana registrada de seguir mesmo assim; não vale para falha da conferência.
+ */
+export async function checkContentBeforeDelivery(
+  db: Pick<Database, "query">,
+  input: { organizationId: string; text: string; content: MarkedContent; agentId?: string | null | undefined; guardrails?: AgentGuardrails | null | undefined; surface: ContentSurface; group: Exclude<ResponseCheckGroup, "CONVERSATION">; source: LlmRequestSource; sourceRef: string | null; workflowEnrollmentId?: string | null | undefined; acceptViolation?: boolean | undefined },
+  check: ResponseCheck = checkResponse,
+): Promise<ContentDecision> {
+  const mode = responseCheckModeOf(input.group)
+  if (mode === "OFF") return { decision: "DELIVER", result: null }
+  const result = await check(db, { organizationId: input.organizationId, text: input.text, content: input.content, agentId: input.agentId, guardrails: input.guardrails, source: input.source })
+  if (result.outcome === "NOT_APPLICABLE") return { decision: "DELIVER", result }
+  const enforcing = mode === "ENFORCE"
+  const allowed = result.outcome === "ALLOWED"
+  const accepted = result.outcome === "VIOLATION" && input.acceptViolation === true
+  await recordResponseCheck(db, { organizationId: input.organizationId, surface: input.surface, control: enforcing ? "PREVENTIVE" : "DETECTIVE", action: allowed || accepted ? "DELIVERED" : enforcing ? "BLOCKED" : "RECORDED", result, text: input.text, agentId: input.agentId, workflowEnrollmentId: input.workflowEnrollmentId, sourceRef: input.sourceRef, withoutContent: true, promptVersion: RESPONSE_COMPLIANCE_CONTENT_PROMPT_VERSION })
+  if (!enforcing || allowed || accepted) return { decision: "DELIVER", result }
+  return result.outcome === "VIOLATION" ? { decision: "VIOLATION", hits: result.hits, reason: result.reason } : { decision: "CHECK_FAILED", code: result.code, message: result.message }
+}
+
+/** Decisão 3 da PEN-018: os redatores de report, intervenção e devolutiva recebem os assuntos proibidos na instrução. Sem conseguir ler, a conferência responde pela falha. */
+export async function contentRulesInstruction(db: Pick<Database, "query">, organizationId: string): Promise<string> {
+  return loadAgentGuardrails(db, organizationId, null).then(renderConversationGuardrails).catch(() => "")
+}
 
 /**
  * Saída que vai para um próximo passo, sem ninguém esperando na tela (execução de agente, etapa de Workflow): confere antes de seguir. Violação

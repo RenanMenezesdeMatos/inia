@@ -8,7 +8,7 @@ describe("classificação do atendimento", () => {
   it("título obrigatório quando a informação existia; opcional em pergunta mal formulada; descartado nos demais", () => {
     expect(parse({ reason: "FOUND_IN_PROCESS", outcome: "RESOLVED" }).success).toBe(false)
     expect(parse({ reason: "AVAILABLE_ELSEWHERE", referenceTitle: "ab", outcome: "RESOLVED" }).success).toBe(false)
-    expect(parse({ reason: "FOUND_IN_PROCESS", referenceTitle: "  Cancelamento PJ  ", outcome: "GUIDED" }).data).toEqual({ reason: "FOUND_IN_PROCESS", referenceTitle: "Cancelamento PJ", referenceUrl: null, otherDescription: null, outcome: "GUIDED" })
+    expect(parse({ reason: "FOUND_IN_PROCESS", referenceTitle: "  Cancelamento PJ  ", outcome: "GUIDED" }).data).toEqual({ reason: "FOUND_IN_PROCESS", referenceTitle: "Cancelamento PJ", referenceUrl: null, otherDescription: null, outcome: "GUIDED", pertinence: "NOT_EVALUATED" })
     expect(parse({ reason: "QUESTION_UNCLEAR", referenceTitle: "Portabilidade", outcome: "RESOLVED" }).data!.referenceTitle).toBe("Portabilidade")
     expect(parse({ reason: "NO_PROCESS", referenceTitle: "Ignorado", outcome: "NOT_RESOLVED" }).data!.referenceTitle).toBeNull()
   })
@@ -27,13 +27,15 @@ describe("classificação do atendimento", () => {
     expect(CLASSIFICATION_REASONS).toEqual(expect.arrayContaining([...CLASSIFICATION_REASONS_V1, "NO_TOOL_ACCESS", "TOOL_UNAVAILABLE"]))
     expect(CLASSIFICATION_REASON_LABELS.NO_TOOL_ACCESS).toBe("Sem acesso à ferramenta ou ao sistema")
     expect(CLASSIFICATION_REASON_LABELS.TOOL_UNAVAILABLE).toBe("Ferramenta ou sistema indisponível")
-    expect(parse({ reason: "NO_TOOL_ACCESS", outcome: "GUIDED" }).data).toEqual({ reason: "NO_TOOL_ACCESS", referenceTitle: null, referenceUrl: null, otherDescription: null, outcome: "GUIDED" })
+    expect(parse({ reason: "NO_TOOL_ACCESS", outcome: "GUIDED", pertinence: "PERTINENT" }).data).toEqual({ reason: "NO_TOOL_ACCESS", referenceTitle: null, referenceUrl: null, otherDescription: null, outcome: "GUIDED", pertinence: "PERTINENT" })
     expect(parse({ reason: "TOOL_UNAVAILABLE", referenceTitle: "  Siebel  ", otherDescription: " Tela de pedidos com erro 500 desde 9h ", outcome: "FORWARDED" }).data).toEqual({
       reason: "TOOL_UNAVAILABLE",
       referenceTitle: "Siebel",
       referenceUrl: null,
       otherDescription: "Tela de pedidos com erro 500 desde 9h",
       outcome: "FORWARDED",
+      // Sem a pertinência (tela anterior à migration 191) = Não avaliado.
+      pertinence: "NOT_EVALUATED",
     })
     expect(parse({ reason: "NO_TOOL_ACCESS", referenceTitle: "ab", outcome: "RESOLVED" }).success).toBe(false)
     // O resultado continua obrigatório e independente: o motivo nunca vira "resolvido" sozinho.

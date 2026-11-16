@@ -542,6 +542,7 @@ describe("lista", () => {
     { ...ROW, id: "c", title: "Base com falha", updateVersion: 6, updateStatus: "FAILED" },
     { ...ROW, id: "d", title: "Base só rascunho", status: "DRAFT", inUseVersion: null, draftVersion: 1 },
     { ...ROW, id: "e", title: "Base arquivada", status: "ARCHIVED", inUseVersion: null },
+    { ...ROW, id: "f", title: "Base do tipo IT", documentType: "WORK_INSTRUCTION" },
   ]
   const card = (title: string) => screen.getByRole("link", { name: title }).closest("article") as HTMLElement
 
@@ -550,6 +551,11 @@ describe("lista", () => {
     renderWithQuery(<KnowledgePage />)
     await screen.findByRole("link", { name: "Base em uso com rascunho" })
   }
+
+  it("mostra o rótulo do tipo IT - Instrução de trabalho", async () => {
+    await renderList()
+    expect(within(card("Base do tipo IT")).getByText("IT - Instrução de trabalho")).toBeInTheDocument()
+  })
 
   it("mostra o status da versão em uso, com o número, e os selos à parte", async () => {
     await renderList()
@@ -861,6 +867,17 @@ describe("formulário de edição", () => {
     expect(input).toEqual({ title: "Segunda via nova", documentType: "PROCEDURE", changeSummary: "Novo título" })
     await waitFor(() => expect(router.push).toHaveBeenCalledWith("/admin/knowledge/kb-1"))
     expect(toast.success).toHaveBeenCalledWith("Nada mudou em relação à versão atual: nenhum rascunho foi criado.")
+  })
+
+  it("oferece IT - Instrução de trabalho como tipo de documento e salva o tipo escolhido", async () => {
+    await renderForm(detail())
+    service.updateKnowledgeDocument.mockResolvedValue(detail())
+    fireEvent.click(screen.getByLabelText("Tipo de documento"))
+    fireEvent.click(await screen.findByRole("option", { name: "IT - Instrução de trabalho" }))
+    expect(screen.getByLabelText("Tipo de documento")).toHaveTextContent("IT - Instrução de trabalho")
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
+    await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
+    expect(service.updateKnowledgeDocument.mock.calls[0]![1]).toMatchObject({ documentType: "WORK_INSTRUCTION" })
   })
 
   it("texto alterado vai junto, e o aviso diz que a IA continua na versão em uso", async () => {

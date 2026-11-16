@@ -4,6 +4,7 @@ import type { AppShellProfile } from "@/components/layout/app-shell-profile"
 import { AreaSwitcher } from "@/components/layout/top-bar/area-switcher"
 import { AppUserMenu } from "@/components/layout/user-menu/app-user-menu"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { AnjoShortcut } from "@/components/human-support/anjo/anjo-shortcut"
 
 type AppTopBarProps = {
   profile: AppShellProfile
@@ -37,9 +38,10 @@ export function AppTopBar({ profile, profileHref, onSignOut, onSignOutEverywhere
         <AppUserMenu profile={profile} profileHref={profileHref} onSignOut={onSignOut} onSignOutEverywhere={onSignOutEverywhere} onEditProfile={onEditProfile} />
         <span className="hidden h-6 w-px bg-topbar-foreground/25 sm:block" aria-hidden />
         <nav aria-label="Áreas da INIA" className="min-w-0">
-          <AreaSwitcher profileHref={profileHref} canAccessAdministration={canAccessAdministration} canReviewFeedback={canReviewFeedback} canViewDiagnostics={canViewDiagnostics} canUseReports={canUseReports} canViewBestPractices={canViewBestPractices} canAttendHumanSupport={canAttendHumanSupport} />
+          <AreaSwitcher profileHref={profileHref} canAccessAdministration={canAccessAdministration} canReviewFeedback={canReviewFeedback} canViewDiagnostics={canViewDiagnostics} canUseReports={canUseReports} canViewBestPractices={canViewBestPractices} />
         </nav>
-        <div className="ml-auto flex shrink-0 items-center">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {canAttendHumanSupport ? <AnjoShortcut profileHref={profileHref} /> : null}
           <NotificationBell profileHref={profileHref} />
         </div>
       </div>

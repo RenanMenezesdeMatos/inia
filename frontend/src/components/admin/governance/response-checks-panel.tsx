@@ -12,13 +12,38 @@ import { RESPONSE_CHECK_SURFACE_LABELS, type ResponseCheckEvent, type ResponseCh
 
 const DEFAULT_PAGE_SIZE = 20
 
-/** O que a conferência faz no modo em vigor. Só ENFORCE previne; AUDIT e OFF nunca aparecem como prevenção. */
-const MODE_NOTICE: Record<ResponseCheckSummary["mode"], string> = {
-  ENFORCE: "Antes de entregar, a INIA confere se a resposta viola os assuntos proibidos ou os limites do agente. Na voz, o que vem do servidor é conferido antes de ser falado; o que o modelo de voz diz por conta própria só é conferido depois de falado, e a fala não volta atrás.",
-  AUDIT: "Modo de auditoria: nada é impedido antes da entrega. A resposta é entregue e conferida depois, e o que for detectado sai da conversa e fica registrado.",
-  OFF: "A conferência está desligada: nenhuma resposta é conferida nem registrada.",
-}
-const NOT_COVERED = "Esta conferência não cobre o motor de feedback, os reports, as intervenções, o treino nem as boas práticas."
+type CheckMode = ResponseCheckSummary["mode"]
+/** O que a conferência faz em cada grupo, no modo em vigor. Só ENFORCE previne; AUDIT e OFF nunca aparecem como prevenção. */
+const COVERAGE: { key: keyof ResponseCheckSummary["modes"]; label: string; text: Record<CheckMode, string> }[] = [
+  {
+    key: "conversation",
+    label: "Chat, voz, agentes e orquestradores",
+    text: {
+      ENFORCE: "conferidos antes da entrega. O que o modelo de voz diz por conta própria só é conferido depois de falado, e a fala não volta atrás.",
+      AUDIT: "modo de auditoria: nada é impedido antes da entrega. A resposta é entregue e conferida depois.",
+      OFF: "conferência desligada: nada é conferido nem registrado.",
+    },
+  },
+  {
+    key: "content",
+    label: "Reports, intervenções e boas práticas",
+    text: {
+      ENFORCE: "conferidos antes de ficarem disponíveis. Só o texto da IA é conferido; tabelas e fatos, não.",
+      AUDIT: "modo de auditoria: nada é impedido antes da entrega. O que for detectado fica registrado.",
+      OFF: "conferência desligada: nada é conferido nem registrado.",
+    },
+  },
+  {
+    key: "feedback",
+    label: "Mensagens de feedback",
+    text: {
+      ENFORCE: "conferidas antes de serem publicadas. Citações de chamadas não contam sozinhas como violação.",
+      AUDIT: "modo de auditoria: nada é impedido antes da entrega. A mensagem é publicada, e o que for detectado fica registrado.",
+      OFF: "conferência desligada: nada é conferido nem registrado.",
+    },
+  },
+]
+const NOT_COVERED = "Sem cobertura: a análise interna do motor de feedback, o Diagnóstico da liderança e a apresentação falada em \"Ouvir com a INIA\"."
 
 /** O que aconteceu, em palavras de quem audita: prevenção e detecção nunca se confundem. */
 function situationOf(event: Pick<ResponseCheckEvent, "outcome" | "action">): { label: string; variant: "destructive" | "secondary" | "outline" } {
@@ -57,11 +82,18 @@ export function ResponseChecksPanel() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [open, setOpen] = useState<string | null>(null)
   const list = useResponseChecksQuery({ page, pageSize })
-  const mode = useResponseCheckSummaryQuery().data?.mode
+  const modes = useResponseCheckSummaryQuery().data?.modes
   const total = list.data?.total ?? 0
   return (
     <div className="space-y-4">
-      {mode ? <p className="max-w-3xl text-sm text-muted-foreground">{MODE_NOTICE[mode]} {NOT_COVERED}</p> : null}
+      {modes ? (
+        <div className="max-w-3xl space-y-1 text-sm text-muted-foreground" data-testid="response-check-coverage">
+          {COVERAGE.map((group) => (
+            <p key={group.key}><span className="font-medium text-foreground">{group.label}:</span> {group.text[modes[group.key]]}</p>
+          ))}
+          <p>{NOT_COVERED}</p>
+        </div>
+      ) : null}
       <Summary />
       {list.isError ? <p className="text-sm text-muted-foreground">{list.error.message}</p> : null}
       {list.data && list.data.items.length === 0 ? <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Nenhuma resposta bloqueada, detectada ou sem conferência.</p> : null}
@@ -95,6 +127,7 @@ export function ResponseChecksPanel() {
                     <TableCell className="max-w-96 whitespace-normal text-sm">
                       {event.rules.map((rule) => rule.name).join(", ")}
                       {event.reason ? <p className="text-xs text-muted-foreground">{event.reason}</p> : null}
+                      {event.sourceRef && !event.flaggedContent ? <p className="text-xs text-muted-foreground">O conteúdo fica na origem, com quem já pode lê-la.</p> : null}
                       {open === event.id ? <p className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-2 text-xs">{event.flaggedContent}</p> : null}
                     </TableCell>
                     <TableCell className="text-right">

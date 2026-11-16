@@ -34,7 +34,7 @@ import { componentsOf, resolveProcessRole } from "./process-role.js"
 import { installSharedRuntimeState } from "./shared-runtime-state.js"
 import { DATA_HUB_WAKE_CHANNEL, listenForWake, notifyWake } from "../shared/infrastructure/process-wake/postgres-wake-channel.js"
 import { startWorkerHealthServer } from "./worker-health.js"
-import { analyzeDelivery, gatewayAnalysisWriter, retryPendingAnalyses } from "../modules/reports/application/report-analysis.js"
+import { analyzeDelivery, reportAnalysisGuard, gatewayAnalysisWriter, retryPendingAnalyses } from "../modules/reports/application/report-analysis.js"
 import type { ExecutorDeps } from "../modules/reports/application/report-executor.js"
 import { createPostgresReportRuntime } from "../modules/reports/application/report-runtime.js"
 import { processReportRuns, scheduleDueReports } from "../modules/reports/application/report-scheduler.js"
@@ -110,7 +110,7 @@ function startProcessing() {
   const exclusive = jobLocks.runExclusive
   const dataHubContext = createDataHubContext(pool)
   const reportStore = createPostgresReportStore(pool)
-  const reportExecutorDeps: ExecutorDeps = { store: reportStore, runtime: createPostgresReportRuntime(pool), now: () => new Date(), analyze: (delivery, report) => analyzeDelivery(reportStore, gatewayAnalysisWriter, delivery, report) }
+  const reportExecutorDeps: ExecutorDeps = { store: reportStore, runtime: createPostgresReportRuntime(pool), now: () => new Date(), analyze: (delivery, report) => analyzeDelivery(reportStore, gatewayAnalysisWriter, delivery, report, "AUTOMATIC", reportAnalysisGuard(pool)) }
   const jobs = startPeriodicJobs(exclusive, [
     {
       // Situação funcional: projeção diária (fuso da organização) na subida e a cada minuto, seguida do checador de agenda.
@@ -142,7 +142,7 @@ function startProcessing() {
     // Base de boas práticas: fila de análises (uma por rodada, com posse de 20 min e uma nova tentativa). Ver docs/dev/memoria/boas-praticas.md.
     { name: "best-practice-analyses", intervalMs: 15_000, run: () => processBestPracticeAnalyses(pool).then(() => undefined), errorLabel: "Falha nas análises de boas práticas:" },
     // Com a trava perdida, para antes da próxima reivindicação.
-    { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: ({ signal }) => retryPendingAnalyses(reportExecutorDeps.store, gatewayAnalysisWriter, { signal }).then(() => undefined), errorLabel: "Falha na análise de reports:" },
+    { name: "report-analysis-retry", intervalMs: 5 * 60_000, run: ({ signal }) => retryPendingAnalyses(reportExecutorDeps.store, gatewayAnalysisWriter, { signal, guard: reportAnalysisGuard(pool) }).then(() => undefined), errorLabel: "Falha na análise de reports:" },
     // Read model do analytics da liderança: refaz tudo depois da meia-noite local e recalcula quem tem marca pendente.
     // Com a trava perdida, para entre lotes (duas reconstruções juntas dariam chave duplicada/deadlock nos lotes).
     { name: "analytics-rollup", intervalMs: 15_000, runOnStart: true, run: ({ signal }) => runAnalyticsRollup(pool, { signal }), errorLabel: "Falha no read model do analytics:" },

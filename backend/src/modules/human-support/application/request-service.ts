@@ -7,7 +7,7 @@ import { closeDecision, cancelDecision } from "../domain/request-lifecycle.js"
 import { requestOriginOf } from "../domain/origin.js"
 import type { OperatorRequestView, PreviewResponse, SharedContext } from "../domain/views.js"
 import { dispatchAfterCommand } from "./dispatch.js"
-import { availabilityFor, enabledForPlace, loadPlace, queueDeadlineFor, type PersonPlace } from "./eligibility.js"
+import { anjosInServiceCount, availabilityFor, enabledForPlace, loadPlace, queueDeadlineFor, type PersonPlace } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
 import { withOrganizationLock, type Queryable } from "./locks.js"
 import { loadActiveAttendance, loadOpenRequestOf, loadRequest, operatorRequestView, REQUEST_COLUMNS, type RequestRow } from "./request-views.js"
@@ -123,6 +123,8 @@ export async function cancelRequest(db: TransactionSource & Queryable, viewer: V
     const decision = cancelDecision(request.status)
     if (!decision.ok) throw ended()
     await endRequest(client, { id: request.id, organizationId: viewer.organizationId, operatorPersonId: viewer.personId }, { from: "WAITING", cause: decision.cause, actorPersonId: viewer.personId })
+    // Quantos Anjos estavam em serviço quando o operador desistiu (migration 191).
+    await client.query(`update human_support_requests set anjos_in_service_at_end = $2 where id = $1`, [request.id, await anjosInServiceCount(client, viewer.organizationId, { teamId: request.team_id, subteamId: request.subteam_id }, viewer.personId)])
     await bumpInboxVersions(client, viewer.organizationId, [viewer.personId])
   })
   await dispatchAfterCommand(db, viewer.organizationId)

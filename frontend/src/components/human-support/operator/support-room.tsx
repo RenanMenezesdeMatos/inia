@@ -25,6 +25,7 @@ import { SharedContextCard } from "./shared-context-card"
 import { awaitingEvaluation } from "./support-entry"
 import { SupportComposer } from "./support-composer"
 import { SupportEvaluation } from "./support-evaluation"
+import { toast } from "sonner"
 
 /**
  * SALA DE APOIO do operador (design_draft.md seções 10 e 14): a conversa com o Anjo, num campo próprio, sem microfone — nunca
@@ -94,6 +95,11 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
     if (viewport) viewport.scrollTop = viewport.scrollHeight
   }, [messages.length, typingKey])
 
+  // Avaliação enviada: agradece e volta para a INIA (a sala do pedido encerrado não tem mais nada a fazer).
+  const finishEvaluation = () => {
+    toast.success("Avaliação enviada. Obrigado!")
+    onBack()
+  }
   const pending = useMemo(() => (shown ? (operator?.pendingEvaluations.find((evaluation) => evaluation.requestId === shown.id) ?? null) : null), [operator, shown])
 
   if (!shown) {
@@ -117,7 +123,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
                   <p className="text-xs text-muted-foreground">
                     Atendimento <span className="font-mono">{evaluation.protocol}</span> com {evaluation.anjoName}
                   </p>
-                  <SupportEvaluation pending={evaluation} onSaved={() => refresh()} />
+                  <SupportEvaluation pending={evaluation} onSaved={() => refresh()} onFinished={awaiting.length === 1 ? () => finishEvaluation() : undefined} />
                 </div>
               ))}
             </div>
@@ -215,7 +221,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
           ) : null}
           {messages.map((message) => <SupportMessage key={message.id} message={message} anjoAvatarUrl={shown.anjo?.avatarUrl ?? null} peerReceipts={shown.peerReceipts} />)}
           {live && shown.anjo ? <PeerTyping name={shown.anjo.name} typingMs={shown.peerTypingMs} stamp={shown} avatar={<PersonAvatar name={shown.anjo.name} avatarUrl={shown.anjo.avatarUrl} className="size-7" />} /> : null}
-          {pending && !live ? <SupportEvaluation pending={pending} onSaved={() => refresh()} /> : null}
+          {pending && !live ? <SupportEvaluation pending={pending} onSaved={() => refresh()} onFinished={finishEvaluation} /> : null}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>

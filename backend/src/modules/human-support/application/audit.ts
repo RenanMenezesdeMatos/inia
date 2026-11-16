@@ -1,7 +1,7 @@
 import type { Queryable } from "./locks.js"
 
 /** Auditoria do Apoio com Anjo em `audit_logs` (só ids e códigos, nunca conteúdo de conversa). */
-export type HumanSupportAuditAction = "HUMAN_SUPPORT_SETTINGS_CHANGED" | "HUMAN_SUPPORT_SCOPE_STATE_CHANGED" | "HUMAN_SUPPORT_CAPACITY_CHANGED" | "HUMAN_SUPPORT_ATTENDANCE_CLASSIFIED"
+export type HumanSupportAuditAction = "HUMAN_SUPPORT_SETTINGS_CHANGED" | "HUMAN_SUPPORT_SCOPE_STATE_CHANGED" | "HUMAN_SUPPORT_CAPACITY_CHANGED" | "HUMAN_SUPPORT_ATTENDANCE_CLASSIFIED" | "HUMAN_SUPPORT_ATTENDANCE_TRANSFERRED"
 
 export async function recordHumanSupportAudit(db: Queryable, entry: { organizationId: string; actorPersonId: string; action: HumanSupportAuditAction; entityType: string; entityId: string; payload: Record<string, unknown> }): Promise<void> {
   await db.query(

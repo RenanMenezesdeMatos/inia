@@ -218,3 +218,57 @@ describe("BASE_PRACTICES_IN_TEXT_V1 — a prática da base vai ao redator antes 
     }
   })
 })
+
+describe("conferência da mensagem pronta (PEN-018)", () => {
+  const VIOLATION = { decision: "VIOLATION" as const, hits: [{ kind: "PROHIBITED_TOPIC" as const, name: "Promessa financeira" }], reason: "Orienta a prometer." }
+
+  it("sem apontamento, publica a mesma mensagem: a conferência só lê", async () => {
+    const baseline = setup(fakeModel().model)
+    const clean = await generateFeedback(baseline.deps, request())
+    const checked = setup(fakeModel().model)
+    const seen: { messageId: string; narrative: string[] }[] = []
+    checked.deps.responseCheck = async (input) => {
+      seen.push({ messageId: input.messageId, narrative: input.view.narrative })
+      return { decision: "DELIVER", result: null }
+    }
+    const result = await generateFeedback(checked.deps, request())
+    expect(result.kind).toBe("PUBLISHABLE")
+    if (result.kind !== "PUBLISHABLE" || clean.kind !== "PUBLISHABLE") return
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.messageId).toBe(result.messageId)
+    expect(checked.stores.messages.get(result.messageId)!.message!.text).toBe(baseline.stores.messages.get(clean.messageId)!.message!.text)
+  })
+
+  it("violação em prevenção: abstenção com motivo, a análise fica na memória e nada conta como entregue", async () => {
+    const { deps, stores } = setup(fakeModel().model)
+    deps.responseCheck = async () => VIOLATION
+    const result = await generateFeedback(deps, request())
+    expect(result).toMatchObject({ kind: "ABSTAINED", reason: "NO_SAFE_MESSAGE:RULE_VIOLATION" })
+    expect(stores.assessments).toHaveLength(1)
+    const saved = stores.messages.get(result.messageId)!
+    expect(saved.message).toBeNull()
+    expect(saved.findingKeys).toEqual([])
+    expect(saved.composition).toMatchObject({ responseCheck: { rules: VIOLATION.hits, reason: VIOLATION.reason, rejectedText: expect.any(String) } })
+  })
+
+  it("falha da conferência: nada é publicado, a análise fica e a etapa volta pela política de novas tentativas", async () => {
+    const { deps, stores } = setup(fakeModel().model)
+    deps.responseCheck = async () => ({ decision: "CHECK_FAILED", code: "RESPONSE_CHECK_PROVIDER_ERROR", message: "Falhou." })
+    await expect(generateFeedback(deps, request())).rejects.toMatchObject({ code: "RESPONSE_CHECK_UNAVAILABLE" })
+    expect(stores.assessments).toHaveLength(1)
+    expect([...stores.messages.values()].every((entry) => entry.status !== "PUBLISHABLE")).toBe(true)
+  })
+
+  it("mensagem já decidida não é conferida de novo", async () => {
+    const { deps } = setup(fakeModel().model)
+    let calls = 0
+    deps.responseCheck = async () => {
+      calls += 1
+      return { decision: "DELIVER", result: null }
+    }
+    await generateFeedback(deps, request())
+    const again = await generateFeedback(deps, request())
+    expect(again).toMatchObject({ kind: "PUBLISHABLE", reused: true })
+    expect(calls).toBe(1)
+  })
+})

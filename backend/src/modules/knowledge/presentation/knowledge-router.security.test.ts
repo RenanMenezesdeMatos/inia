@@ -159,6 +159,21 @@ describe("Base de Conhecimento — escopo do administrador", () => {
   })
 })
 
+describe("Base de Conhecimento — tipo de documento", () => {
+  it("aceita IT - Instrução de trabalho na criação, na edição e no filtro, e continua recusando tipo desconhecido", async () => {
+    const { app, writes } = appFor("ORGANIZATION")
+    const created = await request(app).post("/").field("title", "IT de reparo").field("documentType", "WORK_INSTRUCTION").field("content", "Passo a passo do reparo")
+    expect(created.status).toBe(201)
+    expect(created.body.data.documentType).toBe("WORK_INSTRUCTION")
+    expect((await request(app).patch(`/${DOC_GLOBAL}`).send({ documentType: "WORK_INSTRUCTION" })).status).toBe(200)
+    expect((await request(app).get("/").query({ documentType: "WORK_INSTRUCTION" })).status).toBe(200)
+    // A recusa é o ZodError da validação: nada é gravado (na API real ele vira 400; o tratador deste teste só conhece DomainError).
+    const writesBefore = writes.length
+    expect((await request(app).post("/").field("title", "Outro").field("documentType", "OUTRO").field("content", "Conteúdo qualquer")).status).not.toBe(201)
+    expect(writes.length).toBe(writesBefore)
+  })
+})
+
 describe("Base de Conhecimento — rascunho com alcance diferente do que está em uso", () => {
   it("quem administra só o Grupo A não publica, edita, troca o arquivo, reprocessa nem descarta um rascunho que vale para mais Grupos — nem pelo PATCH com status", async () => {
     const { app, writes } = appFor("GROUP_A")

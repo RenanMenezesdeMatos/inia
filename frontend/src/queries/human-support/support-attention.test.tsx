@@ -132,12 +132,12 @@ describe("mensagem nova do Anjo fora da vista do operador", () => {
     expect(navigate).toHaveBeenCalledWith("/profile/p1?tab=followup&iniaSupport=room")
   })
 
-  it("sala na tela com a página vista: nada avisa e a mensagem conta como vista", () => {
+  it("sala na tela com a página vista: toca o som (toda mensagem recebida avisa), sem o aviso na tela, e a mensagem conta como vista", () => {
     render(<HumanSupportStateProvider><Probe room /></HumanSupportStateProvider>)
     push(request([message(1)], 1))
     push(request([message(1), message(2)], 1))
     expect(toasts.show).not.toHaveBeenCalled()
-    expect(tones).toHaveLength(0)
+    expect(tones.length).toBeGreaterThan(0)
     expect(screen.getByText("novas: 0")).toBeInTheDocument()
   })
 

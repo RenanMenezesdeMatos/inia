@@ -155,3 +155,14 @@ export async function anyEnabledScope(db: Queryable, organizationId: string, sco
     return false
   })
 }
+
+/**
+ * Quantos Anjos estão EM SERVIÇO agora no escopo do pedido (estado ≠ Indisponível, área aberta, papel cobrindo o Grupo/Subgrupo, fora
+ * o próprio operador). Gravado quando o pedido sai da fila sem atendimento (`anjos_in_service_at_end`, migration 191): zero = encerrado
+ * sem Anjo logado, indicador da operação sem atribuição individual.
+ */
+export async function anjosInServiceCount(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, operatorPersonId: string): Promise<number> {
+  const covering = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((personId) => personId !== operatorPersonId)
+  if (covering.length === 0) return 0
+  return Number((await db.query<{ total: number }>(`select count(*)::int total from human_support_agent_presence where organization_id = $1 and person_id = any($2::uuid[]) and status <> 'OFFLINE' and lease_until > statement_timestamp()`, [organizationId, covering])).rows[0]!.total)
+}

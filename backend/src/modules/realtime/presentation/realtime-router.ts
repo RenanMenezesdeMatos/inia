@@ -263,12 +263,12 @@ function tracedStage<T>(stage: string, fn: () => Promise<T>): Promise<T> {
  * interno de um especialista ou de uma ferramenta. Não é conteúdo da resposta.
  */
 export function progressLabel(event: OrchestrationProgress, isDataTool: (name: string) => boolean): string {
-  if (event.stage === "WRITING") return "Escrevendo a resposta…"
+  if (event.stage === "WRITING") return "Preparando resposta…"
   if (event.tools.includes(PROCESS_TOOL)) return "Consultando o processo nas bases de conhecimento…"
   const data = event.tools.some(isDataTool)
   const knowledge = event.tools.some((name) => !isDataTool(name))
-  if (data && knowledge) return "Consultando os dados e as bases de conhecimento…"
-  return data ? "Consultando os dados…" : "Consultando as bases de conhecimento…"
+  if (data && knowledge) return "Consultando os dados e chamando especialista…"
+  return data ? "Consultando os dados…" : "Chamando especialista…"
 }
 
 /**
@@ -1416,7 +1416,7 @@ export function createRealtimeRouter(
         clarificationShown = ""
         liveStream.retract()
       },
-      status: (label) => send("status", { stage: "KNOWLEDGE", label }),
+      status: (label, stage) => send("status", { stage: stage ?? "KNOWLEDGE", label }),
     }
     /** A resposta do esclarecimento na tela: completa o que já apareceu em fluxo (ou retira e mostra a validada inteira). */
     const showClarification = (content: string) => {
@@ -1707,7 +1707,7 @@ export function createRealtimeRouter(
           dropClarificationStream()
           console.info(JSON.stringify({ event: "knowledge_clarification_pass", conversationId: resolved.conversationId, reason: decision.kind === "PASS" ? decision.reason : null, mode: decision.trace.mode }))
         }
-        send("status", { stage: "KNOWLEDGE", label: "Consultando as bases de conhecimento…" })
+        send("status", { stage: "KNOWLEDGE", label: "Consultando a base de conhecimento…" })
         // Continuação de um esclarecimento (escolha no formulário ou resposta à pergunta em aberto): quase sempre é ele que responde —
         // decide sozinho, antes, como sempre.
         const continuing = Boolean(input.clarification) || Boolean(clarificationRequest.previous?.isLatestAssistantMessage && openStepOf(clarificationRequest.previous.state))

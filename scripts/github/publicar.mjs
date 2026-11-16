@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { constants, cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { basename, dirname, isAbsolute, join, relative } from "node:path"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { runVerificationSteps, verificationSteps } from "../ci/verificar.mjs"
@@ -34,6 +34,13 @@ const REPOSITORY_URL = `https://github.com/${REPOSITORY}.git`
 const BRANCH = "main"
 const EXCLUSIONS_FILE = "scripts/github/exclusoes.txt"
 const ALLOWED_PATTERN_HITS_FILE = "scripts/github/padroes-permitidos.txt"
+/**
+ * Lista confidencial LOCAL: marcas de conteúdo e nomes de arquivo de material de terceiros que nunca pode ir para o GitHub.
+ * Fica dentro da pasta .git do repositório (comum a todos os worktrees), então nunca é versionada nem publicada — nem as
+ * próprias marcas aparecem no código publicado. Sem ela a publicação não acontece.
+ */
+const CONFIDENTIAL_LIST_NAME = "publicacao-confidencial.txt"
+const CONFIDENTIAL_LEAK_NAME = "material confidencial da lista local"
 // Só a credencial do gh: o `credential.helper=` vazio zera os helpers da configuração (chaveiro etc.) antes.
 const GITHUB_AUTH = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
 
@@ -103,6 +110,40 @@ export function parseExclusions(text) {
   // Sem nenhuma regra, um pathspec só de exceções casaria com TODOS os arquivos.
   if (rules.length === 0) throw new PublishError(`${EXCLUSIONS_FILE} não tem nenhuma regra de exclusão`)
   return { rules, exceptions }
+}
+
+/**
+ * Lê a lista confidencial local: "conteudo: <regex do git grep -E>" barra o snapshot e a mensagem; "arquivo: <glob>" tira o
+ * arquivo do snapshot como uma regra de exclusoes.txt. Linhas vazias e "#" são ignoradas; qualquer outra linha é erro.
+ */
+export function parseConfidentialList(text, label = CONFIDENTIAL_LIST_NAME) {
+  const patterns = []
+  const rules = []
+  text.split("\n").forEach((raw, index) => {
+    const line = raw.trim()
+    if (!line || line.startsWith("#")) return
+    const match = /^(conteudo|arquivo):\s*(.+)$/.exec(line)
+    if (!match) throw new PublishError(`${label}, linha ${index + 1}: use "conteudo: <regex>" ou "arquivo: <glob>"`)
+    const value = match[2].trim()
+    if (match[1] === "conteudo") {
+      try {
+        new RegExp(value)
+      } catch {
+        throw new PublishError(`${label}, linha ${index + 1}: expressão inválida`)
+      }
+      patterns.push({ name: CONFIDENTIAL_LEAK_NAME, regex: value })
+    } else {
+      if (value.startsWith("/") || value.startsWith(":") || value.split("/").includes("..")) throw new PublishError(`${label}, linha ${index + 1}: caminho inválido`)
+      rules.push(value)
+    }
+  })
+  if (patterns.length === 0) throw new PublishError(`${label} não tem nenhuma linha "conteudo:"`)
+  return { patterns, rules }
+}
+
+/** Caminho da lista confidencial: dentro da pasta .git comum (vale para o repositório e para os worktrees temporários). */
+export function confidentialListPath(cwd) {
+  return join(resolve(cwd, git(cwd, ["rev-parse", "--git-common-dir"]).stdout.trim()), CONFIDENTIAL_LIST_NAME)
 }
 
 /**
@@ -306,8 +347,8 @@ export function parseAllowedPatternHits(text) {
 /** Identificador de um trecho casado que não revela o trecho. */
 export const fingerprint = (token) => `sha256:${createHash("sha256").update(token).digest("hex").slice(0, 16)}`
 
-export function findKeyPatterns(cwd, tree, allowed = new Set()) {
-  return KEY_PATTERNS.flatMap(({ name, regex }) => {
+export function findKeyPatterns(cwd, tree, allowed = new Set(), extraPatterns = []) {
+  return [...KEY_PATTERNS, ...extraPatterns].flatMap(({ name, regex }) => {
     // -o devolve só o trecho casado ("árvore:caminho\0trecho" por linha); -a inclui arquivos binários.
     const result = git(cwd, ["grep", "-a", "-o", "-z", "-E", "-e", regex, tree], { allowFailure: true })
     if (result.status > 1) throw new PublishError(`git grep falhou: ${result.stderr.trim()}`)
@@ -319,7 +360,8 @@ export function findKeyPatterns(cwd, tree, allowed = new Set()) {
       const token = line.slice(separator + 1).replace(/^[^A-Za-z0-9_-]/, "")
       hits.add(`${line.slice(tree.length + 1, separator)} ${fingerprint(token)}`)
     }
-    const blocked = [...hits].filter((hit) => !allowed.has(hit))
+    // padroes-permitidos.txt libera fixture de chave inventada; nunca libera marca da lista confidencial.
+    const blocked = [...hits].filter((hit) => name === CONFIDENTIAL_LEAK_NAME || !allowed.has(hit))
     return blocked.length > 0 ? [{ name, regex, hits: blocked }] : []
   })
 }
@@ -397,10 +439,10 @@ export function composeMessage({ title = null, commits, skipped = 0, head, chang
  * A mensagem também sai do computador (e os commits locais antigos chegaram a guardar senhas de demo): devolve o que nela
  * casa com um valor dos .env ou com um padrão de chave, sem nunca devolver o trecho.
  */
-export function messageLeaks(message, secrets) {
+export function messageLeaks(message, secrets, extraPatterns = []) {
   const leaks = new Set()
   for (const { key, value, source } of secrets) if (message.includes(value)) leaks.add(`o valor de ${source ? `${key} (${source})` : key}`)
-  for (const { name, regex } of KEY_PATTERNS) if (new RegExp(regex, "m").test(message)) leaks.add(name)
+  for (const { name, regex } of [...KEY_PATTERNS, ...extraPatterns]) if (new RegExp(regex, "m").test(message)) leaks.add(name)
   return [...leaks]
 }
 
@@ -559,7 +601,11 @@ async function main(argv) {
   const head = git(ROOT, ["rev-parse", "HEAD"]).stdout.trim()
   const branch = git(ROOT, ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim()
   const untracked = splitNul(git(ROOT, ["ls-files", "-z", "--others", "--exclude-standard"]).stdout).length
-  const exclusions = parseExclusions(readFileSync(join(ROOT, EXCLUSIONS_FILE), "utf8"))
+  const confidentialFile = confidentialListPath(ROOT)
+  if (!existsSync(confidentialFile)) throw new PublishError(`lista confidencial local ausente (${confidentialFile}) — sem ela nada é publicado`)
+  const confidential = parseConfidentialList(readFileSync(confidentialFile, "utf8"))
+  const baseExclusions = parseExclusions(readFileSync(join(ROOT, EXCLUSIONS_FILE), "utf8"))
+  const exclusions = { rules: [...baseExclusions.rules, ...confidential.rules], exceptions: baseExclusions.exceptions }
   const snapshot = buildSnapshot(ROOT, head, exclusions)
 
   requireGh()
@@ -625,15 +671,20 @@ async function main(argv) {
 
   const allowedFile = join(ROOT, ALLOWED_PATTERN_HITS_FILE)
   const allowed = existsSync(allowedFile) ? parseAllowedPatternHits(readFileSync(allowedFile, "utf8")) : new Set()
-  const patternHits = findKeyPatterns(ROOT, snapshot.tree, allowed)
-  if (patternHits.length === 0) console.log(`  ✓ nenhum padrão de chave fora dos liberados em ${ALLOWED_PATTERN_HITS_FILE} (AIza…, sk-…, ghp_…, chave privada, JWT, AKIA…, xox…)`)
+  const patternHits = findKeyPatterns(ROOT, snapshot.tree, allowed, confidential.patterns)
+  if (patternHits.length === 0) console.log(`  ✓ nenhum padrão de chave fora dos liberados em ${ALLOWED_PATTERN_HITS_FILE} (AIza…, sk-…, ghp_…, chave privada, JWT, AKIA…, xox…) nem da lista confidencial local (${formatCount(confidential.patterns.length)} marca(s), ${formatCount(confidential.rules.length)} regra(s) de arquivo)`)
   for (const { name, regex, hits } of patternHits) {
+    if (name === CONFIDENTIAL_LEAK_NAME) {
+      // A marca nunca vai para a tela: só o arquivo e a impressão do trecho. Nenhuma linha de padroes-permitidos.txt a libera.
+      problems.push(`${name} — tire o trecho destes arquivos (ou exclua o arquivo do snapshot):\n${hits.map((hit) => `      ${hit}`).join("\n")}`)
+      continue
+    }
     problems.push(
       `${name} — confira com git grep -nE '${regex}' HEAD -- <arquivo>; se a chave for inventada (fixture de teste), cole a linha em ${ALLOWED_PATTERN_HITS_FILE}:\n${hits.map((hit) => `      ${hit}`).join("\n")}`,
     )
   }
 
-  const messageProblems = messageLeaks(message, secrets.searchable)
+  const messageProblems = messageLeaks(message, secrets.searchable, confidential.patterns)
   if (messageProblems.length === 0) console.log("  ✓ mensagem do commit sem valores dos .env nem padrões de chave")
   for (const leak of messageProblems) {
     problems.push(`a mensagem do commit (montada dos commits locais) traz ${leak} — publique com --sem-corpo, ou com -m se estiver no título`)
