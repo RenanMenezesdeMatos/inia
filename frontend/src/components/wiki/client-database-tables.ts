@@ -69,6 +69,8 @@ export const CLIENT_TABLES: ClientTable[] = [
     columns: [
       { name: "codigo", sqlType: "varchar(64)", required: true, field: "externalCode", description: "Código estável do grupo. É a identidade dele: não deve mudar.", example: "B2C_RETENCAO" },
       { name: "nome", sqlType: "nvarchar(120)", required: true, field: "name", description: "Nome de exibição do grupo.", example: "Retenção B2C" },
+      { name: "universo_de_atuacao", sqlType: "varchar(8)", required: false, field: "operatingUniverse", description: "Universo de atuação do grupo: B2B, B2C ou B2X (universos separados). Todos os colaboradores do grupo herdam este universo. Necessário para ligar a separação por universo. Códigos próprios podem ser convertidos na configuração.", example: "B2C" },
+      { name: "universo_vigente_desde", sqlType: "date", required: false, field: "operatingUniverseEffectiveFrom", description: "Desde quando o grupo atende esse universo. Só importa numa troca: os indicadores do período anterior ficam no universo antigo. Vazio = a partir da carga.", example: "2026-11-01" },
     ],
   },
   {
@@ -85,6 +87,8 @@ export const CLIENT_TABLES: ClientTable[] = [
       { name: "codigo", sqlType: "varchar(128)", required: true, field: "externalCode", description: "Código estável do subgrupo, único em toda a operação.", example: "B2C_RETENCAO/PREMIUM" },
       { name: "grupo", sqlType: "varchar(64)", required: true, field: "groupExternalCode", description: "Código do grupo ao qual o subgrupo pertence.", example: "B2C_RETENCAO" },
       { name: "nome", sqlType: "nvarchar(120)", required: true, field: "name", description: "Nome de exibição do subgrupo.", example: "Premium" },
+      { name: "universo_de_atuacao", sqlType: "varchar(8)", required: false, field: "operatingUniverse", description: "Só quando o subgrupo atende um universo diferente do grupo (raro): B2B, B2C ou B2X. Vazio = herda do grupo.", example: "B2X" },
+      { name: "universo_vigente_desde", sqlType: "date", required: false, field: "operatingUniverseEffectiveFrom", description: "Desde quando o subgrupo atende esse universo. Vazio = a partir da carga.", example: "2026-11-01" },
     ],
   },
   {
@@ -111,6 +115,8 @@ export const CLIENT_TABLES: ClientTable[] = [
       { name: "situacao_funcional", sqlType: "nvarchar(40)", required: false, field: "currentStatus", description: "Situação atual: EM PRODUÇÃO, TRANSFERIDO, FÉRIAS, INSS, PILOTO, MATERNIDADE, PATERNIDADE, APOSENTADO ou ATIVIDADE OFF. Códigos próprios podem ser convertidos na configuração. Valor desconhecido vai para a quarentena.", example: "EM PRODUÇÃO" },
       { name: "situacao_vigente_desde", sqlType: "date", required: false, field: "statusEffectiveFrom", description: "Desde quando a situação vale. Vazio = a partir da carga.", example: "2024-03-11" },
       { name: "capital_operacional", sqlType: "varchar(40)", required: false, field: "operationalCapitalCode", description: "Capital cujos feriados valem para a pessoa. Não é endereço nem lotação.", example: "FORTALEZA" },
+      { name: "universo_de_atuacao", sqlType: "varchar(8)", required: false, field: "operatingUniverse", description: "Exceção: só quando o colaborador atende um universo diferente do grupo/subgrupo dele (B2B, B2C ou B2X). Vazio = herda do grupo. Liderança não precisa de universo.", example: "B2B" },
+      { name: "universo_vigente_desde", sqlType: "date", required: false, field: "operatingUniverseEffectiveFrom", description: "Desde quando a exceção vale. Vazio = a partir da carga.", example: "2026-11-01" },
     ],
   },
   {
