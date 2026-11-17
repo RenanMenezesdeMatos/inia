@@ -27,6 +27,9 @@ primária. Aplicado primeiro ao módulo Anjo (`docs/dev/memoria/apoio-com-anjo.m
   "Padrões de UI" abaixo).
 - `components/ui/surface.tsx` (só apresentação): `SURFACE_CARD`, `toneSurface`, `toneChip`, `StatusChip`, `IconBadge`,
   `SectionLabel`, `PageHeader`. O módulo Anjo usa essas peças (o antigo `human-support/shared/support-ui.tsx` foi absorvido).
+  `toneSurface("neutral")` é um CARTÃO (fundo do cartão, borda, sombra), nunca `muted`: o `muted` tem quase o tom da tela
+  (`--canvas`) e o bloco "Em vigor agora" da Configuração dos Anjos sumia (cobrança do responsável em 17/11/2026: toda área
+  precisa de delimitação e contraste). Faixa interna num bloco neutro usa `bg-muted` com contorno.
 
 Efeito da camada 1 nas telas sem ajuste próprio é discreto (fundo, pílulas, tabelas, cantos). A separação forte vem da camada 2.
 

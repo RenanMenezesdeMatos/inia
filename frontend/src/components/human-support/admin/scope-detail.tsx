@@ -105,7 +105,7 @@ export function ScopeDetail({ node, parent, masterOn, canGrantRoles, onOpenSetti
             <p className="text-sm">{origin.sentence}</p>
           </div>
         </div>
-        <dl className="grid gap-3 rounded-xl bg-card/70 p-3 text-sm sm:grid-cols-3">
+        <dl className={cn("grid gap-3 rounded-xl p-3 text-sm sm:grid-cols-3", tone === "neutral" ? "bg-muted ring-1 ring-border/60 ring-inset" : "bg-card/70")}>
           <div>
             <dt className="text-xs text-muted-foreground">Opção salva neste escopo</dt>
             <dd className="font-medium">{optionLabel(node.type, node.state)}</dd>

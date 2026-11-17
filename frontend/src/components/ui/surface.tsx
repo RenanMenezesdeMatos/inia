@@ -30,7 +30,9 @@ const TONES: Record<Tone, { chip: string; badge: string; surface: string }> = {
   neutral: {
     chip: "bg-muted text-muted-foreground ring-border",
     badge: "bg-muted text-muted-foreground",
-    surface: "border-border bg-muted/60",
+    // Neutro = cartão (fundo do cartão, borda, sombra): o `muted` tem quase o tom da tela da página (`--canvas`) e o bloco sumia
+    // ("cinza sobre cinza", 17/11/2026). Área sempre delimitada e com contraste contra a página.
+    surface: "border-border bg-card shadow-xs",
   },
   danger: {
     chip: "bg-destructive/10 text-destructive ring-destructive/20",
