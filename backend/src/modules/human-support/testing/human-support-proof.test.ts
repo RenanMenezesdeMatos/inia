@@ -19,7 +19,7 @@ import { anjoAttendanceHistory } from "../application/history-service.js"
 import { listMessages, sendMessage } from "../application/message-service.js"
 import { operationHistory } from "../application/operation-history.js"
 import { supportDemand } from "../application/demand-service.js"
-import { supportAbandonment } from "../application/abandonment-service.js"
+import { supportAbandonment, supportAbandonmentList } from "../application/abandonment-service.js"
 import { transferAttendance, transferCandidates } from "../application/transfer-service.js"
 import { supportFunnel } from "../application/metrics-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest } from "../application/request-service.js"
@@ -94,7 +94,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     if (!pool) return
     const byOrg = [
       "human_support_transfers", "human_support_inbox_versions", "human_support_conversation_marks", "human_support_entry_events", "human_support_evaluations", "human_support_classifications", "human_support_messages", "human_support_attendances",
-      "human_support_request_events", "human_support_requests", "human_support_presence_events", "human_support_agent_presence", "human_support_setting_events", "human_support_scope_settings",
+      "human_support_request_events", "human_support_requests", "human_support_presence_events", "human_support_agent_presence", "human_support_setting_events", "human_support_group_response_times", "human_support_scope_settings",
       "human_support_settings", "assistant_conversations", "personal_data_access_log", "audit_logs", "access_role_assignments", "user_accounts", "analytics_operational_dirty", "people", "subteams", "teams", "operations",
     ]
     for (const table of byOrg) await sql(`delete from ${table} where organization_id = $1`, [ORG]).catch((error: unknown) => console.error(`limpeza ${table}:`, (error as Error).message))
@@ -1139,4 +1139,68 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     await resetOpen()
     await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AH!, null)
   }, 90_000)
+
+  it("quem abandonou (17/11): a lista de cada card tem o total do card, os motivos do card e só o alcance de quem lê; paginada no servidor", async () => {
+    await resetOpen()
+    // Abandonos no Grupo 2 (fora do alcance do Coordenador do G1): o operador sai no meio do atendimento e, depois, cancela na fila.
+    await available("A4")
+    const { request: left } = await ask("OG2")
+    expect(left.status).toBe("IN_PROGRESS")
+    await sql(`update human_support_requests set operator_seen_at = now() - interval '6 minutes' where id = $1`, [left.id])
+    await closeRequest(pool, viewer("A4"), left.id, { cause: "OPERATOR_ABSENT", viewerIsAnjo: true })
+    await changePresence(pool, viewer("A4"), { status: "PAUSED", pauseReason: "PERSONAL" })
+    const { request: cancelled } = await ask("OG2")
+    expect(cancelled.status).toBe("WAITING")
+    await cancelRequest(pool, viewer("OG2"), cancelled.id)
+    await resetOpen()
+
+    const period = { from: today(), to: today() }
+    const listAll = async (key: string, kind: "WAITING" | "ANJO" | "OPERATOR", filter: { teamId?: string } = {}) => {
+      const pages = []
+      for (let page = 1; ; page += 1) {
+        const result = await supportAbandonmentList(pool, viewer(key), { ...period, ...filter, kind, page, pageSize: 10 })
+        expect(result.items.length).toBeLessThanOrEqual(10)
+        pages.push(result)
+        if (page * 10 >= result.total) break
+      }
+      const items = pages.flatMap((result) => result.items)
+      expect(new Set(items.map((item) => `${item.request.id}:${item.attendanceStartedAt}`)).size).toBe(items.length)
+      expect(items.map((item) => item.at)).toEqual([...items.map((item) => item.at)].sort().reverse())
+      return { total: pages[0]!.total, items }
+    }
+    const count = (items: { reason: string }[], reason: string) => items.filter((item) => item.reason === reason).length
+    for (const [key, filter] of [["ADMIN", {}], ["COORD", {}], ["ADMIN", { teamId: ids.G2! }]] as const) {
+      const numbers = await supportAbandonment(pool, viewer(key), { ...period, ...filter })
+      const waiting = await listAll(key, "WAITING", filter)
+      expect(waiting.total).toBe(numbers.waiting.abandoned)
+      expect(waiting.items).toHaveLength(numbers.waiting.abandoned)
+      expect([count(waiting.items, "CLOSED_INIA"), count(waiting.items, "CANCELLED")]).toEqual([numbers.waiting.closedInia, numbers.waiting.cancelled])
+      expect(waiting.items.every((item) => item.counterpart === null && item.attendanceStartedAt === null)).toBe(true)
+      const anjo = await listAll(key, "ANJO", filter)
+      expect(anjo.items).toHaveLength(numbers.attendance.byAnjo.total)
+      expect([count(anjo.items, "NO_REPLY"), count(anjo.items, "LOGGED_OUT")]).toEqual([numbers.attendance.byAnjo.noReply, numbers.attendance.byAnjo.session])
+      const operator = await listAll(key, "OPERATOR", filter)
+      expect(operator.items).toHaveLength(numbers.attendance.byOperator.total)
+      expect([count(operator.items, "LEFT_INIA"), count(operator.items, "NO_REPLY")]).toEqual([numbers.attendance.byOperator.leftInia, numbers.attendance.byOperator.noReply])
+      // Escopo: o Coordenador do G1 só vê pedidos do G1; o Administrador geral vê os do G2 (o operador OG2 nas duas listas dele).
+      const teams = new Set([...waiting.items, ...anjo.items, ...operator.items].map((item) => item.request.teamName))
+      if (key === "COORD") expect([...teams]).toEqual(["Proof G1"])
+      else {
+        expect(teams.has("Proof G2")).toBe(true)
+        expect(waiting.items.some((item) => item.request.id === cancelled.id && item.person.personId === ids.OG2 && item.reason === "CANCELLED")).toBe(true)
+        expect(operator.items.some((item) => item.request.id === left.id && item.person.personId === ids.OG2 && item.counterpart?.personId === ids.A4 && item.reason === "LEFT_INIA")).toBe(true)
+      }
+      if (key === "ADMIN" && "teamId" in filter) expect([...teams]).toEqual(["Proof G2"])
+    }
+    // O Coordenador do G1 não recebe nada do G2 nem pedindo o Grupo dele no filtro.
+    expect((await supportAbandonmentList(pool, viewer("COORD"), { ...period, teamId: ids.G2!, kind: "OPERATOR" })).total).toBe(0)
+    // Do Anjo: quem aparece é o Anjo; o outro lado é o operador; queda de rede não entra.
+    const anjoSide = await supportAbandonmentList(pool, viewer("ADMIN"), { ...period, kind: "ANJO", pageSize: 50 })
+    expect(anjoSide.total).toBeGreaterThanOrEqual(1)
+    expect(anjoSide.items.every((item) => item.counterpart !== null && item.attendanceStartedAt !== null)).toBe(true)
+    // Página além do fim: vazia, com o total certo.
+    const beyond = await supportAbandonmentList(pool, viewer("ADMIN"), { ...period, kind: "WAITING", page: 999, pageSize: 10 })
+    expect(beyond.items).toEqual([])
+    expect(beyond.total).toBe((await supportAbandonment(pool, viewer("ADMIN"), period)).waiting.abandoned)
+  }, 60_000)
 })

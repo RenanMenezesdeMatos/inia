@@ -1,7 +1,7 @@
 import { ApiError, apiGet, apiPost, apiSend } from "@/lib/api/api-client"
 import { anjoRowSchema, responseTimesPanelSchema, scopeNodeSchema, settingsViewSchema, type ResponseTimes, type ScopeState, type SettingsView } from "@/schemas/human-support/admin.schema"
 import type { ClassificationOutcome, ClassificationReason, EvaluationResolved, PauseReason, Pertinence } from "@/schemas/human-support/catalogs.schema"
-import { abandonmentSchema, anjosNowSchema, demandSchema, operationHistorySchema, queueWaitingSchema, type Productivity, classificationViewSchema, funnelResponseSchema, presenceTimelineSchema, requestDetailSchema, requestListSchema, transferCandidatesSchema, unavailableAttemptsSchema } from "@/schemas/human-support/monitoring.schema"
+import { abandonmentListSchema, abandonmentSchema, type AbandonmentKind, anjosNowSchema, demandSchema, operationHistorySchema, queueWaitingSchema, type Productivity, classificationViewSchema, funnelResponseSchema, presenceTimelineSchema, requestDetailSchema, requestListSchema, transferCandidatesSchema, unavailableAttemptsSchema } from "@/schemas/human-support/monitoring.schema"
 import { anjoAttendanceHistorySchema, anjoViewSchema, evaluationCurrentSchema, messagesPageSchema, messageViewSchema, myRequestsSchema, operatorRequestViewSchema, previewResponseSchema, receiptsSchema, stateResponseSchema, type StateResponse } from "@/schemas/human-support/state.schema"
 import { z } from "zod"
 
@@ -141,6 +141,10 @@ export async function fetchUnavailableAttempts(filter: PanelFilter & { cursor?: 
 /** Abandonos na espera e no atendimento no recorte (hoje na Monitoria Online; o período em Indicadores). */
 export async function fetchSupportAbandonment(filter: PanelFilter) {
   return abandonmentSchema.parse(await apiGet<unknown>(`${MONITORING}/abandonment?${panelParams(filter)}`))
+}
+/** Quem abandonou num dos cards (paginado no servidor: 10/20/50 por página). */
+export async function fetchSupportAbandonmentList(filter: PanelFilter & { kind: AbandonmentKind; page: number; pageSize: number }) {
+  return abandonmentListSchema.parse(await apiGet<unknown>(`${MONITORING}/abandonment/list?${panelParams(filter)}`))
 }
 /** Situação dos Anjos agora (não depende do período do painel); o Grupo/Subgrupo é o mesmo filtro do painel. */
 /** Histórico da operação (coordenação): jornada e indicadores por Anjo, consolidado e números da operação. */

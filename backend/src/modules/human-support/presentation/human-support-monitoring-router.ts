@@ -1,6 +1,6 @@
 import { Router, type Request } from "express"
 import type { Database } from "../../../infrastructure/database/pool.js"
-import { supportAbandonment } from "../application/abandonment-service.js"
+import { supportAbandonment, supportAbandonmentList } from "../application/abandonment-service.js"
 import { supportDemand } from "../application/demand-service.js"
 import { operationHistory } from "../application/operation-history.js"
 import { anjosNow, queueWaiting, listRequests, listUnavailableAttempts, presenceTimeline, requestDetail } from "../application/coordination-service.js"
@@ -8,7 +8,7 @@ import { supportFunnel } from "../application/metrics-service.js"
 import type { Viewer } from "../application/request-service.js"
 import { getResponseTimesPanel, updateGroupResponseTimes, updateOrganizationResponseTimes } from "../application/response-times-service.js"
 import { transferAttendance, transferCandidates } from "../application/transfer-service.js"
-import { anjosNowQuerySchema, attemptsQuerySchema, responseTimesSchema, groupResponseTimesSchema, demandQuerySchema, historyQuerySchema, idParamSchema, panelListQuerySchema, panelQuerySchema, timelineQuerySchema, transferSchema } from "./schemas.js"
+import { abandonmentListQuerySchema, anjosNowQuerySchema, attemptsQuerySchema, responseTimesSchema, groupResponseTimesSchema, demandQuerySchema, historyQuerySchema, idParamSchema, panelListQuerySchema, panelQuerySchema, timelineQuerySchema, transferSchema } from "./schemas.js"
 
 /**
  * PAINEL DO APOIO (`/api/v1/admin/human-support-monitoring`, montado com `human_support.coordinate` — Coordenador de Anjos e
@@ -46,6 +46,10 @@ export function createHumanSupportMonitoringRouter(db: Database) {
   // Abandonos na espera e no atendimento: o dia de hoje na Monitoria Online, o período em Indicadores.
   router.get("/abandonment", async (request, response) => {
     response.json({ data: await supportAbandonment(db, viewerOf(request), panelQuerySchema.parse(request.query)) })
+  })
+  // Quem abandonou em cada card (na espera, do Anjo, do operador no atendimento): a mesma coorte e a mesma regra dos números.
+  router.get("/abandonment/list", async (request, response) => {
+    response.json({ data: await supportAbandonmentList(db, viewerOf(request), abandonmentListQuerySchema.parse(request.query)) })
   })
   // Acionamentos do período (aba Indicadores): curva por hora, espera, quem mais aciona, produtivos e fila.
   router.get("/demand", async (request, response) => {

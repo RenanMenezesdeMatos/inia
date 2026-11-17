@@ -270,3 +270,26 @@ export const abandonmentSchema = z.object({
 })
 export type Abandonment = z.infer<typeof abandonmentSchema>
 
+
+/** Quem abandonou em cada card do bloco de abandonos (na espera, do Anjo, do operador no atendimento): mesma coorte e regra do número. */
+export const ABANDONMENT_KINDS = ["WAITING", "ANJO", "OPERATOR"] as const
+export type AbandonmentKind = (typeof ABANDONMENT_KINDS)[number]
+const abandonmentPersonSchema = z.object({ personId: z.string(), name: z.string(), avatarUrl: z.string().nullable() })
+export const abandonmentListSchema = z.object({
+  kind: z.enum(ABANDONMENT_KINDS),
+  total: z.number(),
+  page: z.number(),
+  pageSize: z.number(),
+  items: z.array(
+    z.object({
+      at: z.string(),
+      reason: z.enum(["CLOSED_INIA", "CANCELLED", "LEFT_INIA", "LOGGED_OUT", "NO_REPLY"]),
+      person: abandonmentPersonSchema,
+      counterpart: abandonmentPersonSchema.nullable(),
+      request: z.object({ id: z.string(), protocol: z.string(), createdAt: z.string(), teamName: z.string().nullable(), subteamName: z.string().nullable() }),
+      attendanceStartedAt: z.string().nullable(),
+    }),
+  ),
+})
+export type AbandonmentList = z.infer<typeof abandonmentListSchema>
+export type AbandonmentListItem = AbandonmentList["items"][number]

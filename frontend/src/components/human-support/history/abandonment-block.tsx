@@ -7,10 +7,11 @@ import { SURFACE_CARD, toneChip, type Tone } from "@/components/ui/surface"
 import type { GridSection } from "@/components/ui/customizable-grid/layout"
 import { cn } from "@/lib/utils"
 import { useSupportAbandonmentQuery } from "@/queries/human-support/use-human-support-admin"
-import type { Abandonment } from "@/schemas/human-support/monitoring.schema"
+import type { Abandonment, AbandonmentKind } from "@/schemas/human-support/monitoring.schema"
 import type { PanelFilter } from "@/services/human-support/human-support-service"
 
 import { PanelError } from "../monitoring/panel-error"
+import { AbandonmentPeople } from "./abandonment-people"
 import { ratioText } from "./attendance-block"
 
 /**
@@ -19,7 +20,10 @@ import { ratioText } from "./attendance-block"
  * o sistema). No atendimento, um card para cada lado, cada um com número e taxa próprios (pedido do responsável em 2026-11-16): do
  * Anjo (parou de responder; saiu e derrubou o operador — queda de rede à parte, sem contar) e do operador (saiu da INIA, parou de responder). Encerramento normal e transferência nunca contam.
  */
-function Group({ icon: Icon, tone, title, rate, total, base, children, testId }: { icon: typeof Ban; tone: Tone; title: string; rate: string; total: number; base: string; children: React.ReactNode; testId: string }) {
+/** Onde o card está (período e filtro do painel; `live` = Monitoria Online): o número abre a lista de quem abandonou com o MESMO recorte. */
+type Origin = { filter: PanelFilter; live: boolean }
+
+function Group({ icon: Icon, tone, title, rate, total, base, children, testId, kind, origin }: { icon: typeof Ban; tone: Tone; title: string; rate: string; total: number; base: string; children: React.ReactNode; testId: string; kind: AbandonmentKind; origin: Origin }) {
   return (
     <article className={cn(SURFACE_CARD, "h-full space-y-3 p-4")} aria-label={title} data-testid={testId}>
       <header className="flex items-start gap-3">
@@ -28,7 +32,7 @@ function Group({ icon: Icon, tone, title, rate, total, base, children, testId }:
         </span>
         <div className="min-w-0 leading-tight">
           <h3 className="text-sm font-medium">{title}</h3>
-          <p className="text-2xl font-semibold tabular-nums">{total}</p>
+          <AbandonmentPeople kind={kind} total={total} title={title} filter={origin.filter} live={origin.live} />
           <p className="text-xs text-muted-foreground">
             {rate} · {base}
           </p>
@@ -49,10 +53,10 @@ function Line({ icon: Icon, label, value, muted = false }: { icon: typeof Ban; l
   )
 }
 
-function WaitingGroup({ data }: { data: Abandonment }) {
+function WaitingGroup({ data, origin }: { data: Abandonment; origin: Origin }) {
   const { waiting } = data
   return (
-    <Group icon={DoorOpen} tone="warning" title="Abandonos na espera" total={waiting.abandoned} rate={ratioText(waiting.rate)} base="dos pedidos que entraram na fila" testId="abandon-waiting">
+    <Group icon={DoorOpen} tone="warning" title="Abandonos na espera" total={waiting.abandoned} rate={ratioText(waiting.rate)} base="dos pedidos que entraram na fila" testId="abandon-waiting" kind="WAITING" origin={origin}>
       <Line icon={LogOut} label="Fechou a INIA antes de ser atendido" value={waiting.closedInia} />
       <Line icon={Ban} label="Cancelou o pedido" value={waiting.cancelled} />
       <Line icon={Hourglass} label="Expirou na fila (o sistema encerrou; não conta como abandono)" value={waiting.expired} muted />
@@ -60,10 +64,10 @@ function WaitingGroup({ data }: { data: Abandonment }) {
   )
 }
 
-function OperatorGroup({ data }: { data: Abandonment }) {
+function OperatorGroup({ data, origin }: { data: Abandonment; origin: Origin }) {
   const { byOperator } = data.attendance
   return (
-    <Group icon={UserMinus} tone="warning" title="Abandonos do operador no atendimento" total={byOperator.total} rate={ratioText(byOperator.rate)} base="dos atendimentos encerrados" testId="abandon-operator">
+    <Group icon={UserMinus} tone="warning" title="Abandonos do operador no atendimento" total={byOperator.total} rate={ratioText(byOperator.rate)} base="dos atendimentos encerrados" testId="abandon-operator" kind="OPERATOR" origin={origin}>
       <Line icon={LogOut} label="Saiu da INIA no meio" value={byOperator.leftInia} />
       <Line icon={MessageCircleOff} label="Parou de responder (Anjo liberado)" value={byOperator.noReply} />
     </Group>
@@ -74,11 +78,11 @@ function OperatorGroup({ data }: { data: Abandonment }) {
  * O número que diz se o Anjo abandona (pedidos do responsável em 2026-11-16): parou de responder + saiu (deslogou) e derrubou o
  * operador, com taxa própria. Queda de rede e papel retirado pela coordenação não são culpa dele: aparecem à parte, sem contar.
  */
-function AnjoGroup({ data }: { data: Abandonment }) {
+function AnjoGroup({ data, origin }: { data: Abandonment; origin: Origin }) {
   const { byAnjo } = data.attendance
   const notCounted = byAnjo.connection + byAnjo.roleRevoked + byAnjo.unknownDrop
   return (
-    <Group icon={UserRoundX} tone="danger" title="Abandonos do Anjo" total={byAnjo.total} rate={ratioText(byAnjo.rate)} base="dos atendimentos encerrados" testId="abandon-anjo">
+    <Group icon={UserRoundX} tone="danger" title="Abandonos do Anjo" total={byAnjo.total} rate={ratioText(byAnjo.rate)} base="dos atendimentos encerrados" testId="abandon-anjo" kind="ANJO" origin={origin}>
       <Line icon={MessageCircleOff} label="Parou de responder (perdeu o atendimento)" value={byAnjo.noReply} />
       <Line icon={LogOut} label="Saiu (deslogou) e derrubou o operador" value={byAnjo.session} />
       <Line icon={WifiOff} label={`Queda de rede${byAnjo.roleRevoked ? ` · papel retirado ${byAnjo.roleRevoked}` : ""}${byAnjo.unknownDrop ? ` · sem causa ${byAnjo.unknownDrop}` : ""} (não conta como abandono)`} value={notCounted} muted />
@@ -92,6 +96,7 @@ function AnjoGroup({ data }: { data: Abandonment }) {
  */
 export function useAbandonmentSection({ id, title, description, filter, live = false }: { id: string; title: string; description: string; filter: PanelFilter; live?: boolean }): GridSection {
   const query = useSupportAbandonmentQuery(filter, live)
+  const origin: Origin = { filter, live }
   const state = (render: (data: Abandonment) => React.ReactNode) =>
     query.isPending ? <Skeleton className="h-40 w-full rounded-2xl" aria-label="Carregando os abandonos" /> : query.isError ? <PanelError error={query.error} onRetry={() => void query.refetch()} /> : render(query.data)
   return {
@@ -99,9 +104,9 @@ export function useAbandonmentSection({ id, title, description, filter, live = f
     title,
     description,
     cards: [
-      { id: "espera", title: "Abandonos na espera", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <WaitingGroup data={data} />) },
-      { id: "anjo", title: "Abandonos do Anjo", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <AnjoGroup data={data} />) },
-      { id: "operador", title: "Abandonos do operador no atendimento", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <OperatorGroup data={data} />) },
+      { id: "espera", title: "Abandonos na espera", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <WaitingGroup data={data} origin={origin} />) },
+      { id: "anjo", title: "Abandonos do Anjo", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <AnjoGroup data={data} origin={origin} />) },
+      { id: "operador", title: "Abandonos do operador no atendimento", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <OperatorGroup data={data} origin={origin} />) },
     ],
   }
 }

@@ -16,6 +16,7 @@ const service = vi.hoisted(() => ({
   fetchSupportRequestDetail: vi.fn(),
   fetchUnavailableAttempts: vi.fn(),
   fetchSupportAbandonment: vi.fn(),
+  fetchSupportAbandonmentList: vi.fn(),
   fetchAnjosNow: vi.fn(),
   fetchAnjoPresenceTimeline: vi.fn(),
   fetchSupportScopes: vi.fn(),
@@ -493,5 +494,48 @@ describe("Painel do apoio › Sem Anjo em serviço e Anjos", () => {
     openTab("Indicadores")
     expect(await screen.findByText("Abandonos no período")).toBeInTheDocument()
     expect(service.fetchSupportAbandonment).toHaveBeenLastCalledWith({ ...PERIOD, teamId: null, subteamId: null })
+  })
+
+  it("quem abandonou: o número do card abre a lista do MESMO recorte (servidor, paginada), com data/hora, motivo, o outro lado e o pedido de origem; zero não abre", async () => {
+    service.fetchSupportAbandonment.mockResolvedValue({ ...ABANDONMENT(), attendance: { ...ABANDONMENT().attendance, byAnjo: { ...ABANDONMENT().attendance.byAnjo, session: 0, total: 0 } } })
+    const person = (personId: string, name: string) => ({ personId, name, avatarUrl: null })
+    service.fetchSupportAbandonmentList.mockResolvedValue({
+      kind: "OPERATOR",
+      total: 12,
+      page: 1,
+      pageSize: 10,
+      items: [
+        { at: "2026-11-09T12:40:00.000Z", reason: "LEFT_INIA", person: person("o1", "Larissa Monteiro"), counterpart: person("a1", "Ana Anjo"), request: { id: "req-1", protocol: "AP-000123", createdAt: "2026-11-09T12:30:00.000Z", teamName: "Grupo X", subteamName: "X1" }, attendanceStartedAt: "2026-11-09T12:31:00.000Z" },
+        { at: "2026-11-08T15:00:00.000Z", reason: "NO_REPLY", person: person("o2", "Rui Prado"), counterpart: person("a1", "Ana Anjo"), request: { id: "req-2", protocol: "AP-000120", createdAt: "2026-11-08T14:30:00.000Z", teamName: "Grupo X", subteamName: null }, attendanceStartedAt: "2026-11-08T14:31:00.000Z" },
+      ],
+    })
+    service.fetchSupportRequestDetail.mockResolvedValue(DETAIL)
+    renderWithQuery(<HumanSupportMonitoringPage />)
+    openTab("Indicadores")
+    await screen.findByTestId("abandon-operator")
+    // Zero (Abandonos do Anjo) não abre lista.
+    expect(within(screen.getByTestId("abandon-anjo")).queryByRole("button", { name: /ver quem/ })).not.toBeInTheDocument()
+    expect(service.fetchSupportAbandonmentList).not.toHaveBeenCalled()
+
+    fireEvent.click(within(screen.getByTestId("abandon-operator")).getByRole("button", { name: /ver quem: Abandonos do operador no atendimento/ }))
+    const list = await screen.findByRole("region", { name: "Operadores que abandonaram no atendimento" })
+    expect(service.fetchSupportAbandonmentList).toHaveBeenCalledWith({ ...PERIOD, teamId: null, subteamId: null, kind: "OPERATOR", page: 1, pageSize: 10 })
+    const rows = await within(list).findAllByTestId("abandon-person")
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent("Larissa Monteiro")
+    expect(rows[0]).toHaveTextContent("Saiu da INIA no meio")
+    expect(rows[0]).toHaveTextContent("Anjo: Ana Anjo")
+    expect(rows[0]).toHaveTextContent("Grupo X › X1")
+    expect(rows[0]).toHaveTextContent("AP-000123")
+    expect(rows[1]).toHaveTextContent("Parou de responder (Anjo liberado)")
+    expect(list).toHaveTextContent("1–10 de 12 abandonos · página 1 de 2")
+    // Próxima página: pedida ao servidor, nunca cortada na tela.
+    fireEvent.click(within(list).getByRole("button", { name: /próxima/i }))
+    await waitFor(() => expect(service.fetchSupportAbandonmentList).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "OPERATOR", page: 2, pageSize: 10 })))
+
+    // O protocolo abre a conversa do pedido de origem.
+    fireEvent.click(within(rows[0]!).getByRole("button", { name: "Abrir o pedido AP-000123" }))
+    await waitFor(() => expect(service.fetchSupportRequestDetail).toHaveBeenCalledWith("req-1"))
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
   })
 })

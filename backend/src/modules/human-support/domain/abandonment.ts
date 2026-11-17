@@ -31,26 +31,64 @@ export type Abandonment = {
   }
 }
 
+/** Tipo de abandono de cada número do painel — a lista "quem abandonou" (`abandonment-list-service.ts`) usa as MESMAS funções. */
+export type AbandonmentKind = "WAITING" | "ANJO" | "OPERATOR"
+/** Motivo de cada abandono: na espera, fechou a INIA / cancelou; no atendimento, saiu (da INIA ou deslogou) / parou de responder. */
+export type AbandonmentReason = "CLOSED_INIA" | "CANCELLED" | "LEFT_INIA" | "LOGGED_OUT" | "NO_REPLY"
+
+/** O pedido é abandono NA ESPERA? Expirado não é (quem encerra é o sistema). */
+export function waitingAbandonReason(request: AbandonRequest): AbandonmentReason | null {
+  if (request.endCause === "OPERATOR_ABANDONED") return "CLOSED_INIA"
+  if (request.endCause === "OPERATOR_CANCELLED") return "CANCELLED"
+  return null
+}
+
+/** Atendimento encerrado que entra na base das taxas (fora os transferidos e os em andamento). */
+export const endedForAbandonment = (attendance: AbandonAttendance) => attendance.endCause !== null && attendance.endCause !== "TRANSFERRED"
+
+/**
+ * De quem é o abandono NO ATENDIMENTO e por quê (null = encerramento normal, transferido, em andamento ou queda que não conta).
+ * `INACTIVITY` (antes da 193): do Anjo se ele nunca respondeu ou se a última mensagem humana foi do operador; senão, do operador.
+ */
+export function attendanceAbandonOf(attendance: AbandonAttendance): { side: "ANJO" | "OPERATOR"; reason: AbandonmentReason } | null {
+  if (!endedForAbandonment(attendance)) return null
+  switch (attendance.endCause) {
+    case "OPERATOR_ABSENT":
+      return { side: "OPERATOR", reason: "LEFT_INIA" }
+    case "OPERATOR_SILENT":
+      return { side: "OPERATOR", reason: "NO_REPLY" }
+    case "ANJO_SILENT":
+      return { side: "ANJO", reason: "NO_REPLY" }
+    case "ANJO_LOST":
+      return attendance.lostCause === "SESSION" ? { side: "ANJO", reason: "LOGGED_OUT" } : null
+    case "INACTIVITY":
+      return { side: !attendance.anjoResponded || attendance.lastHumanAuthor !== "ANJO" ? "ANJO" : "OPERATOR", reason: "NO_REPLY" }
+    default:
+      return null
+  }
+}
+
 export function abandonmentOf(requests: readonly AbandonRequest[], attendances: readonly AbandonAttendance[]): Abandonment {
-  const closedInia = requests.filter((request) => request.endCause === "OPERATOR_ABANDONED").length
-  const cancelled = requests.filter((request) => request.endCause === "OPERATOR_CANCELLED").length
-  const ended = attendances.filter((attendance) => attendance.endCause !== null && attendance.endCause !== "TRANSFERRED")
-  const inactive = ended.filter((attendance) => attendance.endCause === "INACTIVITY")
-  // De quem faltou o retorno: do Anjo se ele nunca respondeu ou se a última mensagem humana foi do operador; senão, do operador.
-  const legacyAnjoSilent = inactive.filter((attendance) => !attendance.anjoResponded || attendance.lastHumanAuthor !== "ANJO").length
-  const anjoSilent = legacyAnjoSilent + ended.filter((attendance) => attendance.endCause === "ANJO_SILENT").length
-  const operatorSilent = inactive.length - legacyAnjoSilent + ended.filter((attendance) => attendance.endCause === "OPERATOR_SILENT").length
+  const waitingReasons = requests.map(waitingAbandonReason)
+  const closedInia = waitingReasons.filter((reason) => reason === "CLOSED_INIA").length
+  const cancelled = waitingReasons.filter((reason) => reason === "CANCELLED").length
+  const ended = attendances.filter(endedForAbandonment)
+  const verdicts = ended.map(attendanceAbandonOf)
+  const count = (side: "ANJO" | "OPERATOR", reason: AbandonmentReason) => verdicts.filter((verdict) => verdict?.side === side && verdict.reason === reason).length
   const lost = ended.filter((attendance) => attendance.endCause === "ANJO_LOST")
-  const leftInia = ended.filter((attendance) => attendance.endCause === "OPERATOR_ABSENT").length
+  const leftInia = count("OPERATOR", "LEFT_INIA")
+  const operatorSilent = count("OPERATOR", "NO_REPLY")
+  const session = count("ANJO", "LOGGED_OUT")
+  const anjoSilent = count("ANJO", "NO_REPLY")
   const byOperator = { leftInia, noReply: operatorSilent, total: leftInia + operatorSilent, rate: ratio(leftInia + operatorSilent, ended.length) }
   const byAnjo = {
     connection: lost.filter((attendance) => attendance.lostCause === "CONNECTION").length,
-    session: lost.filter((attendance) => attendance.lostCause === "SESSION").length,
+    session,
     roleRevoked: lost.filter((attendance) => attendance.lostCause === "ROLE_REVOKED").length,
     unknownDrop: lost.filter((attendance) => attendance.lostCause === null).length,
     noReply: anjoSilent,
-    total: lost.filter((attendance) => attendance.lostCause === "SESSION").length + anjoSilent,
-    rate: ratio(lost.filter((attendance) => attendance.lostCause === "SESSION").length + anjoSilent, ended.length),
+    total: session + anjoSilent,
+    rate: ratio(session + anjoSilent, ended.length),
   }
   const abandoned = byOperator.total + byAnjo.total
   return {

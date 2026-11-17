@@ -48,6 +48,8 @@ export const anjosQuerySchema = z.object({ teamId: id.optional(), subteamId: id.
 export const capacitySchema = z.object({ maxConcurrent: z.number().int().min(HUMAN_SUPPORT_LIMITS.capacityMin).max(HUMAN_SUPPORT_LIMITS.capacityMax).nullable() }).strict()
 const civilDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 export const panelQuerySchema = z.object({ from: civilDate, to: civilDate, teamId: id.optional(), subteamId: id.optional() }).strict()
+/** "Quem abandonou" em cada card do bloco de abandonos: o tipo, a página e o tamanho (10/20/50, como a paginação do app). */
+export const abandonmentListQuerySchema = panelQuerySchema.extend({ kind: z.enum(["WAITING", "ANJO", "OPERATOR"]), page: int(1, 100_000).optional(), pageSize: z.coerce.number().int().refine((value) => [10, 20, 50].includes(value), "Use 10, 20 ou 50 por página.").optional() }).strict()
 export const panelListQuerySchema = panelQuerySchema.extend({ search: z.string().trim().max(100).optional(), status: z.enum(["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"]).optional(), origin: z.enum(["BUTTON", "DISLIKE", "SIGNAL"]).optional(), cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const attemptsQuerySchema = panelQuerySchema.extend({ cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const anjosNowQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()

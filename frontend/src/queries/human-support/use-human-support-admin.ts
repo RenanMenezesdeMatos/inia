@@ -1,12 +1,13 @@
 "use client"
 
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ScopeState, SettingsView } from "@/schemas/human-support/admin.schema"
 import { isOpenRequestStatus } from "@/schemas/human-support/catalogs.schema"
-import type { Productivity } from "@/schemas/human-support/monitoring.schema"
+import type { AbandonmentKind, Productivity } from "@/schemas/human-support/monitoring.schema"
 import {
   fetchAnjoPresenceTimeline,
   fetchSupportAbandonment,
+  fetchSupportAbandonmentList,
   fetchAnjosNow,
   fetchMyAnjoHistory,
   fetchQueueWaiting,
@@ -92,6 +93,9 @@ export const useUnavailableAttemptsQuery = (filter: PanelFilter & { cursor?: str
 /** Abandonos: `live` = Monitoria Online (o dia de hoje, relido junto com a "Operação agora"); sem ele, o período de Indicadores. */
 export const useSupportAbandonmentQuery = (filter: PanelFilter, live = false) =>
   useQuery({ queryKey: [...MONITORING_KEY, "abandonment", filter], queryFn: () => fetchSupportAbandonment(filter), refetchInterval: live ? ANJOS_NOW_REFRESH_MS : false, refetchOnReconnect: live ? "always" : true })
+/** Quem abandonou (só com a lista aberta); `live` relê junto com o número da Monitoria Online. A página anterior fica na tela ao trocar. */
+export const useSupportAbandonmentListQuery = (filter: PanelFilter & { kind: AbandonmentKind; page: number; pageSize: number }, { enabled, live = false }: { enabled: boolean; live?: boolean }) =>
+  useQuery({ queryKey: [...MONITORING_KEY, "abandonment-list", filter], queryFn: () => fetchSupportAbandonmentList(filter), enabled, placeholderData: keepPreviousData, refetchInterval: enabled && live ? ANJOS_NOW_REFRESH_MS : false })
 /** Situação dos Anjos agora: atualiza sozinha a cada 15 s (e ao voltar para a aba), como a lista de Anjos da configuração. */
 /** Situação agora: relê a cada 5 s e, ao voltar a conexão ou o foco, na hora (o servidor é a fonte da verdade). */
 export const ANJOS_NOW_REFRESH_MS = 5_000

@@ -669,4 +669,14 @@ se o Anjo está habilitado, se foi definido ali ou herdado (e de onde), e o que 
 - Conferido no navegador (17/11) numa cópia da pasta `frontend` no scratchpad (o `next dev` não aceita dois na mesma pasta) + API
   3533 sobre o banco de dev: herança real de "B2C · Atendimento Geral" › Chat; Grupo de teste "ATENDIMENTO GERAL" habilitado e
   revertido (ficou uma linha `INHERIT`, equivalente a nenhuma, com os eventos e a auditoria).
+- **Quem abandonou (17/11/2026, pedido do responsável)**. O número de cada card de Abandonos ("na espera", "do Anjo", "do operador no
+  atendimento"), em Indicadores e na Monitoria Online, abre num Popover (`history/abandonment-people.tsx`, "Ver quem"; zero não abre) a
+  lista de quem abandonou: mais recentes primeiro (fim do pedido na espera; fim do atendimento), data/hora, motivo, o outro lado
+  (operador ↔ Anjo), Grupo › Subgrupo e o protocolo do pedido de origem, que abre `RequestDetail` num Dialog (grava a leitura LGPD como
+  em Pedidos). `GET …/abandonment/list?kind=WAITING|ANJO|OPERATOR&page&pageSize(10/20/50)` (`supportAbandonmentList`). Regra única: o
+  domínio expõe `waitingAbandonReason` e `attendanceAbandonOf` (usados também por `abandonmentOf`) e o serviço lê a MESMA coorte do
+  número (`loadCohort`: alcance de `coverageClause`, período, filtro); classifica no servidor, ordena e pagina no banco só sobre os ids
+  escolhidos e busca nomes só da página. Prova: cenário "quem abandonou (17/11)" do `human-support-proof` (lista = número e motivos,
+  Administrador × Coordenador do G1 × filtro de Grupo, página além do fim). A limpeza da prova passou a incluir
+  `human_support_group_response_times` (sobrava no `inia_test`). Sem migration.
 
