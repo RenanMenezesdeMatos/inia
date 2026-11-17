@@ -11,7 +11,8 @@ import { ORG_TIMEZONE_SQL } from "./ai-runtime-store.js"
  * DASHBOARD DE USO E CUSTO (§34–§39, §45–§48, §54, §78). Tudo por agregação SQL sobre
  * `ai_usage_events` (índices por organização × tempo × dimensão) — nunca N+1 por evento. Tokens só
  * somam o que o provider informou (com a contagem de eventos que informaram cada campo); custo é
- * sempre separado por MOEDA (sem conversão) e o custo desconhecido é contado, nunca estimado.
+ * sempre separado por MOEDA (sem conversão) e o custo desconhecido é contado, nunca estimado. Cada métrica diz quantas chamadas
+ * tiveram o custo INFORMADO pelo provider e quantas o tiveram ESTIMADO pela tabela.
  */
 export const usageQuerySchema = z.object({
   period: z.enum(["TODAY", "7D", "30D", "MONTH", "CUSTOM"]).default("30D"),
@@ -24,12 +25,12 @@ export const usageQuerySchema = z.object({
 export type UsageQuery = z.infer<typeof usageQuerySchema>
 
 export type TokenTotals = { input: number | null; output: number | null; reasoning: number | null; cached: number | null; total: number | null; reported: { input: number; output: number; reasoning: number; cached: number; total: number } }
-export type Metrics = { requests: number; attempts: number; errors: number; blocked: number; fallbacks: number; tokens: TokenTotals; costByCurrency: Record<string, string>; unknownCostCalls: number; localCalls: number; latencyAvgMs: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; errorRate: number | null }
+export type Metrics = { requests: number; attempts: number; errors: number; blocked: number; fallbacks: number; tokens: TokenTotals; costByCurrency: Record<string, string>; unknownCostCalls: number; reportedCostCalls: number; estimatedCostCalls: number; localCalls: number; latencyAvgMs: number | null; latencyP50Ms: number | null; latencyP95Ms: number | null; errorRate: number | null }
 export type BreakdownRow = Metrics & { key: string; label: string; secondary: string | null }
 export type DailyPoint = { day: string; requests: number; tokens: number | null; costByCurrency: Record<string, string> }
 export type UsageDashboard = { period: { from: string; to: string; label: string; timezone: string }; totals: Metrics; daily: DailyPoint[]; byProvider: BreakdownRow[]; byModel: BreakdownRow[]; byUseCase: BreakdownRow[]; currencies: string[] }
 
-type MetricRow = { dim: string | null; dim2: string | null; requests: number; attempts: number; errors: number; blocked: number; fallbacks: number; input: string | null; output: string | null; reasoning: string | null; cached: string | null; total: string | null; input_n: number; output_n: number; reasoning_n: number; cached_n: number; total_n: number; unknown_cost: number; local_calls: number; lat_avg: number | null; lat_p50: number | null; lat_p95: number | null }
+type MetricRow = { dim: string | null; dim2: string | null; requests: number; attempts: number; errors: number; blocked: number; fallbacks: number; input: string | null; output: string | null; reasoning: string | null; cached: string | null; total: string | null; input_n: number; output_n: number; reasoning_n: number; cached_n: number; total_n: number; unknown_cost: number; reported_cost: number; estimated_cost: number; local_calls: number; lat_avg: number | null; lat_p50: number | null; lat_p95: number | null }
 type CostRow = { dim: string | null; currency: string; amount: string }
 
 const METRIC_COLUMNS = `
@@ -37,7 +38,8 @@ const METRIC_COLUMNS = `
   count(*) filter (where status = 'ERROR')::int errors, count(*) filter (where status = 'BLOCKED')::int blocked, count(*) filter (where fallback_index > 0)::int fallbacks,
   sum(input_tokens)::text input, sum(output_tokens)::text output, sum(reasoning_tokens)::text reasoning, sum(cached_tokens)::text cached, sum(total_tokens)::text total,
   count(input_tokens)::int input_n, count(output_tokens)::int output_n, count(reasoning_tokens)::int reasoning_n, count(cached_tokens)::int cached_n, count(total_tokens)::int total_n,
-  count(*) filter (where status = 'SUCCESS' and cost_status = 'UNKNOWN')::int unknown_cost, count(*) filter (where status = 'SUCCESS' and is_local)::int local_calls,
+  count(*) filter (where status = 'SUCCESS' and cost_status = 'UNKNOWN')::int unknown_cost,
+  count(*) filter (where status = 'SUCCESS' and cost_status = 'REPORTED')::int reported_cost, count(*) filter (where status = 'SUCCESS' and cost_status = 'ESTIMATED')::int estimated_cost, count(*) filter (where status = 'SUCCESS' and is_local)::int local_calls,
   avg(duration_ms) filter (where status = 'SUCCESS') lat_avg,
   percentile_cont(0.5) within group (order by duration_ms) filter (where status = 'SUCCESS') lat_p50,
   percentile_cont(0.95) within group (order by duration_ms) filter (where status = 'SUCCESS') lat_p95`
@@ -48,7 +50,7 @@ const round = (value: number | null): number | null => (value === null ? null : 
 function metricsOf(row: MetricRow | undefined, costs: CostRow[]): Metrics {
   const costByCurrency: Record<string, string> = {}
   for (const cost of costs) costByCurrency[cost.currency] = formatDecimal(parseDecimal(costByCurrency[cost.currency] ?? "0") + parseDecimal(cost.amount), 6)
-  if (!row) return { requests: 0, attempts: 0, errors: 0, blocked: 0, fallbacks: 0, tokens: { input: null, output: null, reasoning: null, cached: null, total: null, reported: { input: 0, output: 0, reasoning: 0, cached: 0, total: 0 } }, costByCurrency, unknownCostCalls: 0, localCalls: 0, latencyAvgMs: null, latencyP50Ms: null, latencyP95Ms: null, errorRate: null }
+  if (!row) return { requests: 0, attempts: 0, errors: 0, blocked: 0, fallbacks: 0, tokens: { input: null, output: null, reasoning: null, cached: null, total: null, reported: { input: 0, output: 0, reasoning: 0, cached: 0, total: 0 } }, costByCurrency, unknownCostCalls: 0, reportedCostCalls: 0, estimatedCostCalls: 0, localCalls: 0, latencyAvgMs: null, latencyP50Ms: null, latencyP95Ms: null, errorRate: null }
   return {
     requests: row.requests,
     attempts: row.attempts,
@@ -59,6 +61,9 @@ function metricsOf(row: MetricRow | undefined, costs: CostRow[]): Metrics {
     tokens: { input: row.input_n > 0 ? num(row.input) : null, output: row.output_n > 0 ? num(row.output) : null, reasoning: row.reasoning_n > 0 ? num(row.reasoning) : null, cached: row.cached_n > 0 ? num(row.cached) : null, total: row.total_n > 0 ? num(row.total) : null, reported: { input: row.input_n, output: row.output_n, reasoning: row.reasoning_n, cached: row.cached_n, total: row.total_n } },
     costByCurrency,
     unknownCostCalls: row.unknown_cost,
+    // Origem do custo das chamadas bem-sucedidas: informado pelo provider × estimado pela tabela (o resto é desconhecido).
+    reportedCostCalls: row.reported_cost,
+    estimatedCostCalls: row.estimated_cost,
     localCalls: row.local_calls,
     latencyAvgMs: round(row.lat_avg),
     latencyP50Ms: round(row.lat_p50),

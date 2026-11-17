@@ -129,6 +129,8 @@ export function accessCapabilities(access: AccessContext, catalog: RoleCatalog =
     canViewIniaSuccess: any("assistant_conversations.view") || any("human_support.coordinate") || any("feedback_contestations.review") || org("configuration.manage"),
     // Diagnóstico de erros (catálogo + ocorrências da organização): só com escopo de organização, como a rota.
     canViewErrorDiagnostics: org("support.diagnostics.view"),
+    // Universo de atuação: consultar todos os universos (no escopo). Sem ela, a tela só oferece o universo do próprio cadastro.
+    canViewAllUniverses: any("operating_universes.all"),
   }
 }
 

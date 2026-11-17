@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (879)
+## Códigos dos módulos (891)
 
 ### Módulo `access`
 
@@ -2320,6 +2320,7 @@ já diz a regra; a família do status diz como investigar.
 | `DATA_INVALID_NUMBER` | — | FAMILIA-DEPENDENCIA | Número inválido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_MAPPING_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O mapeamento está incompleto: ${problems.join(" ")} | `backend/src/modules/data-hub/application/feed-service.ts`<br>`backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_NO_VALID_RECORDS` | — | FAMILIA-DEPENDENCIA | Nenhum registro da carga é válido. | `backend/src/modules/data-hub/domain/error-codes.ts` |
+| `DATA_OPERATING_UNIVERSE_REQUIRED` | — | FAMILIA-DEPENDENCIA | Colaborador novo sem universo de atuação (B2B, B2C ou B2X) depois que a organização ativou a exigência — mapeie o campo na carga. | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_PERSON_LINK_ACCESS_DISABLED` | — | FAMILIA-DEPENDENCIA | Pessoa ligada pelo e-mail foi para outro Grupo ou nível de liderança: o acesso foi desabilitado até quem administra o lugar novo liberar de novo (registro aplicado; veja a mensagem). | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_PERSON_LINKED_BY_EMAIL` | — | FAMILIA-DEPENDENCIA | Matrícula ligada pela conta de login (mesmo e-mail) a uma pessoa já cadastrada na INIA sem matrícula (registro aplicado; veja a mensagem). | `backend/src/modules/data-hub/domain/error-codes.ts` |
 | `DATA_POSSIBLE_DUPLICATE_PERSON` | — | FAMILIA-DEPENDENCIA | Possível pessoa duplicada: mesmo nome de uma pessoa cadastrada na INIA sem matrícula (registro aplicado; a INIA não junta por nome). | `backend/src/modules/data-hub/domain/error-codes.ts` |
@@ -2433,7 +2434,7 @@ já diz a regra; a família do status diz como investigar.
 | `EMAIL_ALREADY_IN_USE` | 409 | FAMILIA-CONFLITO | Já existe uma conta com este e-mail. | `backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/users/presentation/user-account-router.ts` |
 | `EMPLOYMENT_STATUS_CONFLICT` | 409 | FAMILIA-CONFLITO | Já existe um período ${EMPLOYMENT_STATUS_LABELS[outcome.conflict!.existing.status]} de ${outcome.conflict!.existing.effectiveFrom}${outcome.conflict!.existing.effectiveTo ?  | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PEOPLE_ROLE_REQUIRES_ORGANIZATION_SCOPE` | 403 | FAMILIA-ACESSO | Definir ou mudar um nível de liderança (Supervisor, Coordenador, Gerente…) exige administrar pessoas na organização inteira. | `backend/src/modules/users/presentation/user-account-router.ts` |
-| `PEOPLE_SELF_CHANGE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não pode alterar o seu próprio nível, Grupo, e-mail ou situação — outra pessoa autorizada precisa fazer isso. | `backend/src/modules/users/presentation/user-account-router.ts` |
+| `PEOPLE_SELF_CHANGE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso. | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PERSON_FIELD_MANAGED_BY_SOURCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PERSON_HIERARCHY_REQUIRES_SOURCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Quem é da hierarquia vem pela base (${sources.map((source) =>  | `backend/src/modules/users/presentation/user-account-router.ts` |
 | `PERSON_MATRICULA_IN_USE` | 409 | FAMILIA-CONFLITO | Já existe uma pessoa com esta matrícula na organização. Não cadastre de novo: libere o acesso dela em Acessos › Habilitar acesso. | `backend/src/modules/users/presentation/user-account-router.ts` |
@@ -2514,19 +2515,22 @@ já diz a regra; a família do status diz como investigar.
 | `HUMAN_SUPPORT_ANJO_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Esta pessoa não tem o papel de Anjo. | `backend/src/modules/human-support/application/settings-service.ts` |
 | `HUMAN_SUPPORT_ATTENDANCE_ACTIVE` | 409 | FAMILIA-CONFLITO | Classifique o atendimento depois de encerrá-lo. | `backend/src/modules/human-support/application/classification-service.ts` |
 | `HUMAN_SUPPORT_ATTENDANCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Atendimento não encontrado. | `backend/src/modules/human-support/application/classification-service.ts`<br>`backend/src/modules/human-support/application/evaluation-service.ts` |
-| `HUMAN_SUPPORT_CONCURRENT_CHANGE` | 409 | FAMILIA-CONFLITO | A configuração mudou enquanto você editava. Recarregue e tente de novo. | `backend/src/modules/human-support/application/settings-service.ts` |
-| `HUMAN_SUPPORT_DISABLED` | 409 | FAMILIA-CONFLITO | O apoio com Anjo ainda não está disponível para sua equipe. | `backend/src/modules/human-support/application/request-service.ts` |
+| `HUMAN_SUPPORT_CONCURRENT_CHANGE` | 409 | FAMILIA-CONFLITO | Os tempos mudaram enquanto você editava. Recarregue e tente de novo. | `backend/src/modules/human-support/application/response-times-service.ts`<br>`backend/src/modules/human-support/application/settings-service.ts` |
+| `HUMAN_SUPPORT_DISABLED` | 409 | FAMILIA-CONFLITO | O Apoio ainda não está disponível para sua equipe. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_EVALUATION_CLOSED` | 409 | FAMILIA-CONFLITO | A avaliação deste atendimento não está mais aberta. | `backend/src/modules/human-support/application/evaluation-service.ts` |
-| `HUMAN_SUPPORT_NO_ANJO_IN_SERVICE` | 409 | FAMILIA-CONFLITO | Nenhum Anjo em serviço agora. | `backend/src/modules/human-support/application/request-service.ts` |
+| `HUMAN_SUPPORT_NO_ANJO_IN_SERVICE` | 409 | FAMILIA-CONFLITO | Ninguém do Apoio em serviço agora. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Registro não encontrado. | `backend/src/modules/human-support/application/coordination-service.ts`<br>`backend/src/modules/human-support/application/operation-history.ts` |
 | `HUMAN_SUPPORT_OPERATOR_PRESENT` | 409 | FAMILIA-CONFLITO | O operador ainda está com a INIA aberta. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_REQUEST_ALREADY_OPEN` | 409 | FAMILIA-CONFLITO | Você já tem um pedido de apoio aberto. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_REQUEST_ENDED` | 409 | FAMILIA-CONFLITO | Este atendimento já foi encerrado. | `backend/src/modules/human-support/application/message-service.ts`<br>`backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_REQUEST_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pedido de apoio não encontrado. | `backend/src/modules/human-support/application/conversation-marks.ts`<br>`backend/src/modules/human-support/application/message-service.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/transfer-service.ts` |
+| `HUMAN_SUPPORT_RESPONSE_TIMES_GROUP_ONLY` | 403 | FAMILIA-ACESSO | Só o Coordenador de Anjos do Grupo ou quem acompanha a organização muda estes tempos. | `backend/src/modules/human-support/application/response-times-service.ts` |
+| `HUMAN_SUPPORT_RESPONSE_TIMES_ORGANIZATION_ONLY` | 403 | FAMILIA-ACESSO | Só quem acompanha a organização inteira muda o padrão. Ajuste os tempos do seu Grupo. | `backend/src/modules/human-support/application/response-times-service.ts` |
+| `HUMAN_SUPPORT_SCOPE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Grupo não encontrado. | `backend/src/modules/human-support/application/response-times-service.ts` |
 | `HUMAN_SUPPORT_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Mensagem não encontrada. | `backend/src/modules/human-support/application/request-service.ts` |
 | `HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS` | 409 | FAMILIA-CONFLITO | (mensagem montada no código) | `backend/src/modules/human-support/application/transfer-service.ts` |
 | `PERIOD_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha um período de até 92 dias. | `backend/src/modules/human-support/application/coverage.ts` |
-| `VALIDATION_ERROR` | 400, 422 | FAMILIA-REGRA-DE-NEGOCIO | Dados inválidos. | `backend/src/main/app.ts`<br>`backend/src/modules/human-support/application/coverage.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/settings-service.ts`<br>`backend/src/modules/human-support/application/transfer-service.ts`<br>`backend/src/modules/indicators/presentation/employee-performance-router.ts` |
+| `VALIDATION_ERROR` | 400, 422 | FAMILIA-REGRA-DE-NEGOCIO | Dados inválidos. | `backend/src/main/app.ts`<br>`backend/src/modules/human-support/application/coverage.ts`<br>`backend/src/modules/human-support/application/request-service.ts`<br>`backend/src/modules/human-support/application/response-times-service.ts`<br>`backend/src/modules/human-support/application/settings-service.ts`<br>`backend/src/modules/human-support/application/transfer-service.ts` |
 
 ### Módulo `profile-preferences`
 
@@ -2647,6 +2651,43 @@ já diz a regra; a família do status diz como investigar.
 | --- | --- | --- | --- | --- |
 | `NOTIFICATION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Notificação não encontrada. | `backend/src/modules/notifications/application/build-notification-summary.ts` |
 
+### Módulo `operating-universe`
+
+| Código | Status | Família | Mensagem | Onde |
+| --- | --- | --- | --- | --- |
+| `OPERATING_UNIVERSE_ACTIVATION_UNCONFIRMED` | 409 | FAMILIA-CONFLITO | Ainda há ${pending} pendência(s) de universo. Confirme a ativação informando esse número, ou classifique antes. | `backend/src/modules/operating-universe/application/universe-administration.ts` |
+| `OPERATING_UNIVERSE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem acesso a este universo de atuação. | `backend/src/modules/operating-universe/application/universe-access.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts` |
+| `OPERATING_UNIVERSE_LINK_CONFLICT` | 409 | FAMILIA-CONFLITO | A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam. | `backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-links.ts` |
+| `OPERATING_UNIVERSE_PRODUCT_INCOMPATIBLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Estes produtos são de outro universo de atuação e não podem ser ligados a um recurso ${OPERATING_UNIVERSE_LABELS[universe!]}: ${direct.map((product) =>  | `backend/src/modules/operating-universe/application/universe-links.ts` |
+| `OPERATING_UNIVERSE_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o universo de atuação (B2B, B2C ou B2X) do Workflow antes de publicar. | `backend/src/modules/operating-universe/application/resource-universe.ts`<br>`backend/src/modules/operating-universe/application/universe-administration.ts`<br>`backend/src/modules/operating-universe/domain/operating-universe.ts`<br>`backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `OPERATING_UNIVERSE_RESOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | ${def.label} não encontrado. | `backend/src/modules/operating-universe/application/universe-administration.ts` |
+| `OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR` | 409 | FAMILIA-CONFLITO | Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções). | `backend/src/modules/operating-universe/application/universe-administration.ts` |
+
+### Módulo `product-catalog`
+
+| Código | Status | Família | Mensagem | Onde |
+| --- | --- | --- | --- | --- |
+| `OPERATING_UNIVERSE_NOT_FOR_CATEGORY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Categoria não tem universo próprio: o universo é de cada produto. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CODE_LOCKED` | 409 | FAMILIA-CONFLITO | O código já é usado por bases ou indícios: crie outro produto em vez de trocar o código. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CODE_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um produto ou categoria com esse código. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_ARCHIVED` | 409 | FAMILIA-CONFLITO | Indício encerrado: reative-o para aprovar uma nova versão. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_EFFECTIVE_ORDER` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A nova vigência precisa começar depois do início da versão vigente. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_NO_DRAFT` | 409 | FAMILIA-CONFLITO | Não há rascunho para aprovar. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Indício não encontrado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_NOT_READY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O rascunho ainda não pode ser aprovado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_NOT_STARTED` | 409 | FAMILIA-CONFLITO | A versão aprovada ainda não começou a valer: aguarde o início ou aprove outra data. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_ONLY_DRAFT` | 409 | FAMILIA-CONFLITO | O indício nunca foi aprovado: exclua o indício em vez de descartar o único rascunho. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_RETROACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A vigência não pode começar antes da aprovação: um indício aprovado agora nunca vale para chamadas anteriores. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_SOURCE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Documento de origem não encontrado na base desta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_CRITERION_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um dos produtos indicados não existe nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_NODE_HAS_ACTIVE_CHILDREN` | 409 | FAMILIA-CONFLITO | Desative primeiro os produtos desta categoria. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_NODE_IN_USE` | 409 | FAMILIA-CONFLITO | Este item é usado agora por bases, indícios ou produtos dentro dele: tire-o de lá antes de excluir, ou desative. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_NODE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Produto ou categoria não encontrado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_PARENT_INACTIVE` | 409, 422 | FAMILIA-CONFLITO | A categoria escolhida está desativada. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_SCOPE_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Base não encontrada nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+| `PRODUCT_SCOPE_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha só produtos ou categorias ativos. | `backend/src/modules/product-catalog/application/product-scope-assignments.ts` |
+| `PRODUCT_TREE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
+
 ### Módulo `reporting`
 
 | Código | Status | Família | Mensagem | Onde |
@@ -2700,30 +2741,6 @@ já diz a regra; a família do status diz como investigar.
 | `PENDING_ACTION_DECISION_NOT_ALLOWED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Esta decisão não está prevista no workflow para esta revisão. | `backend/src/modules/pending-actions/application/build-pending-actions.ts` |
 | `PENDING_ACTION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Pendência não encontrada ou não endereçada a você. | `backend/src/modules/pending-actions/application/build-pending-actions.ts`<br>`backend/src/modules/people/application/workday-reconciliation-service.ts` |
 | `PENDING_ACTION_UNAVAILABLE` | 409 | FAMILIA-CONFLITO | Esta execução não está mais aguardando esta revisão. | `backend/src/modules/pending-actions/application/build-pending-actions.ts` |
-
-### Módulo `product-catalog`
-
-| Código | Status | Família | Mensagem | Onde |
-| --- | --- | --- | --- | --- |
-| `PRODUCT_CODE_LOCKED` | 409 | FAMILIA-CONFLITO | O código já é usado por bases ou indícios: crie outro produto em vez de trocar o código. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CODE_TAKEN` | 409 | FAMILIA-CONFLITO | Já existe um produto ou categoria com esse código. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_ARCHIVED` | 409 | FAMILIA-CONFLITO | Indício encerrado: reative-o para aprovar uma nova versão. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_EFFECTIVE_ORDER` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A nova vigência precisa começar depois do início da versão vigente. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_NO_DRAFT` | 409 | FAMILIA-CONFLITO | Não há rascunho para aprovar. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Indício não encontrado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_NOT_READY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O rascunho ainda não pode ser aprovado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_NOT_STARTED` | 409 | FAMILIA-CONFLITO | A versão aprovada ainda não começou a valer: aguarde o início ou aprove outra data. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_ONLY_DRAFT` | 409 | FAMILIA-CONFLITO | O indício nunca foi aprovado: exclua o indício em vez de descartar o único rascunho. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_RETROACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A vigência não pode começar antes da aprovação: um indício aprovado agora nunca vale para chamadas anteriores. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_SOURCE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Documento de origem não encontrado na base desta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_CRITERION_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um dos produtos indicados não existe nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_NODE_HAS_ACTIVE_CHILDREN` | 409 | FAMILIA-CONFLITO | Desative primeiro os produtos desta categoria. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_NODE_IN_USE` | 409 | FAMILIA-CONFLITO | Este item é usado agora por bases, indícios ou produtos dentro dele: tire-o de lá antes de excluir, ou desative. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_NODE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Produto ou categoria não encontrado. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_PARENT_INACTIVE` | 409, 422 | FAMILIA-CONFLITO | A categoria escolhida está desativada. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_SCOPE_SOURCE_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Base não encontrada nesta organização. | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
-| `PRODUCT_SCOPE_TARGET_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha só produtos ou categorias ativos. | `backend/src/modules/product-catalog/application/product-scope-assignments.ts` |
-| `PRODUCT_TREE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/product-catalog/application/product-catalog-service.ts` |
 
 ### Módulo `org-structure`
 

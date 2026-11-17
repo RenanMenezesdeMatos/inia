@@ -230,6 +230,8 @@ export const llmCacheSchema = z.object({ mode: z.enum(["NONE", "IMPLICIT", "EXPL
 export const costEstimateSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("NOT_CONFIGURED") }),
   z.object({ status: z.literal("ESTIMATED_PROVIDER_COST"), currency: z.string(), inputCost: z.number(), cachedInputCost: z.number(), outputCost: z.number(), reasoningCost: z.number(), totalEstimatedCost: z.number() }),
+  // Custo informado pelo próprio provedor (sem quebra por token); `includesEstimate` = parte da soma é estimada.
+  z.object({ status: z.literal("PROVIDER_REPORTED_COST"), currency: z.string(), totalCost: z.number(), includesEstimate: z.boolean().optional() }),
 ])
 export type CostEstimate = z.infer<typeof costEstimateSchema>
 export const promptComponentUsageSchema = z.object({ id: z.string(), version: z.number(), chars: z.number(), static: z.boolean(), placement: z.enum(["SYSTEM", "USER"]) })

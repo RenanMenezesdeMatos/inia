@@ -12,6 +12,7 @@ import {
   type ArgumentScriptScopeType,
   type ArgumentScriptStatus,
 } from "@/schemas/admin/argument-script.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const BASE = "/api/v1/admin/argument-scripts"
 
@@ -45,6 +46,8 @@ export type CreateArgumentScriptInput = {
   content?: ArgumentScriptContentInput
   sourceDocumentId?: string | null
   sourceReference?: string | null
+  /** Universo de atuação — só na criação (o argumentário existente muda pela classificação do universo). */
+  operatingUniverse?: OperatingUniverse
 }
 
 export async function createArgumentScript(input: CreateArgumentScriptInput): Promise<ArgumentScriptDetail> {

@@ -1,6 +1,7 @@
 import type { LlmUsage } from "../../../shared/application/llm-telemetry.js"
 import type { AdapterFunctionDeclaration, AdapterTurn } from "../../../shared/application/model-routing/provider-adapter.js"
 import type { AiModelKind, ModelCapabilities } from "../domain/ai-capabilities.js"
+import type { ProviderReportedCost } from "../domain/ai-pricing.js"
 import type { AiAdapterType } from "../domain/ai-provider-catalog.js"
 
 /**
@@ -57,9 +58,12 @@ export type AiExecuteResult = ({ kind: "text"; text: string } | { kind: "functio
   durationMs: number
   /** Motivo de término no vocabulário do caminho legado (STOP, MAX_TOKENS, SAFETY…); ausente/null = não informado. */
   finishReason?: string | null
+  /** Custo que o PRÓPRIO provider informou para esta chamada (ex.: cabeçalho de um gateway compatível com OpenAI/LiteLLM).
+   * Ausente/null = não informou ou valor inválido: o runtime estima pela tabela de preço, como sempre. */
+  reportedCost?: ProviderReportedCost | null
 }
 
-export type AiStreamResult = { usage: LlmUsage; model: string; durationMs: number; text: string }
+export type AiStreamResult = { usage: LlmUsage; model: string; durationMs: number; text: string; reportedCost?: ProviderReportedCost | null }
 
 /** `streamedChars` = texto já entregue a `onText` (numa resposta de ferramentas, o que o modelo escreveu antes de pedi-las). */
 export type AiStreamExecuteResult = AiExecuteResult & { streamedChars: number; firstTokenMs: number | null }
@@ -67,7 +71,7 @@ export type AiStreamExecuteResult = AiExecuteResult & { streamedChars: number; f
 /** Síntese de voz: o texto EXATO lido com a voz do provider (+ instrução de tom, quando o modelo aceita). */
 export type AiSpeechRequest = { text: string; voice: string; instructions: string | null }
 /** PCM16 mono little-endian, sem cabeçalho (o mesmo formato que o avatar já toca). Uso não informado = null em cada campo. */
-export type AiSpeechResult = { pcm16: Buffer; sampleRate: number; usage: LlmUsage; model: string; durationMs: number }
+export type AiSpeechResult = { pcm16: Buffer; sampleRate: number; usage: LlmUsage; model: string; durationMs: number; reportedCost?: ProviderReportedCost | null }
 
 export interface AiProviderAdapter {
   readonly adapterType: AiAdapterType

@@ -1,12 +1,13 @@
 "use client"
 
-import { Building2, Hash, Network, Unlink, UserRound, Users, type LucideIcon } from "lucide-react"
+import { Building2, ChevronRight, Hash, Network, Unlink, UserRound, Users, type LucideIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { EntityCard, EntityCardIcon, EntityCardTag } from "@/components/admin/shared/list/entity-card"
-import { formatCostByCurrency, formatCount, formatRate, formatTokens } from "@/lib/admin/ai-format"
+import { costOriginText, formatCostByCurrency, formatCount, formatRate, formatTokens } from "@/lib/admin/ai-format"
 import { cn } from "@/lib/utils"
 import {
   AI_USAGE_RANKING_ENTITY_LABELS,
@@ -22,7 +23,12 @@ import { MoneyList } from "../ai-shared"
 /**
  * Corpo do ranking "Quem mais usa": a tabela (com a linha fixa "Sem vínculo" e o total do recorte) e os cards. Mesmos dados
  * nos dois modos; nada é recalculado aqui — participação, totais e motivos vêm prontos do backend.
+ *
+ * Fora do nível Usuário, cada linha oferece "Ver usuários" (`onOpenPeople`): a tela troca para o nível Usuário estreitado
+ * àquele ramo. No nível Usuário cada linha é uma pessoa, então a coluna "Pessoas" (sempre 1) não aparece.
  */
+
+export type OpenPeopleHandler = (item: AiUsageRankingItem) => void
 
 const LEVEL_ICONS: Record<AiUsageRankingLevel, LucideIcon> = {
   DIRECTOR: Building2,
@@ -31,6 +37,7 @@ const LEVEL_ICONS: Record<AiUsageRankingLevel, LucideIcon> = {
   TEAM: Users,
   SUBTEAM: Users,
   SUPERVISOR: UserRound,
+  PERSON: UserRound,
 }
 
 const REMOVED_LABEL = "Removido do cadastro"
@@ -79,13 +86,25 @@ function CostCell({ metrics }: { metrics: AiUsageRankingMetrics }) {
   return (
     <div className="text-xs">
       <MoneyList costByCurrency={metrics.costByCurrency} />
-      {metrics.unknownCostCalls > 0 ? <p className="text-muted-foreground">{formatCount(metrics.unknownCostCalls)} sem preço</p> : null}
+      {costOriginText(metrics) ? <p className="text-muted-foreground">{costOriginText(metrics)}</p> : null}
     </div>
   )
 }
 
-export function RankingTable({ data }: { data: AiUsageRanking }) {
+/** "Ver usuários" de uma linha — só fora do nível Usuário e com o handler da tela. */
+function OpenPeopleButton({ item, level, onOpenPeople }: { item: AiUsageRankingItem; level: AiUsageRankingLevel; onOpenPeople?: OpenPeopleHandler }) {
+  if (!onOpenPeople || level === "PERSON") return null
+  return (
+    <Button type="button" variant="ghost" size="xs" onClick={() => onOpenPeople(item)} aria-label={`Ver usuários de ${item.name ?? REMOVED_LABEL}`}>
+      Ver usuários
+      <ChevronRight data-icon="inline-end" aria-hidden />
+    </Button>
+  )
+}
+
+export function RankingTable({ data, onOpenPeople }: { data: AiUsageRanking; onOpenPeople?: OpenPeopleHandler }) {
   const level = data.level
+  const showPeople = level !== "PERSON"
   return (
     <div className={TABLE_FRAME}>
       <Table>
@@ -97,7 +116,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
             <TableHead className="text-right">% do total</TableHead>
             <TableHead className="text-right">Tokens</TableHead>
             <TableHead>Custo</TableHead>
-            <TableHead className="text-right">Pessoas</TableHead>
+            {showPeople ? <TableHead className="text-right">Pessoas</TableHead> : null}
             <TableHead>Origem</TableHead>
           </TableRow>
         </TableHeader>
@@ -111,6 +130,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="font-medium">{item.name ?? REMOVED_LABEL}</span>
                     {item.active ? null : <Badge variant="outline">Inativo</Badge>}
+                    <OpenPeopleButton item={item} level={level} onOpenPeople={onOpenPeople} />
                   </div>
                   {secondary ? <p className="text-xs text-muted-foreground">{secondary}</p> : null}
                 </TableCell>
@@ -124,7 +144,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
                 <TableCell>
                   <CostCell metrics={item} />
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{formatCount(item.people)}</TableCell>
+                {showPeople ? <TableCell className="text-right tabular-nums">{formatCount(item.people)}</TableCell> : null}
                 <TableCell className="text-xs text-muted-foreground">{sourceText(item)}</TableCell>
               </TableRow>
             )
@@ -147,7 +167,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
             <TableCell>
               <CostCell metrics={data.unlinked} />
             </TableCell>
-            <TableCell className="text-right tabular-nums">{formatCount(data.unlinked.people)}</TableCell>
+            {showPeople ? <TableCell className="text-right tabular-nums">{formatCount(data.unlinked.people)}</TableCell> : null}
             <TableCell className="text-xs text-muted-foreground">Nunca atribuído a alguém</TableCell>
           </TableRow>
         </TableBody>
@@ -165,7 +185,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
             <TableCell>
               <CostCell metrics={data.totals} />
             </TableCell>
-            <TableCell className="text-right tabular-nums">{formatCount(data.totals.people)}</TableCell>
+            {showPeople ? <TableCell className="text-right tabular-nums">{formatCount(data.totals.people)}</TableCell> : null}
             <TableCell />
           </TableRow>
         </TableFooter>
@@ -174,7 +194,7 @@ export function RankingTable({ data }: { data: AiUsageRanking }) {
   )
 }
 
-export function RankingCard({ item, level }: { item: AiUsageRankingItem; level: AiUsageRankingLevel }) {
+export function RankingCard({ item, level, onOpenPeople }: { item: AiUsageRankingItem; level: AiUsageRankingLevel; onOpenPeople?: OpenPeopleHandler }) {
   const secondary = secondaryOf(item, level)
   return (
     <EntityCard
@@ -193,10 +213,11 @@ export function RankingCard({ item, level }: { item: AiUsageRankingItem; level: 
         </>
       }
       title={item.name ?? REMOVED_LABEL}
+      actions={<OpenPeopleButton item={item} level={level} onOpenPeople={onOpenPeople} />}
       description={`${formatCount(item.requests)} chamada(s) · ${formatRate(item.share)} do total${secondary ? ` · ${secondary}` : ""}`}
       tags={
         <>
-          <EntityCardTag icon={Users}>{formatCount(item.people)} pessoa(s)</EntityCardTag>
+          {level === "PERSON" ? null : <EntityCardTag icon={Users}>{formatCount(item.people)} pessoa(s)</EntityCardTag>}
           <EntityCardTag icon={Hash}>{formatTokens(item.tokens)} tokens</EntityCardTag>
         </>
       }

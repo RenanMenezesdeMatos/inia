@@ -7,7 +7,7 @@ import type { AttendanceEndCause, ClassificationOutcome, ClassificationReason, E
 import { PRESENCE_STATUS_CAUSES } from "../domain/catalogs.js"
 import { MIN_SAMPLE, presenceHours, type PresenceEvent, type PresenceState } from "../domain/metrics-definitions.js"
 import { operationalStatusOf } from "../domain/anjo-now.js"
-import { effectiveCapacity } from "../domain/presence.js"
+import { effectiveCapacity, unresponsiveView } from "../domain/presence.js"
 import { nearestRank } from "../domain/queue-history.js"
 import type { AnjoActivity, AnjoNowItem, AnjoScopeView, AnjosNow, QueueNow, QueueWaitingItem, PresenceTimeline, RequestDetail, RequestListItem, SharedContext, UnavailableAttempt } from "../domain/views.js"
 import { assertPanelPeriod, coordinatorScopesOf, coverageClause, coversRecord, decodeListCursor, encodeListCursor, periodBounds, reachesAnjo, type CoordinatorScopes } from "./coverage.js"
@@ -228,14 +228,14 @@ export async function queueWaiting(db: Queryable, viewer: Viewer, filter: PanelS
   const params: unknown[] = [viewer.organizationId]
   const where = coverageClause(coverage, "r", params, filter)
   const rows = (
-    await db.query<{ id: string; protocol: string; operator_person_id: string; origin: RequestOrigin; created_at: Date; team_name: string | null; subteam_name: string | null; requeued: boolean }>(
-      `select r.id, r.protocol, r.operator_person_id, r.origin, r.created_at, t.name team_name, st.name subteam_name,
+    await db.query<{ id: string; protocol: string; operator_person_id: string; origin: RequestOrigin; queued_at: Date; team_name: string | null; subteam_name: string | null; requeued: boolean }>(
+      `select r.id, r.protocol, r.operator_person_id, r.origin, r.queued_at, t.name team_name, st.name subteam_name,
               exists (select 1 from human_support_attendances a where a.request_id = r.id) requeued
          from human_support_requests r
          left join teams t on t.id = r.team_id
          left join subteams st on st.id = r.subteam_id
         where r.organization_id = $1 and r.status = 'WAITING' and ${where}
-        order by r.created_at, r.id limit 200`,
+        order by r.queued_at, r.id limit 200`,
       params,
     )
   ).rows
@@ -248,7 +248,7 @@ export async function queueWaiting(db: Queryable, viewer: Viewer, filter: PanelS
     teamName: row.team_name,
     subteamName: row.subteam_name,
     origin: row.origin,
-    waitingSince: row.created_at.toISOString(),
+    waitingSince: row.queued_at.toISOString(),
     requeued: row.requeued,
   }))
 }
@@ -257,15 +257,16 @@ async function queueNow(db: Queryable, viewer: Viewer, coverage: CoordinatorScop
   const params: unknown[] = [viewer.organizationId]
   const where = coverageClause(coverage, "r", params, filter)
   const row = (
-    await db.query<{ waiting: number; oldest_waiting: Date | null; awaiting: number; oldest_awaiting: Date | null }>(
+    await db.query<{ waiting: number; oldest_waiting: Date | null; awaiting: number; oldest_awaiting: Date | null; awaiting_operator: number }>(
       `select (select count(*)::int from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) waiting,
-              (select min(r.created_at) from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) oldest_waiting,
+              (select min(r.queued_at) from human_support_requests r where r.organization_id = $1 and r.status = 'WAITING' and ${where}) oldest_waiting,
               (select count(*)::int from human_support_attendances a join human_support_requests r on r.id = a.request_id where a.organization_id = $1 and a.status = 'ACTIVE' and a.first_anjo_message_at is null and ${where}) awaiting,
-              (select min(a.started_at) from human_support_attendances a join human_support_requests r on r.id = a.request_id where a.organization_id = $1 and a.status = 'ACTIVE' and a.first_anjo_message_at is null and ${where}) oldest_awaiting`,
+              (select min(a.started_at) from human_support_attendances a join human_support_requests r on r.id = a.request_id where a.organization_id = $1 and a.status = 'ACTIVE' and a.first_anjo_message_at is null and ${where}) oldest_awaiting,
+              (select count(*)::int from human_support_requests r where r.organization_id = $1 and r.status = 'AWAITING_OPERATOR' and ${where}) awaiting_operator`,
       params,
     )
   ).rows[0]!
-  return { waiting: Number(row.waiting), oldestWaitingSince: row.oldest_waiting?.toISOString() ?? null, awaitingFirstResponse: Number(row.awaiting), oldestAwaitingSince: row.oldest_awaiting?.toISOString() ?? null }
+  return { waiting: Number(row.waiting), oldestWaitingSince: row.oldest_waiting?.toISOString() ?? null, awaitingFirstResponse: Number(row.awaiting), oldestAwaitingSince: row.oldest_awaiting?.toISOString() ?? null, awaitingOperator: Number(row.awaiting_operator) }
 }
 
 async function anjosNowFor(db: Queryable, viewer: Viewer, coverage: CoordinatorScopes, filter: PanelScopeFilter): Promise<AnjosNow> {
@@ -281,13 +282,15 @@ async function anjosNowFor(db: Queryable, viewer: Viewer, coverage: CoordinatorS
   if (reached.length === 0) return { serverTime: now.toISOString(), items: [], queue }
   const ids = reached.map(([personId]) => personId)
   const [presence, attendances, structure, names] = await Promise.all([
-    db.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; status_since: Date | null; connected: boolean; connection_lost_at: Date | null; max_concurrent: number | null; scheduled_status: "PAUSED" | "OFFLINE" | null; scheduled_pause_reason: PauseReason | null; last_connection_cause: string | null }>(
+    db.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null; status_since: Date | null; connected: boolean; connection_lost_at: Date | null; max_concurrent: number | null; scheduled_status: "PAUSED" | "OFFLINE" | null; scheduled_pause_reason: PauseReason | null; last_connection_cause: string | null; last_status_cause: string | null; last_status_at: Date | null }>(
       `select p.person_id, p.status, p.pause_reason, p.status_since, coalesce(p.lease_until > statement_timestamp(), false) connected, p.connection_lost_at, p.max_concurrent,
               p.scheduled_status, p.scheduled_pause_reason,
+              (select e.cause from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause = any($3::text[]) order by e.id desc limit 1) last_status_cause,
+              (select e.occurred_at from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause = any($3::text[]) order by e.id desc limit 1) last_status_at,
               (select e.cause from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause in ('CONNECTION_LOST', 'SESSION_ENDED', 'CONNECTION_RESTORED')
                 order by e.id desc limit 1) last_connection_cause
          from human_support_agent_presence p where p.organization_id = $1 and p.person_id = any($2::uuid[])`,
-      [viewer.organizationId, ids],
+      [viewer.organizationId, ids, PRESENCE_STATUS_CAUSES],
     ),
     // Atendimentos em andamento e os encerrados nas últimas 24 h (bastam para achar o início da sequência atual e o último fim).
     db.query<{ anjo_person_id: string; started_at: Date; ended_at: Date | null }>(
@@ -325,6 +328,7 @@ async function anjosNowFor(db: Queryable, viewer: Viewer, coverage: CoordinatorS
       // Sem conexão: a sessão terminou (logout, prazo, inatividade); ou, Indisponível, a área fechada (offline); ou queda de rede.
       connection: connected ? "CONNECTED" : row?.last_connection_cause === "SESSION_ENDED" ? "SESSION_ENDED" : operational.status === "UNAVAILABLE" ? "CLOSED" : "CONNECTION_LOST",
       scheduled: row?.scheduled_status ? { status: row.scheduled_status, pauseReason: row.scheduled_pause_reason } : null,
+      unresponsive: row ? unresponsiveView({ status: row.status, pauseReason: row.pause_reason, statusSince: row.status_since, lastStatusCause: row.last_status_cause, lastStatusAt: row.last_status_at }, settings.anjoUnresponsive.offlineAfterMinutes) : null,
       attendances: { active: spans.filter((span) => span.endedAt === null).length, capacity: effectiveCapacity(row?.max_concurrent == null ? null : Number(row.max_concurrent), settings.defaultCapacity) },
     }
   })

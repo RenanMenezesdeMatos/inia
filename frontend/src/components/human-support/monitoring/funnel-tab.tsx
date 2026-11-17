@@ -137,7 +137,7 @@ export function FunnelTab({ filter }: { filter: PanelFilter }) {
     id: "abandonos",
     filter,
     title: "Abandonos no período",
-    description: "Na espera: o operador desistiu antes de um Anjo assumir. No atendimento: alguém saiu, caiu ou parou de responder — encerramento normal não conta. O de hoje, ao vivo, está na Monitoria Online.",
+    description: "Na espera: o operador desistiu antes de um Anjo assumir. No atendimento: alguém saiu ou parou de responder — encerramento normal e queda de rede não contam. O de hoje, ao vivo, está na Monitoria Online.",
   })
   const demand = useDemandSection(filter)
   const byId = new Map((query.data?.measures ?? []).map((measure) => [measure.id, measure]))

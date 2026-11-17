@@ -67,12 +67,12 @@ describe("resolveScopeOperatorIds — todo operador ativo elegível pela Abrang�
       expect(sql).toContain("role = 'OPERATOR' and active")
       return { rows: [{ id: "op-1" }, { id: "op-2" }] }
     })
-    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "ALL_TEAMS", teamId: null })).toEqual(["op-1", "op-2"])
+    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "ALL_TEAMS", teamId: null, operatingUniverse: null })).toEqual(["op-1", "op-2"])
   })
 })
 
 describe("resolvePopulationFilterOperatorIds — Filtro Populacional (modo Individual)", () => {
-  const scope = { scopeType: "TEAM", teamId: "team-1" }
+  const scope = { scopeType: "TEAM", teamId: "team-1", operatingUniverse: null }
 
   it("ausente (null) = ALL — todo operador ativo elegível pela Abrangência", async () => {
     const db = fakeDb((sql) => {
@@ -106,9 +106,9 @@ describe("resolvePopulationFilterOperatorIds — Filtro Populacional (modo Indiv
   it("SUBTEAM casa por subteam_id (nunca pelo Grupo inteiro)", async () => {
     const db = fakeDb((sql, params) => {
       expect(sql).toContain("$2 = 'SUBTEAM' and subteam_id = $4")
-      expect(params).toEqual(["org-1", "SUBTEAM", null, "sub-1"])
+      expect(params).toEqual(["org-1", "SUBTEAM", null, "sub-1", null])
       return { rows: [{ id: "op-1" }] }
     })
-    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: "sub-1" })).toEqual(["op-1"])
+    expect(await resolveScopeOperatorIds(db, "org-1", { scopeType: "SUBTEAM", teamId: null, subteamId: "sub-1", operatingUniverse: null })).toEqual(["op-1"])
   })
 })

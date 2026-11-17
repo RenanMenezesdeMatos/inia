@@ -96,4 +96,17 @@ describe("indicadores da operação", () => {
     expect(result.noAnjoLogged).toEqual({ count: 2, withAnjos: 1, unrecorded: 1 })
     expect(result.abandonedBeforeAcolhimento).toEqual({ abandoned: 1, cancelled: 1 })
   })
+
+  it("abandonos do Anjo: parou de responder + caiu, sobre os encerrados sem os transferidos (194)", () => {
+    const result = attendanceIndicators([
+      record({ endedAt: T + 60 * S, endCause: "ANJO_CLOSED" }),
+      record({ endedAt: T + 60 * S, endCause: "ANJO_SILENT", lastHumanAuthor: "OPERATOR" }),
+      record({ endedAt: T + 60 * S, endCause: "ANJO_LOST", lostCause: "SESSION" }),
+      // Queda de rede: não é abandono do Anjo (195), mas entra na base.
+      record({ endedAt: T + 60 * S, endCause: "ANJO_LOST", lostCause: "CONNECTION" }),
+      record({ endedAt: T + 60 * S, endCause: "OPERATOR_SILENT", lastHumanAuthor: "ANJO" }),
+      record({ endedAt: T + 60 * S, endCause: "TRANSFERRED" }),
+    ])
+    expect(result.anjoAbandonment).toMatchObject({ total: 2, noReply: 1, loggedOut: 1, rate: { numerator: 2, denominator: 5 } })
+  })
 })

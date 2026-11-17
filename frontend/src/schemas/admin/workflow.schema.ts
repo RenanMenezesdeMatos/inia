@@ -2,6 +2,7 @@ import { z } from "zod"
 import { flowGraphSchema } from "./workflow-graph.schema"
 import { consolidatedStructureSchema } from "./consolidated-structure-schema"
 import { populationFilterSchema } from "./population-filter-schema"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 
 export const weekdaySchema = z.enum(["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"])
 export type Weekday = z.infer<typeof weekdaySchema>
@@ -206,6 +207,8 @@ export const workflowDraftConfigurationSchema = z.object({
   subteamName: z.string().nullable(),
   consolidatedStructure: consolidatedStructureSchema.nullable().optional(),
   populationFilter: populationFilterSchema.nullable().optional(),
+  /** Universo de atuação do RASCUNHO (vale ao Publicar, como a Abrangência). */
+  operatingUniverse: operatingUniverseSchema.nullable().default(null),
 })
 export type WorkflowDraftConfiguration = z.infer<typeof workflowDraftConfigurationSchema>
 
@@ -218,6 +221,8 @@ export const workflowSchema = z.object({
   teamName: z.string().nullable(),
   subteamId: z.string().nullable(),
   subteamName: z.string().nullable(),
+  /** Universo de atuação PUBLICADO (o que a execução usa); null = pendente. */
+  operatingUniverse: operatingUniverseSchema.nullable().default(null),
   active: z.boolean(),
   createdAt: z.coerce.string(),
   published: z.boolean(),
@@ -252,6 +257,7 @@ export function withDraftConfiguration<T extends Workflow>(workflow: T): T {
     subteamName: draft.subteamName,
     consolidatedStructure: draft.consolidatedStructure ?? null,
     populationFilter: draft.populationFilter ?? null,
+    operatingUniverse: draft.operatingUniverse ?? null,
   }
 }
 

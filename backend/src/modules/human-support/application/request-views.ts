@@ -2,6 +2,7 @@ import { loadPersonPresentations } from "../../profile-preferences/application/p
 import { HUMAN_SUPPORT_LIMITS, systemMessageText, type AttendanceEndCause, type MessageReader, type RequestEndCause, type RequestOrigin, type RequestStatus, type SystemMessageCode } from "../domain/catalogs.js"
 import type { MessageView, OperatorRequestView, SharedContext } from "../domain/views.js"
 import { loadConversationMarks } from "./conversation-marks.js"
+import { responseTimesForTeam } from "./eligibility.js"
 import type { Queryable } from "./locks.js"
 
 /**
@@ -25,11 +26,12 @@ export type RequestRow = {
   queued_at: Date
   queue_expires_at: Date
   operator_seen_at: Date
+  awaiting_operator_since: Date | null
   created_at: Date
   ended_at: Date | null
 }
 
-export const REQUEST_COLUMNS = `r.id, r.organization_id, r.protocol, r.operator_person_id, r.team_id, r.subteam_id, r.origin, r.source_interaction_id, r.source_rating_id, r.shared_context, r.status, r.end_cause, r.queued_at, r.queue_expires_at, r.operator_seen_at, r.created_at, r.ended_at`
+export const REQUEST_COLUMNS = `r.id, r.organization_id, r.protocol, r.operator_person_id, r.team_id, r.subteam_id, r.origin, r.source_interaction_id, r.source_rating_id, r.shared_context, r.status, r.end_cause, r.queued_at, r.queue_expires_at, r.operator_seen_at, r.awaiting_operator_since, r.created_at, r.ended_at`
 
 export type AttendanceRow = { id: string; request_id: string; anjo_person_id: string; operator_person_id: string; status: "ACTIVE" | "ENDED"; end_cause: AttendanceEndCause | null; started_at: Date; first_anjo_message_at: Date | null; last_human_message_at: Date; ended_at: Date | null }
 export const ATTENDANCE_COLUMNS = `a.id, a.request_id, a.anjo_person_id, a.operator_person_id, a.status, a.end_cause, a.started_at, a.first_anjo_message_at, a.last_human_message_at, a.ended_at`
@@ -89,7 +91,7 @@ export async function loadRequest(db: Queryable, organizationId: string, request
 
 /** O pedido aberto (Na fila ou Em atendimento) do operador, se houver — no máximo um (índice único). */
 export async function loadOpenRequestOf(db: Queryable, organizationId: string, operatorPersonId: string): Promise<RequestRow | null> {
-  return (await db.query<RequestRow>(`select ${REQUEST_COLUMNS} from human_support_requests r where r.organization_id = $1 and r.operator_person_id = $2 and r.status in ('WAITING', 'IN_PROGRESS')`, [organizationId, operatorPersonId])).rows[0] ?? null
+  return (await db.query<RequestRow>(`select ${REQUEST_COLUMNS} from human_support_requests r where r.organization_id = $1 and r.operator_person_id = $2 and r.status in ('WAITING', 'IN_PROGRESS', 'AWAITING_OPERATOR')`, [organizationId, operatorPersonId])).rows[0] ?? null
 }
 
 export async function loadActiveAttendance(db: Queryable, requestId: string, options: { forUpdate?: boolean } = {}): Promise<AttendanceRow | null> {
@@ -100,10 +102,11 @@ export async function loadActiveAttendance(db: Queryable, requestId: string, opt
 export async function operatorRequestView(db: Queryable, request: RequestRow): Promise<OperatorRequestView> {
   const attendance = (await db.query<AttendanceRow>(`select ${ATTENDANCE_COLUMNS} from human_support_attendances a where a.request_id = $1 order by a.started_at desc limit 1`, [request.id])).rows[0] ?? null
   const current = attendance && (attendance.status === "ACTIVE" || request.status === "CLOSED") ? attendance : null
-  const [page, names, marks] = await Promise.all([
+  const [page, names, marks, times] = await Promise.all([
     loadMessageViews(db, request.organization_id, request.id, "OPERATOR", { limit: HUMAN_SUPPORT_LIMITS.stateMessages }),
     loadPersonPresentations(db, request.organization_id, current ? [current.anjo_person_id] : []),
     loadConversationMarks(db, [request.id]),
+    request.status === "AWAITING_OPERATOR" ? responseTimesForTeam(db, request.organization_id, request.team_id) : null,
   ])
   const seen = marks.get(request.id)!.operator
   const anjo = current ? names.get(current.anjo_person_id) : null
@@ -116,11 +119,13 @@ export async function operatorRequestView(db: Queryable, request: RequestRow): P
     createdAt: request.created_at.toISOString(),
     queuedAt: request.queued_at.toISOString(),
     queueExpiresAt: request.status === "WAITING" ? request.queue_expires_at.toISOString() : null,
+    // Aguardando o retorno (migration 193): até quando o operador pode escrever antes de o pedido ser encerrado.
+    awaitingReturnUntil: times && request.awaiting_operator_since ? new Date(request.awaiting_operator_since.getTime() + times.operatorCloseMinutes * 60_000).toISOString() : null,
     sharedContext: request.shared_context,
     anjo: current ? { name: anjo?.displayName ?? "Anjo", avatarUrl: anjo?.avatarUrl ?? null, awaitingFirstResponse: current.status === "ACTIVE" && current.first_anjo_message_at === null } : null,
     messages: page.messages,
     hasOlder: page.hasMore,
-    canCancel: request.status === "WAITING",
+    canCancel: request.status === "WAITING" || request.status === "AWAITING_OPERATOR",
     canClose: request.status === "IN_PROGRESS",
     peerReceipts: seen.peerReceipts,
     peerTypingMs: seen.peerTypingMs,

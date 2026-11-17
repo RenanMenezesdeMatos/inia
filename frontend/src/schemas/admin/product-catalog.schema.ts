@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
+
 /**
  * Produtos (`/admin/product-catalog`, `PRODUCT_APPLICABILITY_V1`). A UI nunca conhece um produto concreto: categorias (FAMILY no
  * backend), produtos e indícios (critérios de identificação no backend) são registros deste cadastro. Indício = texto em linguagem
@@ -30,6 +32,8 @@ export const productNodeSchema = z.object({
   archivedAt: z.string().nullable().catch(null),
   createdAt: z.coerce.string(),
   updatedAt: z.coerce.string().catch(""),
+  /** Universo de atuação do PRODUTO (B2B/B2C/B2X); categoria não tem universo (null). */
+  operatingUniverse: operatingUniverseSchema.nullable().catch(null),
   criteriaCount: z.number().catch(0),
   scopeCount: z.number().catch(0),
   childCount: z.number().catch(0),

@@ -1,5 +1,5 @@
 /**
- * LEITOR ANALÍTICO do uso de IA (Monitoria de usabilidade). Custo é o REGISTRADO por evento (ESTIMATED pela tabela de preço da
+ * LEITOR ANALÍTICO do uso de IA (Monitoria de usabilidade). Custo é o REGISTRADO por evento (REPORTED pelo provider, ESTIMATED pela tabela de preço da
  * organização, ou UNKNOWN) — nunca estimado por mensagem × preço fixo. Atribuição a workflow só existe com correlação gravada
  * (migration 084: root_enrollment_id); conversa/canal/origem NÃO têm correlação gravada — o uso fora de workflow é mostrado como
  * categoria própria "sem atribuição".

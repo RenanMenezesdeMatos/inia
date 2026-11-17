@@ -3337,6 +3337,17 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "DATA_OPERATING_UNIVERSE_REQUIRED",
+    "module": "data-hub",
+    "statuses": [],
+    "messages": [
+      "Colaborador novo sem universo de atuação (B2B, B2C ou B2X) depois que a organização ativou a exigência — mapeie o campo na carga."
+    ],
+    "refs": [
+      "backend/src/modules/data-hub/domain/error-codes.ts"
+    ]
+  },
+  {
     "code": "DATA_PERSON_LINK_ACCESS_DISABLED",
     "module": "data-hub",
     "statuses": [],
@@ -4754,9 +4765,11 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
+      "Os tempos mudaram enquanto você editava. Recarregue e tente de novo.",
       "A configuração mudou enquanto você editava. Recarregue e tente de novo."
     ],
     "refs": [
+      "backend/src/modules/human-support/application/response-times-service.ts",
       "backend/src/modules/human-support/application/settings-service.ts"
     ]
   },
@@ -4767,7 +4780,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
-      "O apoio com Anjo ainda não está disponível para sua equipe."
+      "O Apoio ainda não está disponível para sua equipe."
     ],
     "refs": [
       "backend/src/modules/human-support/application/request-service.ts"
@@ -4793,7 +4806,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
-      "Nenhum Anjo em serviço agora."
+      "Ninguém do Apoio em serviço agora."
     ],
     "refs": [
       "backend/src/modules/human-support/application/request-service.ts"
@@ -4867,6 +4880,45 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/modules/human-support/application/message-service.ts",
       "backend/src/modules/human-support/application/request-service.ts",
       "backend/src/modules/human-support/application/transfer-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_RESPONSE_TIMES_GROUP_ONLY",
+    "module": "human-support",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só o Coordenador de Anjos do Grupo ou quem acompanha a organização muda estes tempos."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/response-times-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_RESPONSE_TIMES_ORGANIZATION_ONLY",
+    "module": "human-support",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Só quem acompanha a organização inteira muda o padrão. Ajuste os tempos do seu Grupo."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/response-times-service.ts"
+    ]
+  },
+  {
+    "code": "HUMAN_SUPPORT_SCOPE_NOT_FOUND",
+    "module": "human-support",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "Grupo não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/human-support/application/response-times-service.ts"
     ]
   },
   {
@@ -6827,6 +6879,120 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "OPERATING_UNIVERSE_ACTIVATION_UNCONFIRMED",
+    "module": "operating-universe",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Ainda há ${pending} pendência(s) de universo. Confirme a ativação informando esse número, ou classifique antes."
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/universe-administration.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_FORBIDDEN",
+    "module": "operating-universe",
+    "statuses": [
+      403
+    ],
+    "messages": [
+      "Você não tem acesso a este universo de atuação."
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/universe-access.ts",
+      "backend/src/modules/operating-universe/domain/operating-universe.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_LINK_CONFLICT",
+    "module": "operating-universe",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam.",
+      "${UNIVERSE_RESOURCES[kind].label} e recursos ligados ficariam em universos diferentes — universos não se misturam. Resolva estes vínculos antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? ",
+      "A mudança deixaria vínculos com universos diferentes. Resolva antes de salvar: ${lines.join(\"; \")}${conflicts.length > 10 ? "
+    ],
+    "refs": [
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts",
+      "backend/src/modules/operating-universe/application/resource-universe.ts",
+      "backend/src/modules/operating-universe/application/universe-links.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_NOT_FOR_CATEGORY",
+    "module": "product-catalog",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Categoria não tem universo próprio: o universo é de cada produto."
+    ],
+    "refs": [
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_PRODUCT_INCOMPATIBLE",
+    "module": "operating-universe",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Estes produtos são de outro universo de atuação e não podem ser ligados a um recurso ${OPERATING_UNIVERSE_LABELS[universe!]}: ${direct.map((product) => "
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/universe-links.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_REQUIRED",
+    "module": "operating-universe",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Escolha o universo de atuação (B2B, B2C ou B2X) do Workflow antes de publicar.",
+      "Com a exigência ativa, todo recurso precisa de universo (B2B, B2C ou B2X).",
+      "Escolha o universo de atuação (B2B, B2C ou B2X) ${what}."
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/resource-universe.ts",
+      "backend/src/modules/operating-universe/application/universe-administration.ts",
+      "backend/src/modules/operating-universe/domain/operating-universe.ts",
+      "backend/src/modules/product-catalog/application/product-catalog-service.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_RESOURCE_NOT_FOUND",
+    "module": "operating-universe",
+    "statuses": [
+      404
+    ],
+    "messages": [
+      "${def.label} não encontrado."
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/universe-administration.ts"
+    ]
+  },
+  {
+    "code": "OPERATING_UNIVERSE_WORKFLOW_USE_EDITOR",
+    "module": "operating-universe",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Para mudar o universo de um Workflow já classificado, edite a Abrangência no editor e publique (muda quem entra nas próximas execuções)."
+    ],
+    "refs": [
+      "backend/src/modules/operating-universe/application/universe-administration.ts"
+    ]
+  },
+  {
     "code": "OPERATOR_NOT_FOUND",
     "module": "reporting",
     "statuses": [
@@ -7233,7 +7399,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       403
     ],
     "messages": [
-      "Você não pode alterar o seu próprio nível, Grupo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.",
+      "Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.",
       "Você não pode vincular a sua própria conta — outra pessoa autorizada precisa fazer isso."
     ],
     "refs": [
@@ -9826,9 +9992,9 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/main/app.ts",
       "backend/src/modules/human-support/application/coverage.ts",
       "backend/src/modules/human-support/application/request-service.ts",
+      "backend/src/modules/human-support/application/response-times-service.ts",
       "backend/src/modules/human-support/application/settings-service.ts",
-      "backend/src/modules/human-support/application/transfer-service.ts",
-      "backend/src/modules/indicators/presentation/employee-performance-router.ts"
+      "backend/src/modules/human-support/application/transfer-service.ts"
     ]
   },
   {

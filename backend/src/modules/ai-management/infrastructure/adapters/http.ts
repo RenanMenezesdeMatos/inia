@@ -3,6 +3,7 @@ import { currentAiAbortSignal, withAiCancellation } from "../../../../shared/app
 import { createStreamDeadline, type StreamDeadline } from "../../../../shared/infrastructure/http/stream-deadline.js"
 import { outboundPolicy } from "../../../../config/outbound-policy.js"
 import { assertOutboundDestination, normalizeHost, OutboundDestinationDenied, unmapIpv4, urlPort } from "../../../../shared/infrastructure/outbound-destination-policy.js"
+import { parseReportedCost, type ProviderReportedCost } from "../../domain/ai-pricing.js"
 import type { ConnectionTestResult, ConnectionTestStatus, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
 
 /**
@@ -48,12 +49,31 @@ function logProviderFailure(connection: ResolvedConnection, category: AiErrorCat
 }
 
 export async function requestJson<T>(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, timeoutMs: number): Promise<T> {
+  return (await requestJsonWithHeaders<T>(fetchImpl, connection, url, init, timeoutMs)).body
+}
+
+/** Como `requestJson`, devolvendo também os cabeçalhos da resposta (o custo informado pelo provider chega neles). */
+export async function requestJsonWithHeaders<T>(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, timeoutMs: number): Promise<{ body: T; headers: Headers }> {
   const response = await rawRequest(fetchImpl, connection, url, init, timeoutMs)
   try {
-    return (await response.json()) as T
+    return { body: (await response.json()) as T, headers: response.headers }
   } catch {
     throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA devolveu uma resposta ilegível." })
   }
+}
+
+/**
+ * Cabeçalho em que um gateway compatível com OpenAI baseado em LiteLLM informa o custo da chamada, em USD — nas respostas
+ * com e sem streaming (no streaming chega no início, com os demais cabeçalhos) e também em `/embeddings`. Os vizinhos
+ * `x-litellm-key-spend` (gasto acumulado da chave) e `x-litellm-key-max-budget` (teto da chave) não são o custo DESTA chamada
+ * e não entram no registro.
+ */
+export const PROVIDER_RESPONSE_COST_HEADER = "x-litellm-response-cost"
+export const PROVIDER_RESPONSE_COST_CURRENCY = "USD"
+
+/** Custo informado pelo provider nos cabeçalhos da resposta; ausente/vazio/negativo/não numérico = null (vale a estimativa). */
+export function reportedCostFromHeaders(headers: Headers | null | undefined): ProviderReportedCost | null {
+  return parseReportedCost(headers?.get(PROVIDER_RESPONSE_COST_HEADER), PROVIDER_RESPONSE_COST_CURRENCY)
 }
 
 export async function rawRequest(fetchImpl: FetchLike, connection: ResolvedConnection, url: string, init: RequestInit, timeoutMs: number): Promise<Response> {

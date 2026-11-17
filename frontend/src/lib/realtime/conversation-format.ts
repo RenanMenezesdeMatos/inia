@@ -25,7 +25,7 @@ export function conversationStatusLabel(conversation: ConversationLike): string 
   if (conversation.status === "ACTIVE") return "Em andamento"
   if (conversation.closeReason === "INACTIVITY") return "Encerrada por inatividade"
   // Encerrada pelo servidor quando terminou o atendimento do Anjo que saiu desta conversa (Apoio com Anjo).
-  if (conversation.closeReason === "HUMAN_SUPPORT") return "Encerrada após o apoio do Anjo"
+  if (conversation.closeReason === "HUMAN_SUPPORT") return "Encerrada após o Apoio"
   return "Encerrada"
 }
 

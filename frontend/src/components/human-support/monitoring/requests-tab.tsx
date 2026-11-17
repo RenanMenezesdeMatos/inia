@@ -99,7 +99,7 @@ function RequestList({ items, selectedId, onSelect }: { items: RequestListItem[]
 
 /** Quem atendeu e em quanto tempo respondeu — sem nada do conteúdo da conversa. */
 function anjoText(item: RequestListItem): string {
-  if (item.anjoNames.length === 0) return item.status === "WAITING" ? "Aguardando um Anjo" : "Nenhum Anjo atendeu"
+  if (item.anjoNames.length === 0) return item.status === "WAITING" ? "Aguardando um Anjo" : item.status === "AWAITING_OPERATOR" ? "Aguardando o operador" : "Nenhum Anjo atendeu"
   const response = item.firstResponseSeconds !== null ? ` · 1ª resposta em ${durationText(item.firstResponseSeconds)}` : ""
   return `Anjo: ${item.anjoNames.join(", ")}${response}`
 }

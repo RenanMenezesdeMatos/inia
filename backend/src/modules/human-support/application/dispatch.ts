@@ -5,10 +5,12 @@ import { endedSessions } from "../../auth/application/session-ended.js"
 import { recordPersonalDataAccess } from "../../data-lifecycle/application/personal-data-access-log.js"
 import { inTransaction, type TransactionSource } from "../../../shared/infrastructure/database/transaction.js"
 import { HUMAN_SUPPORT_LIMITS, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
+import { silentSide } from "../domain/request-lifecycle.js"
 import { effectiveCapacity } from "../domain/presence.js"
 import { anjosInServiceCount, enabledWith, loadScopeStates, loadSettings, queueDeadlineFor } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
 import { tryOrganizationLock, type Queryable } from "./locks.js"
+import { endIfNoAnjoInService } from "./no-anjo.js"
 import { humanSupportStats, recordDeadlineLag } from "./runtime-stats.js"
 import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, recordRequestEvent } from "./transitions.js"
 
@@ -23,7 +25,10 @@ import { appendSystemMessage, endAttendance, endRequest, recordPresenceEvent, re
  *  2. sem conexão há mais de 3 min além do prazo → Indisponível (LEASE_EXPIRED);
  *  3. atendimento cujo Anjo sumiu (3 min além do prazo) ou perdeu o papel no escopo do pedido → Interrompido (`lost_cause`: rede,
  *     sessão ou papel), pedido de volta à frente da fila com novo prazo;
- *  4. 15 min sem mensagem humana → Encerrado (INACTIVITY), também sem resposta do Anjo;
+ *  4. tempos de resposta (migration 193, configuráveis): o OPERADOR sem responder ao Anjo → atendimento termina (`OPERATOR_SILENT`) e o
+ *     pedido passa a Aguardando o operador; o ANJO sem responder (nem a primeira vez, ou depois do operador) → atendimento termina
+ *     (`ANJO_SILENT`, abandono do Anjo) e o pedido volta à FRENTE da fila, para qualquer Anjo; aguardando o operador além do 2º tempo
+ *     → Abandonado (`OPERATOR_NO_RETURN`);
  *  5. fila: escopo desligado → Cancelado; operador sem chamar há 2 min → Abandonado; prazo vencido → Expirado — guardando quantos Anjos
  *     estavam em serviço no escopo nesse instante (`anjos_in_service_at_end`: zero = encerrado sem Anjo logado);
  *  6. Anjo sem o papel em nenhum escopo → Indisponível (ROLE_REVOKED);
@@ -38,7 +43,13 @@ export type DispatchSummary = {
   connectionRestored: number
   offline: number
   interrupted: number
-  closedByInactivity: number
+  awaitingOperator: number
+  anjoSilent: number
+  operatorNoReturn: number
+  /** Voltaria à fila sem ninguém do Apoio em serviço → encerrado (migration 194). */
+  noAnjoInService: number
+  /** Anjos postos em pausa "Desconexão" por não responder ninguém (migration 195). */
+  unresponsivePaused: number
   cancelled: number
   abandoned: number
   expired: number
@@ -46,7 +57,7 @@ export type DispatchSummary = {
   failures: number
 }
 
-const emptySummary = (): DispatchSummary => ({ skipped: false, connectionLost: 0, connectionRestored: 0, offline: 0, interrupted: 0, closedByInactivity: 0, cancelled: 0, abandoned: 0, expired: 0, assigned: 0, failures: 0 })
+const emptySummary = (): DispatchSummary => ({ skipped: false, connectionLost: 0, connectionRestored: 0, offline: 0, interrupted: 0, awaitingOperator: 0, anjoSilent: 0, operatorNoReturn: 0, noAnjoInService: 0, unresponsivePaused: 0, cancelled: 0, abandoned: 0, expired: 0, assigned: 0, failures: 0 })
 
 const coversPlace = (scope: AccessScope, place: { teamId: string | null; subteamId: string | null }) =>
   scope.type === "ORGANIZATION" || (scope.type === "GROUP" && place.teamId === scope.teamId) || (scope.type === "SUBGROUP" && place.subteamId === scope.subteamId)
@@ -144,7 +155,7 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
   }
 
   /** Presença → Indisponível por causa do sistema. A programação some junto: ela nunca devolve o Anjo à fila depois disso. */
-  const goOffline = async (personId: string, cause: "LEASE_EXPIRED" | "ROLE_REVOKED") => {
+  const goOffline = async (personId: string, cause: "LEASE_EXPIRED" | "ROLE_REVOKED" | "UNRESPONSIVE_TIMEOUT") => {
     const previous = (
       await client.query<{ status: PresenceStatus; pause_reason: PauseReason | null }>(
         `update human_support_agent_presence p set status = 'OFFLINE', pause_reason = null, status_since = statement_timestamp(), version = p.version + 1,
@@ -209,25 +220,127 @@ async function runSteps(client: pg.PoolClient, organizationId: string, summary: 
     summary.interrupted += 1
   }
 
-  // 4. 15 min sem mensagem humana (contados da atribuição ou da última mensagem) → Encerrados.
-  const inactive = (
-    await client.query<{ id: string; request_id: string; anjo_person_id: string; operator_person_id: string; lag_ms: number }>(
-      `select a.id, a.request_id, a.anjo_person_id, a.operator_person_id,
-              extract(epoch from statement_timestamp() - (a.last_human_message_at + make_interval(secs => $2::int)))::float8 * 1000 lag_ms
+  // 4. Tempos de resposta (migrations 193/194): os do Grupo do pedido, senão o padrão da organização; de quem era a vez, pela última
+  //    mensagem humana do atendimento.
+  const orgTimes = settings.responseTimes
+  const silent = (
+    await client.query<{ id: string; request_id: string; anjo_person_id: string; operator_person_id: string; team_id: string | null; subteam_id: string | null; last_human_message_at: Date; last_author: "OPERATOR" | "ANJO" | null; now: Date; operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number }>(
+      `select a.id, a.request_id, a.anjo_person_id, a.operator_person_id, r.team_id, r.subteam_id, a.last_human_message_at, statement_timestamp() now,
+              coalesce(g.operator_requeue_minutes, $2) operator_requeue_minutes, coalesce(g.operator_close_minutes, $3) operator_close_minutes, coalesce(g.anjo_requeue_minutes, $4) anjo_requeue_minutes,
+              (select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind <> 'SYSTEM' order by m.seq desc limit 1) last_author
          from human_support_attendances a
-        where a.organization_id = $1 and a.status = 'ACTIVE' and a.last_human_message_at < statement_timestamp() - make_interval(secs => $2::int)
+         join human_support_requests r on r.id = a.request_id
+         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id
+        where a.organization_id = $1 and a.status = 'ACTIVE'
+          and a.last_human_message_at < statement_timestamp() - make_interval(mins => least(coalesce(g.operator_requeue_minutes, $2), coalesce(g.anjo_requeue_minutes, $4))::int)
         order by a.request_id`,
-      [organizationId, HUMAN_SUPPORT_LIMITS.inactivityMs / 1000],
+      [organizationId, orgTimes.operatorRequeueMinutes, orgTimes.operatorCloseMinutes, orgTimes.anjoRequeueMinutes],
     )
   ).rows
-  for (const attendance of inactive) {
+  for (const attendance of silent) {
+    if (!stillActive.some((row) => row.id === attendance.id)) continue
+    const times = { operatorRequeueMinutes: Number(attendance.operator_requeue_minutes), operatorCloseMinutes: Number(attendance.operator_close_minutes), anjoRequeueMinutes: Number(attendance.anjo_requeue_minutes) }
+    const side = silentSide({ lastHumanAuthor: attendance.last_author, lastHumanMessageAt: attendance.last_human_message_at, now: attendance.now, times })
+    if (!side) continue
     if ((await lockRequestRow(client, attendance.request_id)) !== "IN_PROGRESS") continue
-    await endAttendance(client, attendance.id, "INACTIVITY")
-    await endRequest(client, { id: attendance.request_id, organizationId, operatorPersonId: attendance.operator_person_id }, { from: "IN_PROGRESS", cause: "INACTIVITY", actorPersonId: null, attendanceId: attendance.id })
+    const ref = { id: attendance.request_id, organizationId, operatorPersonId: attendance.operator_person_id }
+    await endAttendance(client, attendance.id, side)
+    if (side === "OPERATOR_SILENT") {
+      // O Anjo fica livre; o pedido espera o operador. O 2º tempo conta da última mensagem do Anjo (a mesma origem do 1º).
+      await client.query(`update human_support_requests set status = 'AWAITING_OPERATOR', awaiting_operator_since = $2 where id = $1 and status = 'IN_PROGRESS'`, [attendance.request_id, attendance.last_human_message_at])
+      await recordRequestEvent(client, { organizationId, requestId: attendance.request_id, from: "IN_PROGRESS", to: "AWAITING_OPERATOR", cause: "OPERATOR_SILENT", actorPersonId: null })
+      await appendSystemMessage(client, ref, attendance.id, "AWAITING_OPERATOR")
+      summary.awaitingOperator += 1
+    } else if (await endIfNoAnjoInService(client, { ...ref, teamId: attendance.team_id, subteamId: attendance.subteam_id }, { from: "IN_PROGRESS", attendanceId: attendance.id, actorPersonId: null })) {
+      // Abandono do Anjo sem ninguém do Apoio em serviço para retomar: a regra de "ninguém em serviço" (migration 194), não a fila.
+      summary.anjoSilent += 1
+      summary.noAnjoInService += 1
+    } else {
+      // Abandono do Anjo: o pedido volta à FRENTE da fila (mantém o queued_at), com prazo novo, para qualquer Anjo.
+      const deadline = await queueDeadlineFor(client, organizationId, { teamId: attendance.team_id, subteamId: attendance.subteam_id })
+      await client.query(
+        `update human_support_requests set status = 'WAITING', queue_expires_at = statement_timestamp() + make_interval(mins => $2::int), queue_deadline_basis = $3 where id = $1 and status = 'IN_PROGRESS'`,
+        [attendance.request_id, deadline.minutes, deadline.basis],
+      )
+      await recordRequestEvent(client, { organizationId, requestId: attendance.request_id, from: "IN_PROGRESS", to: "WAITING", cause: "ANJO_SILENT", actorPersonId: null })
+      await appendSystemMessage(client, ref, attendance.id, "ANJO_SILENT_REQUEUED")
+      summary.anjoSilent += 1
+    }
     touched.add(attendance.operator_person_id).add(attendance.anjo_person_id)
-    recordDeadlineLag(attendance.lag_ms)
-    summary.closedByInactivity += 1
   }
+
+  // 4b. Aguardando o operador além do tempo de encerramento (do Grupo do pedido, senão o padrão) → Abandonado (abandono do operador).
+  const notReturned = (
+    await client.query<{ id: string; operator_person_id: string }>(
+      `select r.id, r.operator_person_id from human_support_requests r
+         left join human_support_group_response_times g on g.organization_id = r.organization_id and g.team_id = r.team_id
+        where r.organization_id = $1 and r.status = 'AWAITING_OPERATOR' and r.awaiting_operator_since < statement_timestamp() - make_interval(mins => coalesce(g.operator_close_minutes, $2)::int)
+        order by r.id for update of r`,
+      [organizationId, orgTimes.operatorCloseMinutes],
+    )
+  ).rows
+  for (const request of notReturned) {
+    await endRequest(client, { id: request.id, organizationId, operatorPersonId: request.operator_person_id }, { from: "AWAITING_OPERATOR", cause: "OPERATOR_NO_RETURN", actorPersonId: null })
+    touched.add(request.operator_person_id)
+    summary.operatorNoReturn += 1
+  }
+
+  // 4c. Anjo sem responder NINGUÉM (migration 195): devendo resposta a algum operador (atendimento em andamento cuja última mensagem
+  //     não é dele, ou atendimento que ele perdeu por falta de resposta) há `pauseAfterMinutes`, contados do primeiro retorno devido —
+  //     ou do último sinal de vida dele, se veio depois: uma mensagem em QUALQUER atendimento ou uma mudança de estado feita por ele.
+  //     → pausa "Desconexão" (o sistema, `UNRESPONSIVE`): para de receber pedidos; a programação some. Os atendimentos em andamento
+  //     seguem a regra do "Anjo sem responder" (voltam à fila no tempo deles).
+  const { pauseAfterMinutes, offlineAfterMinutes } = settings.anjoUnresponsive
+  const unresponsive = (
+    await client.query<{ person_id: string; status: PresenceStatus; pause_reason: PauseReason | null }>(
+      `with owing as (
+         select a.anjo_person_id person_id, a.last_human_message_at owed_from, a.status, a.ended_at
+           from human_support_attendances a
+          where a.organization_id = $1
+            and ((a.status = 'ACTIVE' and coalesce((select m.author_kind from human_support_messages m where m.request_id = a.request_id and m.attendance_id = a.id and m.author_kind <> 'SYSTEM' order by m.seq desc limit 1), 'NONE') <> 'ANJO')
+              or (a.end_cause = 'ANJO_SILENT' and a.ended_at > statement_timestamp() - make_interval(mins => $2::int * 2)))
+       ), alive as (
+         select o.person_id,
+                greatest((select max(m.occurred_at) from human_support_messages m where m.organization_id = $1 and m.author_kind = 'ANJO' and m.author_person_id = o.person_id),
+                         (select max(e.occurred_at) from human_support_presence_events e where e.organization_id = $1 and e.person_id = o.person_id and e.cause = 'ANJO')) last_alive
+           from (select distinct person_id from owing) o
+       ), since as (
+         select l.person_id, case when count(o.*) = 0 then null else greatest(min(o.owed_from), max(l.last_alive)) end unanswered_since
+           from alive l
+           left join owing o on o.person_id = l.person_id and (o.status = 'ACTIVE' or o.ended_at > coalesce(l.last_alive, '-infinity'::timestamptz))
+          group by l.person_id
+       )
+       select p.person_id, p.status, p.pause_reason
+         from human_support_agent_presence p
+         join since s on s.person_id = p.person_id
+        where p.organization_id = $1 and p.status <> 'OFFLINE' and p.pause_reason is distinct from 'DISCONNECTION'
+          and s.unanswered_since <= statement_timestamp() - make_interval(mins => $2::int)
+        order by p.person_id
+        for update of p`,
+      [organizationId, pauseAfterMinutes],
+    )
+  ).rows
+  for (const presence of unresponsive) {
+    await client.query(
+      `update human_support_agent_presence set status = 'PAUSED', pause_reason = 'DISCONNECTION', status_since = statement_timestamp(), version = version + 1,
+              scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null
+        where organization_id = $1 and person_id = $2`,
+      [organizationId, presence.person_id],
+    )
+    await recordPresenceEvent(client, { organizationId, personId: presence.person_id, from: presence.status, to: "PAUSED", pauseReason: "DISCONNECTION", cause: "UNRESPONSIVE" })
+    touched.add(presence.person_id)
+    summary.unresponsivePaused += 1
+  }
+  // 4d. Na pausa "Desconexão" há `offlineAfterMinutes` sem voltar (escolher um estado) → Indisponível (`UNRESPONSIVE_TIMEOUT`).
+  const timedOut = (
+    await client.query<{ person_id: string }>(
+      `select person_id from human_support_agent_presence
+        where organization_id = $1 and status = 'PAUSED' and pause_reason = 'DISCONNECTION' and status_since <= statement_timestamp() - make_interval(mins => $2::int)
+        order by person_id`,
+      [organizationId, offlineAfterMinutes],
+    )
+  ).rows
+  for (const presence of timedOut) await goOffline(presence.person_id, "UNRESPONSIVE_TIMEOUT")
 
   // 5. Fila: escopo desligado, operador sem chamar há 2 min, prazo vencido.
   const waiting = (

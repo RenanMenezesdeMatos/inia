@@ -30,6 +30,13 @@ describe("ranking 'Quem mais usa' — filtros validados no servidor", () => {
     }
   })
 
+  it("nível Usuário e estrutura de um líder: só id opaco (nome, e-mail ou texto no lugar do id = recusado)", () => {
+    expect(aiUsageRankingQuerySchema.parse({ level: "PERSON", leaderId: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" })).toMatchObject({ level: "PERSON", leaderId: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" })
+    for (const invalid of [{ leaderId: "Supervisor Um" }, { leaderId: "ana@empresa.com" }, { level: "USER" }, { personId: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" }]) {
+      expect(aiUsageRankingQuerySchema.safeParse(invalid).success, JSON.stringify(invalid)).toBe(false)
+    }
+  })
+
   it("participação com 1 casa; total zero nunca vira 0%", () => {
     expect(shareOf(5, 12)).toBe(41.7)
     expect(shareOf(0, 0)).toBeNull()

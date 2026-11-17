@@ -24,8 +24,8 @@ describe("janela de pedido de apoio", () => {
   it("mostra exatamente o que o Anjo verá e, sem Anjo em serviço, desabilita “Pedir ajuda”", async () => {
     service.previewSupportRequest.mockResolvedValue(preview("NONE_IN_SERVICE"))
     renderWithQuery(<SupportRequestDialog source={{ interactionId: "a-1", ratingId: "r-1" }} onOpenChange={vi.fn()} onCreated={vi.fn()} onOpenRoom={vi.fn()} />)
-    expect(await screen.findByText("Nenhum Anjo em serviço agora.")).toBeInTheDocument()
-    expect(screen.getByText("O Anjo verá: sua pergunta, a resposta da INIA, o motivo, seu comentário e o que você escrever.")).toBeInTheDocument()
+    expect(await screen.findByText("Ninguém do Apoio em serviço agora.")).toBeInTheDocument()
+    expect(screen.getByText("O Apoio verá: sua pergunta, a resposta da INIA, o motivo, seu comentário e o que você escrever.")).toBeInTheDocument()
     expect(screen.getByText("Qual o prazo da contestação?")).toBeInTheDocument()
     expect(screen.getByText("O prazo mudou.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Pedir ajuda" })).toBeDisabled()
@@ -38,10 +38,10 @@ describe("janela de pedido de apoio", () => {
     service.createSupportRequest.mockResolvedValue(created)
     const onCreated = vi.fn()
     renderWithQuery(<SupportRequestDialog source={{ interactionId: "a-1", ratingId: "r-1" }} onOpenChange={vi.fn()} onCreated={onCreated} onOpenRoom={vi.fn()} />)
-    expect(await screen.findByText("Todos os Anjos estão em atendimento.")).toBeInTheDocument()
+    expect(await screen.findByText("Todas as pessoas do Apoio estão em atendimento.")).toBeInTheDocument()
     expect(screen.getByText(/Espera estimada: cerca de 4 min/)).toBeInTheDocument()
     expect(screen.getByText(/Seu pedido fica na fila até/)).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Nota para o Anjo (opcional)"), { target: { value: "  É sobre a fatura.  " } })
+    fireEvent.change(screen.getByLabelText("Nota para o Apoio (opcional)"), { target: { value: "  É sobre a fatura.  " } })
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Pedir ajuda" }))
     })

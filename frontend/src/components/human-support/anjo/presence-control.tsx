@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { CalendarClock, ChevronDown, CircleStop, Pause, Play, Timer, X } from "lucide-react"
+import { CalendarClock, ChevronDown, CircleStop, Pause, Play, Timer, Unplug, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { describeElapsed, formatElapsed, formatShortDateTime } from "@/lib/format/date"
-import { PAUSE_REASON_LABELS, PAUSE_REASONS, PRESENCE_STATUS_LABELS, type PauseReason } from "@/schemas/human-support/catalogs.schema"
+import { describeElapsed, formatClockTime, formatElapsed, formatShortDateTime } from "@/lib/format/date"
+import { ANJO_PAUSE_REASONS, PAUSE_REASON_LABELS, PRESENCE_STATUS_LABELS, type PauseReason } from "@/schemas/human-support/catalogs.schema"
 import type { AnjoView } from "@/schemas/human-support/state.schema"
 import { cancelScheduledAnjoPresence, changeAnjoPresence, type PresenceChange } from "@/services/human-support/human-support-service"
 import { IconBadge, toneSurface } from "@/components/ui/surface"
@@ -129,6 +129,26 @@ export function PresenceControl({ presence, onApplyAnjo, onPrimeAudio, clockOffs
           </Button>
         ) : null}
       </div>
+      {presence.unresponsive ? (
+        // Migration 195: o sistema o pôs em pausa "Desconexão" (ou Indisponível, se não voltou dela) por não responder ninguém.
+        <div role="status" data-testid="presence-unresponsive" className={cn(toneSurface("danger"), "-mt-1 flex items-start gap-3 rounded-xl p-3")}>
+          <IconBadge icon={Unplug} tone="danger" size="sm" />
+          {presence.unresponsive.kind === "PAUSED" ? (
+            <p className="min-w-0 text-sm leading-snug">
+              <span className="block font-semibold">O sistema pôs você em pausa “Desconexão”</span>
+              <span className="block text-muted-foreground">
+                Você ficou sem responder ninguém. Nesta pausa você não recebe pedidos. Toque em “Voltar”
+                {presence.unresponsive.offlineAt ? ` até ${formatClockTime(presence.unresponsive.offlineAt)}` : ""}; depois disso, você fica Indisponível.
+              </span>
+            </p>
+          ) : (
+            <p className="min-w-0 text-sm leading-snug">
+              <span className="block font-semibold">Você ficou Indisponível porque não voltou da pausa “Desconexão”</span>
+              <span className="block text-muted-foreground">Às {formatClockTime(presence.unresponsive.since)}. Para atender de novo, escolha “Ficar disponível”.</span>
+            </p>
+          )}
+        </div>
+      ) : null}
       {scheduled && scheduledText ? (
         <div role="status" aria-label={`Mudança programada: ${scheduledText}`} data-testid="presence-scheduled" className={cn(toneSurface("warning"), "-mt-1 flex flex-col gap-3 rounded-xl p-3 sm:flex-row sm:items-center sm:justify-between")}>
           <div className="flex min-w-0 items-start gap-3">
@@ -185,7 +205,7 @@ function PauseMenu({ label, current, currentHint, disabled, onPick }: PauseMenuP
             if (value !== current) onPick(value as PauseReason)
           }}
         >
-          {PAUSE_REASONS.map((reason) => (
+          {ANJO_PAUSE_REASONS.map((reason) => (
             <DropdownMenuRadioItem key={reason} value={reason} className="gap-3 rounded-lg py-1.5 pr-9 pl-1.5 data-[state=checked]:bg-primary/5 data-[state=checked]:font-semibold">
               <IconBadge icon={PAUSE_REASON_ICONS[reason]} tone={reason === current ? "warning" : "neutral"} size="sm" />
               <span className="flex-1">{PAUSE_REASON_LABELS[reason]}</span>

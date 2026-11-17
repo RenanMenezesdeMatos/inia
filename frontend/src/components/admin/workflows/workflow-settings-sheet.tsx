@@ -44,6 +44,8 @@ import {
   type PopulationFilterKind,
 } from "@/schemas/admin/population-filter-schema"
 import type { StructureAnchorKind } from "@/schemas/admin/structure-anchor-schema"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 
 const CONSOLIDATED_STRUCTURE_KINDS: ConsolidatedStructureKind[] = [
   "SUPERVISOR_TEAM",
@@ -150,12 +152,21 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
     setOrgScope({ scopeType: editable.scopeType, teamId: editable.teamId ?? undefined, subteamId: editable.subteamId ?? undefined })
   }
 
-  const scopeChanged =
+  const [universe, setUniverse] = useState(editable.operatingUniverse)
+  const [syncedUniverse, setSyncedUniverse] = useState(editable.operatingUniverse)
+  if (syncedUniverse !== editable.operatingUniverse) {
+    setSyncedUniverse(editable.operatingUniverse)
+    setUniverse(editable.operatingUniverse)
+  }
+  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
+  const orgScopeChanged =
     orgScope.scopeType !== editable.scopeType || (orgScope.teamId ?? null) !== editable.teamId || (orgScope.subteamId ?? null) !== editable.subteamId
+  const universeChanged = universe !== editable.operatingUniverse
+  const scopeChanged = orgScopeChanged || universeChanged
 
   async function handleSaveScope() {
     try {
-      await updateMutation.mutateAsync({ id: workflow.id, orgScope })
+      await updateMutation.mutateAsync({ id: workflow.id, ...(orgScopeChanged ? { orgScope } : {}), ...(universeChanged ? { operatingUniverse: universe } : {}) })
     } catch {
       // já sinalizado via updateMutation.isError / toast do useAdminMutation
     }
@@ -295,6 +306,11 @@ export function WorkflowSettingsSheet({ workflow }: { workflow: WorkflowDetail }
           ) : (
             <Skeleton className="h-10 w-full" />
           )}
+          <div className="space-y-1.5">
+            <Label htmlFor="workflow-settings-universe">Universo de atuação</Label>
+            <UniverseSelect id="workflow-settings-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced && editable.operatingUniverse === null} />
+            <p className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções. Agentes, Orquestradores e indicadores das etapas precisam ser do mesmo universo — conferido ao Publicar.</p>
+          </div>
           <p className="text-xs text-muted-foreground">
             Em quais grupos este workflow pode atuar. Trocar a abrangência é conferido com os Orquestradores, a Estrutura Consolidada e o
             Filtro Populacional já configurados. Se algo ficar fora do novo grupo, a troca é recusada e a mensagem diz o quê.

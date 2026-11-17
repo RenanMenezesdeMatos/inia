@@ -25,7 +25,7 @@ import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, Table
 import { Textarea } from "@/components/ui/textarea"
 import { ListEmptyState, ListErrorState, ListSkeleton } from "@/components/admin/shared/list/list-states"
 import { AdminApiError } from "@/lib/admin/admin-api"
-import { formatAiDateTime, formatCount, formatLatency, formatMoney, formatPerMillion, formatTokens, LOCAL_API_COST_ZERO_LABEL, normalizeDecimalInput, parseOptionalInt } from "@/lib/admin/ai-format"
+import { COST_STATUS_LABELS, formatAiDateTime, formatCount, formatLatency, formatMoney, formatPerMillion, formatTokens, LOCAL_API_COST_ZERO_LABEL, normalizeDecimalInput, parseOptionalInt } from "@/lib/admin/ai-format"
 import {
   useAddAiModelPricingMutation,
   useAiCan,
@@ -346,7 +346,7 @@ function ModelTestResultView({ result }: { result: ModelTestResult }) {
       <p className="text-xs text-muted-foreground">
         Tokens: entrada {formatTokens(result.usage.inputTokens)} · saída {formatTokens(result.usage.outputTokens)} · total {formatTokens(result.usage.totalTokens)}
       </p>
-      <p className="text-xs text-muted-foreground">Custo: {result.cost.amount && result.cost.currency ? formatMoney(result.cost.amount, result.cost.currency) : "desconhecido (sem preço configurado)"}</p>
+      <p className="text-xs text-muted-foreground">Custo: {result.cost.amount && result.cost.currency ? `${formatMoney(result.cost.amount, result.cost.currency)} (${COST_STATUS_LABELS[result.cost.status] ?? result.cost.status})` : "desconhecido (o provedor não informou e não há preço configurado)"}</p>
     </div>
   )
 }

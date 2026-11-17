@@ -23,6 +23,9 @@ export const PRESENCE_CAUSE_LABELS: Record<string, string> = {
   CONNECTION_LOST: "conexão perdida",
   CONNECTION_RESTORED: "conexão retomada",
   SESSION_ENDED: "sessão encerrada",
+  // Migration 195: o Anjo ficou sem responder ninguém.
+  UNRESPONSIVE: "pelo sistema: ficou sem responder ninguém",
+  UNRESPONSIVE_TIMEOUT: "pelo sistema: não voltou da pausa Desconexão",
 }
 
 export function PresenceTimeline({ personId, name, period }: { personId: string; name: string; period: { from: string; to: string } }) {

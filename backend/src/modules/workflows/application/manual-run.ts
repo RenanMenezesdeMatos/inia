@@ -35,6 +35,7 @@ export type ManualRunTarget = {
   teamId: string | null
   subteamId: string | null
   populationFilter: unknown
+  operatingUniverse?: string | null
   consolidated: boolean
   trigger: ManualTrigger | null
   indicatorName: string | null
@@ -91,8 +92,9 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     trigger_config: unknown
     indicator_name: string | null
     indicator_unit: string | null
+    operating_universe: string | null
   }>(
-    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure,
+    `select w.id, w.name, w.active, w.active_version_id, w.scope_type, w.team_id, w.subteam_id, w.population_filter, w.consolidated_structure, w.operating_universe,
             w.trigger_config, idef.name indicator_name, idef.unit indicator_unit
        from workflows w
        left join indicator_definitions idef on idef.organization_id = w.organization_id and idef.code = w.trigger_config ->> 'indicatorCode'
@@ -112,6 +114,7 @@ export async function loadManualRunTarget(db: Database, organizationId: string, 
     teamId: row.team_id,
     subteamId: row.subteam_id,
     populationFilter: row.population_filter,
+    operatingUniverse: row.operating_universe ?? null,
     consolidated: row.consolidated_structure !== null,
     trigger: parsed.success && parsed.data.kind === "manual" ? parsed.data : null,
     indicatorName: row.indicator_name,
@@ -156,7 +159,7 @@ export async function loadUnavailableReferences(db: Database, organizationId: st
 }
 
 function populationOf(target: ManualRunTarget): WorkflowPopulation {
-  return { scopeType: target.scopeType, teamId: target.teamId, subteamId: target.subteamId, populationFilter: target.populationFilter }
+  return { scopeType: target.scopeType, teamId: target.teamId, subteamId: target.subteamId, populationFilter: target.populationFilter, operatingUniverse: target.operatingUniverse ?? null }
 }
 
 export type ManualRunCollaborator = { id: string; name: string; matricula: string | null; jobTitle: string | null; teamName: string | null; subteamName: string | null }

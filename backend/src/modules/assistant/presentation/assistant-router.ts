@@ -1,4 +1,6 @@
 import { Router } from "express"
+import { assertResourceLinksCompatible } from "../../operating-universe/application/resource-universe.js"
+import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
 import { z } from "zod"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -311,6 +313,7 @@ export function createAssistantRouter(db: Database) {
     await validateSpecialistsAgainstRouting(db, routing, input.specialistAgentIds, { active: true, invocationMode: input.invocationMode })
     const persisted = persistedPolicyColumns(routing, input.invocationMode)
     const structured = structuredOutputColumns(input)
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse ?? null, "do Orquestrador")
 
     try {
       const orchestratorId = await inTransaction(db, async (client) => {
@@ -340,6 +343,9 @@ export function createAssistantRouter(db: Database) {
         await syncOrchestratorBusinessDomains(client, orchestratorId, persisted.domainRefs)
         await syncSpecialists(client, organizationId, orchestratorId, input.specialistAgentIds)
         await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
+        await client.query(`update assistant_orchestrators set operating_universe = $2 where id = $1`, [orchestratorId, input.operatingUniverse ?? null])
+        // Universos não se misturam: coordenador, especialistas e domínios precisam ser do universo do Orquestrador (a transação desfaz).
+        await assertResourceLinksCompatible(client, organizationId, "ORCHESTRATOR", orchestratorId)
         await publishOrchestratorVersion(client, organizationId, orchestratorId, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return orchestratorId
       })
@@ -458,6 +464,7 @@ export function createAssistantRouter(db: Database) {
         if (input.specialistAgentIds) await syncSpecialists(client, organizationId, request.params.id!, input.specialistAgentIds)
         if (input.orchestratorAgentId) await assertAgentsPublished(client, organizationId, [input.orchestratorAgentId])
         // Toda gravação publica uma versão nova da configuração (as anteriores continuam valendo para os Workflows que as fixaram).
+        await assertResourceLinksCompatible(client, organizationId, "ORCHESTRATOR", request.params.id!)
         await publishOrchestratorVersion(client, organizationId, request.params.id!, { personId: request.user?.personId ?? null, name: request.user?.name ?? "Sistema" })
         return "UPDATED" as const
       })

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useProductNodesQuery, useProductScopeSourcesQuery, useSetProductScopeMutation } from "@/queries/admin/use-product-catalog-queries"
 import type { ProductNode, ProductScopeSource } from "@/schemas/admin/product-catalog.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 import { NodePicker, nodeLabel } from "./node-picker"
 
@@ -64,8 +65,26 @@ export function useSourceProductScope(kind: SourceKind, sourceId: string | null)
   }
 }
 
-export function ProductScopeField({ nodes, value, onChange, idPrefix }: { nodes: readonly ProductNode[]; value: readonly string[]; onChange: (ids: string[]) => void; idPrefix: string }) {
+/** Produtos que a fonte de um universo pode escolher: os do mesmo universo e os ainda sem universo (o backend confere de novo). */
+export const productsCompatibleWith = (nodes: readonly ProductNode[], universe: OperatingUniverse | null | undefined): ProductNode[] =>
+  nodes.filter((node) => !universe || node.kind !== "PRODUCT" || !node.operatingUniverse || node.operatingUniverse === universe)
+
+export function ProductScopeField({
+  nodes,
+  value,
+  onChange,
+  idPrefix,
+  universe,
+}: {
+  nodes: readonly ProductNode[]
+  value: readonly string[]
+  onChange: (ids: string[]) => void
+  idPrefix: string
+  /** Universo da base ou do argumentário: só oferece produtos dele (e os sem universo). Sem universo, mostra todos. */
+  universe?: OperatingUniverse | null
+}) {
   const [some, setSome] = useState(value.length > 0)
+  const offered = productsCompatibleWith(nodes, universe)
   return (
     <fieldset className="space-y-2" data-testid="product-scope-field">
       <legend className="text-sm font-medium">Vale para</legend>
@@ -92,7 +111,7 @@ export function ProductScopeField({ nodes, value, onChange, idPrefix }: { nodes:
       </RadioGroup>
       {some ? (
         <>
-          <NodePicker nodes={nodes} value={value} onChange={onChange} idPrefix={idPrefix} />
+          <NodePicker nodes={offered} value={value} onChange={onChange} idPrefix={idPrefix} />
           <p className="text-xs text-muted-foreground">A INIA só cobra estas regras quando a chamada mostra que o pedido é de um destes produtos. Marcar uma categoria vale para todos os produtos dela.</p>
         </>
       ) : null}

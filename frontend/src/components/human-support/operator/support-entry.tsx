@@ -28,7 +28,8 @@ export const awaitingEvaluation = (evaluation: PendingEvaluation) => evaluation.
 export function supportPillText(operator: ReturnType<typeof useHumanSupportState>["operator"], unread = 0): string | null {
   const open = operator?.openRequest
   if (open?.status === "WAITING") return open.queueExpiresAt ? `Apoio · Na fila até ${formatClockTime(open.queueExpiresAt)}` : "Apoio · Na fila"
-  if (open?.status === "IN_PROGRESS") return `Apoio · com ${open.anjo?.name ?? "o Anjo"}${unread > 0 ? ` · ${unread === 1 ? "1 mensagem nova" : `${unread} mensagens novas`}` : ""}`
+  if (open?.status === "AWAITING_OPERATOR") return open.awaitingReturnUntil ? `Apoio · aguardando seu retorno até ${formatClockTime(open.awaitingReturnUntil)}` : "Apoio · aguardando seu retorno"
+  if (open?.status === "IN_PROGRESS") return `Apoio · com ${open.anjo?.name ?? "o Apoio"}${unread > 0 ? ` · ${unread === 1 ? "1 mensagem nova" : `${unread} mensagens novas`}` : ""}`
   if (operator?.pendingEvaluations.some(awaitingEvaluation)) return "Apoio · encerrado — avalie"
   return null
 }
@@ -41,8 +42,8 @@ export function SupportStatusPill({ onOpenRoom }: { onOpenRoom: () => void }) {
   if (!text) return null
   // Tom pelo estado: na fila (âmbar), em atendimento (verde), encerrado aguardando avaliação (primária).
   const status = operator?.openRequest?.status
-  const tone = status === "WAITING" ? PILL_TONES.waiting : status === "IN_PROGRESS" ? PILL_TONES.live : PILL_TONES.evaluate
-  const Icon = status === "WAITING" ? Clock : status === "IN_PROGRESS" ? MessagesSquare : Star
+  const tone = status === "WAITING" || status === "AWAITING_OPERATOR" ? PILL_TONES.waiting : status === "IN_PROGRESS" ? PILL_TONES.live : PILL_TONES.evaluate
+  const Icon = status === "WAITING" || status === "AWAITING_OPERATOR" ? Clock : status === "IN_PROGRESS" ? MessagesSquare : Star
   return (
     <div className="px-5 pt-2">
       <Button type="button" variant="outline" size="sm" className={cn("h-8 rounded-full border text-xs font-medium shadow-none", tone)} onClick={onOpenRoom} data-testid="support-status-pill">
@@ -68,7 +69,7 @@ function useAssignmentNotice(open: { id: string; status: string; anjo: { name: s
     if (!open || !before || before.id !== open.id || before.status !== "WAITING" || open.status !== "IN_PROGRESS") return
     if (typeof document === "undefined" || !document.hidden) return
     const original = document.title
-    document.title = `• ${open.anjo?.name ?? "Um Anjo"} recebeu seu pedido — INIA`
+    document.title = `• ${open.anjo?.name ?? "O Apoio"} recebeu seu pedido — INIA`
     playShortTone()
     const restore = () => {
       if (document.hidden) return
@@ -124,7 +125,7 @@ export function SupportSuggestion({ signals, onRequest, onOpenRoom }: { signals:
         <IconBadge icon={open ? CheckCircle2 : HeartHandshake} tone={open ? "neutral" : "info"} size="sm" />
         <div className="min-w-0 text-sm">
           <p className="font-medium text-foreground">{open ? "Você já tem um pedido de apoio." : SIGNAL_TEXT[signals[0]!]}</p>
-          <p className="text-xs text-muted-foreground">{open ? "Acompanhe a conversa com o Anjo." : SIGNAL_HINT}</p>
+          <p className="text-xs text-muted-foreground">{open ? "Acompanhe a conversa com o Apoio." : SIGNAL_HINT}</p>
         </div>
       </div>
       {open ? (

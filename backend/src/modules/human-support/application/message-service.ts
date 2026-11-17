@@ -4,17 +4,23 @@ import { loadPersonPresentations } from "../../profile-preferences/application/p
 import { canWriteMessage } from "../domain/request-lifecycle.js"
 import type { MessageView } from "../domain/views.js"
 import { clearTypingOnSend } from "./conversation-marks.js"
+import { dispatchAfterCommand } from "./dispatch.js"
+import { queueDeadlineFor } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
 import { inSupportTransaction, type Queryable } from "./locks.js"
+import { endIfNoAnjoInService } from "./no-anjo.js"
 import { loadActiveAttendance, loadMessageViews, loadRequest } from "./request-views.js"
 import type { Viewer } from "./request-service.js"
+import { appendSystemMessage, recordRequestEvent } from "./transitions.js"
 
 /**
  * CONVERSA HUMANA operador ↔ Anjo (design_draft.md seção 10). Tabela própria (`human_support_messages`): nada daqui entra em
  * `assistant_conversations`/`assistant_interactions`, e nenhum caminho de modelo lê estas mensagens. A mensagem trava a linha do
  * pedido (`for update`): serializa as mensagens entre si e com o encerramento, e o `seq` sai sem lacunas. O operador escreve na fila
  * e no atendimento; o Anjo, só no próprio atendimento em andamento. A primeira mensagem do Anjo grava `first_anjo_message_at` (D2).
- * Quem envia deixa de aparecer como "digitando" na mesma transação (migration 184).
+ * Quem envia deixa de aparecer como "digitando" na mesma transação (migration 184). O operador que escreve com o pedido
+ * "Aguardando o operador" (migration 193) volta à fila, no FIM (`queued_at` = agora), com prazo novo — a distribuição o atribui logo
+ * depois; a trava da linha do pedido serializa com a distribuição, que só encerra quem continua aguardando.
  */
 const notFound = () => new DomainError("Pedido de apoio não encontrado.", "HUMAN_SUPPORT_REQUEST_NOT_FOUND", 404)
 
@@ -49,10 +55,30 @@ export async function sendMessage(db: TransactionSource & Queryable, viewer: Vie
         [attendance.id, author],
       )
     }
+    let returned = false
+    if (author === "OPERATOR" && request.status === "AWAITING_OPERATOR" && (await endIfNoAnjoInService(client, { id: request.id, organizationId: viewer.organizationId, operatorPersonId: request.operator_person_id, teamId: request.team_id, subteamId: request.subteam_id }, { from: "AWAITING_OPERATOR", actorPersonId: null }))) {
+      // Voltou, mas não há ninguém do Apoio em serviço: a regra de "ninguém em serviço" (migration 194) — o pedido é encerrado, não
+      // entra na fila, e não conta como abandono do operador (ele respondeu).
+    } else if (author === "OPERATOR" && request.status === "AWAITING_OPERATOR") {
+      const deadline = await queueDeadlineFor(client, viewer.organizationId, { teamId: request.team_id, subteamId: request.subteam_id })
+      const moved = await client.query(
+        `update human_support_requests
+            set status = 'WAITING', awaiting_operator_since = null, queued_at = statement_timestamp(), operator_seen_at = statement_timestamp(),
+                queue_expires_at = statement_timestamp() + make_interval(mins => $2::int), queue_deadline_basis = $3
+          where id = $1 and status = 'AWAITING_OPERATOR'`,
+        [request.id, deadline.minutes, deadline.basis],
+      )
+      if (moved.rowCount === 1) {
+        await recordRequestEvent(client, { organizationId: viewer.organizationId, requestId: request.id, from: "AWAITING_OPERATOR", to: "WAITING", cause: "OPERATOR_RETURNED", actorPersonId: viewer.personId })
+        await appendSystemMessage(client, { id: request.id, organizationId: viewer.organizationId, operatorPersonId: request.operator_person_id }, null, "OPERATOR_RETURNED")
+        returned = true
+      }
+    }
     await clearTypingOnSend(client, request.id, author)
     await bumpInboxVersions(client, viewer.organizationId, [request.operator_person_id, attendance?.anjo_person_id])
-    return { seq, created: true, reader: author }
+    return { seq, created: true, reader: author, returned }
   })
+  if ("returned" in result && result.returned) await dispatchAfterCommand(db, viewer.organizationId)
   const page = await loadMessageViews(db, viewer.organizationId, requestId, result.reader, { after: result.seq - 1, limit: 1, anjoPersonId: viewer.personId })
   return { message: page.messages[0]!, created: result.created }
 }

@@ -1,5 +1,5 @@
 import type { LlmUsage } from "../../../shared/application/llm-telemetry.js"
-import { addDecimal, costOfTokens, formatDecimal, isDecimalString, parseDecimal, type Decimal } from "./decimal.js"
+import { addDecimal, costOfTokens, DECIMAL_SCALE, formatDecimal, isDecimalString, parseDecimal, type Decimal } from "./decimal.js"
 
 /**
  * PRICING VERSIONADO (§40–§44, §47, §94, §95). Custo = USO REAL informado pelo provider × PREÇO
@@ -25,13 +25,22 @@ export type AiPricingVersion = {
 export const CURRENCY_PATTERN = /^[A-Z]{3}$/
 
 /**
- * EXACT fica reservado para provider que informe o valor cobrado (nenhum dos adapters V1 informa).
- * ESTIMATED = uso informado × tabela; UNKNOWN = sem tabela vigente ou sem uso informado.
+ * Origem do custo registrado de uma chamada:
+ *  - REPORTED = custo que o PRÓPRIO provider informou na resposta (ex.: gateway compatível com OpenAI/LiteLLM, no cabeçalho
+ *    `x-litellm-response-cost`, em USD). Tem prioridade sobre a estimativa — é o valor que o provider contabilizou.
+ *  - ESTIMATED = uso informado × tabela de preço cadastrada.
+ *  - UNKNOWN = sem custo informado, sem tabela vigente ou sem uso informado.
+ * EXACT continua aceito pelo banco (076) e nunca é gravado: nenhum provider informa a FATURA — o informado pelo gateway é o
+ * valor que ele calculou, e é chamado assim na tela ("informado pelo provedor"), nunca "exato".
  */
-export type AiCostStatus = "EXACT" | "ESTIMATED" | "UNKNOWN"
+export type AiCostStatus = "EXACT" | "REPORTED" | "ESTIMATED" | "UNKNOWN"
 export type AiCostUnknownReason = "NO_PRICING" | "NO_USAGE"
 
+/** Custo da chamada informado pelo provider: decimal não negativo (string, escala de `decimal.ts`) e moeda ISO. */
+export type ProviderReportedCost = { amount: string; currency: string }
+
 export type AiCostResult =
+  | { status: "REPORTED"; currency: string; amount: string; pricingId: null }
   | { status: "ESTIMATED"; currency: string; amount: string; pricingId: string; breakdown: { input: string; cachedInput: string; output: string; reasoning: string } }
   | { status: "UNKNOWN"; reason: AiCostUnknownReason; currency: string | null; amount: null; pricingId: string | null }
 
@@ -59,6 +68,35 @@ export function computeCallCost(usage: LlmUsage, pricing: AiPricingVersion | nul
   const reasoning = pricing.reasoningPerMillion !== null ? costOfTokens(usage.reasoningTokens ?? 0, parseDecimal(pricing.reasoningPerMillion)) : 0n
   const total = addDecimal(input, cachedInput, output, reasoning)
   return { status: "ESTIMATED", currency: pricing.currency, amount: formatDecimal(total), pricingId: pricing.id, breakdown: { input: formatDecimal(input), cachedInput: formatDecimal(cachedInput), output: formatDecimal(output), reasoning: formatDecimal(reasoning) } }
+}
+
+/**
+ * Custo REGISTRADO de uma chamada: o informado pelo provider, quando houver, vence a estimativa por tabela (o uso
+ * continua gravado do mesmo jeito); sem ele, a regra de sempre (`computeCallCost`).
+ */
+export function resolveCallCost(usage: LlmUsage, pricing: AiPricingVersion | null, reported: ProviderReportedCost | null | undefined): AiCostResult {
+  if (reported) return { status: "REPORTED", currency: reported.currency, amount: formatDecimal(parseDecimal(reported.amount)), pricingId: null }
+  return computeCallCost(usage, pricing)
+}
+
+/**
+ * Valor de um cabeçalho de custo → custo informado, ou null (= cai para a estimativa). Aceita decimal simples e a notação
+ * científica que alguns servidores escrevem (`3.465e-05`); ausente, vazio, negativo, não numérico ou não finito = null —
+ * nunca erro, nunca zero inventado. Zero informado é aceito (o provider disse que a chamada não custou). Valor com mais
+ * casas que a escala é truncado na escala (12 casas).
+ */
+const MAX_REPORTED_COST = 1e12
+
+export function parseReportedCost(raw: string | null | undefined, currency = "USD"): ProviderReportedCost | null {
+  if (typeof raw !== "string") return null
+  const text = raw.trim()
+  if (!text || !/^\+?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(text)) return null
+  const value = Number(text)
+  // `ai_usage_events.cost` é numeric(24, 12): acima de 12 dígitos inteiros não cabe — valor absurdo para uma chamada, cai na estimativa.
+  if (!Number.isFinite(value) || value < 0 || value >= MAX_REPORTED_COST) return null
+  const plain = /[eE]/.test(text) ? value.toFixed(DECIMAL_SCALE) : text.replace(/^\+/, "").replace(/^\./, "0.").replace(/\.$/, "")
+  if (!isDecimalString(plain)) return null
+  return { amount: formatDecimal(parseDecimal(plain)), currency }
 }
 
 /** Estimativa ANTES da chamada (§53): só a entrada é previsível — a saída é variável e fica de fora (limitação documentada). */

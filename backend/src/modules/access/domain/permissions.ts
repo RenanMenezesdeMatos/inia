@@ -26,7 +26,7 @@ export const PERMISSIONS = {
   "ai.manage": "Administrar provedores, modelos, roteamento e orçamentos de IA",
   // Ranking "Quem mais usa" (IA / Modelos): nomes de líderes, Grupos e Subgrupos com o uso de IA da estrutura deles. Concessão
   // SEPARADA de `ai.view`/`ai.manage` (nunca derivada delas) e sempre recortada pelo escopo — fora dele, nem nome nem número.
-  "ai.usage_ranking.view": "Ver quem mais usa a IA por estrutura (Diretoria, Gerência, Grupo, Subgrupo, Supervisor), só no escopo",
+  "ai.usage_ranking.view": "Ver quem mais usa a IA por estrutura (Diretoria, Gerência, Grupo, Subgrupo, Supervisor) e por usuário, só no escopo",
   "qa_lab.use": "Usar o QA Lab (testes isolados de Agents, Orquestradores e Workflows)",
   // V1.5.8 — visões AMPLIADAS (além da própria estrutura por reports_to, que continua sendo regra operacional de quem lidera):
   "indicators.view": "Ver Indicadores e Equipe de colaboradores do escopo (além da própria estrutura)",
@@ -73,6 +73,9 @@ export const PERMISSIONS = {
   "human_support.manage": "Configurar o apoio com Anjo",
   // Diagnóstico de erros: catálogo de códigos e ocorrências técnicas (sanitizadas) da organização — só com escopo de organização.
   "support.diagnostics.view": "Consultar o catálogo de erros e as ocorrências registradas (diagnóstico de suporte)",
+  // Universo de atuação (B2B, B2C, B2X): sem esta permissão, a conta consulta só o universo do PRÓPRIO cadastro. Com ela, todos os
+  // universos — sempre dentro do escopo da atribuição (Grupo, Subgrupo, organização, minha estrutura). Nunca amplia o escopo organizacional.
+  "operating_universes.all": "Consultar dados de todos os universos de atuação (B2B, B2C e B2X) dentro do escopo",
 } as const
 
 export type Permission = keyof typeof PERMISSIONS

@@ -73,7 +73,7 @@ function fakeDatabase(workflows: WorkflowRow[] = []) {
         .map((person) => ({ id: person.id }))
       return { rows, rowCount: rows.length }
     }
-    if (text.startsWith("select id, team_id, subteam_id, reports_to_id from people where id = $1")) {
+    if (text.startsWith("select p.id, p.team_id, p.subteam_id, p.reports_to_id")) {
       const rows = people.filter((person) => person.id === params[0] && person.role === "OPERATOR" && person.active)
       return { rows, rowCount: rows.length }
     }
@@ -118,17 +118,17 @@ function fakeDatabase(workflows: WorkflowRow[] = []) {
 }
 
 const cases: { name: string; population: WorkflowPopulation; eligible: string[] }[] = [
-  { name: "ALL_TEAMS sem filtro → todo operador ativo", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: null }, eligible: [JOAO, MARIA, PEDRO, LUCAS, RITA, TIAGO, BIA] },
-  { name: "TEAM FATURAS → só operadores de FATURAS (RETENÇÃO fora)", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: null }, eligible: [JOAO, MARIA] },
-  { name: "SUBTEAM PREMIUM → só o Subgrupo (mesmo Grupo, outro Subgrupo fora)", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: null }, eligible: [PEDRO, RITA, TIAGO] },
-  { name: "SUBTEAM PREMIUM com team_id preenchido → ainda só o Subgrupo", population: { scopeType: "SUBTEAM", teamId: TEAM_RETENCAO, subteamId: SUB_PREMIUM, populationFilter: null }, eligible: [PEDRO, RITA, TIAGO] },
-  { name: "TEAM FATURAS + Filtro Equipe do Supervisor Carlos → só João (Maria é da Ana)", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: CARLOS } }, eligible: [JOAO] },
-  { name: "SUBTEAM PREMIUM + Filtro Equipe do Carlos → só Rita (Tiago é da Ana; Bia é do BÁSICO)", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: CARLOS } }, eligible: [RITA] },
-  { name: "ALL_TEAMS + Filtro Subgrupo BÁSICO → Lucas e Bia", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "SUBTEAM", subteamId: SUB_BASICO } }, eligible: [LUCAS, BIA] },
-  { name: "ALL_TEAMS + Filtro Estrutura da Coordenadora Fátima → toda a árvore abaixo dela (João, Maria, Rita, Tiago, Bia)", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "COORDINATOR_STRUCTURE", coordinatorId: FATIMA } }, eligible: [JOAO, MARIA, RITA, TIAGO, BIA] },
-  { name: "ALL_TEAMS + Filtro Colaborador específico → só ele", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "EMPLOYEE", employeeId: MARIA } }, eligible: [MARIA] },
-  { name: "Abrangência E filtro: TEAM FATURAS + Filtro Subgrupo PREMIUM (RETENÇÃO) → ninguém", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: { kind: "SUBTEAM", subteamId: SUB_PREMIUM } }, eligible: [] },
-  { name: "SUBTEAM PREMIUM + Filtro Grupo RETENÇÃO → só quem satisfaz os dois", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: { kind: "TEAM", teamId: TEAM_RETENCAO } }, eligible: [PEDRO, RITA, TIAGO] },
+  { name: "ALL_TEAMS sem filtro → todo operador ativo", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: null, operatingUniverse: null }, eligible: [JOAO, MARIA, PEDRO, LUCAS, RITA, TIAGO, BIA] },
+  { name: "TEAM FATURAS → só operadores de FATURAS (RETENÇÃO fora)", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: null, operatingUniverse: null }, eligible: [JOAO, MARIA] },
+  { name: "SUBTEAM PREMIUM → só o Subgrupo (mesmo Grupo, outro Subgrupo fora)", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: null, operatingUniverse: null }, eligible: [PEDRO, RITA, TIAGO] },
+  { name: "SUBTEAM PREMIUM com team_id preenchido → ainda só o Subgrupo", population: { scopeType: "SUBTEAM", teamId: TEAM_RETENCAO, subteamId: SUB_PREMIUM, populationFilter: null, operatingUniverse: null }, eligible: [PEDRO, RITA, TIAGO] },
+  { name: "TEAM FATURAS + Filtro Equipe do Supervisor Carlos → só João (Maria é da Ana)", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: CARLOS }, operatingUniverse: null }, eligible: [JOAO] },
+  { name: "SUBTEAM PREMIUM + Filtro Equipe do Carlos → só Rita (Tiago é da Ana; Bia é do BÁSICO)", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: { kind: "SUPERVISOR_TEAM", supervisorId: CARLOS }, operatingUniverse: null }, eligible: [RITA] },
+  { name: "ALL_TEAMS + Filtro Subgrupo BÁSICO → Lucas e Bia", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "SUBTEAM", subteamId: SUB_BASICO }, operatingUniverse: null }, eligible: [LUCAS, BIA] },
+  { name: "ALL_TEAMS + Filtro Estrutura da Coordenadora Fátima → toda a árvore abaixo dela (João, Maria, Rita, Tiago, Bia)", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "COORDINATOR_STRUCTURE", coordinatorId: FATIMA }, operatingUniverse: null }, eligible: [JOAO, MARIA, RITA, TIAGO, BIA] },
+  { name: "ALL_TEAMS + Filtro Colaborador específico → só ele", population: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, populationFilter: { kind: "EMPLOYEE", employeeId: MARIA }, operatingUniverse: null }, eligible: [MARIA] },
+  { name: "Abrangência E filtro: TEAM FATURAS + Filtro Subgrupo PREMIUM (RETENÇÃO) → ninguém", population: { scopeType: "TEAM", teamId: TEAM_FATURAS, subteamId: null, populationFilter: { kind: "SUBTEAM", subteamId: SUB_PREMIUM }, operatingUniverse: null }, eligible: [] },
+  { name: "SUBTEAM PREMIUM + Filtro Grupo RETENÇÃO → só quem satisfaz os dois", population: { scopeType: "SUBTEAM", teamId: null, subteamId: SUB_PREMIUM, populationFilter: { kind: "TEAM", teamId: TEAM_RETENCAO }, operatingUniverse: null }, eligible: [PEDRO, RITA, TIAGO] },
 ]
 
 describe("Elegibilidade organizacional — paridade decisão pontual (ingestão/QA) × conjunto (agendador/QA)", () => {
@@ -149,7 +149,7 @@ describe("Elegibilidade organizacional — paridade decisão pontual (ingestão/
 
   it("scope_type desconhecido não elege ninguém em nenhuma das duas formas", async () => {
     const { db } = fakeDatabase()
-    const population = { scopeType: "REGION", teamId: null, subteamId: null, populationFilter: null }
+    const population = { scopeType: "REGION", teamId: null, subteamId: null, populationFilter: null, operatingUniverse: null }
     expect(await resolveEligibleOperatorIds(db, ORG, population)).toEqual([])
     expect(await isOperatorEligibleForWorkflow(db, ORG, population, JOAO)).toBe(false)
   })
@@ -270,7 +270,7 @@ describe("Ingestão por Indicador — matrícula produtiva respeita Abrangência
   it("vários Workflows candidatos pra mesma medição: o operador é carregado UMA vez", async () => {
     const { db, log } = fakeDatabase([publish({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1" }), publish({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2" }), publish({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3" })])
     expect(await enrollIndicatorWorkflows(db, measurement(JOAO))).toBe(3)
-    expect(log.filter((sql) => sql.startsWith("select id, team_id, subteam_id, reports_to_id from people"))).toHaveLength(1)
+    expect(log.filter((sql) => sql.startsWith("select p.id, p.team_id, p.subteam_id, p.reports_to_id"))).toHaveLength(1)
   })
 })
 

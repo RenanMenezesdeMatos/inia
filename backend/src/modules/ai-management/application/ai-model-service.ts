@@ -4,13 +4,13 @@ import { AiProviderError } from "../../../shared/application/model-routing/ai-er
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { AI_CAPABILITIES, AI_MODEL_KINDS, AI_QUALITY_TIERS, type ModelCapabilities } from "../domain/ai-capabilities.js"
 import { findAiProvider } from "../domain/ai-provider-catalog.js"
-import { computeCallCost, pricingAt, validatePricingInput, type AiPricingVersion } from "../domain/ai-pricing.js"
+import { pricingAt, resolveCallCost, validatePricingInput, type AiPricingVersion } from "../domain/ai-pricing.js"
 import { localCostLabel } from "../domain/ai-routing-policy.js"
 import { SPEECH_INSTRUCTIONS_MAX_LENGTH, SPEECH_VOICE_PATTERN, speechSettingsOf, type SpeechSettings } from "../domain/ai-speech.js"
 import { auditAi, type Actor, type AiAdminContext } from "./ai-admin-context.js"
 import { runtimeConnection } from "./ai-connection-service.js"
 import { resolveConnection } from "./ai-runtime-service.js"
-import { insertUsageEvent, pricingFromRow } from "./ai-runtime-store.js"
+import { insertUsageEvent, pricingFromRow, usageCostColumns } from "./ai-runtime-store.js"
 
 /**
  * MODELOS e PREÇOS (§12–§14, §41–§44, §62, §65, §67–§69, §81). Modelo = algo utilizável por UMA
@@ -320,16 +320,16 @@ export async function testModel(context: AiAdminContext, actor: Actor, id: strin
     // Modelo de VOZ (voz cadastrada + protocolo com síntese): o teste lê uma frase curta — pedir texto a um modelo de TTS falharia.
     if (model.speech && adapter.synthesizeSpeech) {
       const spoken = await adapter.synthesizeSpeech(connection, model.providerModelId, { text: "Olá! Este é um teste da voz da INIA.", voice: model.speech.voice, instructions: model.speech.instructions }, model.timeoutMs ?? connection.timeoutMs)
-      const cost = computeCallCost(spoken.usage, pricing)
-      await insertUsageEvent(context.db, { ...base, usage: spoken.usage, durationMs: spoken.durationMs, status: "SUCCESS", errorCategory: null, cost: cost.status === "ESTIMATED" ? cost.amount : null, currency: cost.currency, costStatus: cost.status, costUnknownReason: cost.status === "UNKNOWN" ? cost.reason : null, pricingId: cost.pricingId, pricingSource: cost.pricingId ? "TABLE" : "NONE" })
+      const cost = resolveCallCost(spoken.usage, pricing, spoken.reportedCost)
+      await insertUsageEvent(context.db, { ...base, usage: spoken.usage, durationMs: spoken.durationMs, status: "SUCCESS", errorCategory: null, ...usageCostColumns(cost) })
       const seconds = (spoken.pcm16.length / 2 / spoken.sampleRate).toFixed(1)
-      return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo devolveu áudio.", outputPreview: `Áudio de ${seconds} s (${spoken.sampleRate} Hz) com a voz "${model.speech.voice}".`, usage: { inputTokens: spoken.usage.promptTokens, outputTokens: spoken.usage.outputTokens, totalTokens: spoken.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "ESTIMATED" ? cost.amount : null, currency: cost.currency }, testedAt: testedAt.toISOString() }
+      return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo devolveu áudio.", outputPreview: `Áudio de ${seconds} s (${spoken.sampleRate} Hz) com a voz "${model.speech.voice}".`, usage: { inputTokens: spoken.usage.promptTokens, outputTokens: spoken.usage.outputTokens, totalTokens: spoken.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "UNKNOWN" ? null : cost.amount, currency: cost.currency }, testedAt: testedAt.toISOString() }
     }
     const result = await adapter.execute(connection, model.providerModelId, { systemPrompt: "Você é um teste de conectividade. Responda apenas com a palavra OK.", contents: [{ role: "user", text: "Teste" }], tools: [], structuredOutput: false, maxOutputTokens: 16 }, model.timeoutMs ?? connection.timeoutMs)
-    const cost = computeCallCost(result.usage, pricing)
-    await insertUsageEvent(context.db, { ...base, usage: result.usage, durationMs: result.durationMs, status: "SUCCESS", errorCategory: null, cost: cost.status === "ESTIMATED" ? cost.amount : null, currency: cost.currency, costStatus: cost.status, costUnknownReason: cost.status === "UNKNOWN" ? cost.reason : null, pricingId: cost.pricingId, pricingSource: cost.pricingId ? "TABLE" : "NONE" })
+    const cost = resolveCallCost(result.usage, pricing, result.reportedCost)
+    await insertUsageEvent(context.db, { ...base, usage: result.usage, durationMs: result.durationMs, status: "SUCCESS", errorCategory: null, ...usageCostColumns(cost) })
     const text = result.kind === "text" ? result.text : ""
-    return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo respondeu.", outputPreview: text.slice(0, 200) || null, usage: { inputTokens: result.usage.promptTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "ESTIMATED" ? cost.amount : null, currency: cost.currency }, testedAt: testedAt.toISOString() }
+    return { status: "OK", latencyMs: Date.now() - startedAt, message: "O modelo respondeu.", outputPreview: text.slice(0, 200) || null, usage: { inputTokens: result.usage.promptTokens, outputTokens: result.usage.outputTokens, totalTokens: result.usage.totalTokens }, cost: { status: cost.status, amount: cost.status === "UNKNOWN" ? null : cost.amount, currency: cost.currency }, testedAt: testedAt.toISOString() }
   } catch (error) {
     const category = error instanceof AiProviderError ? error.category : "UNKNOWN"
     await insertUsageEvent(context.db, { ...base, usage: null, durationMs: Date.now() - startedAt, status: "ERROR", errorCategory: category, cost: null, currency: null, costStatus: "UNKNOWN", costUnknownReason: null, pricingId: null, pricingSource: "NONE" })

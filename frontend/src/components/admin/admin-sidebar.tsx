@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, SearchCode, ShieldCheck, Users, Waypoints, Zap, type LucideIcon } from "lucide-react"
+import { Activity, Ban, BookA, BookOpen, Bot, Boxes, CalendarDays, ChevronRight, ClipboardList, Cpu, Database, Flag, FlaskConical, Gauge, Goal, HeartHandshake, ImageIcon, Layers, LifeBuoy, MessageSquareWarning, MessagesSquare, PhoneCall, SearchCode, ShieldCheck, Users, Waypoints, Zap, type LucideIcon, Globe2 } from "lucide-react"
 
 import { HUMAN_SUPPORT_ADMIN_PATH, HUMAN_SUPPORT_MONITORING_PATH } from "@/components/human-support/monitoring/human-support-monitoring-route"
 import { INIA_SUCCESS_PATH } from "@/components/inia-success/inia-success-route"
@@ -72,6 +72,8 @@ const GROUPS: NavGroup[] = [
         children: [{ href: "/admin/operational-calendar", label: "Calendário operacional", icon: CalendarDays, capability: "canManageConfiguration" }],
       },
       { href: "/admin/indicators", label: "Indicadores", icon: Gauge, capability: "canManageConfiguration" },
+      // B2B, B2C e B2X: prontidão, classificação do legado e ativação da exigência/filtro por universo.
+      { href: "/admin/operating-universe", label: "Universo de atuação", icon: Globe2, capability: "canManageConfiguration" },
       { href: "/admin/channel-flags", label: "Flags de canal", icon: Flag, capability: "canManageConfiguration" },
     ],
   },

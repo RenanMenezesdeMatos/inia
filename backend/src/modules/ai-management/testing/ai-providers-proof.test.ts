@@ -8,6 +8,7 @@ import { registerAiRuntime, runWithAiOrganization } from "../../../shared/applic
 import { generateForRoute, routeFor } from "../../../shared/application/model-routing/llm-gateway.js"
 import { registerProviderAdapter } from "../../../shared/application/model-routing/provider-adapter.js"
 import { createAiRuntime } from "../application/ai-runtime-service.js"
+import { parseDecimal } from "../domain/decimal.js"
 import { startFakeOpenAiServer, type FakeServer } from "./fake-openai-compatible-server.js"
 import { setProofAccountPassword } from "../../auth/testing/proof-account-password.js"
 
@@ -38,6 +39,7 @@ const PREFIX = "QA Prova IA · "
 let pool: pg.Pool
 let api: ReturnType<typeof request.agent>
 let fake: FakeServer
+let runtime: ReturnType<typeof createAiRuntime>
 let connectionId = ""
 const models: Record<string, string> = {}
 const startedAt = new Date()
@@ -84,7 +86,8 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     const login = await api.post("/api/v1/auth/login").send(ADMIN)
     expect(login.status).toBe(200)
     // Runtime do gateway (cache desligado) + cliente legado FALSO: nenhum request sai para o Gemini real.
-    registerAiRuntime(createAiRuntime(pool, { snapshotTtlMs: 0, spendTtlMs: 0, alertThrottleMs: 0 }))
+    runtime = createAiRuntime(pool, { snapshotTtlMs: 0, spendTtlMs: 0, alertThrottleMs: 0 })
+    registerAiRuntime(runtime)
     registerProviderAdapter({
       provider: "GEMINI",
       async generate(request) {
@@ -177,6 +180,48 @@ describe.skipIf(!ENABLED)("AI Providers V1 — prova contra o banco de teste (pr
     // (1000 não cacheados × 1 + 200 cacheados × 0,1 + 300 × 4) / 1 milhão = 0,00222 USD — exato, sem float
     expect(event.rows[0]).toMatchObject({ cost: "0.002220000000", currency: "USD", cost_status: "ESTIMATED", input_tokens: 1200, cached_tokens: 200, reasoning_tokens: 50 })
     expect(event.rows[0]!.pricing_id).not.toBeNull()
+  })
+
+  it("custo INFORMADO pelo provider (cabeçalho do gateway compatível com OpenAI/LiteLLM) vence a tabela; inválido volta à estimativa; dashboard e orçamento o contam", async () => {
+    const lastEvent = () => pool.query<{ cost: string | null; currency: string | null; cost_status: string; pricing_source: string; pricing_id: string | null; input_tokens: number | null }>(`select cost::text, currency, cost_status, pricing_source, pricing_id, input_tokens from ai_usage_events where organization_id = $1 and model_id = $2 order by id desc limit 1`, [ORG, models["fake-ok"]])
+    try {
+      fake.setResponseCost("0.0003465")
+      expect(textOf(await execute("AGENT_SYNTHESIS"))).toContain("provider falso")
+      // O uso continua gravado; o custo é o informado (não os 0,00222 da tabela) e não aponta versão de preço.
+      expect((await lastEvent()).rows[0]).toEqual({ cost: "0.000346500000", currency: "USD", cost_status: "REPORTED", pricing_source: "PROVIDER", pricing_id: null, input_tokens: 1200 })
+      const reportedResponse = await execute("AGENT_SYNTHESIS")
+      expect(reportedResponse.cost).toEqual({ status: "PROVIDER_REPORTED_COST", currency: "USD", totalCost: 0.0003465 })
+
+      for (const invalid of ["-0.1", "abc", ""]) {
+        fake.setResponseCost(invalid)
+        expect(textOf(await execute("AGENT_SYNTHESIS"))).toContain("provider falso")
+        expect((await lastEvent()).rows[0], invalid).toMatchObject({ cost: "0.002220000000", cost_status: "ESTIMATED", pricing_source: "TABLE" })
+      }
+      fake.setResponseCost(null)
+      expect(textOf(await execute("AGENT_SYNTHESIS"))).toContain("provider falso")
+      expect((await lastEvent()).rows[0]).toMatchObject({ cost: "0.002220000000", cost_status: "ESTIMATED" })
+
+      const overview = await api.get("/api/v1/admin/ai/overview?period=TODAY")
+      const totals = overview.body.data.usage.totals
+      expect(totals.reportedCostCalls).toBeGreaterThanOrEqual(2)
+      expect(totals.estimatedCostCalls).toBeGreaterThanOrEqual(4)
+      const reportedSum = await pool.query<{ n: number }>(`select count(*)::int n from ai_usage_events where organization_id = $1 and cost_status = 'REPORTED' and status = 'SUCCESS' and occurred_at >= $2`, [ORG, startedAt])
+      expect(totals.reportedCostCalls).toBe(reportedSum.rows[0]!.n)
+
+      // Orçamento (sem bloqueio): o gasto do mês sobe EXATAMENTE pelo custo informado de uma chamada — conta como o estimado.
+      const budget = await api.post("/api/v1/admin/ai/budgets").send({ scope: "PROVIDER", scopeKey: "OPENAI_COMPATIBLE", currency: "USD", monthlyAmount: "1000", hardLimit: false })
+      expect(budget.status, JSON.stringify(budget.body)).toBe(201)
+      const budgetId = (budget.body.data as { id: string; scope: string; scopeKey: string | null }[]).find((item) => item.scope === "PROVIDER" && item.scopeKey === "OPENAI_COMPATIBLE")!.id
+      // Avaliação pelo runtime da prova (sem cache de gasto); o da API guarda o gasto por 15 s.
+      const spent = async () => parseDecimal((await runtime.budgetEvaluations(ORG)).find((item) => item.budgetId === budgetId)!.spent)
+      const before = await spent()
+      fake.setResponseCost("0.000123")
+      expect(textOf(await execute("AGENT_SYNTHESIS"))).toContain("provider falso")
+      expect((await spent()) - before).toBe(parseDecimal("0.000123"))
+      await api.delete(`/api/v1/admin/ai/budgets/${budgetId}`)
+    } finally {
+      fake.setResponseCost(null)
+    }
   })
 
   it("FALLBACK_CHAIN: rate limit cai para o próximo com o MESMO correlation id; AUTH e INVALID_REQUEST não fazem fallback", async () => {

@@ -40,6 +40,7 @@ import { useProductScopeLabels } from "@/components/admin/product-catalog/produc
 import { KnowledgeDocumentMenu } from "./knowledge-document-actions"
 import { AuthorLine, DocumentTypeLabel, KnowledgeVersionBadges, ScopeTags, SourceTypeIcon, formatDateOnly } from "./knowledge-meta"
 import { orgScopeLabel, subjectScopeLabel } from "./knowledge-visuals"
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 
 // O resumo vem do texto bruto (que pode ter markdown leve) — tira os marcadores para o card não
 // mostrar "## 1. Objetivo **Área**" cru.
@@ -132,7 +133,12 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
               <TableCell>
                 <DocumentTypeLabel documentType={document.documentType} />
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{orgScopeLabel(document.orgScopes[0])}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {orgScopeLabel(document.orgScopes[0])}
+                  <UniverseBadge universe={document.operatingUniverse} />
+                </div>
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">{subjectScopeLabel(document.subjectScopes[0])}</TableCell>
               {productScope.available ? (
                 <TableCell className="text-sm text-muted-foreground">

@@ -35,6 +35,10 @@ import {
 import { ChangeSummaryField } from "./knowledge-lifecycle-dialogs"
 import { RestrictedEditableNotice } from "./knowledge-restricted-draft"
 import { versionLabel } from "./knowledge-visuals"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
+import { useSetKnowledgeUniverseMutation } from "@/queries/operating-universe/use-operating-universe"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const LIST_HREF = "/admin/knowledge"
 const MIN_CONTENT_LENGTH = 10
@@ -62,10 +66,13 @@ function CreateKnowledgeForm() {
   const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
   const [subjectScope, setSubjectScope] = useState<SubjectScopeValue>({ scopeType: "ALL_SUBJECTS" })
   const productScope = useSourceProductScope("KNOWLEDGE_DOCUMENT", null)
+  const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
+  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
 
   async function handleSubmit() {
     try {
       const created = await createMutation.mutateAsync({
+        operatingUniverse: universe,
         title,
         documentType,
         content: sourceMode === "text" ? content : undefined,
@@ -80,7 +87,7 @@ function CreateKnowledgeForm() {
     }
   }
 
-  const canSubmit = title.trim().length > 1 && (sourceMode === "text" ? content.trim().length > 9 : Boolean(file))
+  const canSubmit = title.trim().length > 1 && (sourceMode === "text" ? content.trim().length > 9 : Boolean(file)) && (!universeEnforced || universe !== null)
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -143,7 +150,8 @@ function CreateKnowledgeForm() {
         <Skeleton className="h-10 w-full" />
       )}
 
-      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="knowledge-products" /> : null}
+      <KnowledgeUniverseField id="knowledge-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced} />
+      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="knowledge-products" universe={universe} /> : null}
 
       {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
 
@@ -236,6 +244,10 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
   const [orgScope, setOrgScope] = useState<OrgScopeValue>(initial.orgScope)
   const [subjectScope, setSubjectScope] = useState<SubjectScopeValue>(initial.subjectScope)
   const [draftFile, setDraftFile] = useState(() => draftFileOf(document))
+  // Universo: classificação direta da base (vale na hora, auditada), fora do rascunho/versão.
+  const [universe, setUniverse] = useState<OperatingUniverse | null>(document.operatingUniverse)
+  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
+  const universeMutation = useSetKnowledgeUniverseMutation()
 
   const fromFile = isFileSource(draftFile.sourceType)
   const hasText = content.trim().length > 0
@@ -244,6 +256,8 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
 
   async function handleSubmit() {
     try {
+      // Universo primeiro: se ele criar vínculo com outro universo, nada é salvo e a lista do que resolver aparece no formulário.
+      if (universe !== document.operatingUniverse) await universeMutation.mutateAsync({ id: documentId, operatingUniverse: universe })
       const summary = changeSummary.trim()
       await updateMutation.mutateAsync({
         id: documentId,
@@ -352,9 +366,11 @@ function EditKnowledgeFields({ document }: { document: KnowledgeDocumentDetail }
         <Skeleton className="h-10 w-full" />
       )}
 
+      <KnowledgeUniverseField id="edit-knowledge-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced && document.operatingUniverse === null} />
+      {universeMutation.isError ? <p className="text-sm text-destructive">{(universeMutation.error as Error).message}</p> : null}
       {productScope.available ? (
         <div className="space-y-1">
-          <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="edit-knowledge-products" />
+          <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="edit-knowledge-products" universe={universe} />
           <p className="text-xs text-muted-foreground">Entra no rascunho com o resto: só passa a valer quando a versão entrar em uso, e chamadas já analisadas continuam com o que valia na época.</p>
         </div>
       ) : null}
@@ -407,6 +423,19 @@ export function EditKnowledgePage({ documentId }: { documentId: string }) {
           <EditKnowledgeForm documentId={documentId} />
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** Universo de atuação da base: universos são separados — a base só entra no chat e nos produtos do universo escolhido. */
+function KnowledgeUniverseField({ id, value, onChange, allowPending }: { id: string; value: OperatingUniverse | null; onChange: (value: OperatingUniverse | null) => void; allowPending: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>Universo de atuação</Label>
+      <UniverseSelect id={id} value={value} onChange={onChange} allowPending={allowPending} aria-describedby={`${id}-help`} />
+      <p id={`${id}-help`} className="text-xs text-muted-foreground">
+        A base só é consultada por quem atua neste universo, e só vale para produtos dele. Mudar o universo vale na hora (fora do rascunho).
+      </p>
     </div>
   )
 }

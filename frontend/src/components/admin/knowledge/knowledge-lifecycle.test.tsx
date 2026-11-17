@@ -83,6 +83,7 @@ const ROW: KnowledgeDocument = {
   createdAt: "2026-10-01T10:00:00.000Z",
   updatedAt: null,
   authorName: "Bruna Lima",
+  operatingUniverse: null,
   status: "PUBLISHED",
   inUseVersion: 4,
   draftVersion: null,

@@ -36,6 +36,10 @@ const identityFields = {
   jobTitle: z.string().nullable(),
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
+  /** Universo de atuação do cadastro (B2B/B2C/B2X); null = pendente de classificação. Resolvido pelo backend. */
+  operatingUniverse: z.enum(["B2B", "B2C", "B2X"]).nullable().default(null),
+  /** A organização já ativou o filtro por universo (antes disso nada é segmentado). */
+  operatingUniverseEnforced: z.boolean().default(false),
 }
 
 const capability = z.boolean().default(false)
@@ -105,6 +109,7 @@ export const accessCapabilitiesSchema = z.object({
   canViewIniaSuccess: capability,
   // Diagnóstico de erros (catálogo + ocorrências da organização) — escopo de organização, conferido no backend.
   canViewErrorDiagnostics: capability,
+  canViewAllUniverses: capability,
 })
 export type AccessCapabilities = z.infer<typeof accessCapabilitiesSchema>
 /** Capabilities vazias (deny by default) — quando a sessão ainda não foi lida. */

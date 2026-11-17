@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 import { platformRoleSchema, ROLE_LABELS } from "@/schemas/auth/auth.schema"
 import { employmentStatusReadSchema, operationalCapitalViewSchema, workScheduleViewSchema } from "@/schemas/people/employment-status.schema"
 
@@ -51,6 +52,7 @@ export const personManagedBySchema = z.object({
   active: managedByField,
   email: managedByField,
   operationalCapitalCode: managedByField,
+  operatingUniverse: managedByField,
 })
 export type PersonManagedBy = z.infer<typeof personManagedBySchema>
 export type PersonSourceField = keyof PersonManagedBy
@@ -65,6 +67,8 @@ export const userAccountSchema = z.object({
   employmentStatus: employmentStatusReadSchema.optional(),
   /** Capital operacional (jurisdição de feriados) — código do catálogo das 27 ou null. */
   operationalCapitalCode: z.string().nullable().optional(),
+  /** Universo de atuação do cadastro (B2B/B2C/B2X); null = pendente de classificação. */
+  operatingUniverse: operatingUniverseSchema.nullable().default(null),
   teamId: z.string().nullable(),
   teamName: z.string().nullable(),
   accountId: z.string().nullable(),
@@ -86,6 +90,7 @@ export const userDetailSchema = z.object({
   hiredAt: z.string().nullable(),
   active: z.boolean(),
   operationalCapitalCode: z.string().nullable(),
+  operatingUniverse: operatingUniverseSchema.nullable().default(null),
   team: namedSchema.nullable(),
   subteam: namedSchema.nullable(),
   manager: namedSchema.nullable(),

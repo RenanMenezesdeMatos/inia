@@ -22,6 +22,8 @@ export type WorkflowConfiguration = {
   subteamId: string | null
   consolidatedStructure: ConsolidatedStructure | null
   populationFilter: PopulationFilter | null
+  /** Universo de atuação (B2B/B2C/B2X; null = pendente) — parte da Abrangência: só vale ao Publicar. */
+  operatingUniverse: string | null
 }
 
 /** O que mudou entre o rascunho e a configuração publicada — na ordem em que o editor apresenta. */
@@ -59,7 +61,7 @@ function normalizedPopulation(filter: PopulationFilter | null | undefined): Popu
 export function configurationChanges(draft: WorkflowConfiguration, published: WorkflowConfiguration): ConfigurationChange[] {
   const changes: ConfigurationChange[] = []
   if (stableJson(draft.triggerConfig) !== stableJson(published.triggerConfig)) changes.push("TRIGGER")
-  if (draft.scopeType !== published.scopeType || (draft.teamId ?? null) !== (published.teamId ?? null) || (draft.subteamId ?? null) !== (published.subteamId ?? null)) {
+  if (draft.scopeType !== published.scopeType || (draft.teamId ?? null) !== (published.teamId ?? null) || (draft.subteamId ?? null) !== (published.subteamId ?? null) || (draft.operatingUniverse ?? null) !== (published.operatingUniverse ?? null)) {
     changes.push("SCOPE")
   }
   if (

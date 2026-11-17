@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import type { IndicatorDefinitionInput } from "@/services/admin/indicator-rule-service"
 import {
   INDICATOR_CODE_PATTERN,
@@ -21,6 +22,7 @@ import {
   type IndicatorUnit,
   type OperationalAggregationKind,
 } from "@/schemas/admin/indicator-definition.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { DESIRED_DIRECTION_LABELS, type DesiredDirection, type IndicatorWithRules } from "@/schemas/admin/indicator-rule.schema"
 
 /**
@@ -96,6 +98,8 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
   const [availabilityLagDays, setAvailabilityLagDays] = useState(String(initial?.availabilityPolicy?.lagDays ?? 1))
   const [availabilityTime, setAvailabilityTime] = useState(initial?.availabilityPolicy?.availableByLocalTime ?? "11:00")
   const [iconKey, setIconKey] = useState<DisplayIconKey | null>(isDisplayIconKey(initial?.iconKey) ? initial.iconKey : null)
+  // Universo de atuação: escolhido só na criação (o registro existente muda pela classificação do universo).
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
 
   const hasHistory = Boolean(dependencies?.hasHistory)
   const semanticLocked = Boolean(initial) && hasHistory
@@ -129,7 +133,7 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
   }, [code, unit, strategy, catalog.units, dailySupported, officialClosureSupported, minimumSampleSize, minimumCoveragePercent, unjustifiedAbsencePolicy, operationalAggregation, availabilityOverride, availabilityLagDays, availabilityTime])
 
   const selectedUnit: IndicatorUnit | null = unit === "" ? null : unit
-  const canSubmit = code.trim().length > 1 && name.trim().length > 1 && selectedUnit !== null && problems.length === 0 && !pending
+  const canSubmit = code.trim().length > 1 && name.trim().length > 1 && selectedUnit !== null && (Boolean(initial) || operatingUniverse !== null) && problems.length === 0 && !pending
 
   async function handleSubmit() {
     if (!canSubmit || selectedUnit === null) return
@@ -147,6 +151,7 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
       unjustifiedAbsencePolicy: dailySupported ? unjustifiedAbsencePolicy : "NO_SAMPLE",
       availabilityPolicy: dailySupported && availabilityOverride ? { lagDays: Number(availabilityLagDays), availableByLocalTime: availabilityTime } : null,
       iconKey,
+      ...(!initial && operatingUniverse ? { operatingUniverse } : {}),
     })
   }
 
@@ -212,6 +217,13 @@ export function IndicatorDefinitionForm({ catalog, initial, dependencies, pendin
             {unitMeta ? <p className="text-xs text-muted-foreground">Formatação: {unitMeta.value === "PERCENT" ? "87,5%" : unitMeta.value === "SECONDS" ? "480 s" : unitMeta.value === "STARS" ? "4,6 ★" : unitMeta.suffix ? `35 ${unitMeta.suffix}` : "35"}.</p> : null}
           </div>
         </div>
+        {!initial ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="indicator-universe">Universo de atuação</Label>
+            <UniverseSelect id="indicator-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="indicator-universe-help" />
+            <p id="indicator-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+          </div>
+        ) : null}
       </Section>
 
       <Section title="Comportamento" description="A direção desejada decide o que é 'melhor' em rankings, quartis e comparações com a meta — nunca inferida do nome.">

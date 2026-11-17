@@ -7,7 +7,7 @@ import { loadEligibleOperator, type EligibleOperatorRow } from "./workflow-eligi
 
 type Queryable = Pick<Database, "query">
 
-export type CandidateWorkflowRow = { id: string; active_version_id: string; scope_type: string; team_id: string | null; subteam_id: string | null; population_filter: unknown }
+export type CandidateWorkflowRow = { id: string; active_version_id: string; scope_type: string; team_id: string | null; subteam_id: string | null; population_filter: unknown; operating_universe?: string | null }
 
 /**
  * Leituras da matrícula por evento (Indicador/Flag) que não dependem da linha do evento: Workflows candidatos do código/flag,
@@ -47,11 +47,11 @@ export function createEnrollmentLookups(db: Queryable): EnrollmentLookups {
     remember(`candidates:${kind}`, `${organizationId}|${key}`, async () => {
       const result = await db.query<CandidateWorkflowRow>(
         kind === "indicator"
-          ? `select id, active_version_id, scope_type, team_id, subteam_id, population_filter
+          ? `select id, active_version_id, scope_type, team_id, subteam_id, population_filter, operating_universe
      from workflows
      where organization_id = $1 and active and active_version_id is not null
        and trigger_config->>'kind' = 'indicator' and trigger_config->>'indicatorCode' = $2`
-          : `select id, active_version_id, scope_type, team_id, subteam_id, population_filter
+          : `select id, active_version_id, scope_type, team_id, subteam_id, population_filter, operating_universe
      from workflows
      where organization_id = $1 and active and active_version_id is not null
        and trigger_config->>'kind' = 'channel_flag' and trigger_config->>'channelFlagId' = $2`,

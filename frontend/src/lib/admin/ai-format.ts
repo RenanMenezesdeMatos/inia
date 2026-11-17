@@ -85,3 +85,24 @@ export function parseOptionalInt(raw: string): number | null {
 export function normalizeDecimalInput(raw: string): string {
   return raw.trim().replace(",", ".")
 }
+
+/** Origem do custo de UMA chamada, como a tela mostra (o valor do provedor vence a estimativa pela tabela). */
+export const COST_STATUS_LABELS: Record<string, string> = {
+  REPORTED: "informado pelo provedor",
+  ESTIMATED: "estimado pela tabela de preço",
+  EXACT: "informado pelo provedor",
+  UNKNOWN: "desconhecido",
+}
+
+/**
+ * Origem do custo de um conjunto de chamadas bem-sucedidas: "2 informado(s) pelo provedor · 5 estimado(s) · 1 sem custo
+ * conhecido". Só as partes que existem; nenhuma chamada = null.
+ */
+export function costOriginText(metrics: { reportedCostCalls?: number; estimatedCostCalls?: number; unknownCostCalls: number }): string | null {
+  const parts = [
+    metrics.reportedCostCalls ? `${formatCount(metrics.reportedCostCalls)} informado(s) pelo provedor` : null,
+    metrics.estimatedCostCalls ? `${formatCount(metrics.estimatedCostCalls)} estimado(s)` : null,
+    metrics.unknownCostCalls ? `${formatCount(metrics.unknownCostCalls)} sem custo conhecido` : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length > 0 ? parts.join(" · ") : null
+}

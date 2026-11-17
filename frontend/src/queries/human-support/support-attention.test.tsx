@@ -42,7 +42,7 @@ class FakeAudioContext {
 
 const message = (seq: number, authorKind: MessageView["authorKind"] = "ANJO"): MessageView => ({ id: `m${seq}`, seq, authorKind, authorName: authorKind === "ANJO" ? "Ana" : "Larissa", body: `msg ${seq}`, systemCode: null, occurredAt: "2026-11-10T15:00:00.000Z" })
 const request = (messages: MessageView[], readSeq = 0): OperatorRequestView => ({
-  id: "req-1", protocol: "AP-1", status: "IN_PROGRESS", endCause: null, origin: "BUTTON", createdAt: "2026-11-10T14:59:00.000Z", queuedAt: "2026-11-10T14:59:00.000Z", queueExpiresAt: null,
+  id: "req-1", protocol: "AP-1", status: "IN_PROGRESS", endCause: null, origin: "BUTTON", createdAt: "2026-11-10T14:59:00.000Z", queuedAt: "2026-11-10T14:59:00.000Z", queueExpiresAt: null, awaitingReturnUntil: null,
   sharedContext: { question: null, answer: null, dislike: null, note: "Cliente na linha" }, anjo: { name: "Ana", avatarUrl: null, awaitingFirstResponse: false }, messages, hasOlder: false,
   canCancel: false, canClose: true, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null, readSeq,
 })

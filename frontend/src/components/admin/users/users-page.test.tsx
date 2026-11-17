@@ -156,7 +156,7 @@ describe("Novo usuário — sem pessoa duplicada entre o cadastro e a base", () 
     expect(screen.getByRole("combobox", { name: "Nível hierárquico" })).toHaveTextContent("Operador")
     fireEvent.click(screen.getByRole("button", { name: "Salvar" }))
     await waitFor(() => expect(users.createUserAccount).toHaveBeenCalledTimes(1))
-    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", role: "OPERATOR", teamId: undefined, matricula: "OP-99999" })
+    expect(users.createUserAccount.mock.calls[0]![0]).toEqual({ name: "Nova Pessoa", email: "nova@empresa.com", role: "OPERATOR", teamId: undefined, matricula: "OP-99999", operatingUniverse: null })
   })
 
   it("a senha provisória não é digitada: a INIA gera e mostra uma vez depois de criar (auditoria 17/10/2026, AUTH-6)", async () => {

@@ -34,13 +34,13 @@ export async function recordRequestEvent(client: Queryable, input: { organizatio
 
 type RequestRef = { id: string; organizationId: string; operatorPersonId: string }
 const finalStatusOf = (cause: RequestEndCause): RequestStatus =>
-  cause === "OPERATOR_CANCELLED" || cause === "SCOPE_DISABLED" ? "CANCELLED" : cause === "QUEUE_EXPIRED" ? "EXPIRED" : cause === "OPERATOR_ABANDONED" ? "ABANDONED" : "CLOSED"
+  cause === "OPERATOR_CANCELLED" || cause === "SCOPE_DISABLED" ? "CANCELLED" : cause === "QUEUE_EXPIRED" || cause === "NO_ANJO_IN_SERVICE" ? "EXPIRED" : cause === "OPERATOR_ABANDONED" || cause === "OPERATOR_NO_RETURN" ? "ABANDONED" : "CLOSED"
 
 /** Termina o pedido (estado final pela causa), com evento e mensagem de sistema. `from` = o estado esperado agora. */
 export async function endRequest(client: Queryable, request: RequestRef, input: { from: RequestStatus; cause: RequestEndCause; actorPersonId: string | null; attendanceId?: string | null }): Promise<RequestStatus> {
   const to = finalStatusOf(input.cause)
   const updated = await client.query<{ source_conversation_id: string | null }>(
-    `update human_support_requests set status = $3, end_cause = $4, ended_at = statement_timestamp() where id = $1 and organization_id = $2 and status = $5
+    `update human_support_requests set status = $3, end_cause = $4, ended_at = statement_timestamp(), awaiting_operator_since = null where id = $1 and organization_id = $2 and status = $5
      returning source_conversation_id`,
     [request.id, request.organizationId, to, input.cause, input.from],
   )
@@ -48,9 +48,9 @@ export async function endRequest(client: Queryable, request: RequestRef, input: 
   await recordRequestEvent(client, { organizationId: request.organizationId, requestId: request.id, from: input.from, to, cause: input.cause, actorPersonId: input.actorPersonId })
   await appendSystemMessage(client, request, input.attendanceId ?? null, END_SYSTEM_CODE[input.cause])
   // Terminou um atendimento (havia chat com o Anjo): a conversa com a INIA de onde o pedido saiu é encerrada — a próxima pergunta
-  // abre conversa nova. Pedido que saiu da fila sem atendimento (cancelado, expirado, abandonado, apoio desligado) não mexe nela.
+  // abre conversa nova (também o que aguardava o operador: houve atendimento). Pedido que saiu da fila sem atendimento (cancelado, expirado, abandonado, apoio desligado) não mexe nela.
   const sourceConversationId = updated.rows[0]?.source_conversation_id ?? null
-  if (input.from === "IN_PROGRESS" && sourceConversationId) {
+  if ((input.from === "IN_PROGRESS" || input.from === "AWAITING_OPERATOR") && sourceConversationId) {
     await closeConversationAfterHumanSupport(client, { organizationId: request.organizationId, ownerPersonId: request.operatorPersonId, conversationId: sourceConversationId })
   }
   return to

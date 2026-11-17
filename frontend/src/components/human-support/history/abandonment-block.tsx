@@ -1,6 +1,6 @@
 "use client"
 
-import { Ban, DoorOpen, Hourglass, LogOut, MessageCircleOff, UserRoundX, WifiOff } from "lucide-react"
+import { Ban, DoorOpen, Hourglass, LogOut, MessageCircleOff, UserMinus, UserRoundX, WifiOff } from "lucide-react"
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { SURFACE_CARD, toneChip, type Tone } from "@/components/ui/surface"
@@ -16,8 +16,8 @@ import { ratioText } from "./attendance-block"
 /**
  * ABANDONOS (pedido do responsável em 2026-11-12) — o MESMO bloco na Monitoria Online (`live`: o dia de hoje, relido a cada 5 s) e em
  * Indicadores (o período). Na espera: o operador fechou a INIA ou cancelou antes de um Anjo assumir (expirado à parte: quem encerra é
- * o sistema). No atendimento: pelo operador (saiu da INIA, parou de responder) e pelo Anjo (caiu por rede ou sessão, parou de
- * responder). Encerramento normal e transferência nunca contam. Cada taxa com numerador e denominador.
+ * o sistema). No atendimento, um card para cada lado, cada um com número e taxa próprios (pedido do responsável em 2026-11-16): do
+ * Anjo (parou de responder; saiu e derrubou o operador — queda de rede à parte, sem contar) e do operador (saiu da INIA, parou de responder). Encerramento normal e transferência nunca contam.
  */
 function Group({ icon: Icon, tone, title, rate, total, base, children, testId }: { icon: typeof Ban; tone: Tone; title: string; rate: string; total: number; base: string; children: React.ReactNode; testId: string }) {
   return (
@@ -60,21 +60,34 @@ function WaitingGroup({ data }: { data: Abandonment }) {
   )
 }
 
-function AttendanceGroup({ data }: { data: Abandonment }) {
-  const { attendance } = data
-  const drops = attendance.byAnjo.connection + attendance.byAnjo.session + attendance.byAnjo.roleRevoked + attendance.byAnjo.unknownDrop
+function OperatorGroup({ data }: { data: Abandonment }) {
+  const { byOperator } = data.attendance
   return (
-    <Group icon={UserRoundX} tone="danger" title="Abandonos no atendimento" total={attendance.abandoned} rate={ratioText(attendance.rate)} base="dos atendimentos encerrados (encerramento normal não conta)" testId="abandon-attendance">
-      <Line icon={LogOut} label="Operador saiu da INIA no meio" value={attendance.byOperator.leftInia} />
-      <Line icon={MessageCircleOff} label="Operador parou de responder (15 min)" value={attendance.byOperator.noReply} />
-      <Line icon={WifiOff} label={`Anjo caiu — rede ${attendance.byAnjo.connection} · sessão ${attendance.byAnjo.session}${attendance.byAnjo.roleRevoked ? ` · papel retirado ${attendance.byAnjo.roleRevoked}` : ""}${attendance.byAnjo.unknownDrop ? ` · sem causa ${attendance.byAnjo.unknownDrop}` : ""}`} value={drops} />
-      <Line icon={MessageCircleOff} label="Anjo parou de responder (15 min)" value={attendance.byAnjo.noReply} />
+    <Group icon={UserMinus} tone="warning" title="Abandonos do operador no atendimento" total={byOperator.total} rate={ratioText(byOperator.rate)} base="dos atendimentos encerrados" testId="abandon-operator">
+      <Line icon={LogOut} label="Saiu da INIA no meio" value={byOperator.leftInia} />
+      <Line icon={MessageCircleOff} label="Parou de responder (Anjo liberado)" value={byOperator.noReply} />
     </Group>
   )
 }
 
 /**
- * ÁREA DE ABANDONOS do catálogo (grade personalizável): dois cards — na espera e no atendimento —, a mesma leitura. `live` = Monitoria
+ * O número que diz se o Anjo abandona (pedidos do responsável em 2026-11-16): parou de responder + saiu (deslogou) e derrubou o
+ * operador, com taxa própria. Queda de rede e papel retirado pela coordenação não são culpa dele: aparecem à parte, sem contar.
+ */
+function AnjoGroup({ data }: { data: Abandonment }) {
+  const { byAnjo } = data.attendance
+  const notCounted = byAnjo.connection + byAnjo.roleRevoked + byAnjo.unknownDrop
+  return (
+    <Group icon={UserRoundX} tone="danger" title="Abandonos do Anjo" total={byAnjo.total} rate={ratioText(byAnjo.rate)} base="dos atendimentos encerrados" testId="abandon-anjo">
+      <Line icon={MessageCircleOff} label="Parou de responder (perdeu o atendimento)" value={byAnjo.noReply} />
+      <Line icon={LogOut} label="Saiu (deslogou) e derrubou o operador" value={byAnjo.session} />
+      <Line icon={WifiOff} label={`Queda de rede${byAnjo.roleRevoked ? ` · papel retirado ${byAnjo.roleRevoked}` : ""}${byAnjo.unknownDrop ? ` · sem causa ${byAnjo.unknownDrop}` : ""} (não conta como abandono)`} value={notCounted} muted />
+    </Group>
+  )
+}
+
+/**
+ * ÁREA DE ABANDONOS do catálogo (grade personalizável): três cards — na espera, do Anjo e do operador no atendimento —, a mesma leitura. `live` = Monitoria
  * Online (o dia de hoje, relido a cada 5 s); sem ele, o período de Indicadores.
  */
 export function useAbandonmentSection({ id, title, description, filter, live = false }: { id: string; title: string; description: string; filter: PanelFilter; live?: boolean }): GridSection {
@@ -86,8 +99,9 @@ export function useAbandonmentSection({ id, title, description, filter, live = f
     title,
     description,
     cards: [
-      { id: "espera", title: "Abandonos na espera", defaultWidth: 6, widths: [4, 6, 8, 12], render: () => state((data) => <WaitingGroup data={data} />) },
-      { id: "atendimento", title: "Abandonos no atendimento", defaultWidth: 6, widths: [4, 6, 8, 12], render: () => state((data) => <AttendanceGroup data={data} />) },
+      { id: "espera", title: "Abandonos na espera", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <WaitingGroup data={data} />) },
+      { id: "anjo", title: "Abandonos do Anjo", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <AnjoGroup data={data} />) },
+      { id: "operador", title: "Abandonos do operador no atendimento", defaultWidth: 4, widths: [4, 6, 8, 12], render: () => state((data) => <OperatorGroup data={data} />) },
     ],
   }
 }

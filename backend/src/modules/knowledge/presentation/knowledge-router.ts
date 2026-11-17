@@ -45,6 +45,10 @@ import {
 import { canOrganizationWide } from "../../access/domain/access-decision.js"
 import { openProductNodeIds } from "../../product-catalog/application/product-scope-assignments.js"
 import { compareKnowledgeVersions, listKnowledgeVersions, loadKnowledgeVersion } from "../application/knowledge-version-history.js"
+import { OPERATING_UNIVERSES, operatingUniverseSchema, optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
+import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
+import { assertProductsCompatible } from "../../operating-universe/application/universe-links.js"
+import { resourceConflictError, resourceLinkConflicts } from "../../operating-universe/application/resource-universe.js"
 
 const log = createLogger("knowledge")
 const uploadLog = createLogger("knowledge-upload")
@@ -70,7 +74,10 @@ const createKnowledgeSchema = z.object({
   content: z.string().trim().min(10).optional(),
   orgScopes: z.array(orgScopeSchema).default([{ scopeType: "ALL_TEAMS" }]),
   subjectScopes: z.array(subjectScopeSchema).default([{ scopeType: "ALL_SUBJECTS" }]),
+  /** Universo de atuação da base (B2B/B2C/B2X). Obrigatório depois que a organização ativa a exigência (checado no servidor). */
+  operatingUniverse: z.preprocess((value) => (value === "" ? null : value), optionalOperatingUniverseSchema),
 })
+const universeChangeSchema = z.object({ operatingUniverse: operatingUniverseSchema.nullable() }).strict()
 
 const knowledgeStatusSchema = z.enum(["DRAFT", "APPROVED", "PUBLISHED", "ARCHIVED"])
 /** No filtro da lista também entram as situações de uma base que ainda não tem versão em uso. */
@@ -84,6 +91,8 @@ const listKnowledgeSchema = orgScopeFilterSchema.extend({
   subjectScopeType: z.enum(["ALL_SUBJECTS"]).optional(),
   subjectId: z.string().uuid().optional(),
   hasFile: booleanParam,
+  /** Universo de atuação; PENDING = ainda sem classificação (regularização). */
+  operatingUniverse: listParam(z.enum([...OPERATING_UNIVERSES, "PENDING"])),
   createdFrom: dateParam,
   createdTo: dateParam,
 })
@@ -143,6 +152,7 @@ const KNOWLEDGE_SELECT = `
     d.id, d.title, d.document_type "documentType", d.source_type "sourceType",
     d.original_filename "originalFilename", d.mime_type "mimeType", d.file_size_bytes "fileSizeBytes",
     d.created_at "createdAt", d.updated_at "updatedAt",
+    d.operating_universe "operatingUniverse",
     p.name "authorName",
     coalesce(live.status, lv.status, 'DRAFT') status,
     left(regexp_replace(coalesce(live.content, lv.content), '\\s+', ' ', 'g'), ${EXCERPT_LENGTH}) excerpt,
@@ -376,6 +386,10 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
       filter.add(`(q.status = any(${statuses}::text[]) or q."updateStatus" = any(${statuses}::text[]) or (q."draftVersion" is not null and 'DRAFT' = any(${statuses}::text[])))`)
     }
     if (input.hasFile !== undefined) filter.add(`q."sourceType" ${input.hasFile ? "<>" : "="} 'TEXT'`)
+    if (input.operatingUniverse?.length) {
+      const universes = input.operatingUniverse.filter((value) => value !== "PENDING")
+      filter.add(`(q."operatingUniverse" = any(${filter.param(universes)}::text[])${input.operatingUniverse.includes("PENDING") ? ` or q."operatingUniverse" is null` : ""})`)
+    }
     // Alcances ficam em tabelas próprias (n:1), então o filtro é um EXISTS e não uma coluna.
     if (input.subteamId) {
       filter.add(`exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = q.id and os.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
@@ -449,7 +463,9 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
       content: body.content,
       orgScopes: parseJsonField(body.orgScopes),
       subjectScopes: parseJsonField(body.subjectScopes),
+      operatingUniverse: body.operatingUniverse,
     })
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "da base de conhecimento")
 
     const file = request.file
     if (!file && !input.content) {
@@ -473,8 +489,8 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     const actor = await actorOf(request)
     const documentId = await inTransaction(db, async (client) => {
       const documentResult = await client.query<{ id: string }>(
-        `insert into knowledge_documents(organization_id, title, document_type, source_type, original_filename, mime_type, file_size_bytes, created_by)
-         values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+        `insert into knowledge_documents(organization_id, title, document_type, source_type, original_filename, mime_type, file_size_bytes, created_by, operating_universe)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
         [
           organizationId,
           input.title,
@@ -484,6 +500,7 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
           file ? knowledgeFileContentType(sourceType) : null,
           file?.size ?? null,
           request.user?.sub ?? null,
+          input.operatingUniverse,
         ],
       )
       const documentId = documentResult.rows[0]!.id
@@ -513,6 +530,40 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
       return documentId
     })
     response.status(201).json({ data: { id: documentId, title: input.title, documentType: input.documentType, sourceType, ocr: scannedPages.length > 0 ? { status: "QUEUED", pages: scannedPages.length } : null } })
+  })
+
+  /**
+   * Universo de atuação da base: classificação direta (vale na hora, auditada), não versão. Antes da ativação não muda o que a IA usa;
+   * depois dela, a base só entra no chat de quem é do mesmo universo. Recusa (409) se deixar vínculos com produtos de outro universo.
+   */
+  router.put("/:id/operating-universe", async (request, response) => {
+    const organizationId = sessionUser(request).organizationId
+    const { operatingUniverse } = universeChangeSchema.parse(request.body)
+    const id = request.params.id!
+    const documentScopes = await loadDocumentScopes(db, organizationId, id)
+    if (!documentScopes) return response.status(404).json(NOT_FOUND)
+    if (!canWriteDocument(await scopesOf(request), toTargets(documentScopes))) return response.status(404).json(NOT_FOUND)
+    await assertUniverseRequiredFor(db, organizationId, operatingUniverse, "da base de conhecimento")
+    const result = await inTransaction(db, async (client) => {
+      const current = (await client.query<{ operating_universe: string | null }>(`select operating_universe from knowledge_documents where id = $1 and organization_id = $2 and deleted_at is null for update`, [id, organizationId])).rows[0]
+      if (!current) return null
+      if (current.operating_universe === operatingUniverse) return { changed: false }
+      // Produtos que ela vale e agentes que a usam precisam ser do mesmo universo (universos não se misturam).
+      const conflicts = await resourceLinkConflicts(client, organizationId, "KNOWLEDGE_DOCUMENT", id, operatingUniverse)
+      if (conflicts.length > 0) throw resourceConflictError("KNOWLEDGE_DOCUMENT", conflicts)
+      // Rascunho com "Vale para" de outro universo também bloqueia (senão a publicação dele criaria o conflito).
+      const draft = (await client.query<{ config: unknown }>(`select config from knowledge_versions where document_id = $1 and status in ('DRAFT', 'APPROVED') order by version desc limit 1`, [id])).rows[0]
+      const draftProducts = parseKnowledgeVersionConfig(draft?.config)?.productNodeIds ?? []
+      await assertProductsCompatible(client, organizationId, draftProducts, operatingUniverse)
+      await client.query(`update knowledge_documents set operating_universe = $3, updated_at = now() where id = $1 and organization_id = $2`, [id, organizationId, operatingUniverse])
+      await client.query(
+        `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'KNOWLEDGE_OPERATING_UNIVERSE_CHANGED', 'knowledge_document', $3, $4::jsonb)`,
+        [organizationId, sessionUser(request).personId, id, JSON.stringify({ from: current.operating_universe, to: operatingUniverse, actorAccountId: sessionUser(request).sub })],
+      )
+      return { changed: true }
+    })
+    if (!result) return response.status(404).json(NOT_FOUND)
+    response.json({ data: { id, operatingUniverse, changed: result.changed } })
   })
 
   router.patch("/:id", async (request, response) => {

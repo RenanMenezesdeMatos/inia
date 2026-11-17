@@ -83,6 +83,9 @@ export type UnavailableAttempts = z.infer<typeof unavailableAttemptsSchema>
 
 
 /** Situação dos Anjos AGORA (não depende do período): cadastral × operacional; `since` = transição real (null = sem contador). */
+/** Anjo sem responder ninguém (195): `PAUSED` = pausa "Desconexão" até `offlineAt`; `OFFLINE` = a pausa venceu e ele ficou Indisponível. */
+export const unresponsiveSchema = z.object({ kind: z.enum(["PAUSED", "OFFLINE"]), since: z.string(), offlineAt: z.string().nullable() })
+export type Unresponsive = z.infer<typeof unresponsiveSchema>
 export const anjoNowStatusSchema = z.enum(["AVAILABLE", "IN_ATTENDANCE", "PAUSED", "UNAVAILABLE"])
 export type AnjoNowStatus = z.infer<typeof anjoNowStatusSchema>
 export const anjoNowItemSchema = z.object({
@@ -98,11 +101,13 @@ export const anjoNowItemSchema = z.object({
   /** Migration 191: aberta, queda de rede, sessão encerrada ou área fechada (Indisponível sem a área = offline). */
   connection: z.enum(["CONNECTED", "CONNECTION_LOST", "SESSION_ENDED", "CLOSED"]).default("CONNECTED"),
   scheduled: z.object({ status: z.enum(["PAUSED", "OFFLINE"]), pauseReason: pauseReasonSchema.nullable() }).nullable().default(null),
+  /** Migration 195: em pausa "Desconexão" ou Indisponível pelo sistema, por não responder ninguém. */
+  unresponsive: unresponsiveSchema.nullable().default(null),
   attendances: z.object({ active: z.number(), capacity: z.number() }),
 })
 export type AnjoNowItem = z.infer<typeof anjoNowItemSchema>
 /** Fila agora: aguardando um Anjo (desde a entrada original) e acolhidos ainda sem a primeira resposta do Anjo. */
-export const queueNowSchema = z.object({ waiting: z.number(), oldestWaitingSince: z.string().nullable(), awaitingFirstResponse: z.number(), oldestAwaitingSince: z.string().nullable() })
+export const queueNowSchema = z.object({ waiting: z.number(), oldestWaitingSince: z.string().nullable(), awaitingFirstResponse: z.number(), oldestAwaitingSince: z.string().nullable(), awaitingOperator: z.number() })
 export type QueueNow = z.infer<typeof queueNowSchema>
 /** Quem está na fila agora (clicar no indicador de fila): `waitingSince` = entrada original. */
 export const queueWaitingSchema = z.object({
@@ -137,14 +142,14 @@ export function durationText(seconds: number | null): string {
  * HISTÓRICO DA OPERAÇÃO DO ANJO (migration 191): jornada por dia e no período (durações em ms, percentuais SEM arredondar — a tela
  * arredonda) e indicadores de atendimento. Atribuição direta (D2): não há oferta, aceite nem tempo de acolhimento.
  */
-const pausedMsSchema = z.object({ LUNCH: z.number(), PERSONAL: z.number(), PROCESS_ACTIVITY: z.number(), MEETING: z.number() })
+const pausedMsSchema = z.object({ LUNCH: z.number(), PERSONAL: z.number(), PROCESS_ACTIVITY: z.number(), MEETING: z.number(), DISCONNECTION: z.number().default(0) })
 /** `unavailableMs` = Indisponível, que é o mesmo estado que offline: fora do tempo online. */
 const durationsSchema = z.object({ availableMs: z.number(), attendanceMs: z.number(), pausedMs: pausedMsSchema, unavailableMs: z.number() })
 const sharesSchema = z.object({
   available: z.number().nullable(),
   attendance: z.number().nullable(),
   pausedTotal: z.number().nullable(),
-  paused: z.object({ LUNCH: z.number().nullable(), PERSONAL: z.number().nullable(), PROCESS_ACTIVITY: z.number().nullable(), MEETING: z.number().nullable() }),
+  paused: z.object({ LUNCH: z.number().nullable(), PERSONAL: z.number().nullable(), PROCESS_ACTIVITY: z.number().nullable(), MEETING: z.number().nullable(), DISCONNECTION: z.number().nullable().default(null) }),
   productive: z.number().nullable(),
 })
 export const journeySummarySchema = z.object({
@@ -168,6 +173,8 @@ export const attendanceIndicatorsSchema = z.object({
   pertinence: z.object({ pertinent: z.number(), notPertinent: z.number(), notEvaluated: z.number(), rate: ratioSchema }),
   noReply: z.object({ rate: ratioSchema, anjoSide: z.number(), operatorSide: z.number() }),
   abandonedAfterAcolhimento: z.number(),
+  /** Abandonos do Anjo (194/195): parou de responder + saiu (deslogou) e derrubou o operador; queda de rede não conta. */
+  anjoAbandonment: z.object({ total: z.number(), noReply: z.number(), loggedOut: z.number(), rate: ratioSchema }),
   interruptedBySystem: z.object({ connection: z.number(), session: z.number(), roleRevoked: z.number(), unknown: z.number() }),
   /** Média das estrelas do operador (só com 5 notas ou mais). */
   stars: z.object({ average: z.number().nullable(), count: z.number() }).default({ average: null, count: 0 }),
@@ -255,8 +262,8 @@ export const abandonmentSchema = z.object({
   waiting: z.object({ requests: z.number(), closedInia: z.number(), cancelled: z.number(), abandoned: z.number(), rate: ratioSchema, expired: z.number() }),
   attendance: z.object({
     ended: z.number(),
-    byOperator: z.object({ leftInia: z.number(), noReply: z.number(), total: z.number() }),
-    byAnjo: z.object({ connection: z.number(), session: z.number(), roleRevoked: z.number(), unknownDrop: z.number(), noReply: z.number(), total: z.number() }),
+    byOperator: z.object({ leftInia: z.number(), noReply: z.number(), total: z.number(), rate: ratioSchema }),
+    byAnjo: z.object({ connection: z.number(), session: z.number(), roleRevoked: z.number(), unknownDrop: z.number(), noReply: z.number(), total: z.number(), rate: ratioSchema }),
     abandoned: z.number(),
     rate: ratioSchema,
   }),

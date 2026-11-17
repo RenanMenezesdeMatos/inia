@@ -10,6 +10,8 @@ import { PersonAvatar } from "@/components/profile/person-avatar"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
 import { DEFAULT_COVER, professionalLineOf, type CoverPresentation } from "@/schemas/profile/my-profile.schema"
 
 /** A pessoa EXIBIDA no perfil (a visitada — ou a própria, quando é o próprio perfil). Sempre vinda do backend. */
@@ -102,6 +104,7 @@ export function ProfileHeader({ person, isOwn, actions, variant = "profile", att
           <div className="min-w-0">
             <Title className={cn("line-clamp-2 break-words font-heading font-semibold tracking-tight", preview ? "text-lg sm:text-2xl" : "text-2xl sm:text-3xl")} title={person.displayName}>{person.displayName}</Title>
             {professional ? <p className="mt-0.5 break-words text-sm text-muted-foreground sm:text-base">{professional}</p> : null}
+            {isOwn ? <OwnUniverse /> : null}
             {identityLine.length > 0 ? <p className="mt-1 break-words text-xs text-muted-foreground">{identityLine.join(" · ")}</p> : null}
           </div>
           {/* Na prévia do mobile os selos saem: a prévia não pode empurrar o formulário para fora da tela. */}
@@ -144,6 +147,23 @@ function ProfileSeals() {
         </TooltipTrigger>
         <TooltipContent>{expanded ? "Recolher selos" : "Exibir selos"}</TooltipContent>
       </Tooltip>
+    </div>
+  )
+}
+
+/**
+ * Universo de atuação da própria pessoa (do cadastro, resolvido pelo backend). Pendente com a exigência ativa = configuração a
+ * regularizar: a INIA fica sem bases, produtos e Workflows segmentados até a gestão classificar.
+ */
+function OwnUniverse() {
+  const user = useCurrentUserQuery().data
+  if (!user) return null
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2" data-testid="own-operating-universe">
+      <UniverseBadge universe={user.operatingUniverse} />
+      {user.operatingUniverse === null && user.operatingUniverseEnforced ? (
+        <span className="text-xs text-amber-800 dark:text-amber-200">Seu universo de atuação ainda não foi configurado. Peça à sua liderança para regularizar o cadastro.</span>
+      ) : null}
     </div>
   )
 }

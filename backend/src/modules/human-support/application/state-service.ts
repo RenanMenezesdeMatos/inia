@@ -3,9 +3,9 @@ import { endedSessions } from "../../auth/application/session-ended.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { TransactionSource } from "../../../shared/infrastructure/database/transaction.js"
 import { loadPersonPresentations } from "../../profile-preferences/application/person-presentation-loader.js"
-import { HUMAN_SUPPORT_LIMITS, type AttendanceEndCause, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
+import { HUMAN_SUPPORT_LIMITS, PRESENCE_STATUS_CAUSES, type AttendanceEndCause, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
 import { evaluationOpenUntil } from "../domain/evaluation.js"
-import { effectiveCapacity, presenceChange, scheduledFromRow, type PresenceRequest } from "../domain/presence.js"
+import { effectiveCapacity, presenceChange, scheduledFromRow, unresponsiveView, type PresenceRequest } from "../domain/presence.js"
 import type { AnjoView, OperatorView, PendingEvaluation, SharedContext, StateResponse } from "../domain/views.js"
 import { dispatchAfterCommand } from "./dispatch.js"
 import { anyEnabledScope, availabilityFor, enabledForPlace, loadPlace, loadSettings } from "./eligibility.js"
@@ -25,7 +25,7 @@ import { lockPresence, recordPresenceEvent } from "./transitions.js"
 export async function renewOperatorPresence(db: Queryable, viewer: Viewer): Promise<void> {
   await db.query(
     `update human_support_requests set operator_seen_at = greatest(operator_seen_at, statement_timestamp())
-      where organization_id = $1 and operator_person_id = $2 and status in ('WAITING', 'IN_PROGRESS')`,
+      where organization_id = $1 and operator_person_id = $2 and status in ('WAITING', 'IN_PROGRESS', 'AWAITING_OPERATOR')`,
     [viewer.organizationId, viewer.personId],
   )
 }
@@ -71,7 +71,7 @@ async function loadPendingEvaluations(db: Queryable, viewer: Viewer): Promise<Pe
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
          left join human_support_evaluations e on e.attendance_id = a.id and e.superseded_at is null
-        where a.organization_id = $1 and a.operator_person_id = $2 and a.status = 'ENDED' and a.end_cause not in ('ANJO_LOST', 'TRANSFERRED')
+        where a.organization_id = $1 and a.operator_person_id = $2 and a.status = 'ENDED' and a.end_cause not in ('ANJO_LOST', 'TRANSFERRED', 'ANJO_SILENT')
           and a.ended_at > statement_timestamp() - make_interval(secs => $3::int)
         order by a.ended_at desc limit 10`,
       [viewer.organizationId, viewer.personId, HUMAN_SUPPORT_LIMITS.evaluationWindowMs / 1000],
@@ -87,10 +87,12 @@ async function loadPendingEvaluations(db: Queryable, viewer: Viewer): Promise<Pe
 export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoView> {
   const settings = await loadSettings(db, viewer.organizationId)
   const presence = (
-    await db.query<{ status: PresenceStatus; pause_reason: PauseReason | null; connected: boolean; status_since: Date; max_concurrent: number | null; scheduled_status: string | null; scheduled_pause_reason: string | null; scheduled_at: Date | null }>(
-      `select status, pause_reason, coalesce(lease_until > statement_timestamp(), false) connected, status_since, max_concurrent, scheduled_status, scheduled_pause_reason, scheduled_at
-         from human_support_agent_presence where organization_id = $1 and person_id = $2`,
-      [viewer.organizationId, viewer.personId],
+    await db.query<{ status: PresenceStatus; pause_reason: PauseReason | null; connected: boolean; status_since: Date; max_concurrent: number | null; scheduled_status: string | null; scheduled_pause_reason: string | null; scheduled_at: Date | null; last_status_cause: string | null; last_status_at: Date | null }>(
+      `select p.status, p.pause_reason, coalesce(p.lease_until > statement_timestamp(), false) connected, p.status_since, p.max_concurrent, p.scheduled_status, p.scheduled_pause_reason, p.scheduled_at,
+              (select e.cause from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause = any($3::text[]) order by e.id desc limit 1) last_status_cause,
+              (select e.occurred_at from human_support_presence_events e where e.organization_id = p.organization_id and e.person_id = p.person_id and e.cause = any($3::text[]) order by e.id desc limit 1) last_status_at
+         from human_support_agent_presence p where p.organization_id = $1 and p.person_id = $2`,
+      [viewer.organizationId, viewer.personId, PRESENCE_STATUS_CAUSES],
     )
   ).rows[0]
   const attendances = (
@@ -112,7 +114,7 @@ export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoV
          from human_support_attendances a
          join human_support_requests r on r.id = a.request_id
          left join human_support_classifications c on c.attendance_id = a.id
-        where a.organization_id = $1 and a.anjo_person_id = $2 and a.status = 'ENDED' and c.attendance_id is null and a.end_cause <> 'TRANSFERRED'
+        where a.organization_id = $1 and a.anjo_person_id = $2 and a.status = 'ENDED' and c.attendance_id is null and a.end_cause not in ('TRANSFERRED', 'ANJO_SILENT')
         order by a.ended_at desc limit 50`,
       [viewer.organizationId, viewer.personId],
     )
@@ -133,7 +135,9 @@ export async function loadAnjoView(db: Queryable, viewer: Viewer): Promise<AnjoV
   const nameOf = (id: string) => names.get(id)?.displayName ?? "Operador"
   return {
     serverTime: (clock.rows[0]?.now ?? new Date()).toISOString(),
-    presence: { status: presence?.status ?? "OFFLINE", pauseReason: presence?.pause_reason ?? null, connected: presence?.connected === true, since: since.toISOString(), scheduled: scheduledView(presence ?? null) },
+    presence: { status: presence?.status ?? "OFFLINE", pauseReason: presence?.pause_reason ?? null, connected: presence?.connected === true, since: since.toISOString(), scheduled: scheduledView(presence ?? null),
+      unresponsive: presence ? unresponsiveView({ status: presence.status, pauseReason: presence.pause_reason, statusSince: presence.status_since, lastStatusCause: presence.last_status_cause, lastStatusAt: presence.last_status_at }, settings.anjoUnresponsive.offlineAfterMinutes) : null,
+    },
     capacity: { max: effectiveCapacity(presence?.max_concurrent == null ? null : Number(presence.max_concurrent), settings.defaultCapacity), used: attendances.length },
     attendances: attendances.map((row) => ({
       id: row.id,

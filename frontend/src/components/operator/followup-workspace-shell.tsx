@@ -115,7 +115,7 @@ export function FollowupWorkspaceShell({ feed, renderChat, feedbackInvites = fal
   // Apoio com Anjo: mensagem nova do Anjo com o painel recolhido aparece no painel; o "Abrir conversa" do aviso abre o painel (no
   // celular, rola até o chat) e o chat abre a sala.
   const { roomOpenRequest, unreadFromAnjo } = useHumanSupportState()
-  const railNotice = unreadFromAnjo > 0 ? (unreadFromAnjo === 1 ? "o Anjo respondeu no apoio" : `o Anjo mandou ${unreadFromAnjo} mensagens no apoio`) : invitePending ? "há um feedback para conversar" : null
+  const railNotice = unreadFromAnjo > 0 ? (unreadFromAnjo === 1 ? "o Apoio respondeu" : `o Apoio mandou ${unreadFromAnjo} mensagens`) : invitePending ? "há um feedback para conversar" : null
   const handledRoomRequestRef = useRef(roomOpenRequest)
   useEffect(() => {
     if (roomOpenRequest === handledRoomRequestRef.current) return

@@ -26,12 +26,13 @@ const ATTENDANCE: AttendanceIndicators = {
   pertinence: { pertinent: 1, notPertinent: 0, notEvaluated: 1, rate: ratio(1, 1) },
   noReply: { rate: ratio(0, 1), anjoSide: 0, operatorSide: 0 },
   abandonedAfterAcolhimento: 0,
+  anjoAbandonment: { total: 1, noReply: 1, loggedOut: 0, rate: ratio(1, 2) },
   interruptedBySystem: { connection: 0, session: 0, roleRevoked: 0, unknown: 0 },
   stars: { average: 4.2, count: 6 },
 }
 // 8 h online — 3 h disponível, 3 h atendendo, 1 h 30 em pausa "Lanche", 30 min pessoal; 16 h Indisponível (= offline, fora da base).
-const total = { availableMs: 3 * H, attendanceMs: 3 * H, pausedMs: { LUNCH: 1.5 * H, PERSONAL: 30 * M, PROCESS_ACTIVITY: 0, MEETING: 0 }, unavailableMs: 16 * H }
-const shares = { available: 37.5, attendance: 37.5, pausedTotal: 25, paused: { LUNCH: 18.75, PERSONAL: 6.25, PROCESS_ACTIVITY: 0, MEETING: 0 }, productive: 75 }
+const total = { availableMs: 3 * H, attendanceMs: 3 * H, pausedMs: { LUNCH: 1.5 * H, PERSONAL: 30 * M, PROCESS_ACTIVITY: 0, MEETING: 0, DISCONNECTION: 0 }, unavailableMs: 16 * H }
+const shares = { available: 37.5, attendance: 37.5, pausedTotal: 25, paused: { LUNCH: 18.75, PERSONAL: 6.25, PROCESS_ACTIVITY: 0, MEETING: 0, DISCONNECTION: 0 }, productive: 75 }
 const structure = (supervisor: string, subteam: string) => ({
   team: { id: "g1", name: "B2C" },
   subteam: { id: subteam, name: subteam === "s1" ? "Atendimento" : "Retenção" },
@@ -45,8 +46,8 @@ const ANA: AnjoHistory = {
   journey: { days: [{ day: "2026-11-10", ...total, baseMs: 8 * H }], summary: { total, baseMs: 8 * H, shares, daysWithOnline: 1, dailyAverage: { availableMs: 3 * H, attendanceMs: 3 * H } } },
   attendance: ATTENDANCE,
 }
-const empty = { availableMs: 0, attendanceMs: 0, pausedMs: { LUNCH: 0, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0 }, unavailableMs: 24 * H }
-const nullShares = { available: null, attendance: null, pausedTotal: null, paused: { LUNCH: null, PERSONAL: null, PROCESS_ACTIVITY: null, MEETING: null }, productive: null }
+const empty = { availableMs: 0, attendanceMs: 0, pausedMs: { LUNCH: 0, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0, DISCONNECTION: 0 }, unavailableMs: 24 * H }
+const nullShares = { available: null, attendance: null, pausedTotal: null, paused: { LUNCH: null, PERSONAL: null, PROCESS_ACTIVITY: null, MEETING: null, DISCONNECTION: null }, productive: null }
 const BRUNO: AnjoHistory = { ...ANA, personId: "bruno", name: "Bruno Lima", structure: structure("sup2", "s2"), journey: { days: [{ day: "2026-11-10", ...empty, baseMs: 0 }], summary: { total: empty, baseMs: 0, shares: nullShares, daysWithOnline: 0, dailyAverage: null } } }
 const HISTORY: OperationHistory = {
   period: { from: "2026-11-10", to: "2026-11-10" },
@@ -64,7 +65,14 @@ const HISTORY: OperationHistory = {
 beforeAll(() => installJsdomStubs())
 beforeEach(() => {
   vi.clearAllMocks()
-  service.fetchAnjoPresenceTimeline.mockResolvedValue({ events: [{ occurredAt: "2026-11-10T12:00:00.000Z", fromStatus: "AVAILABLE", toStatus: "PAUSED", pauseReason: "LUNCH", cause: "ANJO" }] })
+  service.fetchAnjoPresenceTimeline.mockResolvedValue({
+    events: [
+      { occurredAt: "2026-11-10T12:00:00.000Z", fromStatus: "AVAILABLE", toStatus: "PAUSED", pauseReason: "LUNCH", cause: "ANJO" },
+      // Migration 195: o motivo de o sistema tê-lo tirado de serviço fica na presença.
+      { occurredAt: "2026-11-10T14:00:00.000Z", fromStatus: "AVAILABLE", toStatus: "PAUSED", pauseReason: "DISCONNECTION", cause: "UNRESPONSIVE" },
+      { occurredAt: "2026-11-10T14:10:00.000Z", fromStatus: "PAUSED", toStatus: "OFFLINE", pauseReason: null, cause: "UNRESPONSIVE_TIMEOUT" },
+    ],
+  })
   service.fetchSupportFunnel.mockResolvedValue({ period: { from: "2026-11-10", to: "2026-11-10" }, cutoffs: { dislikeDetailsSince: null, signalsSince: null, disabledPeriods: [] }, measures: [] })
 })
 afterEach(() => cleanup())
@@ -105,8 +113,14 @@ describe("Jornada e atendimentos", () => {
     expect(within(detail).getByTestId("reasons-ranking")).toHaveTextContent("Sem classificação")
     // Veio da antiga tabela "No período": estrelas e a linha do tempo da presença, no detalhe do Anjo.
     expect(within(detail).getByTestId("metric-stars")).toHaveTextContent("4,2 de 5")
+    // Abandonos do Anjo (194): número e taxa próprios, na linha e no detalhe.
+    expect(within(ana).getByTestId("anjo-abandonment-cell")).toHaveTextContent("11 de 2 (amostra pequena)")
+    expect(within(detail).getByTestId("metric-anjo-abandonment")).toHaveTextContent("Parou de responder 1 · saiu e derrubou o operador 0 · queda de rede não conta")
     expect(ana).toHaveTextContent("4,2")
     expect(await within(detail).findByRole("list", { name: "Presença de Ana Souza" })).toHaveTextContent("Disponível → Em pausa (Lanche)")
+    const presence = within(detail).getByRole("list", { name: "Presença de Ana Souza" })
+    expect(presence).toHaveTextContent("Disponível → Em pausa (Desconexão)· pelo sistema: ficou sem responder ninguém")
+    expect(presence).toHaveTextContent("Em pausa → Indisponível· pelo sistema: não voltou da pausa Desconexão")
     expect(service.fetchAnjoPresenceTimeline).toHaveBeenCalledWith("ana", { from: "2026-11-10", to: "2026-11-10" })
 
     fireEvent.click(within(table).getByRole("button", { name: /Bruno Lima/ }))

@@ -2,6 +2,7 @@ import { z } from "zod"
 
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type ListParams, type PageResult } from "@/lib/admin/list-query"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { businessDomainDependenciesSchema, businessDomainSchema, type BusinessDomain, type BusinessDomainDependencies } from "@/schemas/admin/business-domain.schema"
 
 /** Seletores (Agent/Orquestrador): só ATIVOS por padrão; `includeInactive` para mostrar um legado "(desativado)". */
@@ -19,7 +20,7 @@ export async function fetchBusinessDomainDependencies(id: string): Promise<Busin
   return businessDomainDependenciesSchema.parse(await adminGet(`/api/v1/admin/business-domains/${id}/dependencies`))
 }
 
-export type CreateBusinessDomainInput = { name: string; code: string; description?: string | null; active?: boolean }
+export type CreateBusinessDomainInput = { name: string; code: string; description?: string | null; active?: boolean; operatingUniverse?: OperatingUniverse }
 
 export async function createBusinessDomain(input: CreateBusinessDomainInput): Promise<BusinessDomain> {
   return businessDomainSchema.parse(await adminSend("/api/v1/admin/business-domains", "POST", input))

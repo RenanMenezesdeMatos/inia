@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { adminGet, adminSend } from "@/lib/admin/admin-api"
 import { pageResultSchema, toQueryString, type DateRangeFilter, type ListParams, type PageResult } from "@/lib/admin/list-query"
 import {
@@ -29,6 +30,8 @@ export type UserListParams = ListParams & {
   hasAccount?: boolean
   /** true = veio da base (tem matrícula); false = cadastrada à mão. */
   hasMatricula?: boolean
+  /** Universo de atuação; "PENDING" = sem classificação. */
+  operatingUniverse?: (OperatingUniverse | "PENDING")[]
   lastLoginAt: DateRangeFilter
 }
 
@@ -54,6 +57,8 @@ export type CreateUserInput = {
   teamId?: string
   /** Matrícula como a base vai mandar: a carga atualiza esta pessoa em vez de criar outra. */
   matricula?: string
+  /** Universo de atuação (obrigatório quando a organização já ativou a exigência — o backend confere). */
+  operatingUniverse?: OperatingUniverse | null
   email: string
 }
 
@@ -71,6 +76,7 @@ export type UpdateUserDetailsInput = {
   email?: string
   role?: PlatformRole
   teamId?: string | null
+  operatingUniverse?: OperatingUniverse | null
 }
 
 export async function updateUserDetails({ personId, ...fields }: UpdateUserDetailsInput): Promise<void> {

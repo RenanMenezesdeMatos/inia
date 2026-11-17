@@ -1,4 +1,5 @@
 import { generateForRoute, type GatewayRequest, type GatewayResponse } from "../../../shared/application/model-routing/llm-gateway.js"
+import { costTotal } from "../../../shared/application/model-routing/model-pricing.js"
 import type { ModelProfile } from "../../../shared/application/model-routing/model-profile.js"
 import type { RouteDecision } from "../../../shared/application/model-routing/route-policy.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
@@ -47,7 +48,7 @@ export function createGatewayBestPracticeModel(deps: { generate?: (request: Gate
         model: response.model ?? null,
         inputTokens: response.usage.promptTokens,
         outputTokens: response.usage.outputTokens,
-        costUsd: response.cost.status === "ESTIMATED_PROVIDER_COST" ? response.cost.totalEstimatedCost : null,
+        costUsd: costTotal(response.cost),
         durationMs: response.durationMs ?? null,
       }
     },

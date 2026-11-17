@@ -16,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -115,6 +117,8 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   const mutation = isEditing ? updateMutation : createMutation
 
   const [name, setName] = useState(orchestrator?.name ?? "")
+  // Universo de atuação: escolhido só na criação (o orquestrador existente muda pela classificação do universo).
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
   const [orchestratorAgentId, setOrchestratorAgentId] = useState(orchestrator?.orchestratorAgentId ?? "")
   const [orgScope, setOrgScope] = useState<OrgScopeValue>(
     orchestrator ? { scopeType: orchestrator.scopeType, teamId: orchestrator.teamId ?? undefined, subteamId: orchestrator.subteamId ?? undefined } : { scopeType: "ALL_TEAMS" },
@@ -295,7 +299,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
     setNotPublishedAgentId(null)
     if (!orchestrator) {
       try {
-        const created = await createMutation.mutateAsync({ ...input, routingPolicy: routing.kind === "DOMAINS" || routing.kind === "OPEN" ? routing.kind : null, ...routingDomainPayload(routing) })
+        const created = await createMutation.mutateAsync({ ...input, ...(operatingUniverse ? { operatingUniverse } : {}), routingPolicy: routing.kind === "DOMAINS" || routing.kind === "OPEN" ? routing.kind : null, ...routingDomainPayload(routing) })
         router.push(`${LIST_HREF}/${created.id}`)
       } catch (error) {
         // já sinalizado via createMutation.isError / toast do useAdminMutation
@@ -349,6 +353,7 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
   const saveBlockedReason = [
     conflict ? "Outra pessoa gravou este orquestrador: atualize antes de salvar — suas alterações são reaplicadas." : null,
     name.trim().length > 1 ? null : "Informe o nome.",
+    isEditing || operatingUniverse ? null : "Escolha o universo de atuação.",
     orchestratorAgentId ? null : "Escolha o agente orquestrador.",
     policyProblem,
     structuredBlocking ? `Corrija o resultado estruturado: ${structuredIssues[0]!.message}` : null,
@@ -458,6 +463,13 @@ function OrchestratorForm({ orchestrator, onReload }: { orchestrator?: Orchestra
                 <Label htmlFor="orchestrator-name">Nome</Label>
                 <Input id="orchestrator-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: INIA — Time de Contas" />
               </div>
+              {!isEditing ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="orchestrator-universe">Universo de atuação</Label>
+                  <UniverseSelect id="orchestrator-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="orchestrator-universe-help" />
+                  <p id="orchestrator-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
                 <Label htmlFor="orchestrator-agent">Agente orquestrador</Label>
                 {/* Sem os grupos administráveis a compatibilidade de escopo ainda não é conhecida: espera, em vez de dizer "nenhum agente". */}

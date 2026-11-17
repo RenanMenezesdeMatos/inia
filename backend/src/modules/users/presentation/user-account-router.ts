@@ -24,6 +24,8 @@ import { describeManagedFieldViolations, emptyPersonFieldControl, managedFieldVi
 import { resolveOrganizationTimezone } from "../../workflows/application/organization-timezone.js"
 import { localDateOf } from "../../workflows/application/time-window.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
+import { OPERATING_UNIVERSES, operatingUniverseSchema, optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
+import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
 
 /**
  * NÍVEL HIERÁRQUICO da pessoa (`people.role`) — dado ORGANIZACIONAL, não acesso (V1.5.7). "ADMIN" aqui é legado: marca uma
@@ -43,6 +45,8 @@ const listUsersSchema = z.object({
   hasMatricula: booleanParam,
   lastLoginFrom: dateParam,
   lastLoginTo: dateParam,
+  /** Universo de atuação; PENDING = ainda sem classificação. */
+  operatingUniverse: listParam(z.enum([...OPERATING_UNIVERSES, "PENDING"])),
 })
 
 const SELECT_USERS = `
@@ -50,6 +54,7 @@ const SELECT_USERS = `
     p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, p.active, p.team_id "teamId", t.name "teamName", p.subteam_id "subteamId",
     p.current_employment_status "employmentStatus",
     p.operational_capital_code "operationalCapitalCode",
+    p.operating_universe "operatingUniverse",
     ua.id "accountId", ua.email, ua.last_login_at "lastLoginAt"
   from people p
   left join teams t on t.id = p.team_id
@@ -63,6 +68,8 @@ const createUserSchema = z.object({
   teamId: z.string().uuid().optional(),
   /** Matrícula exatamente como a base do cliente vai mandar: quando a carga chegar, ela ATUALIZA esta pessoa (nunca cria outra). */
   matricula: z.string().trim().max(64).optional().transform((value) => value || undefined),
+  /** Universo de atuação (B2B/B2C/B2X). Obrigatório depois que a organização ativa a exigência (checado no servidor). */
+  operatingUniverse: optionalOperatingUniverseSchema,
   email: z.string().trim().email(),
   /**
    * Ignorada: a senha provisória é GERADA pelo servidor e mostrada uma vez (achado AUTH-6 da auditoria de 17/10/2026 — escolhida
@@ -81,6 +88,8 @@ const updateUserSchema = z.object({
   active: z.boolean().optional(),
   /** Capital operacional (jurisdição de feriados) — só códigos do catálogo das 27; null limpa. */
   operationalCapitalCode: z.string().refine((value) => isBrazilianCapitalCode(value), "Capital operacional fora do catálogo das 27 capitais.").nullable().optional(),
+  /** Universo de atuação; null volta a "pendente" (só antes da ativação da exigência). */
+  operatingUniverse: operatingUniverseSchema.nullable().optional(),
 })
 
 // Jornada PREVISTA (horário de entrada + carga horária) — usada pelo Trigger "Por agenda"
@@ -109,7 +118,7 @@ const employmentStatusSchema = z.object({
  * Campos da pessoa que esta edição MUDA de verdade (valor diferente do atual) — reenviar o mesmo valor não conta como
  * alteração, então um formulário que manda tudo de novo não esbarra num campo da base que ninguém tocou.
  */
-type CurrentPerson = { name: string; role: string; team_id: string | null; active: boolean; operational_capital_code: string | null; email: string | null }
+type CurrentPerson = { name: string; role: string; team_id: string | null; active: boolean; operational_capital_code: string | null; operating_universe: string | null; email: string | null }
 function changedPersonFields(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean, current: CurrentPerson): PersonSourceField[] {
   const changed: PersonSourceField[] = []
   if (input.name !== undefined && input.name !== current.name) changed.push("name")
@@ -118,12 +127,13 @@ function changedPersonFields(input: z.infer<typeof updateUserSchema>, teamIdSent
   if (input.active !== undefined && input.active !== current.active) changed.push("active")
   if (input.email !== undefined && input.email.toLowerCase() !== (current.email ?? "").toLowerCase()) changed.push("email")
   if (input.operationalCapitalCode !== undefined && (input.operationalCapitalCode ?? null) !== current.operational_capital_code) changed.push("operationalCapitalCode")
+  if (input.operatingUniverse !== undefined && (input.operatingUniverse ?? null) !== current.operating_universe) changed.push("operatingUniverse")
   return changed
 }
 
 /** Campos que o PATCH pode receber, no vocabulário de `person-field-control`. */
 function editedFieldsOf(input: z.infer<typeof updateUserSchema>, teamIdSent: boolean): PersonSourceField[] {
-  const fields: PersonSourceField[] = (["name", "role", "active", "email", "operationalCapitalCode"] as const).filter((field) => input[field] !== undefined)
+  const fields: PersonSourceField[] = (["name", "role", "active", "email", "operationalCapitalCode", "operatingUniverse"] as const).filter((field) => input[field] !== undefined)
   return teamIdSent ? [...fields, "teamId"] : fields
 }
 
@@ -245,6 +255,10 @@ export function createUserAccountRouter(db: Database) {
       .dateRange('q."lastLoginAt"', input.lastLoginFrom, input.lastLoginTo)
     if (input.hasAccount !== undefined) filter.add(`q."accountId" is ${input.hasAccount ? "not null" : "null"}`)
     if (input.hasMatricula !== undefined) filter.add(`q.matricula is ${input.hasMatricula ? "not null" : "null"}`)
+    if (input.operatingUniverse?.length) {
+      const universes = input.operatingUniverse.filter((value) => value !== "PENDING")
+      filter.add(`(q."operatingUniverse" = any(${filter.param(universes)}::text[])${input.operatingUniverse.includes("PENDING") ? ` or q."operatingUniverse" is null` : ""})`)
+    }
     if (!scopes.unrestricted && !scopes.allTeams) filter.add(`(q."teamId" = any(${filter.param([...scopes.teamIds])}::uuid[]) or q."subteamId" = any(${filter.param([...scopes.subteamIds])}::uuid[]))`)
     const data = await respondList<{ id: string }>(db, request.query, { select: SELECT_USERS, filter, orderBy: "q.name, q.id" })
     // Por campo, a fonte da Central que manda nele (null = editável na INIA) — uma consulta para a página inteira.
@@ -259,12 +273,12 @@ export function createUserAccountRouter(db: Database) {
   router.get("/:id", async (request, response) => {
     const organizationId = sessionUser(request).organizationId
     const result = await db.query<{
-      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null
+      id: string; name: string; role: string; jobTitle: string | null; matricula: string | null; hiredAt: string | null; active: boolean; employmentStatus: string | null; operationalCapitalCode: string | null; operatingUniverse: string | null
       team_id: string | null; team_name: string | null; subteam_id: string | null; subteam_name: string | null; manager_id: string | null; manager_name: string | null
       accountId: string | null; email: string | null; lastLoginAt: Date | null
     }>(
       `select p.id, p.name, p.role, p.job_title "jobTitle", p.matricula, to_char(p.hired_at, 'YYYY-MM-DD') "hiredAt", p.active,
-              p.current_employment_status "employmentStatus", p.operational_capital_code "operationalCapitalCode",
+              p.current_employment_status "employmentStatus", p.operational_capital_code "operationalCapitalCode", p.operating_universe "operatingUniverse",
               t.id team_id, t.name team_name, st.id subteam_id, st.name subteam_name, m.id manager_id, m.name manager_name,
               account.id "accountId", account.email, account.last_login_at "lastLoginAt"
          from people p
@@ -320,12 +334,14 @@ export function createUserAccountRouter(db: Database) {
         )
       }
     }
+    // A partir da ativação da exigência, toda pessoa nova nasce com universo (fora da hierarquia também: a INIA precisa saber o público).
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "da pessoa")
     const temporaryPassword = generateTemporaryPassword()
     try {
       const { personId, account, expiresAt } = await inTransaction(db, async (client) => {
         const person = await client.query<{ id: string }>(
-          `insert into people(organization_id, team_id, name, role, matricula) values ($1,$2,$3,$4,$5) returning id`,
-          [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null],
+          `insert into people(organization_id, team_id, name, role, matricula, operating_universe) values ($1,$2,$3,$4,$5,$6) returning id`,
+          [organizationId, input.teamId ?? null, input.name, input.role, input.matricula ?? null, input.operatingUniverse],
         )
         const personId = person.rows[0]!.id
         const passwordHash = await hashPassword(temporaryPassword)
@@ -341,7 +357,7 @@ export function createUserAccountRouter(db: Database) {
         // Auditoria (sem senha nem hash): quem criou a pessoa e a conta, com qual nível.
         await client.query(
           `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'ACCESS_ENABLED', 'user_account', $3, $4::jsonb)`,
-          [organizationId, sessionUser(request).personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
+          [organizationId, sessionUser(request).personId, account.rows[0]!.id, JSON.stringify({ personId, email: input.email.trim().toLowerCase(), role: input.role, matricula: input.matricula ?? null, operatingUniverse: input.operatingUniverse, accountCreated: true, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
         )
         return { personId, account, expiresAt }
       })
@@ -368,7 +384,7 @@ export function createUserAccountRouter(db: Database) {
     const control = (await loadPersonFieldControl(db, organizationId, [personId])).get(personId) ?? emptyPersonFieldControl()
     if (editedFieldsOf(input, teamIdSent).some((field) => control[field])) {
       const current = await db.query<CurrentPerson>(
-        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, account.email
+        `select person.name, person.role, person.team_id, person.active, person.operational_capital_code, person.operating_universe, account.email
            from people person left join user_accounts account on account.person_id = person.id
           where person.id = $1 and person.organization_id = $2`,
         [personId, organizationId],
@@ -380,11 +396,14 @@ export function createUserAccountRouter(db: Database) {
         throw new DomainError(describeManagedFieldViolations(violations), "PERSON_FIELD_MANAGED_BY_SOURCE", 422, { fields: violations, sources })
       }
     }
-    const changesAccess = input.role !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined
+    // O universo também decide o que a pessoa consulta: ninguém muda o próprio.
+    const changesAccess = input.role !== undefined || input.active !== undefined || input.email !== undefined || input.teamId !== undefined || input.operatingUniverse !== undefined
     // Ninguém altera o próprio nível, Grupo, e-mail de login ou situação de acesso — outra pessoa autorizada precisa fazer isso.
     if (changesAccess && personId === sessionUser(request).personId) {
-      throw new DomainError("Você não pode alterar o seu próprio nível, Grupo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
+      throw new DomainError("Você não pode alterar o seu próprio nível, Grupo, universo, e-mail ou situação — outra pessoa autorizada precisa fazer isso.", "PEOPLE_SELF_CHANGE_FORBIDDEN", 403)
     }
+    // Depois da ativação, ninguém volta uma pessoa para "pendente" (regularizar é escolher B2B, B2C ou B2X).
+    if (input.operatingUniverse === null) await assertUniverseRequiredFor(db, organizationId, null, "da pessoa")
     const scopes = await scopesOf(request)
     if (input.role !== undefined) {
       const current = await db.query<{ role: string }>(`select role from people where id = $1 and organization_id = $2`, [personId, organizationId])
@@ -404,6 +423,7 @@ export function createUserAccountRouter(db: Database) {
         throw new DomainError("Esta pessoa é o último Administrador geral ativo — conceda o papel a outra pessoa antes de desativá-la.", "ACCESS_LAST_TENANT_ADMIN", 409)
       }
     }
+    const universeBefore = input.operatingUniverse === undefined ? undefined : (await db.query<{ operating_universe: string | null }>(`select operating_universe from people where id = $1 and organization_id = $2`, [personId, organizationId])).rows[0]?.operating_universe ?? null
     try {
       const person = await db.query(
         `update people set
@@ -414,12 +434,20 @@ export function createUserAccountRouter(db: Database) {
            -- antigo pelo Subgrupo (achado AUTH-4 da auditoria de 17/10/2026).
            subteam_id = case when $3::boolean and $4::uuid is distinct from team_id then null else subteam_id end,
            active = coalesce($5, active),
-           operational_capital_code = case when $8::boolean then $9 else operational_capital_code end
+           operational_capital_code = case when $8::boolean then $9 else operational_capital_code end,
+           operating_universe = case when $10::boolean then $11 else operating_universe end
          where id = $6 and organization_id = $7
-         returning id, name, role, active, team_id "teamId", operational_capital_code "operationalCapitalCode"`,
-        [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null],
+         returning id, name, role, active, team_id "teamId", operational_capital_code "operationalCapitalCode", operating_universe "operatingUniverse"`,
+        [input.name ?? null, input.role ?? null, teamIdSent, input.teamId ?? null, input.active ?? null, request.params.id, organizationId, input.operationalCapitalCode !== undefined, input.operationalCapitalCode ?? null, input.operatingUniverse !== undefined, input.operatingUniverse ?? null],
       )
       if (!person.rows[0]) return response.status(404).json({ error: { code: "USER_NOT_FOUND", message: "Usuário não encontrado." } })
+      if (input.operatingUniverse !== undefined && universeBefore !== (input.operatingUniverse ?? null)) {
+        // A vigência (person_operating_universe_history) é gravada pelo banco; aqui fica quem mudou.
+        await db.query(
+          `insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, 'PERSON_OPERATING_UNIVERSE_CHANGED', 'people', $3, $4::jsonb)`,
+          [organizationId, sessionUser(request).personId, personId, JSON.stringify({ from: universeBefore, to: input.operatingUniverse ?? null, source: "PEOPLE_REGISTRY", actorAccountId: sessionUser(request).sub })],
+        )
+      }
       if (input.active !== undefined || input.email !== undefined) {
         // Inativar a pessoa DESABILITA o acesso (sessões revogadas, senha temporária pendente apagada, auditado). Reativar a
         // pessoa NÃO reabilita o login com a senha antiga: o acesso volta só por "Habilitar acesso" (nova senha temporária).

@@ -153,7 +153,7 @@ export async function persistStructure(client: Client, mass: DemoMass): Promise<
         // antigo ("Operadora de Atendimento — B2B · …") é trocado pelo do Grupo novo; cargo digitado fica.
         const replaceableJobTitle = person.adopted?.relocatedFrom?.seedJobTitle ?? null
         await client.query(
-          `update people set team_id = $2, subteam_id = $3, reports_to_id = $4, role = $5, active = true,
+          `update people set team_id = $2, subteam_id = $3, reports_to_id = $4, role = $5, active = true, operating_universe = coalesce($10, operating_universe),
              hired_at = coalesce(hired_at, $6::date), matricula = coalesce(matricula, $7),
              job_title = case when job_title is null or job_title = $9 then $8 else job_title end
            where id = $1`,
@@ -162,20 +162,20 @@ export async function persistStructure(client: Client, mass: DemoMass): Promise<
             person.teamKey ? structure.teamByKey.get(person.teamKey)!.id : null,
             person.subteamKey ? structure.subteamByKey.get(person.subteamKey)!.id : null,
             person.reportsToKey ? structure.byKey.get(person.reportsToKey)!.id : null,
-            person.role, person.hiredAt, person.matricula, person.jobTitle, replaceableJobTitle,
+            person.role, person.hiredAt, person.matricula, person.jobTitle, replaceableJobTitle, demoUniverseOf(structure, person),
           ],
         )
       }
       for (const batch of chunks(people, BATCH)) {
         await client.query(
-          `insert into people (id, organization_id, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at, active)
-           select id, $1, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at, true
-           from unnest($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::uuid[], $10::date[])
-             as t(id, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at)
+          `insert into people (id, organization_id, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at, active, operating_universe)
+           select id, $1, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at, true, operating_universe
+           from unnest($2::uuid[], $3::uuid[], $4::uuid[], $5::text[], $6::text[], $7::text[], $8::text[], $9::uuid[], $10::date[], $11::text[])
+             as t(id, team_id, subteam_id, name, role, job_title, matricula, reports_to_id, hired_at, operating_universe)
            on conflict (id) do update set
              team_id = excluded.team_id, subteam_id = excluded.subteam_id, name = excluded.name, role = excluded.role,
              job_title = excluded.job_title, matricula = excluded.matricula, reports_to_id = excluded.reports_to_id,
-             hired_at = excluded.hired_at, active = true`,
+             hired_at = excluded.hired_at, active = true, operating_universe = coalesce(excluded.operating_universe, people.operating_universe)`,
           [
             DEMO_ORGANIZATION_ID,
             batch.map((person) => person.id),
@@ -187,6 +187,7 @@ export async function persistStructure(client: Client, mass: DemoMass): Promise<
             batch.map((person) => person.matricula),
             batch.map((person) => (person.reportsToKey ? structure.byKey.get(person.reportsToKey)!.id : null)),
             batch.map((person) => person.hiredAt),
+            batch.map((person) => demoUniverseOf(structure, person)),
           ],
         )
       }
@@ -472,3 +473,13 @@ export async function reportDemoMass(client: Client, mass: DemoMass): Promise<Pe
   }
 }
 
+
+/**
+ * Universo de atuação da massa demo — dado que a PRÓPRIA massa declara (segmento do Grupo em `DEMO_GROUPS`, e o segmento escrito no
+ * cargo do Gerente Sênior). Diretor fica pendente de propósito: demonstra a classificação do legado.
+ */
+function demoUniverseOf(structure: { teamByKey: Map<string, { spec: { segment: string } }> }, person: { teamKey: string | null; role: string; jobTitle: string }): string | null {
+  if (person.teamKey) return structure.teamByKey.get(person.teamKey)?.spec.segment ?? null
+  if (person.role === "SENIOR_MANAGER") return /— (B2B|B2C)$/.exec(person.jobTitle)?.[1] ?? null
+  return null
+}

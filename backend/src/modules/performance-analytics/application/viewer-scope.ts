@@ -1,4 +1,5 @@
 import { DomainError } from "../../../shared/domain/domain-error.js"
+import { personAllowedByUniverse, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import type { AuthTokenPayload, PlatformRole } from "../../auth/infrastructure/jwt.js"
 import { structureAnchorGroupRef, structureAnchorPersonId } from "../../workflows/domain/structure-anchor-schema.js"
 import { analyticsSubjectId, buildAnalyticsSubject, type AnalyticsSubject } from "../domain/analytics-subject.js"
@@ -35,6 +36,14 @@ export type ViewerScope = {
   nodes: Map<string, PersonNode>
   /** Filhos diretos por id de gestor — inclui os do próprio viewer. */
   children: Map<string, PersonNode[]>
+  /**
+   * Universo de atuação: quais COLABORADORES (operadores) entram nos dados. O universo do cadastro do viewer, ou todos onde a conta tem
+   * `operating_universes.all` (no escopo dela). A navegação da estrutura (líderes) não muda; o que muda é quem conta nos números,
+   * na ficha, na Equipe e nas ferramentas da liderança. Ausente = sem filtro (dublês antigos de teste).
+   */
+  universe?: PersonUniverseRule
+  /** Ids da subárvore operacional do viewer (para a permissão de todos os universos com escopo "Minha estrutura"). */
+  structureIds?: ReadonlySet<string>
 }
 
 export function accessDenied(): DomainError {
@@ -42,7 +51,11 @@ export function accessDenied(): DomainError {
 }
 
 export async function loadViewerScope(repository: AnalyticsReadRepository, user: AuthTokenPayload, permission: ScopePermission = "indicators.view"): Promise<ViewerScope> {
-  const [viewer, access] = await Promise.all([repository.loadPerson(user.organizationId, user.personId), repository.loadAccessVisibility(user.organizationId, user.sub, permission)])
+  const [viewer, access, universe] = await Promise.all([
+    repository.loadPerson(user.organizationId, user.personId),
+    repository.loadAccessVisibility(user.organizationId, user.sub, permission),
+    repository.loadUniverseRule ? repository.loadUniverseRule(user.organizationId, user.sub, user.personId) : Promise.resolve(undefined),
+  ])
   if (!viewer) throw new DomainError("Colaborador não encontrado.", "PERSON_NOT_FOUND", 404)
   const [structure, granted] = await Promise.all([repository.loadDescendants(user.organizationId, viewer.id), repository.loadPeopleInVisibility(user.organizationId, access)])
   const nodes = new Map([...structure, ...granted].filter((node) => node.id !== viewer.id).map((node) => [node.id, node]))
@@ -53,7 +66,7 @@ export async function loadViewerScope(repository: AnalyticsReadRepository, user:
     siblings.push(node)
     children.set(node.reportsToId, siblings)
   }
-  return { viewer, role: user.role, organizationId: user.organizationId, accountId: user.sub, access, nodes, children }
+  return { viewer, role: user.role, organizationId: user.organizationId, accountId: user.sub, access, nodes, children, ...(universe ? { universe } : {}), structureIds: new Set(structure.map((node) => node.id)) }
 }
 
 /** O escopo de ACESSO (não o operacional) alcança esta pessoa? Grupo cobre os Subgrupos dele. */
@@ -70,6 +83,17 @@ function isActiveOperator(node: PersonNode): boolean {
   return node.active && node.role === "OPERATOR"
 }
 
+/** O universo de atuação permite contar esta pessoa nos dados do viewer? (O próprio viewer sempre.) */
+export function universeAllowsPerson(scope: Pick<ViewerScope, "universe" | "structureIds" | "viewer">, node: PersonNode): boolean {
+  if (!scope.universe || node.id === scope.viewer.id) return true
+  return personAllowedByUniverse(scope.universe, { id: node.id, teamId: node.teamId, subteamId: node.subteamId, operatingUniverse: node.operatingUniverse ?? null }, scope.structureIds?.has(node.id) ?? false)
+}
+
+/** Operador ativo que o universo do viewer alcança — a unidade de todos os números, listas e fichas desta área. */
+function isMember(scope: ViewerScope, node: PersonNode): boolean {
+  return isActiveOperator(node) && universeAllowsPerson(scope, node)
+}
+
 /** Operadores ativos abaixo de uma pessoa, em qualquer profundidade (em memória, sobre a subárvore já carregada). */
 export function operatorsBelow(scope: ViewerScope, anchorId: string): PersonNode[] {
   const result: PersonNode[] = []
@@ -79,7 +103,7 @@ export function operatorsBelow(scope: ViewerScope, anchorId: string): PersonNode
     const node = stack.pop()!
     if (visited.has(node.id)) continue
     visited.add(node.id)
-    if (isActiveOperator(node)) result.push(node)
+    if (isMember(scope, node)) result.push(node)
     stack.push(...(scope.children.get(node.id) ?? []))
   }
   return result.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
@@ -87,12 +111,12 @@ export function operatorsBelow(scope: ViewerScope, anchorId: string): PersonNode
 
 /** Todos os operadores ativos visíveis ao viewer (subárvore ∪ escopo de acesso), sem âncora. */
 export function visibleOperators(scope: ViewerScope): PersonNode[] {
-  return [...scope.nodes.values()].filter(isActiveOperator)
+  return [...scope.nodes.values()].filter((node) => isMember(scope, node))
 }
 
 /** Equipe direta de um Supervisor — mesma definição do Workflow Engine (`resolveDirectReportOperatorIds`). */
 export function directOperatorsOf(scope: ViewerScope, supervisorId: string): PersonNode[] {
-  return (scope.children.get(supervisorId) ?? []).filter(isActiveOperator).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
+  return (scope.children.get(supervisorId) ?? []).filter((node) => isMember(scope, node)).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
 }
 
 function personInScope(scope: ViewerScope, personId: string): PersonNode | null {
@@ -156,7 +180,7 @@ export function canViewManagementMetrics(scope: Pick<ViewerScope, "role" | "acce
 export function canOpenEmployeeProfile(scope: ViewerScope, personId: string): boolean {
   if (personId === scope.viewer.id) return false
   const person = scope.nodes.get(personId)
-  return person !== undefined && isActiveOperator(person)
+  return person !== undefined && isMember(scope, person)
 }
 
 /** Subordinados DIRETOS ativos (qualquer cargo) de alguém da subárvore — o que a navegação
@@ -188,7 +212,7 @@ export type ResolvedSubject = {
 export function resolveSubject(scope: ViewerScope, subject: AnalyticsSubject): ResolvedSubject {
   if (subject.kind === "EMPLOYEE") {
     const person = personInScope(scope, subject.employeeId)
-    if (!person || (person.id !== scope.viewer.id && !isActiveOperator(person))) throw accessDenied()
+    if (!person || (person.id !== scope.viewer.id && !isMember(scope, person))) throw accessDenied()
     return { descriptor: describeSubject(scope, subject), members: [person], anchor: person }
   }
 

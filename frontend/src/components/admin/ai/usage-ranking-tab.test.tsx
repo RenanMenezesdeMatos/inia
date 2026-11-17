@@ -22,7 +22,7 @@ vi.mock("@/services/admin/ai-usage-ranking-service", () => ranking)
 const ai = vi.hoisted(() => ({ fetchAiPermissions: vi.fn(), fetchAiOverview: vi.fn(), fetchAiProviders: vi.fn(), fetchAiModels: vi.fn(), fetchAiUseCases: vi.fn() }))
 vi.mock("@/services/admin/ai-management-service", () => ai)
 
-const METRICS = { requests: 0, attempts: 0, errors: 0, tokens: null, tokensReported: 0, unknownCostCalls: 0, costByCurrency: {}, people: 0, share: null }
+const METRICS = { requests: 0, attempts: 0, errors: 0, tokens: null, tokensReported: 0, unknownCostCalls: 0, reportedCostCalls: 0, estimatedCostCalls: 0, costByCurrency: {}, people: 0, share: null }
 const CONTEXT: AiUsageRankingContext = {
   levels: [],
   scope: { organizationWide: true, labels: ["Organização inteira"] },
@@ -36,7 +36,7 @@ function rankingPage(overrides: Partial<AiUsageRanking> = {}): AiUsageRanking {
     period: { from: "2026-09-16T03:00:00.000Z", to: "2026-10-15T15:00:00.000Z", label: "Últimos 30 dias", timezone: "America/Sao_Paulo" },
     scope: { organizationWide: true, unlinkedWithoutPersonVisible: true },
     items: [
-      { ...METRICS, position: 1, key: "sup-1", name: "Supervisor Um", jobTitle: "Supervisor de atendimento", teamName: "Norte", active: true, requests: 5, attempts: 6, errors: 1, tokens: 390, tokensReported: 5, people: 3, share: 41.7, costByCurrency: { USD: "0.039" }, requestsBySource: { WORKFLOW: 0, REQUEST: 5 } },
+      { ...METRICS, position: 1, key: "sup-1", name: "Supervisor Um", jobTitle: "Supervisor de atendimento", teamName: "Norte", active: true, requests: 5, attempts: 6, errors: 1, tokens: 390, tokensReported: 5, people: 3, share: 41.7, reportedCostCalls: 3, estimatedCostCalls: 1, unknownCostCalls: 1, costByCurrency: { USD: "0.039" }, requestsBySource: { WORKFLOW: 0, REQUEST: 5 } },
       { ...METRICS, position: 2, key: "sup-2", name: "Supervisor Dois", jobTitle: null, teamName: "Norte", active: false, requests: 2, attempts: 2, tokens: 400, tokensReported: 2, people: 1, share: 16.7, costByCurrency: { BRL: "0.04" }, requestsBySource: { WORKFLOW: 2, REQUEST: 0 } },
     ],
     total: 3,
@@ -51,6 +51,7 @@ function rankingPage(overrides: Partial<AiUsageRanking> = {}): AiUsageRanking {
 beforeAll(installJsdomStubs)
 beforeEach(() => {
   navigation.search = ""
+  navigation.replace.mockReset()
   ranking.fetchAiUsageRankingContext.mockResolvedValue(CONTEXT)
   ranking.fetchAiUsageRanking.mockResolvedValue(rankingPage())
   ai.fetchAiProviders.mockResolvedValue([])
@@ -69,7 +70,7 @@ describe("IA / Modelos — Quem mais usa", () => {
     await screen.findByTestId("ranking-row-1")
     expect(ranking.fetchAiUsageRanking.mock.calls[0]?.[0]).toEqual({ level: "DIRECTOR", sort: "REQUESTS", period: "30D", page: 1, pageSize: 20 })
     const selector = screen.getByLabelText("Visão do ranking")
-    expect(within(selector).getAllByRole("radio").map((item) => item.textContent)).toEqual(["Diretoria", "Gerência Sênior", "Gerência", "Grupo", "Subgrupo", "Supervisor"])
+    expect(within(selector).getAllByRole("radio").map((item) => item.textContent)).toEqual(["Diretoria", "Gerência Sênior", "Gerência", "Grupo", "Subgrupo", "Supervisor", "Usuário"])
     expect(within(selector).getByRole("radio", { name: "Diretoria que mais usa" })).toHaveAttribute("data-state", "on")
   })
 
@@ -91,6 +92,8 @@ describe("IA / Modelos — Quem mais usa", () => {
     expect(first).toHaveTextContent("41,7%")
     expect(first).toHaveTextContent("US$")
     expect(first).toHaveTextContent("Pedidos 5")
+    // Origem do custo: o informado pelo provedor separado do estimado pela tabela e do desconhecido.
+    expect(first).toHaveTextContent("3 informado(s) pelo provedor · 1 estimado(s) · 1 sem custo conhecido")
     expect(screen.getByTestId("ranking-row-2")).toHaveTextContent("Inativo")
     expect(screen.getByTestId("ranking-row-2")).toHaveTextContent("R$")
     const unlinked = screen.getByTestId("ranking-row-unlinked")
@@ -126,6 +129,59 @@ describe("IA / Modelos — Quem mais usa", () => {
     await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ subteamId: "sub-n1" })))
     expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]).not.toHaveProperty("teamId")
     expect(await screen.findByText("Nenhum uso de IA para os filtros escolhidos")).toBeInTheDocument()
+  })
+
+  it("nível Usuário: uma linha por pessoa — coluna 'Usuário', sem a coluna 'Pessoas' (sempre 1), sem 'Ver usuários' e sem ordenar por pessoas", async () => {
+    navigation.search = "level=PERSON&sort=PEOPLE"
+    const people = rankingPage({
+      level: "PERSON",
+      levelLabel: "Usuário",
+      items: [{ ...METRICS, position: 1, key: "op-a", name: "Operador A", jobTitle: "Operador", teamName: "Norte", active: true, requests: 3, attempts: 3, tokens: 300, tokensReported: 3, people: 1, share: 25, costByCurrency: { USD: "0.03" }, requestsBySource: { WORKFLOW: 0, REQUEST: 3 } }],
+      total: 41,
+      unlinked: { ...METRICS, requests: 3, attempts: 3, share: 25, reasons: [{ reason: "NO_PERSON", requests: 2, tokens: 10, costByCurrency: {} }, { reason: "WORKFLOW_WITHOUT_PERSON", requests: 1, tokens: 7, costByCurrency: {} }] },
+    })
+    ranking.fetchAiUsageRanking.mockResolvedValue(people)
+    renderWithQuery(<UsageRankingTab />)
+    const first = await screen.findByTestId("ranking-row-1")
+    // Ordenar por pessoas não existe neste nível: o pedido sai por chamadas.
+    expect(ranking.fetchAiUsageRanking.mock.calls[0]?.[0]).toMatchObject({ level: "PERSON", sort: "REQUESTS" })
+    expect(screen.getByRole("columnheader", { name: "Usuário" })).toBeInTheDocument()
+    expect(screen.queryByRole("columnheader", { name: "Pessoas" })).not.toBeInTheDocument()
+    expect(first).toHaveTextContent("Operador A")
+    expect(first).toHaveTextContent("Operador · Norte")
+    expect(within(first).queryByRole("button", { name: /Ver usuários/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId("ranking-row-unlinked")).toHaveTextContent("Sem pessoa identificada: 2")
+    expect(screen.getByText(/1–20 de 41 usuários/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("combobox", { name: "Ordenar por" }))
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(["Mais chamadas", "Mais tokens"])
+  })
+
+  it("'Ver usuários' num Supervisor: troca para Usuário com a estrutura dele (só o id vai ao backend) e o filtro pode ser removido", async () => {
+    navigation.search = "level=SUPERVISOR"
+    navigation.replace.mockImplementation((url: string) => {
+      navigation.search = url.split("?")[1] ?? ""
+    })
+    renderWithQuery(<UsageRankingTab />)
+    const first = await screen.findByTestId("ranking-row-1")
+    fireEvent.click(within(first).getByRole("button", { name: "Ver usuários de Supervisor Um" }))
+    expect(navigation.replace).toHaveBeenLastCalledWith("/admin/ai?level=PERSON", { scroll: false })
+    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ level: "PERSON", leaderId: "sup-1", page: 1 })))
+    expect(JSON.stringify(ranking.fetchAiUsageRanking.mock.lastCall?.[0])).not.toContain("Supervisor Um")
+    fireEvent.click(await screen.findByRole("button", { name: "Remover filtro: estrutura de Supervisor Um" }))
+    await waitFor(() => expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]).not.toHaveProperty("leaderId"))
+    expect(screen.queryByText("Estrutura de Supervisor Um")).not.toBeInTheDocument()
+  })
+
+  it("'Ver usuários' num Subgrupo usa o filtro de grupo de sempre (id opaco), sem filtro de líder", async () => {
+    navigation.search = "level=SUBTEAM"
+    navigation.replace.mockImplementation((url: string) => {
+      navigation.search = url.split("?")[1] ?? ""
+    })
+    ranking.fetchAiUsageRanking.mockResolvedValue(rankingPage({ level: "SUBTEAM", levelLabel: "Subgrupo", items: [{ ...rankingPage().items[0]!, key: "sub-n1", name: "N1", jobTitle: null }] }))
+    renderWithQuery(<UsageRankingTab />)
+    fireEvent.click(within(await screen.findByTestId("ranking-row-1")).getByRole("button", { name: "Ver usuários de N1" }))
+    await waitFor(() => expect(ranking.fetchAiUsageRanking).toHaveBeenLastCalledWith(expect.objectContaining({ level: "PERSON", subteamId: "sub-n1" })))
+    expect(ranking.fetchAiUsageRanking.mock.lastCall?.[0]).not.toHaveProperty("leaderId")
   })
 
   it("a aba só existe com a permissão explícita do ranking (calculada no backend)", async () => {

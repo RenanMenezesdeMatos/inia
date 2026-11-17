@@ -40,7 +40,7 @@ function triggerJsonSql(column: string, flag: string, indicator: string): string
 export const WORKFLOW_LIST_SELECT = `
   select
     w.id, w.name, w.description, w.scope_type "scopeType", w.team_id "teamId", t.name "teamName",
-    w.subteam_id "subteamId", st.name "subteamName", w.active, w.created_at "createdAt",
+    w.subteam_id "subteamId", st.name "subteamName", w.active, w.created_at "createdAt", w.operating_universe "operatingUniverse",
     (w.active_version_id is not null) "published",
     w.consolidated_structure "consolidatedStructure", w.population_filter "populationFilter",
     ${triggerJsonSql("w.trigger_config", "cf", "idef")} "trigger",
@@ -52,12 +52,13 @@ export const WORKFLOW_LIST_SELECT = `
       'trigger', ${triggerJsonSql("w.draft_trigger_config", "dcf", "didef")},
       'scopeType', w.draft_scope_type, 'teamId', w.draft_team_id, 'teamName', dt.name,
       'subteamId', w.draft_subteam_id, 'subteamName', dst.name,
-      'consolidatedStructure', w.draft_consolidated_structure, 'populationFilter', w.draft_population_filter
+      'consolidatedStructure', w.draft_consolidated_structure, 'populationFilter', w.draft_population_filter,
+      'operatingUniverse', w.draft_operating_universe
     ) "draftConfiguration",
     (select coalesce(jsonb_agg(c.change order by c.ord), '[]'::jsonb)
        from (values
          (1, 'TRIGGER', w.draft_trigger_config is distinct from w.trigger_config),
-         (2, 'SCOPE', (w.draft_scope_type, w.draft_team_id, w.draft_subteam_id) is distinct from (w.scope_type, w.team_id, w.subteam_id)),
+         (2, 'SCOPE', (w.draft_scope_type, w.draft_team_id, w.draft_subteam_id, w.draft_operating_universe) is distinct from (w.scope_type, w.team_id, w.subteam_id, w.operating_universe)),
          (3, 'ANALYSIS', (w.draft_consolidated_structure, w.draft_population_filter) is distinct from (w.consolidated_structure, w.population_filter))
        ) as c(ord, change, differs)
       where c.differs and w.active_version_id is not null) "configurationChanges"

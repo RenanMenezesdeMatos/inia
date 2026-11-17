@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { canReceiveAssignment, effectiveCapacity, inService, isConnected, notEligibleReason, presenceChange, scheduledFromRow, scheduledToApply, type AnjoSituation, type PresenceCurrent } from "./presence.js"
+import { canReceiveAssignment, effectiveCapacity, inService, isConnected, notEligibleReason, presenceChange, scheduledFromRow, scheduledToApply, unresponsiveView, type AnjoSituation, type PresenceCurrent } from "./presence.js"
 
 const ready = { connected: true, hasEnabledScope: true, activeAttendances: 0 }
 const busy = { ...ready, activeAttendances: 2 }
@@ -80,5 +80,17 @@ describe("presença do Anjo", () => {
     expect(notEligibleReason(anjo({ activeAttendances: 2 }))).toBe("NO_CAPACITY")
     expect(notEligibleReason(anjo())).toBeNull()
     expect([effectiveCapacity(null, 2), effectiveCapacity(3, 2)]).toEqual([2, 3])
+  })
+})
+
+describe("Anjo sem responder ninguém (195)", () => {
+  const at = new Date("2026-11-16T15:00:00.000Z")
+  it("em pausa Desconexão: desde quando e até quando, antes de virar Indisponível", () => {
+    expect(unresponsiveView({ status: "PAUSED", pauseReason: "DISCONNECTION", statusSince: at, lastStatusCause: "UNRESPONSIVE", lastStatusAt: at }, 10)).toEqual({ kind: "PAUSED", since: at.toISOString(), offlineAt: "2026-11-16T15:10:00.000Z" })
+  })
+  it("Indisponível só pela pausa vencida; outra pausa ou outro motivo de Indisponível não", () => {
+    expect(unresponsiveView({ status: "OFFLINE", pauseReason: null, statusSince: at, lastStatusCause: "UNRESPONSIVE_TIMEOUT", lastStatusAt: at }, 10)).toEqual({ kind: "OFFLINE", since: at.toISOString(), offlineAt: null })
+    expect(unresponsiveView({ status: "OFFLINE", pauseReason: null, statusSince: at, lastStatusCause: "ANJO", lastStatusAt: at }, 10)).toBeNull()
+    expect(unresponsiveView({ status: "PAUSED", pauseReason: "LUNCH", statusSince: at, lastStatusCause: "ANJO", lastStatusAt: at }, 10)).toBeNull()
   })
 })

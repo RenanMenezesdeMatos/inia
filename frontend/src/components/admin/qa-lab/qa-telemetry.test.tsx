@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
 
 import { QaRunCard, QaRunsTable } from "./qa-history"
-import { deltaOf, telemetryCells, tokensSavedText } from "./qa-telemetry"
+import { deltaOf, formatCost, telemetryCells, tokensSavedText } from "./qa-telemetry"
 import { RunResult } from "./run-result"
 import type { QaRun, QaRunSummary, QaRunTelemetry } from "@/schemas/admin/qa-lab.schema"
 
@@ -176,6 +176,12 @@ describe("QA Lab — telemetria de eficiência", () => {
 })
 
 describe("QA Lab — telemetria V1.3: cache, custo, qualidade (fail-closed) e cobertura (dois universos)", () => {
+  it("custo informado pelo provedor aparece como tal (sem quebra por token); soma com estimativa avisa", () => {
+    expect(formatCost({ status: "PROVIDER_REPORTED_COST", currency: "USD", totalCost: 0.0003465 })).toBe("USD 0,000347 (informado pelo provedor)")
+    expect(formatCost({ status: "PROVIDER_REPORTED_COST", currency: "USD", totalCost: 0.0024, includesEstimate: true })).toBe("USD 0,0024 (informado pelo provedor + estimado)")
+    expect(formatCost({ status: "NOT_CONFIGURED" })).toBe("Preço não configurado")
+  })
+
   const v13: QaRunTelemetry = {
     ...telemetry,
     tokens: { input: 23_000, cached: 9_000, uncached: 14_000, output: 2_100, reasoning: null, total: 25_100 },

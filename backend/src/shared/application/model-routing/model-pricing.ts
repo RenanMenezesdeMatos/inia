@@ -22,9 +22,23 @@ export type ModelPricing = {
   currency: string
 }
 
+/**
+ * Custo de uma request para telemetria e medidores (QA Lab, motor de feedback, boas práticas):
+ *  - ESTIMATED_PROVIDER_COST = uso × tarifa configurada (com a quebra por tipo de token);
+ *  - PROVIDER_REPORTED_COST = custo que o PRÓPRIO provider informou para a chamada (sem quebra por token). Numa soma com
+ *    estimativas (`addCost`), `includesEstimate` diz que parte do total é estimada;
+ *  - NOT_CONFIGURED = nenhum dos dois.
+ */
 export type CostEstimate =
   | { status: "NOT_CONFIGURED" }
   | { status: "ESTIMATED_PROVIDER_COST"; currency: string; inputCost: number; cachedInputCost: number; outputCost: number; reasoningCost: number; totalEstimatedCost: number }
+  | { status: "PROVIDER_REPORTED_COST"; currency: string; totalCost: number; includesEstimate?: boolean }
+
+/** Total de um custo (informado ou estimado); null quando não há custo conhecido. */
+export function costTotal(cost: CostEstimate | null | undefined): number | null {
+  if (!cost || cost.status === "NOT_CONFIGURED") return null
+  return cost.status === "PROVIDER_REPORTED_COST" ? cost.totalCost : cost.totalEstimatedCost
+}
 
 let cached: ModelPricing[] | null = null
 
@@ -91,6 +105,11 @@ export function estimateCost(usage: LlmUsage, pricing: ModelPricing | null): Cos
 export function addCost(acc: CostEstimate, cost: CostEstimate): CostEstimate {
   if (cost.status === "NOT_CONFIGURED") return acc
   if (acc.status === "NOT_CONFIGURED") return cost
+  if (acc.status === "PROVIDER_REPORTED_COST" || cost.status === "PROVIDER_REPORTED_COST") {
+    // Sem quebra por token no informado: a soma fica só no total, marcando quando parte dele é estimativa.
+    const includesEstimate = [acc, cost].some((item) => item.status === "ESTIMATED_PROVIDER_COST" || (item.status === "PROVIDER_REPORTED_COST" && item.includesEstimate === true))
+    return { status: "PROVIDER_REPORTED_COST", currency: acc.currency, totalCost: round6(costTotal(acc)! + costTotal(cost)!), ...(includesEstimate ? { includesEstimate: true } : {}) }
+  }
   return {
     status: "ESTIMATED_PROVIDER_COST",
     currency: acc.currency,

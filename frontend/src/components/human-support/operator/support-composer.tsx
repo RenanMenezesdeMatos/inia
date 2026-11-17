@@ -57,7 +57,7 @@ export function SupportComposer({ placeholder, hint, disabled, onSend, onInput }
             }
           }}
         />
-        <Button type="submit" size="icon" className="size-11 shrink-0 rounded-full" aria-label="Enviar mensagem para o Anjo" disabled={!body || sending || disabled}>
+        <Button type="submit" size="icon" className="size-11 shrink-0 rounded-full" aria-label="Enviar mensagem para o Apoio" disabled={!body || sending || disabled}>
           <SendHorizontal />
         </Button>
       </div>

@@ -210,6 +210,7 @@ export class InMemoryAnalyticsRepository implements AnalyticsReadRepository {
           : query.includeViewerAlerts && !query.unacknowledgedOnly,
       )
       .filter((item) => before === null || key(atOf(item), item.id) < before)
+      .filter((item) => (!query.since || Date.parse(item.createdAt) >= Date.parse(query.since)) && (!query.until || Date.parse(item.createdAt) < Date.parse(query.until)))
       .sort((a, b) => key(atOf(b), b.id).localeCompare(key(atOf(a), a.id)))
     const page = items.slice(0, query.limit)
     const last = page.at(-1)

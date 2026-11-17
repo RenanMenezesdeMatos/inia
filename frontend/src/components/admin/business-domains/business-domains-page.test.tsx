@@ -78,8 +78,11 @@ describe("Domínios de negócio — catálogo administrável", () => {
     fireEvent.change(screen.getByLabelText("Código *"), { target: { value: "logística" } })
     expect(screen.getByLabelText("Código *")).toHaveValue("LOGISTICA")
     fireEvent.change(screen.getByLabelText("Descrição"), { target: { value: "Processos relacionados a logística, rastreamento e entrega." } })
+    expect(screen.getByRole("button", { name: "Salvar domínio" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("combobox", { name: "Universo de atuação *" }))
+    fireEvent.click(await screen.findByRole("option", { name: /^B2C/ }))
     fireEvent.click(screen.getByRole("button", { name: "Salvar domínio" }))
-    await waitFor(() => expect(service.createBusinessDomain.mock.calls[0]?.[0]).toEqual({ name: "Logística e Entregas", code: "LOGISTICA", description: "Processos relacionados a logística, rastreamento e entrega.", active: true }))
+    await waitFor(() => expect(service.createBusinessDomain.mock.calls[0]?.[0]).toEqual({ name: "Logística e Entregas", code: "LOGISTICA", description: "Processos relacionados a logística, rastreamento e entrega.", active: true, operatingUniverse: "B2C" }))
   })
 
   it("Editar: código travado quando há dependências, 'Utilizado por' lista Agents e Orchestrators, excluir fica bloqueado", async () => {

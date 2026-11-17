@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, type ReactNode } from "react"
-import { CalendarClock, CircleCheck, CircleMinus, CirclePause, Clock, HeartHandshake, Hourglass, KeyRound, MessagesSquare, RefreshCw, UserCheck, UserX, WifiOff, type LucideIcon } from "lucide-react"
+import { CalendarClock, CircleCheck, CircleMinus, CirclePause, Clock, HeartHandshake, Hourglass, KeyRound, MessagesSquare, RefreshCw, Unplug, UserCheck, UserRoundX, UserX, WifiOff, type LucideIcon } from "lucide-react"
 
 import { AnalyticsEmptyState } from "@/components/analytics/analytics-states"
 import { ListNoResultsState } from "@/components/admin/shared/list/list-states"
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { StatusChip, SURFACE_CARD, toneChip, type Tone } from "@/components/ui/surface"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { GridSection } from "@/components/ui/customizable-grid/layout"
+import { formatClockTime } from "@/lib/format/date"
 import { cn } from "@/lib/utils"
 import { PersonAvatar } from "@/components/profile/person-avatar"
 import { ANJOS_NOW_REFRESH_MS, useAnjosNowQuery, useQueueWaitingQuery } from "@/queries/human-support/use-human-support-admin"
@@ -109,7 +110,7 @@ export function useOperationNowSection(filter: { teamId?: string | null; subteam
   const scheduled = items.filter((item) => item.active && item.scheduled).length
   const pausesByReason = PAUSE_REASONS.map((reason) => ({ reason, count: items.filter((item) => item.active && item.status === "PAUSED" && item.pauseReason === reason).length })).filter((entry) => entry.count > 0)
   const inactive = items.filter((item) => !item.active).length
-  const queue = query.data?.queue ?? { waiting: 0, oldestWaitingSince: null, awaitingFirstResponse: 0, oldestAwaitingSince: null }
+  const queue = query.data?.queue ?? { waiting: 0, oldestWaitingSince: null, awaitingFirstResponse: 0, oldestAwaitingSince: null, awaitingOperator: 0 }
 
   return {
     id: "operacao-agora",
@@ -122,8 +123,9 @@ export function useOperationNowSection(filter: { teamId?: string | null; subteam
       </p>
     ),
     cards: [
-      { id: "fila", title: "Operadores aguardando", defaultWidth: 6, render: () => <NowState query={query}>{() => <QueueWaitingCard queue={queue} offsetMs={offset} />}</NowState> },
-      { id: "sem-resposta", title: "Aguardando a 1ª resposta", defaultWidth: 6, render: () => <NowState query={query}>{() => <QueueAwaitingCard queue={queue} offsetMs={offset} />}</NowState> },
+      { id: "fila", title: "Operadores aguardando", defaultWidth: 4, render: () => <NowState query={query}>{() => <QueueWaitingCard queue={queue} offsetMs={offset} />}</NowState> },
+      { id: "sem-resposta", title: "Aguardando a 1ª resposta", defaultWidth: 4, render: () => <NowState query={query}>{() => <QueueAwaitingCard queue={queue} offsetMs={offset} />}</NowState> },
+      { id: "aguardando-operador", title: "Aguardando o operador", defaultWidth: 4, render: () => <NowState query={query}>{() => <AwaitingOperatorCard queue={queue} />}</NowState> },
       { id: "operadores-na-fila", title: "Operadores na fila", defaultWidth: 12, widths: [6, 8, 9, 12], render: () => <QueueTableCard filter={scope} offsetMs={offset} /> },
       {
         id: "estados",
@@ -255,6 +257,14 @@ function AnjoNowRow({ item, offsetMs }: { item: AnjoNowItem; offsetMs: number })
             <StatusChip tone="danger" icon={WifiOff}>Sem conexão{item.connectionLostSince ? <> · <LiveTimer since={item.connectionLostSince} offsetMs={offsetMs} /></> : null}</StatusChip>
           ) : null}
           {item.scheduled ? <StatusChip tone="warning" icon={CalendarClock}>{scheduledText(item.scheduled)}</StatusChip> : null}
+          {item.unresponsive ? (
+            // Migration 195: o motivo de o sistema ter tirado o Anjo de serviço.
+            <StatusChip tone="danger" icon={Unplug} data-testid="anjo-now-unresponsive">
+              {item.unresponsive.kind === "PAUSED"
+                ? `Sem responder ninguém${item.unresponsive.offlineAt ? ` · Indisponível às ${formatClockTime(item.unresponsive.offlineAt)}` : ""}`
+                : `Indisponível pelo sistema: não respondia ninguém (${formatClockTime(item.unresponsive.since)})`}
+            </StatusChip>
+          ) : null}
         </div>
       </TableCell>
       <TableCell className="tabular-nums" data-testid="anjo-now-since">
@@ -291,6 +301,23 @@ function QueueWaitingCard({ queue, offsetMs }: { queue: QueueNow; offsetMs: numb
             "Ninguém aguardando agora"
           )}
         </span>
+      </span>
+    </div>
+  )
+}
+
+/** Card dos pedidos cujo operador ficou sem responder: o Anjo foi liberado e o pedido aguarda o retorno dele (migration 193). */
+function AwaitingOperatorCard({ queue }: { queue: QueueNow }) {
+  return (
+    <div className="flex h-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-xs" data-testid="queue-awaiting-operator">
+      <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset", toneChip(queue.awaitingOperator > 0 ? "warning" : "neutral"))}>
+        <UserRoundX className="size-4" aria-hidden />
+      </span>
+      <span className="leading-tight">
+        <span className="block text-sm font-medium">
+          {queue.awaitingOperator === 0 ? "Nenhum aguardando o operador" : `${queue.awaitingOperator} ${queue.awaitingOperator === 1 ? "pedido aguarda" : "pedidos aguardam"} o operador`}
+        </span>
+        <span className="text-xs text-muted-foreground">O operador ficou sem responder; o Anjo já foi liberado.</span>
       </span>
     </div>
   )

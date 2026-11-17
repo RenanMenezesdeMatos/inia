@@ -28,6 +28,7 @@ import {
   type AgentVersionDetail,
 } from "@/schemas/admin/agent.schema"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export async function fetchAgents(): Promise<Agent[]> {
   return z.array(agentSchema).parse(await adminGet("/api/v1/admin/agents"))
@@ -160,8 +161,9 @@ function agentPayload(input: CreateAgentInput) {
   }
 }
 
-export async function createAgent(input: CreateAgentInput): Promise<Agent> {
-  return agentSchema.parse(await adminSend("/api/v1/admin/agents", "POST", agentPayload(input)))
+/** Criação: o universo de atuação vai só aqui (no agente existente, muda pela classificação do universo). */
+export async function createAgent(input: CreateAgentInput & { operatingUniverse?: OperatingUniverse }): Promise<Agent> {
+  return agentSchema.parse(await adminSend("/api/v1/admin/agents", "POST", { ...agentPayload(input), ...(input.operatingUniverse ? { operatingUniverse: input.operatingUniverse } : {}) }))
 }
 
 export async function updateAgentActive(id: string, active: boolean): Promise<Agent> {

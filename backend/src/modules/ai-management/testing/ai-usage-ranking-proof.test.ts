@@ -181,6 +181,54 @@ describe.skipIf(!ENABLED)("ranking 'Quem mais usa' a IA — prova contra o banco
     expect(summary(await rank("admin", { level: "SUPERVISOR", sort: "PEOPLE" })).map((row) => row[1])).toEqual(["Supervisor Um", "Supervisor Dois", "Supervisora Três"])
   })
 
+  it("Usuário: uma linha por pessoa (a quem o uso foi atribuído), mesmas métricas; Workflow conta para o colaborador, nunca para quem disparou", async () => {
+    const data = await rank("admin", { level: "PERSON" })
+    // Chamadas, depois tokens; D e E empatam em tudo (1 chamada, 10 tokens) e o desempate é o id — estável, não alfabético.
+    expect(summary(data).slice(0, 4)).toEqual([[1, "Operador A", 3], [2, "Operador C", 2], [3, "Operador B", 1], [4, "Supervisor Um", 1]])
+    expect(summary(data).slice(4).map((row) => row[1]).sort()).toEqual(["Operador D", "Operador Órfão E"])
+    const byName = Object.fromEntries(data.items.map((item) => [item.name, item]))
+    expect(byName["Operador A"]).toMatchObject({ attempts: 3, tokens: 300, people: 1, share: 25, costByCurrency: { USD: "0.03" }, requestsBySource: { WORKFLOW: 0, REQUEST: 3 } })
+    expect(byName["Operador B"]).toMatchObject({ attempts: 2, errors: 1, tokens: 50, costByCurrency: { USD: "0.005" } })
+    expect(byName["Operador C"]).toMatchObject({ tokens: 400, costByCurrency: { BRL: "0.04" }, requestsBySource: { WORKFLOW: 2, REQUEST: 0 } })
+    expect(byName["Operador D"]).toMatchObject({ unknownCostCalls: 1, costByCurrency: {} })
+    // O admin que disparou a execução do C não ganha linha; quem está fora de qualquer líder (E) também é uma pessoa.
+    expect(data.items.map((item) => item.key)).not.toContain(ids.p_admin)
+    expect(data.total).toBe(6)
+    // Uso sem pessoa continua no "Sem vínculo" (organização inteira); "fora do nível" não existe para pessoa.
+    expect(reasons(data)).toEqual({ NO_PERSON: 2, WORKFLOW_WITHOUT_PERSON: 1 })
+    expect(data.unlinked).toMatchObject({ requests: 3, people: 0 })
+    expect(data.totals).toMatchObject({ requests: 12, people: 6 })
+    expect(data.scope).toEqual({ organizationWide: true, unlinkedWithoutPersonVisible: true })
+  })
+
+  it("Usuário: paginação por posição (desempate estável), Sem vínculo em toda página, ordenação por tokens", async () => {
+    const all = (await rank("admin", { level: "PERSON" })).items.map((item) => item.key)
+    const pages = await Promise.all([1, 2, 3].map((page) => rank("admin", { level: "PERSON", pageSize: 2, page })))
+    expect(pages.flatMap((page) => page.items.map((item) => item.key))).toEqual(all)
+    expect(pages.map((page) => page.items.map((item) => item.position))).toEqual([[1, 2], [3, 4], [5, 6]])
+    for (const page of pages) expect(page).toMatchObject({ total: 6, pageSize: 2, unlinked: { requests: 3 } })
+    // Nome só das linhas da página — e cada uma tem o seu.
+    expect(pages.every((page) => page.items.every((item) => item.name !== null))).toBe(true)
+    expect((await rank("admin", { level: "PERSON", page: 9 })).items).toEqual([])
+    expect(summary(await rank("admin", { level: "PERSON", sort: "TOKENS", pageSize: 2 })).map((row) => row[1])).toEqual(["Operador C", "Operador A"])
+  })
+
+  it("Usuário a partir de uma linha: estrutura do líder (leaderId), Grupo ou Subgrupo — só estreita e tira o uso sem pessoa", async () => {
+    const underSup1 = await rank("admin", { level: "PERSON", leaderId: ids.sup1 })
+    expect(summary(underSup1)).toEqual([[1, "Operador A", 3], [2, "Operador B", 1], [3, "Supervisor Um", 1]])
+    expect(underSup1.totals.requests).toBe(5)
+    expect(underSup1.unlinked).toMatchObject({ requests: 0, reasons: [] })
+    expect(underSup1.scope.unlinkedWithoutPersonVisible).toBe(false)
+    // Gerência inativa: as pessoas abaixo dela continuam com o uso.
+    expect(summary(await rank("admin", { level: "PERSON", leaderId: ids.ger2 }))).toEqual([[1, "Operador D", 1]])
+    expect(summary(await rank("admin", { level: "PERSON", subteamId: ids.n2 }))).toEqual([[1, "Operador C", 2]])
+    expect((await rank("admin", { level: "PERSON", teamId: ids.sul })).items.map((item) => item.name).sort()).toEqual(["Operador D", "Operador Órfão E"])
+    // O mesmo líder vale nos outros níveis (ex.: Supervisor da Gerência Um).
+    expect(summary(await rank("admin", { level: "SUPERVISOR", leaderId: ids.ger1 }))).toEqual([[1, "Supervisor Um", 5], [2, "Supervisor Dois", 2]])
+    // Líder inexistente ou de outra organização: nada (nunca amplia).
+    expect(await rank("admin", { level: "PERSON", leaderId: randomUUID() })).toMatchObject({ items: [], total: 0, totals: { requests: 0 } })
+  })
+
   it("filtros: origem, provider e Grupo (que tira o uso sem pessoa — não dá para afirmar que é do Grupo)", async () => {
     const workflow = await rank("admin", { level: "SUPERVISOR", source: "WORKFLOW" })
     expect(summary(workflow)).toEqual([[1, "Supervisor Dois", 2]])
@@ -211,6 +259,25 @@ describe.skipIf(!ENABLED)("ranking 'Quem mais usa' a IA — prova contra o banco
     for (const outside of ["Supervisora Três", "Gerente Dois", "Operador D", ids.sup3, ids.ger2]) expect(everything).not.toContain(outside)
   })
 
+  it("escopo no nível Usuário: pessoa fora do escopo nunca aparece — nem nome, nem id, nem número; a estrutura de um líder de fora não amplia", async () => {
+    const norte = await rank("norte", { level: "PERSON" })
+    expect(summary(norte)).toEqual([[1, "Operador A", 3], [2, "Operador C", 2], [3, "Operador B", 1], [4, "Supervisor Um", 1]])
+    expect(norte).toMatchObject({ total: 4, totals: { requests: 7, people: 4 }, unlinked: { requests: 0, reasons: [] } })
+    expect(norte.scope).toEqual({ organizationWide: false, unlinkedWithoutPersonVisible: false })
+    // O "ver usuários" de líderes acima do escopo devolve só quem já era visível; de um ramo fora do escopo, nada.
+    expect(summary(await rank("norte", { level: "PERSON", leaderId: ids.dir })).map((row) => row[1])).toEqual(["Operador A", "Operador C", "Operador B", "Supervisor Um"])
+    const outsideLeader = await rank("norte", { level: "PERSON", leaderId: ids.ger2 })
+    expect(outsideLeader).toMatchObject({ items: [], total: 0, totals: { requests: 0, people: 0 } })
+    const outsideTeam = await rank("norte", { level: "PERSON", teamId: ids.sul })
+    expect(outsideTeam).toMatchObject({ items: [], total: 0 })
+    const pages = await Promise.all([1, 2].map((page) => rank("norte", { level: "PERSON", pageSize: 3, page })))
+    const everything = JSON.stringify([norte, outsideLeader, outsideTeam, ...pages])
+    for (const outside of ["Operador D", "Operador Órfão E", "Supervisora Três", ids.opD, ids.opE, ids.sup3]) expect(everything).not.toContain(outside)
+    const n2 = await rank("n2", { level: "PERSON" })
+    expect(summary(n2)).toEqual([[1, "Operador C", 2]])
+    expect(JSON.stringify(n2)).not.toContain("Operador A")
+  })
+
   it("Subgrupo N2: só o Supervisor Dois; Diretoria com o número do Subgrupo", async () => {
     expect(summary(await rank("n2", { level: "SUPERVISOR" }))).toEqual([[1, "Supervisor Dois", 2]])
     expect(summary(await rank("n2", { level: "DIRECTOR" }))).toEqual([[1, "Diretora Prova", 2]])
@@ -222,7 +289,7 @@ describe.skipIf(!ENABLED)("ranking 'Quem mais usa' a IA — prova contra o banco
     const admin = await context("admin")
     expect(admin.scope).toEqual({ organizationWide: true, labels: ["Organização inteira"] })
     expect(admin.teams.map((team: { name: string; subteams: { name: string }[] }) => [team.name, team.subteams.map((subteam) => subteam.name)])).toEqual([["Norte", ["N1", "N2"]], ["Sul", ["S1"]]])
-    expect(admin.levels.map((level: { label: string }) => level.label)).toEqual(["Diretoria", "Gerência Sênior", "Gerência", "Grupo", "Subgrupo", "Supervisor"])
+    expect(admin.levels.map((level: { label: string }) => level.label)).toEqual(["Diretoria", "Gerência Sênior", "Gerência", "Grupo", "Subgrupo", "Supervisor", "Usuário"])
     const norte = await context("norte")
     expect(norte.scope).toEqual({ organizationWide: false, labels: ["Grupo Norte"] })
     expect(norte.teams.map((team: { name: string; subteams: { name: string }[] }) => [team.name, team.subteams.map((subteam) => subteam.name)])).toEqual([["Norte", ["N1", "N2"]]])
@@ -238,7 +305,7 @@ describe.skipIf(!ENABLED)("ranking 'Quem mais usa' a IA — prova contra o banco
     expect((await agents.access.get("/api/v1/admin/ai/usage/ranking/context")).status).toBe(403)
     expect((await agents.admin.get("/api/v1/admin/ai/me")).body.data.permissions).toContain("AI_USAGE_RANKING_READ")
     expect((await agents.norte.get("/api/v1/admin/ai/me")).body.data.permissions).toEqual(["AI_CONFIG_READ", "AI_USAGE_READ", "AI_USAGE_RANKING_READ"])
-    for (const invalid of [{ level: "COORDINATOR" }, { foo: "1" }, { search: "Operador" }, { pageSize: 101 }, { teamId: "Norte" }, { source: "ADMIN" }]) {
+    for (const invalid of [{ level: "COORDINATOR" }, { foo: "1" }, { search: "Operador" }, { pageSize: 101 }, { teamId: "Norte" }, { source: "ADMIN" }, { leaderId: "Supervisor Um" }, { level: "PERSON", personName: "Operador" }]) {
       const response = await agents.admin.get("/api/v1/admin/ai/usage/ranking").query({ ...RANGE, ...invalid })
       expect(response.status, JSON.stringify(invalid)).toBe(400)
     }

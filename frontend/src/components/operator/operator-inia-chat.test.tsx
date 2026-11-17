@@ -1497,7 +1497,7 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
     fireEvent.click(within(dialog).getByRole("radio", { name: "Sim" }))
     await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "Enviar" })) })
     expect(await within(dialog).findByText("O apoio com Anjo ainda não está disponível para sua equipe.")).toBeInTheDocument()
-    expect(within(dialog).queryByRole("button", { name: "Falar com um Anjo" })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "Falar com o Apoio" })).not.toBeInTheDocument()
   })
 
   it("descurtida gravada volta ao reabrir: o formulário abre preenchido e \"Retirar avaliação\" grava a retirada", async () => {
@@ -1547,9 +1547,9 @@ describe("OperatorIniaChat — descurtida com motivo no chat livre (Apoio com An
 
 describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
   const openRequest = {
-    id: "req-1", protocol: "AP-7K2QX9", status: "IN_PROGRESS" as const, endCause: null, origin: "BUTTON" as const, createdAt: new Date().toISOString(), queuedAt: new Date().toISOString(), queueExpiresAt: null,
+    id: "req-1", protocol: "AP-7K2QX9", status: "IN_PROGRESS" as const, endCause: null, origin: "BUTTON" as const, createdAt: new Date().toISOString(), queuedAt: new Date().toISOString(), queueExpiresAt: null, awaitingReturnUntil: null,
     sharedContext: { question: null, answer: null, dislike: null, note: "Fatura de outubro" }, anjo: { name: "Ana", avatarUrl: null, awaitingFirstResponse: false },
-    messages: [{ id: "m1", seq: 1, authorKind: "SYSTEM" as const, authorName: null, body: "Ana (Anjo) recebeu seu pedido. Aguardando a primeira resposta.", systemCode: "ANJO_ASSIGNED", occurredAt: new Date().toISOString() }, { id: "m2", seq: 2, authorKind: "ANJO" as const, authorName: "Ana", body: "Oi! Como posso ajudar?", systemCode: null, occurredAt: new Date().toISOString() }],
+    messages: [{ id: "m1", seq: 1, authorKind: "SYSTEM" as const, authorName: null, body: "Ana (Apoio) recebeu seu pedido. Aguardando a primeira resposta.", systemCode: "ANJO_ASSIGNED", occurredAt: new Date().toISOString() }, { id: "m2", seq: 2, authorKind: "ANJO" as const, authorName: "Ana", body: "Oi! Como posso ajudar?", systemCode: null, occurredAt: new Date().toISOString() }],
     hasOlder: false, canCancel: false, canClose: true, peerReceipts: { deliveredSeq: 0, readSeq: 0 }, peerTypingMs: null, readSeq: 0,
   }
   const supportState: OperatorView = { enabled: true, availability: null, openRequest, pendingEvaluations: [] }
@@ -1599,7 +1599,7 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
   it("sem apoio ligado: nem botão nem selo", async () => {
     renderWithSupport({ enabled: false, availability: null, openRequest: null, pendingEvaluations: [] })
     await waitFor(() => expect(avatarMicButton()).toBeEnabled())
-    expect(screen.queryByRole("button", { name: /Falar com um Anjo/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Falar com o Apoio/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId("support-status-pill")).not.toBeInTheDocument()
   })
 
@@ -1608,7 +1608,7 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     renderWithSupport({ enabled: true, availability: null, openRequest: null, pendingEvaluations: [] })
     await waitFor(() => expect(composer()).toBeEnabled())
     // Decisão de 10/11/2026: o apoio só é oferecido depois de a pessoa tentar com a INIA (resposta com sinal ou descurtida com "Sim").
-    expect(screen.queryByRole("button", { name: /Falar com um Anjo/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Falar com o Apoio/ })).not.toBeInTheDocument()
     vi.mocked(textClient.fetchTextReply).mockImplementationOnce(async (_input, onChunk, onConversation) => {
       onConversation?.({ conversationId: CONV, created: true, rotatedFrom: null, userMessageId: "q-1" })
       onChunk("Não encontrei isso nas bases.")
@@ -1618,8 +1618,8 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" })) })
     expect(await screen.findByText("Não encontrei isso nas bases.")).toBeInTheDocument()
     const suggestion = screen.getByTestId("support-suggestion")
-    expect(within(suggestion).getByRole("button", { name: "Falar com um Anjo" })).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: /Falar com um Anjo/ })).toHaveLength(1)
+    expect(within(suggestion).getByRole("button", { name: "Falar com o Apoio" })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /Falar com o Apoio/ })).toHaveLength(1)
   })
 
   it("fim de um atendimento em andamento: a vista volta à conversa atual (o servidor encerrou a de origem); pedido que sai da fila não recarrega", async () => {
@@ -1662,10 +1662,10 @@ describe("OperatorIniaChat — Apoio com Anjo (sala separada da INIA)", () => {
     const room = screen.getByTestId("support-room")
     expect(within(room).getByText("Oi! Como posso ajudar?")).toBeInTheDocument()
     expect(within(room).getByText(/A INIA não lê esta conversa/)).toBeInTheDocument()
-    const field = within(room).getByRole("textbox", { name: "Mensagem para o Anjo" })
+    const field = within(room).getByRole("textbox", { name: "Mensagem para o Apoio" })
     fireEvent.change(field, { target: { value: "Preciso contestar a fatura." } })
     await act(async () => {
-      fireEvent.click(within(room).getByRole("button", { name: "Enviar mensagem para o Anjo" }))
+      fireEvent.click(within(room).getByRole("button", { name: "Enviar mensagem para o Apoio" }))
     })
     expect(supportService.sendSupportMessage).toHaveBeenCalledWith("req-1", { clientMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/), body: "Preciso contestar a fatura." })
     expect(textClient.fetchTextReply).not.toHaveBeenCalled()

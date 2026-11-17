@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { universeFromBody } from "../../operating-universe/application/universe-access.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { SqlFilter, booleanParam, respondList, searchParam, type PageResult } from "../../../shared/presentation/list-query.js"
@@ -229,9 +230,13 @@ export async function createArgumentScript(db: Database, actor: ArgumentScriptAc
   if (!businessDomainId) throw new DomainError("Informe a área responsável.", "ARGUMENT_SCRIPT_AREA_REQUIRED")
   const sourceDocumentId = await requireSourceDocument(db, actor.organizationId, input.sourceDocumentId)
   const content = normalizeArgumentScriptContent(input.content ?? {})
+  // Argumentário pertence a um universo; a área (domínio de negócio) precisa ser do mesmo universo (conferido abaixo).
+  const universe = await universeFromBody(db, actor.organizationId, body, "do argumentário")
+  const domainUniverse = (await db.query<{ operating_universe: string | null }>(`select operating_universe from business_domains where id = $1`, [businessDomainId])).rows[0]?.operating_universe ?? null
+  if (universe && domainUniverse && universe !== domainUniverse) throw new DomainError(`A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam.`, "OPERATING_UNIVERSE_LINK_CONFLICT", 409)
   const id = (await db.query<{ id: string }>(
-    `insert into argument_scripts (organization_id, name, business_domain_id, scope_type, team_id, subteam_id, created_by, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$7) returning id`,
-    [actor.organizationId, input.name, businessDomainId, scope.scopeType, scope.teamId, scope.subteamId, actor.personId],
+    `insert into argument_scripts (organization_id, name, business_domain_id, scope_type, team_id, subteam_id, created_by, updated_by, operating_universe) values ($1,$2,$3,$4,$5,$6,$7,$7,$8) returning id`,
+    [actor.organizationId, input.name, businessDomainId, scope.scopeType, scope.teamId, scope.subteamId, actor.personId, universe],
   )).rows[0]!.id
   await db.query(
     `insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by) values ($1,$2,1,'DRAFT',$3,$4,$5,$6,$7)`,

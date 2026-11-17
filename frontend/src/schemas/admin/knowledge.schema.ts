@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
 
 export const knowledgeDocumentTypeSchema = z.enum(["PROCEDURE", "MANUAL", "FAQ", "RULE", "FLOW", "WORK_INSTRUCTION"])
 export type KnowledgeDocumentType = z.infer<typeof knowledgeDocumentTypeSchema>
@@ -43,6 +44,8 @@ export const knowledgeDocumentSchema = z.object({
   createdAt: z.coerce.string(),
   updatedAt: z.coerce.string().nullable(),
   authorName: z.string().nullable(),
+  /** Universo de atuação da base (B2B/B2C/B2X); null = pendente de classificação. */
+  operatingUniverse: operatingUniverseSchema.nullable().default(null),
   status: z.string(),
   inUseVersion: z.number().nullable(),
   draftVersion: z.number().nullable(),

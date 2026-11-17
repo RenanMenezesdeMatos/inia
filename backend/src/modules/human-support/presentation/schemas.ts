@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { HUMAN_SUPPORT_LIMITS, PAUSE_REASONS_V1 } from "../domain/catalogs.js"
+import { ANJO_PAUSE_REASONS, ANJO_UNRESPONSIVE_LIMITS, HUMAN_SUPPORT_LIMITS, RESPONSE_TIMES_LIMITS } from "../domain/catalogs.js"
 import { SCOPE_STATES } from "../domain/enablement.js"
 
 /** Corpos e consultas do Apoio com Anjo (design_draft.md, Apêndice C), sempre `.strict()`: campo a mais é recusado. */
@@ -19,18 +19,36 @@ export const receiptsSchema = z
 export const closeSchema = z.object({ cause: z.literal("OPERATOR_ABSENT").optional() }).strict()
 export const presenceSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("AVAILABLE") }).strict(),
-  z.object({ status: z.literal("PAUSED"), pauseReason: z.enum(PAUSE_REASONS_V1) }).strict(),
+  z.object({ status: z.literal("PAUSED"), pauseReason: z.enum(ANJO_PAUSE_REASONS) }).strict(),
   z.object({ status: z.literal("OFFLINE") }).strict(),
 ])
 export const listQuerySchema = z.object({ cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const settingsSchema = z.object({ enabled: z.boolean(), defaultCapacity: z.number().int().min(HUMAN_SUPPORT_LIMITS.capacityMin).max(HUMAN_SUPPORT_LIMITS.capacityMax), version: z.number().int().min(0) }).strict()
+/** Tempos de resposta (migration 193); a regra entre eles (encerramento depois da volta à fila) fica em `responseTimesProblem`. */
+export const responseTimesSchema = z
+  .object({
+    operatorRequeueMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin).max(RESPONSE_TIMES_LIMITS.requeueMax),
+    operatorCloseMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin + 1).max(RESPONSE_TIMES_LIMITS.closeMax),
+    anjoRequeueMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin).max(RESPONSE_TIMES_LIMITS.requeueMax),
+    /** Anjo sem responder ninguém (migration 195): pausa "Desconexão" e, depois dela, Indisponível. */
+    anjoUnresponsive: z.object({ pauseAfterMinutes: z.number().int().min(1).max(ANJO_UNRESPONSIVE_LIMITS.pauseAfterMax), offlineAfterMinutes: z.number().int().min(1).max(ANJO_UNRESPONSIVE_LIMITS.offlineAfterMax) }).strict(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+const timesShape = {
+  operatorRequeueMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin).max(RESPONSE_TIMES_LIMITS.requeueMax),
+  operatorCloseMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin + 1).max(RESPONSE_TIMES_LIMITS.closeMax),
+  anjoRequeueMinutes: z.number().int().min(RESPONSE_TIMES_LIMITS.requeueMin).max(RESPONSE_TIMES_LIMITS.requeueMax),
+}
+/** Tempos de um Grupo (migration 194): `times = null` = voltar ao padrão da organização. */
+export const groupResponseTimesSchema = z.object({ times: z.object(timesShape).strict().nullable(), version: z.number().int().min(0) }).strict()
 export const scopeParamsSchema = z.object({ scopeType: z.enum(["group", "subgroup"]), id }).strict()
 export const scopeStateSchema = z.object({ state: z.enum(SCOPE_STATES) }).strict()
 export const anjosQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()
 export const capacitySchema = z.object({ maxConcurrent: z.number().int().min(HUMAN_SUPPORT_LIMITS.capacityMin).max(HUMAN_SUPPORT_LIMITS.capacityMax).nullable() }).strict()
 const civilDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 export const panelQuerySchema = z.object({ from: civilDate, to: civilDate, teamId: id.optional(), subteamId: id.optional() }).strict()
-export const panelListQuerySchema = panelQuerySchema.extend({ search: z.string().trim().max(100).optional(), status: z.enum(["WAITING", "IN_PROGRESS", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"]).optional(), origin: z.enum(["BUTTON", "DISLIKE", "SIGNAL"]).optional(), cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
+export const panelListQuerySchema = panelQuerySchema.extend({ search: z.string().trim().max(100).optional(), status: z.enum(["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"]).optional(), origin: z.enum(["BUTTON", "DISLIKE", "SIGNAL"]).optional(), cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const attemptsQuerySchema = panelQuerySchema.extend({ cursor: z.string().max(200).optional(), limit: int(1, 50).optional() }).strict()
 export const anjosNowQuerySchema = z.object({ teamId: id.optional(), subteamId: id.optional() }).strict()
 export const timelineQuerySchema = z.object({ from: civilDate, to: civilDate }).strict()

@@ -48,6 +48,6 @@ describe("M18 — horas de presença", () => {
       { occurredAt: at(13), toStatus: "AVAILABLE", pauseReason: null, cause: "CONNECTION_RESTORED" },
       { occurredAt: at(14), toStatus: "OFFLINE", pauseReason: null, cause: "ANJO" },
     ], at(0), at(18))
-    expect(hours).toEqual({ available: 4, disconnected: 1, paused: { LUNCH: 1, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0 } })
+    expect(hours).toEqual({ available: 4, disconnected: 1, paused: { LUNCH: 1, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0, DISCONNECTION: 0 } })
   })
 })

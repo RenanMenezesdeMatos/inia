@@ -51,6 +51,8 @@ export const operatorRequestViewSchema = z.object({
   createdAt: z.string(),
   queuedAt: z.string(),
   queueExpiresAt: z.string().nullable(),
+  /** "Aguardando seu retorno" (migration 193): até quando o operador pode escrever antes de o pedido ser encerrado. */
+  awaitingReturnUntil: z.string().nullable(),
   sharedContext: sharedContextSchema,
   anjo: z.object({ name: z.string(), avatarUrl: z.string().nullable(), awaitingFirstResponse: z.boolean() }).nullable(),
   messages: z.array(messageViewSchema),
@@ -112,6 +114,8 @@ export const anjoViewSchema = z.object({
       .nullable()
       .optional()
       .transform((value) => value ?? null),
+    /** Migration 195: o sistema o pôs em pausa "Desconexão" (até `offlineAt`) ou Indisponível por não responder ninguém. */
+    unresponsive: z.object({ kind: z.enum(["PAUSED", "OFFLINE"]), since: z.string(), offlineAt: z.string().nullable() }).nullable().optional(),
   }),
   capacity: z.object({ max: z.number(), used: z.number() }),
   attendances: z.array(anjoAttendanceViewSchema),
@@ -157,11 +161,11 @@ export type AnjoAttendanceHistory = z.infer<typeof anjoAttendanceHistorySchema>
 
 /** Texto da disponibilidade para o operador (seção 9) — o operador nunca vê quantos Anjos estão em pausa, nem por quê. */
 export const AVAILABILITY_TEXT: Record<Availability["status"], string> = {
-  DISABLED: "O apoio com Anjo ainda não está disponível para sua equipe.",
-  NONE_IN_SERVICE: "Nenhum Anjo em serviço agora.",
-  AVAILABLE_NOW: "Há Anjos disponíveis: seu pedido vai direto para um deles.",
-  ALL_BUSY: "Todos os Anjos estão em atendimento.",
-  NONE_AVAILABLE: "Nenhum Anjo disponível no momento. Aguarde: seu pedido está na fila.",
+  DISABLED: "O Apoio ainda não está disponível para sua equipe.",
+  NONE_IN_SERVICE: "Ninguém do Apoio em serviço agora.",
+  AVAILABLE_NOW: "Há pessoas do Apoio disponíveis: seu pedido vai direto para uma delas.",
+  ALL_BUSY: "Todas as pessoas do Apoio estão em atendimento.",
+  NONE_AVAILABLE: "Ninguém do Apoio disponível no momento. Aguarde: seu pedido está na fila.",
 }
 
 const BASIS_TEXT = { SUBGROUP: "do seu Subgrupo", GROUP: "do seu Grupo", ORGANIZATION: "da organização" } as const

@@ -1,4 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { resourceConflictError, resourceLinkConflicts } from "../../operating-universe/application/resource-universe.js"
+import { assertProductsCompatible } from "../../operating-universe/application/universe-links.js"
+import { isOperatingUniverse, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import {
   APPROVAL_BACKDATE_TOLERANCE_MS,
@@ -46,13 +49,13 @@ const NODE_USAGE = `
   (select count(*) from product_scope_assignments s where s.organization_id = n.organization_id and s.effective_until is null and n.id = any(s.node_ids))::int "openScopeCount",
   (select count(*) from product_catalog_nodes c where c.parent_id = n.id)::int "childCount",
   (select count(*) from product_identification_criterion_versions v join product_identification_criteria c on c.id = v.criterion_id where v.organization_id = n.organization_id and n.id = any(v.target_node_ids) and (v.status = 'DRAFT' or (v.status = 'APPROVED' and (v.effective_until is null or v.effective_until > now()))))::int "liveCriteriaCount"`
-type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number; liveCriteriaCount: number }
-export type ProductNodeListItem = ProductNodeRecord & { criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean; blocksDeletion: boolean }
-const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0, blocksDeletion: row.openScopeCount > 0 || row.liveCriteriaCount > 0 || row.childCount > 0 })
+type NodeRow = { id: string; kind: "FAMILY" | "PRODUCT"; code: string; name: string; description: string | null; parentId: string | null; active: boolean; archivedAt: Date | null; createdAt: Date; updatedAt: Date; criteriaCount: number; scopeCount: number; openScopeCount: number; childCount: number; liveCriteriaCount: number; operatingUniverse: string | null }
+export type ProductNodeListItem = ProductNodeRecord & { operatingUniverse: string | null; criteriaCount: number; scopeCount: number; childCount: number; inUse: boolean; blocksDeletion: boolean }
+const nodeOf = (row: NodeRow): ProductNodeListItem => ({ id: row.id, kind: row.kind, code: row.code, name: row.name, description: row.description, parentId: row.parentId, active: row.active, archivedAt: row.archivedAt ? new Date(row.archivedAt).toISOString() : null, createdAt: new Date(row.createdAt).toISOString(), updatedAt: new Date(row.updatedAt).toISOString(), operatingUniverse: row.operatingUniverse ?? null, criteriaCount: row.criteriaCount, scopeCount: row.scopeCount, childCount: row.childCount, inUse: row.criteriaCount > 0 || row.scopeCount > 0, blocksDeletion: row.openScopeCount > 0 || row.liveCriteriaCount > 0 || row.childCount > 0 })
 
 export async function listProductNodes(db: Queryable, organizationId: string): Promise<ProductNodeListItem[]> {
   const rows = (await db.query<NodeRow>(
-    `select n.id, n.kind, n.code, n.name, n.description, n.parent_id "parentId", n.active, n.archived_at "archivedAt", n.created_at "createdAt", n.updated_at "updatedAt", ${NODE_USAGE}
+    `select n.id, n.kind, n.code, n.name, n.description, n.parent_id "parentId", n.active, n.archived_at "archivedAt", n.created_at "createdAt", n.updated_at "updatedAt", n.operating_universe "operatingUniverse", ${NODE_USAGE}
        from product_catalog_nodes n where n.organization_id = $1 order by n.kind, n.name, n.code`,
     [organizationId],
   )).rows
@@ -60,7 +63,7 @@ export async function listProductNodes(db: Queryable, organizationId: string): P
 }
 
 async function requireNode(db: Queryable, organizationId: string, id: string): Promise<ProductNodeListItem> {
-  const row = (await db.query<NodeRow>(`select n.id, n.kind, n.code, n.name, n.description, n.parent_id "parentId", n.active, n.archived_at "archivedAt", n.created_at "createdAt", n.updated_at "updatedAt", ${NODE_USAGE} from product_catalog_nodes n where n.id = $1 and n.organization_id = $2`, [id, organizationId])).rows[0]
+  const row = (await db.query<NodeRow>(`select n.id, n.kind, n.code, n.name, n.description, n.parent_id "parentId", n.active, n.archived_at "archivedAt", n.created_at "createdAt", n.updated_at "updatedAt", n.operating_universe "operatingUniverse", ${NODE_USAGE} from product_catalog_nodes n where n.id = $1 and n.organization_id = $2`, [id, organizationId])).rows[0]
   if (!row) throw new DomainError("Produto ou categoria não encontrado.", "PRODUCT_NODE_NOT_FOUND", 404)
   return nodeOf(row)
 }
@@ -76,12 +79,15 @@ export async function createProductNode(db: Database, actor: ProductCatalogActor
   const issues = treeIssuesOf({ id: null, kind: input.kind, parentId: input.parentId }, nodes)
   if (issues.length > 0) throw new DomainError(issues[0]!, "PRODUCT_TREE_INVALID", 422, { issues })
   if (input.parentId && !nodes.find((node) => node.id === input.parentId)?.active) throw new DomainError("A categoria escolhida está desativada.", "PRODUCT_PARENT_INACTIVE", 422)
+  // Cada PRODUTO pertence a exatamente um universo (B2B, B2C ou B2X): obrigatório no cadastro novo. Categoria não tem universo.
+  if (input.kind === "PRODUCT" && !input.operatingUniverse) throw new DomainError("Escolha o universo de atuação do produto (B2B, B2C ou B2X).", "OPERATING_UNIVERSE_REQUIRED", 422)
+  if (input.kind === "FAMILY" && input.operatingUniverse) throw new DomainError("Categoria não tem universo próprio: o universo é de cada produto.", "OPERATING_UNIVERSE_NOT_FOR_CATEGORY", 422)
   const id = await inTransaction(db, async (client) => {
     const created = (await client.query<{ id: string }>(
-      `insert into product_catalog_nodes (organization_id, kind, code, name, description, parent_id, created_by, updated_by) values ($1,$2,$3,$4,$5,$6,$7,$7) returning id`,
-      [actor.organizationId, input.kind, input.code, input.name, input.description, input.parentId, actor.personId],
+      `insert into product_catalog_nodes (organization_id, kind, code, name, description, parent_id, created_by, updated_by, operating_universe) values ($1,$2,$3,$4,$5,$6,$7,$7,$8) returning id`,
+      [actor.organizationId, input.kind, input.code, input.name, input.description, input.parentId, actor.personId, input.operatingUniverse ?? null],
     )).rows[0]!.id
-    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_CREATED", created, { kind: input.kind, code: input.code, name: input.name, parentId: input.parentId })
+    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_CREATED", created, { kind: input.kind, code: input.code, name: input.name, parentId: input.parentId, operatingUniverse: input.operatingUniverse ?? null })
     return created
   }).catch(rethrowCode)
   return requireNode(db, actor.organizationId, id)
@@ -96,12 +102,20 @@ export async function updateProductNode(db: Database, actor: ProductCatalogActor
     const issues = treeIssuesOf({ id, kind: current.kind, parentId }, await listProductNodes(db, actor.organizationId))
     if (issues.length > 0) throw new DomainError(issues[0]!, "PRODUCT_TREE_INVALID", 422, { issues })
   }
+  const universe = input.operatingUniverse === undefined ? current.operatingUniverse : input.operatingUniverse
+  if (current.kind === "FAMILY" && universe) throw new DomainError("Categoria não tem universo próprio: o universo é de cada produto.", "OPERATING_UNIVERSE_NOT_FOR_CATEGORY", 422)
+  if (current.kind === "PRODUCT" && !universe && current.operatingUniverse) throw new DomainError("Produto classificado não volta a ficar sem universo.", "OPERATING_UNIVERSE_REQUIRED", 422)
   await inTransaction(db, async (client) => {
+    if (universe !== current.operatingUniverse && universe) {
+      // Mudou o universo: vínculos (bases e argumentários que valem para ele) precisam acompanhar — senão, a lista do que resolver.
+      const conflicts = await resourceLinkConflicts(client, actor.organizationId, "PRODUCT", id, universe as OperatingUniverse)
+      if (conflicts.length > 0) throw resourceConflictError("PRODUCT", conflicts)
+    }
     await client.query(
-      `update product_catalog_nodes set code = $3, name = $4, description = $5, parent_id = $6, updated_by = $7, updated_at = now() where id = $1 and organization_id = $2`,
-      [id, actor.organizationId, input.code ?? current.code, input.name ?? current.name, input.description === undefined ? current.description : input.description, parentId, actor.personId],
+      `update product_catalog_nodes set code = $3, name = $4, description = $5, parent_id = $6, updated_by = $7, updated_at = now(), operating_universe = $8 where id = $1 and organization_id = $2`,
+      [id, actor.organizationId, input.code ?? current.code, input.name ?? current.name, input.description === undefined ? current.description : input.description, parentId, actor.personId, universe],
     )
-    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_UPDATED", id, { before: { code: current.code, name: current.name, description: current.description, parentId: current.parentId }, after: { code: input.code ?? current.code, name: input.name ?? current.name, parentId } })
+    await audit(client, actor, "product_catalog_node", "PRODUCT_NODE_UPDATED", id, { before: { code: current.code, name: current.name, description: current.description, parentId: current.parentId }, after: { code: input.code ?? current.code, name: input.name ?? current.name, parentId, operatingUniverse: universe }, ...(universe !== current.operatingUniverse ? { operatingUniverseFrom: current.operatingUniverse } : {}) })
   }).catch(rethrowCode)
   return requireNode(db, actor.organizationId, id)
 }
@@ -404,6 +418,9 @@ export async function setProductScope(db: Database, actor: ProductCatalogActor, 
     })
     return { ...(await productScopeHistory(db, actor.organizationId, kind, id)), pending: saved ? { version: saved.version, nodeIds } : null }
   }
+  // Argumentário: só produtos do universo dele (base de conhecimento confere no rascunho, em saveKnowledgeDraft).
+  const scriptUniverse = (await db.query<{ operating_universe: string | null }>(`select operating_universe from argument_scripts where id = $1 and organization_id = $2`, [id, actor.organizationId])).rows[0]?.operating_universe ?? null
+  await assertProductsCompatible(db, actor.organizationId, nodeIds, isOperatingUniverse(scriptUniverse) ? scriptUniverse : null)
   await inTransaction(db, async (client) => {
     const applied = await applyProductScopeAssignment(client, { organizationId: actor.organizationId, kind, sourceId: id, nodeIds, actorPersonId: actor.personId, at: now })
     if (applied.changed) await audit(client, actor, "product_scope_assignment", "PRODUCT_SCOPE_SET", applied.assignmentId, { sourceKind: kind, sourceId: id, before: applied.before, after: applied.after, at: now.toISOString() })

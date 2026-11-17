@@ -64,7 +64,7 @@ function fakeDatabase(data: { interactions: Interaction[]; flags: Flag[]; transc
         .map((person) => ({ id: person.id }))
       return { rows, rowCount: rows.length }
     }
-    if (text.includes("select id, team_id, subteam_id, reports_to_id from people where id = $1")) {
+    if (text.includes("select p.id, p.team_id, p.subteam_id, p.reports_to_id")) {
       const rows = people.filter((person) => person.id === params[0]).map((person) => ({ id: person.id, team_id: person.team_id, subteam_id: person.subteam_id, reports_to_id: null }))
       return { rows, rowCount: rows.length }
     }

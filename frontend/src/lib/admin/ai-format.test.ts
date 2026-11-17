@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest"
 
-import { formatCostByCurrency, formatMoney, formatTokens, moneyEntries, normalizeDecimalInput, NO_KNOWN_COST_LABEL } from "./ai-format"
+import { COST_STATUS_LABELS, costOriginText, formatCostByCurrency, formatMoney, formatTokens, moneyEntries, normalizeDecimalInput, NO_KNOWN_COST_LABEL } from "./ai-format"
 
 describe("ai-format", () => {
+  it("origem do custo: informado pelo provedor × estimado × desconhecido, só as partes que existem", () => {
+    expect(costOriginText({ reportedCostCalls: 2, estimatedCostCalls: 5, unknownCostCalls: 1 })).toBe("2 informado(s) pelo provedor · 5 estimado(s) · 1 sem custo conhecido")
+    expect(costOriginText({ reportedCostCalls: 3, estimatedCostCalls: 0, unknownCostCalls: 0 })).toBe("3 informado(s) pelo provedor")
+    expect(costOriginText({ unknownCostCalls: 4 })).toBe("4 sem custo conhecido")
+    expect(costOriginText({ reportedCostCalls: 0, estimatedCostCalls: 0, unknownCostCalls: 0 })).toBeNull()
+    expect(COST_STATUS_LABELS.REPORTED).toBe("informado pelo provedor")
+    expect(COST_STATUS_LABELS.ESTIMATED).toBe("estimado pela tabela de preço")
+  })
+
   it("formata por moeda sem somar nem converter; moeda desconhecida pelo Intl cai para o código", () => {
     expect(formatMoney("1.5", "USD")).toContain("US$")
     expect(formatMoney("2", "BRL")).toContain("R$")

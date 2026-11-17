@@ -203,10 +203,59 @@ describe("Acompanhamento da estrutura — timeline", () => {
     expect(screen.getByText("Carregando feedbacks...")).toBeInTheDocument()
     await act(async () => intersect?.())
     expect(await screen.findByRole("heading", { name: "Feedback antigo" })).toBeInTheDocument()
-    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false)
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, "cursor-fb-7", 8, false, null)
     expect(screen.getAllByTestId("follow-up-day")).toHaveLength(2)
-    expect(screen.getByText("Fim dos feedbacks deste período.")).toBeInTheDocument()
+    expect(screen.getByText("Fim dos feedbacks.")).toBeInTheDocument()
     expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(9)
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("Acompanhamento da estrutura — calendário filtra as ações", () => {
+  const page = (items: FollowUpItem[]): FollowUpFeed => ({ items, nextCursor: null })
+  const now = new Date()
+  const indicator = legacyFeedback({ id: "fb-ind", category: "INDICATOR", title: "TMA acima da meta", origin: { family: "INDICATOR", reason: "INDICATOR", label: "Tempo Médio de Atendimento", iconKey: "timer" }, createdAt: now.toISOString() })
+  const monitoring = legacyFeedback({ id: "fb-mon", title: "Contestação de cobrança", origin: { family: "MONITORING", reason: "FLAG", label: "Rechamada", iconKey: "flag" }, createdAt: now.toISOString() })
+  const notice = { id: "n-1", title: "Nova campanha de retenção", contentHtml: "<p>Começa amanhã.</p>", audienceLabel: "Publicado para sua equipe", tags: ["Aviso"], time: "Agora", createdAt: now.toISOString() }
+  const pickPreset = async (label: string) => {
+    fireEvent.click(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" }))
+    fireEvent.click(await screen.findByRole("button", { name: label }))
+  }
+
+  it("visão inicial = todo o período; um recorte vai ao servidor, mostra a faixa e mantém os três tipos identificáveis; vazio oferece a volta", async () => {
+    service.fetchFollowUpFeed.mockImplementation(async (_s: unknown, _c: unknown, _l: unknown, _a: unknown, period: { since: string; until: string } | null) => {
+      if (period === null || Date.parse(period.until) > now.getTime()) return page([indicator, monitoring])
+      return page([])
+    })
+    renderWithQuery(<StructureFollowUpFeed subject={null} description="Feedbacks da sua estrutura" notices={[notice]} />)
+    expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
+    expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null)
+
+    // Recorte com resultados mistos: indicador, monitoria e comunicado de hoje.
+    await pickPreset("Hoje")
+    const bar = await screen.findByTestId("follow-up-period-bar")
+    expect(bar).toHaveTextContent(`de ${now.toLocaleDateString("pt-BR")}`)
+    const period = service.fetchFollowUpFeed.mock.lastCall?.[4] as { since: string; until: string }
+    expect(new Date(period.since).getTime()).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime())
+    expect(new Date(period.until).getTime()).toBe(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime())
+    expect(await screen.findByRole("heading", { name: "Contestação de cobrança" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Nova campanha de retenção" })).toBeInTheDocument()
+    const families = Array.from(document.querySelectorAll("[data-slot=feedback-entry-header]")).map((element) => element.getAttribute("data-family"))
+    expect(families.sort()).toEqual(["INDICATOR", "MONITORING", "NOTICE"])
+
+    // Período sem nada: a seção continua montada (faixa + vazio) e o comunicado de hoje não entra.
+    await pickPreset("Mês passado")
+    expect(await screen.findByText("Nenhuma ação neste período")).toBeInTheDocument()
+    expect(screen.getByTestId("follow-up-period-bar")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Nova campanha de retenção" })).toBeNull()
+
+    // Volta à visão inicial pelo próprio vazio.
+    fireEvent.click(within(screen.getByText("Nenhuma ação neste período").parentElement!).getByRole("button", { name: "Ver todo o período" }))
+    expect(await screen.findByRole("heading", { name: "TMA acima da meta" })).toBeInTheDocument()
+    expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
+    expect(screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })).toHaveTextContent("Todo o período")
+    expect(service.fetchFollowUpFeed).toHaveBeenLastCalledWith(null, null, 8, false, null)
   })
 })

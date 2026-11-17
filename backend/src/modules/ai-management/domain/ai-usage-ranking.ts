@@ -13,8 +13,12 @@ import type { HierarchyRole } from "../../performance-analytics/domain/hierarchy
  * próximo daquele cargo subindo por `reports_to_id` (a própria pessoa, se ela tem o cargo). Cada linha soma a pessoa e toda a
  * estrutura abaixo dela. O que não chega a uma unidade vira a linha própria "Sem vínculo" (com o motivo) — nunca some e nunca
  * é atribuído a alguém.
+ *
+ * `PERSON` ("Usuário") é o nível mais fino: a unidade é a própria pessoa (a quem o uso foi atribuído), sem estrutura abaixo.
+ * Chega-se a ele a partir de uma linha dos outros níveis: Grupo/Subgrupo pelos filtros de sempre e líder por `leaderId` (a
+ * pessoa e toda a estrutura abaixo dela por `reports_to_id`) — os três só ESTREITAM o recorte do escopo.
  */
-export const AI_USAGE_RANKING_LEVELS = ["DIRECTOR", "SENIOR_MANAGER", "MANAGER", "TEAM", "SUBTEAM", "SUPERVISOR"] as const
+export const AI_USAGE_RANKING_LEVELS = ["DIRECTOR", "SENIOR_MANAGER", "MANAGER", "TEAM", "SUBTEAM", "SUPERVISOR", "PERSON"] as const
 export type AiUsageRankingLevel = (typeof AI_USAGE_RANKING_LEVELS)[number]
 
 /** Níveis que são um CARGO da cadeia (`people.role`); Grupo e Subgrupo vêm do cadastro da pessoa. */
@@ -32,6 +36,7 @@ export const AI_USAGE_RANKING_LEVEL_LABELS: Record<AiUsageRankingLevel, string> 
   TEAM: "Grupo",
   SUBTEAM: "Subgrupo",
   SUPERVISOR: "Supervisor",
+  PERSON: "Usuário",
 }
 
 export const AI_USAGE_SOURCES = ["WORKFLOW", "REQUEST", "OTHER"] as const
@@ -50,7 +55,7 @@ const code = (max: number) => z.string().regex(new RegExp(`^[A-Z][A-Z0-9_]{1,${m
 
 /**
  * Filtros da consulta — validados aqui (servidor), `.strict()`: parâmetro desconhecido é recusado, nunca ignorado. Nenhum
- * filtro carrega nome, e-mail ou texto livre: Grupo/Subgrupo vão por id opaco e SÓ ESTREITAM o recorte que o servidor já
+ * filtro carrega nome, e-mail ou texto livre: Grupo/Subgrupo/líder vão por id opaco e SÓ ESTREITAM o recorte que o servidor já
  * decidiu pelo escopo da conta (um id fora dele devolve vazio, nunca amplia).
  */
 export const aiUsageRankingQuerySchema = z
@@ -65,6 +70,8 @@ export const aiUsageRankingQuerySchema = z
     source: z.enum(AI_USAGE_SOURCES).optional(),
     teamId: z.uuid().optional(),
     subteamId: z.uuid().optional(),
+    /** Estrutura de um líder (ele e quem está abaixo por `reports_to_id`) — o "ver usuários" de uma linha de liderança. */
+    leaderId: z.uuid().optional(),
     sort: z.enum(AI_USAGE_RANKING_SORTS).default("REQUESTS"),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(AI_USAGE_RANKING_MAX_PAGE_SIZE).default(20),

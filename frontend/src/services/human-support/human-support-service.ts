@@ -1,5 +1,5 @@
 import { ApiError, apiGet, apiPost, apiSend } from "@/lib/api/api-client"
-import { anjoRowSchema, scopeNodeSchema, settingsViewSchema, type ScopeState, type SettingsView } from "@/schemas/human-support/admin.schema"
+import { anjoRowSchema, responseTimesPanelSchema, scopeNodeSchema, settingsViewSchema, type ResponseTimes, type ScopeState, type SettingsView } from "@/schemas/human-support/admin.schema"
 import type { ClassificationOutcome, ClassificationReason, EvaluationResolved, PauseReason, Pertinence } from "@/schemas/human-support/catalogs.schema"
 import { abandonmentSchema, anjosNowSchema, demandSchema, operationHistorySchema, queueWaitingSchema, type Productivity, classificationViewSchema, funnelResponseSchema, presenceTimelineSchema, requestDetailSchema, requestListSchema, transferCandidatesSchema, unavailableAttemptsSchema } from "@/schemas/human-support/monitoring.schema"
 import { anjoAttendanceHistorySchema, anjoViewSchema, evaluationCurrentSchema, messagesPageSchema, messageViewSchema, myRequestsSchema, operatorRequestViewSchema, previewResponseSchema, receiptsSchema, stateResponseSchema, type StateResponse } from "@/schemas/human-support/state.schema"
@@ -152,6 +152,17 @@ export async function fetchSupportDemand(filter: PanelFilter & { productivity?: 
   return demandSchema.parse(await apiGet<unknown>(`${MONITORING}/demand?${panelParams(filter)}`))
 }
 /** Quem está na fila agora e desde quando (Coordenador de Anjos e Administrador geral). */
+/** Tempos de resposta (Painel dos Anjos: Coordenador de Anjos e Administrador geral). */
+export async function fetchResponseTimes() {
+  return responseTimesPanelSchema.parse(await apiGet<unknown>(`${MONITORING}/response-times`))
+}
+/** `teamId = null` = o padrão da organização; num Grupo, `times = null` = voltar ao padrão. */
+export type SaveResponseTimesInput = { teamId: null; times: ResponseTimes; anjoUnresponsive: { pauseAfterMinutes: number; offlineAfterMinutes: number }; version: number } | { teamId: string; times: ResponseTimes | null; version: number }
+export async function saveResponseTimes(input: SaveResponseTimesInput) {
+  const body = input.teamId === null ? { ...input.times, anjoUnresponsive: input.anjoUnresponsive, version: input.version } : { times: input.times, version: input.version }
+  const path = input.teamId === null ? `${MONITORING}/response-times` : `${MONITORING}/response-times/groups/${encodeURIComponent(input.teamId)}`
+  return responseTimesPanelSchema.parse(await apiSend<unknown>(path, "PUT", body))
+}
 export async function fetchQueueWaiting(filter: { teamId?: string | null; subteamId?: string | null } = {}) {
   const params = panelParams(filter as PanelFilter)
   return queueWaitingSchema.parse(await apiGet<unknown>(`${MONITORING}/queue${params.size ? `?${params}` : ""}`)).items

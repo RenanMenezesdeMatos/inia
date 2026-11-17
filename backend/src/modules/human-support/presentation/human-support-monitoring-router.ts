@@ -6,8 +6,9 @@ import { operationHistory } from "../application/operation-history.js"
 import { anjosNow, queueWaiting, listRequests, listUnavailableAttempts, presenceTimeline, requestDetail } from "../application/coordination-service.js"
 import { supportFunnel } from "../application/metrics-service.js"
 import type { Viewer } from "../application/request-service.js"
+import { getResponseTimesPanel, updateGroupResponseTimes, updateOrganizationResponseTimes } from "../application/response-times-service.js"
 import { transferAttendance, transferCandidates } from "../application/transfer-service.js"
-import { anjosNowQuerySchema, attemptsQuerySchema, demandQuerySchema, historyQuerySchema, idParamSchema, panelListQuerySchema, panelQuerySchema, timelineQuerySchema, transferSchema } from "./schemas.js"
+import { anjosNowQuerySchema, attemptsQuerySchema, responseTimesSchema, groupResponseTimesSchema, demandQuerySchema, historyQuerySchema, idParamSchema, panelListQuerySchema, panelQuerySchema, timelineQuerySchema, transferSchema } from "./schemas.js"
 
 /**
  * PAINEL DO APOIO (`/api/v1/admin/human-support-monitoring`, montado com `human_support.coordinate` — Coordenador de Anjos e
@@ -55,6 +56,17 @@ export function createHumanSupportMonitoringRouter(db: Database) {
     response.json({ data: await operationHistory(db, viewerOf(request), historyQuerySchema.parse(request.query), "COORDINATION") })
   })
   // Quem está na fila agora e há quanto tempo (clicar no indicador de fila da "Operação agora").
+  // Tempos de resposta (migrations 193/194): o padrão da organização (só quem acompanha a organização) e os de cada Grupo (o
+  // Coordenador de Anjos do próprio Grupo ou quem acompanha a organização).
+  router.get("/response-times", async (request, response) => {
+    response.json({ data: await getResponseTimesPanel(db, viewerOf(request)) })
+  })
+  router.put("/response-times", async (request, response) => {
+    response.json({ data: await updateOrganizationResponseTimes(db, viewerOf(request), responseTimesSchema.parse(request.body)) })
+  })
+  router.put("/response-times/groups/:teamId", async (request, response) => {
+    response.json({ data: await updateGroupResponseTimes(db, viewerOf(request), idParamSchema.parse(request.params.teamId), groupResponseTimesSchema.parse(request.body)) })
+  })
   router.get("/queue", async (request, response) => {
     response.json({ data: { items: await queueWaiting(db, viewerOf(request), anjosNowQuerySchema.parse(request.query)) } })
   })

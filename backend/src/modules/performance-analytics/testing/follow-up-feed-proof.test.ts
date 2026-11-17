@@ -105,6 +105,13 @@ describe.skipIf(!ENABLED)("Feed da estrutura — prova Postgres (migration 130, 
     // Cursor no último item: página vazia, sem cursor.
     expect(await repository.loadFollowUpFeed({ ...base, limit: 2, before: { at: "2026-09-18T09:00:00.000000Z", id: acknowledged } })).toEqual({ items: [], nextCursor: null })
 
+    // Calendário: o recorte vale para feedback e aviso pelo mesmo instante do feed (fim exclusivo) e convive com o cursor.
+    const period = { ...base, since: "2026-09-20T00:00:00Z", until: "2026-09-25T09:00:00Z" }
+    expect((await repository.loadFollowUpFeed({ ...period, limit: 50, before: null })).items.map((item) => item.id)).toEqual([alert, ...[...ties].sort().reverse()])
+    const firstInPeriod = await repository.loadFollowUpFeed({ ...period, limit: 2, before: null })
+    expect((await repository.loadFollowUpFeed({ ...period, limit: 50, before: decodeFollowUpCursor(firstInPeriod.nextCursor) })).items.map((item) => item.id)).toEqual([...ties].sort().reverse().slice(1))
+    expect((await repository.loadFollowUpFeed({ ...base, since: "2026-08-01T00:00:00Z", until: "2026-09-01T00:00:00Z", limit: 50, before: null })).items).toEqual([])
+
     // Um feedback publicado depois da 1ª página não desloca as seguintes: nada repete, nada some (com OFFSET, o último item da
     // página 1 voltava no topo da página 2).
     const late = await pages(2, () => feedback(ana, "2026-09-27T09:00:00Z"))

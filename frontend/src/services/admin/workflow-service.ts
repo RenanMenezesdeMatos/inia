@@ -42,6 +42,7 @@ import {
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import type { ConsolidatedStructure } from "@/schemas/admin/consolidated-structure-schema"
 import type { PopulationFilter } from "@/schemas/admin/population-filter-schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export type WorkflowTriggerInput =
   | { kind: "channel_flag"; channelFlagId: string }
@@ -134,7 +135,7 @@ export async function fetchWorkflowExecutionAgentRecords(workflowId: string, enr
   return z.array(workflowExecutionAgentRecordSchema).parse(await adminGet(`/api/v1/admin/workflows/${workflowId}/enrollments/${enrollmentId}/agent-records`))
 }
 
-export type CreateWorkflowInput = { name: string; description?: string; orgScope: OrgScopeValue; trigger: WorkflowTriggerInput }
+export type CreateWorkflowInput = { name: string; description?: string; orgScope: OrgScopeValue; trigger: WorkflowTriggerInput; operatingUniverse?: OperatingUniverse | null }
 
 export async function createWorkflow(input: CreateWorkflowInput): Promise<Workflow> {
   return workflowSchema.parse(
@@ -145,6 +146,7 @@ export async function createWorkflow(input: CreateWorkflowInput): Promise<Workfl
       teamId: input.orgScope.teamId,
       subteamId: input.orgScope.subteamId,
       trigger: input.trigger,
+      operatingUniverse: input.operatingUniverse ?? null,
     }),
   )
 }
@@ -154,6 +156,8 @@ export type UpdateWorkflowInput = {
   name?: string
   description?: string
   orgScope?: OrgScopeValue
+  /** Universo de atuação: grava no RASCUNHO, vale ao Publicar. */
+  operatingUniverse?: OperatingUniverse | null
   trigger?: WorkflowTriggerInput
   active?: boolean
   /** Ativar uma Agenda publicada pode exigir a confirmação do impacto: o `fingerprint` que a pessoa viu. */
@@ -169,6 +173,7 @@ export async function updateWorkflow(input: UpdateWorkflowInput): Promise<Workfl
       scopeType: input.orgScope?.scopeType,
       teamId: input.orgScope?.teamId,
       subteamId: input.orgScope?.subteamId,
+      operatingUniverse: input.operatingUniverse,
       trigger: input.trigger,
       active: input.active,
       confirmation: input.confirmation,

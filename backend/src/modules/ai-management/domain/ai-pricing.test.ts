@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { computeCallCost, estimateInputCost, isZeroPricing, pricingAt, validatePricingInput, type AiPricingVersion } from "./ai-pricing.js"
+import { computeCallCost, estimateInputCost, isZeroPricing, parseReportedCost, pricingAt, resolveCallCost, validatePricingInput, type AiPricingVersion } from "./ai-pricing.js"
 import { costOfTokens, formatDecimal, parseDecimal } from "./decimal.js"
 import { evaluateBudget, validateBudgetInput, type AiBudget } from "./ai-budget.js"
 
@@ -87,5 +87,31 @@ describe("orçamento com moeda explícita (§49–§52, §96)", () => {
   it("validação de escopo e valor", () => {
     expect(validateBudgetInput({ scope: "GLOBAL", scopeKey: "X", currency: "USD", monthlyAmount: "10", warningThresholds: [70] })).toHaveLength(1)
     expect(validateBudgetInput({ scope: "USE_CASE", scopeKey: null, currency: "USD", monthlyAmount: "0", warningThresholds: [150] })).toHaveLength(3)
+  })
+})
+
+describe("custo informado pelo provider", () => {
+  it("cabeçalho válido vira custo decimal exato (com notação científica, zero e sinal +); moeda vem de quem lê o cabeçalho", () => {
+    expect(parseReportedCost("0.0003465")).toEqual({ amount: "0.0003465", currency: "USD" })
+    expect(parseReportedCost(" 3.465e-05 ")).toEqual({ amount: "0.00003465", currency: "USD" })
+    expect(parseReportedCost("1E-3")).toEqual({ amount: "0.001", currency: "USD" })
+    expect(parseReportedCost("0")).toEqual({ amount: "0", currency: "USD" })
+    expect(parseReportedCost("0.0")).toEqual({ amount: "0", currency: "USD" })
+    expect(parseReportedCost("+.5")).toEqual({ amount: "0.5", currency: "USD" })
+    expect(parseReportedCost("2.")).toEqual({ amount: "2", currency: "USD" })
+    expect(parseReportedCost("12", "BRL")).toEqual({ amount: "12", currency: "BRL" })
+    // Mais casas que a escala (12): truncado na escala, nunca float.
+    expect(parseReportedCost("0.0000000000019")).toEqual({ amount: "0.000000000001", currency: "USD" })
+  })
+
+  it("ausente, vazio, negativo, não numérico, não finito ou grande demais = null (cai para a estimativa, nunca erro)", () => {
+    for (const raw of [null, undefined, "", "   ", "-0.01", "-1e-3", "abc", "None", "null", "NaN", "Infinity", "1e400", "0x10", "1,5", "0.1.2", "1e12", "5000000000000"]) expect(parseReportedCost(raw), String(raw)).toBeNull()
+  })
+
+  it("o informado vence a estimativa pela tabela; sem ele vale a regra de sempre (estimado ou desconhecido)", () => {
+    expect(resolveCallCost(usage(), version(), { amount: "0.0003465", currency: "USD" })).toEqual({ status: "REPORTED", currency: "USD", amount: "0.0003465", pricingId: null })
+    expect(resolveCallCost(usage({ promptTokens: null }), null, { amount: "0", currency: "USD" })).toEqual({ status: "REPORTED", currency: "USD", amount: "0", pricingId: null })
+    expect(resolveCallCost(usage(), version(), null)).toEqual(computeCallCost(usage(), version()))
+    expect(resolveCallCost(usage(), null, undefined)).toMatchObject({ status: "UNKNOWN", reason: "NO_PRICING" })
   })
 })

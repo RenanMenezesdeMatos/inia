@@ -8,6 +8,7 @@ const PUBLISHED: WorkflowConfiguration = {
   subteamId: null,
   consolidatedStructure: null,
   populationFilter: null,
+  operatingUniverse: null,
 }
 
 describe("configurationChanges — rascunho × publicada", () => {

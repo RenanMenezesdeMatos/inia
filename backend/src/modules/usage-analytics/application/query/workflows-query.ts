@@ -93,7 +93,7 @@ export async function workflowsQuery(db: Queryable, ctx: UsabilityContext, optio
       select w.workflow_id, w.name, w.active, w.trigger_kind, (w.active_version_id is not null) published from (${workflowsSql(p.typed(org, "uuid"))}) w
       where not exists (select 1 from roots r where r.workflow_id = w.workflow_id) order by w.active desc, w.name`),
     run<{ workflow_id: string; currency: string | null; cost: string | null; tokens: number | null; unknown: number }>((p) => `${baseCtes(p, ctx)}
-      select r.workflow_id, u.currency, sum(u.cost)::text cost, sum(u.total_tokens)::bigint tokens, count(*) filter (where u.cost_status <> 'ESTIMATED')::int unknown
+      select r.workflow_id, u.currency, sum(u.cost)::text cost, sum(u.total_tokens)::bigint tokens, count(*) filter (where u.cost_status not in ('ESTIMATED', 'REPORTED'))::int unknown
       from (${aiUsageSql(p.typed(org, "uuid"))}) u join roots r on r.root_id = u.root_enrollment_id group by 1, 2`),
     run<Record<string, number | null>>((p) => `${baseCtes(p, ctx)}
       select percentile_cont(0.5) within group (order by extract(epoch from s.first_event_at - r.created_at)) start_p50, percentile_cont(0.95) within group (order by extract(epoch from s.first_event_at - r.created_at)) start_p95,

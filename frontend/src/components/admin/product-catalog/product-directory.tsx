@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 import { cn } from "@/lib/utils"
 import { useDeleteProductNodeMutation, useIdentificationCriteriaQuery, useProductNodesQuery, useProductScopeSourcesQuery, useSetProductNodeActiveMutation } from "@/queries/admin/use-product-catalog-queries"
 import type { IdentificationCriterionSummary, ProductNode, ProductScopeSource } from "@/schemas/admin/product-catalog.schema"
@@ -74,7 +75,7 @@ function ProductDetail({ node, nodes, criteria, sources, onSelect, onNewProduct 
             {path.length > 0 ? <p className="text-xs text-muted-foreground">{path.map((ancestor) => ancestor.name).join(" › ")}</p> : null}
             <h2 className={cn("flex flex-wrap items-center gap-2 text-lg font-semibold", !node.active && "text-muted-foreground")}>
               {node.name}
-              {category ? <Badge variant="outline">Categoria</Badge> : null}
+              {category ? <Badge variant="outline">Categoria</Badge> : <UniverseBadge universe={node.operatingUniverse} />}
               {node.active ? null : <Badge variant="outline">Inativo</Badge>}
             </h2>
             {node.description ? (
@@ -173,6 +174,7 @@ function ProductTree({ nodes, criteria, sources, term, selectedId, onSelect }: {
                 <span className={cn("block truncate", category ? "text-sm font-medium" : "text-[13px]", !node.active && "text-muted-foreground line-through")}>{node.name}</span>
                 <span className={cn("block text-muted-foreground", category ? "text-xs" : "text-[11px]")}>{meta.join(" · ")}</span>
               </span>
+              {category ? null : <UniverseBadge universe={node.operatingUniverse} className="mt-0.5 shrink-0" />}
             </button>
           </li>
         )

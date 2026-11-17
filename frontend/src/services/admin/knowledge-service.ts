@@ -23,6 +23,7 @@ import {
 } from "@/schemas/admin/knowledge.schema"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import type { SubjectScopeValue } from "@/components/admin/shared/subject-scope-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const BASE_PATH = "/api/v1/admin/knowledge"
 
@@ -71,6 +72,7 @@ export type CreateKnowledgeInput = {
   file?: File
   orgScope: OrgScopeValue
   subjectScope: SubjectScopeValue
+  operatingUniverse?: OperatingUniverse | null
 }
 
 export async function createKnowledgeDocument(input: CreateKnowledgeInput) {
@@ -81,6 +83,7 @@ export async function createKnowledgeDocument(input: CreateKnowledgeInput) {
   if (input.file) formData.set("file", input.file)
   formData.set("orgScopes", JSON.stringify([input.orgScope]))
   formData.set("subjectScopes", JSON.stringify([input.subjectScope]))
+  if (input.operatingUniverse) formData.set("operatingUniverse", input.operatingUniverse)
   return adminUpload<{ id: string }>(BASE_PATH, formData)
 }
 

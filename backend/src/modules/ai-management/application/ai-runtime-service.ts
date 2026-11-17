@@ -14,13 +14,13 @@ import { estimateTokens } from "../../../shared/application/model-routing/token-
 import { evaluateBudget, type AiBudgetEvaluation } from "../domain/ai-budget.js"
 import { supportsCapability } from "../domain/ai-capabilities.js"
 import { findAiProvider } from "../domain/ai-provider-catalog.js"
-import { computeCallCost, isZeroPricing, pricingAt, type AiCostResult } from "../domain/ai-pricing.js"
+import { computeCallCost, isZeroPricing, pricingAt, resolveCallCost, type AiCostResult, type ProviderReportedCost } from "../domain/ai-pricing.js"
 import { planRoute, type ModelSnapshot, type PolicySnapshot, type RouteCandidate } from "../domain/ai-routing-policy.js"
 import { speechCacheModelKey } from "../domain/ai-speech.js"
 import { formatDecimal, parseDecimal } from "../domain/decimal.js"
 import { createAdapterRegistry, type AdapterRegistry } from "../infrastructure/adapters/adapter-registry.js"
 import { decryptAiSecret } from "./ai-secrets.js"
-import { insertUsageEvent, legacyPricingKey, loadMonthSpend, loadOrgSnapshot, type ConnectionRuntime, type MonthSpendRow, type OrgAiSnapshot, type UsageRow } from "./ai-runtime-store.js"
+import { insertUsageEvent, legacyPricingKey, loadMonthSpend, loadOrgSnapshot, usageCostColumns, type ConnectionRuntime, type MonthSpendRow, type OrgAiSnapshot, type UsageRow } from "./ai-runtime-store.js"
 import { syncBudgetAlerts } from "./ai-budget-alerts.js"
 import type { AiExecuteResult, AiStreamExecuteResult, ResolvedConnection } from "./provider-adapter-port.js"
 
@@ -78,6 +78,7 @@ export function resolveConnection(connection: ConnectionRuntime): ResolvedConnec
 }
 
 function toCostEstimate(cost: AiCostResult): CostEstimate {
+  if (cost.status === "REPORTED") return { status: "PROVIDER_REPORTED_COST", currency: cost.currency, totalCost: Number(cost.amount) }
   if (cost.status !== "ESTIMATED") return { status: "NOT_CONFIGURED" }
   // Número só para a telemetria do QA Lab (exibição); o valor persistido é o decimal exato.
   const n = (value: string) => Number(value)
@@ -105,6 +106,7 @@ function describeInput(contents: AdapterTurn[]): string {
 
 function legacyCostRow(event: AiUsageEventInput): Pick<UsageRow, "cost" | "currency" | "costStatus" | "costUnknownReason" | "pricingId" | "pricingSource"> {
   const legacy = event.legacyCost
+  if (legacy && legacy.status === "PROVIDER_REPORTED_COST" && !legacy.includesEstimate) return { cost: formatDecimal(parseDecimal(legacy.totalCost)), currency: legacy.currency, costStatus: "REPORTED", costUnknownReason: null, pricingId: null, pricingSource: "PROVIDER" }
   if (legacy && legacy.status === "ESTIMATED_PROVIDER_COST") return { cost: formatDecimal(parseDecimal(legacy.totalEstimatedCost)), currency: legacy.currency, costStatus: "ESTIMATED", costUnknownReason: null, pricingId: null, pricingSource: "LEGACY_ENV" }
   return { cost: null, currency: null, costStatus: "UNKNOWN", costUnknownReason: event.usage && event.usage.promptTokens !== null ? "NO_PRICING" : event.status === "SUCCESS" ? "NO_USAGE" : null, pricingId: null, pricingSource: "NONE" }
 }
@@ -157,7 +159,7 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
     const snap = await snapshot(event.organizationId).catch(() => null)
     const versions = snap?.legacyPricing.get(legacyPricingKey(event.providerKey, event.modelName))
     const pricing = versions ? pricingAt(versions, event.occurredAt) : null
-    return pricing ? costRow(computeCallCost(event.usage, pricing)) : null
+    return pricing ? usageCostColumns(computeCallCost(event.usage, pricing)) : null
   }
 
   /** Orçamentos com hard limit estourados que se aplicam a esta chamada. */
@@ -227,8 +229,6 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
     policyId: policy.id,
   })
 
-  const costRow = (cost: AiCostResult) => ({ cost: cost.status === "ESTIMATED" ? cost.amount : null, currency: cost.currency, costStatus: cost.status, costUnknownReason: cost.status === "UNKNOWN" ? cost.reason : null, pricingId: cost.pricingId, pricingSource: cost.pricingId ? ("TABLE" as const) : ("NONE" as const) })
-
   /** Plano + orçamento: candidatos que podem ser tentados; lança erro claro quando nenhum pode. */
   const prepare = async (request: Pick<PolicyExecutionRequest, "organizationId" | "useCase" | "classification" | "correlationId" | "estimatedInputTokens">) => {
     const snap = await snapshot(request.organizationId)
@@ -282,7 +282,7 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
   }
 
   /** Executa candidato a candidato; `run` faz a chamada concreta. Fallback só em categoria elegível. */
-  const attemptAll = async <T>(request: Pick<PolicyExecutionRequest, "organizationId" | "useCase" | "classification" | "correlationId">, prepared: NonNullable<Awaited<ReturnType<typeof prepare>>>, run: (candidate: RouteCandidate, connection: ResolvedConnection, timeoutMs: number) => Promise<{ value: T; usage: LlmUsage; durationMs: number }>, canRetry: () => boolean = () => true): Promise<{ value: T; candidate: RouteCandidate; attempt: number; fallbackReason: string | null; cost: AiCostResult; usage: LlmUsage }> => {
+  const attemptAll = async <T>(request: Pick<PolicyExecutionRequest, "organizationId" | "useCase" | "classification" | "correlationId">, prepared: NonNullable<Awaited<ReturnType<typeof prepare>>>, run: (candidate: RouteCandidate, connection: ResolvedConnection, timeoutMs: number) => Promise<{ value: T; usage: LlmUsage; durationMs: number; reportedCost?: ProviderReportedCost | null }>, canRetry: () => boolean = () => true): Promise<{ value: T; candidate: RouteCandidate; attempt: number; fallbackReason: string | null; cost: AiCostResult; usage: LlmUsage }> => {
     // QA Lab ("Parar antes da IA"/orçamento de requests) decide ANTES de qualquer request sair.
     beforeLlmCall()
     let fallbackReason: string | null = null
@@ -305,9 +305,10 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
         const connection = resolveConnection(connectionRuntime)
         const timeoutMs = candidate.model.timeoutMs ?? connection.timeoutMs
         // Vagas da conexão em todas as instâncias (configuradas na conexão) + pausa depois de um 429 dela.
-        const { value, usage, durationMs } = await runThroughProviderGate(gateKey, connectionRuntime.maxConcurrentCalls, () => run(candidate, connection, timeoutMs))
-        const cost = computeCallCost(usage, candidate.model.pricing)
-        await persist({ ...baseEvent(request, prepared.policy, candidate, attempt, fallbackReason), usage, durationMs, status: "SUCCESS", errorCategory: null, ...costRow(cost) })
+        const { value, usage, durationMs, reportedCost } = await runThroughProviderGate(gateKey, connectionRuntime.maxConcurrentCalls, () => run(candidate, connection, timeoutMs))
+        // Custo informado pelo provider (cabeçalho da resposta) vence a estimativa pela tabela; sem ele, a regra de sempre.
+        const cost = resolveCallCost(usage, candidate.model.pricing, reportedCost)
+        await persist({ ...baseEvent(request, prepared.policy, candidate, attempt, fallbackReason), usage, durationMs, status: "SUCCESS", errorCategory: null, ...usageCostColumns(cost) })
         return { value, candidate, attempt, fallbackReason, cost, usage }
       } catch (error) {
         const category: AiErrorCategory = error instanceof AiProviderError ? error.category : "UNKNOWN"
@@ -352,7 +353,7 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
               onText(text)
             })
           : await adapter.execute(connection, candidate.model.providerModelId, executeRequest, timeout)
-        return { value: executed, usage: executed.usage, durationMs: executed.durationMs }
+        return { value: executed, usage: executed.usage, durationMs: executed.durationMs, reportedCost: executed.reportedCost ?? null }
       }, () => streamed === 0)
       const executed = result.value
       // Telemetria do QA Lab (no-op fora dele) — o mesmo registro que os clientes legados fazem.
@@ -367,8 +368,9 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
         ...(executed.kind === "functionCalls" ? { toolCalls: executed.calls.map((call) => call.name) } : {}),
         promptBreakdown: { systemPromptChars: request.systemPrompt.length, toolSchemaChars: request.tools.length > 0 ? JSON.stringify(request.tools).length : 0, inputChars: request.contents.reduce((sum, turn) => sum + ("text" in turn ? turn.text.length : JSON.stringify(turn).length), 0), declaredTools: request.tools.length, technicalIds: countTechnicalIdsInPrompt(request.systemPrompt, ...request.contents.map((turn) => ("text" in turn ? turn.text : JSON.stringify(turn)))) },
       })
-      const { usage: _usage, model, durationMs, streamedChars, firstTokenMs, ...payload } = executed as AiExecuteResult & Partial<Pick<AiStreamExecuteResult, "streamedChars" | "firstTokenMs">>
+      const { usage: _usage, reportedCost: _reportedCost, model, durationMs, streamedChars, firstTokenMs, ...payload } = executed as AiExecuteResult & Partial<Pick<AiStreamExecuteResult, "streamedChars" | "firstTokenMs">>
       void _usage
+      void _reportedCost
       if (payload.kind === "text" && !payload.text.trim()) throw new AiProviderError("PROVIDER_ERROR", { message: "O modelo não retornou nenhum texto." })
       return {
         ...payload,
@@ -400,13 +402,13 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
           if (adapter.stream && supportsCapability(candidate.model.capabilities, "STREAMING")) {
             const streamed = await adapter.stream(connection, candidate.model.providerModelId, { systemPrompt: request.systemPrompt, contents: request.contents, maxOutputTokens: candidate.model.maxOutputTokens }, timeoutMs, onChunk)
             if (!streamed.text.trim()) throw new AiProviderError("PROVIDER_ERROR", { message: "O modelo não retornou nenhum texto." })
-            return { value: streamed, usage: streamed.usage, durationMs: streamed.durationMs }
+            return { value: streamed, usage: streamed.usage, durationMs: streamed.durationMs, reportedCost: streamed.reportedCost ?? null }
           }
           const executed = await adapter.execute(connection, candidate.model.providerModelId, { systemPrompt: request.systemPrompt, contents: request.contents, tools: [], structuredOutput: false, maxOutputTokens: candidate.model.maxOutputTokens }, timeoutMs)
           const text = executed.kind === "text" ? executed.text : ""
           if (!text.trim()) throw new AiProviderError("PROVIDER_ERROR", { message: "O modelo não retornou nenhum texto." })
           onChunk(text)
-          return { value: { text, usage: executed.usage, model: executed.model, durationMs: executed.durationMs }, usage: executed.usage, durationMs: executed.durationMs }
+          return { value: { text, usage: executed.usage, model: executed.model, durationMs: executed.durationMs }, usage: executed.usage, durationMs: executed.durationMs, reportedCost: executed.reportedCost ?? null }
         },
         // Depois do primeiro chunk entregue ao usuário não há fallback: trocaria a resposta no meio.
         () => !emitted,
@@ -436,7 +438,7 @@ export function createAiRuntime(db: Queryable, options: AiRuntimeOptions = {}): 
         // A elegibilidade já exige os dois; esta é a trava de quem chama o adapter.
         if (!adapter.synthesizeSpeech || !speech) throw new AiProviderError("ROUTE_UNAVAILABLE", { message: `O modelo "${candidate.model.displayName}" não faz síntese de voz na INIA (provider sem síntese ou voz não configurada).` })
         const spoken = await adapter.synthesizeSpeech(connection, candidate.model.providerModelId, { text: request.text, voice: speech.voice, instructions: speech.instructions }, timeoutMs)
-        return { value: { ...spoken, speech }, usage: spoken.usage, durationMs: spoken.durationMs }
+        return { value: { ...spoken, speech }, usage: spoken.usage, durationMs: spoken.durationMs, reportedCost: spoken.reportedCost ?? null }
       })
       const spoken = result.value
       return { pcm16: spoken.pcm16, sampleRate: spoken.sampleRate, voice: spoken.speech.voice, model: speechCacheModelKey(result.candidate.model.providerModelId, spoken.speech), usage: result.usage, resolvedRoute: resolvedRouteOf(request, prepared.policy, result.candidate, result.attempt, result.fallbackReason) }

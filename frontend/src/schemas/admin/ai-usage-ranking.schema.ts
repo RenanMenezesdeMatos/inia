@@ -7,11 +7,13 @@ import { z } from "zod"
  * nome nem texto livre na URL) e mostra o que voltou.
  *
  *  - Cada linha soma a pessoa e toda a estrutura abaixo dela (líderes) ou as pessoas do Grupo/Subgrupo — SÓ as do escopo.
+ *  - Usuário (`PERSON`): cada linha é uma pessoa do escopo; chega-se a ele de uma linha dos outros níveis (Grupo/Subgrupo
+ *    pelos filtros de sempre, líder por `leaderId`, id opaco) — os três só estreitam.
  *  - "Sem vínculo" é uma linha própria, fora da paginação: aparece em toda página e nunca é atribuída a alguém.
  *  - Custo continua por moeda (string decimal); token `null` = não informado pelo provider.
  */
 
-export const AI_USAGE_RANKING_LEVELS = ["DIRECTOR", "SENIOR_MANAGER", "MANAGER", "TEAM", "SUBTEAM", "SUPERVISOR"] as const
+export const AI_USAGE_RANKING_LEVELS = ["DIRECTOR", "SENIOR_MANAGER", "MANAGER", "TEAM", "SUBTEAM", "SUPERVISOR", "PERSON"] as const
 export type AiUsageRankingLevel = (typeof AI_USAGE_RANKING_LEVELS)[number]
 
 export const AI_USAGE_RANKING_LEVEL_LABELS: Record<AiUsageRankingLevel, string> = {
@@ -21,6 +23,7 @@ export const AI_USAGE_RANKING_LEVEL_LABELS: Record<AiUsageRankingLevel, string> 
   TEAM: "Grupo",
   SUBTEAM: "Subgrupo",
   SUPERVISOR: "Supervisor",
+  PERSON: "Usuário",
 }
 
 /** Nome da coluna principal por visão (o que cada linha é). */
@@ -31,6 +34,7 @@ export const AI_USAGE_RANKING_ENTITY_LABELS: Record<AiUsageRankingLevel, string>
   TEAM: "Grupo",
   SUBTEAM: "Subgrupo",
   SUPERVISOR: "Supervisor(a)",
+  PERSON: "Usuário",
 }
 
 export const AI_USAGE_SOURCES = ["WORKFLOW", "REQUEST", "OTHER"] as const
@@ -56,6 +60,7 @@ export const AI_USAGE_RANKING_SORT_LABELS: Record<AiUsageRankingSort, string> = 
 export function unlinkedReasonLabel(reason: AiUsageUnlinkedReason, level: AiUsageRankingLevel): string {
   if (reason === "NO_PERSON") return "Sem pessoa identificada"
   if (reason === "WORKFLOW_WITHOUT_PERSON") return "Workflow sem colaborador"
+  if (level === "PERSON") return "Pessoa fora do recorte"
   if (level === "TEAM" || level === "SUBTEAM") return `Pessoa sem ${AI_USAGE_RANKING_LEVEL_LABELS[level]} no cadastro`
   return `Pessoa sem ${AI_USAGE_RANKING_ENTITY_LABELS[level].replace("(a)", "")} acima na estrutura`
 }
@@ -69,6 +74,9 @@ const rankingMetricsSchema = z.object({
   tokens: z.number().nullable(),
   tokensReported: z.number().int().nonnegative(),
   unknownCostCalls: z.number().int().nonnegative(),
+  /** Chamadas com custo INFORMADO pelo provedor × ESTIMADO pela tabela de preço. */
+  reportedCostCalls: z.number().int().nonnegative(),
+  estimatedCostCalls: z.number().int().nonnegative(),
   costByCurrency: costByCurrencySchema,
   people: z.number().int().nonnegative(),
   share: z.number().nullable(),

@@ -27,6 +27,8 @@ export type OperatorIdentity = {
   level?: string | null
   /** Pessoas ativas que respondem diretamente a ela (reports_to) — define se a pergunta vem de alguém que lidera. */
   directReports?: number
+  /** Universo de atuação do cadastro (B2B/B2C/B2X; null = pendente) — o público que a pessoa atende, resolvido aqui, no backend. */
+  operatingUniverse?: string | null
 }
 
 /**
@@ -35,8 +37,8 @@ export type OperatorIdentity = {
  * estando numa sessão autenticada onde essa informação já é conhecida.
  */
 export async function buildOperatorIdentity(db: Database, organizationId: string, operatorId: string): Promise<OperatorIdentity | null> {
-  const result = await db.query<{ name: string; team_id: string | null; team_name: string | null; job_title: string | null; role: string | null; direct_reports: number }>(
-    `select p.name, p.team_id, t.name team_name, p.job_title, p.role,
+  const result = await db.query<{ name: string; team_id: string | null; team_name: string | null; job_title: string | null; role: string | null; direct_reports: number; operating_universe: string | null }>(
+    `select p.name, p.team_id, t.name team_name, p.job_title, p.role, p.operating_universe,
             (select count(*)::int from people sub where sub.organization_id = p.organization_id and sub.reports_to_id = p.id and sub.active) direct_reports
      from people p left join teams t on t.id = p.team_id where p.id = $1 and p.organization_id = $2`,
     [operatorId, organizationId],
@@ -45,7 +47,7 @@ export async function buildOperatorIdentity(db: Database, organizationId: string
   if (!row) return null
   // Como a pessoa quer ser chamada — resolução ÚNICA (profile-preferences), nunca `name.split(" ")[0]` aqui.
   const presentation = await loadPersonPresentation(db, organizationId, operatorId)
-  return { name: row.name, teamId: row.team_id, teamName: row.team_name, preferredName: presentation?.preferredName ?? null, addressName: presentation?.addressName ?? null, jobTitle: row.job_title, level: row.role, directReports: row.direct_reports ?? 0 }
+  return { name: row.name, teamId: row.team_id, teamName: row.team_name, preferredName: presentation?.preferredName ?? null, addressName: presentation?.addressName ?? null, jobTitle: row.job_title, level: row.role, directReports: row.direct_reports ?? 0, operatingUniverse: row.operating_universe }
 }
 
 /** Janela, em dias, dos indicadores que o especialista recebe: o período pedido, sempre entre 1 e `MAX_WINDOW_DAYS` (padrão 7). */

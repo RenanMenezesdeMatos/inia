@@ -1,5 +1,9 @@
 "use client"
 
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
+import { OPERATING_UNIVERSES, type OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { useEffect, useId, useState, type ReactNode } from "react"
 import { KeyRound, LogIn, Pencil, Plus, UserRound, Users, UsersRound } from "lucide-react"
 
@@ -359,6 +363,7 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
             <TableHead>Usuário</TableHead>
             <TableHead>Nível hierárquico</TableHead>
             <TableHead>Grupo</TableHead>
+            <TableHead>Universo</TableHead>
             <TableHead>Último acesso</TableHead>
             <TableHead>Situação</TableHead>
             <TableHead>Status</TableHead>
@@ -375,6 +380,9 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
                 <RoleSelect user={user} />
               </TableCell>
               <TableCell>{user.teamName ?? "—"}</TableCell>
+              <TableCell>
+                <UniverseBadge universe={user.operatingUniverse} />
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {user.lastLoginAt ? formatShortDateTime(user.lastLoginAt, { withYear: true }) : user.accountId ? "Nunca acessou" : "—"}
               </TableCell>
@@ -397,7 +405,8 @@ function UsersTable({ users, onEdit }: { users: UserAccount[]; onEdit: (user: Us
 
 type UserFilters = Omit<UserListParams, "page" | "pageSize" | "search"> & { search: string }
 
-const DEFAULT_FILTERS: UserFilters = { search: "", role: [], lastLoginAt: {} }
+const DEFAULT_FILTERS: UserFilters = { search: "", role: [], operatingUniverse: [], lastLoginAt: {} }
+const UNIVERSE_FILTER_OPTIONS = [...OPERATING_UNIVERSES.map((universe) => ({ value: universe, label: universe })), { value: "PENDING" as const, label: "Pendente" }]
 const ROLE_OPTIONS = optionsFromLabels(ROLE_LABELS)
 
 /**
@@ -439,6 +448,8 @@ export function UsersPage({
   const [role, setRole] = useState<PlatformRole>("OPERATOR")
   const [teamId, setTeamId] = useState<string>("")
   const [matricula, setMatricula] = useState("")
+  const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
+  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
   const creationPolicy = useCreationPolicyQuery(tab === "form" && editingUser === null)
   // Com Colaboradores vigente, sem matrícula só dá para cadastrar "Fora da hierarquia"; com matrícula, a base vai assumir.
   const hierarchyLocked = editingUser === null && creationPolicy.data?.hierarchyRequiresMatricula === true && matricula.trim() === ""
@@ -457,6 +468,7 @@ export function UsersPage({
     setRole("OPERATOR")
     setTeamId("")
     setMatricula("")
+    setUniverse(null)
     createMutation.reset()
     setTab("form")
   }
@@ -479,6 +491,7 @@ export function UsersPage({
     setEmail(user.email ?? "")
     setRole(user.role)
     setTeamId(user.teamId ?? "")
+    setUniverse(user.operatingUniverse)
     updateDetailsMutation.reset()
     setTab("form")
   }
@@ -492,6 +505,7 @@ export function UsersPage({
       if (emailEditable && email !== (editingUser.email ?? "")) fields.email = email
       if (!managedBy?.role && role !== editingUser.role) fields.role = role
       if (!managedBy?.teamId && (teamId || null) !== editingUser.teamId) fields.teamId = teamId || null
+      if (!managedBy?.operatingUniverse && universe !== editingUser.operatingUniverse) fields.operatingUniverse = universe
       try {
         await updateDetailsMutation.mutateAsync(fields)
       } catch {
@@ -499,7 +513,7 @@ export function UsersPage({
       }
     } else {
       try {
-        setIssued(await createMutation.mutateAsync({ name, email, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined }))
+        setIssued(await createMutation.mutateAsync({ name, email, role: effectiveRole, teamId: teamId || undefined, matricula: matricula.trim() || undefined, operatingUniverse: universe }))
       } catch {
         return
       }
@@ -511,8 +525,10 @@ export function UsersPage({
   // Matrícula que já existe: não cadastra de novo — a saída é liberar o acesso da pessoa que já está lá.
   const matriculaInUse = editingUser === null && createMutation.error instanceof AdminApiError && createMutation.error.code === "PERSON_MATRICULA_IN_USE" ? createMutation.error : null
   const existingPersonId = (matriculaInUse?.details as { personId?: string } | undefined)?.personId ?? null
-  const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId
-  const canSubmit = hasEditableField && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
+  const hasEditableField = !editingUser || !managedBy?.name || emailEditable || !managedBy?.role || !managedBy?.teamId || !managedBy?.operatingUniverse
+  // Com a exigência ativa, cadastro novo e regularização exigem o universo (o backend confere de novo).
+  const universeMissing = universeEnforced && universe === null && !managedBy?.operatingUniverse
+  const canSubmit = hasEditableField && !universeMissing && (Boolean(managedBy?.name) || name.trim().length > 1) && (!emailEditable || email.includes("@"))
 
   return (
     <Card>
@@ -553,6 +569,7 @@ export function UsersPage({
             >
               <ListMultiSelectFilter label="Nível hierárquico" values={list.filters.role} onChange={(values) => list.setFilter("role", values)} options={ROLE_OPTIONS} />
               <ListSelectFilter value={list.filters.teamId} onChange={(value) => list.setFilter("teamId", value)} options={teamOptions} allLabel="Qualquer grupo" ariaLabel="Filtrar por grupo" />
+              <ListMultiSelectFilter label="Universo" values={list.filters.operatingUniverse ?? []} onChange={(values) => list.setFilter("operatingUniverse", values as UserFilters["operatingUniverse"])} options={UNIVERSE_FILTER_OPTIONS} />
               <ListBooleanFilter value={list.filters.active} onChange={(value) => list.setFilter("active", value)} allLabel="Qualquer status" trueLabel="Ativos" falseLabel="Inativos" ariaLabel="Filtrar por status" />
               <ListBooleanFilter value={list.filters.hasAccount} onChange={(value) => list.setFilter("hasAccount", value)} allLabel="Com ou sem conta" trueLabel="Com conta de acesso" falseLabel="Sem conta de acesso" ariaLabel="Filtrar por conta de acesso" />
               <ListDateRangeFilter label="Último acesso" value={list.filters.lastLoginAt} onChange={(value) => list.setFilter("lastLoginAt", value)} />
@@ -647,6 +664,24 @@ export function UsersPage({
                     </SelectContent>
                   </Select>
                 </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="user-universe">Universo de atuação</Label>
+              <UniverseSelect
+                id="user-universe"
+                value={universe}
+                onChange={setUniverse}
+                allowPending={!universeEnforced}
+                disabled={Boolean(managedBy?.operatingUniverse)}
+                aria-describedby={managedBy?.operatingUniverse ? "user-universe-source" : "user-universe-help"}
+              />
+              <SourceManagedNotice id="user-universe-source" manager={managedBy?.operatingUniverse ?? null} />
+              {managedBy?.operatingUniverse ? null : (
+                <p id="user-universe-help" className="text-xs text-muted-foreground">
+                  Público que a pessoa atende (B2B, B2C ou B2X — universos separados). Decide as bases, produtos e Workflows que valem para ela e
+                  quais dados ela consulta. {universeEnforced ? "Obrigatório." : "Sem universo, a pessoa fica como pendente de classificação."}
+                </p>
               )}
             </div>
             {editingUser ? (

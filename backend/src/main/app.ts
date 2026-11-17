@@ -45,6 +45,7 @@ import { createKnowledgeMaterialRouter } from "../modules/knowledge/presentation
 import { createAgentRouter } from "../modules/agents/presentation/agent-router.js"
 import { createBusinessDomainRouter } from "../modules/business-domains/presentation/business-domain-router.js"
 import { createProductCatalogRouter } from "../modules/product-catalog/presentation/product-catalog-router.js"
+import { createOperatingUniverseRouter } from "../modules/operating-universe/presentation/operating-universe-router.js"
 import { createOperationalCalendarRouter } from "../modules/people/presentation/operational-calendar-router.js"
 import { createOrgStructureRouter } from "../modules/org-structure/presentation/org-structure-router.js"
 import { createPersonOrganizationStructureRouter } from "../modules/org-structure/presentation/person-organization-structure-router.js"
@@ -405,6 +406,8 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   app.use("/api/v1/admin/business-domains", can("configuration.manage"), orgWideWrites, createBusinessDomainRouter(database))
   // Produtos, famílias e critérios de identificação + abrangência por produto das fontes (`PRODUCT_APPLICABILITY_V1`).
   app.use("/api/v1/admin/product-catalog", can("configuration.manage"), orgWideWrites, createProductCatalogRouter(database))
+  // Universo de atuação (B2B, B2C, B2X): prontidão, classificação do legado e ativação — cada rota confere a própria permissão.
+  app.use("/api/v1/admin/operating-universe", createOperatingUniverseRouter(database))
   app.use("/api/v1/admin/operational-calendar", can("configuration.manage"), orgWideWrites, createOperationalCalendarRouter(database))
   app.use("/api/v1/admin/org-structure", can("configuration.manage"), createOrgStructureRouter(database))
   app.use("/api/v1/admin/indicator-rules", can("configuration.manage"), createIndicatorRuleRouter(database))

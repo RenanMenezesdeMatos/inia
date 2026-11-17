@@ -28,7 +28,7 @@ function fakeDb(input: { operatorIds: string[]; existing?: { subjectId: string; 
   } as unknown as Database
 }
 
-const MANUAL: WorkflowConfiguration = { triggerConfig: { kind: "manual", context: "COLLABORATOR" }, scopeType: "ALL_TEAMS", teamId: null, subteamId: null, consolidatedStructure: null, populationFilter: null }
+const MANUAL: WorkflowConfiguration = { triggerConfig: { kind: "manual", context: "COLLABORATOR" }, scopeType: "ALL_TEAMS", teamId: null, subteamId: null, consolidatedStructure: null, populationFilter: null, operatingUniverse: null }
 /** O gatilho do incidente: todo dia 5 às 18:30, para todos os colaboradores. */
 const MONTHLY_DAY_5: WorkflowConfiguration = {
   ...MANUAL,

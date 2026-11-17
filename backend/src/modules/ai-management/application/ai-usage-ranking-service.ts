@@ -26,12 +26,16 @@ import { resolvePeriod } from "./ai-usage-service.js"
  *    escopo sobre um ramo não recebe linha dele: nem nome, nem número. Cada linha soma SÓ as pessoas do escopo;
  *  - uso sem pessoa identificada (ou de Workflow sem colaborador) não pertence a ramo nenhum: só aparece para quem tem a
  *    permissão na organização inteira e sem recorte de Grupo/Subgrupo;
- *  - filtros validados por zod `.strict()`; Grupo/Subgrupo só ESTREITAM o recorte já decidido.
+ *  - filtros validados por zod `.strict()`; Grupo/Subgrupo/líder (`leaderId`) só ESTREITAM o recorte já decidido — um id
+ *    fora do escopo (ou de outra organização) devolve só quem já era visível abaixo dele, ou nada;
+ *  - nível Usuário (`PERSON`): cada linha é UMA pessoa do recorte acima; quem está fora dele não tem linha, nome nem número.
  *
  * Desempenho: UMA consulta. O bruto do período é lido pelo índice organização × tempo e reduzido a uma linha por chave de
  * atribuição (matrícula × pessoa da sessão) ANTES de qualquer junção; matrícula → colaborador e pessoa → unidade rodam sobre
  * essas chaves. O ranking é o agregado por unidade (limitado ao número de líderes/Grupos do nível, nunca ao histórico): a
- * página sai dele por posição (LIMIT/OFFSET sobre o agregado) e os nomes só entram para as unidades ranqueadas.
+ * página sai dele por posição (LIMIT/OFFSET sobre o agregado) e os nomes só entram para as unidades ranqueadas. No nível
+ * Usuário o agregado pode ter milhares de pessoas: a posição sai só das métricas (desempate pelo id) e os nomes entram
+ * DEPOIS do LIMIT, só para as linhas da página.
  */
 
 export type RankingViewer = { organizationId: string; personId: string; access: AccessContext }
@@ -55,6 +59,9 @@ export type RankingMetrics = {
   tokens: number | null
   tokensReported: number
   unknownCostCalls: number
+  /** Chamadas bem-sucedidas com o custo INFORMADO pelo provider × ESTIMADO pela tabela (o resto é desconhecido). */
+  reportedCostCalls: number
+  estimatedCostCalls: number
   costByCurrency: Record<string, string>
   /** Pessoas do escopo com uso atribuído (sem pessoa identificada não conta). */
   people: number
@@ -85,7 +92,7 @@ export type AiUsageRanking = {
 }
 
 /** `tokens` chega como número do jsonb (soma de inteiros informados — bem abaixo de 2^53). */
-type MetricJson = { requests: number; attempts: number; errors: number; tokens: number | null; tokens_n: number; unknown_cost: number; people: number }
+type MetricJson = { requests: number; attempts: number; errors: number; tokens: number | null; tokens_n: number; unknown_cost: number; reported_cost: number; estimated_cost: number; people: number }
 type ItemJson = MetricJson & { entity_id: string; position: number; name: string | null; job_title: string | null; team_name: string | null; active: boolean | null; workflow_requests: number; request_requests: number }
 type UnlinkedJson = MetricJson & { reason: AiUsageUnlinkedReason }
 type CostJson = { entity_id: string | null; reason: string | null; currency: string; amount: string }
@@ -99,6 +106,7 @@ const SORT_SQL: Record<AiUsageRankingQuery["sort"], string> = {
 
 /** Unidade do nível para cada pessoa do recorte (colunas person_id, entity_id). */
 function entityOfSql(p: SqlParams, org: string, level: AiUsageRankingLevel): string {
+  if (level === "PERSON") return `entity_of as (select ps.person_id, ps.person_id entity_id from persons ps)`
   const role = LEADER_LEVEL_ROLES[level]
   if (!role) {
     const column = level === "TEAM" ? "team_id" : "subteam_id"
@@ -117,18 +125,43 @@ function entityOfSql(p: SqlParams, org: string, level: AiUsageRankingLevel): str
     entity_of as (select distinct on (person_id) person_id, node_id entity_id from chain where role = ${rolePlaceholder} order by person_id, depth)`
 }
 
-function namesSql(org: string, level: AiUsageRankingLevel): string {
-  if (LEADER_LEVEL_ROLES[level]) {
+/** Nomes das unidades listadas em `source` (o agregado inteiro nos níveis de estrutura; só a página no nível Usuário). */
+function namesSql(org: string, level: AiUsageRankingLevel, source: "ranking" | "paged"): string {
+  if (level === "PERSON" || LEADER_LEVEL_ROLES[level]) {
     return `select x.id entity_id, x.name, x.job_title, t.name team_name, x.active from people x left join teams t on t.id = x.team_id
-             where x.organization_id = ${org} and x.id in (select entity_id from ranking)`
+             where x.organization_id = ${org} and x.id in (select entity_id from ${source})`
   }
-  if (level === "TEAM") return `select t.id entity_id, t.name, null::text job_title, null::text team_name, true active from teams t where t.organization_id = ${org} and t.id in (select entity_id from ranking)`
+  if (level === "TEAM") return `select t.id entity_id, t.name, null::text job_title, null::text team_name, true active from teams t where t.organization_id = ${org} and t.id in (select entity_id from ${source})`
   return `select s.id entity_id, s.name, null::text job_title, t.name team_name, true active from subteams s join teams t on t.id = s.team_id
-           where s.organization_id = ${org} and s.id in (select entity_id from ranking)`
+           where s.organization_id = ${org} and s.id in (select entity_id from ${source})`
+}
+
+/**
+ * Página do ranking. Níveis de estrutura (poucas unidades): nomes antes da posição, para desempatar pelo nome. Usuário
+ * (milhares de pessoas): posição só pelas métricas e pelo id, LIMIT/OFFSET, e os nomes só das linhas da página.
+ */
+function pageSql(org: string, level: AiUsageRankingLevel, sort: AiUsageRankingQuery["sort"], offset: string, limit: string): string {
+  if (level !== "PERSON") {
+    return `names as (${namesSql(org, level, "ranking")}),
+    page_items as (
+      select * from (
+        select r.*, n.name, n.job_title, n.team_name, n.active,
+               row_number() over (order by ${SORT_SQL[sort]}, n.name nulls last, r.entity_id)::int position
+          from ranking r left join names n on n.entity_id = r.entity_id
+      ) ranked order by position offset ${offset} limit ${limit}
+    )`
+  }
+  return `paged as (
+      select * from (select r.*, row_number() over (order by ${SORT_SQL[sort]}, r.entity_id)::int position from ranking r) ranked
+       order by position offset ${offset} limit ${limit}
+    ),
+    names as (${namesSql(org, level, "paged")}),
+    page_items as (select pg.*, n.name, n.job_title, n.team_name, n.active from paged pg left join names n on n.entity_id = pg.entity_id)`
 }
 
 const METRIC_SUMS = `coalesce(sum(requests), 0)::int requests, coalesce(sum(attempts), 0)::int attempts, coalesce(sum(errors), 0)::int errors,
-  sum(tokens)::bigint tokens, coalesce(sum(tokens_n), 0)::int tokens_n, coalesce(sum(unknown_cost), 0)::int unknown_cost`
+  sum(tokens)::bigint tokens, coalesce(sum(tokens_n), 0)::int tokens_n, coalesce(sum(unknown_cost), 0)::int unknown_cost,
+  coalesce(sum(reported_cost), 0)::int reported_cost, coalesce(sum(estimated_cost), 0)::int estimated_cost`
 
 export async function usageRanking(context: AiAdminContext, viewer: RankingViewer, rawQuery: unknown): Promise<AiUsageRanking> {
   const query = aiUsageRankingQuerySchema.parse(rawQuery)
@@ -145,7 +178,16 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
   if (!scope.organizationWide) personWhere.push(`p.id in (${scopedPeopleSql(p, { organizationId: viewer.organizationId, viewerPersonId: viewer.personId, permission: RANKING_PERMISSION })})`)
   if (query.teamId) personWhere.push(`p.team_id = ${p.typed(query.teamId, "uuid")}`)
   if (query.subteamId) personWhere.push(`p.subteam_id = ${p.typed(query.subteamId, "uuid")}`)
-  const unlinkedWithoutPersonVisible = scope.organizationWide && !query.teamId && !query.subteamId
+  // Estrutura do líder: ele e quem está abaixo (anticiclo por profundidade, como as demais CTEs de hierarquia). Só estreita.
+  const leaderTree = query.leaderId
+    ? `leader_tree as (
+      select x.id, 0 depth from people x where x.organization_id = ${org} and x.id = ${p.typed(query.leaderId, "uuid")}
+      union all
+      select x.id, lt.depth + 1 from people x join leader_tree lt on x.reports_to_id = lt.id where x.organization_id = ${org} and lt.depth < 32
+    ),`
+    : ""
+  if (query.leaderId) personWhere.push(`p.id in (select id from leader_tree)`)
+  const unlinkedWithoutPersonVisible = scope.organizationWide && !query.teamId && !query.subteamId && !query.leaderId
   const includeUnlinked = p.typed(unlinkedWithoutPersonVisible, "boolean")
   const sourceWhere = query.source ? ` and a.source = ${p.add(query.source)}` : ""
   const entityOf = entityOfSql(p, org, query.level)
@@ -163,7 +205,9 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
       select akey, enrollment_id, requester_person_id,
              count(distinct correlation_id)::int requests, count(*)::int attempts, count(*) filter (where status = 'ERROR')::int errors,
              sum(total_tokens)::bigint tokens, count(total_tokens)::int tokens_n,
-             count(*) filter (where status = 'SUCCESS' and cost_status = 'UNKNOWN')::int unknown_cost
+             count(*) filter (where status = 'SUCCESS' and cost_status = 'UNKNOWN')::int unknown_cost,
+             count(*) filter (where status = 'SUCCESS' and cost_status = 'REPORTED')::int reported_cost,
+             count(*) filter (where status = 'SUCCESS' and cost_status = 'ESTIMATED')::int estimated_cost
         from ev group by akey, enrollment_id, requester_person_id
     ),
     key_costs as (select akey, currency, sum(cost) amount from ev where cost is not null group by akey, currency),
@@ -180,12 +224,13 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
              case when k.enrollment_id is not null then s.person_id else k.requester_person_id end person_id
         from keys k left join subjects s on s.enrollment_id = k.enrollment_id
     ),
+    ${leaderTree}
     persons as (
       select p.id person_id, p.team_id, p.subteam_id, p.role, p.reports_to_id from people p where ${personWhere.join(" and ")}
     ),
     ${entityOf},
     assigned as (
-      select a.akey, a.source, a.requests, a.attempts, a.errors, a.tokens, a.tokens_n, a.unknown_cost,
+      select a.akey, a.source, a.requests, a.attempts, a.errors, a.tokens, a.tokens_n, a.unknown_cost, a.reported_cost, a.estimated_cost,
              case when ps.person_id is not null then a.person_id end person_id,
              case when ps.person_id is not null then eo.entity_id end entity_id,
              case when ps.person_id is not null and eo.entity_id is not null then null
@@ -204,14 +249,7 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
              coalesce(sum(requests) filter (where source = 'REQUEST'), 0)::int request_requests
         from assigned where entity_id is not null group by entity_id
     ),
-    names as (${namesSql(org, query.level)}),
-    page_items as (
-      select * from (
-        select r.*, n.name, n.job_title, n.team_name, n.active,
-               row_number() over (order by ${SORT_SQL[query.sort]}, n.name nulls last, r.entity_id)::int position
-          from ranking r left join names n on n.entity_id = r.entity_id
-      ) ranked order by position offset ${offset} limit ${limit}
-    )
+    ${pageSql(org, query.level, query.sort, offset, limit)}
     select
       (select count(*)::int from ranking) total,
       (select coalesce(jsonb_agg(to_jsonb(pi) order by pi.position), '[]'::jsonb) from page_items pi) items,
@@ -227,7 +265,7 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
 
   const result = await context.db.query<RankingRow>(sql, p.values)
   const row = result.rows[0]!
-  const totalsBase = row.totals ?? { requests: 0, attempts: 0, errors: 0, tokens: null, tokens_n: 0, unknown_cost: 0, people: 0 }
+  const totalsBase = row.totals ?? { requests: 0, attempts: 0, errors: 0, tokens: null, tokens_n: 0, unknown_cost: 0, reported_cost: 0, estimated_cost: 0, people: 0 }
   const scopeRequests = totalsBase.requests
 
   const costsOf = (match: (cost: CostJson) => boolean): Record<string, string> => {
@@ -242,6 +280,8 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
     tokens: json.tokens_n > 0 && json.tokens !== null ? Number(json.tokens) : null,
     tokensReported: json.tokens_n,
     unknownCostCalls: json.unknown_cost,
+    reportedCostCalls: json.reported_cost,
+    estimatedCostCalls: json.estimated_cost,
     costByCurrency,
     people: json.people,
     share: shareOf(json.requests, scopeRequests),
@@ -256,9 +296,11 @@ export async function usageRanking(context: AiAdminContext, viewer: RankingViewe
       tokens: item.tokens === null ? sum.tokens : (sum.tokens ?? 0) + Number(item.tokens),
       tokens_n: sum.tokens_n + item.tokens_n,
       unknown_cost: sum.unknown_cost + item.unknown_cost,
+      reported_cost: sum.reported_cost + item.reported_cost,
+      estimated_cost: sum.estimated_cost + item.estimated_cost,
       people: sum.people + item.people,
     }),
-    { requests: 0, attempts: 0, errors: 0, tokens: null, tokens_n: 0, unknown_cost: 0, people: 0 },
+    { requests: 0, attempts: 0, errors: 0, tokens: null, tokens_n: 0, unknown_cost: 0, reported_cost: 0, estimated_cost: 0, people: 0 },
   )
 
   return {

@@ -8,10 +8,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { AdminApiError } from "@/lib/admin/admin-api"
 import { useCreateProductNodeMutation, useUpdateProductNodeMutation } from "@/queries/admin/use-product-catalog-queries"
 import type { ProductNode } from "@/schemas/admin/product-catalog.schema"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 import { codeFromName } from "./catalog-relations"
+
+type UniverseConflict = { kind: string; id: string; name: string; operatingUniverse: string | null }
+
+/** 409 OPERATING_UNIVERSE_LINK_CONFLICT: os vínculos (bases, argumentários) que precisam acompanhar a troca de universo. */
+function universeConflictsOf(error: unknown): UniverseConflict[] {
+  if (!(error instanceof AdminApiError) || error.code !== "OPERATING_UNIVERSE_LINK_CONFLICT") return []
+  const conflicts = (error.details as { conflicts?: unknown } | undefined)?.conflicts
+  return Array.isArray(conflicts) ? (conflicts as UniverseConflict[]).filter((entry) => entry && typeof entry.name === "string") : []
+}
 
 const NO_CATEGORY = "__none__"
 const NEW_CATEGORY = "__new__"
@@ -32,10 +44,18 @@ export function NodeForm({ node, kind, nodes, defaultParentId = null, onDone }: 
   const [newCategory, setNewCategory] = useState<string | null>(null)
   const categories = nodes.filter((entry) => entry.kind === "FAMILY" && entry.active && entry.id !== node?.id)
   const category = kind === "FAMILY"
-  const canSubmit = name.trim().length >= 2 && newCategory === null
+  // Universo de atuação: só PRODUTO (categoria não tem). Obrigatório no produto novo; produto classificado não volta a "sem universo".
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(node?.operatingUniverse ?? null)
+  const canSubmit = name.trim().length >= 2 && newCategory === null && (category || operatingUniverse !== null || Boolean(node && !node.operatingUniverse))
+  const conflicts = universeConflictsOf(mutation.error)
 
   async function submit() {
-    const payload = { name: name.trim(), description: description.trim() || null, parentId: parentId === NO_CATEGORY ? null : parentId }
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || null,
+      parentId: parentId === NO_CATEGORY ? null : parentId,
+      ...(!category && operatingUniverse ? { operatingUniverse } : {}),
+    }
     try {
       const saved = node ? await updateMutation.mutateAsync({ id: node.id, code: node.code, ...payload }) : await createMutation.mutateAsync({ kind, code: codeFromName(payload.name, nodes), ...payload })
       onDone(saved)
@@ -111,13 +131,33 @@ export function NodeForm({ node, kind, nodes, defaultParentId = null, onDone }: 
           </div>
         )}
       </div>
+      {category ? null : (
+        <div className="space-y-1.5">
+          <Label htmlFor="node-universe">Universo de atuação{node ? "" : " *"}</Label>
+          <UniverseSelect id="node-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="node-universe-help" />
+          <p id="node-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="node-description">Como o cliente e a operação chamam</Label>
         <Textarea id="node-description" rows={2} maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder={category ? "Ex.: serviço básico, fixo" : "Ex.: internet, banda larga, “a conta da minha internet”"} />
         <p className="text-xs text-muted-foreground">A INIA usa estes nomes para reconhecer {category ? "a categoria" : "o produto"} quando o cliente ou o operador fala dele.</p>
       </div>
       {node ? <p className="text-xs text-muted-foreground">O nome pode mudar: as análises já feitas guardam o nome da época.</p> : null}
-      {mutation.isError ? <p className="text-sm text-destructive">{(mutation.error as Error).message}</p> : null}
+      {mutation.isError ? (
+        <div className="space-y-1 text-sm text-destructive">
+          <p>{(mutation.error as Error).message}</p>
+          {conflicts.length > 0 ? (
+            <ul className="list-disc pl-5" data-testid="node-universe-conflicts">
+              {conflicts.map((conflict) => (
+                <li key={`${conflict.kind}-${conflict.id}`}>
+                  {conflict.name} ({conflict.operatingUniverse ?? "sem universo"})
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => onDone(null)}>
           Cancelar

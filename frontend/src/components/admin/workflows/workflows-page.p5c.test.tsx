@@ -21,6 +21,7 @@ const workflow = (blockedEnrollments: number): Workflow => ({
   teamName: null,
   subteamId: null,
   subteamName: null,
+  operatingUniverse: null,
   active: true,
   createdAt: "2026-11-01T10:00:00Z",
   published: true,

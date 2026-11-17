@@ -26,6 +26,7 @@ const WORKFLOW: Workflow = {
   teamName: null,
   subteamId: null,
   subteamName: null,
+  operatingUniverse: null,
   active: false,
   createdAt: "2026-10-01T10:00:00Z",
   published: true,

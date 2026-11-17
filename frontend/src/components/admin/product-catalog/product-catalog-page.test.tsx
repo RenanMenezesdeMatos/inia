@@ -33,7 +33,7 @@ vi.mock("@/services/admin/product-catalog-service", () => service)
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 // Exemplos FICTÍCIOS de teste: produtos são dados do cadastro, nunca constantes da tela.
-const node = (overrides: Partial<ProductNode> & Pick<ProductNode, "id" | "kind" | "code" | "name">): ProductNode => ({ description: null, parentId: null, active: true, archivedAt: null, createdAt: "2026-10-21T00:00:00.000Z", updatedAt: "", criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, blocksDeletion: false, ...overrides })
+const node = (overrides: Partial<ProductNode> & Pick<ProductNode, "id" | "kind" | "code" | "name">): ProductNode => ({ description: null, parentId: null, active: true, archivedAt: null, createdAt: "2026-10-21T00:00:00.000Z", updatedAt: "", operatingUniverse: null, criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, blocksDeletion: false, ...overrides })
 const CATEGORY = node({ id: "f1", kind: "FAMILY", code: "VOZ_CORPORATIVA", name: "Voz corporativa", childCount: 2 })
 const TRUNK = node({ id: "p1", kind: "PRODUCT", code: "TRONCO_VOZ", name: "Tronco de voz", parentId: "f1", criteriaCount: 1, scopeCount: 2, inUse: true, blocksDeletion: true })
 const EXTENSION = node({ id: "p2", kind: "PRODUCT", code: "RAMAL_DIRETO", name: "Ramal direto", parentId: "f1" })
@@ -156,8 +156,11 @@ describe("Produtos — lista e detalhe por produto", () => {
     expect(within(form).queryByLabelText(/Código/)).not.toBeInTheDocument()
     fireEvent.change(within(form).getByLabelText("Nome *"), { target: { value: "Linha IP" } })
     service.fetchProductNodes.mockResolvedValue([CATEGORY, TRUNK, EXTENSION, created])
+    expect(within(form).getByRole("button", { name: "Criar produto" })).toBeDisabled()
+    fireEvent.click(within(form).getByRole("combobox", { name: "Universo de atuação *" }))
+    fireEvent.click(await screen.findByRole("option", { name: /^B2B/ }))
     fireEvent.click(within(form).getByRole("button", { name: "Criar produto" }))
-    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", name: "Linha IP", code: "LINHA_IP", description: null, parentId: null }))
+    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", name: "Linha IP", code: "LINHA_IP", description: null, parentId: null, operatingUniverse: "B2B" }))
     expect(await screen.findByTestId("product-detail-LINHA_IP")).toBeInTheDocument()
   })
 
@@ -169,8 +172,10 @@ describe("Produtos — lista e detalhe por produto", () => {
     const form = screen.getByTestId("product-node-form")
     fireEvent.change(within(form).getByLabelText("Nome *"), { target: { value: "Linha IP" } })
     fireEvent.change(within(form).getByLabelText("Como o cliente e a operação chamam"), { target: { value: "linha IP, voz pela internet" } })
+    fireEvent.click(within(form).getByRole("combobox", { name: "Universo de atuação *" }))
+    fireEvent.click(await screen.findByRole("option", { name: /^B2X/ }))
     fireEvent.click(within(form).getByRole("button", { name: "Criar produto" }))
-    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", code: "LINHA_IP", name: "Linha IP", description: "linha IP, voz pela internet", parentId: "f1" }))
+    await waitFor(() => expect(service.createProductNode.mock.calls[0]?.[0]).toEqual({ kind: "PRODUCT", code: "LINHA_IP", name: "Linha IP", description: "linha IP, voz pela internet", parentId: "f1", operatingUniverse: "B2X" }))
   })
 
   it("catálogo vazio explica que a análise segue como antes e oferece cadastrar", async () => {

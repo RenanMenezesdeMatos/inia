@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { formatClockTime } from "@/lib/format/date"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -335,6 +336,20 @@ describe("AnjoWorkspace", () => {
       fireEvent.click(screen.getByRole("menuitemradio", { name: /Reunião/ }))
     })
     expect(service.changeAnjoPresence).not.toHaveBeenCalled()
+  })
+
+  it("pausa Desconexão pelo sistema (195): o aviso diz por quê e até quando; o menu de pausa não oferece Desconexão; Indisponível depois diz o motivo", async () => {
+    const offlineAt = new Date(Date.now() + 7 * 60_000).toISOString()
+    setHook({ anjo: anjoView({ attendances: [], presence: { status: "PAUSED", pauseReason: "DISCONNECTION", connected: true, since: minutesAgo(3), scheduled: null, unresponsive: { kind: "PAUSED", since: minutesAgo(3), offlineAt } } }) })
+    render(<AnjoWorkspace />)
+    expect(screen.getByRole("status", { name: "Seu estado: Em pausa · Desconexão" })).toBeInTheDocument()
+    expect(screen.getByTestId("presence-unresponsive")).toHaveTextContent(`O sistema pôs você em pausa “Desconexão”Você ficou sem responder ninguém. Nesta pausa você não recebe pedidos. Toque em “Voltar” até ${formatClockTime(offlineAt)}; depois disso, você fica Indisponível.`)
+    fireEvent.keyDown(screen.getByRole("button", { name: "Trocar pausa" }), { key: "Enter" })
+    expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toEqual(["Lanche", "Pessoal", "Atividade de processo", "Reunião"])
+    cleanup()
+    setHook({ anjo: anjoView({ attendances: [], presence: { status: "OFFLINE", pauseReason: null, connected: true, since: minutesAgo(1), scheduled: null, unresponsive: { kind: "OFFLINE", since: minutesAgo(1), offlineAt: null } } }) })
+    render(<AnjoWorkspace />)
+    expect(screen.getByTestId("presence-unresponsive")).toHaveTextContent("Você ficou Indisponível porque não voltou da pausa “Desconexão”")
   })
 
   it("abas: \"Seus atendimentos\" fica numa aba própria; trocar de aba não perde o texto digitado nem desmonta o atendimento", async () => {

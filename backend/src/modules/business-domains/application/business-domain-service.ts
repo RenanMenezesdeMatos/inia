@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { universeFromBody } from "../../operating-universe/application/universe-access.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { canManageScope, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
@@ -113,10 +114,12 @@ export type BusinessDomainActor = { organizationId: string; actorId: string | nu
 
 export async function createBusinessDomain(db: Queryable, actor: BusinessDomainActor, rawInput: unknown): Promise<BusinessDomainListItem> {
   const input: BusinessDomainInput = businessDomainInputSchema.parse(rawInput)
+  // Domínio de negócio pertence a um universo (universos são separados). Obrigatório com a exigência ativa.
+  const universe = await universeFromBody(db, actor.organizationId, rawInput, "do domínio de negócio")
   try {
     const created = await db.query<{ id: string }>(
-      `insert into business_domains (organization_id, code, name, description, active) values ($1, $2, $3, $4, $5) returning id`,
-      [actor.organizationId, input.code, input.name, input.description, input.active],
+      `insert into business_domains (organization_id, code, name, description, active, operating_universe) values ($1, $2, $3, $4, $5, $6) returning id`,
+      [actor.organizationId, input.code, input.name, input.description, input.active, universe],
     )
     const id = created.rows[0]!.id
     await recordDomainAudit(db, { ...actor, action: "BUSINESS_DOMAIN_CREATED", domainId: id, payload: { code: input.code, name: input.name, active: input.active } })

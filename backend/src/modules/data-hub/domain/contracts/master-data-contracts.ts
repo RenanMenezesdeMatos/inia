@@ -33,6 +33,8 @@ export const OPERATIONAL_CAPITAL_HELP = `Capital brasileira cuja jurisdição de
  * alterar um colaborador NUNCA concede privilégio no INIA (acesso = atribuição explícita de papel a uma conta, modules/access).
  * "ADMIN" não é nível organizacional e não é aceito pela carga (a linha vai para a quarentena).
  */
+import { OPERATING_UNIVERSES } from "../../../operating-universe/domain/operating-universe.js"
+
 export const ORGANIZATIONAL_LEVELS = ["OPERATOR", "SUPERVISOR", "COORDINATOR", "MANAGER", "SENIOR_MANAGER", "DIRECTOR"] as const
 
 export const EMPLOYEES_CONTRACT: DataContract = {
@@ -57,6 +59,7 @@ export const EMPLOYEES_CONTRACT: DataContract = {
     { key: "statusEffectiveFrom", label: "Situação vigente desde", type: "DATE", required: false, description: "Quando a situação passou a valer, SE a fonte informar. Ausente = conhecida a partir desta carga (nunca retroage por suposição).", example: "2026-09-09" },
     { key: "sourceUpdatedAt", label: "Atualizado na fonte em", type: "DATETIME", required: false, description: "Quando a fonte diz que o registro mudou (freshness), se confiável.", example: "2026-09-15T08:00:00-03:00" },
     { key: "operationalCapitalCode", label: "Capital operacional", type: "STRING", required: false, maxLength: 40, description: OPERATIONAL_CAPITAL_HELP, example: "FORTALEZA" },
+    { key: "operatingUniverse", label: "Universo de atuação", type: "ENUM", required: false, enumValues: OPERATING_UNIVERSES, description: "Público que o colaborador atende: B2B, B2C ou B2X (B2X é um universo próprio). Códigos diferentes da fonte se traduzem em \"Mapear códigos\". Ausente = mantém o atual; depois que a organização ativa a exigência, pessoa NOVA sem universo vai para a quarentena.", example: "B2C" },
   ],
   naturalKey: ["externalEmployeeId"],
   dependencies: ["GROUPS", "SUBGROUPS"],
@@ -65,8 +68,8 @@ export const EMPLOYEES_CONTRACT: DataContract = {
   businessTimeField: null,
   displayNormalizers: { currentStatus: employmentStatusDisplay, operationalCapitalCode: capitalDisplay },
   examples: [
-    { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA" },
-    { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE" },
+    { externalEmployeeId: "OP-10234", name: "Mariana Alves", role: "OPERATOR", jobTitle: "Analista de Atendimento I", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: "B2C_RETENCAO/PREMIUM", reportsToExternalId: "SUP-0042", hiredAt: "2024-03-11", active: true, email: null, currentStatus: "EM PRODUÇÃO", statusEffectiveFrom: null, sourceUpdatedAt: null, operationalCapitalCode: "FORTALEZA", operatingUniverse: "B2C" },
+    { externalEmployeeId: "SUP-0042", name: "Carlos Menezes", role: "SUPERVISOR", jobTitle: "Supervisor de Atendimento", groupExternalCode: "B2C_RETENCAO", subgroupExternalCode: null, reportsToExternalId: "GER-0007", hiredAt: "2021-08-02", active: true, email: null, currentStatus: "FERIAS", statusEffectiveFrom: "2026-09-09", sourceUpdatedAt: "2026-09-15T08:00:00-03:00", operationalCapitalCode: "RECIFE", operatingUniverse: "B2C" },
   ],
 }
 

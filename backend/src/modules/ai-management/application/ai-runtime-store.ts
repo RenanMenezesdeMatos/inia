@@ -4,7 +4,7 @@ import type { AiUsageEventInput, AiWorkflowCorrelation } from "../../../shared/a
 import type { AiBudget } from "../domain/ai-budget.js"
 import type { AiModelKind, AiQualityTier, ModelCapabilities } from "../domain/ai-capabilities.js"
 import { findAiProvider, isLocalDeployment } from "../domain/ai-provider-catalog.js"
-import type { AiPricingVersion } from "../domain/ai-pricing.js"
+import type { AiCostResult, AiCostStatus, AiCostUnknownReason, AiPricingVersion } from "../domain/ai-pricing.js"
 import type { AiAutoStrategy, AiRoutingMode, ModelSnapshot, PolicySnapshot } from "../domain/ai-routing-policy.js"
 import { speechSettingsOf } from "../domain/ai-speech.js"
 import type { EncryptedSecret } from "./ai-secrets.js"
@@ -222,7 +222,22 @@ export async function loadMonthSpendRaw(db: Queryable, organizationId: string, n
   return result.rows
 }
 
-export type UsageRow = AiUsageEventInput & { workflow?: AiWorkflowCorrelation | null; limiter?: AiCallLimiterRecord | null; requesterPersonId?: string | null; cost: string | null; currency: string | null; costStatus: "EXACT" | "ESTIMATED" | "UNKNOWN"; costUnknownReason: "NO_PRICING" | "NO_USAGE" | null; pricingId: string | null; pricingSource: "TABLE" | "LEGACY_ENV" | "NONE"; policyId: string | null }
+export type UsageRow = AiUsageEventInput & { workflow?: AiWorkflowCorrelation | null; limiter?: AiCallLimiterRecord | null; requesterPersonId?: string | null; cost: string | null; currency: string | null; costStatus: AiCostStatus; costUnknownReason: AiCostUnknownReason | null; pricingId: string | null; pricingSource: UsagePricingSource; policyId: string | null }
+
+/** De onde veio o custo gravado: tabela da organização, preço do ambiente (legado), o PRÓPRIO provider (196) ou nenhum. */
+export type UsagePricingSource = "TABLE" | "LEGACY_ENV" | "PROVIDER" | "NONE"
+
+/** Colunas de custo do evento a partir do custo resolvido da chamada (`resolveCallCost`) — uma regra só para runtime e "Testar modelo". */
+export function usageCostColumns(cost: AiCostResult): Pick<UsageRow, "cost" | "currency" | "costStatus" | "costUnknownReason" | "pricingId" | "pricingSource"> {
+  return {
+    cost: cost.status === "UNKNOWN" ? null : cost.amount,
+    currency: cost.currency,
+    costStatus: cost.status,
+    costUnknownReason: cost.status === "UNKNOWN" ? cost.reason : null,
+    pricingId: cost.pricingId,
+    pricingSource: cost.status === "REPORTED" ? "PROVIDER" : cost.pricingId ? "TABLE" : "NONE",
+  }
+}
 
 export async function insertUsageEvent(db: Queryable, row: UsageRow): Promise<void> {
   const usage = row.usage

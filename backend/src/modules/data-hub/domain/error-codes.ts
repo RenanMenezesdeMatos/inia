@@ -49,6 +49,7 @@ export const DATA_RECORD_ERROR_CODES = {
   DATA_COMPONENT_MISSING: "Componente exigido pela estratégia do indicador ausente.",
   /** Aviso (não rejeição): a situação funcional recebida conflitou com um período existente e a precedência decidiu. */
   DATA_EMPLOYMENT_STATUS_UNKNOWN: "Situação funcional não reconhecida — a INIA nunca converte desconhecido em 'em produção'; mapeie o valor da fonte com 'Mapear códigos'.",
+  DATA_OPERATING_UNIVERSE_REQUIRED: "Colaborador novo sem universo de atuação (B2B, B2C ou B2X) depois que a organização ativou a exigência — mapeie o campo na carga.",
   DATA_EMPLOYMENT_STATUS_CONFLICT: "Conflito de situação funcional resolvido pela precedência de evidência (registro aplicado; veja a mensagem).",
   /** Aviso (não rejeição): a exceção de calendário recebida diverge do que o Supervisor registrou/cancelou — mantido o registro do Supervisor, nada sobrescrito em silêncio. */
   DATA_SCHEDULE_EXCEPTION_CONFLICT: "Conflito entre a exceção de calendário da Central e a registrada pelo Supervisor (mantido o registro do Supervisor; veja a mensagem).",

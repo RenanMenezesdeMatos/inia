@@ -20,10 +20,10 @@ export function OperatorAvatar({ name, avatarUrl, className }: { name: string; a
   return <PersonAvatar name={name} avatarUrl={avatarUrl} className={cn("size-9", className)} fallbackClassName="bg-secondary text-xs" />
 }
 
-/** Estado com um ponto de cor (em atendimento = verde, na fila = âmbar, os demais = neutro) e o rótulo escrito ao lado. */
+/** Estado com um ponto de cor (em atendimento = verde, na fila ou aguardando o operador = âmbar, os demais = neutro) e o rótulo escrito ao lado. */
 export function RequestStatusLabel({ status, className }: { status: RequestStatus; className?: string }) {
   const live = status === "IN_PROGRESS"
-  const waiting = status === "WAITING"
+  const waiting = status === "WAITING" || status === "AWAITING_OPERATOR"
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-xs", live || waiting ? "font-medium text-foreground" : "text-muted-foreground", className)}>
       <span className={cn("size-1.5 shrink-0 rounded-full", live ? "bg-emerald-500" : waiting ? "bg-amber-500" : "bg-muted-foreground/40")} aria-hidden />

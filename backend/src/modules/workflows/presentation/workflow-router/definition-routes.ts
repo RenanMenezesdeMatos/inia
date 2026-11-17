@@ -17,6 +17,8 @@ import { assertPublishedWorkflowMatchesIndicatorCatalog } from "../../applicatio
 import { writeDraftConfiguration } from "../../application/workflow-configuration-store.js"
 import { NOT_FOUND, WORKFLOW_LIST_SELECT, assertAnchorInScope, canManageWorkflow, fetchScopedRow, triggerAllowsConsolidatedMode, triggerAllowsPopulationFilter } from "./shared.js"
 import { sessionUser } from "../../../auth/presentation/session-user.js"
+import { operatingUniverseSchema, optionalOperatingUniverseSchema } from "../../../operating-universe/domain/operating-universe.js"
+import { assertUniverseRequiredFor } from "../../../operating-universe/application/universe-access.js"
 
 const createWorkflowSchema = z.object({
   name: z.string().trim().min(2),
@@ -25,6 +27,8 @@ const createWorkflowSchema = z.object({
   teamId: z.string().uuid().optional(),
   subteamId: z.string().uuid().optional(),
   trigger: triggerConfigSchema,
+  /** Universo de atuação (B2B/B2C/B2X). Obrigatório depois que a organização ativa a exigência (checado no servidor). */
+  operatingUniverse: optionalOperatingUniverseSchema,
 })
 
 const updateWorkflowSchema = z.object({
@@ -34,6 +38,8 @@ const updateWorkflowSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   subteamId: z.string().uuid().nullable().optional(),
   trigger: triggerConfigSchema.optional(),
+  /** Universo de atuação: vai para o RASCUNHO (como a Abrangência) e só vale ao Publicar. */
+  operatingUniverse: operatingUniverseSchema.nullable().optional(),
   active: z.boolean().optional(),
   /** Ativar uma Agenda publicada pode exigir confirmação do impacto (go-live-impact.ts): o `fingerprint` que a pessoa viu. */
   confirmation: z.string().trim().min(1).max(64).optional(),
@@ -98,13 +104,14 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
 
     validateScheduleTrigger(input.trigger)
     await validateTriggerExists(db, organizationId, input.trigger)
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse, "do Workflow")
     const trigger = normalizeManualTrigger(input.trigger)
 
     // Nunca publicado: rascunho e configuração viva nascem iguais (não há runtime sem versão publicada).
     const result = await db.query<{ id: string }>(
       `insert into workflows(organization_id, name, description, scope_type, team_id, subteam_id, trigger_config, draft_graph, created_by,
-                             draft_scope_type, draft_team_id, draft_subteam_id, draft_trigger_config)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$5,$6,$7) returning id`,
+                             draft_scope_type, draft_team_id, draft_subteam_id, draft_trigger_config, operating_universe, draft_operating_universe)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$4,$5,$6,$7,$10,$10) returning id`,
       [
         organizationId,
         input.name,
@@ -115,6 +122,7 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
         JSON.stringify(withScheduleAnchor(trigger)),
         JSON.stringify(starterGraph()),
         request.user?.personId ?? null,
+        input.operatingUniverse,
       ],
     )
     const listResult = await db.query(`${WORKFLOW_LIST_SELECT} and w.id = $2`, [organizationId, result.rows[0]!.id])
@@ -318,8 +326,10 @@ export function registerWorkflowDefinitionRoutes(router: Router, db: Database): 
       assertGoLiveConfirmed(impact, input.confirmation)
     }
 
-    if (input.trigger || input.scopeType !== undefined) {
+    if (input.operatingUniverse === null) await assertUniverseRequiredFor(db, organizationId, null, "do Workflow")
+    if (input.trigger || input.scopeType !== undefined || input.operatingUniverse !== undefined) {
       await writeDraftConfiguration(db, organizationId, request.params.id!, {
+        ...(input.operatingUniverse !== undefined ? { universe: { operatingUniverse: input.operatingUniverse } } : {}),
         ...(input.trigger ? { trigger: withScheduleAnchor(normalizeManualTrigger(input.trigger), current.triggerConfig, current.live.triggerConfig) } : {}),
         ...(input.scopeType !== undefined ? { scope: { scopeType: nextScopeType, teamId: nextTeamId, subteamId: nextSubteamId } } : {}),
       })

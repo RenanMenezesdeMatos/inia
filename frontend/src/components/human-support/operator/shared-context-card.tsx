@@ -63,9 +63,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** "O Anjo verá: sua pergunta, a resposta da INIA, o motivo e o que você escrever" — só o que existe nesta cópia. */
+/** "O Apoio verá: sua pergunta, a resposta da INIA, o motivo e o que você escrever" — só o que existe nesta cópia. */
 export function sharedContextSummary(context: SharedContext): string {
   const parts = [context.question ? "sua pergunta" : null, context.answer ? "a resposta da INIA" : null, context.dislike ? "o motivo" : null, context.dislike?.comment ? "seu comentário" : null, "o que você escrever"].filter((part): part is string => part !== null)
-  if (parts.length === 1) return `O Anjo verá ${parts[0]}.`
-  return `O Anjo verá: ${parts.slice(0, -1).join(", ")} e ${parts.at(-1)}.`
+  if (parts.length === 1) return `O Apoio verá ${parts[0]}.`
+  return `O Apoio verá: ${parts.slice(0, -1).join(", ")} e ${parts.at(-1)}.`
 }

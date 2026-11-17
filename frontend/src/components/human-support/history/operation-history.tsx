@@ -53,7 +53,7 @@ function sumDays(anjos: readonly AnjoHistory[], days: readonly string[]): Journe
       day,
       availableMs: sum((item) => item.availableMs),
       attendanceMs: sum((item) => item.attendanceMs),
-      pausedMs: { LUNCH: sum((item) => item.pausedMs.LUNCH), PERSONAL: sum((item) => item.pausedMs.PERSONAL), PROCESS_ACTIVITY: sum((item) => item.pausedMs.PROCESS_ACTIVITY), MEETING: sum((item) => item.pausedMs.MEETING) },
+      pausedMs: { LUNCH: sum((item) => item.pausedMs.LUNCH), PERSONAL: sum((item) => item.pausedMs.PERSONAL), PROCESS_ACTIVITY: sum((item) => item.pausedMs.PROCESS_ACTIVITY), MEETING: sum((item) => item.pausedMs.MEETING), DISCONNECTION: sum((item) => item.pausedMs.DISCONNECTION) },
       unavailableMs: sum((item) => item.unavailableMs),
       baseMs: sum((item) => item.baseMs),
     }
@@ -159,15 +159,16 @@ const ZERO_ATTENDANCE: AttendanceIndicators = {
   reasons: { total: 0, items: [] },
   pertinence: { pertinent: 0, notPertinent: 0, notEvaluated: 0, rate: ZERO_RATIO },
   noReply: { rate: ZERO_RATIO, anjoSide: 0, operatorSide: 0 },
+  anjoAbandonment: { total: 0, noReply: 0, loggedOut: 0, rate: ZERO_RATIO },
   abandonedAfterAcolhimento: 0,
   interruptedBySystem: { connection: 0, session: 0, roleRevoked: 0, unknown: 0 },
   stars: { average: null, count: 0 },
 }
-const ZERO_PAUSES = { LUNCH: 0, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0 }
+const ZERO_PAUSES = { LUNCH: 0, PERSONAL: 0, PROCESS_ACTIVITY: 0, MEETING: 0, DISCONNECTION: 0 }
 const ZERO_SUMMARY: JourneySummary = {
   total: { availableMs: 0, attendanceMs: 0, pausedMs: ZERO_PAUSES, unavailableMs: 0 },
   baseMs: 0,
-  shares: { available: null, attendance: null, pausedTotal: null, paused: { LUNCH: null, PERSONAL: null, PROCESS_ACTIVITY: null, MEETING: null }, productive: null },
+  shares: { available: null, attendance: null, pausedTotal: null, paused: { LUNCH: null, PERSONAL: null, PROCESS_ACTIVITY: null, MEETING: null, DISCONNECTION: null }, productive: null },
   daysWithOnline: 0,
   dailyAverage: null,
 }
@@ -261,6 +262,7 @@ function ByAnjoCard({ data }: { data: OperationHistory }) {
                   <TableHead className="text-right"><TermLabel term="welcome">Tempo médio de acolhimento</TermLabel></TableHead>
                   <TableHead className="text-right"><TermLabel term="handling">Tempo médio de atendimento</TermLabel></TableHead>
                   <TableHead className="text-right">Falta de retorno</TableHead>
+                  <TableHead className="text-right" title="Parou de responder + saiu (deslogou) e derrubou o operador, sobre os atendimentos encerrados (fora os transferidos). Queda de rede não conta.">Abandonos do Anjo</TableHead>
                   <TableHead className="text-right" title="Média das notas do operador; aparece com 5 notas ou mais.">Estrelas</TableHead>
                 </TableRow>
               </TableHeader>
@@ -293,6 +295,10 @@ function ByAnjoCard({ data }: { data: OperationHistory }) {
                       <TableCell className="text-right tabular-nums">{averageText(anjo.attendance.firstResponse)}</TableCell>
                       <TableCell className="text-right tabular-nums">{averageText(anjo.attendance.handling)}</TableCell>
                       <TableCell className="text-right tabular-nums">{ratioText(anjo.attendance.noReply.rate)}</TableCell>
+                      <TableCell className={cn("text-right tabular-nums", anjo.attendance.anjoAbandonment.total > 0 && "font-semibold text-destructive")} data-testid="anjo-abandonment-cell">
+                        {anjo.attendance.anjoAbandonment.total}
+                        {anjo.attendance.anjoAbandonment.total > 0 ? <span className="block text-xs font-normal text-muted-foreground">{ratioText(anjo.attendance.anjoAbandonment.rate)}</span> : null}
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">{anjo.attendance.stars.average === null ? "—" : anjo.attendance.stars.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</TableCell>
                     </TableRow>
                   )

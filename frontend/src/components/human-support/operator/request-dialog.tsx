@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ApiError } from "@/lib/api/api-client"
 import { formatClockTime } from "@/lib/format/date"
-import { HUMAN_SUPPORT_TEXT_LIMITS, SUPPORT_BUTTON_HINT } from "@/schemas/human-support/catalogs.schema"
+import { HUMAN_SUPPORT_TEXT_LIMITS, SUPPORT_BUTTON_HINT, SUPPORT_BUTTON_LABEL } from "@/schemas/human-support/catalogs.schema"
 import { AVAILABILITY_TEXT, waitEstimateText, type Availability, type OperatorRequestView } from "@/schemas/human-support/state.schema"
 import { cn } from "@/lib/utils"
 import { createSupportRequest, previewSupportRequest } from "@/services/human-support/human-support-service"
@@ -31,7 +31,7 @@ export function SupportRequestDialog({ source, onOpenChange, onCreated, onOpenRo
         <DialogHeader className="flex-row items-center gap-3 text-left">
           <IconBadge icon={HeartHandshake} />
           <div className="space-y-0.5">
-            <DialogTitle className="text-lg">Falar com um Anjo</DialogTitle>
+            <DialogTitle className="text-lg">{SUPPORT_BUTTON_LABEL}</DialogTitle>
             <DialogDescription>{SUPPORT_BUTTON_HINT}.</DialogDescription>
           </div>
         </DialogHeader>
@@ -88,10 +88,10 @@ function RequestForm({ source, onCreated, onOpenRoom, onCancel }: { source: Supp
     >
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">{sharedContextSummary(preview.data.sharedContext)}</p>
-        <SharedContextCard context={preview.data.sharedContext} title="O que será compartilhado com o Anjo" />
+        <SharedContextCard context={preview.data.sharedContext} title="O que será compartilhado com o Apoio" />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="support-note" className="text-sm font-medium">Nota para o Anjo <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+        <Label htmlFor="support-note" className="text-sm font-medium">Nota para o Apoio <span className="font-normal text-muted-foreground">(opcional)</span></Label>
         <Textarea id="support-note" rows={3} value={note} maxLength={HUMAN_SUPPORT_TEXT_LIMITS.note} className="resize-none rounded-xl bg-card" placeholder="Conte o que você precisa resolver." onChange={(event) => setNote(event.target.value)} />
         <p className="text-right text-xs text-muted-foreground tabular-nums">{note.length}/{HUMAN_SUPPORT_TEXT_LIMITS.note}</p>
       </div>

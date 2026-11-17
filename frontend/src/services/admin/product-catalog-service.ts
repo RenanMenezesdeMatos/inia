@@ -20,7 +20,8 @@ const BASE = "/api/v1/admin/product-catalog"
 export async function fetchProductNodes(): Promise<ProductNode[]> {
   return z.array(productNodeSchema).parse(await adminGet(`${BASE}/nodes`))
 }
-export type ProductNodeInput = { kind: ProductNode["kind"]; code: string; name: string; description: string | null; parentId: string | null }
+/** `operatingUniverse`: obrigatório para PRODUTO novo; categoria (FAMILY) não tem universo — não envie. */
+export type ProductNodeInput = { kind: ProductNode["kind"]; code: string; name: string; description: string | null; parentId: string | null; operatingUniverse?: NonNullable<ProductNode["operatingUniverse"]> }
 export async function createProductNode(input: ProductNodeInput): Promise<ProductNode> {
   return productNodeSchema.parse(await adminSend(`${BASE}/nodes`, "POST", input))
 }

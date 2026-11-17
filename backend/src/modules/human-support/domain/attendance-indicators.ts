@@ -61,6 +61,13 @@ export type AttendanceIndicators = {
   pertinence: { pertinent: number; notPertinent: number; notEvaluated: number; rate: Ratio }
   noReply: { rate: Ratio; anjoSide: number; operatorSide: number }
   abandonedAfterAcolhimento: number
+  /**
+   * ABANDONOS DO ANJO (pedido do responsável em 2026-11-16): o número que diz se o Anjo abandona — a mesma regra do bloco de Abandonos
+   * (`domain/abandonment.ts`): parou de responder (`ANJO_SILENT` e o `INACTIVITY` antigo do lado dele) + saiu e derrubou o operador
+   * (`ANJO_LOST` com a sessão encerrada). Queda de rede e papel retirado não contam. Taxa sobre os atendimentos encerrados do Anjo,
+   * fora os transferidos.
+   */
+  anjoAbandonment: { total: number; noReply: number; loggedOut: number; rate: Ratio }
   interruptedBySystem: { connection: number; session: number; roleRevoked: number; unknown: number }
   /** Média das estrelas do operador — só com 5 notas ou mais (abaixo disso, nula); `count` = notas consideradas. */
   stars: { average: number | null; count: number }
@@ -88,11 +95,13 @@ export function attendanceIndicators(records: readonly AttendanceRecord[]): Atte
   const pertinent = classified.filter((item) => item.pertinence === "PERTINENT").length
   const notPertinent = classified.filter((item) => item.pertinence === "NOT_PERTINENT").length
   const noReplyBase = ended.filter((record) => record.endCause !== "TRANSFERRED")
-  const inactive = noReplyBase.filter((record) => record.endCause === "INACTIVITY")
-  const anjoSide = inactive.filter((record) => record.firstAnjoMessageAt === null || record.lastHumanAuthor !== "ANJO").length
+  // Sem resposta: `OPERATOR_SILENT`/`ANJO_SILENT` (migration 193) e o `INACTIVITY` antigo, separado pela última mensagem humana.
+  const inactive = noReplyBase.filter((record) => record.endCause === "INACTIVITY" || record.endCause === "OPERATOR_SILENT" || record.endCause === "ANJO_SILENT")
+  const anjoSide = inactive.filter((record) => record.endCause === "ANJO_SILENT" || (record.endCause === "INACTIVITY" && (record.firstAnjoMessageAt === null || record.lastHumanAuthor !== "ANJO"))).length
   const otherByCause: Partial<Record<AttendanceEndCause, number>> = {}
   for (const record of ended) if (!NORMAL_END_CAUSES.includes(record.endCause!)) otherByCause[record.endCause!] = (otherByCause[record.endCause!] ?? 0) + 1
   const lost = ended.filter((record) => record.endCause === "ANJO_LOST")
+  const loggedOut = lost.filter((record) => record.lostCause === "SESSION").length
   return {
     acolhimentos: records.length,
     operatorWait: average(records.filter((record) => record.firstOfRequest).map((record) => seconds(record.requestCreatedAt, record.startedAt))),
@@ -107,6 +116,7 @@ export function attendanceIndicators(records: readonly AttendanceRecord[]): Atte
     pertinence: { pertinent, notPertinent, notEvaluated: concluded.length - pertinent - notPertinent, rate: ratio(pertinent, pertinent + notPertinent) },
     noReply: { rate: ratio(inactive.length, noReplyBase.length), anjoSide, operatorSide: inactive.length - anjoSide },
     abandonedAfterAcolhimento: ended.filter((record) => record.endCause === "OPERATOR_ABSENT").length,
+    anjoAbandonment: { total: anjoSide + loggedOut, noReply: anjoSide, loggedOut, rate: ratio(anjoSide + loggedOut, noReplyBase.length) },
     stars: starsOf(records),
     interruptedBySystem: {
       connection: lost.filter((record) => record.lostCause === "CONNECTION").length,

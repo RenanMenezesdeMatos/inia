@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { loadPersonUniverseRule, type PersonUniverseRule } from "../../operating-universe/application/universe-access.js"
 import { resolveFeedbackViewsForViewer } from "../../reliable-feedback/application/feedback-view-access.js"
 import { loadLegacyFeedbackHeadings } from "../../feedbacks/infrastructure/legacy-feedback-headings.js"
 import { loadFeedbackOrigins } from "../../feedbacks/infrastructure/feedback-origins.js"
@@ -48,6 +49,8 @@ export type PersonNode = {
   /** Capital operacional informada pela empresa (migration 065) — só apresentação na Estrutura. */
   operationalCapitalCode: string | null
   active: boolean
+  /** Universo de atuação ATUAL do cadastro (B2B/B2C/B2X; null = pendente) — decide quem a conta pode consultar. */
+  operatingUniverse?: string | null
 }
 
 /** Capacidades do catálogo (migration 055) — a UI descreve QUALQUER indicador por unidade, direção
@@ -93,6 +96,9 @@ export type FollowUpFeedQuery = {
   limit: number
   /** Último item da página anterior (keyset); null = primeira página. */
   before: FollowUpCursor | null
+  /** Recorte do calendário: só itens com instante em [since, until) — o mesmo instante que ordena e rotula o dia. Ausente = sem limite. */
+  since?: string | null
+  until?: string | null
 }
 
 export interface AnalyticsReadRepository {
@@ -106,6 +112,8 @@ export interface AnalyticsReadRepository {
   loadAccessVisibility(organizationId: string, accountId: string, permission: Permission): Promise<VisibilityFilter>
   /** Pessoas (ativas ou não) cobertas por uma visibilidade de acesso: organização inteira, Grupo (inclui seus Subgrupos) ou Subgrupo. */
   loadPeopleInVisibility(organizationId: string, visibility: VisibilityFilter): Promise<PersonNode[]>
+  /** Abrangência de universos da conta (universo do cadastro + onde ela tem `operating_universes.all`) e se a organização já ativou o filtro. */
+  loadUniverseRule?(organizationId: string, accountId: string, personId: string): Promise<PersonUniverseRule>
   /** Subordinados DIRETOS (ativos ou não) de uma pessoa — usado pela Estrutura quando a focal é um
    * ANCESTRAL do viewer (fora da subárvore carregada): uma consulta, nunca a subárvore inteira. */
   loadDirectReports(organizationId: string, personId: string): Promise<PersonNode[]>
@@ -216,6 +224,10 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     return visibilityOf(await createPostgresAccessRepository(this.db).loadContext(organizationId, accountId), permission)
   }
 
+  async loadUniverseRule(organizationId: string, accountId: string, personId: string): Promise<PersonUniverseRule> {
+    return loadPersonUniverseRule(this.db, { organizationId, sub: accountId, personId })
+  }
+
   async loadPeopleInVisibility(organizationId: string, visibility: VisibilityFilter): Promise<PersonNode[]> {
     if (!visibility.organizationWide && visibility.teamIds.length === 0 && visibility.subteamIds.length === 0) return []
     if (this.peopleSource === "graph") {
@@ -272,7 +284,14 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
               eip.achievement_percent "achievementPercent", eip.weight_percent "weightPercent", eip.quartile, eip.numerator, eip.denominator, eip.source
        from employee_indicator_performance eip
        join indicator_definitions idef on idef.id = eip.indicator_definition_id
-       where eip.organization_id = $1 and eip.person_id = any($2::uuid[]) and eip.reference_period = any($3::text[])`,
+       where eip.organization_id = $1 and eip.person_id = any($2::uuid[]) and eip.reference_period = any($3::text[])
+         -- Universos são separados: com a exigência ativa, a linha só conta se o indicador for do universo em que a pessoa estava NA
+         -- competência (vigência em person_operating_universe_history) — trocar de operação não reclassifica o histórico.
+         and (not exists (select 1 from organizations org where org.id = $1 and org.operating_universe_enforced_at is not null)
+              or exists (select 1 from person_operating_universe_history h
+                          where h.person_id = eip.person_id and h.operating_universe = idef.operating_universe
+                            and h.valid_from < (to_date(eip.reference_period || '-01', 'YYYY-MM-DD') + interval '1 month')
+                            and coalesce(h.valid_until, 'infinity') > to_date(eip.reference_period || '-01', 'YYYY-MM-DD')))`,
       [organizationId, personIds, periods],
     )
     return result.rows.map((row) => ({
@@ -453,13 +472,16 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
     // extra só conta (`hasMore`): o conteúdo é montado para os `limit` exibidos.
     const params: unknown[] = [query.organizationId, query.operatorIds, query.includeViewerAlerts && !query.unacknowledgedOnly, query.viewerId, query.limit, query.unacknowledgedOnly]
     const before = query.before ? (params.push(query.before.at, query.before.id), { feedback: `and (coalesce(f.published_at, f.created_at), f.id) < ($7::timestamptz, $8::uuid)`, alert: `and (a.created_at, a.id) < ($7::timestamptz, $8::uuid)`, report: `and (r.created_at, r.delivery_id) < ($7::timestamptz, $8::uuid)` }) : { feedback: "", alert: "", report: "" }
+    // Recorte do calendário sobre o MESMO instante de cada ramo (o que ordena o feed e dá o rótulo do dia na tela).
+    const inPeriod = (instant: string) => [query.since ? `and ${instant} >= $${params.push(query.since)}::timestamptz` : "", query.until ? `and ${instant} < $${params.push(query.until)}::timestamptz` : ""].join(" ")
+    const period = { feedback: inPeriod("coalesce(f.published_at, f.created_at)"), alert: inPeriod("a.created_at"), report: inPeriod("r.created_at") }
     const result = await this.db.query<Record<string, unknown>>(
       `with feed as (
          select f.id, 'FEEDBACK' kind, coalesce(f.published_at, f.created_at) "createdAt"
          from feedbacks f
          where f.organization_id = $1 and f.status = 'PUBLISHED' and f.operator_id = any($2::uuid[])
            and (not $6::boolean or f.acknowledged_at is null)
-           and ${visibleInFollowUpSql("f")} ${before.feedback}
+           and ${visibleInFollowUpSql("f")} ${before.feedback} ${period.feedback}
          union all
          select a.id, 'ALERT', a.created_at
          from alerts a
@@ -467,14 +489,14 @@ export class PgAnalyticsReadRepository implements AnalyticsReadRepository {
            -- Intervenção: resolver a PENDÊNCIA (aceitar, aprovar) não apaga o registro do Acompanhamento — o aviso continua
            -- como histórico com o link para o caso. Os demais avisos saem do feed quando resolvidos.
            and (a.status in ('OPEN', 'SEEN', 'ACKNOWLEDGED') or (a.status = 'RESOLVED' and left(a.alert_type, 13) = 'INTERVENTION_'))
-           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert}
+           and not ${recadoAlertCoveredByFollowUpSql("a")} ${before.alert} ${period.alert}
            -- Aviso de execução bloqueada é só do sino: Acompanhamento é conteúdo para ler (D1, docs/qa/workflows/propostas.md).
            and a.alert_type <> 'WORKFLOW_EXECUTION_BLOCKED'
          union all
          -- Reports recorrentes: entregas e avisos de "não encaminhado" endereçados a QUEM LÊ (cada um com a versão do escopo dele).
          select r.delivery_id, 'REPORT', r.created_at
          from report_delivery_recipients r
-         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report}
+         where $3::boolean and r.organization_id = $1 and r.recipient_person_id = $4 ${before.report} ${period.report}
        ), probe as (
          select id, kind, "createdAt" from feed order by "createdAt" desc, id desc limit $5 + 1
        ), page as (

@@ -70,8 +70,8 @@ de cada rodada ficam fora do Git (pasta temporária da sessão).
   desabilitado com o motivo no `title`); o que coincide com o período atual fica marcado (`aria-pressed`); `presets={false}` tira.
   Ficam à esquerda (em cima no celular) só pela ordem visual (`order-first`): no DOM vêm depois do calendário, para o foco ao abrir
   continuar em "Ir para o mês anterior" como antes; o bloco do calendário é `relative` (a navegação de mês do `Calendar` é absoluta e
-  caía sobre os atalhos). O filtro decorativo do Acompanhamento do operador (`operator-date-filter.tsx`, `Calendar` direto, sem efeito
-  nos dados) ficou de fora. Valor sempre "AAAA-MM-DD"
+  caía sobre os atalhos). O filtro do Acompanhamento (então decorativo) ficou de fora nessa rodada; passou a filtrar em
+  16/11/2026 (ver "Período do Acompanhamento" abaixo). Valor sempre "AAAA-MM-DD"
   civil; exibição `dd/MM/aaaa`. O `Calendar` do kit usa por padrão o `ptBR` do `react-day-picker/locale` (meses, dias e rótulos de
   leitor de tela em português). Os 17 campos `type="date"` de 11 telas trocados; os 7 `datetime-local` e o 1 `month` ficaram nativos
   (escolhem horário/competência).
@@ -96,9 +96,16 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   2 semanas · Último mês · Este mês · Mês passado · 3 meses · 6 meses; "Limpar" no fim dos atalhos quando o filtro pode ficar
   vazio; `confirm` = "Aplicar" em período obrigatório) e `DatePicker` para uma data. Popover branco inteiro: o calendário não tem
   fundo próprio e ocupa a coluna até o separador dos atalhos (antes era um bloco cinza ao lado da coluna branca e parecia quebrado).
-  Ninguém monta o `Calendar` direto: o filtro do Acompanhamento do operador (`operator-date-filter.tsx`, que continua sem filtrar o
-  feed) e o QA Lab (tinha um seletor próprio "Hoje/7 dias/30 dias/personalizado/qualquer") passaram para o kit. Exceções que
+  Ninguém monta o `Calendar` direto: o filtro do Acompanhamento (hoje `operator/follow-up-period.tsx`, ver abaixo) e o QA Lab (tinha um seletor próprio "Hoje/7 dias/30 dias/personalizado/qualquer") passaram para o kit. Exceções que
   ficam nativas até o kit ter seletor de hora: 7 `datetime-local`, 1 `month` e 6 `time`.
+- **Período do Acompanhamento** (16/11/2026) — o calendário do cabeçalho do feed (colaborador e estrutura, `IniaFeed`) filtra de
+  verdade: vazio = "Todo o período" (visão inicial); um clique = um dia, o segundo fecha o período; atalhos e "Limpar" do kit. Com
+  recorte, uma faixa abaixo do cabeçalho diz "Mostrando ações de …" (no celular "Ações de …") com "Ver todo o período"; período sem
+  nada mantém a seção montada e mostra o `EmptyState` "Nenhuma ação neste período" com a mesma volta. O dia é o de quem lê e o
+  instante é o MESMO que ordena e rotula o dia de cada item (feedback = publicação; aviso/report = criação; entrega = `deliveredAt`;
+  comunicado = publicação local). Estrutura: `since`/`until` ([início, fim) em ISO) vão a `GET /analytics/follow-ups` e entram nos
+  três ramos do feed antes do keyset; colaborador: filtro na timeline, buscando páginas antigas só enquanto podem ter itens do
+  período. "Onde atuar hoje" some com recorte ativo (não é ação datada); "Ler feedback" de item fora do recorte volta a tudo.
 - **Tabela** — `components/ui/table.tsx`: moldura `TABLE_FRAME` (agora também nas 5 que não tinham: Diagnóstico ×2, Materiais,
   Processos, membros do indicador) e **cabeçalho roxo da marca com texto branco em seminegrito** (token `topbar`, o roxo da barra
   superior nos dois temas — o `primary` do escuro é rosa e o cabeçalho ficaria berrante). A cor fica na célula (`TableHead`),

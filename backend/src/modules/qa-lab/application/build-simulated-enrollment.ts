@@ -24,6 +24,7 @@ export type QaWorkflowRow = {
   trigger_config: unknown
   consolidated_structure: unknown
   population_filter: unknown
+  operating_universe?: string | null
   active_version_id: string | null
   draft_graph: unknown
   published_graph: unknown

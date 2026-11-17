@@ -12,6 +12,7 @@ import { withAgentSnapshots } from "../../agents/application/agent-runtime-conte
 import { resolveAgentVersionForRun } from "../../agents/application/agent-versions.js"
 import { assertExecutionAuthorized, executionDenialFor, recordExecutionDenial } from "../../agents/application/agent-execution-authorization.js"
 import type { AgentRuntimeSnapshot } from "../../agents/domain/agent-config.js"
+import { isUniverseEnforced, loadSubjectUniverseAccess, universeParam } from "../../operating-universe/application/universe-access.js"
 
 
 export type ResolvedOrchestrator = {
@@ -155,7 +156,9 @@ async function buildResolvedOrchestrator(db: Database, orchestrator: Orchestrato
   const consumerScope = pinned && version.config.scopeType
     ? { scopeType: version.config.scopeType, teamId: version.config.teamId ?? null, subteamId: version.config.subteamId ?? null }
     : { scopeType: orchestrator.scope_type, teamId: orchestrator.team_id, subteamId: orchestrator.subteam_id }
-  const resolvedSpecialists = (await Promise.all(listed.map(async (entry) => {
+  // Universos não se misturam: com a exigência ativa, só especialistas do MESMO universo do Orquestrador (pendente = fora).
+  const universeAllowed = await specialistUniverseFilter(db, orchestrator.organization_id, orchestrator.id, listed.map((entry) => entry.agentId))
+  const resolvedSpecialists = (await Promise.all(listed.filter((entry) => universeAllowed(entry.agentId)).map(async (entry) => {
     const snapshot = await specialistSnapshot(db, orchestrator.organization_id, entry.agentId)
     if (!snapshot) return null
     const denial = await executionDenialFor(db, snapshot, consumerScope)
@@ -301,7 +304,9 @@ export async function resolveOrchestratorForSubject(
     subjectId,
     organizationId,
   ])
-  return resolveOrchestratorForPlacement(db, organizationId, { teamId: person.rows[0]?.team_id ?? null, subteamId: person.rows[0]?.subteam_id ?? null }, invocationContext, query)
+  // Universo do colaborador vem do cadastro (backend): com a exigência ativa, só o Orquestrador do mesmo universo; pendente = nenhum.
+  const universes = universeParam(await loadSubjectUniverseAccess(db, organizationId, subjectId))
+  return resolveOrchestratorForPlacement(db, organizationId, { teamId: person.rows[0]?.team_id ?? null, subteamId: person.rows[0]?.subteam_id ?? null, universes }, invocationContext, query)
 }
 
 /**
@@ -314,15 +319,17 @@ export async function resolveOrchestratorForTeam(
   teamId: string | null,
   invocationContext: OrchestratorInvocationContext,
   query?: string,
+  /** Universos permitidos a quem consulta (null = sem filtro: organização sem ativação). */
+  universes: readonly string[] | null = null,
 ): Promise<ResolvedOrchestrator | null> {
-  return resolveOrchestratorForPlacement(db, organizationId, { teamId, subteamId: null }, invocationContext, query)
+  return resolveOrchestratorForPlacement(db, organizationId, { teamId, subteamId: null, universes }, invocationContext, query)
 }
 
 /** Preferência: Subgrupo > Grupo > Todos os grupos (o mais recente de cada nível). */
 async function resolveOrchestratorForPlacement(
   db: Database,
   organizationId: string,
-  placement: { teamId: string | null; subteamId: string | null },
+  placement: { teamId: string | null; subteamId: string | null; universes?: readonly string[] | null },
   invocationContext: OrchestratorInvocationContext,
   query?: string,
 ): Promise<ResolvedOrchestrator | null> {
@@ -332,9 +339,10 @@ async function resolveOrchestratorForPlacement(
      join agents a on a.id = o.orchestrator_agent_id
      where o.organization_id = $1 and o.active and o.invocation_mode in ('BOTH', $3)
        and (o.scope_type = 'ALL_TEAMS' or (o.scope_type = 'TEAM' and o.team_id = $2) or (o.scope_type = 'SUBTEAM' and o.subteam_id = $4))
+       and ($5::text[] is null or o.operating_universe = any($5::text[]))
      order by case o.scope_type when 'SUBTEAM' then 0 when 'TEAM' then 1 else 2 end, o.created_at desc
      limit 1`,
-    [organizationId, placement.teamId, invocationContext, placement.subteamId],
+    [organizationId, placement.teamId, invocationContext, placement.subteamId, placement.universes ? [...placement.universes] : null],
   )
   const orchestrator = orchestratorRow.rows[0]
   if (!orchestrator) return null
@@ -382,7 +390,9 @@ export async function resolveOrchestratorById(
     `select o.organization_id, o.id, o.name, o.scope_type, o.team_id, o.subteam_id, o.orchestrator_agent_id, a.objective, a.description, a.context_prompt, o.output_instructions, o.output_schema, o.structured_output, o.recommend_support_materials
      from assistant_orchestrators o
      join agents a on a.id = o.orchestrator_agent_id
-     where o.id = $1 and o.organization_id = $2 and o.active and o.invocation_mode in ('BOTH', $3)`,
+     where o.id = $1 and o.organization_id = $2 and o.active and o.invocation_mode in ('BOTH', $3)
+       -- Com a exigência de universo ativa, Orquestrador pendente fica fora das execuções (classifique-o na Administração).
+       and (o.operating_universe is not null or not exists (select 1 from organizations org where org.id = $2 and org.operating_universe_enforced_at is not null))`,
     [orchestratorId, organizationId, invocationContext],
   )
   const orchestrator = orchestratorRow.rows[0]
@@ -395,3 +405,14 @@ export function findSpecialistByToolName(orchestrator: ResolvedOrchestrator, too
 }
 
 export { toolNameForAgent }
+
+async function specialistUniverseFilter(db: Database, organizationId: string, orchestratorId: string, agentIds: readonly string[]): Promise<(agentId: string) => boolean> {
+  if (!(await isUniverseEnforced(db, organizationId))) return () => true
+  const rows = (await db.query<{ id: string; ok: boolean }>(
+    `select a.id, (a.operating_universe is not null and a.operating_universe = o.operating_universe) ok
+       from agents a cross join assistant_orchestrators o where o.id = $1 and a.id = any($2::uuid[])`,
+    [orchestratorId, [...agentIds]],
+  )).rows
+  const allowed = new Set(rows.filter((row) => row.ok).map((row) => row.id))
+  return (agentId) => allowed.has(agentId)
+}

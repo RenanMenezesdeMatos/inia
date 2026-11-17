@@ -23,6 +23,7 @@ import { supportAbandonment } from "../application/abandonment-service.js"
 import { transferAttendance, transferCandidates } from "../application/transfer-service.js"
 import { supportFunnel } from "../application/metrics-service.js"
 import { cancelRequest, closeRequest, createRequest, previewRequest } from "../application/request-service.js"
+import { getResponseTimesPanel, updateGroupResponseTimes, updateOrganizationResponseTimes } from "../application/response-times-service.js"
 import { listAnjos, listScopes, updateAnjoCapacity, updateScopeState, updateSettings } from "../application/settings-service.js"
 import { cancelScheduledPresence, changePresence, loadAnjoView, loadOperatorView, loadState, renewAnjoLease } from "../application/state-service.js"
 import { classificationInputSchema } from "../domain/classification.js"
@@ -53,14 +54,14 @@ const sql = (text: string, params: unknown[] = []) => pool.query(text, params)
 /** Fecha tudo o que está aberto na organização da prova (isola um cenário do outro). */
 async function resetOpen() {
   await sql(`update human_support_attendances set status = 'ENDED', end_cause = 'ANJO_CLOSED', ended_at = now() where organization_id = $1 and status = 'ACTIVE'`, [ORG])
-  await sql(`update human_support_requests set status = 'CLOSED', end_cause = 'ANJO_CLOSED', ended_at = now() where organization_id = $1 and status in ('WAITING', 'IN_PROGRESS')`, [ORG])
+  await sql(`update human_support_requests set status = 'CLOSED', end_cause = 'ANJO_CLOSED', ended_at = now(), awaiting_operator_since = null where organization_id = $1 and status in ('WAITING', 'IN_PROGRESS', 'AWAITING_OPERATOR')`, [ORG])
   await sql(`update human_support_agent_presence set status = 'OFFLINE', pause_reason = null, lease_until = null, connection_lost_at = null, connection_restored_at = null, scheduled_status = null, scheduled_pause_reason = null, scheduled_at = null where organization_id = $1`, [ORG])
 }
 async function available(key: string) {
   await renewAnjoLease(pool, viewer(key))
   return changePresence(pool, viewer(key), { status: "AVAILABLE" })
 }
-const request = (requestId: string) => sql(`select status, end_cause, queued_at, queue_expires_at, created_at from human_support_requests where id = $1`, [requestId]).then((result) => result.rows[0] as { status: string; end_cause: string | null; queued_at: Date; queue_expires_at: Date; created_at: Date })
+const request = (requestId: string) => sql(`select status, end_cause, queued_at, queue_expires_at, created_at, anjos_in_service_at_end from human_support_requests where id = $1`, [requestId]).then((result) => result.rows[0] as { status: string; end_cause: string | null; queued_at: Date; queue_expires_at: Date; created_at: Date; anjos_in_service_at_end: number | null })
 const activeOf = (key: string) => sql(`select count(*)::int total from human_support_attendances where organization_id = $1 and anjo_person_id = $2 and status = 'ACTIVE'`, [ORG, ids[key]]).then((result) => (result.rows[0] as { total: number }).total)
 const ask = (key: string, extra: Record<string, unknown> = {}) => createRequest(pool, viewer(key), { clientRequestId: randomUUID(), ...extra })
 
@@ -359,7 +360,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     const codes = (await sql(`select system_code from human_support_messages where request_id = $1 and author_kind = 'SYSTEM' order by seq`, [created.id])).rows.map((row) => (row as { system_code: string }).system_code)
     expect(codes).toEqual(["QUEUED", "ANJO_ASSIGNED", "ANJO_CONNECTION_LOST", "ANJO_CONNECTION_RESTORED"])
     const operatorView = await loadOperatorView(pool, viewer("O5"))
-    expect(operatorView.openRequest!.messages.map((message) => message.body)).toContain("O Anjo voltou.")
+    expect(operatorView.openRequest!.messages.map((message) => message.body)).toContain("O Apoio voltou.")
     await sql(`update human_support_agent_presence set lease_until = now() - interval '4 minutes' where organization_id = $1 and person_id = $2`, [ORG, ids.A1])
     await dispatchOrganization(pool, ORG)
     const after = await request(created.id)
@@ -432,12 +433,14 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(await presenceOf()).toMatchObject({ status: "AVAILABLE", scheduled_status: "PAUSED" })
     expect(await activeOf("A1")).toBe(1)
 
-    // O último termina por inatividade (sistema) com distribuições correndo junto: a pausa entra no mesmo instante do fim e a fila
-    // nunca recebe o A1 nesse meio-tempo.
+    // O último termina pelo sistema — o operador ficou sem responder ao Anjo (193) — com distribuições correndo junto: a pausa entra no
+    // mesmo instante do fim e a fila nunca recebe o A1 nesse meio-tempo.
+    await sendMessage(pool, viewer("A1"), second.id, { clientMessageId: randomUUID(), body: "Conseguiu?", viewerIsAnjo: true })
     await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [second.id])
     await Promise.all(Array.from({ length: 4 }, () => dispatchOrganization(pool, ORG)))
     const ended = (await attendanceOf(second.id))!
-    expect(ended).toMatchObject({ status: "ENDED", end_cause: "INACTIVITY" })
+    expect(ended).toMatchObject({ status: "ENDED", end_cause: "OPERATOR_SILENT" })
+    expect((await request(second.id)).status).toBe("AWAITING_OPERATOR")
     const applied = await presenceOf()
     expect(applied).toMatchObject({ status: "PAUSED", pause_reason: "LUNCH", scheduled_status: null, scheduled_at: null })
     expect(applied.status_since.getTime()).toBe(ended.ended_at!.getTime())
@@ -496,7 +499,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     await sql(`delete from human_support_requests where id = any($1::uuid[])`, [created])
   }, 120_000)
 
-  it("prazos: operador sem chamar 2 min → Abandonado; prazo da fila vencido → Expirado; 15 min sem mensagem → Encerrado, também sem resposta do Anjo", async () => {
+  it("prazos: operador sem chamar 2 min → Abandonado; prazo da fila vencido → Expirado; Anjo sem nenhuma resposta → volta à fila", async () => {
     await available("A1")
     await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "LUNCH" })
     const abandoned = (await ask("O6")).request
@@ -514,8 +517,186 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(silent.status).toBe("IN_PROGRESS")
     await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [silent.id])
     await dispatchOrganization(pool, ORG)
-    expect(await request(silent.id)).toMatchObject({ status: "CLOSED", end_cause: "INACTIVITY" })
+    // Sem resposta do Anjo: o atendimento termina como abandono do Anjo e o pedido volta à fila — e pode ir de novo a qualquer Anjo.
+    expect((await sql(`select end_cause from human_support_attendances where request_id = $1 order by started_at limit 1`, [silent.id])).rows[0]).toEqual({ end_cause: "ANJO_SILENT" })
+    expect((await request(silent.id)).status).toBe("IN_PROGRESS")
     await resetOpen()
+  }, 60_000)
+
+  it("tempos de resposta (193): operador sem responder → aguardando o operador (Anjo livre) → escrever = fim da fila; 2º tempo = abandono do operador; Anjo sem responder = perde e volta à frente; tempos configuráveis", async () => {
+    const panel = await getResponseTimesPanel(pool, viewer("ADMIN"))
+    expect(panel.organization).toMatchObject({ times: { operatorRequeueMinutes: 15, operatorCloseMinutes: 20, anjoRequeueMinutes: 15 }, canEdit: true })
+    const attendanceOf = (requestId: string) => sql(`select id, anjo_person_id, status, end_cause from human_support_attendances where request_id = $1 order by started_at desc limit 1`, [requestId]).then((result) => result.rows[0] as { id: string; anjo_person_id: string; status: string; end_cause: string | null })
+    const systemCodes = (requestId: string) => sql(`select system_code from human_support_messages where request_id = $1 and author_kind = 'SYSTEM' order by seq`, [requestId]).then((result) => result.rows.map((row) => (row as { system_code: string }).system_code))
+    await available("A1")
+
+    // 1. O Anjo respondeu e o operador sumiu por 16 min: o Anjo fica livre e o pedido aguarda o operador (até a mensagem do Anjo + 20 min).
+    const { request: gone } = await ask("O4")
+    expect(gone.status).toBe("IN_PROGRESS")
+    await sendMessage(pool, viewer("O4"), gone.id, { clientMessageId: randomUUID(), body: "Como faço a segunda via?", viewerIsAnjo: false })
+    await sendMessage(pool, viewer("A1"), gone.id, { clientMessageId: randomUUID(), body: "Me diga o protocolo, por favor.", viewerIsAnjo: true })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [gone.id])
+    await dispatchOrganization(pool, ORG)
+    expect(await attendanceOf(gone.id)).toMatchObject({ status: "ENDED", end_cause: "OPERATOR_SILENT" })
+    expect(await activeOf("A1")).toBe(0)
+    const parked = (await sql(`select status, awaiting_operator_since from human_support_requests where id = $1`, [gone.id])).rows[0] as { status: string; awaiting_operator_since: Date }
+    expect(parked.status).toBe("AWAITING_OPERATOR")
+    const operatorView = (await loadOperatorView(pool, viewer("O4"))).openRequest!
+    expect(operatorView).toMatchObject({ status: "AWAITING_OPERATOR", canCancel: true, canClose: false, anjo: null })
+    expect(Date.parse(operatorView.awaitingReturnUntil!)).toBe(parked.awaiting_operator_since.getTime() + 20 * 60_000)
+    expect(operatorView.messages.at(-1)!.body).toMatch(/Você ficou sem responder e o Apoio foi liberado/)
+    expect(JSON.stringify(operatorView)).not.toMatch(/Anjo/)
+    // Um pedido aberto por operador continua valendo: aguardando o retorno conta como aberto.
+    await expect(ask("O4")).rejects.toMatchObject({ code: "HUMAN_SUPPORT_REQUEST_ALREADY_OPEN" })
+
+    // 2. Enquanto isso, o Anjo livre recebe outro pedido; o A1 entra em pausa e chega mais um, que fica na fila.
+    const { request: other } = await ask("O16")
+    expect(other.status).toBe("IN_PROGRESS")
+    await changePresence(pool, viewer("A1"), { status: "PAUSED", pauseReason: "MEETING" })
+    const { request: earlier } = await ask("O20")
+    expect(earlier.status).toBe("WAITING")
+
+    // 3. O operador volta e escreve: o pedido entra no FIM da fila (depois de quem já esperava), com prazo novo.
+    await sendMessage(pool, viewer("O4"), gone.id, { clientMessageId: randomUUID(), body: "Voltei, o protocolo é 123.", viewerIsAnjo: false })
+    const returned = await request(gone.id)
+    expect(returned.status).toBe("WAITING")
+    expect(returned.queued_at.getTime()).toBeGreaterThan((await request(earlier.id)).queued_at.getTime())
+    expect(returned.queue_expires_at.getTime()).toBeGreaterThan(Date.now())
+    expect((await sql(`select cause from human_support_request_events where request_id = $1 order by id desc limit 1`, [gone.id])).rows[0]).toEqual({ cause: "OPERATOR_RETURNED" })
+    expect((await systemCodes(gone.id)).slice(-2)).toEqual(["AWAITING_OPERATOR", "OPERATOR_RETURNED"])
+    // Na fila da coordenação, a espera conta da volta (fim da fila), não da criação.
+    expect((await queueWaiting(pool, viewer("ADMIN"), {})).find((item) => item.requestId === gone.id)).toMatchObject({ waitingSince: returned.queued_at.toISOString(), requeued: true })
+    // Quem esperava antes é atendido antes.
+    await changePresence(pool, viewer("A1"), { status: "AVAILABLE" })
+    expect((await request(earlier.id)).status).toBe("IN_PROGRESS")
+    expect((await request(gone.id)).status).toBe("WAITING")
+
+    // 4. O 2º tempo: o Anjo respondeu e o operador nunca voltou — 21 min depois o pedido é encerrado como abandono do operador.
+    await sendMessage(pool, viewer("A1"), other.id, { clientMessageId: randomUUID(), body: "Pode testar agora?", viewerIsAnjo: true })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '21 minutes' where request_id = $1`, [other.id])
+    await dispatchOrganization(pool, ORG)
+    expect(await request(other.id)).toMatchObject({ status: "ABANDONED", end_cause: "OPERATOR_NO_RETURN" })
+    expect((await systemCodes(other.id)).slice(-2)).toEqual(["AWAITING_OPERATOR", "ENDED_OPERATOR_NO_RETURN"])
+    // Quem estava no fim da fila recebe a vaga liberada.
+    expect((await request(gone.id)).status).toBe("IN_PROGRESS")
+
+    // 5. O Anjo sem responder ao operador: perde o atendimento (abandono do Anjo, sem classificação nem avaliação) e o pedido volta à
+    //    FRENTE da fila (mantém a entrada original) — e pode voltar a qualquer Anjo, também ao mesmo.
+    const before = await request(earlier.id)
+    await sendMessage(pool, viewer("O20"), earlier.id, { clientMessageId: randomUUID(), body: "Alguém pode me ajudar?", viewerIsAnjo: false })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1 and status = 'ACTIVE'`, [earlier.id])
+    const lostId = (await attendanceOf(earlier.id)).id
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select end_cause from human_support_attendances where id = $1`, [lostId])).rows[0]).toEqual({ end_cause: "ANJO_SILENT" })
+    expect((await request(earlier.id)).queued_at.getTime()).toBe(before.queued_at.getTime())
+    expect(await attendanceOf(earlier.id)).toMatchObject({ status: "ACTIVE", anjo_person_id: ids.A1 })
+    expect((await systemCodes(earlier.id))).toContain("ANJO_SILENT_REQUEUED")
+    const anjoView = await loadAnjoView(pool, viewer("A1"))
+    expect(anjoView.pendingClassifications.some((item) => item.attendanceId === lostId)).toBe(false)
+    expect((await loadOperatorView(pool, viewer("O20"))).pendingEvaluations.some((item) => item.attendanceId === lostId)).toBe(false)
+    const lostMessages = await listMessages(pool, viewer("A1"), earlier.id, { viewerIsAnjo: true })
+    expect(lostMessages.messages.map((message) => message.body).join(" ")).toMatch(/perdeu este atendimento/)
+    const gone2 = await supportAbandonment(pool, viewer("ADMIN"), { from: today(), to: today() })
+    expect(gone2.attendance.byAnjo.noReply).toBeGreaterThanOrEqual(1)
+    expect(gone2.attendance.byOperator.noReply).toBeGreaterThanOrEqual(2)
+
+    // 6. Tempos por Grupo (194): o Coordenador de Anjos do G1 vê e muda só os do G1; o padrão da organização, só quem acompanha a
+    //    organização. Versão, histórico e auditoria; regra entre os tempos.
+    const coordPanel = await getResponseTimesPanel(pool, viewer("COORD"))
+    expect(coordPanel.organization.canEdit).toBe(false)
+    expect(coordPanel.groups).toEqual([{ teamId: ids.G1, teamName: "Proof G1", custom: false, times: { operatorRequeueMinutes: 15, operatorCloseMinutes: 20, anjoRequeueMinutes: 15 }, version: 0, canEdit: true }])
+    await expect(updateOrganizationResponseTimes(pool, viewer("COORD"), { operatorRequeueMinutes: 10, operatorCloseMinutes: 12, anjoRequeueMinutes: 5, anjoUnresponsive: { pauseAfterMinutes: 20, offlineAfterMinutes: 10 }, version: panel.organization.version })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_RESPONSE_TIMES_ORGANIZATION_ONLY", statusCode: 403 })
+    await expect(updateGroupResponseTimes(pool, viewer("COORD"), ids.G2!, { times: { operatorRequeueMinutes: 10, operatorCloseMinutes: 12, anjoRequeueMinutes: 5 }, version: 0 })).rejects.toMatchObject({ statusCode: 404 })
+    await expect(updateGroupResponseTimes(pool, viewer("COORD"), ids.G1!, { times: { operatorRequeueMinutes: 10, operatorCloseMinutes: 10, anjoRequeueMinutes: 5 }, version: 0 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" })
+    const saved = await updateGroupResponseTimes(pool, viewer("COORD"), ids.G1!, { times: { operatorRequeueMinutes: 10, operatorCloseMinutes: 12, anjoRequeueMinutes: 5 }, version: 0 })
+    expect(saved.groups[0]).toMatchObject({ custom: true, times: { operatorRequeueMinutes: 10, operatorCloseMinutes: 12, anjoRequeueMinutes: 5 }, version: 1 })
+    await expect(updateGroupResponseTimes(pool, viewer("ADMIN"), ids.G1!, { times: { operatorRequeueMinutes: 10, operatorCloseMinutes: 12, anjoRequeueMinutes: 7 }, version: 0 })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_CONCURRENT_CHANGE" })
+    expect((await sql(`select target_type, team_id, field, from_value, to_value from human_support_setting_events where organization_id = $1 and field like '%_MINUTES' order by id`, [ORG])).rows).toEqual([
+      { target_type: "GROUP", team_id: ids.G1, field: "OPERATOR_REQUEUE_MINUTES", from_value: "15", to_value: "10" },
+      { target_type: "GROUP", team_id: ids.G1, field: "OPERATOR_CLOSE_MINUTES", from_value: "20", to_value: "12" },
+      { target_type: "GROUP", team_id: ids.G1, field: "ANJO_REQUEUE_MINUTES", from_value: "15", to_value: "5" },
+    ])
+    expect((await sql(`select count(*)::int total from audit_logs where organization_id = $1 and action = 'HUMAN_SUPPORT_RESPONSE_TIMES_CHANGED'`, [ORG])).rows[0]).toEqual({ total: 1 })
+    // O padrão da organização muda pelo Administrador geral, mas o G1 continua com os próprios tempos.
+    const orgSaved = await updateOrganizationResponseTimes(pool, viewer("ADMIN"), { operatorRequeueMinutes: 30, operatorCloseMinutes: 40, anjoRequeueMinutes: 30, anjoUnresponsive: { pauseAfterMinutes: 20, offlineAfterMinutes: 10 }, version: panel.organization.version })
+    expect(orgSaved.groups.find((group) => group.teamId === ids.G2)).toMatchObject({ custom: false, times: { operatorRequeueMinutes: 30, operatorCloseMinutes: 40, anjoRequeueMinutes: 30 } })
+    expect(orgSaved.groups.find((group) => group.teamId === ids.G1)).toMatchObject({ custom: true, times: { anjoRequeueMinutes: 5 } })
+    // Com o tempo novo (5 min), 6 min sem resposta do Anjo já devolvem o pedido à fila.
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '6 minutes' where request_id = $1 and status = 'ACTIVE'`, [gone.id])
+    const goneAttendance = (await attendanceOf(gone.id)).id
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select end_cause from human_support_attendances where id = $1`, [goneAttendance])).rows[0]).toEqual({ end_cause: "ANJO_SILENT" })
+    // Cancelar aguardando o retorno: o operador desiste.
+    await sendMessage(pool, viewer("A1"), earlier.id, { clientMessageId: randomUUID(), body: "Ainda está aí?", viewerIsAnjo: true })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '11 minutes' where request_id = $1 and status = 'ACTIVE'`, [earlier.id])
+    await dispatchOrganization(pool, ORG)
+    expect((await request(earlier.id)).status).toBe("AWAITING_OPERATOR")
+    expect((await cancelRequest(pool, viewer("O20"), earlier.id)).status).toBe("CANCELLED")
+
+    // 7. Ninguém do Apoio em serviço (194): o operador volta, mas não há quem atenda — vale a regra de "ninguém em serviço": o pedido é
+    //    encerrado (não fica na fila), não conta como abandono do operador e a tentativa sem Anjo é registrada.
+    const { request: lonely } = await ask("O21")
+    expect(lonely.status).toBe("IN_PROGRESS")
+    await sendMessage(pool, viewer("A1"), lonely.id, { clientMessageId: randomUUID(), body: "Me conte o que houve.", viewerIsAnjo: true })
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '11 minutes' where request_id = $1 and status = 'ACTIVE'`, [lonely.id])
+    await dispatchOrganization(pool, ORG)
+    expect((await request(lonely.id)).status).toBe("AWAITING_OPERATOR")
+    await sql(`update human_support_agent_presence set status = 'OFFLINE' where organization_id = $1`, [ORG])
+    await sendMessage(pool, viewer("O21"), lonely.id, { clientMessageId: randomUUID(), body: "Voltei.", viewerIsAnjo: false })
+    expect(await request(lonely.id)).toMatchObject({ status: "EXPIRED", end_cause: "NO_ANJO_IN_SERVICE", anjos_in_service_at_end: 0 })
+    expect((await systemCodes(lonely.id)).at(-1)).toBe("ENDED_NO_ANJO_IN_SERVICE")
+    expect((await sql(`select count(*)::int total from human_support_entry_events where organization_id = $1 and person_id = $2 and kind = 'NO_ANJO_IN_SERVICE'`, [ORG, ids.O21])).rows[0]).toEqual({ total: 1 })
+
+    // Voltar ao padrão: o G1 deixa de ter tempos próprios.
+    const restored = await updateGroupResponseTimes(pool, viewer("COORD"), ids.G1!, { times: null, version: 1 })
+    expect(restored.groups[0]).toMatchObject({ custom: false, version: 0, times: { operatorRequeueMinutes: 30 } })
+    await updateOrganizationResponseTimes(pool, viewer("ADMIN"), { operatorRequeueMinutes: 15, operatorCloseMinutes: 20, anjoRequeueMinutes: 15, anjoUnresponsive: { pauseAfterMinutes: 20, offlineAfterMinutes: 10 }, version: orgSaved.organization.version })
+    await resetOpen()
+  }, 60_000)
+
+  it("Anjo sem responder ninguém (195): pausa Desconexão pelo sistema, fora de serviço, Indisponível ao vencer, motivo visível; voltar limpa", async () => {
+    // Um Anjo novo, sem mensagens anteriores, que só atende o pedido deste cenário.
+    await person("A9", { team: "G1", subteam: "S1" }, true)
+    await grant("A9", "ANJO", { type: "GROUP", team: "G1" })
+    await available("A9")
+    const { request: owed } = await ask("O22")
+    expect(owed.status).toBe("IN_PROGRESS")
+    const attendance = (await sql(`select id, anjo_person_id from human_support_attendances where request_id = $1 and status = 'ACTIVE'`, [owed.id])).rows[0] as { id: string; anjo_person_id: string }
+    expect(attendance.anjo_person_id).toBe(ids.A9)
+    // 21 min devendo resposta, sem nenhum sinal de vida dele nesse tempo (a última mudança de estado dele foi há 30 min).
+    await sql(`update human_support_attendances set last_human_message_at = now() - interval '21 minutes' where id = $1`, [attendance.id])
+    await sql(`update human_support_presence_events set occurred_at = now() - interval '30 minutes' where organization_id = $1 and person_id = $2 and cause = 'ANJO'`, [ORG, ids.A9])
+    const summary = await dispatchOrganization(pool, ORG)
+    expect(summary.unresponsivePaused).toBe(1)
+    // Perdeu o atendimento (abandono do Anjo) e, devendo há 21 min, foi posto em pausa "Desconexão" pelo sistema.
+    expect((await sql(`select end_cause from human_support_attendances where id = $1`, [attendance.id])).rows[0]).toEqual({ end_cause: "ANJO_SILENT" })
+    expect((await sql(`select status, pause_reason from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A9])).rows[0]).toEqual({ status: "PAUSED", pause_reason: "DISCONNECTION" })
+    expect((await sql(`select cause, to_status, pause_reason from human_support_presence_events where organization_id = $1 and person_id = $2 order by id desc limit 1`, [ORG, ids.A9])).rows[0]).toEqual({ cause: "UNRESPONSIVE", to_status: "PAUSED", pause_reason: "DISCONNECTION" })
+    // O pedido não volta para ele; com ele fora de serviço e mais ninguém, vale "ninguém em serviço" para quem pede.
+    expect(await activeOf("A9")).toBe(0)
+    expect((await loadOperatorView(pool, viewer("O23"))).availability!.status).toBe("NONE_IN_SERVICE")
+    // O motivo aparece para o Anjo e para a coordenação, com até quando a pausa vale.
+    const own = (await loadAnjoView(pool, viewer("A9"))).presence.unresponsive!
+    expect(own.kind).toBe("PAUSED")
+    expect(Date.parse(own.offlineAt!) - Date.parse(own.since)).toBe(10 * 60_000)
+    expect((await anjosNow(pool, viewer("COORD"), {})).items.find((item) => item.personId === ids.A9)!.unresponsive).toMatchObject({ kind: "PAUSED" })
+
+    // 11 min na pausa sem voltar → Indisponível, com o motivo registrado.
+    await sql(`update human_support_agent_presence set status_since = now() - interval '11 minutes' where organization_id = $1 and person_id = $2`, [ORG, ids.A9])
+    await renewAnjoLease(pool, viewer("A9"))
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select status from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A9])).rows[0]).toEqual({ status: "OFFLINE" })
+    expect((await sql(`select cause from human_support_presence_events where organization_id = $1 and person_id = $2 and to_status = 'OFFLINE' order by id desc limit 1`, [ORG, ids.A9])).rows[0]).toEqual({ cause: "UNRESPONSIVE_TIMEOUT" })
+    expect((await anjosNow(pool, viewer("COORD"), {})).items.find((item) => item.personId === ids.A9)!.unresponsive).toMatchObject({ kind: "OFFLINE", offlineAt: null })
+
+    // Ele volta (escolhe Disponível): o motivo some, a perda antiga não o põe em pausa de novo e ele recebe o pedido da fila.
+    await changePresence(pool, viewer("A9"), { status: "AVAILABLE" })
+    await dispatchOrganization(pool, ORG)
+    expect((await sql(`select status, pause_reason from human_support_agent_presence where organization_id = $1 and person_id = $2`, [ORG, ids.A9])).rows[0]).toEqual({ status: "AVAILABLE", pause_reason: null })
+    expect((await loadAnjoView(pool, viewer("A9"))).presence.unresponsive).toBeNull()
+    await resetOpen()
+    // O A9 é só deste cenário: sem o papel, não entra nas contagens dos outros.
+    await sql(`update access_role_assignments set revoked_at = now() where organization_id = $1 and user_account_id = $2 and revoked_at is null`, [ORG, ids["A9:account"]])
   }, 60_000)
 
   it("a visão do operador nunca tem presença nem pausa de Anjo, nem com todos em pausa; o operador vê 'aguarde na fila'", async () => {
@@ -591,7 +772,8 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     await expect(evaluateAttendance(pool, viewer("O15"), attendanceId, { stars: 4 })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_EVALUATION_CLOSED" })
     const funnel = await supportFunnel(pool, viewer("ADMIN"), { from: today(), to: today() })
     expect(funnel.measures.map((measure) => measure.id)).toEqual(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M15", "M16", "M17"])
-    expect(funnel.measures.find((measure) => measure.id === "M9")!.main.value).toBe(1)
+    // M9: a tentativa da prévia sem Anjo + o operador que voltou sem ninguém em serviço (194).
+    expect(funnel.measures.find((measure) => measure.id === "M9")!.main.value).toBe(2)
     expect(funnel.measures.find((measure) => measure.id === "M14")!.extra).toEqual([{ key: "Contestação de fatura", label: "Contestação de fatura", count: 1 }])
     expect(funnel.cutoffs.disabledPeriods.every((period) => period.to !== null)).toBe(true)
     await expect(supportFunnel(pool, viewer("ADMIN"), { from: "2026-01-01", to: today() })).rejects.toMatchObject({ code: "PERIOD_TOO_LONG", statusCode: 422 })
@@ -722,7 +904,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     const operatorView = (await loadOperatorView(pool, viewer("O24"))).openRequest!
     expect(operatorView.anjo?.name).toBe("Proof HS A2")
     const operatorTexts = operatorView.messages.map((message) => message.body)
-    expect(operatorTexts).toContain("Seu atendimento foi passado para Proof HS A2 (Anjo), que continua a conversa daqui.")
+    expect(operatorTexts).toContain("Seu atendimento foi passado para Proof HS A2 (Apoio), que continua a conversa daqui.")
     expect(JSON.stringify(operatorView)).not.toContain("precisou sair")
     const a2 = (await listMessages(pool, viewer("A2"), made.id, { viewerIsAnjo: true })).messages.map((message) => message.body)
     expect(a2).toContain("Preciso de ajuda com o estorno.")
@@ -741,7 +923,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(requeued.attendances.at(-2)).toMatchObject({ anjoName: "Proof HS A2", endCause: "TRANSFERRED" })
     expect(requeued.attendances.at(-1)?.anjoName).toBe("Proof HS A3")
     expect(((await sql(`select queued_at from human_support_requests where id = $1`, [made.id])).rows[0] as { queued_at: Date }).queued_at.getTime()).toBe(queuedAt.getTime())
-    expect((await loadOperatorView(pool, viewer("O24"))).openRequest!.messages.map((message) => message.body)).toContain("Seu atendimento voltou para a frente da fila: outro Anjo vai continuar a conversa.")
+    expect((await loadOperatorView(pool, viewer("O24"))).openRequest!.messages.map((message) => message.body)).toContain("Seu atendimento voltou para a frente da fila: outra pessoa do Apoio vai continuar a conversa.")
     // Com o pedido de volta em atendimento, não dá para transferir um pedido na fila; encerrado, também não.
     await closeRequest(pool, viewer("O24"), made.id, { viewerIsAnjo: false })
     await expect(transferAttendance(pool, viewer("COORD"), made.id, { target: { kind: "QUEUE" }, reason: "Tarde demais" })).rejects.toMatchObject({ code: "HUMAN_SUPPORT_TRANSFER_NOT_IN_PROGRESS" })
@@ -790,15 +972,18 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     })
     await changePresence(pool, viewer("AW"), { status: "OFFLINE" })
 
-    // 2. Falta de retorno: o operador escreveu, o Anjo nunca respondeu, 15 min sem mensagem → encerrado; faltou retorno do Anjo.
+    // 2. Falta de retorno: o operador escreveu, o Anjo nunca respondeu, 15 min sem mensagem → o Anjo perde o atendimento (193) e o
+    //    pedido volta à fila; o operador já tinha fechado a INIA (não chama há 3 min), então sai da fila como abandono na espera.
     await updateAnjoCapacity(pool, viewer("ADMIN"), ids.AH!, 1)
     await renewAnjoLease(pool, viewer("AH"), { jti: randomUUID(), accountId: ids["AH:account"]!, expiresAt: new Date(Date.now() + 3_600_000) })
     await changePresence(pool, viewer("AH"), { status: "AVAILABLE" })
     const { request: silent } = await ask("H2")
     await sendMessage(pool, viewer("H2"), silent.id, { clientMessageId: randomUUID(), body: "Alguém aí?", viewerIsAnjo: false })
     await sql(`update human_support_attendances set last_human_message_at = now() - interval '16 minutes' where request_id = $1`, [silent.id])
+    await sql(`update human_support_requests set operator_seen_at = now() - interval '3 minutes' where id = $1`, [silent.id])
     await dispatchOrganization(pool, ORG)
-    expect(await attendanceOf(silent.id)).toMatchObject({ end_cause: "INACTIVITY" })
+    expect(await attendanceOf(silent.id)).toMatchObject({ end_cause: "ANJO_SILENT" })
+    expect((await request(silent.id)).status).toBe("ABANDONED")
 
     // 3. Fila sem outro Anjo elegível (o AH está cheio, capacidade 1) → o operador sai antes do acolhimento: abandono, com 1 Anjo em serviço.
     const { request: absent } = await ask("H3")
@@ -823,7 +1008,7 @@ describe.skipIf(!ENABLED)("Apoio com Anjo — prova Postgres", () => {
     expect(now.queue.awaitingFirstResponse).toBeGreaterThanOrEqual(1)
     // Clicar na fila: quem aguarda e desde quando (entrada original), para o Coordenador e o Administrador geral.
     const waitingList = await queueWaiting(pool, viewer("COORD"), {})
-    expect(waitingList.find((item) => item.requestId === last.id)).toMatchObject({ operatorName: "Proof HS H6", requeued: false, waitingSince: (await request(last.id)).created_at.toISOString() })
+    expect(waitingList.find((item) => item.requestId === last.id)).toMatchObject({ operatorName: "Proof HS H6", requeued: false, waitingSince: (await request(last.id)).queued_at.toISOString() })
     expect((await queueWaiting(pool, viewer("ADMIN"), {})).some((item) => item.requestId === last.id)).toBe(true)
 
     // 6. Queda de rede além da carência: atendimento interrompido (causa: rede), o Anjo sai; o pedido na fila que vence agora fica

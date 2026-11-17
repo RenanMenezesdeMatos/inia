@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { addCost, estimateCost, pricingFor, setModelPricingForTests } from "./model-pricing.js"
+import { addCost, costTotal, estimateCost, pricingFor, setModelPricingForTests } from "./model-pricing.js"
 
 // V1.3 — §28/29/57: pricing só por configuração; custo sempre ESTIMATED_PROVIDER_COST; ausente = NOT_CONFIGURED.
 describe("model pricing configurável e custo estimado", () => {
@@ -25,5 +25,18 @@ describe("model pricing configurável e custo estimado", () => {
     expect(cost).toMatchObject({ inputCost: 1, cachedInputCost: 1, reasoningCost: 0, totalEstimatedCost: 2, currency: "BRL" })
     expect(addCost({ status: "NOT_CONFIGURED" }, cost)).toEqual(cost)
     expect(addCost(cost, cost)).toMatchObject({ totalEstimatedCost: 4 })
+  })
+
+  it("custo informado pelo provider: total sem quebra por token; somado com estimativa, marca que parte é estimada", () => {
+    const reported = { status: "PROVIDER_REPORTED_COST" as const, currency: "USD", totalCost: 0.0003465 }
+    const estimated = estimateCost({ promptTokens: 1_000_000, cachedInputTokens: null, outputTokens: 0, totalTokens: 1_000_000, reasoningTokens: null }, { model: "m", inputPerMillion: 1, cachedInputPerMillion: null, outputPerMillion: 1, reasoningPerMillion: null, currency: "USD" })
+    expect(costTotal(reported)).toBe(0.0003465)
+    expect(costTotal(estimated)).toBe(1)
+    expect(costTotal({ status: "NOT_CONFIGURED" })).toBeNull()
+    expect(costTotal(null)).toBeNull()
+    expect(addCost({ status: "NOT_CONFIGURED" }, reported)).toEqual(reported)
+    expect(addCost(reported, reported)).toEqual({ status: "PROVIDER_REPORTED_COST", currency: "USD", totalCost: 0.000693 })
+    expect(addCost(reported, estimated)).toEqual({ status: "PROVIDER_REPORTED_COST", currency: "USD", totalCost: 1.000347, includesEstimate: true })
+    expect(addCost(estimated, reported)).toMatchObject({ includesEstimate: true })
   })
 })

@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ScopeState, SettingsView } from "@/schemas/human-support/admin.schema"
+import { isOpenRequestStatus } from "@/schemas/human-support/catalogs.schema"
 import type { Productivity } from "@/schemas/human-support/monitoring.schema"
 import {
   fetchAnjoPresenceTimeline,
@@ -9,6 +10,7 @@ import {
   fetchAnjosNow,
   fetchMyAnjoHistory,
   fetchQueueWaiting,
+  fetchResponseTimes,
   fetchSupportDemand,
   fetchOperationHistory,
   fetchSupportAnjos,
@@ -23,6 +25,8 @@ import {
   saveAnjoCapacity,
   saveSupportScopeState,
   saveSupportSettings,
+  saveResponseTimes,
+  type SaveResponseTimesInput,
   type PanelFilter,
   type RequestListFilter,
 } from "@/services/human-support/human-support-service"
@@ -71,7 +75,7 @@ export const useSupportRequestDetailQuery = (requestId: string | null) =>
     queryKey: [...MONITORING_KEY, "request", requestId],
     queryFn: () => fetchSupportRequestDetail(requestId!),
     enabled: Boolean(requestId),
-    refetchInterval: (query) => (query.state.data?.status === "WAITING" || query.state.data?.status === "IN_PROGRESS" ? REQUEST_DETAIL_REFRESH_MS : false),
+    refetchInterval: (query) => (query.state.data && isOpenRequestStatus(query.state.data.status) ? REQUEST_DETAIL_REFRESH_MS : false),
   })
 /** Destinos da transferência: só com o diálogo aberto, e lidos de novo a cada 10 s (o estado dos Anjos muda). */
 export const useTransferCandidatesQuery = (requestId: string, enabled: boolean) =>
@@ -103,6 +107,12 @@ export const useAnjosNowQuery = (filter: { teamId?: string | null; subteamId?: s
 export const useSupportDemandQuery = (filter: PanelFilter & { productivity?: Productivity | null }) =>
   // Ao clicar em produtivos/não produtivos, o resto da seção continua na tela até o novo recorte chegar.
   useQuery({ queryKey: [...MONITORING_KEY, "demand", filter], queryFn: () => fetchSupportDemand(filter), placeholderData: (previous) => previous })
+/** Tempos de resposta (migration 193). */
+export const useResponseTimesQuery = () => useQuery({ queryKey: [...MONITORING_KEY, "response-times"], queryFn: fetchResponseTimes })
+export function useSaveResponseTimesMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({ mutationFn: (input: SaveResponseTimesInput) => saveResponseTimes(input), onSettled: () => queryClient.invalidateQueries({ queryKey: [...MONITORING_KEY, "response-times"] }) })
+}
 /** Quem está na fila (aberto ao clicar no indicador de fila); relê junto com a "Operação agora". */
 export const useQueueWaitingQuery = (filter: { teamId?: string | null; subteamId?: string | null }, enabled: boolean) =>
   useQuery({ queryKey: [...MONITORING_KEY, "queue", filter], queryFn: () => fetchQueueWaiting(filter), enabled, refetchInterval: enabled ? ANJOS_NOW_REFRESH_MS : false })

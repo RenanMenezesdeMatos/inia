@@ -63,7 +63,10 @@ export async function fetchTeamMembers(subject: SubjectRef | null, period: strin
   return teamMembersPageSchema.parse(await apiGet(`${BASE}/team/members${toQueryString({ ...subjectQuery(subject), period, ...params })}`))
 }
 
-/** Página do Acompanhamento da estrutura depois de `cursor` (null = a primeira). */
-export async function fetchFollowUpFeed(subject: SubjectRef | null, cursor: string | null, limit: number, unacknowledgedOnly = false): Promise<FollowUpFeed> {
-  return followUpFeedSchema.parse(await apiGet(`${BASE}/follow-ups${toQueryString({ ...subjectQuery(subject), cursor: cursor ?? undefined, limit, ack: unacknowledgedOnly ? "pending" : undefined })}`))
+/** Recorte do calendário do Acompanhamento em instantes ISO, [since, until). */
+export type FollowUpPeriodBounds = { since: string; until: string }
+
+/** Página do Acompanhamento da estrutura depois de `cursor` (null = a primeira); `period` = só o recorte do calendário. */
+export async function fetchFollowUpFeed(subject: SubjectRef | null, cursor: string | null, limit: number, unacknowledgedOnly = false, period: FollowUpPeriodBounds | null = null): Promise<FollowUpFeed> {
+  return followUpFeedSchema.parse(await apiGet(`${BASE}/follow-ups${toQueryString({ ...subjectQuery(subject), cursor: cursor ?? undefined, limit, ack: unacknowledgedOnly ? "pending" : undefined, since: period?.since, until: period?.until })}`))
 }

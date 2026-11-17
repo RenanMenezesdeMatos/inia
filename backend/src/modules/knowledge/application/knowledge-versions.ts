@@ -9,6 +9,8 @@ import { applyProductScopeAssignment, assertProductNodesActive, normalizedProduc
 import { chunkKnowledgeDocument } from "../domain/knowledge-chunking.js"
 import { PDF_MARKDOWN_VERSION, PDF_OCR_VERSION, type PdfExtraction } from "../domain/pdf-markdown/layout.js"
 import { remapExtraction } from "../domain/pdf-markdown/page-map.js"
+import { isOperatingUniverse, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
+import { assertProductsCompatible } from "../../operating-universe/application/universe-links.js"
 
 /**
  * CICLO DE VIDA DAS VERSÕES DA BASE (PEN-008, decisão de 04/11/2026). A base mantém a identidade; as colunas de `knowledge_documents`
@@ -104,6 +106,13 @@ async function assertProductChangeAllowed(client: Queryable, organizationId: str
   if (sameProductNodeIds(config.productNodeIds, await openProductNodeIds(client, organizationId, documentId))) return
   if (!canChangeProducts) throw productsScopeForbidden()
   await assertProductNodesActive(client, organizationId, config.productNodeIds)
+  // Universo: só produtos do universo da base (pendente não restringe — é pendência).
+  await assertProductsCompatible(client, organizationId, config.productNodeIds, await knowledgeUniverse(client, documentId))
+}
+
+async function knowledgeUniverse(client: Queryable, documentId: string): Promise<OperatingUniverse | null> {
+  const value = (await client.query<{ operating_universe: string | null }>(`select operating_universe from knowledge_documents where id = $1`, [documentId])).rows[0]?.operating_universe ?? null
+  return isOperatingUniverse(value) ? value : null
 }
 
 /** A configuração em uso da base, no formato da versão. null = base inexistente, excluída ou de outra organização. */
@@ -183,6 +192,7 @@ export type DraftChanges = {
 export async function saveKnowledgeDraft(client: Queryable, organizationId: string, documentId: string, changes: DraftChanges, actor: KnowledgeActor): Promise<{ versionId: string; version: number; changed: boolean } | null> {
   // Arquivo novo (troca ou reprocessamento) substitui a leitura em andamento do anterior; quem chamou pede a leitura do novo, se precisar.
   if (changes.file) await cancelKnowledgeOcr(client, documentId, "KNOWLEDGE_OCR_REPLACED", "O arquivo do rascunho foi trocado ou reprocessado.")
+  if (changes.productNodeIds) await assertProductsCompatible(client, organizationId, changes.productNodeIds, await knowledgeUniverse(client, documentId))
   const rows = await loadVersionRows(client, documentId)
   const { live, latest, draft, updates } = lifecycleOf(rows)
   const failed = updates.find((row) => row.status === "FAILED") ?? null

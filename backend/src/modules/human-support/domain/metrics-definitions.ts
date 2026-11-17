@@ -74,9 +74,11 @@ const END_OUTCOME_LABELS: Record<string, string> = {
   "CANCELLED:OPERATOR_CANCELLED": "Cancelado pelo operador",
   "CANCELLED:SCOPE_DISABLED": "Cancelado: apoio desligado",
   "EXPIRED:QUEUE_EXPIRED": "Expirado na fila",
+  "EXPIRED:NO_ANJO_IN_SERVICE": "Encerrado: ninguém do Apoio em serviço",
   "ABANDONED:OPERATOR_ABANDONED": "Abandonado (INIA fechada)",
+  "ABANDONED:OPERATOR_NO_RETURN": "Abandonado: o operador não voltou",
 }
-const NO_RESPONSE_LABELS: Record<string, string> = { OPERATOR_CLOSED: "Encerrado pelo operador", ANJO_CLOSED: "Encerrado pelo Anjo", OPERATOR_ABSENT: "Operador ausente", INACTIVITY: "Falta de mensagens", ANJO_LOST: "Interrompido", TRANSFERRED: "Transferido pela coordenação" }
+const NO_RESPONSE_LABELS: Record<string, string> = { OPERATOR_CLOSED: "Encerrado pelo operador", ANJO_CLOSED: "Encerrado pelo Anjo", OPERATOR_ABSENT: "Operador ausente", INACTIVITY: "Falta de mensagens", ANJO_LOST: "Interrompido", TRANSFERRED: "Transferido pela coordenação", OPERATOR_SILENT: "Operador sem resposta", ANJO_SILENT: "Anjo sem resposta" }
 
 export function supportMeasures(counts: SupportCounts): Measure[] {
   const suggestionTotal = counts.suggestions.SIGNAL + counts.suggestions.DISLIKE

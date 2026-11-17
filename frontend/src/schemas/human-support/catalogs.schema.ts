@@ -4,15 +4,19 @@ import { z } from "zod"
  * Espelho de backend/src/modules/human-support/domain/catalogs.ts (Apoio com Anjo, migration 182): códigos e rótulos. Os textos das
  * mensagens de sistema vêm prontos do servidor (dependem de quem lê); aqui ficam só os rótulos de tela.
  */
-export const REQUEST_STATUSES = ["WAITING", "IN_PROGRESS", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"] as const
+/** `AWAITING_OPERATOR` (migration 193): o operador ficou sem responder, o Anjo foi liberado e o pedido aguarda o retorno dele. */
+export const REQUEST_STATUSES = ["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"] as const
 export const requestStatusSchema = z.enum(REQUEST_STATUSES)
 export type RequestStatus = z.infer<typeof requestStatusSchema>
-export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = { WAITING: "Na fila", IN_PROGRESS: "Em atendimento", CLOSED: "Encerrado", CANCELLED: "Cancelado", EXPIRED: "Expirado", ABANDONED: "Abandonado" }
+/** Pedido aberto: na fila, em atendimento ou aguardando o retorno do operador. */
+export const OPEN_REQUEST_STATUSES: readonly RequestStatus[] = ["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR"]
+export const isOpenRequestStatus = (status: RequestStatus) => OPEN_REQUEST_STATUSES.includes(status)
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = { WAITING: "Na fila", IN_PROGRESS: "Em atendimento", AWAITING_OPERATOR: "Aguardando o operador", CLOSED: "Encerrado", CANCELLED: "Cancelado", EXPIRED: "Expirado", ABANDONED: "Abandonado" }
 
 export const REQUEST_ORIGINS = ["BUTTON", "DISLIKE", "SIGNAL"] as const
 export const requestOriginSchema = z.enum(REQUEST_ORIGINS)
 export type RequestOrigin = z.infer<typeof requestOriginSchema>
-export const REQUEST_ORIGIN_LABELS: Record<RequestOrigin, string> = { BUTTON: "Botão “Falar com um Anjo”", DISLIKE: "Descurtida com pedido de ajuda", SIGNAL: "Sugestão da INIA" }
+export const REQUEST_ORIGIN_LABELS: Record<RequestOrigin, string> = { BUTTON: "Botão “Falar com o Apoio”", DISLIKE: "Descurtida com pedido de ajuda", SIGNAL: "Sugestão da INIA" }
 
 export const END_CAUSE_LABELS: Record<string, string> = {
   OPERATOR_CANCELLED: "Cancelado pelo operador",
@@ -25,6 +29,11 @@ export const END_CAUSE_LABELS: Record<string, string> = {
   INACTIVITY: "Falta de mensagens",
   ANJO_LOST: "Interrompido (Anjo sem conexão)",
   TRANSFERRED: "Transferido pela coordenação",
+  // Migration 193 — tempos de resposta.
+  OPERATOR_SILENT: "Operador sem resposta (Anjo liberado)",
+  ANJO_SILENT: "Anjo sem resposta (voltou à fila)",
+  OPERATOR_NO_RETURN: "Operador não voltou",
+  NO_ANJO_IN_SERVICE: "Ninguém do Apoio em serviço",
 }
 
 export const PRESENCE_STATUSES = ["AVAILABLE", "PAUSED", "OFFLINE"] as const
@@ -32,10 +41,12 @@ export const presenceStatusSchema = z.enum(PRESENCE_STATUSES)
 export type PresenceStatus = z.infer<typeof presenceStatusSchema>
 export const PRESENCE_STATUS_LABELS: Record<PresenceStatus, string> = { AVAILABLE: "Disponível", PAUSED: "Em pausa", OFFLINE: "Indisponível" }
 
-export const PAUSE_REASONS = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING"] as const
+export const PAUSE_REASONS = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING", "DISCONNECTION"] as const
 export const pauseReasonSchema = z.enum(PAUSE_REASONS)
 export type PauseReason = z.infer<typeof pauseReasonSchema>
-export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião" }
+export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião", DISCONNECTION: "Desconexão" }
+/** Os motivos que o Anjo escolhe. "Desconexão" (migration 195) só o sistema põe: ele ficou sem responder ninguém. */
+export const ANJO_PAUSE_REASONS = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING"] as const satisfies readonly PauseReason[]
 
 /** Pertinência do acionamento, marcada pelo Anjo ao classificar (`PERTINENCE_V1`, migration 191). */
 export const PERTINENCES = ["PERTINENT", "NOT_PERTINENT", "NOT_EVALUATED"] as const
@@ -93,7 +104,8 @@ export const EVALUATION_RESOLVED_LABELS: Record<EvaluationResolved, string> = { 
 export const HUMAN_SUPPORT_TEXT_LIMITS = { message: 4000, note: 2000, classificationTitle: { min: 3, max: 200 }, classificationDescription: { min: 3, max: 1000 }, url: 500 } as const
 
 /** Aviso fixo na sala de apoio (design_draft.md seção 10). */
-export const SUPPORT_ROOM_NOTICE = "A INIA não lê esta conversa. Coordenadores de Anjos e o Administrador geral podem ler."
+export const SUPPORT_ROOM_NOTICE = "A INIA não lê esta conversa. A coordenação do Apoio e o Administrador geral podem ler."
 /** Rótulo e dica do botão permanente e das sugestões (OQ4). */
-export const SUPPORT_BUTTON_LABEL = "Falar com um Anjo"
+/** Para o operador, quem atende é "o Apoio" (pedido do responsável em 16/11/2026). */
+export const SUPPORT_BUTTON_LABEL = "Falar com o Apoio"
 export const SUPPORT_BUTTON_HINT = "Pedir ajuda a uma pessoa da equipe de apoio"

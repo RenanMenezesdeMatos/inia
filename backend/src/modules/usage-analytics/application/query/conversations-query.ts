@@ -105,7 +105,7 @@ export async function conversationsQuery(db: Queryable, ctx: UsabilityContext, o
         (select count(*)::int from usage_events e where ${eventsWhere(p)} and e.event_name = 'feedback_application.lifecycle' and e.properties->>'stage' = 'PAUSED') application_pauses,
         (select count(*)::int from usage_events e where ${eventsWhere(p)} and e.event_name = 'feedback_application.lifecycle' and e.properties->>'stage' = 'RESUMED') application_resumes,
         (select coalesce(sum(x.seconds), 0)::bigint from (select (select coalesce(sum(extract(epoch from upper(y) - lower(y))), 0) from unnest(range_agg(r)) y) seconds from spans group by actor_person_id) x) playback_seconds`),
-    run<{ use_case: string; events: number; tokens: number | null; cost: string | null; currency: string | null; unknown_cost: number }>((p) => `select u.use_case, count(*)::int events, sum(u.total_tokens)::bigint tokens, sum(u.cost)::text cost, max(u.currency) currency, count(*) filter (where u.cost_status <> 'ESTIMATED')::int unknown_cost
+    run<{ use_case: string; events: number; tokens: number | null; cost: string | null; currency: string | null; unknown_cost: number }>((p) => `select u.use_case, count(*)::int events, sum(u.total_tokens)::bigint tokens, sum(u.cost)::text cost, max(u.currency) currency, count(*) filter (where u.cost_status not in ('ESTIMATED', 'REPORTED'))::int unknown_cost
       from (${aiUsageSql(p.typed(ctx.organizationId, "uuid"))}) u where u.workflow_id is null and u.use_case = any(${p.typed([...CONVERSATIONAL_USE_CASES], "text[]")})
         and u.occurred_at >= ${p.typed(ctx.period.start, "timestamptz")} and u.occurred_at < ${p.typed(ctx.period.end, "timestamptz")} group by 1 order by 2 desc`),
   ])

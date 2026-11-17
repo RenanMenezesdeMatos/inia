@@ -338,6 +338,9 @@ export const usageMetricsSchema = z.object({
   tokens: tokenTotalsSchema,
   costByCurrency: z.record(z.string(), z.string()),
   unknownCostCalls: z.number(),
+  /** Chamadas bem-sucedidas com custo INFORMADO pelo provedor × ESTIMADO pela tabela de preço (o resto é desconhecido). */
+  reportedCostCalls: z.number(),
+  estimatedCostCalls: z.number(),
   localCalls: z.number(),
   latencyAvgMs: z.number().nullable(),
   latencyP50Ms: z.number().nullable(),

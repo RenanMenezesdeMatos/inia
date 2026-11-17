@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
@@ -8,7 +8,7 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 import type { DeliveredFeedback } from "@/schemas/feedback-delivery/feedback-delivery.schema"
 import type { OperatorIndicatorHistory } from "@/schemas/operator"
 
-import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayLabel } from "./follow-up-timeline"
+import { boundFollowUpTimeline, buildFollowUpTimeline, followUpDayLabel, followUpPeriodBounds, isWithinFollowUpPeriod } from "./follow-up-timeline"
 import { OperatorDailyFeedbackFeed } from "./operator-daily-feedback-feed"
 import { FeedbackWorkspaceContext, type FeedbackWorkspace } from "./feedback-application/feedback-workspace-context"
 
@@ -84,7 +84,7 @@ describe("Timeline do Acompanhamento — mais recente primeiro", () => {
     expect(screen.getAllByTestId("follow-up-day").map((day) => day.textContent)).toEqual(["Hoje", "Ontem", followUpDayLabel(Date.parse(at(2, 10)))])
     await act(async () => { intersect?.(); await vi.advanceTimersByTimeAsync(700) })
     expect(order()).toEqual(["Feedback h3", "Feedback h2", "Entrega entrega", "Feedback h4", "Feedback h5", "Feedback h1"])
-    expect(screen.getByText("Fim dos feedbacks deste período.")).toBeInTheDocument()
+    expect(screen.getByText("Fim dos feedbacks.")).toBeInTheDocument()
   })
 
   it("feedback anterior sem view model: o título é o assunto que o backend resolveu na leitura e a data do atendimento vira subtítulo", async () => {
@@ -120,7 +120,7 @@ describe("Timeline do Acompanhamento — mais recente primeiro", () => {
     expect(order()).toEqual(["Feedback h1", "Feedback h2", "Feedback h3", "Entrega entrega"])
     await act(async () => { intersect?.(); await vi.advanceTimersByTimeAsync(700) })
     expect(order()).toEqual(["Feedback h1", "Feedback h2", "Feedback h3", "Entrega entrega", "Feedback h4"])
-    expect(screen.getByText("Fim dos feedbacks deste período.")).toBeInTheDocument()
+    expect(screen.getByText("Fim dos feedbacks.")).toBeInTheDocument()
     expect(feedPages.fetchOperatorFeedbackPage).toHaveBeenCalledTimes(1)
   })
 
@@ -134,5 +134,46 @@ describe("Timeline do Acompanhamento — mais recente primeiro", () => {
     const target = await screen.findByText("Feedback alvo")
     expect(target.closest("[data-entry-key]")).toHaveAttribute("data-entry-key", "history:alvo")
     expect(feedPages.fetchOperatorFeedbackPage.mock.calls.map((call) => call[0])).toEqual(["cursor-1", "cursor-2"])
+  })
+})
+
+describe("Acompanhamento do colaborador — calendário filtra as ações", () => {
+  it("limites no fuso de quem lê: o dia inteiro de cada ponta; só o início = aquele dia; vazio = tudo", () => {
+    const bounds = followUpPeriodBounds({ from: "2026-11-10", to: "2026-11-16" })!
+    expect(bounds.since).toBe(new Date(2026, 10, 10).getTime())
+    expect(bounds.until).toBe(new Date(2026, 10, 17).getTime())
+    expect(isWithinFollowUpPeriod(new Date(2026, 10, 16, 23, 59).getTime(), bounds)).toBe(true)
+    expect(isWithinFollowUpPeriod(new Date(2026, 10, 17, 0, 0).getTime(), bounds)).toBe(false)
+    expect(isWithinFollowUpPeriod(new Date(2026, 10, 9, 23, 59).getTime(), bounds)).toBe(false)
+    expect(followUpPeriodBounds({ from: "2026-11-10" })).toEqual({ since: new Date(2026, 10, 10).getTime(), until: new Date(2026, 10, 11).getTime() })
+    expect(followUpPeriodBounds({})).toBeNull()
+    expect(isWithinFollowUpPeriod(0, null)).toBe(true)
+  })
+
+  it("recorte com indicador e monitoria; período vazio mantém a seção e volta à visão inicial", async () => {
+    const now = new Date()
+    const at = (hour: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0).toISOString()
+    service.fetchMyDeliveredFeedback.mockResolvedValue([delivered("entrega", at(1))])
+    const items = [{ ...history("ind", at(3), "Feedback ind"), kind: "indicator_feedback" as const }, history("mon", at(2), "Feedback mon")]
+    renderWithQuery(<OperatorDailyFeedbackFeed indicators={{ current: [], history: items }} />)
+    await screen.findByText("Entrega entrega")
+    const picker = () => screen.getByRole("button", { name: "Filtrar o Acompanhamento por período" })
+    expect(picker()).toHaveTextContent("Todo o período")
+    const pick = async (label: string) => { fireEvent.click(picker()); fireEvent.click(await screen.findByRole("button", { name: label })) }
+
+    await pick("Hoje")
+    expect(await screen.findByTestId("follow-up-period-bar")).toHaveTextContent(`de ${now.toLocaleDateString("pt-BR")}`)
+    const families = Array.from(document.querySelectorAll("[data-slot=feedback-entry-header]")).map((element) => element.getAttribute("data-family"))
+    expect(families).toEqual(["INDICATOR", "MONITORING", "MONITORING"])
+    expect(screen.getByText("Fim das ações deste período.")).toBeInTheDocument()
+
+    await pick("Mês passado")
+    expect(await screen.findByText("Nenhuma ação neste período")).toBeInTheDocument()
+    expect(screen.queryAllByTestId("follow-up-entry")).toHaveLength(0)
+
+    fireEvent.click(within(screen.getByTestId("follow-up-period-bar")).getByRole("button", { name: "Ver todo o período" }))
+    expect(screen.queryByTestId("follow-up-period-bar")).toBeNull()
+    expect(screen.getAllByTestId("follow-up-entry")).toHaveLength(3)
+    expect(picker()).toHaveTextContent("Todo o período")
   })
 })

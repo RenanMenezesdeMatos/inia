@@ -28,6 +28,8 @@ import { Switch } from "@/components/ui/switch"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 import { formatDateOnly } from "@/components/admin/knowledge/knowledge-meta"
 import { AdminListView } from "@/components/admin/shared/list/admin-list-view"
@@ -182,6 +184,8 @@ function BusinessDomainForm({ domain, onDone }: { domain?: BusinessDomain; onDon
   const [codeTouched, setCodeTouched] = useState(Boolean(domain))
   const [description, setDescription] = useState(domain?.description ?? "")
   const [active, setActive] = useState(domain?.active ?? true)
+  // Universo de atuação: escolhido só na criação (o registro existente muda pela classificação do universo).
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
   const codeLocked = Boolean(domain && inUse(domain))
 
   // Código sugerido a partir do nome enquanto o admin não o editar à mão (mesma normalização do backend).
@@ -194,19 +198,20 @@ function BusinessDomainForm({ domain, onDone }: { domain?: BusinessDomain; onDon
     if (domain) {
       await updateMutation.mutateAsync({ id: domain.id, name, ...(codeLocked ? {} : { code }), description: description.trim() ? description.trim() : null, active })
     } else {
-      await createMutation.mutateAsync({ name, code, description: description.trim() ? description.trim() : null, active })
+      await createMutation.mutateAsync({ name, code, description: description.trim() ? description.trim() : null, active, ...(operatingUniverse ? { operatingUniverse } : {}) })
       setName("")
       setCode("")
       setCodeTouched(false)
       setDescription("")
       setActive(true)
+      setOperatingUniverse(null)
     }
     mutation.reset()
     onDone()
   }
 
   const codeValid = BUSINESS_DOMAIN_CODE_PATTERN.test(code)
-  const canSubmit = name.trim().length >= 2 && codeValid
+  const canSubmit = name.trim().length >= 2 && codeValid && (Boolean(domain) || operatingUniverse !== null)
 
   return (
     <div className="max-w-xl space-y-4">
@@ -235,6 +240,13 @@ function BusinessDomainForm({ domain, onDone }: { domain?: BusinessDomain; onDon
           </p>
         </div>
       </div>
+      {!domain ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="domain-universe">Universo de atuação *</Label>
+          <UniverseSelect id="domain-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="domain-universe-help" />
+          <p id="domain-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+        </div>
+      ) : null}
       <div className="space-y-1.5">
         <Label htmlFor="domain-description">Descrição</Label>
         <Textarea id="domain-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={2} maxLength={500} placeholder="Ex.: Processos relacionados a logística, rastreamento e entrega." />

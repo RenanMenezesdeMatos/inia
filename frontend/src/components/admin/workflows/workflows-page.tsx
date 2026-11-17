@@ -52,6 +52,10 @@ import { goLiveImpactFromError, triggerBadgeText, type GoLiveImpact, type Workfl
 import { GoLiveImpactDialog } from "@/components/admin/workflows/go-live-impact-dialog"
 import { WorkflowRunStateBadge } from "@/components/admin/workflows/workflow-run-state-badge"
 import { describeWorkflowDeletion, workflowRunState } from "@/components/admin/workflows/workflow-run-state"
+import { UniverseBadge } from "@/components/operating-universe/universe-badge"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import { useCurrentUserQuery } from "@/queries/auth/use-current-user"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const groupLabel = formatScopeLabel
 
@@ -64,6 +68,8 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
   const [name, setName] = useState("")
   const [trigger, setTrigger] = useState<WorkflowTriggerInput>(EMPTY_TRIGGER)
   const [orgScope, setOrgScope] = useState<OrgScopeValue>({ scopeType: "ALL_TEAMS" })
+  const [universe, setUniverse] = useState<OperatingUniverse | null>(null)
+  const universeEnforced = useCurrentUserQuery().data?.operatingUniverseEnforced ?? false
 
   // Escopo Administrativo (Parte 10/11): um admin restrito nunca deve ficar com "Todos os
   // grupos" pré-selecionado — assim que sabemos que ele é restrito, caímos pra "grupo
@@ -78,10 +84,11 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
 
   async function handleCreate() {
     try {
-      const workflow = await createMutation.mutateAsync({ name, trigger, orgScope })
+      const workflow = await createMutation.mutateAsync({ name, trigger, orgScope, operatingUniverse: universe })
       setName("")
       setTrigger(EMPTY_TRIGGER)
       setOrgScope({ scopeType: "ALL_TEAMS" })
+      setUniverse(null)
       onOpenChange(false)
       onCreated(workflow.id)
     } catch {
@@ -89,7 +96,7 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
     }
   }
 
-  const canCreate = name.trim().length > 1 && isTriggerComplete(trigger)
+  const canCreate = name.trim().length > 1 && isTriggerComplete(trigger) && (!universeEnforced || universe !== null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -117,6 +124,11 @@ function CreateWorkflowDialog({ open, onOpenChange, onCreated }: { open: boolean
             ) : (
               <Skeleton className="h-10 w-full" />
             )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="workflow-universe">Universo de atuação</Label>
+            <UniverseSelect id="workflow-universe" value={universe} onChange={setUniverse} allowPending={!universeEnforced} aria-describedby="workflow-universe-help" />
+            <p id="workflow-universe-help" className="text-xs text-muted-foreground">Só colaboradores deste universo entram nas execuções; agentes, Orquestradores e indicadores precisam ser do mesmo universo.</p>
           </div>
           {createMutation.isError ? <p className="text-sm text-destructive">{(createMutation.error as Error).message}</p> : null}
         </div>
@@ -244,6 +256,7 @@ export function WorkflowCard({ workflow }: { workflow: Workflow }) {
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{TRIGGER_KIND_LABELS[workflow.trigger.kind]}</span>
           <span aria-hidden>·</span>
           <span>{groupLabel(workflow)}</span>
+          <UniverseBadge universe={workflow.operatingUniverse} />
         </>
       }
       title={workflow.name}
@@ -307,7 +320,12 @@ export function WorkflowsTable({ workflows }: { workflows: Workflow[] }) {
               <TableCell>
                 <PublishedBadge workflow={workflow} />
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{groupLabel(workflow)}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {groupLabel(workflow)}
+                  <UniverseBadge universe={workflow.operatingUniverse} />
+                </div>
+              </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 {workflow.activeEnrollments}
                 {workflow.blockedEnrollments > 0 ? <span className="block text-xs text-amber-800 dark:text-amber-300">{blockedCountText(workflow.blockedEnrollments)}</span> : null}

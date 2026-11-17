@@ -184,8 +184,11 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
          and (a.scope_type = 'ALL_TEAMS' or exists (
            select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
             where os.knowledge_document_id = kd.id and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = a.team_id)))
+         -- Universos não se misturam: com a exigência ativa, só bases do MESMO universo do agente (pendente de qualquer lado = fora).
+         and (not exists (select 1 from organizations org where org.id = kd.organization_id and org.operating_universe_enforced_at is not null)
+              or kd.operating_universe = (select ag.operating_universe from agents ag where ag.id = $6::uuid))
        order by kd.title`,
-      [knowledgeDocumentIds, snapshot.organizationId, scopeType, teamId, subteamId],
+      [knowledgeDocumentIds, snapshot.organizationId, scopeType, teamId, subteamId, agentId],
     )
     return versioned.rows
   }
@@ -202,6 +205,9 @@ async function loadAuthorizedDocumentHeaders(db: Database, agentId: string): Pro
          select 1 from knowledge_document_org_scopes os left join subteams st on st.id = os.subteam_id
           where os.knowledge_document_id = kd.id
             and (os.scope_type = 'ALL_TEAMS' or coalesce(os.team_id, st.team_id) = case when a.scope_type = 'SUBTEAM' then (select ast.team_id from subteams ast where ast.id = a.subteam_id) else a.team_id end)))
+         -- Universos não se misturam: com a exigência ativa, só bases do MESMO universo do agente (pendente de qualquer lado = fora).
+         and (not exists (select 1 from organizations org where org.id = kd.organization_id and org.operating_universe_enforced_at is not null)
+              or kd.operating_universe = (select ag.operating_universe from agents ag where ag.id = a.id))
      order by kd.title`,
     [agentId],
   )

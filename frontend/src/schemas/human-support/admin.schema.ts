@@ -5,6 +5,30 @@ import { presenceStatusSchema } from "./catalogs.schema"
 export const settingsViewSchema = z.object({ enabled: z.boolean(), defaultCapacity: z.number(), version: z.number() })
 export type SettingsView = z.infer<typeof settingsViewSchema>
 
+/**
+ * Tempos de resposta (migration 193; Administrador geral ou Coordenador de Anjos, pelo Painel dos Anjos): o operador sem responder
+ * volta à fila de quem aguarda o retorno; sem voltar até o encerramento, abandono do operador; o Anjo sem responder perde o atendimento.
+ */
+export const RESPONSE_TIMES_LIMITS = { requeueMin: 1, requeueMax: 120, closeMax: 240 } as const
+export const ANJO_UNRESPONSIVE_LIMITS = { pauseAfterMax: 240, offlineAfterMax: 120 } as const
+export const responseTimesSchema = z.object({ operatorRequeueMinutes: z.number(), operatorCloseMinutes: z.number(), anjoRequeueMinutes: z.number() })
+export type ResponseTimes = z.infer<typeof responseTimesSchema>
+/**
+ * Tempos de resposta (migrations 193/194): o padrão da organização (só quem acompanha a organização muda) e os de cada Grupo que quem
+ * lê alcança (`custom = false` = usa o padrão; `canEdit` = o Coordenador de Anjos do próprio Grupo ou quem acompanha a organização).
+ */
+export const responseTimesPanelSchema = z.object({
+  organization: z.object({
+    times: responseTimesSchema,
+    /** Anjo sem responder ninguém (195): minutos até a pausa "Desconexão" e minutos nela até Indisponível. Só da organização. */
+    anjoUnresponsive: z.object({ pauseAfterMinutes: z.number(), offlineAfterMinutes: z.number() }),
+    version: z.number(),
+    canEdit: z.boolean(),
+  }),
+  groups: z.array(z.object({ teamId: z.string(), teamName: z.string(), custom: z.boolean(), times: responseTimesSchema, version: z.number(), canEdit: z.boolean() })),
+})
+export type ResponseTimesPanel = z.infer<typeof responseTimesPanelSchema>
+
 export const SCOPE_STATES = ["INHERIT", "ON", "OFF"] as const
 export const scopeStateSchema = z.enum(SCOPE_STATES)
 export type ScopeState = z.infer<typeof scopeStateSchema>

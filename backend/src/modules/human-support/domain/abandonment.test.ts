@@ -33,9 +33,10 @@ describe("abandonos", () => {
     expect(result.attendance).toMatchObject({
       ended: 7,
       byOperator: { leftInia: 1, noReply: 1, total: 2 },
-      byAnjo: { connection: 1, session: 1, roleRevoked: 0, unknownDrop: 0, noReply: 1, total: 3 },
-      abandoned: 5,
-      rate: { numerator: 5, denominator: 7 },
+      // Queda de rede fica à parte (195): o Anjo abandona quando sai (sessão) ou para de responder.
+      byAnjo: { connection: 1, session: 1, roleRevoked: 0, unknownDrop: 0, noReply: 1, total: 2 },
+      abandoned: 4,
+      rate: { numerator: 4, denominator: 7 },
     })
   })
 
@@ -43,5 +44,19 @@ describe("abandonos", () => {
     const result = abandonmentOf([], [])
     expect(result.waiting.rate.status).toBe("NO_DATA")
     expect(result.attendance.rate.status).toBe("NO_DATA")
+  })
+
+  it("abandono do Anjo tem número e taxa próprios, separados do operador (194)", () => {
+    const result = abandonmentOf([], [
+      attendance({}),
+      attendance({ endCause: "OPERATOR_CLOSED" }),
+      attendance({ endCause: "ANJO_SILENT", lastHumanAuthor: "OPERATOR" }),
+      attendance({ endCause: "ANJO_LOST", lostCause: "CONNECTION" }),
+      attendance({ endCause: "OPERATOR_SILENT" }),
+      attendance({ endCause: "TRANSFERRED" }),
+    ])
+    // Queda de rede não conta (195): só o "parou de responder".
+    expect(result.attendance.byAnjo).toMatchObject({ noReply: 1, connection: 1, total: 1, rate: { numerator: 1, denominator: 5 } })
+    expect(result.attendance.byOperator).toMatchObject({ noReply: 1, total: 1, rate: { numerator: 1, denominator: 5 } })
   })
 })

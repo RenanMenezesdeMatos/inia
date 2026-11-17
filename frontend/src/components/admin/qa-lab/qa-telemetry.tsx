@@ -146,7 +146,7 @@ function TotalsGrid({ tokens, requests, toolBudget, durationMs, technicalIds, co
     { label: "Reasoning", value: formatTokens(tokens.reasoning) },
     { label: "Total", value: formatTokens(tokens.total) },
     { label: "Duração", value: formatDuration(durationMs) },
-    ...(cost !== undefined ? [{ label: "Custo estimado", value: formatCost(cost) }] : []),
+    ...(cost !== undefined ? [{ label: cost?.status === "PROVIDER_REPORTED_COST" ? "Custo" : "Custo estimado", value: formatCost(cost) }] : []),
   ]
   return (
     <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3 lg:grid-cols-5" data-testid="qa-telemetry-totals">
@@ -162,13 +162,15 @@ function TotalsGrid({ tokens, requests, toolBudget, durationMs, technicalIds, co
 
 export const PRICE_NOT_CONFIGURED = "Preço não configurado"
 
-/** Custo ESTIMADO (pricing configurado) — nunca fatura real; sem pricing, "Preço não configurado". */
-export function formatCost(cost: CostEstimate | null | undefined): string {
-  if (!cost || cost.status === "NOT_CONFIGURED") return PRICE_NOT_CONFIGURED
-  return `${cost.currency} ${cost.totalEstimatedCost.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 })}`
-}
+const costTotal = (cost: CostEstimate | null | undefined): number | null => (!cost || cost.status === "NOT_CONFIGURED" ? null : cost.status === "PROVIDER_REPORTED_COST" ? cost.totalCost : cost.totalEstimatedCost)
 
-const costTotal = (cost: CostEstimate | null | undefined): number | null => (cost && cost.status === "ESTIMATED_PROVIDER_COST" ? cost.totalEstimatedCost : null)
+/** Custo INFORMADO pelo provedor ou ESTIMADO (pricing configurado, nunca fatura real); sem nenhum, "Preço não configurado". */
+export function formatCost(cost: CostEstimate | null | undefined): string {
+  const total = costTotal(cost)
+  if (!cost || total === null || cost.status === "NOT_CONFIGURED") return PRICE_NOT_CONFIGURED
+  const origin = cost.status === "PROVIDER_REPORTED_COST" ? (cost.includesEstimate ? " (informado pelo provedor + estimado)" : " (informado pelo provedor)") : ""
+  return `${cost.currency} ${total.toLocaleString("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 6 })}${origin}`
+}
 
 /** Contexto lógico enviado ao modelo, por categoria (caracteres) — prova do Zero-ID/compactação. */
 function ContextBreakdownList({ breakdown }: { breakdown: LlmContextBreakdown }) {
@@ -405,9 +407,9 @@ export function RunTelemetryPanel({ run }: { run: Pick<QaRunSummary, "aiCalls" |
         </div>
         <TotalsGrid tokens={telemetry.tokens} requests={telemetry.requests} toolBudget={telemetry.toolBudget} durationMs={run.durationMs} technicalIds={telemetry.technicalIdsInPrompts ?? null} cost={telemetry.cost ? telemetry.cost.total : null} />
         <DatasetLine dataset={telemetry.dataset ?? null} />
-        {telemetry.cost && telemetry.cost.total.status === "ESTIMATED_PROVIDER_COST" ? (
+        {telemetry.cost && telemetry.cost.total.status !== "NOT_CONFIGURED" ? (
           <p className="text-[11px] text-muted-foreground" data-testid="qa-cost-by-phase">
-            Custo estimado (ESTIMATED_PROVIDER_COST, nunca fatura real) por fase: {telemetry.cost.byPhase.map((item) => `${LLM_PHASE_LABELS[item.phase]} ${formatCost(item.cost)}`).join(" · ")}
+            {telemetry.cost.total.status === "PROVIDER_REPORTED_COST" ? "Custo (informado pelo provedor; estimado onde ele não informou)" : "Custo estimado (ESTIMATED_PROVIDER_COST, nunca fatura real)"} por fase: {telemetry.cost.byPhase.map((item) => `${LLM_PHASE_LABELS[item.phase]} ${formatCost(item.cost)}`).join(" · ")}
           </p>
         ) : null}
         <h4 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Contexto</h4>
@@ -459,7 +461,7 @@ export function RunTelemetryPanel({ run }: { run: Pick<QaRunSummary, "aiCalls" |
                     { label: "Uncached input", before: reference.tokens.input !== null && reference.tokens.cached !== null ? Math.max(0, reference.tokens.input - reference.tokens.cached) : reference.tokens.cached === null ? reference.tokens.input : null, after: telemetry.tokens.uncached ?? (telemetry.tokens.cached === null ? telemetry.tokens.input : null) },
                     { label: "Prompt estático (chars)", before: reference.staticPromptChars ?? null, after: telemetry.contextBreakdown?.staticPromptChars ?? null },
                     { label: "Schemas de ferramentas (chars)", before: reference.toolSchemaChars ?? null, after: telemetry.contextBreakdown?.toolSchemaChars ?? null },
-                    { label: "Custo estimado", before: costTotal(reference.cost), after: costTotal(telemetry.cost?.total), unit: "cost" as const },
+                    { label: telemetry.cost?.total.status === "PROVIDER_REPORTED_COST" ? "Custo" : "Custo estimado", before: costTotal(reference.cost), after: costTotal(telemetry.cost?.total), unit: "cost" as const },
                     { label: "Duração", before: reference.durationMs, after: run.durationMs, unit: "ms" as const },
                   ] as { label: string; before: number | null; after: number | null; unit?: "ms" | "cost" }[]
                 ).map((row) => (

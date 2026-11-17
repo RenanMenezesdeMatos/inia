@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { assertResourceLinksCompatible } from "../../operating-universe/application/resource-universe.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { AGENT_LIVE_COLUMNS, configFromLiveRow, parseAgentConfig, sameAgentConfig, type AgentConfig, type AgentLiveRow, type AgentRuntimeSnapshot } from "../domain/agent-config.js"
 
@@ -124,6 +125,8 @@ export async function writeLiveAgentConfig(client: Queryable, organizationId: st
   for (const knowledgeDocumentId of [...new Set(config.knowledgeDocumentIds)]) {
     await client.query(`insert into agent_knowledge_documents(agent_id, knowledge_document_id) values ($1, $2)`, [agentId, knowledgeDocumentId])
   }
+  // Universos não se misturam: bases, domínio, Orquestradores e Workflows ligados precisam ser do universo do agente (a transação desfaz).
+  await assertResourceLinksCompatible(client, organizationId, "AGENT", agentId)
 }
 
 async function insertVersion(client: Queryable, organizationId: string, agentId: string, config: AgentConfig, actor: AgentActor, origin: "PUBLISH" | "REVERT", revertedFromVersionId: string | null) {

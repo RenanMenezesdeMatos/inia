@@ -55,6 +55,8 @@ import {
   type AgentType,
 } from "@/schemas/admin/agent.schema"
 import type { CreateAgentInput } from "@/services/admin/agent-service"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import { AgentLifecycleBar } from "./agent-lifecycle/lifecycle-bar"
 import { AgentConfigSummary, AgentVersionsPanel } from "./agent-lifecycle/versions-panel"
@@ -386,6 +388,8 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   // Limites de atuação: interruptor + texto. Desligado, o texto fica guardado (volta ao religar) e não vale.
   const [actionLimitsEnabled, setActionLimitsEnabled] = useState<boolean>(source?.actionLimitsEnabled ?? false)
   const [actionLimits, setActionLimits] = useState<string>(source?.actionLimits ?? "")
+  // Universo de atuação: escolhido só na criação (o agente existente muda pela classificação do universo).
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
 
   // Escopo Administrativo (Parte 10/11): criando um agente novo, um admin restrito nunca deve
   // ficar com "Todos os grupos" pré-selecionado.
@@ -486,7 +490,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
         handleConflict(error)
       }
     } else {
-      const created = await createMutation.mutateAsync(input)
+      const created = await createMutation.mutateAsync({ ...input, ...(operatingUniverse ? { operatingUniverse } : {}) })
       onSaved(created.id)
     }
   }
@@ -508,6 +512,7 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
   const belowMin = textChecks.filter((check) => check.belowMin).map((check) => check.label)
   const saveBlockedReason = [
     draftRestricted ? RESTRICTED_DRAFT_REASON : null,
+    !isEditing && !operatingUniverse ? "Escolha o universo de atuação." : null,
     overLimit.length ? `Acima do limite de caracteres: ${overLimit.join(", ")}.` : null,
     belowMin.length ? `Preencha o mínimo de caracteres: ${belowMin.join(", ")}.` : null,
     specialtyKind === "DOMAIN" && !domain?.id ? "Escolha o domínio de negócio." : null,
@@ -681,6 +686,13 @@ function AgentForm({ agent: savedAgent, duplicateFrom, onSaved }: { agent?: Agen
                     </SelectContent>
                   </Select>
                 </div>
+                {!isEditing ? (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="agent-universe">Universo de atuação</Label>
+                    <UniverseSelect id="agent-universe" value={operatingUniverse} onChange={setOperatingUniverse} aria-describedby="agent-universe-help" />
+                    <p id="agent-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+                  </div>
+                ) : null}
                 <div className="space-y-1.5">
                   <Label>Tipo de especialidade</Label>
                   <Select

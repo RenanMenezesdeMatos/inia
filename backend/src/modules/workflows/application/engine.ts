@@ -45,6 +45,7 @@ export type ClaimedRow = EnrollmentRow & {
   scope_type: string
   workflow_team_id: string | null
   workflow_subteam_id: string | null
+  workflow_operating_universe?: string | null
   consolidated_structure: ConsolidatedStructure | null
   population_filter: unknown
   claimed_until: string
@@ -108,7 +109,7 @@ export async function claimDueEnrollments(db: Database, request: ClaimRequest): 
               we.scheduled_subject_id, we.scheduled_for, we.current_node_id,
               we.matched_flag_name, we.matched_value_boolean, we.matched_value_numeric, we.status, we.attempts, we.revision,
               we.node_outputs, we.variables, we.parent_enrollment_id, we.retry_of_enrollment_id,
-              w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter
+              w.scope_type, w.team_id workflow_team_id, w.subteam_id workflow_subteam_id, w.consolidated_structure, w.population_filter, w.operating_universe workflow_operating_universe
        from workflow_enrollments we
        join workflows w on w.id = we.workflow_id
        where we.id in (select id from picked) and w.active
@@ -301,6 +302,7 @@ async function processEnrollmentInOrganization(db: Database, row: ClaimedRow): P
           subteamId: row.workflow_subteam_id,
           consolidatedStructure: row.consolidated_structure,
           populationFilter: row.population_filter,
+          operatingUniverse: row.workflow_operating_universe ?? null,
         },
         inputContext,
         now: new Date(),

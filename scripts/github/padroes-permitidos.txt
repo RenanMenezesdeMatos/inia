@@ -15,3 +15,4 @@ backend/src/modules/ai-management/testing/ai-providers-proof.test.ts sha256:dbd4
 backend/src/modules/ai-management/testing/ai-providers-proof.test.ts sha256:2d5d15ab79d834fb
 backend/src/modules/conversational-delivery/testing/speech-synthesis-policy-proof.test.ts sha256:4b0f3cedae638d9a
 backend/src/modules/feedback-engine/testing/feedback-writer-policy-proof.test.ts sha256:0fa173b0f97cef6c
+backend/src/modules/ai-management/testing/provider-reported-cost.test.ts sha256:93449b7261f20046

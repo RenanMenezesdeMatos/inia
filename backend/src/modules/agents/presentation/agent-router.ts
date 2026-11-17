@@ -1,4 +1,6 @@
 import { Router, type Request } from "express"
+import { optionalOperatingUniverseSchema } from "../../operating-universe/domain/operating-universe.js"
+import { assertUniverseRequiredFor } from "../../operating-universe/application/universe-access.js"
 import { z } from "zod"
 import { INVESTIGATION_CAPABILITY_LABELS, investigationCapabilitySchema, normalizeCapabilities, type InvestigationCapability } from "../../investigation/domain/capabilities.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
@@ -57,6 +59,8 @@ const testAgentSchema = z.object({
 const AGENT_TYPES = ["CALL_FEEDBACK", "INDICATOR_FEEDBACK", "DIAGNOSTICS", "ORCHESTRATOR", "HR", "CUSTOM"] as const
 
 const agentSchema = z.object({
+  /** Universo de atuação do agente (B2B/B2C/B2X) — classificação direta, não versionada; obrigatório com a exigência ativa. */
+  operatingUniverse: optionalOperatingUniverseSchema,
   name: agentTextSchema("name"),
   agentType: z.enum(AGENT_TYPES),
   objective: agentTextSchema("objective"),
@@ -713,6 +717,7 @@ export function createAgentRouter(db: Database) {
       knowledgeDocumentIds: [...new Set(input.knowledgeDocumentIds)].sort(),
     }
     await assertKnowledge(db, organizationId, config)
+    await assertUniverseRequiredFor(db, organizationId, input.operatingUniverse ?? null, "do agente")
     const agentId = await inTransaction(db, async (client) => {
       const created = await client.query<{ id: string }>(
         `insert into agents(organization_id, name, agent_type, objective, description, context_prompt, scope_type, team_id, subteam_id, created_by, draft_config, draft_revision, draft_updated_at, draft_updated_by_name)
@@ -720,6 +725,7 @@ export function createAgentRouter(db: Database) {
         [organizationId, config.name, config.agentType, config.objective, config.description, config.contextPrompt, config.scopeType, config.teamId, config.subteamId, request.user?.sub ?? null, JSON.stringify(config), actorOf(request).name],
       )
       const id = created.rows[0]!.id
+      await client.query(`update agents set operating_universe = $2 where id = $1`, [id, input.operatingUniverse ?? null])
       // Agente nunca publicado: a linha viva acompanha o rascunho (lista, busca), mas nada o executa fora do teste.
       await writeLiveAgentConfig(client, organizationId, id, config)
       await recordAgentHistory(client, organizationId, { agentId: id, action: "CREATED", actor: actorOf(request), changes: [] })

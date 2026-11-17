@@ -7,6 +7,7 @@ import { orchestratorSchema, orchestratorVersionSchema, type Orchestrator, type 
 import type { OutputSchema } from "@/schemas/admin/output-schema-fields"
 import { structuredOutputUsageSchema, type StructuredOutputDefinition, type StructuredOutputUsage } from "@/schemas/admin/structured-output"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export async function fetchOrchestrators(): Promise<Orchestrator[]> {
   return z.array(orchestratorSchema).parse(await adminGet("/api/v1/admin/assistant-orchestrators"))
@@ -78,7 +79,8 @@ function policyPayload(input: OrchestratorInput) {
   return { policyKind: input.policyKind ?? null, policyDomains: input.policyDomains ?? [] }
 }
 
-export async function createOrchestrator(input: OrchestratorInput): Promise<Orchestrator> {
+/** Criação: o universo de atuação vai só aqui (no orquestrador existente, muda pela classificação do universo). */
+export async function createOrchestrator(input: OrchestratorInput & { operatingUniverse?: OperatingUniverse }): Promise<Orchestrator> {
   return orchestratorSchema.parse(
     await adminSend("/api/v1/admin/assistant-orchestrators", "POST", {
       name: input.name,
@@ -91,6 +93,7 @@ export async function createOrchestrator(input: OrchestratorInput): Promise<Orch
       recommendSupportMaterials: input.recommendSupportMaterials ?? false,
       ...structuredOutputPayload(input),
       ...policyPayload(input),
+      ...(input.operatingUniverse ? { operatingUniverse: input.operatingUniverse } : {}),
     }),
   )
 }

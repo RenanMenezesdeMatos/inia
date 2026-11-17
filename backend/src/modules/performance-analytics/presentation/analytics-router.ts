@@ -26,7 +26,10 @@ const followUpQuerySchema = z.object({
   /** Cursor devolvido pela página anterior (`nextCursor`); ausente = primeira página. */
   cursor: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(DEFAULT_PAGE_SIZE),
-})
+  /** Recorte do calendário do Acompanhamento: instantes [since, until) — o dia civil é o de quem lê, calculado no navegador. */
+  since: z.string().datetime({ offset: true }).optional(),
+  until: z.string().datetime({ offset: true }).optional(),
+}).refine((query) => !query.since || !query.until || Date.parse(query.since) < Date.parse(query.until), { message: "O início do período precisa ser antes do fim.", path: ["until"] })
 
 const subjectQuerySchema = z.object({
   subjectKind: z.enum(ANALYTICS_SUBJECT_KINDS as [string, ...string[]]).optional(),
@@ -172,7 +175,7 @@ export function createAnalyticsRouter(
       const query = followUpQuerySchema.parse(request.query)
       const before = decodeFollowUpCursor(query.cursor)
       if (query.cursor && !before) throw new DomainError("Cursor de paginação inválido.", "INVALID_CURSOR", 400)
-      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending" }) })
+      response.json({ data: await buildFollowUpFeed(repository, scope, subject, { limit: query.limit, before, unacknowledgedOnly: query.ack === "pending", since: query.since ?? null, until: query.until ?? null }) })
     } catch (error) {
       next(error)
     }

@@ -19,6 +19,7 @@ export type WorkflowConfigurationRow = {
   triggerConfig: TriggerConfig
   consolidatedStructure: ConsolidatedStructure | null
   populationFilter: PopulationFilter | null
+  operatingUniverse: string | null
   draftGraph: unknown
   live: WorkflowConfiguration
   active: boolean
@@ -39,13 +40,16 @@ type RawRow = {
   liveTriggerConfig?: TriggerConfig
   liveConsolidatedStructure?: ConsolidatedStructure | null
   livePopulationFilter?: PopulationFilter | null
+  liveOperatingUniverse?: string | null
+  operatingUniverse?: string | null
   active?: boolean
   activeVersionId?: string | null
 }
 
 const CONFIGURATION_SELECT = `
   select scope_type "liveScopeType", team_id "liveTeamId", subteam_id "liveSubteamId", trigger_config "liveTriggerConfig",
-         consolidated_structure "liveConsolidatedStructure", population_filter "livePopulationFilter",
+         consolidated_structure "liveConsolidatedStructure", population_filter "livePopulationFilter", operating_universe "liveOperatingUniverse",
+         draft_operating_universe "operatingUniverse",
          draft_scope_type "scopeType", draft_team_id "teamId", draft_subteam_id "subteamId", draft_trigger_config "triggerConfig",
          draft_consolidated_structure "consolidatedStructure", draft_population_filter "populationFilter",
          draft_graph "draftGraph", active, active_version_id "activeVersionId"
@@ -62,6 +66,7 @@ export async function loadWorkflowConfigurationRow(db: Queryable, organizationId
     subteamId: row.subteamId ?? null,
     consolidatedStructure: row.consolidatedStructure ?? null,
     populationFilter: row.populationFilter ?? null,
+    operatingUniverse: row.operatingUniverse ?? null,
   }
   // Linhas sem as colunas vivas só existem em dublês de teste antigos — tratadas como nunca publicadas.
   const live: WorkflowConfiguration =
@@ -74,6 +79,7 @@ export async function loadWorkflowConfigurationRow(db: Queryable, organizationId
           subteamId: row.liveSubteamId ?? null,
           consolidatedStructure: row.liveConsolidatedStructure ?? null,
           populationFilter: row.livePopulationFilter ?? null,
+          operatingUniverse: row.liveOperatingUniverse ?? null,
         }
   return { ...draft, draftGraph: row.draftGraph, live, active: row.active === true, published: Boolean(row.activeVersionId) }
 }
@@ -83,6 +89,8 @@ export type DraftConfigurationPatch = {
   trigger?: TriggerConfig
   scope?: { scopeType: string; teamId: string | null; subteamId: string | null }
   analysis?: { consolidatedStructure: ConsolidatedStructure | null; populationFilter: PopulationFilter | null }
+  /** Universo de atuação (parte da Abrangência). */
+  universe?: { operatingUniverse: string | null }
 }
 
 /**
@@ -106,6 +114,8 @@ export async function writeDraftConfiguration(db: Queryable, organizationId: str
        subteam_id = case when active_version_id is null and $3::boolean then $6::uuid else subteam_id end,
        consolidated_structure = case when active_version_id is null and $7::boolean then $8::jsonb else consolidated_structure end,
        population_filter = case when active_version_id is null and $7::boolean then $9::jsonb else population_filter end,
+       draft_operating_universe = case when $12::boolean then $13::text else draft_operating_universe end,
+       operating_universe = case when active_version_id is null and $12::boolean then $13::text else operating_universe end,
        updated_at = now()
      where id = $10 and organization_id = $11
      returning id`,
@@ -121,6 +131,8 @@ export async function writeDraftConfiguration(db: Queryable, organizationId: str
       patch.analysis?.populationFilter ? JSON.stringify(patch.analysis.populationFilter) : null,
       workflowId,
       organizationId,
+      patch.universe !== undefined,
+      patch.universe?.operatingUniverse ?? null,
     ],
   )
   return (result.rowCount ?? 0) > 0
@@ -131,7 +143,7 @@ export async function discardDraftConfiguration(db: Queryable, organizationId: s
   const result = await db.query(
     `update workflows set
        draft_trigger_config = trigger_config, draft_scope_type = scope_type, draft_team_id = team_id, draft_subteam_id = subteam_id,
-       draft_consolidated_structure = consolidated_structure, draft_population_filter = population_filter, updated_at = now()
+       draft_consolidated_structure = consolidated_structure, draft_population_filter = population_filter, draft_operating_universe = operating_universe, updated_at = now()
      where id = $1 and organization_id = $2 and active_version_id is not null
      returning id`,
     [workflowId, organizationId],

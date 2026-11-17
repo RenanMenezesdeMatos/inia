@@ -83,6 +83,8 @@ export type WorkflowScope = {
    * pedido de EMPLOYEE_COLLECTION), pra compor a população inicial junto da Abrangência, mesma
    * regra que Agenda/ingestão já aplicam (workflow-eligibility.ts). */
   populationFilter?: unknown
+  /** Universo publicado do Workflow (elegibilidade dos colaboradores). */
+  operatingUniverse?: string | null
 }
 
 export type ProcessContext = {
@@ -175,6 +177,7 @@ async function resolveConditionPopulation(context: ProcessContext, nodeId: strin
     teamId: context.workflow.teamId,
     subteamId: context.workflow.subteamId,
     populationFilter: context.workflow.populationFilter,
+    operatingUniverse: context.workflow.operatingUniverse ?? null,
   }
   const structure = context.workflow.consolidatedStructure
   if (structure) {
@@ -660,6 +663,7 @@ export async function processNode(context: ProcessContext, node: FlowNode): Prom
         teamId: context.workflow.teamId,
         subteamId: context.workflow.subteamId,
         populationFilter: context.workflow.populationFilter,
+        operatingUniverse: context.workflow.operatingUniverse ?? null,
       }
       const { candidateIds, sourceKind, sourceNodeId } = await resolveSelectionCandidates(
         context.db,

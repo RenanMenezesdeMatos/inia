@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 
-import { CheckCircle2, ChevronRight, ClipboardCheck, MessagesSquare, Wrench } from "lucide-react"
+import { CheckCircle2, ChevronRight, ClipboardCheck, MessagesSquare, UserRoundX, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { describeElapsed, formatShortDateTime } from "@/lib/format/date"
@@ -84,10 +84,20 @@ export function AttendanceHistory({ reloadKey }: { reloadKey: string }) {
           {items.map((item) => (
             <li key={item.attendanceId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/50">
               <div className="flex min-w-0 items-center gap-3">
-                <IconBadge icon={!item.endedAt ? MessagesSquare : item.classified ? CheckCircle2 : ClipboardCheck} tone={!item.endedAt ? "info" : item.classified ? "success" : "warning"} size="sm" />
+                {/* Perdido (migration 193): o Anjo ficou sem responder e o pedido voltou à fila — abandono do Anjo, sem classificação. */}
+                <IconBadge
+                  icon={!item.endedAt ? MessagesSquare : item.endCause === "ANJO_SILENT" ? UserRoundX : item.classified ? CheckCircle2 : ClipboardCheck}
+                  tone={!item.endedAt ? "info" : item.endCause === "ANJO_SILENT" ? "danger" : item.classified ? "success" : "warning"}
+                  size="sm"
+                />
                 <div className="min-w-0 space-y-0.5">
                 <p className="text-sm">
                   <span className="font-medium">{item.operatorName}</span> <span className="font-mono text-xs text-muted-foreground">{item.protocol}</span>
+                  {item.endCause === "ANJO_SILENT" ? (
+                    <StatusChip tone="danger" icon={UserRoundX} className="ml-2 align-middle" data-testid="attendance-lost">
+                      Perdido: você ficou sem responder
+                    </StatusChip>
+                  ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatShortDateTime(item.startedAt)}

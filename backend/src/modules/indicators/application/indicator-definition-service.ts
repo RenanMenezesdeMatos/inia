@@ -1,4 +1,5 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
+import { universeFromBody } from "../../operating-universe/application/universe-access.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import {
@@ -46,6 +47,8 @@ function rethrowUniqueViolation(error: unknown): never {
 
 export async function createIndicatorDefinition(db: Database, organizationId: string, rawInput: unknown): Promise<IndicatorDefinitionRecord> {
   const input = validateIndicatorDefinition(indicatorDefinitionInputSchema.parse(rawInput))
+  // Universo de atuação (B2B/B2C/B2X): universos são separados — o indicador pertence a um deles. Obrigatório com a exigência ativa.
+  const universe = await universeFromBody(db, organizationId, rawInput, "do indicador")
   try {
     const result = await db.query<DefinitionRow>(
       `insert into indicator_definitions
@@ -54,6 +57,7 @@ export async function createIndicatorDefinition(db: Database, organizationId: st
        returning ${DEFINITION_COLUMNS}`,
       [organizationId, input.code, input.name, input.unit, input.desiredDirection, input.dailySupported, input.operationalAggregation, input.minimumSampleSize, input.minimumCoverage, input.officialClosureSupported, input.active, input.provesWorkActivity, input.unjustifiedAbsencePolicy, input.availabilityPolicy ? JSON.stringify(input.availabilityPolicy) : null, input.iconKey],
     )
+    await db.query(`update indicator_definitions set operating_universe = $2 where id = $1`, [result.rows[0]!.id, universe])
     return toRecord(result.rows[0]!)
   } catch (error) {
     rethrowUniqueViolation(error)

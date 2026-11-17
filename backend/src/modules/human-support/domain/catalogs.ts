@@ -9,49 +9,64 @@ export const HUMAN_SUPPORT_CATALOG_VERSION = "HUMAN_SUPPORT_V1" as const
 /** Versão do formato da cópia da troca gravada no pedido (`shared_context`). */
 export const SUPPORT_CONTEXT_VERSION = "SUPPORT_CONTEXT_V1" as const
 
-export const REQUEST_STATUSES = ["WAITING", "IN_PROGRESS", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"] as const
+/**
+ * `AWAITING_OPERATOR` (migration 193) = "Aguardando o operador" (para ele: "Aguardando seu retorno"): o operador ficou sem responder
+ * ao Anjo pelo tempo configurado, o Anjo foi liberado e o pedido espera o operador escrever (volta ao FIM da fila) ou vence o segundo
+ * tempo (encerrado como abandono do operador, `OPERATOR_NO_RETURN`). Conta como pedido aberto.
+ */
+export const REQUEST_STATUSES = ["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR", "CLOSED", "CANCELLED", "EXPIRED", "ABANDONED"] as const
 export type RequestStatus = (typeof REQUEST_STATUSES)[number]
-export const OPEN_REQUEST_STATUSES: readonly RequestStatus[] = ["WAITING", "IN_PROGRESS"]
+export const OPEN_REQUEST_STATUSES: readonly RequestStatus[] = ["WAITING", "IN_PROGRESS", "AWAITING_OPERATOR"]
 export const isFinalStatus = (status: RequestStatus) => !OPEN_REQUEST_STATUSES.includes(status)
 
-export const REQUEST_END_CAUSES = ["OPERATOR_CANCELLED", "SCOPE_DISABLED", "QUEUE_EXPIRED", "OPERATOR_ABANDONED", "OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY"] as const
+export const REQUEST_END_CAUSES = ["OPERATOR_CANCELLED", "SCOPE_DISABLED", "QUEUE_EXPIRED", "OPERATOR_ABANDONED", "OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY", "OPERATOR_NO_RETURN", "NO_ANJO_IN_SERVICE"] as const
 export type RequestEndCause = (typeof REQUEST_END_CAUSES)[number]
-/** `TRANSFERRED` (migration 190) = a coordenação passou o atendimento para outro Anjo ou o devolveu à fila. */
-export const ATTENDANCE_END_CAUSES = ["OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY", "ANJO_LOST", "TRANSFERRED"] as const
-/** Atendimentos que terminaram sem que o Anjo concluísse o caso (sem classificação nem avaliação): interrompido e transferido. */
-export const UNFINISHED_ATTENDANCE_END_CAUSES: readonly AttendanceEndCause[] = ["ANJO_LOST", "TRANSFERRED"]
+/**
+ * `TRANSFERRED` (migration 190) = a coordenação passou o atendimento para outro Anjo ou o devolveu à fila. Migration 193:
+ * `OPERATOR_SILENT` = o operador ficou sem responder (o pedido passou a aguardar o operador); `ANJO_SILENT` = o Anjo ficou sem
+ * responder (abandono do Anjo; o pedido voltou à frente da fila). `INACTIVITY` fica só no histórico.
+ */
+export const ATTENDANCE_END_CAUSES = ["OPERATOR_CLOSED", "ANJO_CLOSED", "OPERATOR_ABSENT", "INACTIVITY", "ANJO_LOST", "TRANSFERRED", "OPERATOR_SILENT", "ANJO_SILENT"] as const
+/** Atendimentos que terminaram sem que o Anjo concluísse o caso (sem classificação nem avaliação): interrompido, transferido e o que o Anjo deixou sem resposta. */
+export const UNFINISHED_ATTENDANCE_END_CAUSES: readonly AttendanceEndCause[] = ["ANJO_LOST", "TRANSFERRED", "ANJO_SILENT"]
 export type AttendanceEndCause = (typeof ATTENDANCE_END_CAUSES)[number]
 
 /** Causas gravadas em `human_support_request_events` (`REQUEST_EVENT_CAUSES_V1`). */
-export const REQUEST_EVENT_CAUSES_V1 = ["CREATED", "ASSIGNED", "ANJO_LOST", "REQUEUED", "TRANSFERRED", ...REQUEST_END_CAUSES] as const
+export const REQUEST_EVENT_CAUSES_V1 = ["CREATED", "ASSIGNED", "ANJO_LOST", "REQUEUED", "TRANSFERRED", "OPERATOR_SILENT", "OPERATOR_RETURNED", "ANJO_SILENT", ...REQUEST_END_CAUSES] as const
 export type RequestEventCause = (typeof REQUEST_EVENT_CAUSES_V1)[number]
 
 export const REQUEST_ORIGINS = ["BUTTON", "DISLIKE", "SIGNAL"] as const
 export type RequestOrigin = (typeof REQUEST_ORIGINS)[number]
-export const REQUEST_ORIGIN_LABELS: Record<RequestOrigin, string> = { BUTTON: "Botão “Falar com um Anjo”", DISLIKE: "Descurtida com pedido de ajuda", SIGNAL: "Sugestão da INIA" }
+export const REQUEST_ORIGIN_LABELS: Record<RequestOrigin, string> = { BUTTON: "Botão “Falar com o Apoio”", DISLIKE: "Descurtida com pedido de ajuda", SIGNAL: "Sugestão da INIA" }
 
 export const PRESENCE_STATUSES = ["AVAILABLE", "PAUSED", "OFFLINE"] as const
 export type PresenceStatus = (typeof PRESENCE_STATUSES)[number]
 export const PRESENCE_STATUS_LABELS: Record<PresenceStatus, string> = { AVAILABLE: "Disponível", PAUSED: "Em pausa", OFFLINE: "Indisponível" }
 
 /** Motivos de pausa (`PAUSE_REASONS_V1`): só nas tabelas de presença; nenhuma rota do operador os lê. */
-export const PAUSE_REASONS_V1 = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING"] as const
+export const PAUSE_REASONS_V1 = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING", "DISCONNECTION"] as const
 export type PauseReason = (typeof PAUSE_REASONS_V1)[number]
-export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião" }
+export const PAUSE_REASON_LABELS: Record<PauseReason, string> = { LUNCH: "Lanche", PERSONAL: "Pessoal", PROCESS_ACTIVITY: "Atividade de processo", MEETING: "Reunião", DISCONNECTION: "Desconexão" }
+/**
+ * Os motivos que o ANJO escolhe (e programa). `DISCONNECTION` (migration 195) só o sistema põe: o Anjo ficou sem responder ninguém
+ * pelo tempo configurado; nunca aparece na escolha do Anjo.
+ */
+export const ANJO_PAUSE_REASONS = ["LUNCH", "PERSONAL", "PROCESS_ACTIVITY", "MEETING"] as const satisfies readonly PauseReason[]
+export type AnjoPauseReason = (typeof ANJO_PAUSE_REASONS)[number]
 
 /**
  * `ANJO_SCHEDULED` = a pausa ou indisponibilidade que o Anjo programou entrou ao terminar o último atendimento (migration 188).
  * `SESSION_ENDED` = a área do Anjo parou de dar sinal porque a SESSÃO terminou (logout, prazo do login, inatividade ou conta
  * desligada), separado da queda de rede `CONNECTION_LOST` (migration 191). Os dois marcam o instante em que a conexão venceu.
  */
-export const PRESENCE_EVENT_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED", "SESSION_ENDED"] as const
+export const PRESENCE_EVENT_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "CONNECTION_LOST", "CONNECTION_RESTORED", "SESSION_ENDED", "UNRESPONSIVE", "UNRESPONSIVE_TIMEOUT"] as const
 /** Causas da conexão (as outras mudam o estado declarado; `SESSION_ENDED` faz as duas coisas). */
 export const CONNECTION_EVENT_CAUSES = ["CONNECTION_LOST", "CONNECTION_RESTORED", "SESSION_ENDED"] as const satisfies readonly PresenceEventCause[]
 /**
  * Causas que mudam o estado declarado (as outras só falam da conexão). `SESSION_ENDED` (decisão do responsável em 11/11/2026): a
  * sessão terminou → o Anjo fica Indisponível na hora; entrar de novo e abrir a área NÃO o deixa Disponível — ele escolhe Disponível.
  */
-export const PRESENCE_STATUS_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "SESSION_ENDED"] as const satisfies readonly PresenceEventCause[]
+export const PRESENCE_STATUS_CAUSES = ["ANJO", "ANJO_SCHEDULED", "LEASE_EXPIRED", "ROLE_REVOKED", "SESSION_ENDED", "UNRESPONSIVE", "UNRESPONSIVE_TIMEOUT"] as const satisfies readonly PresenceEventCause[]
 export type PresenceEventCause = (typeof PRESENCE_EVENT_CAUSES)[number]
 
 /**
@@ -120,6 +135,13 @@ export const SYSTEM_MESSAGE_CODES_V1 = [
   // Migration 190: transferência pela coordenação.
   "ANJO_TRANSFERRED",
   "TRANSFER_REQUEUED",
+  // Migration 193: tempos de resposta.
+  "AWAITING_OPERATOR",
+  "OPERATOR_RETURNED",
+  "ANJO_SILENT_REQUEUED",
+  "ENDED_OPERATOR_NO_RETURN",
+  // Migration 194: voltaria à fila, mas não há ninguém do Apoio em serviço.
+  "ENDED_NO_ANJO_IN_SERVICE",
 ] as const
 export type SystemMessageCode = (typeof SYSTEM_MESSAGE_CODES_V1)[number]
 /** Quem lê a conversa: o operador, o Anjo do atendimento ou quem acompanha (Coordenador de Anjos, Administrador geral). */
@@ -132,19 +154,19 @@ export function systemMessageText(code: SystemMessageCode, reader: MessageReader
   const anjo = anjoOr(names.anjoName)
   switch (code) {
     case "QUEUED":
-      return reader === "OPERATOR" ? "Pedido criado. Procurando um Anjo…" : "Pedido criado pelo operador."
+      return reader === "OPERATOR" ? "Pedido criado. Procurando alguém do Apoio…" : "Pedido criado pelo operador."
     case "ANJO_ASSIGNED":
-      return reader === "ANJO" ? "Você recebeu este pedido." : reader === "OPERATOR" ? `${anjo} (Anjo) recebeu seu pedido. Aguardando a primeira resposta.` : `${anjo} recebeu o pedido.`
+      return reader === "ANJO" ? "Você recebeu este pedido." : reader === "OPERATOR" ? `${names.anjoName?.trim() ? `${names.anjoName.trim()} (Apoio)` : "O Apoio"} recebeu seu pedido. Aguardando a primeira resposta.` : `${anjo} recebeu o pedido.`
     case "ANJO_CONNECTION_LOST":
-      return reader === "ANJO" ? "Você ficou sem conexão. O operador foi avisado." : reader === "OPERATOR" ? "O Anjo está sem conexão. Aguardando…" : `${anjo} ficou sem conexão.`
+      return reader === "ANJO" ? "Você ficou sem conexão. O operador foi avisado." : reader === "OPERATOR" ? "O Apoio está sem conexão. Aguardando…" : `${anjo} ficou sem conexão.`
     case "ANJO_CONNECTION_RESTORED":
-      return reader === "ANJO" ? "Sua conexão voltou." : reader === "OPERATOR" ? "O Anjo voltou." : `${anjo} voltou.`
+      return reader === "ANJO" ? "Sua conexão voltou." : reader === "OPERATOR" ? "O Apoio voltou." : `${anjo} voltou.`
     case "ANJO_LEFT":
-      return reader === "ANJO" ? "O atendimento foi interrompido: você ficou sem conexão por mais de 3 minutos ou deixou de ter o papel de Anjo." : reader === "OPERATOR" ? "O Anjo saiu do atendimento. Seu pedido voltou para a fila." : `${anjo} saiu do atendimento. O pedido voltou para a fila.`
+      return reader === "ANJO" ? "O atendimento foi interrompido: você ficou sem conexão por mais de 3 minutos ou deixou de ter o papel de Anjo." : reader === "OPERATOR" ? "O Apoio saiu do atendimento. Seu pedido voltou para a fila." : `${anjo} saiu do atendimento. O pedido voltou para a fila.`
     case "ENDED_BY_OPERATOR":
       return reader === "OPERATOR" ? "Atendimento encerrado por você." : "Atendimento encerrado pelo operador."
     case "ENDED_BY_ANJO":
-      return reader === "ANJO" ? "Atendimento encerrado por você." : reader === "OPERATOR" ? "Atendimento encerrado pelo Anjo." : `Atendimento encerrado por ${anjo}.`
+      return reader === "ANJO" ? "Atendimento encerrado por você." : reader === "OPERATOR" ? "Atendimento encerrado pelo Apoio." : `Atendimento encerrado por ${anjo}.`
     case "ENDED_OPERATOR_ABSENT":
       return reader === "OPERATOR" ? "Atendimento encerrado: a INIA estava fechada." : "Atendimento encerrado: operador sem a INIA aberta."
     case "ENDED_INACTIVITY":
@@ -152,17 +174,36 @@ export function systemMessageText(code: SystemMessageCode, reader: MessageReader
     case "CANCELLED_BY_OPERATOR":
       return reader === "OPERATOR" ? "Você cancelou o pedido." : "Pedido cancelado pelo operador."
     case "CANCELLED_SCOPE_DISABLED":
-      return reader === "OPERATOR" ? "O apoio com Anjo foi desativado para sua equipe." : "Pedido cancelado: o apoio com Anjo foi desativado para a equipe."
+      return reader === "OPERATOR" ? "O Apoio foi desativado para sua equipe." : "Pedido cancelado: o apoio com Anjo foi desativado para a equipe."
     case "EXPIRED":
-      return reader === "OPERATOR" ? "Nenhum Anjo pôde atender a tempo. O pedido expirou — você pode pedir de novo." : "O pedido expirou na fila."
+      return reader === "OPERATOR" ? "Ninguém do Apoio pôde atender a tempo. O pedido expirou — você pode pedir de novo." : "O pedido expirou na fila."
     case "ABANDONED":
       return reader === "OPERATOR" ? "O pedido foi encerrado porque a INIA ficou fechada." : "Pedido encerrado: o operador fechou a INIA."
     // A mensagem da transferência direta pertence ao atendimento NOVO (`anjoName` = quem recebeu); a da devolução, ao que terminou.
     // O motivo da transferência nunca aparece aqui (fica no registro, para a coordenação).
     case "ANJO_TRANSFERRED":
-      return reader === "ANJO" ? "Você recebeu este atendimento por transferência da coordenação. A conversa anterior está acima." : reader === "OPERATOR" ? `Seu atendimento foi passado para ${anjo} (Anjo), que continua a conversa daqui.` : `Atendimento transferido para ${anjo} pela coordenação.`
+      return reader === "ANJO" ? "Você recebeu este atendimento por transferência da coordenação. A conversa anterior está acima." : reader === "OPERATOR" ? `Seu atendimento foi passado para ${anjo} (Apoio), que continua a conversa daqui.` : `Atendimento transferido para ${anjo} pela coordenação.`
     case "TRANSFER_REQUEUED":
-      return reader === "OPERATOR" ? "Seu atendimento voltou para a frente da fila: outro Anjo vai continuar a conversa." : reader === "ANJO" ? "A coordenação devolveu este atendimento à fila." : `Atendimento de ${anjo} devolvido à frente da fila pela coordenação.`
+      return reader === "OPERATOR" ? "Seu atendimento voltou para a frente da fila: outra pessoa do Apoio vai continuar a conversa." : reader === "ANJO" ? "A coordenação devolveu este atendimento à fila." : `Atendimento de ${anjo} devolvido à frente da fila pela coordenação.`
+    // Migration 193 — tempos de resposta (os minutos ficam na tela do operador, com o horário; aqui, o fato).
+    case "AWAITING_OPERATOR":
+      return reader === "OPERATOR"
+        ? "Você ficou sem responder e o Apoio foi liberado. Escreva uma mensagem para voltar à fila; sem resposta, o pedido será encerrado."
+        : reader === "ANJO"
+          ? "O operador ficou sem responder. Você foi liberado e o pedido aguarda o retorno dele."
+          : "O operador ficou sem responder: o pedido aguarda o retorno dele."
+    case "OPERATOR_RETURNED":
+      return reader === "OPERATOR" ? "Você voltou. Seu pedido entrou no fim da fila." : "O operador voltou: o pedido entrou no fim da fila."
+    case "ANJO_SILENT_REQUEUED":
+      return reader === "OPERATOR"
+        ? "O Apoio não respondeu a tempo. Seu pedido voltou para a frente da fila."
+        : reader === "ANJO"
+          ? "Você ficou sem responder e perdeu este atendimento: o pedido voltou para a fila. Isso conta como abandono."
+          : `${anjo} ficou sem responder: o pedido voltou para a frente da fila (abandono do Anjo).`
+    case "ENDED_OPERATOR_NO_RETURN":
+      return reader === "OPERATOR" ? "O pedido foi encerrado porque você não voltou a tempo." : "Pedido encerrado: o operador não voltou (abandono do operador)."
+    case "ENDED_NO_ANJO_IN_SERVICE":
+      return reader === "OPERATOR" ? "Ninguém do Apoio está em serviço agora, então o pedido foi encerrado. Você pode pedir de novo quando houver alguém." : "Pedido encerrado: voltaria à fila, mas não havia ninguém do Apoio em serviço."
   }
 }
 
@@ -176,10 +217,27 @@ export const END_SYSTEM_CODE: Record<RequestEndCause | "ANJO_LOST", SystemMessag
   ANJO_CLOSED: "ENDED_BY_ANJO",
   OPERATOR_ABSENT: "ENDED_OPERATOR_ABSENT",
   INACTIVITY: "ENDED_INACTIVITY",
+  OPERATOR_NO_RETURN: "ENDED_OPERATOR_NO_RETURN",
+  NO_ANJO_IN_SERVICE: "ENDED_NO_ANJO_IN_SERVICE",
   ANJO_LOST: "ANJO_LEFT",
 }
 
-/** Parâmetros (Apêndice A). Constantes: nada aqui é configurável pela tela, salvo a capacidade (organização e por Anjo, 1–5). */
+/**
+ * Tempos de resposta (migration 193): padrões e limites dos três tempos que o Administrador geral ou o Coordenador de Anjos ajusta.
+ * O tempo de encerramento conta do mesmo instante que o de volta à fila (a última mensagem do Anjo) e precisa ser maior.
+ */
+export const RESPONSE_TIMES_DEFAULTS = { operatorRequeueMinutes: 15, operatorCloseMinutes: 20, anjoRequeueMinutes: 15 } as const
+export const RESPONSE_TIMES_LIMITS = { requeueMin: 1, requeueMax: 120, closeMax: 240 } as const
+/**
+ * Anjo sem responder ninguém (migration 195): depois de `pauseAfterMinutes` devendo resposta, o sistema o põe em pausa "Desconexão"
+ * (`UNRESPONSIVE`); depois de `offlineAfterMinutes` nessa pausa sem voltar, Indisponível (`UNRESPONSIVE_TIMEOUT`). Da organização.
+ */
+export const ANJO_UNRESPONSIVE_DEFAULTS = { pauseAfterMinutes: 20, offlineAfterMinutes: 10 } as const
+export const ANJO_UNRESPONSIVE_LIMITS = { pauseAfterMax: 240, offlineAfterMax: 120 } as const
+export type AnjoUnresponsive = { pauseAfterMinutes: number; offlineAfterMinutes: number }
+export type ResponseTimes = { operatorRequeueMinutes: number; operatorCloseMinutes: number; anjoRequeueMinutes: number }
+
+/** Parâmetros (Apêndice A). Constantes: nada aqui é configurável pela tela, salvo a capacidade (organização e por Anjo, 1–5) e os tempos de resposta acima. */
 export const HUMAN_SUPPORT_LIMITS = {
   defaultCapacity: 2,
   capacityMin: 1,

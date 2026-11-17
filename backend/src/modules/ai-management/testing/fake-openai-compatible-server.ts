@@ -22,6 +22,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
  * `content` da resposta (com o uso de sempre e `finish_reason: "stop"`) — `null` deixa o comportamento pelo nome do modelo.
  * Cada request guarda o corpo recebido (`requests[].body`) para a prova conferir o que saiu (schema, teto de saída…).
  *
+ * Custo informado (gateway compatível com OpenAI/LiteLLM): com `responseCost` (ou `setResponseCost`), toda resposta 200 de
+ * geração e de voz — com e sem streaming — leva o cabeçalho `x-litellm-response-cost` com o valor EXATO dado (string crua,
+ * inclusive inválida, para provar o retorno à estimativa). `null` = sem o cabeçalho (o padrão).
+ *
  * Voz (`POST /v1/audio/speech`): devolve `FAKE_SPEECH_PCM` (1 s de PCM16 mono 24 kHz, padrão fixo) como o `response_format:
  * "pcm"` da OpenAI; `fake-down` → 503.
  */
@@ -29,11 +33,13 @@ export const FAKE_SPEECH_PCM = Buffer.from(Array.from({ length: 48_000 }, (_, in
 export const FAKE_MODELS = ["fake-ok", "fake-json", "fake-rate-limited", "fake-down", "fake-unauthorized", "fake-bad-request", "fake-no-usage", "fake-slow"] as const
 
 export type FakeServerStats = { served: number; rateLimited: number; inFlight: number; peakInFlight: number }
-export type FakeServer = { url: string; port: number; requests: { path: string; model: string | null; body: Record<string, unknown> }[]; stats: FakeServerStats; close: () => Promise<void> }
-export type FakeServerOptions = { apiKey?: string | null; port?: number; host?: string; latencyMs?: number; capacity?: { maxConcurrent: number; retryAfterSeconds?: number }; respond?: (body: Record<string, unknown>) => string | null }
+export type FakeServer = { url: string; port: number; requests: { path: string; model: string | null; body: Record<string, unknown> }[]; stats: FakeServerStats; setResponseCost: (value: string | null) => void; close: () => Promise<void> }
+export type FakeServerOptions = { apiKey?: string | null; port?: number; host?: string; latencyMs?: number; capacity?: { maxConcurrent: number; retryAfterSeconds?: number }; respond?: (body: Record<string, unknown>) => string | null; responseCost?: string | null }
 
-function send(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json" })
+export const FAKE_RESPONSE_COST_HEADER = "x-litellm-response-cost"
+
+function send(response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
+  response.writeHead(status, { "content-type": "application/json", ...headers })
   response.end(JSON.stringify(body))
 }
 
@@ -50,6 +56,8 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
 export async function startFakeOpenAiServer(options: FakeServerOptions = {}): Promise<FakeServer> {
   const requests: FakeServer["requests"] = []
   const stats: FakeServerStats = { served: 0, rateLimited: 0, inFlight: 0, peakInFlight: 0 }
+  let responseCost = options.responseCost ?? null
+  const costHeaders = (): Record<string, string> => (responseCost === null ? {} : { [FAKE_RESPONSE_COST_HEADER]: responseCost })
   const server: Server = createServer(async (request, response) => {
     const path = (request.url ?? "").split("?")[0] ?? ""
     const body = request.method === "POST" ? await readBody(request) : {}
@@ -60,7 +68,7 @@ export async function startFakeOpenAiServer(options: FakeServerOptions = {}): Pr
     if (request.method === "GET" && path.endsWith("/models")) return send(response, 200, { object: "list", data: FAKE_MODELS.map((id) => ({ id, object: "model", owned_by: "inia-fake" })) })
     if (request.method === "POST" && path.endsWith("/audio/speech")) {
       if (model === "fake-down") return send(response, 503, { error: { message: "Service unavailable" } })
-      response.writeHead(200, { "content-type": "audio/pcm" })
+      response.writeHead(200, { "content-type": "audio/pcm", ...costHeaders() })
       response.end(FAKE_SPEECH_PCM)
       return
     }
@@ -80,7 +88,7 @@ export async function startFakeOpenAiServer(options: FakeServerOptions = {}): Pr
     })
     if (options.latencyMs) await new Promise((resolve) => setTimeout(resolve, options.latencyMs))
     const scripted = options.respond?.(body) ?? null
-    if (scripted !== null) return send(response, 200, { model, choices: [{ message: { content: scripted }, finish_reason: "stop" }], usage })
+    if (scripted !== null) return send(response, 200, { model, choices: [{ message: { content: scripted }, finish_reason: "stop" }], usage }, costHeaders())
     switch (model) {
       case "fake-rate-limited":
         return send(response, 429, { error: { message: "Rate limit reached" } })
@@ -92,25 +100,25 @@ export async function startFakeOpenAiServer(options: FakeServerOptions = {}): Pr
         return send(response, 400, { error: { message: "Invalid parameter" } })
       case "fake-slow":
         await new Promise((resolve) => setTimeout(resolve, 3_000))
-        return send(response, 200, { model, choices: [{ message: { content: "lento" } }], usage })
+        return send(response, 200, { model, choices: [{ message: { content: "lento" } }], usage }, costHeaders())
       case "fake-no-usage":
-        return send(response, 200, { model, choices: [{ message: { content: "sem uso informado" } }] })
+        return send(response, 200, { model, choices: [{ message: { content: "sem uso informado" } }] }, costHeaders())
       case "fake-json":
-        return send(response, 200, { model, choices: [{ message: { content: '{"ok":true}' } }], usage })
+        return send(response, 200, { model, choices: [{ message: { content: '{"ok":true}' } }], usage }, costHeaders())
       default:
         if (body.stream) {
-          response.writeHead(200, { "content-type": "text/event-stream" })
+          response.writeHead(200, { "content-type": "text/event-stream", ...costHeaders() })
           response.write(`data: ${JSON.stringify({ model, choices: [{ delta: { content: "Olá do " } }] })}\n\n`)
           response.write(`data: ${JSON.stringify({ model, choices: [{ delta: { content: "provider falso." } }] })}\n\n`)
           response.write(`data: ${JSON.stringify({ model, choices: [], usage })}\n\n`)
           response.end("data: [DONE]\n\n")
           return
         }
-        return send(response, 200, { model, choices: [{ message: { content: "Resposta do provider falso (nenhuma API real foi chamada)." } }], usage })
+        return send(response, 200, { model, choices: [{ message: { content: "Resposta do provider falso (nenhuma API real foi chamada)." } }], usage }, costHeaders())
     }
   })
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, options.host ?? "127.0.0.1", resolve))
   const address = server.address()
   const port = typeof address === "object" && address ? address.port : 0
-  return { url: `http://${options.host ?? "127.0.0.1"}:${port}/v1`, port, requests, stats, close: () => new Promise((resolve) => server.close(() => resolve())) }
+  return { url: `http://${options.host ?? "127.0.0.1"}:${port}/v1`, port, requests, stats, setResponseCost: (value) => void (responseCost = value), close: () => new Promise((resolve) => server.close(() => resolve())) }
 }

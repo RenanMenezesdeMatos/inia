@@ -51,3 +51,25 @@ export function followUpDayLabel(at: number, now: Date = new Date()): string {
 }
 
 export { dayKey as followUpDayKey }
+
+/** Recorte do calendário do Acompanhamento em datas civis "AAAA-MM-DD" (o valor do `DateRangePicker`); vazio = visão inicial, tudo. */
+export type FollowUpPeriod = { from?: string | undefined; to?: string | undefined }
+
+/**
+ * Limites do recorte em instantes, no fuso de quem lê — o mesmo de `followUpDayLabel`, então o item cai no dia em que aparece
+ * rotulado. `[since, until)`: o fim é o começo do dia seguinte ao último dia escolhido. Só o início = aquele dia.
+ */
+export function followUpPeriodBounds(period: FollowUpPeriod): { since: number; until: number } | null {
+  const from = civilStart(period.from)
+  if (from === null) return null
+  const last = civilStart(period.to) ?? from
+  const lastDay = new Date(last)
+  return { since: from, until: new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate() + 1).getTime() }
+}
+
+export const isWithinFollowUpPeriod = (at: number, bounds: { since: number; until: number } | null) => bounds === null || (at >= bounds.since && at < bounds.until)
+
+function civilStart(value: string | undefined): number | null {
+  const match = value ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime() : null
+}

@@ -9,6 +9,8 @@ import { recordAudit } from "../records.js"
 import { resolveEmployees, resolveIndicators, resolveOperations, resolveSubteams, resolveTeams } from "../reference-resolver.js"
 import { bool, countUpsert, dedupeByKey, emptyApply, reject, str, type ApplyResult, type ApplyWarning, type DomainWriter, type LineageEntry, type Rejection, type ValidRecord, type WriteContext } from "./domain-writer.js"
 import { accessDisabledWarnings, credentialNeedsNewCustody, disableAccountsFromSource, enforceSourceCustody, linkByAccountEmail, linkedWarnings, markFirstApplicationCustody, pendingCustodyWarnings, placementBefore, possibleDuplicateWarnings, preRegisteredByMatricula } from "./person-identity.js"
+import { isUniverseEnforced } from "../../../operating-universe/application/universe-access.js"
+import { parseOperatingUniverse } from "../../../operating-universe/domain/operating-universe.js"
 
 /**
  * Writers de dado mestre. Regras compartilhadas:
@@ -107,6 +109,8 @@ type PreparedEmployee = ValidRecord & {
   employmentStatus: { status: EmploymentStatus; rawStatus: string; effectiveFrom: string | null; sourceUpdatedAt: string | null } | null
   /** Capital operacional (catálogo das 27); null = não informada (mantém a atual). */
   operationalCapitalCode: string | null
+  /** Universo de atuação (B2B/B2C/B2X); null = não informado (mantém o atual). */
+  operatingUniverse: string | null
 }
 
 async function resolveStructureRefs(context: WriteContext, records: ValidRecord[]) {
@@ -135,6 +139,10 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     const { unique, duplicates } = dedupeByKey(records, (record) => String(record.record.externalEmployeeId))
     const refs = await resolveStructureRefs(context, unique)
     const managers = await resolveEmployees(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "reportsToExternalId")))
+    // Universo de atuação: com a exigência ativa, pessoa NOVA (matrícula que a INIA ainda não conhece) sem universo vai para a quarentena;
+    // quem já existe e chega sem o campo mantém o atual (regulariza-se mapeando o campo ou em Pessoas).
+    const universeEnforced = await isUniverseEnforced(context.ctx.db, context.organizationId)
+    const known = universeEnforced ? await resolveEmployees(context.ctx.db, context.organizationId, unique.map((record) => str(record.record, "externalEmployeeId"))) : new Map()
     const inBatch = new Set(unique.map((record) => str(record.record, "externalEmployeeId")!))
     const ready: PreparedEmployee[] = []
     const rejections: Rejection[] = [...duplicates]
@@ -171,6 +179,16 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         rejections.push(reject(record, "DATA_INVALID_ENUM", "operationalCapitalCode", `Capital operacional "${rawCapital}" não está no catálogo (${BRAZILIAN_CAPITAL_CODES.join(", ")}) — mapeie o valor da fonte com "Mapear códigos".`))
         continue
       }
+      const rawUniverse = str(record.record, "operatingUniverse")
+      const universe = parseOperatingUniverse(rawUniverse)
+      if (universe === "INVALID") {
+        rejections.push(reject(record, "DATA_INVALID_ENUM", "operatingUniverse", `Universo de atuação "${rawUniverse}" não é B2B, B2C nem B2X — mapeie o valor da fonte com "Mapear códigos".`))
+        continue
+      }
+      if (universeEnforced && universe === null && !known.has(matricula)) {
+        rejections.push(reject(record, "DATA_OPERATING_UNIVERSE_REQUIRED", "operatingUniverse", "Colaborador novo sem universo de atuação (B2B, B2C ou B2X). A organização exige o universo: mapeie o campo na carga."))
+        continue
+      }
       ready.push({
         ...record,
         matricula,
@@ -185,6 +203,7 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
         email: str(record.record, "email"),
         employmentStatus: rawStatus && normalizedStatus ? { status: normalizedStatus, rawStatus, effectiveFrom: str(record.record, "statusEffectiveFrom"), sourceUpdatedAt: str(record.record, "sourceUpdatedAt") } : null,
         operationalCapitalCode: capital,
+        operatingUniverse: universe,
       })
     }
     return { ready, rejections }
@@ -205,11 +224,11 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
     // Passo 1: dados do próprio colaborador (grupo/subgrupo/cargo/admissão só sobrescrevem quando informados).
     const upsert = await client.query<{ id: string; matricula: string; inserted: boolean }>(
       `with input as (
-         select * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[])
-           as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code)
+         select * from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::uuid[], $7::uuid[], $8::date[], $9::boolean[], $10::text[], $11::text[])
+           as t(matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe)
        )
-       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code)
-       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code from input
+       insert into people (organization_id, matricula, name, role, job_title, team_id, subteam_id, hired_at, active, operational_capital_code, operating_universe)
+       select $1, matricula, name, role, job_title, team_id, subteam_id, hired_at, coalesce(active, true), operational_capital_code, operating_universe from input
        on conflict (organization_id, matricula) do update set
          name = excluded.name,
          role = excluded.role,
@@ -218,7 +237,8 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
          subteam_id = case when excluded.team_id is not null then excluded.subteam_id else coalesce(excluded.subteam_id, people.subteam_id) end,
          hired_at = coalesce(excluded.hired_at, people.hired_at),
          active = coalesce((select i.active from input i where i.matricula = excluded.matricula), people.active),
-         operational_capital_code = coalesce(excluded.operational_capital_code, people.operational_capital_code)
+         operational_capital_code = coalesce(excluded.operational_capital_code, people.operational_capital_code),
+         operating_universe = coalesce(excluded.operating_universe, people.operating_universe)
        where people.name is distinct from excluded.name
           or people.role is distinct from excluded.role
           or people.job_title is distinct from coalesce(excluded.job_title, people.job_title)
@@ -227,8 +247,9 @@ export const employeesWriter: DomainWriter<PreparedEmployee> = {
           or people.hired_at is distinct from coalesce(excluded.hired_at, people.hired_at)
           or people.active is distinct from coalesce((select i.active from input i where i.matricula = excluded.matricula), people.active)
           or people.operational_capital_code is distinct from coalesce(excluded.operational_capital_code, people.operational_capital_code)
+          or people.operating_universe is distinct from coalesce(excluded.operating_universe, people.operating_universe)
        returning id, matricula, (xmax = 0) inserted`,
-      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode)],
+      [org, batch.map((r) => r.matricula), batch.map((r) => r.name), batch.map((r) => r.role), batch.map((r) => r.jobTitle), batch.map((r) => r.teamId), batch.map((r) => r.subteamId), batch.map((r) => r.hiredAt), batch.map((r) => r.active), batch.map((r) => r.operationalCapitalCode), batch.map((r) => r.operatingUniverse)],
     )
     // Passo 1b: credencial. Desligada pela base = conta desabilitada (reativar não devolve a senha nem os tokens antigos — achado
     // AUTH-7); pessoa cadastrada à mão (ligada pelo e-mail ou pré-cadastrada com a matrícula) que a base pôs em outro Grupo/nível

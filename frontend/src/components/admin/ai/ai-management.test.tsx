@@ -398,7 +398,7 @@ describe("IA / Modelos — Orçamentos", () => {
 })
 
 describe("IA / Modelos — Visão geral", () => {
-  const EMPTY_METRICS = { requests: 0, attempts: 0, errors: 0, blocked: 0, fallbacks: 0, tokens: { input: null, output: null, reasoning: null, cached: null, total: null, reported: { input: 0, output: 0, reasoning: 0, cached: 0, total: 0 } }, costByCurrency: {}, unknownCostCalls: 0, localCalls: 0, latencyAvgMs: null, latencyP50Ms: null, latencyP95Ms: null, errorRate: null }
+  const EMPTY_METRICS = { requests: 0, attempts: 0, errors: 0, blocked: 0, fallbacks: 0, tokens: { input: null, output: null, reasoning: null, cached: null, total: null, reported: { input: 0, output: 0, reasoning: 0, cached: 0, total: 0 } }, costByCurrency: {}, unknownCostCalls: 0, reportedCostCalls: 0, estimatedCostCalls: 0, localCalls: 0, latencyAvgMs: null, latencyP50Ms: null, latencyP95Ms: null, errorRate: null }
   const OVERVIEW: AiOverview = {
     usage: { period: { from: "2026-08-24T03:00:00.000Z", to: "2026-09-22T12:00:00.000Z", label: "Últimos 30 dias", timezone: "America/Sao_Paulo" }, totals: EMPTY_METRICS, daily: [], byProvider: [], byModel: [], byUseCase: [], currencies: [] },
     health: [],

@@ -2,8 +2,9 @@
 
 import { useId } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { BarChart3 } from "lucide-react"
+import { BarChart3, X } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -27,6 +28,7 @@ import {
   AI_USAGE_SOURCE_LABELS,
   AI_USAGE_SOURCES,
   type AiUsageRankingContext,
+  type AiUsageRankingItem,
   type AiUsageRankingLevel,
   type AiUsageRankingSort,
   type AiUsageSource,
@@ -36,9 +38,12 @@ import { InfoCallout } from "./ai-shared"
 import { RankingCard, RankingTable, UnlinkedCard } from "./usage-ranking/ranking-views"
 
 /**
- * "Quem mais usa" a IA — ranking por Diretoria, Gerência Sênior, Gerência, Grupo, Subgrupo ou Supervisor. A visão escolhida
- * fica na URL (`level`, só o código), os filtros na tela. O backend decide quem aparece (escopo da conta) e valida tudo;
- * aqui nada é recortado nem somado.
+ * "Quem mais usa" a IA — ranking por Diretoria, Gerência Sênior, Gerência, Grupo, Subgrupo, Supervisor ou Usuário. A visão
+ * escolhida fica na URL (`level`, só o código), os filtros na tela. O backend decide quem aparece (escopo da conta) e valida
+ * tudo; aqui nada é recortado nem somado.
+ *
+ * "Ver usuários" numa linha troca para o nível Usuário estreitado àquele ramo: Grupo/Subgrupo pelo filtro de grupo de
+ * sempre, líder pelo filtro `leader` (id opaco para o backend; o nome só fica na memória da tela, para o rótulo do filtro).
  */
 
 type RankingFilters = {
@@ -47,6 +52,7 @@ type RankingFilters = {
   range: DateRangeFilter
   source?: AiUsageSource
   org: { teamId?: string; subteamId?: string }
+  leader?: { id: string; name: string }
   providerKey?: string
   modelId?: string
   useCase?: string
@@ -73,7 +79,10 @@ export function UsageRankingTab() {
   const requestedLevel = searchParams.get("level")
   const level: AiUsageRankingLevel = isLevel(requestedLevel) ? requestedLevel : DEFAULT_LEVEL
   const sortParam = searchParams.get("sort")
-  const sort: AiUsageRankingSort = (AI_USAGE_RANKING_SORTS as readonly string[]).includes(sortParam ?? "") ? (sortParam as AiUsageRankingSort) : "REQUESTS"
+  const requestedSort: AiUsageRankingSort = (AI_USAGE_RANKING_SORTS as readonly string[]).includes(sortParam ?? "") ? (sortParam as AiUsageRankingSort) : "REQUESTS"
+  // No nível Usuário cada linha é uma pessoa: "mais pessoas usando" não ordena nada.
+  const sorts: readonly AiUsageRankingSort[] = level === "PERSON" ? AI_USAGE_RANKING_SORTS.filter((value) => value !== "PEOPLE") : AI_USAGE_RANKING_SORTS
+  const sort: AiUsageRankingSort = sorts.includes(requestedSort) ? requestedSort : "REQUESTS"
 
   const list = useAdminListState({ storageKey: "ai-usage-ranking", defaultFilters: DEFAULT_FILTERS, defaultPageSize: 20 })
   const contextQuery = useAiUsageRankingContextQuery()
@@ -90,6 +99,7 @@ export function UsageRankingTab() {
     ...(range ?? {}),
     ...(filters.source ? { source: filters.source } : {}),
     ...(filters.org.subteamId ? { subteamId: filters.org.subteamId } : filters.org.teamId ? { teamId: filters.org.teamId } : {}),
+    ...(filters.leader ? { leaderId: filters.leader.id } : {}),
     ...(filters.providerKey ? { providerKey: filters.providerKey } : {}),
     ...(filters.modelId ? { modelId: filters.modelId } : {}),
     ...(filters.useCase ? { useCase: filters.useCase } : {}),
@@ -105,6 +115,7 @@ export function UsageRankingTab() {
     const next = new URLSearchParams(searchParams.toString())
     if (value === fallback) next.delete(key)
     else next.set(key, value)
+    if (key === "level" && value === "PERSON" && next.get("sort") === "PEOPLE") next.delete("sort")
     const query = next.toString()
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
     list.setPage(1)
@@ -113,12 +124,23 @@ export function UsageRankingTab() {
   const data = rankingQuery.data
   const scope = contextQuery.data?.scope
 
+  /** "Ver usuários" de uma linha: estreita ao ramo (Grupo, Subgrupo ou estrutura do líder) e troca para o nível Usuário. */
+  function openPeople(item: AiUsageRankingItem) {
+    if (!data || data.level === "PERSON") return
+    if (data.level === "TEAM") list.patchFilters({ org: { teamId: item.key }, leader: undefined })
+    else if (data.level === "SUBTEAM") {
+      const team = contextQuery.data?.teams.find((entry) => entry.subteams.some((subteam) => subteam.id === item.key))
+      list.patchFilters({ org: { teamId: team?.id, subteamId: item.key }, leader: undefined })
+    } else list.patchFilters({ leader: { id: item.key, name: item.name ?? "pessoa removida do cadastro" } })
+    setUrlParam("level", "PERSON", DEFAULT_LEVEL)
+  }
+
   return (
     <div className="space-y-4" data-testid="ai-usage-ranking">
       <div className="space-y-1">
         <h2 className="text-base font-semibold">Quem mais usa a IA</h2>
         <p className="text-sm text-muted-foreground">
-          Cada linha soma o uso da pessoa e de toda a estrutura abaixo dela (ou das pessoas do Grupo/Subgrupo). Uso de Workflow conta para o colaborador da execução; o resto, para quem fez o pedido.
+          Cada linha soma o uso da pessoa e de toda a estrutura abaixo dela (ou das pessoas do Grupo/Subgrupo); em Usuário, cada linha é uma pessoa — use “Ver usuários” numa linha para ver as pessoas daquele ramo. Uso de Workflow conta para o colaborador da execução; o resto, para quem fez o pedido.
         </p>
       </div>
 
@@ -150,6 +172,12 @@ export function UsageRankingTab() {
         </Select>
         {filters.period === "CUSTOM" ? <ListDateRangeFilter label="Escolha as datas" value={filters.range} onChange={(value) => list.setFilter("range", value)} /> : null}
         <RankingOrgFilter value={filters.org} onChange={(value) => list.setFilter("org", value)} context={contextQuery.data} />
+        {filters.leader ? (
+          <Button type="button" variant="outline" size="sm" className="border-primary/50" onClick={() => list.setFilter("leader", undefined)} aria-label={`Remover filtro: estrutura de ${filters.leader.name}`}>
+            Estrutura de {filters.leader.name}
+            <X data-icon="inline-end" aria-hidden />
+          </Button>
+        ) : null}
         <ListSelectFilter value={filters.source} onChange={(value) => list.setFilter("source", value)} options={AI_USAGE_SOURCES.map((value) => ({ value, label: AI_USAGE_SOURCE_LABELS[value] }))} allLabel="Qualquer origem" ariaLabel="Filtrar por origem do uso" />
         <ListSelectFilter value={filters.providerKey} onChange={(value) => list.setFilter("providerKey", value)} options={(providersQuery.data ?? []).map((provider) => ({ value: provider.key, label: provider.name }))} allLabel="Qualquer provider" ariaLabel="Filtrar por provider" />
         <ListSelectFilter value={filters.modelId} onChange={(value) => list.setFilter("modelId", value)} options={(modelsQuery.data ?? []).map((model) => ({ value: model.id, label: `${model.displayName} · ${model.connectionName}` }))} allLabel="Qualquer modelo" ariaLabel="Filtrar por modelo" />
@@ -161,7 +189,7 @@ export function UsageRankingTab() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {AI_USAGE_RANKING_SORTS.map((value) => (
+              {sorts.map((value) => (
                 <SelectItem key={value} value={value}>
                   {AI_USAGE_RANKING_SORT_LABELS[value]}
                 </SelectItem>
@@ -192,12 +220,12 @@ export function UsageRankingTab() {
             {list.view === "cards" ? (
               <ListCardGrid>
                 {data.items.map((item) => (
-                  <RankingCard key={item.key} item={item} level={data.level} />
+                  <RankingCard key={item.key} item={item} level={data.level} onOpenPeople={openPeople} />
                 ))}
                 <UnlinkedCard unlinked={data.unlinked} level={data.level} />
               </ListCardGrid>
             ) : (
-              <RankingTable data={data} />
+              <RankingTable data={data} onOpenPeople={openPeople} />
             )}
           </div>
           {data.total > 0 ? (
@@ -224,9 +252,10 @@ const RANKING_ITEM_LABELS: Record<AiUsageRankingLevel, [string, string]> = {
   TEAM: ["grupo", "grupos"],
   SUBTEAM: ["subgrupo", "subgrupos"],
   SUPERVISOR: ["supervisor", "supervisores"],
+  PERSON: ["usuário", "usuários"],
 }
 
-/** Seletor da visão — os seis níveis lado a lado (quebra linha no celular); um clique troca o ranking. */
+/** Seletor da visão — os sete níveis lado a lado (quebra linha no celular); um clique troca o ranking. */
 function LevelSelector({ value, onChange }: { value: AiUsageRankingLevel; onChange: (value: AiUsageRankingLevel) => void }) {
   return (
     <ToggleGroup

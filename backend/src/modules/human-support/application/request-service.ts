@@ -9,6 +9,7 @@ import type { OperatorRequestView, PreviewResponse, SharedContext } from "../dom
 import { dispatchAfterCommand } from "./dispatch.js"
 import { anjosInServiceCount, availabilityFor, enabledForPlace, loadPlace, queueDeadlineFor, type PersonPlace } from "./eligibility.js"
 import { bumpInboxVersions } from "./inbox-versions.js"
+import { insertNoAnjoAttempt } from "./no-anjo.js"
 import { withOrganizationLock, type Queryable } from "./locks.js"
 import { loadActiveAttendance, loadOpenRequestOf, loadRequest, operatorRequestView, REQUEST_COLUMNS, type RequestRow } from "./request-views.js"
 import { appendSystemMessage, endAttendance, endRequest, recordRequestEvent } from "./transitions.js"
@@ -22,7 +23,7 @@ import { appendSystemMessage, endAttendance, endRequest, recordRequestEvent } fr
 export type Viewer = { organizationId: string; personId: string }
 export type SourceInput = { interactionId?: string | null | undefined; ratingId?: string | null | undefined }
 
-const disabled = () => new DomainError("O apoio com Anjo ainda não está disponível para sua equipe.", "HUMAN_SUPPORT_DISABLED", 409)
+const disabled = () => new DomainError("O Apoio ainda não está disponível para sua equipe.", "HUMAN_SUPPORT_DISABLED", 409)
 const sourceNotFound = () => new DomainError("Mensagem não encontrada.", "HUMAN_SUPPORT_SOURCE_NOT_FOUND", 404)
 const requestNotFound = () => new DomainError("Pedido de apoio não encontrado.", "HUMAN_SUPPORT_REQUEST_NOT_FOUND", 404)
 const ended = () => new DomainError("Este atendimento já foi encerrado.", "HUMAN_SUPPORT_REQUEST_ENDED", 409)
@@ -45,17 +46,7 @@ async function requirePlace(db: Queryable, viewer: Viewer): Promise<PersonPlace>
 
 /** Tentativa sem Anjo em serviço (D4): no máximo uma por pessoa a cada 10 min, conferida sob a trava da organização. */
 async function recordNoAnjoAttempt(db: TransactionSource, viewer: Viewer, place: PersonPlace, origin: RequestOrigin, interactionId: string | null): Promise<void> {
-  await withOrganizationLock(db, viewer.organizationId, async (client) => {
-    await client.query(
-      `insert into human_support_entry_events (organization_id, person_id, team_id, subteam_id, kind, origin, interaction_id, occurred_at)
-       select $1, $2, $3, $4, 'NO_ANJO_IN_SERVICE', $5, $6, statement_timestamp()
-        where not exists (
-          select 1 from human_support_entry_events e
-           where e.organization_id = $1 and e.person_id = $2 and e.kind = 'NO_ANJO_IN_SERVICE' and e.occurred_at > statement_timestamp() - make_interval(secs => $7::int)
-        )`,
-      [viewer.organizationId, viewer.personId, place.teamId, place.subteamId, origin, interactionId, HUMAN_SUPPORT_LIMITS.noAnjoAttemptWindowMs / 1000],
-    )
-  })
+  await withOrganizationLock(db, viewer.organizationId, (client) => insertNoAnjoAttempt(client, { organizationId: viewer.organizationId, personId: viewer.personId, teamId: place.teamId, subteamId: place.subteamId, origin, interactionId }))
 }
 
 /** Prévia: a cópia que o Anjo receberia, a disponibilidade e o prazo. Grava a tentativa quando não há Anjo em serviço. */
@@ -86,7 +77,7 @@ export async function createRequest(db: TransactionSource & Queryable, viewer: V
     const availability = await availabilityFor(client, viewer.organizationId, place, viewer.personId)
     if (!canRequestWith(availability.status)) {
       if (availability.status === "DISABLED") throw disabled()
-      throw new DomainError("Nenhum Anjo em serviço agora.", "HUMAN_SUPPORT_NO_ANJO_IN_SERVICE", 409)
+      throw new DomainError("Ninguém do Apoio em serviço agora.", "HUMAN_SUPPORT_NO_ANJO_IN_SERVICE", 409)
     }
     const deadline = await queueDeadlineFor(client, viewer.organizationId, place)
     const sharedContext: SharedContext = { ...shared.context, note }
@@ -115,14 +106,14 @@ export async function createRequest(db: TransactionSource & Queryable, viewer: V
   return { request: await operatorRequestView(db, fresh), created: outcome.created }
 }
 
-/** "Cancelar pedido": só na fila. */
+/** "Cancelar pedido": na fila ou aguardando o retorno do operador. */
 export async function cancelRequest(db: TransactionSource & Queryable, viewer: Viewer, requestId: string): Promise<OperatorRequestView> {
   await withOrganizationLock(db, viewer.organizationId, async (client) => {
     const request = await loadRequest(client, viewer.organizationId, requestId, { forUpdate: true })
     if (!request || request.operator_person_id !== viewer.personId) throw requestNotFound()
     const decision = cancelDecision(request.status)
     if (!decision.ok) throw ended()
-    await endRequest(client, { id: request.id, organizationId: viewer.organizationId, operatorPersonId: viewer.personId }, { from: "WAITING", cause: decision.cause, actorPersonId: viewer.personId })
+    await endRequest(client, { id: request.id, organizationId: viewer.organizationId, operatorPersonId: viewer.personId }, { from: request.status, cause: decision.cause, actorPersonId: viewer.personId })
     // Quantos Anjos estavam em serviço quando o operador desistiu (migration 191).
     await client.query(`update human_support_requests set anjos_in_service_at_end = $2 where id = $1`, [request.id, await anjosInServiceCount(client, viewer.organizationId, { teamId: request.team_id, subteamId: request.subteam_id }, viewer.personId)])
     await bumpInboxVersions(client, viewer.organizationId, [viewer.personId])
@@ -160,7 +151,7 @@ export async function closeRequest(db: TransactionSource & Queryable, viewer: Vi
     }
     const ref = { id: request.id, organizationId: viewer.organizationId, operatorPersonId: request.operator_person_id }
     if (decision.kind === "CANCEL") {
-      await endRequest(client, ref, { from: "WAITING", cause: decision.cause, actorPersonId: viewer.personId })
+      await endRequest(client, ref, { from: request.status, cause: decision.cause, actorPersonId: viewer.personId })
       await bumpInboxVersions(client, viewer.organizationId, [request.operator_person_id])
       return role
     }

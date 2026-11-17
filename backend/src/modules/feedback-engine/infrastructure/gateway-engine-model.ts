@@ -1,4 +1,5 @@
 import { generateForRoute, type GatewayRequest, type GatewayResponse } from "../../../shared/application/model-routing/llm-gateway.js"
+import { costTotal } from "../../../shared/application/model-routing/model-pricing.js"
 import type { ModelProfile } from "../../../shared/application/model-routing/model-profile.js"
 import type { RouteDecision } from "../../../shared/application/model-routing/route-policy.js"
 import { ModelOutputContractError } from "../../../shared/domain/model-output-contract-error.js"
@@ -64,7 +65,7 @@ export function createGatewayEngineModel(deps: { generate?: (request: GatewayReq
         classification: { phase: route.phase, purpose: route.purpose, source: "FEEDBACK_WRITER", semanticType: route.semanticType, tags: [route.tag, ...(request.tag ? [`step:${request.tag}`] : [])] },
       })
       if (response.kind !== "text") throw new ModelOutputContractError("O modelo respondeu com chamada de ferramenta em vez de JSON.", "FEEDBACK_ENGINE_UNEXPECTED_RESPONSE", { contract: request.stage })
-      const cost = response.cost.status === "ESTIMATED_PROVIDER_COST" ? response.cost.totalEstimatedCost : null
+      const cost = costTotal(response.cost)
       return {
         text: response.text,
         model: response.model ?? null,

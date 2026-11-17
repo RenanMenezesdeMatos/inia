@@ -84,7 +84,7 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
   const leadsStructure = context?.capabilities.peopleTabLabel !== null && context?.capabilities.peopleTabLabel !== undefined
 
   function publishBroadcast(draft: BroadcastDraft) {
-    setNotices((current) => [{ id: `notice-${Date.now()}`, title: draft.title, contentHtml: draft.contentHtml, audienceLabel: draft.audience === "company" ? "Publicado para toda a empresa" : "Publicado para sua equipe", tags: draft.tags, time: "Agora" }, ...current])
+    setNotices((current) => [{ id: `notice-${Date.now()}`, title: draft.title, contentHtml: draft.contentHtml, audienceLabel: draft.audience === "company" ? "Publicado para toda a empresa" : "Publicado para sua equipe", tags: draft.tags, time: "Agora", createdAt: new Date().toISOString() }, ...current])
   }
 
   return (

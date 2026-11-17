@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { Clock, Hourglass, ListOrdered, LogOut, MessageCircleOff, Star, ThumbsUp, Timer, UserX, WifiOff } from "lucide-react"
+import { Clock, Hourglass, ListOrdered, LogOut, MessageCircleOff, Star, ThumbsUp, Timer, UserRoundX, UserX, WifiOff } from "lucide-react"
 
 import { SectionLabel, toneChip, type Tone } from "@/components/ui/surface"
 import { cn } from "@/lib/utils"
@@ -51,6 +51,20 @@ export function attendanceMetricCards(indicators: AttendanceIndicators, scope: "
   const waitLabel = scope === "all" ? "Espera dos operadores" : "Espera dos operadores que acolheu"
   return [
     { id: "acolhidos", title: "Atendimentos acolhidos", render: () => <Metric icon={ListOrdered} tone="info" label="Atendimentos acolhidos" value={String(indicators.acolhimentos)} detail="Acolhimento = atribuição direta ao Anjo" /> },
+    {
+      id: "abandonos-do-anjo",
+      title: "Abandonos do Anjo",
+      render: () => (
+        <Metric
+          icon={UserRoundX}
+          tone={indicators.anjoAbandonment.total > 0 ? "danger" : "neutral"}
+          label={scope === "all" ? "Abandonos dos Anjos" : "Abandonos do Anjo"}
+          value={`${indicators.anjoAbandonment.total} · ${ratioText(indicators.anjoAbandonment.rate)}`}
+          detail={`Parou de responder ${indicators.anjoAbandonment.noReply} · saiu e derrubou o operador ${indicators.anjoAbandonment.loggedOut} · queda de rede não conta`}
+          testId="metric-anjo-abandonment"
+        />
+      ),
+    },
     { id: "espera", title: waitLabel, render: () => <Metric icon={Hourglass} label={waitLabel} term="wait" value={averageText(indicators.operatorWait)} detail={`Da entrada na fila ao acolhimento · ${averageDetail(indicators.operatorWait, "pedido")}`} testId="metric-wait" /> },
     { id: "acolhimento", title: "Tempo médio de acolhimento", render: () => <Metric icon={Clock} label="Tempo médio de acolhimento" term="welcome" value={averageText(indicators.firstResponse)} detail={`Até a 1ª resposta ao operador · ${averageDetail(indicators.firstResponse)}`} testId="metric-welcome" /> },
     { id: "atendimento", title: "Tempo médio de atendimento", render: () => <Metric icon={Timer} label="Tempo médio de atendimento" term="handling" value={averageText(handling)} detail={`${averageDetail(handling)} · concluídos ${averageText(handling.normal)} (${handling.normal.count}) · outros motivos ${averageText(handling.other)} (${handling.other.count})`} testId="metric-handling" /> },

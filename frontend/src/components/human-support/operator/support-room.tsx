@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { useReadAcknowledgement } from "@/queries/human-support/receipt-acks"
 import { useHumanSupportState, useSupportRoomOnScreen } from "@/queries/human-support/use-human-support-state"
 import { useTypingSignal } from "@/queries/human-support/use-typing-signal"
-import { SUPPORT_ROOM_NOTICE } from "@/schemas/human-support/catalogs.schema"
+import { isOpenRequestStatus, SUPPORT_ROOM_NOTICE } from "@/schemas/human-support/catalogs.schema"
 import { AVAILABILITY_TEXT, waitEstimateText, type MessageView, type OperatorRequestView, type Receipts } from "@/schemas/human-support/state.schema"
 import { cancelSupportRequest, closeSupportRequestAsOperator, fetchSupportMessages, sendSupportMessage } from "@/services/human-support/human-support-service"
 import { toneSurface, type Tone } from "@/components/ui/surface"
@@ -41,11 +41,13 @@ const mergeMessages = (current: MessageView[], incoming: MessageView[]) => {
   return [...bySeq.values()].sort((a, b) => a.seq - b.seq)
 }
 
+/** Para o operador, quem atende é "o Apoio" (pedido do responsável em 16/11/2026); "Anjo" fica só nas telas do Anjo e da coordenação. */
 export function statusLine(request: OperatorRequestView, ended: boolean): string {
-  if (ended || (request.status !== "WAITING" && request.status !== "IN_PROGRESS")) return "Atendimento encerrado"
-  if (request.status === "WAITING") return "Procurando um Anjo…"
-  if (request.anjo?.awaitingFirstResponse) return `${request.anjo.name} (Anjo) recebeu seu pedido. Aguardando a primeira resposta.`
-  return `Em atendimento com ${request.anjo?.name ?? "o Anjo"}`
+  if (ended || !isOpenRequestStatus(request.status)) return "Atendimento encerrado"
+  if (request.status === "WAITING") return "Procurando alguém do Apoio…"
+  if (request.status === "AWAITING_OPERATOR") return "Aguardando seu retorno"
+  if (request.anjo?.awaitingFirstResponse) return `${request.anjo.name} (Apoio) recebeu seu pedido. Aguardando a primeira resposta.`
+  return `Em atendimento com ${request.anjo?.name ?? "o Apoio"}`
 }
 
 /** `hidden` = o painel do chat está recolhido: a sala continua montada, mas não está na tela (não conta como lida nem silencia o aviso). */
@@ -70,7 +72,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
   const [actionError, setActionError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
   const bottomRef = useRef<HTMLDivElement | null>(null)
-  const liveId = shown && !ended && (shown.status === "WAITING" || shown.status === "IN_PROGRESS") ? shown.id : null
+  const liveId = shown && !ended && isOpenRequestStatus(shown.status) ? shown.id : null
   const typing = useTypingSignal(liveId && shown?.status === "IN_PROGRESS" ? liveId : null)
   useReadAcknowledgement(liveId, lastSeqOf(messages), liveId !== null && !hidden)
   useSupportRoomOnScreen(liveId, lastSeqOf(messages), liveId !== null && !hidden)
@@ -139,9 +141,13 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
     )
   }
 
-  const live = !ended && (shown.status === "WAITING" || shown.status === "IN_PROGRESS")
+  const live = !ended && isOpenRequestStatus(shown.status)
   const queued = live && shown.status === "WAITING"
+  // "Aguardando seu retorno" (migration 193): o operador ficou sem responder; escrever o põe no fim da fila.
+  const awaitingReturn = live && shown.status === "AWAITING_OPERATOR"
   const availability = queued ? (operator?.availability ?? null) : null
+  // Aguardando o retorno sem ninguém do Apoio em serviço (194): escrever encerra o pedido em vez de voltar à fila — avisar antes.
+  const nobodyOnDuty = awaitingReturn && operator?.availability?.status === "NONE_IN_SERVICE"
   const estimate = availability && availability.status !== "AVAILABLE_NOW" ? waitEstimateText(availability.estimate) : null
 
   const act = async (kind: "cancel" | "close") => {
@@ -151,7 +157,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
       const result = kind === "cancel" ? await cancelSupportRequest(shown.id) : await closeSupportRequestAsOperator(shown.id)
       setUpdated(result)
       addMessages(result.id, result.messages)
-      if (operator) applyOperator({ ...operator, openRequest: result.status === "WAITING" || result.status === "IN_PROGRESS" ? result : null })
+      if (operator) applyOperator({ ...operator, openRequest: isOpenRequestStatus(result.status) ? result : null })
       refresh()
     } catch (failure) {
       setActionError(failure instanceof Error && failure.message ? failure.message : "Não foi possível concluir. Tente de novo.")
@@ -178,7 +184,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{shown.canCancel ? "Cancelar o pedido de apoio?" : "Encerrar o atendimento?"}</AlertDialogTitle>
-          <AlertDialogDescription>{shown.canCancel ? "O pedido sai da fila. Se precisar, você pode pedir de novo." : "A conversa com o Anjo termina. Um atendimento encerrado não é reaberto."}</AlertDialogDescription>
+          <AlertDialogDescription>{shown.canCancel ? "O pedido sai da fila. Se precisar, você pode pedir de novo." : "A conversa com o Apoio termina. Um atendimento encerrado não é reaberto."}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Voltar</AlertDialogCancel>
@@ -189,7 +195,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
   ) : null
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="Apoio com Anjo" data-testid="support-room">
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="Apoio" data-testid="support-room">
       <div className="space-y-2.5 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" size="sm" className="-ml-2 h-8 shrink-0 rounded-full px-2.5" aria-label="Voltar para a INIA" onClick={onBack}>
@@ -197,7 +203,7 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
             <span className="hidden sm:inline">Voltar</span>
           </Button>
           <div className="min-w-0 flex-1 leading-tight">
-            <h3 className="truncate text-sm font-semibold">Apoio com Anjo</h3>
+            <h3 className="truncate text-sm font-semibold">Apoio</h3>
             <p className="truncate font-mono text-xs text-muted-foreground">{shown.protocol}</p>
           </div>
           {action}
@@ -209,6 +215,17 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
             {queued && availability ? <p className="text-muted-foreground">{AVAILABILITY_TEXT[availability.status]}</p> : null}
             {estimate ? <p className="text-muted-foreground">{estimate.headline}</p> : null}
             {queued && shown.queueExpiresAt ? <p className="text-muted-foreground">Seu pedido fica na fila até {formatClockTime(shown.queueExpiresAt)}.</p> : null}
+            {nobodyOnDuty ? (
+              <p className="text-muted-foreground" data-testid="awaiting-return">
+                Você ficou sem responder e o Apoio foi liberado. Agora ninguém do Apoio está em serviço: se você escrever, o pedido é encerrado e
+                você pode pedir de novo quando houver alguém.
+              </p>
+            ) : awaitingReturn ? (
+              <p className="text-muted-foreground" data-testid="awaiting-return">
+                Você ficou sem responder e o Apoio foi liberado. Escreva abaixo para voltar à fila
+                {shown.awaitingReturnUntil ? <> até {formatClockTime(shown.awaitingReturnUntil)}; depois disso, o pedido é encerrado.</> : "."}
+              </p>
+            ) : null}
             {reconnecting ? <p className="text-xs text-amber-700 dark:text-amber-300">Reconectando…</p> : null}
           </div>
         </div>
@@ -229,8 +246,8 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
         {actionError ? <p role="alert" className="px-4 pt-2 text-xs text-destructive">{actionError}</p> : null}
         {live ? (
           <SupportComposer
-            placeholder="Mensagem para o Anjo"
-            hint={queued ? "O Anjo verá quando receber o pedido." : null}
+            placeholder="Mensagem para o Apoio"
+            hint={queued ? "O Apoio verá quando receber o pedido." : nobodyOnDuty ? "Ninguém do Apoio em serviço agora: ao enviar, o pedido é encerrado." : awaitingReturn ? "Ao enviar, seu pedido volta para o fim da fila." : null}
             onInput={typing.onInput}
             onSend={async (body) => {
               const message = await sendSupportMessage(shown.id, { clientMessageId: crypto.randomUUID(), body })
@@ -249,8 +266,8 @@ export function SupportRoom({ onBack, hidden = false }: { onBack: () => void; hi
 
 /** Tom e ícone do estado da sala: na fila (âmbar), em atendimento (verde), aguardando a primeira resposta (primária), encerrado (neutro). */
 function roomLook(request: OperatorRequestView, ended: boolean): { tone: Tone; icon: LucideIcon; iconClass: string } {
-  if (ended || (request.status !== "WAITING" && request.status !== "IN_PROGRESS")) return { tone: "neutral", icon: CheckCircle2, iconClass: "text-muted-foreground" }
-  if (request.status === "WAITING") return { tone: "warning", icon: Clock, iconClass: "text-amber-700 dark:text-amber-300" }
+  if (ended || !isOpenRequestStatus(request.status)) return { tone: "neutral", icon: CheckCircle2, iconClass: "text-muted-foreground" }
+  if (request.status === "WAITING" || request.status === "AWAITING_OPERATOR") return { tone: "warning", icon: Clock, iconClass: "text-amber-700 dark:text-amber-300" }
   if (request.anjo?.awaitingFirstResponse) return { tone: "info", icon: Clock, iconClass: "text-primary" }
   return { tone: "success", icon: MessagesSquare, iconClass: "text-emerald-700 dark:text-emerald-300" }
 }
@@ -265,7 +282,7 @@ function SupportMessage({ message, anjoAvatarUrl, peerReceipts }: { message: Mes
     )
   }
   const mine = message.authorKind === "OPERATOR"
-  const name = message.authorName ?? "Anjo"
+  const name = message.authorName ?? "Apoio"
   return (
     <Message align={mine ? "end" : "start"} data-author={mine ? "operator" : "anjo"} data-seq={message.seq}>
       {!mine ? (
@@ -277,7 +294,7 @@ function SupportMessage({ message, anjoAvatarUrl, peerReceipts }: { message: Mes
         {!mine ? (
           <MessageHeader className="gap-1.5 px-1">
             {name}
-            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Anjo</Badge>
+            <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">Apoio</Badge>
           </MessageHeader>
         ) : null}
         <Bubble variant={mine ? "default" : "outline"} align={mine ? "end" : "start"} className="max-w-full">

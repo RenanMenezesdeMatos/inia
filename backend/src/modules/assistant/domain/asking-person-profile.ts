@@ -1,12 +1,14 @@
 import type { OperatorIdentity } from "../application/build-operator-context.js"
 
+const UNIVERSE_AUDIENCE: Record<string, string> = { B2B: "B2B (atende empresas)", B2C: "B2C (atende consumidores)", B2X: "B2X (universo próprio, separado de B2B e B2C)" }
+
 const LEVEL_LABELS: Record<string, string> = { OPERATOR: "Operador", SUPERVISOR: "Supervisor", COORDINATOR: "Coordenador", MANAGER: "Gerente", SENIOR_MANAGER: "Gerente Sênior", DIRECTOR: "Diretor" }
 
 /**
  * Perfil de quem pergunta, para o especialista ADAPTAR a resposta (operador × liderança). Só contexto: o que cada um pode
  * ver continua decidido pelo acesso, e os dados que chegam aqui (indicadores, feedbacks) são sempre os da própria pessoa.
  */
-export function renderAskingPersonProfile(identity: Pick<OperatorIdentity, "name" | "teamName" | "jobTitle" | "level" | "directReports">, options: { leadershipTools?: boolean; processConsultation?: boolean } = {}): string {
+export function renderAskingPersonProfile(identity: Pick<OperatorIdentity, "name" | "teamName" | "jobTitle" | "level" | "directReports" | "operatingUniverse">, options: { leadershipTools?: boolean; processConsultation?: boolean } = {}): string {
   const level = identity.level ? LEVEL_LABELS[identity.level] ?? null : null
   const role = [identity.jobTitle, level && !identity.jobTitle?.toLowerCase().includes(level.toLowerCase()) ? `nível ${level}` : null].filter(Boolean).join(" · ")
   const leads = (identity.directReports ?? 0) > 0
@@ -23,5 +25,13 @@ export function renderAskingPersonProfile(identity: Pick<OperatorIdentity, "name
     : leads
       ? "Perfil de LIDERANÇA: pode perguntar sobre processos e políticas para orientar a equipe e sobre gestão de pessoas. Os indicadores e feedbacks enviados aqui são os da PRÓPRIA pessoa (individuais): se a pergunta for sobre a equipe ou um liderado, diga que por voz você ainda não traz os dados da equipe e indique a conversa por texto com a INIA ou as abas Indicadores e Equipe do perfil — nunca invente números da equipe."
       : "Perfil de OPERADOR: responda sobre o trabalho, os processos e os dados da própria pessoa."
-  return leads ? `${who}\n${leaderFrame}\n${guidance}` : `${who}\n${guidance}`
+  // Universo de atuação (dado do cadastro): o público que a pessoa atende. Universos são separados — a resposta nunca usa regra,
+  // produto ou procedimento de outro universo. Sem universo (pendente), a INIA sabe que o cadastro está incompleto.
+  const universe = identity.operatingUniverse === undefined
+    ? null
+    : identity.operatingUniverse
+      ? `Universo de atuação: ${UNIVERSE_AUDIENCE[identity.operatingUniverse] ?? identity.operatingUniverse}. As bases, produtos e procedimentos disponíveis são só desse universo; nunca use regra de outro universo.`
+      : "Universo de atuação: pendente de classificação no cadastro. Se a pergunta depender do público atendido, diga que o cadastro precisa ser regularizado pela gestão."
+  const lines = leads ? [who, universe, leaderFrame, guidance] : [who, universe, guidance]
+  return lines.filter((line): line is string => Boolean(line)).join("\n")
 }

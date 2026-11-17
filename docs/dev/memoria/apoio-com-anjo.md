@@ -545,5 +545,86 @@ piloto (B1 ligada num Subgrupo) falta o roteiro do IIS da especificação (chama
   - **Ordem na VM**: como a 188/190 — backup; `db:migrate` (171, 188, 189, 190, 191 e 192 antes do código); conferir `max(name)` =
     `191_human_support_operation_history.sql`; publicar API e worker e depois a interface. A 191 está em `inia` (dev), `inia_test` e
     `inia_hs188ui`.
+- **Tempos de resposta e volta à fila (migration 193, 16/11/2026, pedido do responsável)**. Substituem os "15 min sem mensagem →
+  encerrado" (`INACTIVITY`, que fica só no histórico). De quem é a vez = quem NÃO escreveu por último no atendimento (`silentSide` em
+  `domain/request-lifecycle.ts`; a última mensagem humana do atendimento, por subconsulta em `human_support_messages`):
+  - **Operador sem responder** (última do Anjo) por `operator_requeue_minutes` (15) → atendimento termina `OPERATOR_SILENT`, o Anjo fica
+    livre, o pedido vai a `AWAITING_OPERATOR` ("Aguardando seu retorno" para o operador, "Aguardando o operador" no painel) com
+    `awaiting_operator_since` = a última mensagem do Anjo. O operador que ESCREVE volta ao FIM da fila (`queued_at` = agora, prazo novo,
+    evento `OPERATOR_RETURNED`, em `message-service.ts`, sob a trava da linha do pedido; depois `dispatchAfterCommand`); pode cancelar.
+    Sem voltar até `operator_close_minutes` (20, contado do mesmo instante) → `ABANDONED`/`OPERATOR_NO_RETURN` (passo 4b da
+    distribuição). Aguardando o operador conta como pedido aberto (índice único refeito).
+  - **Anjo sem responder** (não respondeu ou a última foi do operador) por `anjo_requeue_minutes` (15) → atendimento termina
+    `ANJO_SILENT` (abandono do Anjo; em `UNFINISHED_ATTENDANCE_END_CAUSES`: sem classificação nem avaliação), o pedido volta à FRENTE da
+    fila (mantém `queued_at`, prazo novo, sem renovar `operator_seen_at` — igual ao `ANJO_LOST`), para QUALQUER Anjo, também o mesmo
+    (decisão do responsável). O Anjo lê "Você ficou sem responder e perdeu este atendimento… conta como abandono" e o histórico dele
+    marca "Perdido: você ficou sem responder".
+  - **Indicadores**: abandono no atendimento conta `OPERATOR_SILENT` em "operador parou de responder" e `ANJO_SILENT` em "Anjo parou
+    de responder" (o `INACTIVITY` antigo continua separado pela última mensagem); falta de retorno idem; funil com "Abandonado: o
+    operador não voltou". Monitoria Online ganhou o card "Aguardando o operador" (`queue.awaitingOperator`). A "Maior espera" e a tabela da fila contam de `queued_at` (a entrada na fila que vale: mantida na volta à frente, agora na
+    volta do operador ao fim), não mais de `created_at`.
+  - **Configuração**: `GET/PUT /api/v1/admin/human-support-monitoring/response-times` (rota do painel, `human_support.coordinate`:
+    Coordenador de Anjos e Administrador geral; organização inteira), versão otimista compartilhada com a configuração, histórico em
+    `human_support_setting_events` (campos `*_MINUTES`) e auditoria `HUMAN_SUPPORT_RESPONSE_TIMES_CHANGED`. Regras (`responseTimesProblem`,
+    `check` da 193): volta à fila 1–120 min, encerramento até 240 e maior que a volta do operador. Tela: botão "Tempos de resposta" na
+    Monitoria Online (`monitoring/response-times-control.tsx`, Popover). Valem na hora, também nos atendimentos abertos.
+  - **Nome para o operador**: na tela do operador quem atende é "Apoio" ("Falar com o Apoio", "Ana (Apoio) recebeu seu pedido",
+    "Mensagem para o Apoio", aviso "A coordenação do Apoio e o Administrador geral podem ler"); as mensagens de sistema para o leitor
+    `OPERATOR` nunca dizem "Anjo" (teste em `catalogs.test.ts`). Área do Anjo e painéis seguem "Anjo".
+  - **Prova**: `human-support-proof` cenário "tempos de resposta (193)" (19/19). **Ordem na VM**: 193 antes do código, junto da 192.
+- **Tempos por Grupo, "ninguém em serviço" na volta e abandono do Anjo (migration 194, 16/11/2026, pedido do responsável)**.
+  - **Tempos por Grupo** (`human_support_group_response_times`, uma linha por Grupo; sem linha = o padrão da organização em
+    `human_support_settings`; Subgrupo segue o Grupo; o pedido usa o Grupo congelado nele). Quem muda o quê
+    (`application/response-times-service.ts`): o PADRÃO, só quem acompanha a organização inteira (`coordinatorScopesOf(...).organizationWide`
+    — Administrador geral ou Coordenador com escopo de organização; senão 403 `HUMAN_SUPPORT_RESPONSE_TIMES_ORGANIZATION_ONLY`); um GRUPO,
+    o Coordenador com escopo daquele Grupo ou quem acompanha a organização (Coordenador só de Subgrupo vê o Grupo dele sem mudar: 403
+    `HUMAN_SUPPORT_RESPONSE_TIMES_GROUP_ONLY`; Grupo fora do alcance: 404). `GET /response-times` devolve `{ organization, groups[] }`
+    com `canEdit`; `PUT /response-times` (padrão) e `PUT /response-times/groups/:teamId` (`times = null` = voltar ao padrão, apaga a linha
+    — configuração, não objeto de negócio). Versão otimista por linha (0 = sem tempos próprios), eventos `target_type = 'GROUP'` com
+    `team_id`, auditoria. A distribuição resolve por `left join ... coalesce` (passos 4 e 4b); a tela do operador, por
+    `responseTimesForTeam` (`eligibility.ts`).
+  - **Ninguém do Apoio em serviço na volta** (`application/no-anjo.ts`): o Anjo que fica sem responder ou o operador que volta de
+    "Aguardando o operador" quando NÃO há ninguém em serviço no escopo (`anjosInServiceCount` = 0) → a mesma regra de quem pede sem
+    ninguém: o pedido é encerrado (`NO_ANJO_IN_SERVICE`, estado Expirado, `anjos_in_service_at_end = 0`, mensagem
+    `ENDED_NO_ANJO_IN_SERVICE`) e a tentativa entra em `human_support_entry_events` (M9 / "Tentativas sem Anjo"); não conta como abandono
+    do operador (ele respondeu). O operador aguardando já é avisado ("se você escrever, o pedido é encerrado"). O Anjo que CAIU
+    (`ANJO_LOST`) NÃO entra nessa regra: o pedido continua voltando à frente da fila e esperando o prazo, porque ele pode voltar (a prova
+    de 188/191 depende disso). O Anjo silencioso ainda conectado conta como em serviço — o pedido volta à fila e pode ir de novo a ele.
+  - **Abandono do Anjo com número próprio**: `abandonmentOf` dá `byOperator.rate` e `byAnjo.rate` (÷ atendimentos encerrados sem os
+    transferidos); por Anjo, `attendanceIndicators().anjoAbandonment = { total, noReply, drops, rate }` (parou de responder + caiu, a
+    mesma regra do bloco). Tela: Abandonos em três cards ("na espera", "do Anjo", "do operador no atendimento"; ids `espera`/`anjo`/
+    `operador` — o antigo `atendimento` some das disposições salvas); card "Abandonos do Anjo" logo depois de "Atendimentos acolhidos" e
+    coluna "Abandonos do Anjo" na tabela por Anjo do Histórico.
+  - **Tela dos tempos**: "Onde vale" (padrão/Grupo), "usa o padrão da organização (15/20/15 min)", "Usar o padrão da organização", e cada
+    campo diz A PARTIR DE QUANDO conta (operador: da última mensagem do Anjo; encerramento: também da última mensagem do Anjo, não de
+    quando passou a aguardar, com "o operador tem mais N min depois de o Anjo ficar livre"; Anjo: da última mensagem do operador ou do
+    início do atendimento).
+  - **Prova**: cenário "tempos de resposta (193)" estendido (Grupo, padrão, permissões, ninguém em serviço) — 19/19. **Ordem na VM**: 194
+    depois da 193, antes do código.
+- **Anjo que não responde ninguém e abandono por saída (migration 195, 16/11/2026, pedido do responsável)**.
+  - **Abandono do Anjo**: queda de REDE (`ANJO_LOST` + `lost_cause = 'CONNECTION'`), papel retirado e queda sem causa (anteriores à 191)
+    NÃO contam — aparecem à parte ("não conta como abandono"). Contam: parou de responder (`ANJO_SILENT` + o `INACTIVITY` antigo do lado
+    dele) e SAIU (`lost_cause = 'SESSION'`: deslogou, prazo do login, conta desligada — "ele derrubou o operador"). Vale para
+    `abandonmentOf().byAnjo.total/rate` e para `attendanceIndicators().anjoAbandonment = { total, noReply, loggedOut, rate }`.
+  - **Pausa "Desconexão" pelo sistema**: motivo `DISCONNECTION` em `PAUSE_REASONS_V1` (só o sistema põe; `ANJO_PAUSE_REASONS` = os quatro
+    que o Anjo escolhe/programa — rota e menu usam essa lista). Passo 4c da distribuição: Anjo fora de Indisponível e fora dessa pausa
+    que deve resposta há `anjo_unresponsive_minutes` (20) → `PAUSED`/`DISCONNECTION`, evento `UNRESPONSIVE`, programação apagada. "Deve
+    resposta" = atendimento em andamento cuja última mensagem humana não é dele, ou atendimento que ele perdeu por `ANJO_SILENT`
+    (carrega a falta, porque com os padrões ele perde o atendimento aos 15 min e a pausa vem aos 20). Conta de `min(last_human_message_at)`
+    desses atendimentos, ou do último sinal de vida dele se veio depois — mensagem dele em QUALQUER atendimento ou evento de presença
+    `ANJO` (mudança feita por ele); perda anterior ao último sinal de vida não conta. Tudo em SQL, sem coluna de rastreio (índice
+    parcial `human_support_messages_anjo_author`). Passo 4d: nessa pausa há `disconnection_pause_minutes` (10, contados de
+    `status_since`) → Indisponível (`goOffline`, evento `UNRESPONSIVE_TIMEOUT`). "Se cair" = a pausa venceu sem ele
+    voltar (escolher um estado) — confirmado pelo responsável em 16/11. Em pausa "Desconexão" ele NÃO está em serviço (`anjosInServiceCount` e `availabilityFor`).
+  - **Onde o motivo aparece**: `unresponsiveView` (domínio) → `presence.unresponsive` na área do Anjo (faixa "O sistema pôs você em
+    pausa “Desconexão”… até HH:MM" / "Você ficou Indisponível porque não voltou da pausa") e `unresponsive` em `anjosNow` (chip "Sem
+    responder ninguém · Indisponível às HH:MM" / "Indisponível pelo sistema: não respondia ninguém"); a linha do tempo da presença
+    mostra as causas ("pelo sistema: ficou sem responder ninguém" / "não voltou da pausa Desconexão"); a Jornada soma a pausa
+    "Desconexão" como as outras.
+  - **Configuração**: os dois tempos são da ORGANIZAÇÃO (o Anjo atende vários Grupos), no mesmo `PUT /response-times` do padrão
+    (`anjoUnresponsive`), só para quem acompanha a organização; Coordenador de Grupo vê a frase com os valores. Limites 1–240 e 1–120,
+    eventos `ANJO_UNRESPONSIVE_MINUTES`/`DISCONNECTION_PAUSE_MINUTES`.
+  - **Prova**: cenário "Anjo sem responder ninguém (195)" (Anjo A9 só dele, papel revogado no fim) — 20/20. **Ordem na VM**: 195 depois
+    da 194, antes do código.
 - **Não conferido no navegador**: aba oculta (som e título ao chegar atendimento), "Reconectando…" com a API fora do ar e várias APIs
   atrás do IIS (o script de chamada longa no IIS segue pendente antes do piloto).

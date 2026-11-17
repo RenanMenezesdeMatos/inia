@@ -27,6 +27,8 @@ export type WorkflowPopulation = {
   subteamId: string | null
   /** `population_filter` cru (jsonb) ou já parseado; null/ausente = ALL. */
   populationFilter: unknown
+  /** Universo do Workflow (publicado). Com a exigência ativa na organização, só operadores do MESMO universo; null (pendente) = ninguém. */
+  operatingUniverse: string | null
 }
 
 /** `population_filter` vem do jsonb já validado na escrita (workflow-router.ts) — aqui só se
@@ -44,10 +46,11 @@ export async function resolveEligibleOperatorIds(db: Database, organizationId: s
     scopeType: population.scopeType,
     teamId: population.teamId,
     subteamId: population.subteamId,
+    operatingUniverse: population.operatingUniverse,
   })
 }
 
-export type EligibleOperatorRow = { id: string; team_id: string | null; subteam_id: string | null; reports_to_id: string | null }
+export type EligibleOperatorRow = { id: string; team_id: string | null; subteam_id: string | null; reports_to_id: string | null; operating_universe?: string | null; universe_enforced?: boolean }
 
 /** Membros (operadores) da estrutura de um Filtro Populacional — a mesma resposta de `resolveStructureAnchorOperatorIds`, quando
  * quem chama já a tem lembrada (matrícula em lote, ver enrollment-lookups.ts). */
@@ -58,7 +61,8 @@ export type StructureMembersResolver = (filter: StructureAnchor) => Promise<Read
  * evento (ingestão por Flag/Indicador) carregar o operador uma vez e reaproveitar. */
 export async function loadEligibleOperator(db: Database, organizationId: string, operatorId: string): Promise<EligibleOperatorRow | null> {
   const result = await db.query<EligibleOperatorRow>(
-    `select id, team_id, subteam_id, reports_to_id from people where id = $1 and organization_id = $2 and role = 'OPERATOR' and active`,
+    `select p.id, p.team_id, p.subteam_id, p.reports_to_id, p.operating_universe, o.operating_universe_enforced_at is not null universe_enforced
+       from people p join organizations o on o.id = p.organization_id where p.id = $1 and p.organization_id = $2 and p.role = 'OPERATOR' and p.active`,
     [operatorId, organizationId],
   )
   return result.rows[0] ?? null
@@ -87,6 +91,8 @@ export async function isOperatorEligibleForWorkflow(
 async function isLoadedOperatorEligible(db: Database, population: WorkflowPopulation, operator: EligibleOperatorRow, structureMembers?: StructureMembersResolver): Promise<boolean> {
 
   if (!matchesScope(population, operator)) return false
+  // Universos não se misturam: com a exigência ativa, o operador precisa ser do universo do Workflow (pendente de qualquer lado = fora).
+  if (operator.universe_enforced && (population.operatingUniverse === null || operator.operating_universe !== population.operatingUniverse)) return false
 
   const filter = parsePopulationFilter(population.populationFilter)
   if (!filter || filter.kind === "ALL") return true

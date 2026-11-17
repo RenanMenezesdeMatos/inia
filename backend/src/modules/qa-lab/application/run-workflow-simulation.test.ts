@@ -224,7 +224,7 @@ function fakeDatabase(options: {
       return { rows: [{ value_boolean: null, value_numeric: String(options.flagValue ?? 1) }], rowCount: 1 }
     }
     // Elegibilidade (workflow-eligibility.ts): decisão pontual + conjunto da Abrangência.
-    if (text.includes("select id, team_id, subteam_id, reports_to_id from people where id = $1")) {
+    if (text.includes("select p.id, p.team_id, p.subteam_id, p.reports_to_id")) {
       return params[0] === OPERATOR_ID ? { rows: [{ id: OPERATOR_ID, team_id: TEAM_ID, subteam_id: null, reports_to_id: SUPERVISOR_ID }], rowCount: 1 } : { rows: [], rowCount: 0 }
     }
     if (text.includes("select id from people where organization_id = $1 and role = 'OPERATOR' and active")) return { rows: [{ id: OPERATOR_ID }], rowCount: 1 }

@@ -26,6 +26,8 @@ export const productNodeInputSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: optionalText(2_000),
   parentId: z.string().uuid().nullish().transform((value) => value ?? null),
+  /** Universo de atuação do PRODUTO (B2B/B2C/B2X) — obrigatório para produto novo; categoria não tem universo. */
+  operatingUniverse: z.enum(["B2B", "B2C", "B2X"]).nullish(),
 })
 export type ProductNodeInput = z.infer<typeof productNodeInputSchema>
 export const productNodePatchSchema = productNodeInputSchema.omit({ kind: true }).partial()

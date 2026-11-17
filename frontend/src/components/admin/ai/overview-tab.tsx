@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ListErrorState } from "@/components/admin/shared/list/list-states"
 import { cn } from "@/lib/utils"
-import { formatAiDateTime, formatCount, formatDayLabel, formatLatency, formatMoney, formatRate, formatTokens, moneyEntries, NO_KNOWN_COST_LABEL, NOT_REPORTED_LABEL } from "@/lib/admin/ai-format"
+import { costOriginText, formatAiDateTime, formatCount, formatDayLabel, formatLatency, formatMoney, formatRate, formatTokens, moneyEntries, NO_KNOWN_COST_LABEL, NOT_REPORTED_LABEL } from "@/lib/admin/ai-format"
 import { useAiModelsQuery, useAiOverviewQuery, useAiProvidersQuery, useAiUseCasesQuery } from "@/queries/admin/use-ai-management-queries"
 import type { AiUsageParams } from "@/services/admin/ai-management-service"
 import {
@@ -231,12 +231,12 @@ function KpiRow({ totals }: { totals: UsageMetrics }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {spend.length === 0 ? (
-        <KpiTile label="Gasto no período" testId="kpi-spend" hint={totals.unknownCostCalls > 0 ? `${formatCount(totals.unknownCostCalls)} chamada(s) sem custo conhecido` : undefined}>
+        <KpiTile label="Gasto no período" testId="kpi-spend" hint={costOriginText(totals) ?? undefined}>
           <span className="text-base text-muted-foreground">{NO_KNOWN_COST_LABEL}</span>
         </KpiTile>
       ) : (
         spend.map((entry) => (
-          <KpiTile key={entry.currency} label={`Gasto no período (${entry.currency})`} testId={`kpi-spend-${entry.currency}`} hint={totals.unknownCostCalls > 0 ? `+ ${formatCount(totals.unknownCostCalls)} chamada(s) sem custo conhecido` : "Moedas nunca são somadas nem convertidas."}>
+          <KpiTile key={entry.currency} label={`Gasto no período (${entry.currency})`} testId={`kpi-spend-${entry.currency}`} hint={`${costOriginText(totals) ? `Custo das chamadas: ${costOriginText(totals)}. ` : ""}Moedas nunca são somadas nem convertidas.`}>
             {entry.label}
           </KpiTile>
         ))
@@ -426,7 +426,7 @@ export function BreakdownTable({ rows, firstColumn }: { rows: BreakdownRow[]; fi
               <TableCell className="text-right tabular-nums">{row.tokens.total === null ? <span className="text-muted-foreground">{NOT_REPORTED_LABEL}</span> : formatTokens(row.tokens.total)}</TableCell>
               <TableCell className="text-sm">
                 <MoneyList costByCurrency={row.costByCurrency} />
-                {row.unknownCostCalls > 0 ? <span className="block text-xs text-muted-foreground">+ {formatCount(row.unknownCostCalls)} sem custo conhecido</span> : null}
+                {costOriginText(row) ? <span className="block text-xs text-muted-foreground">{costOriginText(row)}</span> : null}
               </TableCell>
               <TableCell className="text-right tabular-nums">{formatLatency(row.latencyAvgMs)}</TableCell>
               <TableCell className="text-right tabular-nums">

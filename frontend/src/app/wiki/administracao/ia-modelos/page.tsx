@@ -245,12 +245,18 @@ export default function AiModelsPage() {
         </p>
       </WikiSection>
 
-      <WikiSection id="quem-mais-usa" title="Quem mais usa" eyebrow="Diretoria · Gerência Sênior · Gerência · Grupo · Subgrupo · Supervisor">
+      <WikiSection id="quem-mais-usa" title="Quem mais usa" eyebrow="Diretoria · Gerência Sênior · Gerência · Grupo · Subgrupo · Supervisor · Usuário">
         <p>
-          A aba <strong className="font-medium text-foreground">Quem mais usa</strong> mostra um ranking do uso de IA pela estrutura. Escolha a visão
-          (Diretoria, Gerência Sênior, Gerência, Grupo, Subgrupo ou Supervisor) e, se quiser, filtre por período, Grupo, origem, provider, modelo e
-          função. Cada linha soma o uso da pessoa e de toda a estrutura abaixo dela — ou das pessoas do Grupo/Subgrupo — com chamadas, participação no
-          total, tokens, custo por moeda e quantas pessoas usaram.
+          A aba <strong className="font-medium text-foreground">Quem mais usa</strong> mostra um ranking do uso de IA pela estrutura e por pessoa.
+          Escolha a visão (Diretoria, Gerência Sênior, Gerência, Grupo, Subgrupo, Supervisor ou Usuário) e, se quiser, filtre por período, Grupo,
+          origem, provider, modelo e função. Cada linha soma o uso da pessoa e de toda a estrutura abaixo dela — ou das pessoas do Grupo/Subgrupo — com
+          chamadas, participação no total, tokens, custo por moeda e quantas pessoas usaram.
+        </p>
+        <p>
+          Na visão <strong className="font-medium text-foreground">Usuário</strong> cada linha é uma pessoa, com as mesmas métricas. Para ver as
+          pessoas de um ramo, use <strong className="font-medium text-foreground">Ver usuários</strong> numa linha das outras visões: num líder, a
+          lista mostra ele e todos abaixo dele (o filtro “Estrutura de …” aparece e pode ser removido); num Grupo ou Subgrupo, as pessoas daquele
+          cadastro.
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
           <li>Uso de Workflow conta para o colaborador da execução (a IA trabalhou para ele); o resto conta para quem fez o pedido na tela.</li>
@@ -259,8 +265,9 @@ export default function AiModelsPage() {
             pessoa identificada, Workflow sem colaborador ou pessoa sem aquele nível acima dela. Esse uso nunca é atribuído a alguém nem some.
           </li>
           <li>
-            Precisa da permissão “Ver quem mais usa a IA por estrutura” (vem com os papéis Administrador geral e Administrador). Quem tem escopo de Grupo ou
-            Subgrupo vê só as pessoas desse escopo — de um ramo fora dele, nem o nome nem o número.
+            Precisa da permissão “Ver quem mais usa a IA por estrutura e por usuário” (vem com os papéis Administrador geral e Administrador). Quem tem
+            escopo de Grupo ou Subgrupo vê só as pessoas desse escopo — de um ramo ou de uma pessoa fora dele, nem o nome nem o número, também na visão
+            Usuário.
           </li>
           <li>A estrutura usada é a de hoje: quem mudou de equipe leva o uso antigo para a equipe atual.</li>
         </ul>

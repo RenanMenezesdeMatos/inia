@@ -1,3 +1,4 @@
+import type { UnresponsiveView } from "./presence.js"
 import type { ChatDislikeReason } from "../../assistant/domain/assistant-interaction-rating.js"
 import type { AvailabilityStatus } from "./availability.js"
 import type { AttendanceEndCause, ClassificationOutcome, ClassificationReason, EvaluationResolved, PauseReason, PresenceStatus, RequestEndCause, RequestOrigin, RequestStatus, SystemMessageCode } from "./catalogs.js"
@@ -26,6 +27,8 @@ export type OperatorRequestView = {
   createdAt: string
   queuedAt: string
   queueExpiresAt: string | null
+  /** "Aguardando seu retorno" (migration 193): até quando o operador pode escrever antes de o pedido ser encerrado; null nos outros estados. */
+  awaitingReturnUntil: string | null
   sharedContext: SharedContext
   anjo: { name: string; avatarUrl: string | null; awaitingFirstResponse: boolean } | null
   messages: MessageView[]
@@ -77,6 +80,8 @@ export type AnjoView = {
     since: string
     /** Pausa ou indisponibilidade programada (entra ao terminar o último atendimento); null = nada programado. Só na visão do Anjo. */
     scheduled: { status: "PAUSED" | "OFFLINE"; pauseReason: PauseReason | null; requestedAt: string } | null
+    /** Migration 195: o sistema o pôs em pausa "Desconexão" ou Indisponível por não responder ninguém (null = não). */
+    unresponsive: UnresponsiveView | null
   }
   capacity: { max: number; used: number }
   attendances: AnjoAttendanceView[]
@@ -188,14 +193,17 @@ export type AnjoNowItem = {
   connection: "CONNECTED" | "CONNECTION_LOST" | "SESSION_ENDED" | "CLOSED"
   /** Pausa ou indisponibilidade programada (entra ao terminar o último atendimento). */
   scheduled: { status: "PAUSED" | "OFFLINE"; pauseReason: PauseReason | null } | null
+  /** Migration 195: em pausa "Desconexão" ou Indisponível pelo sistema, por não responder ninguém (null = não). */
+  unresponsive: UnresponsiveView | null
   attendances: { active: number; capacity: number }
 }
 /**
  * Fila agora no alcance de quem lê: pedidos aguardando um Anjo (com a espera desde a ENTRADA ORIGINAL — o pedido que voltou à fila
  * mantém o horário) e atendimentos acolhidos ainda sem a primeira resposta do Anjo (a atribuição é direta: não há oferta pendente).
  */
-export type QueueNow = { waiting: number; oldestWaitingSince: string | null; awaitingFirstResponse: number; oldestAwaitingSince: string | null }
+/** `awaitingOperator` (migration 193): pedidos cujo operador ficou sem responder — o Anjo foi liberado e o pedido aguarda o retorno dele. */
+export type QueueNow = { waiting: number; oldestWaitingSince: string | null; awaitingFirstResponse: number; oldestAwaitingSince: string | null; awaitingOperator: number }
 export type AnjosNow = { serverTime: string; items: AnjoNowItem[]; queue: QueueNow }
-/** Um pedido aguardando um Anjo (detalhe da fila, só para a coordenação); `waitingSince` = entrada original na fila. */
+/** Um pedido aguardando um Anjo (detalhe da fila, só para a coordenação); `waitingSince` = a entrada na fila que vale (`queued_at`: a original, mantida quando o pedido volta à frente; agora, quando o operador volta do "aguardando o retorno" para o fim — migration 193). */
 export type QueueWaitingItem = { requestId: string; protocol: string; operatorName: string; operatorAvatarUrl: string | null; teamName: string | null; subteamName: string | null; origin: RequestOrigin; waitingSince: string; requeued: boolean }
 export type PresenceTimeline = { events: { occurredAt: string; fromStatus: PresenceStatus | null; toStatus: PresenceStatus; pauseReason: PauseReason | null; cause: string }[] }

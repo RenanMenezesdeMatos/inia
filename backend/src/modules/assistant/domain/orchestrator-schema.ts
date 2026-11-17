@@ -8,6 +8,8 @@ import { orchestratorPolicyKindSchema, routingPolicyKindSchema } from "./orchest
 export const orchestratorInvocationModeSchema = z.enum(["INTERACTIVE", "WORKFLOW", "BOTH"])
 
 export const createOrchestratorSchema = z.object({
+  /** Universo de atuação (B2B/B2C/B2X) — classificação direta; obrigatório com a exigência ativa (servidor). */
+  operatingUniverse: z.enum(["B2B", "B2C", "B2X"]).nullish(),
   name: z.string().trim().min(2),
   scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]).default("ALL_TEAMS"),
   teamId: z.string().uuid().optional(),

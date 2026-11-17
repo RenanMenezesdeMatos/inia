@@ -150,6 +150,7 @@ function scheduleConfigurationFrom(configuration: WorkflowConfiguration): Schedu
     relative: trigger.relative,
     consolidatedStructure: configuration.consolidatedStructure,
     populationFilter: configuration.populationFilter,
+    operatingUniverse: configuration.operatingUniverse ?? null,
   }
 }
 
@@ -161,7 +162,7 @@ async function scheduleImpact(db: Database, organizationId: string, input: GoLiv
 
   const population = structure
     ? (await resolveStructureAnchorOperatorIds(db, structure, consolidatedStructureAnchorId(structure))).length
-    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter })).length
+    : (await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null })).length
 
   const due = await planDueScheduleEnrollments(db, organizationId, config, { now: input.now, timezone })
   const pending = await withoutExistingEnrollments(db, input.workflowId, due)
@@ -211,7 +212,7 @@ async function withoutExistingEnrollments(db: Database, workflowId: string, slot
 /** Próximo disparo da Agenda relativa: o primeiro instante FUTURO, entre os colaboradores com jornada, no próximo dia útil assumido. */
 async function nextRelativeFire(db: Database, organizationId: string, config: ScheduleConfiguration, now: Date, timezone: string): Promise<{ at: string | null; withShift: number }> {
   if (!config.relative) return { at: null, withShift: 0 }
-  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter })
+  const operatorIds = await resolveEligibleOperatorIds(db, organizationId, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse ?? null })
   if (operatorIds.length === 0) return { at: null, withShift: 0 }
   let date = localDateParts(now, timezone).date
   for (let guard = 0; guard < 8; guard++, date = addDays(date, 1)) {

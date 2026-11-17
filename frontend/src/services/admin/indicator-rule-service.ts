@@ -15,6 +15,7 @@ import {
 } from "@/schemas/admin/indicator-definition.schema"
 import { indicatorWithRulesSchema, type CalculationPeriod, type DesiredDirection, type IndicatorWithRules } from "@/schemas/admin/indicator-rule.schema"
 import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 export async function fetchIndicatorsWithRules(): Promise<IndicatorWithRules[]> {
   return z.array(indicatorWithRulesSchema).parse(await adminGet("/api/v1/admin/indicator-rules"))
@@ -48,6 +49,8 @@ export type IndicatorDefinitionInput = {
   unjustifiedAbsencePolicy: "NO_SAMPLE" | "ZERO_CONTRIBUTION"
   availabilityPolicy: { lagDays: number; availableByLocalTime: string } | null
   iconKey: string | null
+  /** Universo de atuação — só na criação (registro existente muda pela classificação do universo). */
+  operatingUniverse?: OperatingUniverse
 }
 
 export async function createIndicatorDefinition(input: IndicatorDefinitionInput): Promise<{ id: string }> {

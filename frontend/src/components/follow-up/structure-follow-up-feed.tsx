@@ -1,12 +1,13 @@
 "use client"
 
-import { Fragment, useEffect, useRef } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState } from "react"
 import { Clock3, MessageSquareText } from "lucide-react"
 
 import { AnalyticsEmptyState, AnalyticsErrorState } from "@/components/analytics/analytics-states"
 import { FollowUpEntry } from "@/components/follow-up/follow-up-entry"
 import { FeedbackCard, FeedbackEntryHeader } from "@/components/feedbacks/feedback-entry-header"
-import { followUpDayKey, followUpDayLabel } from "@/components/operator/follow-up-timeline"
+import { followUpDayKey, followUpDayLabel, followUpPeriodBounds, isWithinFollowUpPeriod, type FollowUpPeriod } from "@/components/operator/follow-up-timeline"
+import { FollowUpPeriodEmpty } from "@/components/operator/follow-up-period"
 import { IniaFeed, IniaFeedItem } from "@/components/operator/inia-feed"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,7 +18,7 @@ import { sanitizeRichText } from "@/lib/security/sanitize-rich-text"
 import { useFollowUpFeedQuery } from "@/queries/analytics/use-analytics-queries"
 
 /** Comunicado publicado pelo gestor nesta sessão (só local — o envio ainda não é persistido). */
-export type LocalNotice = { id: string; title: string; contentHtml: string; audienceLabel: string; tags: string[]; time: string }
+export type LocalNotice = { id: string; title: string; contentHtml: string; audienceLabel: string; tags: string[]; time: string; /** Instante da publicação (ISO) — o que o calendário filtra. */ createdAt: string }
 
 const PAGE_SIZE = 8
 
@@ -41,8 +42,17 @@ export type StructureFollowUpFeedProps = {
   lead?: React.ReactNode
 }
 
-export function StructureFollowUpFeed({ subject, description, notices = [], employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
-  const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly)
+export function StructureFollowUpFeed({ subject, description, notices: allNotices = [], employeeHref, unacknowledgedOnly = false, onUnacknowledgedOnlyChange, highlightItemId = null, lead = null }: StructureFollowUpFeedProps) {
+  // Calendário do cabeçalho: vazio = visão inicial (tudo). O recorte vai ao servidor no MESMO instante que rotula o dia do item.
+  const [period, setPeriod] = useState<FollowUpPeriod>({})
+  const bounds = followUpPeriodBounds(period)
+  const serverPeriod = useMemo(() => {
+    const range = followUpPeriodBounds(period)
+    return range ? { since: new Date(range.since).toISOString(), until: new Date(range.until).toISOString() } : null
+  }, [period])
+  const query = useFollowUpFeedQuery(subject, PAGE_SIZE, unacknowledgedOnly, serverPeriod)
+  const notices = allNotices.filter((notice) => isWithinFollowUpPeriod(Date.parse(notice.createdAt), bounds))
+  const clearPeriod = () => setPeriod({})
   const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = query
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
   const loaderRef = useRef<HTMLDivElement>(null)
@@ -61,7 +71,7 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage])
 
   return (
-    <IniaFeed title="Acompanhamento" description={description}>
+    <IniaFeed title="Acompanhamento" description={description} period={period} onPeriodChange={setPeriod}>
       {onUnacknowledgedOnlyChange ? (
         <div className="flex flex-wrap items-center gap-2 pt-2 pb-1">
           <Button type="button" size="sm" variant={unacknowledgedOnly ? "default" : "outline"} aria-pressed={unacknowledgedOnly} onClick={() => onUnacknowledgedOnlyChange(!unacknowledgedOnly)}>
@@ -72,7 +82,8 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
         </div>
       ) : null}
 
-      {lead}
+      {/* "Onde atuar hoje" não é uma ação datada: com recorte ativo, o feed mostra só o que é do período. */}
+      {bounds ? null : lead}
       {notices.length > 0 ? <DayLabel>Hoje</DayLabel> : null}
       {notices.map((notice, index) => (
         <Fragment key={notice.id}>
@@ -103,7 +114,9 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
           <AnalyticsErrorState error={query.error} onRetry={() => void query.refetch()} />
         </div>
       ) : null}
-      {query.isSuccess && items.length === 0 && notices.length === 0 ? (
+      {query.isSuccess && items.length === 0 && notices.length === 0 && bounds ? (
+        <FollowUpPeriodEmpty onClear={clearPeriod} />
+      ) : query.isSuccess && items.length === 0 && notices.length === 0 ? (
         <div className="py-6">
           <AnalyticsEmptyState icon={MessageSquareText} title="Nenhum acompanhamento encontrado" description={emptyDescription} />
         </div>
@@ -146,7 +159,7 @@ export function StructureFollowUpFeed({ subject, description, notices = [], empl
           </div>
         )
       ) : items.length > 0 ? (
-        <p className="py-5 text-center text-xs text-muted-foreground">Fim dos feedbacks deste período.</p>
+        <p className="py-5 text-center text-xs text-muted-foreground">{bounds ? "Fim das ações deste período." : "Fim dos feedbacks."}</p>
       ) : null}
     </IniaFeed>
   )

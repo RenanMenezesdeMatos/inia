@@ -1,13 +1,13 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest"
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { installJsdomStubs } from "@/components/analytics/testing/jsdom-stubs"
 import { renderWithQuery } from "@/components/analytics/testing/render-with-query"
 import type { ProductNode, ProductScopeSource } from "@/schemas/admin/product-catalog.schema"
 
-import { ProductScopeCard } from "./product-scope-field"
+import { ProductScopeCard, ProductScopeField } from "./product-scope-field"
 
 const service = vi.hoisted(() => ({ fetchProductNodes: vi.fn(), fetchProductScopeSources: vi.fn(), setProductScope: vi.fn() }))
 vi.mock("@/services/admin/product-catalog-service", () => service)
@@ -15,7 +15,7 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(
 vi.mock("sonner", () => ({ toast }))
 
 // Exemplos FICTÍCIOS de teste.
-const node = (id: string, name: string, kind: ProductNode["kind"] = "PRODUCT", parentId: string | null = null): ProductNode => ({ id, kind, code: id.toUpperCase(), name, description: null, parentId, active: true, archivedAt: null, createdAt: "", updatedAt: "", criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, blocksDeletion: false })
+const node = (id: string, name: string, kind: ProductNode["kind"] = "PRODUCT", parentId: string | null = null): ProductNode => ({ id, kind, code: id.toUpperCase(), name, description: null, parentId, active: true, archivedAt: null, createdAt: "", updatedAt: "", operatingUniverse: null, criteriaCount: 0, scopeCount: 0, childCount: 0, inUse: false, blocksDeletion: false })
 const NODES = [node("f1", "Voz corporativa", "FAMILY"), node("p1", "Tronco de voz", "PRODUCT", "f1"), node("p2", "Ramal direto", "PRODUCT", "f1")]
 const source = (sourceId: string, nodeIds: string[] | null): ProductScopeSource => ({ sourceKind: "ARGUMENT_SCRIPT", sourceId, title: sourceId, status: "ACTIVE", scope: nodeIds ? { assignmentId: `a-${sourceId}`, nodeIds, since: "2026-10-21T00:00:00.000Z" } : null })
 
@@ -101,5 +101,23 @@ describe("\"Vale para\" no editor da base e do argumentário", () => {
     const card = await screen.findByTestId("product-scope-card")
     expect(card).toHaveTextContent("Ramal direto")
     expect(within(card).queryByRole("button", { name: "Alterar" })).not.toBeInTheDocument()
+  })
+})
+
+describe("\"Vale para\" respeita o universo de atuação", () => {
+  const universeNodes: ProductNode[] = [
+    node("f1", "Voz corporativa", "FAMILY"),
+    { ...node("p1", "Tronco de voz", "PRODUCT", "f1"), operatingUniverse: "B2B" },
+    { ...node("p2", "Plano pré-pago", "PRODUCT", "f1"), operatingUniverse: "B2C" },
+    node("p3", "Produto sem universo", "PRODUCT", "f1"),
+  ]
+
+  it("só oferece produtos do universo da fonte (e os ainda sem universo); sem universo, mostra todos", () => {
+    const { rerender } = render(<ProductScopeField nodes={universeNodes} value={["p1"]} onChange={() => {}} idPrefix="u" universe="B2B" />)
+    expect(screen.getByLabelText(/Tronco de voz/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Produto sem universo/)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Plano pré-pago/)).not.toBeInTheDocument()
+    rerender(<ProductScopeField nodes={universeNodes} value={["p1"]} onChange={() => {}} idPrefix="u" universe={null} />)
+    expect(screen.getByLabelText(/Plano pré-pago/)).toBeInTheDocument()
   })
 })

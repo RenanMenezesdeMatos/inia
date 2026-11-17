@@ -21,19 +21,19 @@ export function SupportHistorySection() {
   const items = requests.data?.items ?? []
   if (!operator?.enabled && items.length === 0) return null
   return (
-    <section className="space-y-2" aria-label="Apoio com Anjo">
-      <p className="px-1 text-xs font-semibold text-muted-foreground">Apoio com Anjo</p>
+    <section className="space-y-2" aria-label="Apoio">
+      <p className="px-1 text-xs font-semibold text-muted-foreground">Apoio</p>
       {requests.isLoading ? <p className="px-1 text-xs text-muted-foreground">Carregando…</p> : null}
       {!requests.isLoading && items.length === 0 ? <p className="px-1 text-xs text-muted-foreground">Nenhum pedido de apoio ainda.</p> : null}
       {items.map((item) => (
         <button key={item.id} type="button" className="w-full rounded-lg border px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => setSelected(item)}>
-          <span className="font-medium">{item.protocol}</span> · {REQUEST_STATUS_LABELS[item.status]}
+          <span className="font-medium">{item.protocol}</span> · {item.status === "AWAITING_OPERATOR" ? "Aguardando seu retorno" : REQUEST_STATUS_LABELS[item.status]}
           <span className="block text-xs text-muted-foreground">{formatShortDateTime(item.createdAt)}{item.anjoName ? ` · ${item.anjoName}` : ""}</span>
         </button>
       ))}
       <Dialog open={selected !== null} onOpenChange={(open) => (open ? undefined : setSelected(null))}>
         <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
-          <DialogHeader><DialogTitle>Apoio com Anjo · {selected?.protocol}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Apoio · {selected?.protocol}</DialogTitle></DialogHeader>
           {selected ? <HistoryConversation requestId={selected.id} pending={operator?.pendingEvaluations.find((evaluation) => evaluation.requestId === selected.id) ?? null} /> : null}
         </DialogContent>
       </Dialog>
@@ -48,7 +48,7 @@ function HistoryConversation({ requestId, pending }: { requestId: string; pendin
       {messages.isLoading ? <p className="text-muted-foreground">Carregando a conversa…</p> : null}
       {(messages.data?.messages ?? []).map((message) => (
         <p key={message.id} className={message.authorKind === "SYSTEM" ? "text-center text-xs text-muted-foreground" : "whitespace-pre-wrap"}>
-          {message.authorKind === "SYSTEM" ? message.body : <><span className="font-medium">{message.authorName ?? (message.authorKind === "ANJO" ? "Anjo" : "Você")}: </span>{message.body}</>}
+          {message.authorKind === "SYSTEM" ? message.body : <><span className="font-medium">{message.authorName ?? (message.authorKind === "ANJO" ? "Apoio" : "Você")}: </span>{message.body}</>}
         </p>
       ))}
       {pending ? <SupportEvaluation pending={pending} /> : null}

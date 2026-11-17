@@ -25,6 +25,8 @@ export type AiUsageRankingParams = {
   source?: AiUsageSource
   teamId?: string
   subteamId?: string
+  /** Estrutura de um líder (ele e quem está abaixo) — o "Ver usuários" de uma linha de liderança. */
+  leaderId?: string
   sort: AiUsageRankingSort
   page: number
   pageSize: number

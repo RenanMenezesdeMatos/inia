@@ -1,3 +1,6 @@
+import { assertWorkflowGraphUniverse } from "../../operating-universe/application/resource-universe.js"
+import { isUniverseEnforced } from "../../operating-universe/application/universe-access.js"
+import { isOperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { triggerConfigSchema } from "../domain/trigger-config-schema.js"
@@ -45,6 +48,8 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
 
     const graph = await pinGraphReferences(tx, input.organizationId, await validateWorkflowForPublish(tx as Database, input.organizationId, input.workflowId, row))
     const draft = draftConfigurationOf(row)
+    // Universos não se misturam: agentes, Orquestradores e indicadores citados precisam ser do universo do Workflow.
+    await assertWorkflowGraphUniverse(tx, input.organizationId, [graph, draft.triggerConfig], isOperatingUniverse(draft.operatingUniverse) ? draft.operatingUniverse : null, await isUniverseEnforced(tx, input.organizationId))
     const impact = await computeGoLiveImpact(tx as Database, input.organizationId, {
       workflowId: input.workflowId,
       reason: "PUBLISH",
@@ -56,8 +61,8 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
     assertGoLiveConfirmed(impact, input.confirmation)
 
     const version = await tx.query<{ id: string }>(
-      `insert into workflow_versions(workflow_id, graph, created_by, trigger_config, scope_type, team_id, subteam_id, consolidated_structure, population_filter)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+      `insert into workflow_versions(workflow_id, graph, created_by, trigger_config, scope_type, team_id, subteam_id, consolidated_structure, population_filter, operating_universe)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
       [
         input.workflowId,
         JSON.stringify(graph),
@@ -68,6 +73,7 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
         draft.subteamId,
         draft.consolidatedStructure ? JSON.stringify(draft.consolidatedStructure) : null,
         draft.populationFilter ? JSON.stringify(draft.populationFilter) : null,
+        draft.operatingUniverse,
       ],
     )
     const versionId = version.rows[0]!.id
@@ -81,6 +87,7 @@ export async function publishWorkflow(db: Database, input: PublishWorkflowInput)
          active_version_id = $1,
          trigger_config = draft_trigger_config, scope_type = draft_scope_type, team_id = draft_team_id, subteam_id = draft_subteam_id,
          consolidated_structure = draft_consolidated_structure, population_filter = draft_population_filter,
+         operating_universe = draft_operating_universe,
          updated_at = now()
        where id = $2 and organization_id = $3`,
       [versionId, input.workflowId, input.organizationId],
@@ -119,6 +126,7 @@ export function draftConfigurationOf(row: WorkflowConfigurationRow): WorkflowCon
     subteamId: row.subteamId,
     consolidatedStructure: row.consolidatedStructure,
     populationFilter: row.populationFilter,
+    operatingUniverse: row.operatingUniverse,
   }
 }
 

@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest"
 import type { ReactNode } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { AdminApiError } from "@/lib/admin/admin-api"
@@ -159,6 +159,11 @@ function openTab(name: RegExp) {
 }
 
 describe("Orquestrador — cadastro em página com abas, no padrão de Agentes", () => {
+  // Seletor do universo (Radix Select): o jsdom não tem scrollIntoView.
+  beforeAll(() => {
+    Element.prototype.scrollIntoView ??= () => {}
+  })
+
   it("Novo orquestrador abre a página (sem pop-up) e o Criar fica bloqueado dizendo o que falta", () => {
     renderPage(<NewOrchestratorPage />)
     expect(screen.getByRole("heading", { name: "Novo orquestrador" })).toBeInTheDocument()
@@ -167,12 +172,14 @@ describe("Orquestrador — cadastro em página com abas, no padrão de Agentes",
     const create = screen.getByRole("button", { name: "Criar orquestrador" })
     expect(create).toBeDisabled()
     fireEvent.focus(create.parentElement!)
-    return waitFor(() => expect(screen.getAllByText(/Informe o nome\. Escolha o agente orquestrador\./).length).toBeGreaterThan(0))
+    return waitFor(() => expect(screen.getAllByText(/Informe o nome\. Escolha o universo de atuação\. Escolha o agente orquestrador\./).length).toBeGreaterThan(0))
   })
 
   it("cria com especialista e política escolhidos em abas diferentes e abre o cadastro criado", async () => {
     renderPage(<NewOrchestratorPage />)
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "INIA — Time de Contas" } })
+    fireEvent.click(screen.getByRole("combobox", { name: "Universo de atuação" }))
+    fireEvent.click(await screen.findByRole("option", { name: /^B2B/ }))
     fireEvent.click(screen.getByRole("button", { name: /Coordenação · Contas/ }))
     fireEvent.click(screen.getByRole("radio", { name: "Qualquer assunto autorizado" }))
 
@@ -185,7 +192,7 @@ describe("Orquestrador — cadastro em página com abas, no padrão de Agentes",
     fireEvent.click(screen.getByRole("button", { name: "Criar orquestrador" }))
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/admin/assistant/orch-new"))
     expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "INIA — Time de Contas", orchestratorAgentId: COORDINATOR.id, specialistAgentIds: [SPECIALIST.id], routingPolicy: "OPEN", structuredOutput: null }),
+      expect.objectContaining({ name: "INIA — Time de Contas", operatingUniverse: "B2B", orchestratorAgentId: COORDINATOR.id, specialistAgentIds: [SPECIALIST.id], routingPolicy: "OPEN", structuredOutput: null }),
     )
   })
 

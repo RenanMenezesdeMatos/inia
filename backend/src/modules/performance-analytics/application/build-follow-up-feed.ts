@@ -10,7 +10,7 @@ import { resolveSubject, type ViewerScope } from "./viewer-scope.js"
  * workflow, revisões humanas pendentes e escalonamentos. Mesmos objetos, sem tabela nova. Paginado por cursor (keyset),
  * como o Acompanhamento do colaborador.
  */
-export type FollowUpFeedPageOptions = { limit: number; before: FollowUpCursor | null; unacknowledgedOnly: boolean }
+export type FollowUpFeedPageOptions = { limit: number; before: FollowUpCursor | null; unacknowledgedOnly: boolean; since?: string | null; until?: string | null }
 
 export async function buildFollowUpFeed(repository: AnalyticsReadRepository, scope: ViewerScope, subject: AnalyticsSubject, options: FollowUpFeedPageOptions): Promise<FollowUpFeed> {
   const resolved = resolveSubject(scope, subject)
@@ -24,5 +24,7 @@ export async function buildFollowUpFeed(repository: AnalyticsReadRepository, sco
     unacknowledgedOnly: options.unacknowledgedOnly,
     limit: options.limit,
     before: options.before,
+    since: options.since ?? null,
+    until: options.until ?? null,
   })
 }

@@ -8,7 +8,7 @@
  * `access_role_assignments` — é sempre só da INIA e nunca entra aqui; a situação funcional tem regra própria de conflito
  * (`applyEmployeeStatusSnapshot`) e também fica de fora.
  */
-export const PERSON_SOURCE_FIELDS = ["name", "role", "jobTitle", "teamId", "subteamId", "managerId", "hiredAt", "active", "email", "operationalCapitalCode"] as const
+export const PERSON_SOURCE_FIELDS = ["name", "role", "jobTitle", "teamId", "subteamId", "managerId", "hiredAt", "active", "email", "operationalCapitalCode", "operatingUniverse"] as const
 export type PersonSourceField = (typeof PERSON_SOURCE_FIELDS)[number]
 
 export const PERSON_SOURCE_FIELD_LABELS: Record<PersonSourceField, string> = {
@@ -22,6 +22,7 @@ export const PERSON_SOURCE_FIELD_LABELS: Record<PersonSourceField, string> = {
   active: "Ativo",
   email: "E-mail de acesso",
   operationalCapitalCode: "Capital operacional",
+  operatingUniverse: "Universo de atuação",
 }
 
 /**
@@ -46,6 +47,7 @@ export const PERSON_FIELD_RULES: Readonly<Record<string, readonly FieldRule[]>> 
     { field: "active", whenMapped: ["active"] },
     { field: "email", whenMapped: ["email"] },
     { field: "operationalCapitalCode", whenMapped: ["operationalCapitalCode"] },
+    { field: "operatingUniverse", whenMapped: ["operatingUniverse"] },
   ],
   ORGANIZATIONAL_STRUCTURE: [
     { field: "managerId", always: true },

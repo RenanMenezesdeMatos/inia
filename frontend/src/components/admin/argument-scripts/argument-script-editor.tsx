@@ -16,7 +16,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TABLE_FRAME, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ErrorState } from "@/components/ui/states"
 
-import { ProductScopeCard, ProductScopeField, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
+import { ProductScopeCard, ProductScopeField, productsCompatibleWith, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
+import { UniverseSelect } from "@/components/operating-universe/universe-select"
+import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 import { OrgScopeSelect, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import {
@@ -106,7 +108,24 @@ function ScopeField({ value, onChange, teams, scopeOptions, lockedLabel }: { val
   )
 }
 
-function HeaderFields({ value, onChange, teams, scopeOptions, currentAreaName, scopeLockedLabel }: { value: HeaderState; onChange: (value: HeaderState) => void; teams: Team[] | undefined; scopeOptions: ArgumentScriptScopeOptions | undefined; currentAreaName: string | null; scopeLockedLabel?: string | null }) {
+function HeaderFields({
+  value,
+  onChange,
+  teams,
+  scopeOptions,
+  currentAreaName,
+  scopeLockedLabel,
+  universe,
+}: {
+  value: HeaderState
+  onChange: (value: HeaderState) => void
+  teams: Team[] | undefined
+  scopeOptions: ArgumentScriptScopeOptions | undefined
+  currentAreaName: string | null
+  scopeLockedLabel?: string | null
+  /** Só na criação: o universo de atuação (o existente muda pela classificação do universo). */
+  universe?: { value: OperatingUniverse | null; onChange: (value: OperatingUniverse | null) => void }
+}) {
   return (
     <div className="space-y-4 rounded-lg border p-4">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -116,6 +135,13 @@ function HeaderFields({ value, onChange, teams, scopeOptions, currentAreaName, s
         </div>
         <AreaSelect value={value.businessDomainId} onChange={(businessDomainId) => onChange({ ...value, businessDomainId })} currentName={currentAreaName} />
       </div>
+      {universe ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="argument-script-universe">Universo de atuação *</Label>
+          <UniverseSelect id="argument-script-universe" value={universe.value} onChange={universe.onChange} aria-describedby="argument-script-universe-help" />
+          <p id="argument-script-universe-help" className="text-xs text-muted-foreground">Universos são separados: este recurso só será usado no universo escolhido.</p>
+        </div>
+      ) : null}
       <ScopeField value={value.scope} onChange={(scope) => onChange({ ...value, scope })} teams={teams} scopeOptions={scopeOptions} lockedLabel={scopeLockedLabel} />
     </div>
   )
@@ -144,8 +170,16 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
   const [header, setHeader] = useState<HeaderState>(() => ({ name: "", businessDomainId: null, scope: { scopeType: defaultScopeType(scopeOptions) } }))
   const [content, setContent] = useState<ContentFormState>(EMPTY_CONTENT_FORM)
   const productScope = useSourceProductScope("ARGUMENT_SCRIPT", null)
+  const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
 
-  const canSubmit = header.name.trim().length >= 3 && header.businessDomainId !== null && scopeIsComplete(header.scope)
+  // Trocou o universo: produtos já marcados de outro universo saem da escolha (universos não se misturam).
+  function handleUniverseChange(next: OperatingUniverse | null) {
+    setOperatingUniverse(next)
+    const compatible = new Set(productsCompatibleWith(productScope.nodes, next).map((node) => node.id))
+    if (productScope.value.some((id) => !compatible.has(id))) productScope.setValue(productScope.value.filter((id) => compatible.has(id)))
+  }
+
+  const canSubmit = header.name.trim().length >= 3 && header.businessDomainId !== null && scopeIsComplete(header.scope) && operatingUniverse !== null
 
   async function handleCreate() {
     if (!header.businessDomainId) return
@@ -156,6 +190,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
         scope: toScopeInput(header.scope),
         content: formToContent(content),
         ...formSource(content),
+        ...(operatingUniverse ? { operatingUniverse } : {}),
       })
       await productScope.save(created.id).catch(() => undefined)
       onCreated(created.id)
@@ -167,9 +202,9 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
   return (
     <div className="max-w-4xl space-y-4">
       <p className="text-sm text-muted-foreground">O argumentário nasce como rascunho. Ele só passa a valer depois de publicado.</p>
-      <HeaderFields value={header} onChange={setHeader} teams={teams} scopeOptions={scopeOptions} currentAreaName={null} />
+      <HeaderFields value={header} onChange={setHeader} teams={teams} scopeOptions={scopeOptions} currentAreaName={null} universe={{ value: operatingUniverse, onChange: handleUniverseChange }} />
       <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} />
-      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="argument-script-products" /> : null}
+      {productScope.available ? <ProductScopeField nodes={productScope.nodes} value={productScope.value} onChange={productScope.setValue} idPrefix="argument-script-products" universe={operatingUniverse} /> : null}
       {createMutation.isError ? <p className="text-sm text-destructive">{createMutation.error.message}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>

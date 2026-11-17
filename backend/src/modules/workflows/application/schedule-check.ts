@@ -27,6 +27,7 @@ async function enrollScheduledSlots(db: Database, input: { organizationId: strin
 }
 
 type ScheduledWorkflowRow = {
+  operating_universe?: string | null
   organization_id: string
   id: string
   version_id: string
@@ -79,7 +80,8 @@ export async function runScheduleCheck(db: Database, now: Date = new Date()): Pr
             w.trigger_config -> 'frequency' frequency,
             w.trigger_config -> 'relative' relative,
             w.consolidated_structure,
-            w.population_filter
+            w.population_filter,
+            w.operating_universe
      from workflows w
      where w.active and w.active_version_id is not null
        and w.trigger_config ->> 'kind' = 'schedule'`,
@@ -121,6 +123,7 @@ function scheduleConfigurationOf(row: ScheduledWorkflowRow): ScheduleConfigurati
     relative: row.relative,
     consolidatedStructure: row.consolidated_structure,
     populationFilter: row.population_filter,
+    operatingUniverse: row.operating_universe ?? null,
   }
 }
 
@@ -138,6 +141,8 @@ export type ScheduleConfiguration = {
   relative: RelativeSchedule | null | undefined
   consolidatedStructure: ConsolidatedStructure | null
   populationFilter: PopulationFilter | null | unknown
+  /** Universo do Workflow (publicado, ou o do rascunho na prévia). */
+  operatingUniverse: string | null
 }
 
 /** Uma matrícula que o checador criaria: sujeito agendado × instante agendado (o slot do índice único). */
@@ -158,7 +163,7 @@ export async function planDueScheduleEnrollments(
 ): Promise<DueScheduleSlot[]> {
   const { date: today, time: nowHHmm } = localDateParts(clock.now, clock.timezone)
   // Mesma elegibilidade (Abrangência + Filtro Populacional) da ingestão por Flag e do QA Lab.
-  const population = { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter }
+  const population = { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse }
 
   if (config.mode === "RELATIVE_TO_SHIFT") {
     if (!config.relative || !isAssumedWorkday(today)) return []
@@ -208,7 +213,7 @@ export async function planDueScheduleEnrollments(
 export async function resolveScheduleSubjects(db: Database, organization: string, config: ScheduleConfiguration): Promise<string[]> {
   const structure = config.consolidatedStructure
   if (!structure) {
-    return resolveEligibleOperatorIds(db, organization, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter })
+    return resolveEligibleOperatorIds(db, organization, { scopeType: config.scopeType, teamId: config.teamId, subteamId: config.subteamId, populationFilter: config.populationFilter, operatingUniverse: config.operatingUniverse })
   }
   const anchorId = consolidatedStructureAnchorId(structure)
   const memberIds = await resolveStructureAnchorOperatorIds(db, structure, anchorId)

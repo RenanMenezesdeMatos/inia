@@ -1,7 +1,7 @@
 import { personIdsWithPermissionCovering } from "../../access/application/permission-holders.js"
 import type { AccessScope } from "../../access/domain/access-scope.js"
 import { availabilityOf } from "../domain/availability.js"
-import { HUMAN_SUPPORT_LIMITS, type PauseReason, type PresenceStatus } from "../domain/catalogs.js"
+import { ANJO_UNRESPONSIVE_DEFAULTS, HUMAN_SUPPORT_LIMITS, RESPONSE_TIMES_DEFAULTS, type AnjoUnresponsive, type PauseReason, type PresenceStatus, type ResponseTimes } from "../domain/catalogs.js"
 import { effectiveGroup, effectiveSubgroup, supportEnabledFor, type ScopeState } from "../domain/enablement.js"
 import { canReceiveAssignment, effectiveCapacity, inService, type AnjoSituation } from "../domain/presence.js"
 import { estimateWait, queueDeadline, referencePopulation, type QueueDeadline, type QueueSample } from "../domain/queue-history.js"
@@ -34,11 +34,32 @@ export async function loadPlace(db: Queryable, organizationId: string, personId:
   return (await loadPlaces(db, organizationId, [personId])).get(personId) ?? null
 }
 
-export type SupportSettings = { enabled: boolean; defaultCapacity: number; version: number }
+export type SupportSettings = { enabled: boolean; defaultCapacity: number; version: number; responseTimes: ResponseTimes; anjoUnresponsive: AnjoUnresponsive }
 
 export async function loadSettings(db: Queryable, organizationId: string): Promise<SupportSettings> {
-  const row = (await db.query<{ enabled: boolean; default_capacity: number; version: number }>(`select enabled, default_capacity, version from human_support_settings where organization_id = $1`, [organizationId])).rows[0]
-  return row ? { enabled: row.enabled, defaultCapacity: Number(row.default_capacity), version: Number(row.version) } : { enabled: false, defaultCapacity: HUMAN_SUPPORT_LIMITS.defaultCapacity, version: 0 }
+  const row = (
+    await db.query<{ enabled: boolean; default_capacity: number; version: number; operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number; anjo_unresponsive_minutes: number; disconnection_pause_minutes: number }>(
+      `select enabled, default_capacity, version, operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes, anjo_unresponsive_minutes, disconnection_pause_minutes from human_support_settings where organization_id = $1`,
+      [organizationId],
+    )
+  ).rows[0]
+  return row
+    ? {
+        enabled: row.enabled,
+        defaultCapacity: Number(row.default_capacity),
+        version: Number(row.version),
+        responseTimes: { operatorRequeueMinutes: Number(row.operator_requeue_minutes), operatorCloseMinutes: Number(row.operator_close_minutes), anjoRequeueMinutes: Number(row.anjo_requeue_minutes) },
+        anjoUnresponsive: { pauseAfterMinutes: Number(row.anjo_unresponsive_minutes), offlineAfterMinutes: Number(row.disconnection_pause_minutes) },
+      }
+    : { enabled: false, defaultCapacity: HUMAN_SUPPORT_LIMITS.defaultCapacity, version: 0, responseTimes: { ...RESPONSE_TIMES_DEFAULTS }, anjoUnresponsive: { ...ANJO_UNRESPONSIVE_DEFAULTS } }
+}
+
+/** Os tempos de resposta que valem para um pedido do Grupo `teamId` (migration 194): os do Grupo, senão o padrão da organização. */
+export async function responseTimesForTeam(db: Queryable, organizationId: string, teamId: string | null): Promise<ResponseTimes> {
+  const own = teamId
+    ? (await db.query<{ operator_requeue_minutes: number; operator_close_minutes: number; anjo_requeue_minutes: number }>(`select operator_requeue_minutes, operator_close_minutes, anjo_requeue_minutes from human_support_group_response_times where organization_id = $1 and team_id = $2`, [organizationId, teamId])).rows[0]
+    : undefined
+  return own ? { operatorRequeueMinutes: Number(own.operator_requeue_minutes), operatorCloseMinutes: Number(own.operator_close_minutes), anjoRequeueMinutes: Number(own.anjo_requeue_minutes) } : (await loadSettings(db, organizationId)).responseTimes
 }
 
 export type ScopeStates = { groups: Map<string, ScopeState>; subgroups: Map<string, ScopeState> }
@@ -130,7 +151,8 @@ export async function availabilityFor(db: Queryable, organizationId: string, pla
   const enabled = await enabledForPlace(db, organizationId, place)
   if (!enabled) return { status: "DISABLED", estimate: null, queueDeadline: null }
   const anjos = await anjosCovering(db, organizationId, place, operatorPersonId, settings.defaultCapacity)
-  const serving = anjos.filter(inService)
+  // Em pausa "Desconexão" (195: não respondia ninguém) não conta como em serviço.
+  const serving = anjos.filter((anjo) => inService(anjo) && anjo.pauseReason !== "DISCONNECTION")
   const status = availabilityOf({ enabled, inService: serving.length, canReceiveNow: serving.filter(canReceiveAssignment).length, availableInService: serving.filter((anjo) => anjo.status === "AVAILABLE" && !anjo.scheduledChange).length })
   if (status === "NONE_IN_SERVICE") return { status, estimate: null, queueDeadline: null }
   const population = referencePopulation(await loadQueueSamples(db, organizationId), place)
@@ -157,12 +179,12 @@ export async function anyEnabledScope(db: Queryable, organizationId: string, sco
 }
 
 /**
- * Quantos Anjos estão EM SERVIÇO agora no escopo do pedido (estado ≠ Indisponível, área aberta, papel cobrindo o Grupo/Subgrupo, fora
+ * Quantos Anjos estão EM SERVIÇO agora no escopo do pedido (estado ≠ Indisponível, fora da pausa "Desconexão" — 195 —, área aberta, papel cobrindo o Grupo/Subgrupo, fora
  * o próprio operador). Gravado quando o pedido sai da fila sem atendimento (`anjos_in_service_at_end`, migration 191): zero = encerrado
  * sem Anjo logado, indicador da operação sem atribuição individual.
  */
 export async function anjosInServiceCount(db: Queryable, organizationId: string, place: { teamId: string | null; subteamId: string | null }, operatorPersonId: string): Promise<number> {
   const covering = (await personIdsWithPermissionCovering(db, organizationId, "human_support.attend", place)).filter((personId) => personId !== operatorPersonId)
   if (covering.length === 0) return 0
-  return Number((await db.query<{ total: number }>(`select count(*)::int total from human_support_agent_presence where organization_id = $1 and person_id = any($2::uuid[]) and status <> 'OFFLINE' and lease_until > statement_timestamp()`, [organizationId, covering])).rows[0]!.total)
+  return Number((await db.query<{ total: number }>(`select count(*)::int total from human_support_agent_presence where organization_id = $1 and person_id = any($2::uuid[]) and status <> 'OFFLINE' and pause_reason is distinct from 'DISCONNECTION' and lease_until > statement_timestamp()`, [organizationId, covering])).rows[0]!.total)
 }

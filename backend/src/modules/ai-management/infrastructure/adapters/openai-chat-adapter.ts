@@ -2,7 +2,7 @@ import { AiProviderError } from "../../../../shared/application/model-routing/ai
 import type { LlmUsage } from "../../../../shared/application/llm-telemetry.js"
 import type { AdapterTurn } from "../../../../shared/application/model-routing/provider-adapter.js"
 import type { AiExecuteRequest, AiExecuteResult, AiProviderAdapter, AiSpeechRequest, AiSpeechResult, AiStreamExecuteResult, AiStreamResult, DiscoveredModel, FetchLike, ResolvedConnection } from "../../application/provider-adapter-port.js"
-import { joinUrl, rawRequest, rawStreamRequest, readSse, requestJson, safeJsonParse, testByListing } from "./http.js"
+import { joinUrl, rawRequest, rawStreamRequest, readSse, reportedCostFromHeaders, requestJson, requestJsonWithHeaders, safeJsonParse, testByListing } from "./http.js"
 
 /**
  * Protocolo OpenAI Chat Completions — OpenAI, xAI, LM Studio, Ollama (/v1) e qualquer servidor
@@ -122,7 +122,7 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
     listModels,
     async execute(connection, providerModelId, request: AiExecuteRequest, timeoutMs): Promise<AiExecuteResult> {
       const startedAt = Date.now()
-      const body = await requestJson<ChatResponse>(fetchImpl, connection, joinUrl(connection.baseUrl, "chat/completions"), {
+      const { body, headers } = await requestJsonWithHeaders<ChatResponse>(fetchImpl, connection, joinUrl(connection.baseUrl, "chat/completions"), {
         method: "POST",
         headers: authHeaders(connection),
         body: JSON.stringify({
@@ -140,9 +140,10 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
       const model = body.model ?? providerModelId
       const durationMs = Date.now() - startedAt
       const finishReason = normalizeOpenAiFinishReason(choice?.finish_reason)
+      const reportedCost = reportedCostFromHeaders(headers)
       const toolCalls = (message.tool_calls ?? []).filter((call) => call.function?.name)
-      if (toolCalls.length > 0) return { kind: "functionCalls", calls: toolCalls.map((call) => ({ name: call.function!.name!, args: safeJsonParse(call.function!.arguments ?? "{}"), ...(call.id ? { id: call.id } : {}) })), usage, model, durationMs, finishReason }
-      return { kind: "text", text: message.content ?? "", usage, model, durationMs, finishReason }
+      if (toolCalls.length > 0) return { kind: "functionCalls", calls: toolCalls.map((call) => ({ name: call.function!.name!, args: safeJsonParse(call.function!.arguments ?? "{}"), ...(call.id ? { id: call.id } : {}) })), usage, model, durationMs, finishReason, reportedCost }
+      return { kind: "text", text: message.content ?? "", usage, model, durationMs, finishReason, reportedCost }
     },
     async synthesizeSpeech(connection, providerModelId, request, timeoutMs): Promise<AiSpeechResult> {
       const startedAt = Date.now()
@@ -156,8 +157,8 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
       // Áudio vazio (ou uma amostra só) não é voz: o recado nunca toca silêncio como se fosse a fala.
       const pcm16 = audio.subarray(0, audio.length - (audio.length % 2))
       if (pcm16.length < 2) throw new AiProviderError("PROVIDER_ERROR", { message: "O provedor de IA não devolveu áudio." })
-      // A resposta é binária: o provider não informa tokens nela — uso desconhecido (custo UNKNOWN), nunca inventado.
-      return { pcm16, sampleRate: OPENAI_SPEECH_SAMPLE_RATE, usage: normalizeOpenAiUsage(undefined), model: providerModelId, durationMs: Date.now() - startedAt }
+      // A resposta é binária: o provider não informa tokens nela — uso desconhecido; custo só se o provider o informar no cabeçalho.
+      return { pcm16, sampleRate: OPENAI_SPEECH_SAMPLE_RATE, usage: normalizeOpenAiUsage(undefined), model: providerModelId, durationMs: Date.now() - startedAt, reportedCost: reportedCostFromHeaders(response.headers) }
     },
     async streamExecute(connection, providerModelId, request: AiExecuteRequest, timeoutMs, onText): Promise<AiStreamExecuteResult> {
       const startedAt = Date.now()
@@ -174,6 +175,8 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
           stream_options: { include_usage: true },
         }),
       }, timeoutMs)
+      // O custo informado pelo provider vem nos cabeçalhos, que chegam no início do fluxo.
+      const reportedCost = reportedCostFromHeaders(response.headers)
       // Chamadas de ferramenta chegam em pedaços (nome e argumentos fatiados), identificadas pelo índice.
       const toolCalls = new Map<number, { id?: string; name: string; arguments: string }>()
       let text = ""
@@ -205,8 +208,8 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
       }, deadline)
       const durationMs = Date.now() - startedAt
       const calls = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call).filter((call) => call.name)
-      if (calls.length > 0) return { kind: "functionCalls", calls: calls.map((call) => ({ name: call.name, args: safeJsonParse(call.arguments || "{}"), ...(call.id ? { id: call.id } : {}) })), usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
-      return { kind: "text", text, usage, model, durationMs, finishReason, streamedChars, firstTokenMs }
+      if (calls.length > 0) return { kind: "functionCalls", calls: calls.map((call) => ({ name: call.name, args: safeJsonParse(call.arguments || "{}"), ...(call.id ? { id: call.id } : {}) })), usage, model, durationMs, finishReason, streamedChars, firstTokenMs, reportedCost }
+      return { kind: "text", text, usage, model, durationMs, finishReason, streamedChars, firstTokenMs, reportedCost }
     },
     async stream(connection, providerModelId, request, timeoutMs, onChunk): Promise<AiStreamResult> {
       const startedAt = Date.now()
@@ -215,6 +218,7 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
         headers: authHeaders(connection),
         body: JSON.stringify({ model: providerModelId, messages: toChatMessages(request.systemPrompt, request.contents), stream: true, stream_options: { include_usage: true }, ...maxTokensField(connection, request.maxOutputTokens) }),
       }, timeoutMs)
+      const reportedCost = reportedCostFromHeaders(response.headers)
       let text = ""
       let usage: LlmUsage = normalizeOpenAiUsage(undefined)
       let model = providerModelId
@@ -227,7 +231,7 @@ export function createOpenAiChatAdapter(fetchImpl: FetchLike = fetch): AiProvide
         if (payload.usage) usage = normalizeOpenAiUsage(payload.usage as ChatUsage)
         if (typeof payload.model === "string") model = payload.model
       }, deadline)
-      return { usage, model, durationMs: Date.now() - startedAt, text }
+      return { usage, model, durationMs: Date.now() - startedAt, text, reportedCost }
     },
   }
 }

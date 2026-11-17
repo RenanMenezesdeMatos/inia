@@ -187,6 +187,17 @@ describe("GET /analytics/follow-ups — feed da estrutura por cursor", () => {
     expect(invalid.status).toBe(400)
     expect(invalid.body.error.code).toBe("INVALID_CURSOR")
   })
+
+  it("calendário: since/until recortam pelo instante do item (fim exclusivo); período invertido ou data inválida → 400", async () => {
+    const app = appAs(user(IDS.director, "DIRECTOR"), { ...fixtureOrg(), feed })
+    const ranged = await request(app).get(`/analytics/follow-ups?limit=10&since=${encodeURIComponent("2026-09-20T00:00:00.000Z")}&until=${encodeURIComponent("2026-09-25T09:00:00.000Z")}`)
+    expect(ranged.status).toBe(200)
+    expect(ranged.body.data.items.map((entry: FollowUpItem) => entry.id.slice(-2))).toEqual(["a3", "a2", "a1"])
+    const empty = await request(app).get(`/analytics/follow-ups?since=${encodeURIComponent("2026-08-01T00:00:00.000-03:00")}&until=${encodeURIComponent("2026-09-01T00:00:00.000-03:00")}`)
+    expect(empty.body.data).toEqual({ items: [], nextCursor: null })
+    expect((await request(app).get(`/analytics/follow-ups?since=2026-09-25T00:00:00.000Z&until=2026-09-20T00:00:00.000Z`)).status).toBe(400)
+    expect((await request(app).get("/analytics/follow-ups?since=ontem")).status).toBe(400)
+  })
 })
 
 describe("GET /analytics — foto das pessoas pela apresentação", () => {

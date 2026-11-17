@@ -68,7 +68,7 @@ export async function resolveStructureAnchorOperatorIds(db: Database, structure:
   }
 }
 
-export type WorkflowScopeRef = { scopeType: string; teamId: string | null; subteamId?: string | null | undefined }
+export type WorkflowScopeRef = { scopeType: string; teamId: string | null; subteamId?: string | null | undefined; /** Universo do Workflow — obrigatório para nenhum chamador esquecer o filtro. */ operatingUniverse: string | null }
 
 /** Todo operador ativo elegível pela Abrangência do Workflow — o mesmo universo que hoje
  * matricula um-por-operador quando não existe filtro nenhum (`ALL`, ausente = sempre foi assim).
@@ -78,8 +78,10 @@ export type WorkflowScopeRef = { scopeType: string; teamId: string | null; subte
 export async function resolveScopeOperatorIds(db: Database, organizationId: string, scope: WorkflowScopeRef): Promise<string[]> {
   const result = await db.query<{ id: string }>(
     `select id from people where organization_id = $1 and role = 'OPERATOR' and active
-       and (($2 = 'ALL_TEAMS') or ($2 = 'TEAM' and team_id = $3) or ($2 = 'SUBTEAM' and subteam_id = $4))`,
-    [organizationId, scope.scopeType, scope.teamId, scope.subteamId ?? null],
+       and (($2 = 'ALL_TEAMS') or ($2 = 'TEAM' and team_id = $3) or ($2 = 'SUBTEAM' and subteam_id = $4))
+       -- Universo: com a exigência ativa, só operadores do universo do Workflow (Workflow pendente não elege ninguém).
+       and (not exists (select 1 from organizations o where o.id = $1 and o.operating_universe_enforced_at is not null) or operating_universe = $5::text)`,
+    [organizationId, scope.scopeType, scope.teamId, scope.subteamId ?? null, scope.operatingUniverse],
   )
   return result.rows.map((row) => row.id)
 }

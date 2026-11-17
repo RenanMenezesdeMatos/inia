@@ -1,4 +1,4 @@
-import { CircleCheck, CircleStop, ClipboardList, Coffee, UserRound, Users, type LucideIcon } from "lucide-react"
+import { CircleCheck, CircleStop, ClipboardList, Coffee, Unplug, UserRound, Users, type LucideIcon } from "lucide-react"
 
 import type { PauseReason, PresenceStatus } from "@/schemas/human-support/catalogs.schema"
 import type { Tone } from "@/components/ui/surface"
@@ -8,7 +8,7 @@ import type { Tone } from "@/components/ui/surface"
  * Lanche (xícara), Pessoal (pessoa), Atividade de processo (prancheta) e Reunião (grupo). Indisponível usa o ícone de parada, o mesmo
  * da ação "Ficar indisponível", em vermelho semântico.
  */
-export const PAUSE_REASON_ICONS: Record<PauseReason, LucideIcon> = { LUNCH: Coffee, PERSONAL: UserRound, PROCESS_ACTIVITY: ClipboardList, MEETING: Users }
+export const PAUSE_REASON_ICONS: Record<PauseReason, LucideIcon> = { LUNCH: Coffee, PERSONAL: UserRound, PROCESS_ACTIVITY: ClipboardList, MEETING: Users, DISCONNECTION: Unplug }
 
 export const STATUS_TONE: Record<PresenceStatus, Tone> = { AVAILABLE: "success", PAUSED: "warning", OFFLINE: "danger" }
 

@@ -102,3 +102,15 @@ export function notEligibleReason(anjo: AnjoSituation): NotEligibleReason | null
 
 /** Capacidade efetiva: a do Anjo, quando definida; senão a padrão da organização. */
 export const effectiveCapacity = (own: number | null, organizationDefault: number) => own ?? organizationDefault
+
+/**
+ * ANJO SEM RESPONDER NINGUÉM (migration 195): o que a tela mostra do estado que o SISTEMA pôs — em pausa "Desconexão" (desde quando e
+ * até quando, antes de virar Indisponível) ou Indisponível porque a pausa venceu sem ele voltar. `lastStatusCause`/`lastStatusAt` = a
+ * última mudança de estado registrada; null = o estado atual não veio dessa regra.
+ */
+export type UnresponsiveView = { kind: "PAUSED" | "OFFLINE"; since: string; offlineAt: string | null }
+export function unresponsiveView(input: { status: PresenceStatus; pauseReason: PauseReason | null; statusSince: Date | null; lastStatusCause: string | null; lastStatusAt: Date | null }, offlineAfterMinutes: number): UnresponsiveView | null {
+  if (input.status === "PAUSED" && input.pauseReason === "DISCONNECTION" && input.statusSince) return { kind: "PAUSED", since: input.statusSince.toISOString(), offlineAt: new Date(input.statusSince.getTime() + offlineAfterMinutes * 60_000).toISOString() }
+  if (input.status === "OFFLINE" && input.lastStatusCause === "UNRESPONSIVE_TIMEOUT" && input.lastStatusAt) return { kind: "OFFLINE", since: input.lastStatusAt.toISOString(), offlineAt: null }
+  return null
+}
