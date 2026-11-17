@@ -1,5 +1,7 @@
 "use client"
 
+import { scopeValueIssue } from "@/lib/scope-links/scope-links"
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Archive, ArchiveRestore, CalendarClock, EllipsisVertical, Loader2, PenLine, Save, Send, SlidersHorizontal, Trash2, Undo2 } from "lucide-react"
@@ -31,7 +33,7 @@ import { COMMUNICATION_STATE_LABELS, editorialFormSchema, publishBlockers, type 
 import { PublicationPreviewDialog } from "./editor/publication-preview-dialog"
 import { PublicationRichTextEditor, type EditorValue } from "./editor/publication-rich-text-editor"
 import { PublicationAudienceSettings, PublicationOrganizationSettings, PublicationScheduleSettings, PublicationSummarySettings } from "./editor/publication-settings"
-import { audienceDescription, emptyForm, formFingerprint, formOf, payloadOf, publicationPath, PUBLICATIONS_PATH, scheduleDescription, STATE_TONES, wentOut } from "./publication-form"
+import { audienceDescription, emptyForm, formFingerprint, formOf, payloadOf, publicationPath, PUBLICATIONS_PATH, scheduleDescription, segmentPayloadOf, STATE_TONES, wentOut } from "./publication-form"
 
 const failureMessage = (failure: unknown, fallback: string) => (failure instanceof Error && failure.message ? failure.message : fallback)
 
@@ -83,8 +85,8 @@ function PublicationEditor({ initial, reload }: { initial: EditorialCommunicatio
   const state = saved?.state ?? "DRAFT"
   const pending = create.isPending || update.isPending || archive.isPending || retire.isPending
   const blockers = useMemo(() => publishBlockers(form), [form])
-  const segmentReady = form.audience !== "SEGMENT" || Boolean(form.segment.universe || form.segment.teamIds.length || form.segment.subteamIds.length)
-  const preview = useAudiencePreviewQuery({ audience: form.audience, segment: form.audience === "SEGMENT" ? form.segment : null }, !locked && segmentReady && Boolean(options.data))
+  const segmentReady = form.audience !== "SEGMENT" || Boolean(form.segment.universe || (form.segment.scope.groups.length > 0 && !scopeValueIssue(form.segment.scope)))
+  const preview = useAudiencePreviewQuery({ audience: form.audience, segment: form.audience === "SEGMENT" ? segmentPayloadOf(form.segment) : null }, !locked && segmentReady && Boolean(options.data))
   const recipientCount = locked ? (saved?.recipientCount ?? null) : (preview.data ?? null)
 
   const patch = useCallback((next: Partial<EditorialForm>) => setForm((current) => ({ ...current, ...next })), [])

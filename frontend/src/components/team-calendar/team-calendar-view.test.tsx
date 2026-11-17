@@ -8,7 +8,7 @@ import { renderWithQuery } from "@/components/analytics/testing/render-with-quer
 import type { TeamCalendarDay, TeamCalendarView as TeamCalendarData } from "@/schemas/team-calendar/team-calendar.schema"
 
 import { describeRange, rangeFor, shiftRange, startOfWeek } from "./calendar-dates"
-import { TeamCalendarView } from "./team-calendar-view"
+import { isUnpublishedScheduleDay, TeamCalendarView } from "./team-calendar-view"
 
 const service = vi.hoisted(() => ({ fetchTeamCalendar: vi.fn(), provisionScheduleException: vi.fn(), cancelScheduleException: vi.fn(), fetchScheduleExceptionAudit: vi.fn(), classifyWorkday: vi.fn(), fetchClassificationHistory: vi.fn() }))
 vi.mock("@/services/team-calendar/team-calendar-service", () => service)
@@ -116,6 +116,29 @@ afterEach(() => {
   service.fetchClassificationHistory.mockResolvedValue([])
 })
 service.fetchClassificationHistory.mockResolvedValue([])
+
+describe("Calendário da equipe — só a escala que o cliente enviou (exibição)", () => {
+  it("dia sem escala explícita aparece como 'Sem escala' (nunca 'Trabalha' por suposição seg–sex); escala enviada, exceção e situação mantêm o rótulo; pendência continua aparecendo", () => {
+    expect(isUnpublishedScheduleDay(day("2026-09-18", { plannedBasis: "LEGACY_WEEKDAY_FALLBACK" }))).toBe(true)
+    expect(isUnpublishedScheduleDay(day("2026-09-19", { plannedBasis: "LEGACY_WEEKDAY_FALLBACK", state: "PLANNED_NON_WORKING", plannedToWork: false }))).toBe(true)
+    expect(isUnpublishedScheduleDay(day("2026-09-18", { plannedBasis: "UNKNOWN_SCHEDULE", state: "INDETERMINATE" }))).toBe(true)
+    expect(isUnpublishedScheduleDay(day("2026-09-18", {}))).toBe(false)
+    expect(isUnpublishedScheduleDay(day("2026-09-18", { plannedBasis: "LEGACY_WEEKDAY_FALLBACK", state: "MISSING_EXPECTED_PRODUCTION" }))).toBe(false)
+    expect(isUnpublishedScheduleDay(day("2026-09-18", { plannedBasis: "LEGACY_WEEKDAY_FALLBACK", state: "PLANNED_NON_WORKING", holiday: true }))).toBe(false)
+    expect(isUnpublishedScheduleDay(day("2026-09-18", { plannedBasis: "LEGACY_WEEKDAY_FALLBACK", state: "NON_ELIGIBLE_EMPLOYMENT_STATUS", status: { code: "INSS", label: "INSS" } }))).toBe(false)
+  })
+
+  it("na grade, os dias do colaborador sem escala enviada mostram 'Sem escala'", async () => {
+    service.fetchTeamCalendar.mockResolvedValue(DATA)
+    renderWithQuery(<TeamCalendarView state={{ calendarDate: "2026-09-16", calendarPerson: null, calendarAnchor: null }} onStateChange={vi.fn()} />)
+    const rows = await screen.findAllByTestId("calendar-person-row")
+    const caio = rows.find((row) => row.textContent?.includes("Caio Lima"))!
+    expect(caio.querySelectorAll("[data-unpublished]")).toHaveLength(5)
+    expect([...caio.querySelectorAll("[data-unpublished]")].every((cell) => cell.textContent?.includes("Sem escala"))).toBe(true)
+    const joana = rows.find((row) => row.textContent?.includes("Joana Esteves"))!
+    expect(joana.querySelectorAll("[data-unpublished]")).toHaveLength(0)
+  })
+})
 
 describe("Calendário da equipe — planejado × observado", () => {
   it("datas civis: semana começa na segunda, mês fecha no último dia, navegação avança/recua", () => {

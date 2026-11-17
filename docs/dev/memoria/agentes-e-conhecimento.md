@@ -349,3 +349,39 @@ Pedido: PDF que não deixa selecionar o texto (a página é uma imagem) precisa 
 
 **Limitações:** a busca dos especialistas quando o esclarecimento passa a vez (`retrieveKnowledgeForAgent`) continua só BM25; o catálogo do chat ainda carrega o texto de todas as bases do escopo em memória (cache por versão) — com um Agent vinculado a centenas de bases grandes, medir memória antes da VM; dimensão do vetor = a nativa do modelo (sem campo na tela); embedding na VM ainda desligado no gateway (sem policy = só BM25, nada quebra); qualidade da resposta com a busca nova no chat medida só no piloto (Gemini, 41 bases, V3 empatou) — não remedida com o modelo do cliente.
 
+
+### Editor da base nos moldes de Publicações e assuntos cadastráveis (2026-11-17, migration 224)
+
+Pedido do usuário: a tela de cadastro/edição/publicação da base no formato do editor de Comunicados (Publicações), mais detalhada, mantendo
+o conteúdo em Markdown (texto ou arquivo PDF/DOCX/TXT/JSON) e a leitura de hoje; e assuntos cadastráveis como os "Pedidos do cliente
+relacionados" dos Alinhamentos operacionais.
+
+- **Assuntos = catálogo canônico das chamadas** (decisão do usuário, 17/11, entre "mesmo catálogo dos Alinhamentos" e "catálogo próprio em
+  `subjects`"). Evidência que pesou: nenhum fluxo de IA lia os assuntos da base (chat, busca, esclarecimento e agentes não consultam
+  `knowledge_document_subject_scopes`; só lista, filtro, histórico e exportação de configuração). Migration 224: o vínculo passa a apontar
+  para `interaction_subject_definitions` (mesma coluna `subject_id`, FK trocada), por nome (ou código gerado do nome); sem par, o canônico
+  é criado (dev: "Reparo" → `reparo`; Segunda via e Contestação de cobrança casaram). De/para em `knowledge_subject_canonical_map`.
+  "Todos" continua "todos"; sem assunto continua sem (ausência nunca vira "todos"). `subjects` fica para Regras de chamada e Argumentários.
+- **Versões gravadas não são reescritas** (versão publicada é imutável — gatilho da 167): citam o id antigo, e
+  `knowledge/application/knowledge-subjects.ts` traduz ao ler (detalhe, versão, comparação, rascunho novo, aplicar a configuração ao publicar,
+  reverter ou reativar). Rascunho novo já nasce com o canônico.
+- **API**: `GET /api/v1/admin/knowledge/subjects` → `{ items (ativos primeiro, desativados marcados), canCreate }`;
+  `POST /subjects { name }` só com alcance de organização em `knowledge.manage` (403 `ORGANIZATION_SCOPE_REQUIRED`), auditado
+  (`KNOWLEDGE_SUBJECT_CREATED`), repetido 409 `KNOWLEDGE_SUBJECT_DUPLICATED`. Ao salvar: "todos" sozinho, 1..N assuntos, lista vazia = nenhum;
+  422 `KNOWLEDGE_SUBJECT_INVALID | NOT_FOUND | INACTIVE` (desativado só continua na base que já o tinha). Inclusão compartilhada com os
+  Alinhamentos em `interactions/application/interaction-subject-catalog.ts › insertCanonicalSubject` (o código passou a respeitar o limite
+  de 40 caracteres do banco; antes cortava em 60 e daria erro 500 num nome longo).
+- **Editor** (`components/admin/knowledge/knowledge-editor/`, entrada `knowledge-form-page.tsx` com a mesma API): título grande e tipo;
+  conteúdo em Markdown com barra que só insere a marcação (título, subtítulo, negrito, listas, citação, tabela), "Escrever | Visualizar"
+  com a leitura de sempre (`KnowledgeArticleContent`) e contagem de títulos/palavras; base nova escolhe texto ou arquivo, base salva troca
+  o arquivo do rascunho na hora (como antes). Lateral em seções (`SettingsSection`, agora no kit): Publicação (em uso, rascunho, atualizações,
+  OCR, resumo da alteração, link para o histórico), Universo, Alcance (`MultiOrgScopeField`), Assuntos (Todos/Específicos com "Incluir
+  assunto"; "Nenhum assunto" só para base antiga que já estava assim) e Produtos. Barra: selo da situação, "Pré-visualizar" (Leitura × O
+  que a IA recebe — classificação + trechos reais do que está salvo), "Salvar rascunho" (Ctrl/Cmd+S, a pessoa continua no editor) e
+  "Publicar" (salva o rascunho e abre a confirmação de sempre; base nova cria a V1 e reabre o editor com `?publicar=1`). Celular: abas
+  Conteúdo × Configurações. Em tela grande a lateral recolhe numa faixa (ícone `PanelRightClose/Open`, título na vertical) com a
+  transição de coluna do painel do Anjo (`grid-template-columns` 300 ms, desligada com movimento reduzido) e o conteúdo ganha a largura. Saída com alteração pendente pede confirmação. O detalhe aceita `?aba=versoes`.
+- Provas: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run knowledge-subjects-proof` (rodada num clone do `inia_test` migrado, 17/11);
+  testes `knowledge-lifecycle.test.tsx` (editor) e `knowledge-form-universe.test.tsx`. A 224 foi aplicada
+  em `inia` e `inia_test` em 17/11 a pedido do usuário (vínculos idênticos: 62 no dev, 3 no teste). Até o branch entrar no tronco, o código
+  antigo (`:3000`/`:3333`) ainda oferece os assuntos de `subjects`: salvar ali uma base com assunto específico falha pela FK nova.

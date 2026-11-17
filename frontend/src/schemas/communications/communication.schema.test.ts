@@ -4,7 +4,7 @@ import { broadcastImageSchema, communicationSchema, editorialFormSchema, publish
 
 const form = (overrides: Partial<EditorialForm> = {}): EditorialForm => ({
   title: "Nova campanha", contentHtml: "<p>Conteúdo</p>", plainText: "Conteúdo", tags: ["Aviso", "Campanha"], summary: "", featured: false, audience: "TEAM",
-  segment: { universe: null, teamIds: [], subteamIds: [] }, productNodeId: null, publishAt: null, displayUntil: null, ...overrides,
+  segment: { universe: null, scope: { global: false, groups: [] } }, productNodeId: null, publishAt: null, displayUntil: null, ...overrides,
 })
 
 describe("editorialFormSchema + publishBlockers", () => {
@@ -30,7 +30,11 @@ describe("editorialFormSchema + publishBlockers", () => {
 
   it("recorte sem critério e fim antes do início travam a publicação", () => {
     expect(publishBlockers(form({ audience: "SEGMENT" }))).toEqual(["Escolha o universo, um Grupo ou um Subgrupo para o público."])
-    expect(publishBlockers(form({ audience: "SEGMENT", segment: { universe: "B2C", teamIds: [], subteamIds: [] } }))).toEqual([])
+    expect(publishBlockers(form({ audience: "SEGMENT", segment: { universe: "B2C", scope: { global: false, groups: [] } } }))).toEqual([])
+    // Vários Grupos: Grupo inteiro + recorte por Subgrupo; recorte sem Subgrupo marcado trava.
+    const twoGroups = { global: false, groups: [{ teamId: "t1", subteamIds: [], mode: "WHOLE" as const }, { teamId: "t2", subteamIds: ["s21"], mode: "SUBTEAMS" as const }] }
+    expect(publishBlockers(form({ audience: "SEGMENT", segment: { universe: null, scope: twoGroups } }))).toEqual([])
+    expect(publishBlockers(form({ audience: "SEGMENT", segment: { universe: null, scope: { global: false, groups: [{ teamId: "t2", subteamIds: [], mode: "SUBTEAMS" }] } } }))).toHaveLength(1)
     expect(publishBlockers(form({ publishAt: "2026-11-20T12:00:00.000Z", displayUntil: "2026-11-19T12:00:00.000Z" }))).toEqual(["O fim da exibição precisa ser depois do início."])
   })
 

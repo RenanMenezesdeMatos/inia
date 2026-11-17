@@ -51,6 +51,7 @@ import QaLabPage from "./qa-lab/page"
 import AdministrationPage from "./administracao/page"
 import AiModelsPage from "./administracao/ia-modelos/page"
 import InterventionPoliciesWikiPage from "./administracao/politicas-de-acompanhamento/page"
+import MultiGroupScopePage from "./administracao/alcance-por-grupos/page"
 import DataHubPage from "./central-de-dados/page"
 import DataHubConnectorsPage from "./central-de-dados/conectores/page"
 import DataHubClientDatabasePage from "./central-de-dados/banco-do-cliente/page"
@@ -123,6 +124,7 @@ const PAGES: Record<string, ComponentType> = {
   "/wiki/qa-lab": QaLabPage,
   "/wiki/administracao": AdministrationPage,
   "/wiki/administracao/ia-modelos": AiModelsPage,
+  "/wiki/administracao/alcance-por-grupos": MultiGroupScopePage,
   "/wiki/administracao/politicas-de-acompanhamento": InterventionPoliciesWikiPage,
   "/wiki/central-de-dados": DataHubPage,
   "/wiki/central-de-dados/conectores": DataHubConnectorsPage,

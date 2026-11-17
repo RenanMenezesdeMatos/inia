@@ -36,14 +36,14 @@ vi.mock("@/services/auth/auth-service", () => ({ fetchCurrentUser: async () => (
 
 beforeAll(() => installJsdomStubs())
 beforeEach(() => {
-  service.fetchAudienceOptions.mockResolvedValue({ audiences: ["TEAM", "ORGANIZATION", "SEGMENT"], teams: [{ id: "t-ouv", name: "Ouvidoria", universe: "B2C", subteams: [{ id: "s-1", name: "Ouvidoria Manhã" }] }], universes: ["B2C"], products: [] })
+  service.fetchAudienceOptions.mockResolvedValue({ audiences: ["TEAM", "ORGANIZATION", "SEGMENT"], teams: [{ id: "t-ouv", name: "Ouvidoria", universe: "B2C", subteams: [{ id: "s-1", name: "Ouvidoria Manhã" }] }, { id: "t-ret", name: "Retenção", universe: "B2C", subteams: [{ id: "s-r1", name: "Retenção Tarde" }, { id: "s-r2", name: "Retenção Noite" }] }], universes: ["B2C"], products: [] })
   service.previewAudience.mockResolvedValue(12)
 })
 afterEach(() => { cleanup(); vi.clearAllMocks(); session.canModerateCommunications = false; session.canManageOperationalAlignments = false })
 
 const saved = (overrides: Partial<EditorialCommunication> = {}): EditorialCommunication => ({
   id: "c-1", status: "DRAFT", state: "DRAFT", title: "Segunda via da fatura", contentHtml: "<p>Oriente o app.</p>", plainText: "Oriente o app.", tags: ["Processos"], summary: null, featured: false,
-  audience: "TEAM", segment: { universe: null, teamIds: [], subteamIds: [] }, productNodeId: null, productName: null, publishedAt: null, displayUntil: null, recipientCount: 0,
+  audience: "TEAM", segment: { universe: null, links: [] }, productNodeId: null, productName: null, publishedAt: null, displayUntil: null, recipientCount: 0,
   createdAt: "2026-11-17T10:00:00.000Z", updatedAt: null, editedAt: null, archivedAt: null, author: { personId: "me", name: "Ana Souza", jobTitle: "Supervisora" }, ...overrides,
 })
 
@@ -191,17 +191,24 @@ describe("Publicações — editor", () => {
     expect(router.push).toHaveBeenCalledWith("/admin/agents")
   })
 
-  it("público específico: escolhe Grupo, estima o público e envia o recorte", async () => {
+  it("público específico: escolhe Grupos (um inteiro, outro só alguns Subgrupos), estima o público e envia o recorte", async () => {
     service.createCommunication.mockResolvedValue({ id: "c-9", status: "DRAFT", recipientCount: 0, publishedAt: null })
     renderWithQuery(<PublicationEditorPage id={null} />)
     typeTitle("Ouvidoria")
     fireEvent.click(await screen.findByRole("radio", { name: /Público específico/ }))
-    fireEvent.click(screen.getByRole("button", { name: "Grupos" }))
-    fireEvent.click(await screen.findByRole("button", { name: /Ouvidoria\b/ }))
-    await waitFor(() => expect(service.previewAudience).toHaveBeenCalledWith({ audience: "SEGMENT", segment: { universe: null, teamIds: ["t-ouv"], subteamIds: [] } }))
+    const addGroup = async (name: string) => {
+      fireEvent.click(await screen.findByRole("combobox", { name: "Adicionar Grupo" }))
+      fireEvent.click(await screen.findByRole("option", { name }))
+    }
+    await addGroup("Ouvidoria")
+    await waitFor(() => expect(service.previewAudience).toHaveBeenCalledWith({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: "t-ouv", subteamId: null }] } }))
+    await addGroup("Retenção")
+    fireEvent.click(within(screen.getByTestId("scope-group-t-ret")).getByRole("radio", { name: "Só alguns Subgrupos" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Retenção Noite" }))
+    expect(screen.getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Ouvidoria (Grupo inteiro) · Retenção: só Retenção Noite")
     fireEvent.click(screen.getByRole("button", { name: /Salvar rascunho/ }))
     await waitFor(() => expect(service.createCommunication).toHaveBeenCalled())
-    expect(service.createCommunication.mock.calls[0]![0]).toMatchObject({ audience: "SEGMENT", segment: { teamIds: ["t-ouv"] } })
+    expect(service.createCommunication.mock.calls[0]![0]).toMatchObject({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: "t-ouv", subteamId: null }, { teamId: "t-ret", subteamId: "s-r2" }] } })
   })
 
   it("não encontrada (outra pessoa ou retirada): mensagem de erro com voltar", async () => {

@@ -11,6 +11,7 @@ import { PDF_MARKDOWN_VERSION, PDF_OCR_VERSION, type PdfExtraction } from "../do
 import { remapExtraction } from "../domain/pdf-markdown/page-map.js"
 import { isOperatingUniverse, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
 import { assertProductsCompatible } from "../../operating-universe/application/universe-links.js"
+import { canonicalSubjectScopes, withCanonicalSubjects } from "./knowledge-subjects.js"
 
 /**
  * CICLO DE VIDA DAS VERSÕES DA BASE (PEN-008, decisão de 04/11/2026). A base mantém a identidade; as colunas de `knowledge_documents`
@@ -146,7 +147,8 @@ async function applyConfigToDocument(client: Queryable, documentId: string, conf
   await client.query(`delete from knowledge_document_org_scopes where knowledge_document_id = $1`, [documentId])
   for (const scope of config.orgScopes) await client.query(`insert into knowledge_document_org_scopes(knowledge_document_id, scope_type, team_id, subteam_id) values ($1,$2,$3,$4)`, [documentId, scope.scopeType, scope.teamId ?? null, scope.subteamId ?? null])
   await client.query(`delete from knowledge_document_subject_scopes where knowledge_document_id = $1`, [documentId])
-  for (const scope of config.subjectScopes) await client.query(`insert into knowledge_document_subject_scopes(knowledge_document_id, scope_type, subject_id) values ($1,$2,$3)`, [documentId, scope.scopeType, scope.subjectId ?? null])
+  // Versão anterior à 224 cita o assunto pelo id antigo: grava o canônico correspondente.
+  for (const scope of await canonicalSubjectScopes(client, config.subjectScopes)) await client.query(`insert into knowledge_document_subject_scopes(knowledge_document_id, scope_type, subject_id) values ($1,$2,$3)`, [documentId, scope.scopeType, scope.subjectId ?? null])
 }
 
 async function audit(client: Queryable, actor: { organizationId: string; personId?: string | null; name?: string | null }, action: string, documentId: string, payload: Record<string, unknown>): Promise<void> {
@@ -205,7 +207,8 @@ export async function saveKnowledgeDraft(client: Queryable, organizationId: stri
   const parsedBase = base ? parseConfig(base.config) : null
   // O que ainda não está em uso (rascunho, falha, primeira publicação em andamento) guarda a escolha em andamento. A vigente guarda só o retrato
   // de quando foi publicada: um rascunho novo parte do que está valendo agora, senão publicá-lo desfaria uma abrangência que ninguém pediu para mudar.
-  const baseConfig: KnowledgeVersionConfig = { ...(parsedBase ?? current), productNodeIds: parsedBase && base !== live ? parsedBase.productNodeIds : current.productNodeIds }
+  // Assuntos sempre no catálogo canônico (224): o rascunho novo de uma versão antiga já nasce com os ids canônicos.
+  const baseConfig: KnowledgeVersionConfig = await withCanonicalSubjects(client, { ...(parsedBase ?? current), productNodeIds: parsedBase && base !== live ? parsedBase.productNodeIds : current.productNodeIds })
   const config: KnowledgeVersionConfig = {
     ...baseConfig,
     ...(changes.title !== undefined ? { title: changes.title } : {}),

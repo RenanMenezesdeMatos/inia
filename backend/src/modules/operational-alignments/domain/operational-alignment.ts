@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { operatingUniverseSchema, type OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
+import { linkKey, linksOverlap, linksReach, reachingSpecificity, sharedLinks, sortLinks, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
+import { scopeLinksInputSchema } from "../../../shared/presentation/scope-links-schema.js"
 
 /**
  * ALINHAMENTO OPERACIONAL (domínio puro) — orientação TEMPORÁRIA da gestão que passa a valer como procedimento para um público e um
@@ -13,17 +15,21 @@ import { operatingUniverseSchema, type OperatingUniverse } from "../../operating
  *  2. Vigência: datas civis no fuso da organização; começa às 00:00 do início e vai até o fim do dia do término (inclusivo):
  *     `effectiveFrom <= referência < effectiveUntil`. Encerrado antes do previsto = o intervalo termina no encerramento.
  *  3. Público: universo SEMPRE igual ao do colaborador NA DATA DE REFERÊNCIA (universos são mundos separados; colaborador sem universo
- *     só recebe alinhamento de Grupo/Subgrupo enquanto a organização não ativou a exigência de universo); Grupo/Subgrupo do colaborador.
+ *     só recebe alinhamento de Grupo/Subgrupo enquanto a organização não ativou a exigência de universo); Grupo/Subgrupo do colaborador
+ *     alcançado por ALGUM vínculo da versão (223: vários Grupos inteiros e/ou Subgrupos de Grupos diferentes, num cadastro só).
  *  4. Procedimento: só alinhamento cujo procedimento afetado está entre as bases autorizadas para o agente/avaliador daquele fluxo.
  *  5. Precedência entre alinhamentos do MESMO procedimento declarados na publicação como do MESMO ponto (`SAME_TOPIC`): o recorte mais
- *     específico prevalece (Subgrupo > Grupo > universo). Mesmo recorte sem precedência = conflito recusado NA PUBLICAÇÃO. Recorte com
+ *     específico PARA AQUELE COLABORADOR prevalece (Subgrupo > Grupo > universo) — com vários vínculos, conta o vínculo que o alcança.
+ *     Mesmo recorte para as mesmas pessoas (vínculo idêntico, ou os dois do universo inteiro) = conflito recusado NA PUBLICAÇÃO. Recorte com
  *     produto nunca derruba o geral (vale só para o produto dele — o geral continua valendo para os demais).
  *  6. Assuntos proibidos e limites de atuação têm precedência ABSOLUTA: nenhum alinhamento os libera, amplia ou concede permissão — a
  *     publicação recusa texto que trate assunto proibido e os pontos de aplicação mantêm as restrições depois do alinhamento.
  */
 export const OPERATIONAL_ALIGNMENT_RULE_VERSION = "OPERATIONAL_ALIGNMENT_RULE_V1" as const
 
-export type AlignmentScopeType = "UNIVERSE" | "TEAM" | "SUBTEAM"
+/** UNIVERSE = o universo inteiro; GROUPS = os Grupos/Subgrupos dos vínculos da versão (223). */
+export type AlignmentScopeType = "UNIVERSE" | "GROUPS"
+export type AlignmentLink = ScopeLink & { teamName: string | null; subteamName: string | null }
 export type AlignmentStatus = "DRAFT" | "PUBLISHED" | "SUPERSEDED" | "CANCELLED"
 export type AlignmentRelation = "SAME_TOPIC" | "INDEPENDENT"
 
@@ -42,7 +48,27 @@ const text = (min: number, max: number, label: string) => z.string().trim().min(
 /** Processos por alinhamento (cada um é conferido no banco: organização, base ativa, universo). */
 export const MAX_ALIGNMENT_PROCESSES = 300
 
-export const alignmentInputSchema = z
+/**
+ * Forma antiga do público (um Grupo OU um Subgrupo) continua aceita na entrada e vira um vínculo — rascunhos e clientes anteriores à
+ * 223 não quebram. Saída sempre `scopeType` UNIVERSE|GROUPS + `links`.
+ */
+function legacyScopeToLinks(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value
+  const input = value as Record<string, unknown>
+  if (input.scopeType === "TEAM" || input.scopeType === "SUBTEAM") {
+    const { teamId, subteamId, ...rest } = input
+    return { ...rest, scopeType: "GROUPS", links: [input.scopeType === "TEAM" ? { teamId: teamId ?? null } : { teamId: subteamId ? (teamId ?? null) : null, subteamId: subteamId ?? null }] }
+  }
+  if (input.scopeType === "UNIVERSE" && ("teamId" in input || "subteamId" in input)) {
+    const rest = { ...input }
+    delete rest.teamId
+    delete rest.subteamId
+    return rest
+  }
+  return value
+}
+
+export const alignmentInputSchema = z.preprocess(legacyScopeToLinks, z
   .object({
     title: text(3, 160, "Título"),
     guidance: text(10, 8000, "Orientação"),
@@ -55,9 +81,10 @@ export const alignmentInputSchema = z
     reasonId: z.string().uuid("Escolha o motivo do alinhamento."),
     requestSubjectIds: z.array(z.string().uuid()).max(30, "Até 30 motivos do pedido do cliente.").default([]).transform((ids) => [...new Set(ids)]),
     operatingUniverse: operatingUniverseSchema,
-    scopeType: z.enum(["UNIVERSE", "TEAM", "SUBTEAM"]),
-    teamId: z.string().uuid().nullish().transform((value) => value ?? null),
-    subteamId: z.string().uuid().nullish().transform((value) => value ?? null),
+    scopeType: z.enum(["UNIVERSE", "GROUPS"]),
+    // Vínculos do público (223): Grupo inteiro (`subteamId` vazio) ou um Subgrupo; validados no servidor (Grupo-pai real, duplicata,
+    // Subgrupo junto do próprio Grupo inteiro, escopo de quem publica).
+    links: scopeLinksInputSchema.default([]),
     productId: z.string().uuid().nullish().transform((value) => value ?? null),
     startsOn: civilDateSchema,
     endsOn: civilDateSchema,
@@ -68,16 +95,14 @@ export const alignmentInputSchema = z
   .strict()
   .superRefine((input, context) => {
     if (input.endsOn < input.startsOn) context.addIssue({ code: "custom", path: ["endsOn"], message: "O término não pode ser antes do início." })
-    if (input.scopeType === "TEAM" && !input.teamId) context.addIssue({ code: "custom", path: ["teamId"], message: "Escolha o Grupo." })
-    if (input.scopeType === "SUBTEAM" && !input.subteamId) context.addIssue({ code: "custom", path: ["subteamId"], message: "Escolha o Subgrupo." })
-  })
+    if (input.scopeType === "GROUPS" && input.links.length === 0) context.addIssue({ code: "custom", path: ["links"], message: "Escolha ao menos um Grupo." })
+  }))
 export type AlignmentInput = z.infer<typeof alignmentInputSchema>
 
-/** Recorte normalizado (sem ids que o tipo não usa). */
-export function normalizedScope(input: Pick<AlignmentInput, "scopeType" | "teamId" | "subteamId">): { scopeType: AlignmentScopeType; teamId: string | null; subteamId: string | null } {
-  if (input.scopeType === "UNIVERSE") return { scopeType: "UNIVERSE", teamId: null, subteamId: null }
-  if (input.scopeType === "TEAM") return { scopeType: "TEAM", teamId: input.teamId, subteamId: null }
-  return { scopeType: "SUBTEAM", teamId: input.teamId, subteamId: input.subteamId }
+/** Recorte normalizado: universo inteiro sem vínculos; GROUPS com os vínculos em ordem estável. */
+export function normalizedScope(input: { scopeType: AlignmentScopeType; links: readonly { teamId: string | null; subteamId: string | null }[] }): { scopeType: AlignmentScopeType; links: ScopeLink[] } {
+  if (input.scopeType === "UNIVERSE") return { scopeType: "UNIVERSE", links: [] }
+  return { scopeType: "GROUPS", links: sortLinks(input.links.filter((link): link is ScopeLink => link.teamId !== null)) }
 }
 
 /** Duração máxima: o alinhamento é temporário por definição (a base oficial precisa ser atualizada). */
@@ -86,10 +111,10 @@ export function daysBetween(startsOn: string, endsOn: string): number {
   return Math.round((Date.parse(`${endsOn}T00:00:00Z`) - Date.parse(`${startsOn}T00:00:00Z`)) / 86_400_000) + 1
 }
 
-export function contentHashOf(input: Pick<AlignmentInput, "title" | "guidance" | "affectedDocumentIds" | "reasonId" | "requestSubjectIds" | "affectedTopic" | "justification" | "operatingUniverse" | "scopeType" | "teamId" | "subteamId" | "productId" | "startsOn" | "endsOn">): string {
+export function contentHashOf(input: Pick<AlignmentInput, "title" | "guidance" | "affectedDocumentIds" | "reasonId" | "requestSubjectIds" | "affectedTopic" | "justification" | "operatingUniverse" | "scopeType" | "links" | "productId" | "startsOn" | "endsOn">): string {
   const scope = normalizedScope(input)
   return createHash("sha256")
-    .update(JSON.stringify([input.title, input.guidance, [...input.affectedDocumentIds].sort(), input.reasonId, [...input.requestSubjectIds].sort(), input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, scope.teamId, scope.subteamId, input.productId, input.startsOn, input.endsOn]))
+    .update(JSON.stringify([input.title, input.guidance, [...input.affectedDocumentIds].sort(), input.reasonId, [...input.requestSubjectIds].sort(), input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, scope.links.map(linkKey), input.productId, input.startsOn, input.endsOn]))
     .digest("hex")
     .slice(0, 16)
 }
@@ -111,10 +136,8 @@ export type AlignmentCandidate = {
   affectedTopic: string | null
   operatingUniverse: OperatingUniverse
   scopeType: AlignmentScopeType
-  teamId: string | null
-  teamName: string | null
-  subteamId: string | null
-  subteamName: string | null
+  /** Vínculos do público (vazio no universo inteiro). */
+  links: AlignmentLink[]
   productId: string | null
   productName: string | null
   startsOn: string
@@ -154,15 +177,14 @@ export function inForceAt(candidate: Pick<AlignmentCandidate, "effectiveFrom" | 
 }
 
 /** Público: universo (sempre) + recorte. Null = alcança; senão o motivo. */
-export function audienceReasonOf(candidate: Pick<AlignmentCandidate, "operatingUniverse" | "scopeType" | "teamId" | "subteamId">, subject: AlignmentSubject): SetAsideReason | null {
+export function audienceReasonOf(candidate: Pick<AlignmentCandidate, "operatingUniverse" | "scopeType" | "links">, subject: AlignmentSubject): SetAsideReason | null {
   if (subject.operatingUniverse !== null) {
     if (subject.operatingUniverse !== candidate.operatingUniverse) return "UNIVERSE_MISMATCH"
   } else if (subject.universeEnforced || candidate.scopeType === "UNIVERSE") {
     // Colaborador pendente: só o recorte por Grupo/Subgrupo o alcança, e só antes da exigência de universo.
     return "UNIVERSE_MISMATCH"
   }
-  if (candidate.scopeType === "TEAM") return subject.teamId !== null && subject.teamId === candidate.teamId ? null : "OUT_OF_SCOPE"
-  if (candidate.scopeType === "SUBTEAM") return subject.subteamId !== null && subject.subteamId === candidate.subteamId ? null : "OUT_OF_SCOPE"
+  if (candidate.scopeType === "GROUPS") return linksReach(candidate.links, subject) ? null : "OUT_OF_SCOPE"
   return null
 }
 
@@ -170,8 +192,16 @@ export function audienceReasonOf(candidate: Pick<AlignmentCandidate, "operatingU
 export const sharesProcess = (a: Pick<AlignmentCandidate, "affectedDocuments">, b: Pick<AlignmentCandidate, "affectedDocuments">) => a.affectedDocuments.some((document) => b.affectedDocuments.some((other) => other.id === document.id))
 const processTitles = (documents: readonly { title: string }[]) => documents.map((document) => `"${document.title}"`).join(", ")
 
-/** Especificidade do recorte (a precedência): Subgrupo > Grupo > universo inteiro. */
-export const scopeSpecificityOf = (scopeType: AlignmentScopeType) => (scopeType === "SUBTEAM" ? 2 : scopeType === "TEAM" ? 1 : 0)
+/**
+ * Especificidade do recorte PARA ESTE COLABORADOR (a precedência): Subgrupo (2) > Grupo inteiro (1) > universo inteiro (0). Com vários
+ * vínculos, conta o vínculo que o alcança — o mesmo alinhamento pode ser "de Grupo" para quem está em A e "de Subgrupo" para quem está
+ * em B1. Sem colaborador (telas), o vínculo mais específico do alinhamento.
+ */
+export function specificityFor(candidate: Pick<AlignmentCandidate, "scopeType" | "links">, subject?: Pick<AlignmentSubject, "teamId" | "subteamId">): number {
+  if (candidate.scopeType === "UNIVERSE") return 0
+  if (subject) return reachingSpecificity(candidate.links, subject) ?? 0
+  return candidate.links.some((link) => link.subteamId !== null) ? 2 : 1
+}
 
 /** Relação declarada entre dois alinhamentos (em qualquer das duas versões). Sem declaração = mesmo ponto (conservador). */
 export function relationBetween(a: Pick<AlignmentCandidate, "alignmentId" | "relations">, b: Pick<AlignmentCandidate, "alignmentId" | "relations">): AlignmentRelation {
@@ -215,7 +245,7 @@ export function resolveOperationalAlignments(candidates: readonly AlignmentCandi
   }
   // Precedência: dentro do mesmo procedimento e do mesmo produto (ou ambos gerais), o mais específico derruba o menos específico do
   // mesmo ponto. Ordem estável: mais específico primeiro, depois o publicado por último.
-  const ordered = [...eligible].sort((a, b) => scopeSpecificityOf(b.scopeType) - scopeSpecificityOf(a.scopeType) || recencyOrder(a, b))
+  const ordered = [...eligible].sort((a, b) => specificityFor(b, subject) - specificityFor(a, subject) || recencyOrder(a, b))
   const applied: AlignmentCandidate[] = []
   for (const candidate of ordered) {
     const winner = applied.find((kept) => sharesProcess(kept, candidate) && kept.productId === candidate.productId && relationBetween(kept, candidate) === "SAME_TOPIC")
@@ -228,20 +258,38 @@ export function resolveOperationalAlignments(candidates: readonly AlignmentCandi
   const productPrecedence = applied.flatMap((specific) =>
     specific.productId === null ? [] : applied.filter((general) => general.productId === null && sharesProcess(general, specific) && relationBetween(general, specific) === "SAME_TOPIC").map((general) => ({ alignmentId: specific.alignmentId, over: general.alignmentId })),
   )
-  applied.sort((a, b) => (a.affectedDocuments[0]?.title ?? "").localeCompare(b.affectedDocuments[0]?.title ?? "", "pt-BR") || scopeSpecificityOf(b.scopeType) - scopeSpecificityOf(a.scopeType) || a.title.localeCompare(b.title, "pt-BR"))
+  applied.sort((a, b) => (a.affectedDocuments[0]?.title ?? "").localeCompare(b.affectedDocuments[0]?.title ?? "", "pt-BR") || specificityFor(b, subject) - specificityFor(a, subject) || a.title.localeCompare(b.title, "pt-BR"))
   return { ...base, status: "RESOLVED", referenceDate: at, applied, setAside, productPrecedence }
 }
 
-/** Dois públicos podem se cruzar? (mesmo universo; universo inteiro cruza com tudo; Grupo cruza com os Subgrupos dele.) */
-export function audiencesOverlap(
-  a: { operatingUniverse: OperatingUniverse; scopeType: AlignmentScopeType; teamId: string | null; subteamId: string | null; productId: string | null },
-  b: { operatingUniverse: OperatingUniverse; scopeType: AlignmentScopeType; teamId: string | null; subteamId: string | null; productId: string | null },
-): boolean {
+type AudienceShape = { operatingUniverse: OperatingUniverse; scopeType: AlignmentScopeType; links: readonly ScopeLink[]; productId: string | null }
+
+/** Dois públicos podem se cruzar? (mesmo universo; universo inteiro cruza com tudo; Grupo inteiro cruza com os Subgrupos dele.) */
+export function audiencesOverlap(a: AudienceShape, b: AudienceShape): boolean {
   if (a.operatingUniverse !== b.operatingUniverse) return false
   if (a.productId !== null && b.productId !== null && a.productId !== b.productId) return false
   if (a.scopeType === "UNIVERSE" || b.scopeType === "UNIVERSE") return true
-  if (a.scopeType === "TEAM" || b.scopeType === "TEAM") return a.teamId === b.teamId
-  return a.subteamId === b.subteamId
+  return linksOverlap(a.links, b.links)
+}
+
+/**
+ * Quem é mais específico onde os públicos se cruzam: THIS/OTHER quando é sempre o mesmo; MIXED quando depende do Subgrupo (ex.: este é de
+ * Subgrupo em B1 e o outro é de Subgrupo em A1, onde este vale pelo Grupo inteiro); null quando é o mesmo recorte (conflito).
+ */
+export function moreSpecificBetween(self: Pick<AudienceShape, "scopeType" | "links">, other: Pick<AudienceShape, "scopeType" | "links">): "THIS" | "OTHER" | "MIXED" | null {
+  if (self.scopeType === "UNIVERSE" && other.scopeType === "UNIVERSE") return null
+  if (self.scopeType === "UNIVERSE") return "OTHER"
+  if (other.scopeType === "UNIVERSE") return "THIS"
+  const outcomes = new Set<"THIS" | "OTHER" | "SAME">()
+  for (const left of self.links) for (const right of other.links) {
+    if (left.teamId !== right.teamId) continue
+    if (left.subteamId === right.subteamId) outcomes.add("SAME")
+    else if (left.subteamId !== null && right.subteamId === null) outcomes.add("THIS")
+    else if (left.subteamId === null && right.subteamId !== null) outcomes.add("OTHER")
+  }
+  if (outcomes.has("SAME")) return null
+  if (outcomes.has("THIS") && outcomes.has("OTHER")) return "MIXED"
+  return outcomes.has("THIS") ? "THIS" : outcomes.has("OTHER") ? "OTHER" : null
 }
 
 export const periodsOverlap = (a: { startsOn: string; endsOn: string }, b: { startsOn: string; endsOn: string }) => a.startsOn <= b.endsOn && b.startsOn <= a.endsOn
@@ -251,11 +299,15 @@ export const periodsOverlap = (a: { startsOn: string; endsOn: string }, b: { sta
  * do mesmo ponto e com o MESMO recorte e o mesmo produto — nenhum dos dois é mais específico.
  */
 export function isUnresolvableConflict(
-  a: { scopeType: AlignmentScopeType; productId: string | null },
-  b: { scopeType: AlignmentScopeType; productId: string | null },
+  a: { scopeType: AlignmentScopeType; links: readonly ScopeLink[]; productId: string | null },
+  b: { scopeType: AlignmentScopeType; links: readonly ScopeLink[]; productId: string | null },
   relation: AlignmentRelation,
 ): boolean {
-  return relation === "SAME_TOPIC" && scopeSpecificityOf(a.scopeType) === scopeSpecificityOf(b.scopeType) && a.productId === b.productId
+  if (relation !== "SAME_TOPIC" || a.productId !== b.productId) return false
+  // O mesmo recorte para as mesmas pessoas: os dois do universo inteiro, ou algum vínculo idêntico (o mesmo Grupo inteiro ou o mesmo
+  // Subgrupo). Grupo inteiro × Subgrupo dele não é conflito: no Subgrupo, o de Subgrupo prevalece.
+  if (a.scopeType === "UNIVERSE" || b.scopeType === "UNIVERSE") return a.scopeType === b.scopeType
+  return sharedLinks(a.links, b.links).length > 0
 }
 
 const civilLabel = (civil: string) => {
@@ -265,8 +317,11 @@ const civilLabel = (civil: string) => {
 export const periodLabelOf = (candidate: Pick<AlignmentCandidate, "startsOn" | "endsOn" | "endedEarlyAt" | "timeZone">) =>
   `de ${civilLabel(candidate.startsOn)} a ${civilLabel(candidate.endsOn)}${candidate.endedEarlyAt ? ` (encerrado antes, em ${new Intl.DateTimeFormat("pt-BR", { timeZone: candidate.timeZone, day: "2-digit", month: "2-digit", year: "numeric" }).format(candidate.endedEarlyAt)})` : ""}`
 
-export function audienceLabelOf(candidate: Pick<AlignmentCandidate, "operatingUniverse" | "scopeType" | "teamName" | "subteamName" | "productName">): string {
-  const scope = candidate.scopeType === "UNIVERSE" ? `todo o universo ${candidate.operatingUniverse}` : candidate.scopeType === "TEAM" ? `${candidate.operatingUniverse} · Grupo ${candidate.teamName ?? "(sem nome)"}` : `${candidate.operatingUniverse} · Grupo ${candidate.teamName ?? "(sem nome)"} › Subgrupo ${candidate.subteamName ?? "(sem nome)"}`
+/** Um vínculo como texto: "Grupo X" ou "Grupo X › Subgrupo Y" (o mesmo texto de antes para um vínculo). */
+export const linkLabelOf = (link: Pick<AlignmentLink, "teamName" | "subteamId" | "subteamName">) => (link.subteamId ? `Grupo ${link.teamName ?? "(sem nome)"} › Subgrupo ${link.subteamName ?? "(sem nome)"}` : `Grupo ${link.teamName ?? "(sem nome)"}`)
+
+export function audienceLabelOf(candidate: Pick<AlignmentCandidate, "operatingUniverse" | "scopeType" | "links" | "productName">): string {
+  const scope = candidate.scopeType === "UNIVERSE" ? `todo o universo ${candidate.operatingUniverse}` : `${candidate.operatingUniverse} · ${candidate.links.length ? candidate.links.map(linkLabelOf).join("; ") : "nenhum Grupo"}`
   return candidate.productName ? `${scope} · só para o produto ${candidate.productName}` : scope
 }
 
@@ -283,8 +338,8 @@ export function alignmentSnapshotOf(candidate: AlignmentCandidate) {
     affectedTopic: candidate.affectedTopic,
     operatingUniverse: candidate.operatingUniverse,
     scopeType: candidate.scopeType,
-    teamId: candidate.teamId,
-    subteamId: candidate.subteamId,
+    // 223: o público pode ter vários vínculos (fotografias anteriores guardam `teamId`/`subteamId` de escopo único).
+    links: candidate.links.map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })),
     productId: candidate.productId,
     startsOn: candidate.startsOn,
     endsOn: candidate.endsOn,

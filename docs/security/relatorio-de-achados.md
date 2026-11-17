@@ -902,3 +902,38 @@ O que segurou: retirada de "Conceder aos gestores" também no servidor (rota ant
 escopo do Anjo só com `human_support.manage` e organização da sessão; filtros de universo só estreitam listas já recortadas;
 comunicados com público, edição e leitura decididos no servidor e HTML malicioso limpo na criação e na edição (QA ao vivo);
 vigência por data civil com fim inclusivo e monitoria pela data do atendimento no motor de feedback.
+
+## Nona rodada (17/11/2026, tarde, run-6: mesma composição da oitava)
+
+Passada sobre `da2a9b27..d1e2215f` (quem abandonou no Painel dos Anjos, "Minha jornada" e Atividades escaladas — 222 —,
+alcance por vários Grupos — 223 —, editor da Base com assuntos canônicos — 224 —, comunicados e alinhamentos escolhidos pela
+IA no chat `PUBLICATION_RELEVANCE_V1`, Wiki) e o que eles afetam. Revisões em `~/security-audit-skill/inia/run-6/agents/*`,
+`npm run security:scan` e o CI local com provas num banco novo.
+
+Resultado: nenhum achado crítico; 1 alto (instalação nova), 3 médios e 4 baixos corrigidos com teste ou conferência em banco. QA ao vivo pela API: 63 verificações passaram; as 2 falhas viraram R9-07/R9-08.
+
+| # | Gravidade | Achado | Correção |
+|---|---|---|---|
+| R9-01 | Alta | Migration 223 quebrava em instalação nova (e no job de provas): a 197 e a 223 criam `pg_temp.refresh_logical_view` e o runner aplica tudo numa conexão — "function already exists". No dev não aparecia porque cada migration foi aplicada num dia | `create or replace` na 223; o CI local com banco novo passou a aplicar até a 224 |
+| R9-02 | Média | 223: comunicado por recorte cujos Grupos/Subgrupos tinham sido apagados não alcançava ninguém; sem vínculo, o leitor passaria a tratá-lo como o universo inteiro ou a organização | os publicados nesse caso são arquivados na migração (reversível pela tela); NOTICE correto |
+| R9-03 | Média | 224: vínculos de assunto repetidos (o cadastro antigo não deduplicava; dois assuntos antigos no mesmo canônico) barravam o índice único e a migração inteira voltava no homolog/VM | duplicatas removidas antes do índice (tabela de ligação); casamento pelo código prefere o assunto ativo |
+| R9-04 | Média | Atividades escaladas: carga parcial de um dia desativava a pausa válida anterior sem aviso (linha recusada = dia incompleto) | dia com alguma linha recusada não é desativado; os valores das linhas recusadas na validação chegam ao writer |
+| R9-05 | Baixa | `config:importar` gravava argumentário restrito a Grupos sem vínculo como "todos os Grupos" | bloqueado no plano |
+| R9-06 | Baixa | "Minha jornada" com `week=9999-12-31` dava 500 | semana limitada a 2000–2099 (400) |
+| R9-07 | Baixa | `POST /admin/knowledge` com corpo JSON e `orgScopes`/`subjectScopes` em lista: ignorados em silêncio, a base nascia para todos os Grupos e assuntos (QA ao vivo) | a lista é lida como a string do multipart |
+| R9-08 | Baixa | Argumentário "todos os Grupos" com Grupos vinculados era aceito e os vínculos descartados | recusado na validação |
+
+Abertos (R-47): carga fora de ordem/reprocessada sobrescreve dia mais novo (JA-02); "Ver quem" não volta à página 1 quando o
+total cai (JA-05); escolha de publicações pela IA no caminho crítico com prazo de 20 s, fora do cancelamento e ligada por
+padrão — medir o p95 antes de manter (CB-02); alinhamento escolhido pela IA não chega ao especialista roteado para outra base
+(CB-03); Tools de investigação casam assunto canônico sem apelido pelo código (CB-04); memória de 30 s pode trazer comunicado
+recém-retirado (CB-05); corrida entre publicar e ampliar rascunho de argumentário (MG-03); universo dos Grupos não conferido em
+Base/Argumentário (MG-04); endurecimentos MG-05..08.
+
+Varredura AppSec (17/11 15:56): Gitleaks 0 novo; Semgrep 1 novo — falso positivo (`publication-relevance.ts:103`, regex com
+prefixo fixo "C"/"A" e `\d{1,3}`); OSV 4 avisos só de desenvolvimento (picomatch GHSA-fc5q-39xc-vjpf, ReDoS em extglob — usado
+por ferramentas de build/teste, não pela aplicação). Linha de base regravada.
+
+O que segurou: escrita multi-grupo exige todos os vínculos no escopo e a FK composta segura Subgrupo de outro Grupo; candidatos
+de comunicado/alinhamento filtrados no servidor antes da IA (a IA só escolhe marcadores do catálogo recebido); "Minha jornada"
+só pela pessoa da sessão; "Ver quem" com a mesma coorte e escopo dos contadores.

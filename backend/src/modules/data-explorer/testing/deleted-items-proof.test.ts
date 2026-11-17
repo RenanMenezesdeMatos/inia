@@ -120,8 +120,8 @@ const newScene = async (name = unique("Cenário ")) => {
   return scene.rows[0]!.id
 }
 const newScript = async () => {
-  const script = await one(`insert into argument_scripts (organization_id, name, scope_type, status) values ($1, $2, 'ALL_TEAMS', 'ACTIVE')`, [ORG, unique("Argumentário ")])
-  await pool.query(`insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, effective_from, published_at) values ($1, $2, 1, 'PUBLISHED', '{}', 'h', now() - interval '1 day', now() - interval '1 day')`, [ORG, script])
+  const script = await one(`insert into argument_scripts (organization_id, name, status) values ($1, $2, 'ACTIVE')`, [ORG, unique("Argumentário ")])
+  await pool.query(`insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, effective_from, published_at, scope_type) values ($1, $2, 1, 'PUBLISHED', '{}', 'h', now() - interval '1 day', now() - interval '1 day', 'ALL_TEAMS')`, [ORG, script])
   return script
 }
 const newCriterion = async () => {
@@ -341,7 +341,7 @@ describe.skipIf(!ENABLED)("Itens excluídos — prova Postgres", () => {
 
   it("domínio com Argumentário vivo continua sem sair", async () => {
     const domain = await newDomain()
-    await pool.query(`insert into argument_scripts (organization_id, name, scope_type, status, business_domain_id) values ($1, $2, 'ALL_TEAMS', 'ACTIVE', $3)`, [ORG, unique("Argumentário D "), domain])
+    await pool.query(`insert into argument_scripts (organization_id, name, status, business_domain_id) values ($1, $2, 'ACTIVE', $3)`, [ORG, unique("Argumentário D "), domain])
     const inUse = await geral.delete(`/api/v1/admin/business-domains/${domain}`)
     expect(inUse.status).toBe(409)
     expect(inUse.body.error.code).toBe("BUSINESS_DOMAIN_IN_USE")

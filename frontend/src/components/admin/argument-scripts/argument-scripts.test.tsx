@@ -71,10 +71,8 @@ const item = (overrides: Partial<ArgumentScript>): ArgumentScript => ({
   businessDomainId: "d1",
   businessDomainName: "Faturamento",
   scopeType: "ALL_TEAMS",
-  teamId: null,
-  teamName: null,
-  subteamId: null,
-  subteamName: null,
+  scopeLinks: [],
+  draftScope: null,
   subjectName: null,
   status: "ACTIVE",
   conversion: "NATIVE",
@@ -132,7 +130,17 @@ describe("Argumentários", () => {
     service.fetchArgumentScriptsPage.mockResolvedValue({
       items: [
         item({ id: "s-legacy", name: "Protocolo no encerramento", conversion: "LEGACY_UNSTRUCTURED", businessDomainId: null, businessDomainName: null, draftVersion: null }),
-        item({ id: "s-readonly", name: "Segunda via no portal", scopeType: "SUBTEAM", teamId: "t1", teamName: "Atendimento", subteamId: "st1", subteamName: "Contas", canEdit: false, draftVersion: null }),
+        item({
+          id: "s-readonly",
+          name: "Segunda via no portal",
+          scopeType: "GROUPS",
+          scopeLinks: [
+            { teamId: "t1", teamName: "Atendimento", subteamId: "st1", subteamName: "Contas" },
+            { teamId: "t2", teamName: "Vendas", subteamId: null, subteamName: null },
+          ],
+          canEdit: false,
+          draftVersion: null,
+        }),
         item({}),
       ],
       total: 3,
@@ -149,7 +157,8 @@ describe("Argumentários", () => {
     const readOnlyRow = screen.getByTestId("argument-script-row-s-readonly")
     expect(within(readOnlyRow).getByText(READ_ONLY_LABEL)).toBeInTheDocument()
     expect(within(readOnlyRow).queryByText(LEGACY_LABEL)).toBeNull()
-    expect(readOnlyRow).toHaveTextContent("Atendimento › Contas")
+    // Vários Grupos: um só com o Subgrupo marcado, outro inteiro.
+    expect(readOnlyRow).toHaveTextContent("Atendimento › Contas · Vendas")
     expect(within(readOnlyRow).getByRole("button", { name: "Ver Segunda via no portal" })).toBeInTheDocument()
 
     const nativeRow = screen.getByTestId("argument-script-row-s-native")
@@ -167,14 +176,12 @@ describe("Argumentários", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Novo argumentário/ })[0]!)
 
     const scope = await screen.findByTestId("argument-script-scope")
-    const [scopeType] = within(scope).getAllByRole("combobox")
-    expect(scopeType).toHaveTextContent("Um grupo específico")
-    fireEvent.click(scopeType!)
-    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Um grupo específico", "Um subgrupo específico"])
-    fireEvent.click(screen.getByRole("option", { name: "Um grupo específico" }))
-
-    fireEvent.click(within(scope).getAllByRole("combobox")[1]!)
+    expect(within(scope).queryByRole("radio", { name: "Todos os grupos" })).toBeNull()
+    expect(within(scope).queryByText("Todos os grupos")).toBeNull()
+    fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Atendimento"])
+    fireEvent.click(screen.getByRole("option", { name: "Atendimento" }))
+    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro)")
   })
 
   it("com pendências de publicação, mostra as mensagens e o botão Publicar fica desabilitado", async () => {
@@ -217,7 +224,7 @@ describe("Argumentários", () => {
     await waitFor(() => expect(service.updateArgumentScript).toHaveBeenCalledTimes(1))
     const [id, input] = service.updateArgumentScript.mock.calls[0]!
     expect(id).toBe("s-native")
-    // Já publicado: o escopo não é reenviado (não muda depois da primeira publicação).
+    // Escopo não mexido: não é reenviado.
     expect(input).not.toHaveProperty("scope")
     expect(input.content.operatorGuidance).toEqual([{ key: "guid0001", text: "Oferecer o plano com desconto", modality: "MAY" }])
     expect(input.content.requiredPoints).toEqual([
@@ -226,6 +233,30 @@ describe("Argumentários", () => {
     ])
     expect(input.content.avoid).toEqual([{ key: "avd00001", text: "Prometer isenção de multa" }])
     expect(input.content.trigger).toBe(CONTENT.trigger)
+  })
+
+  it("já publicado: mudar o escopo para vários Grupos envia os vínculos (vão para o rascunho)", async () => {
+    service.fetchArgumentScriptsPage.mockResolvedValue({ items: [item({})], total: 1, page: 1, pageSize: 10 })
+    service.fetchArgumentScriptScopeOptions.mockResolvedValue({ allTeams: true, teamIds: [], subteamIds: [] })
+    service.fetchArgumentScript.mockResolvedValue(detail())
+    service.updateArgumentScript.mockResolvedValue(detail())
+    renderWithQuery(<ArgumentScriptsPage />)
+    fireEvent.click(await screen.findByRole("button", { name: "Retenção por preço" }))
+
+    const scope = await screen.findByTestId("argument-script-scope")
+    expect(within(scope).getByText(/vale a partir da publicação dele/)).toBeInTheDocument()
+    fireEvent.click(within(scope).getByRole("radio", { name: "Grupos específicos" }))
+    for (const name of ["Atendimento", "Vendas"]) {
+      fireEvent.click(within(scope).getByRole("combobox", { name: "Adicionar Grupo" }))
+      fireEvent.click(await screen.findByRole("option", { name }))
+    }
+    fireEvent.click(within(within(scope).getByTestId("scope-group-t2")).getByRole("radio", { name: "Só alguns Subgrupos" }))
+    fireEvent.click(within(scope).getByRole("checkbox", { name: "Ativo" }))
+    expect(within(scope).getByTestId("scope-reach-summary")).toHaveTextContent("Vale para: Atendimento (Grupo inteiro) · Vendas: só Ativo")
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
+    await waitFor(() => expect(service.updateArgumentScript).toHaveBeenCalledTimes(1))
+    expect(service.updateArgumentScript.mock.calls[0]![1].scope).toEqual({ scopeType: "GROUPS", links: [{ teamId: "t1", subteamId: null }, { teamId: "t2", subteamId: "st2" }] })
   })
 
   it("na lista, o interruptor desativa/reativa só depois de confirmar; rascunho nunca publicado e somente leitura não têm interruptor", async () => {

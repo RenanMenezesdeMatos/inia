@@ -7,7 +7,7 @@ import { maskedEmploymentStatusSql, PROTECTED_LEAVE, RECORD_STATUS_COLUMN } from
 /** Tabelas que a consulta pode ler, com o motivo: uma tabela nova na lista passa por aqui de propósito, nunca por descoberta. */
 const APPROVED_TABLES = new Set([
   "people", "teams", "subteams", "operations", "interactions", "transcripts", "interaction_flags", "channel_flags_all", "indicator_definitions_all", "indicator_measurements_all",
-  "employee_indicator_performance_all", "employee_prv_performance_all", "goals_all", "data_record_cancellations", "employee_work_shifts", "employee_schedule_days", "employee_schedule_exceptions", "employee_status_periods",
+  "employee_indicator_performance_all", "employee_prv_performance_all", "goals_all", "data_record_cancellations", "employee_work_shifts", "employee_schedule_days", "employee_schedule_exceptions", "employee_schedule_activities", "employee_status_periods",
   "supervision_cases", "feedbacks", "workflow_enrollments", "workflows_all", "agent_runs", "agents_all", "ai_usage_events", "data_ingestion_runs", "data_ingestion_rejections", "data_sources", "data_feeds",
 ])
 

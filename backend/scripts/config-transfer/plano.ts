@@ -174,7 +174,11 @@ export function montarPlano(itens: Item[], selecao: Map<string, boolean>, destin
         if (item.dados.rascunho !== null && item.dados.publicado !== null) linha.avisos.push("tem um rascunho mais novo que a publicação: vai publicada + o rascunho")
         break
       case "ARGUMENTARIO":
-        linha.alcance = resolverAlcance(item.dados.alcance, onde, linha.motivos)
+        linha.alcances = (item.dados.alcances ?? (item.dados.alcance ? [item.dados.alcance] : [{ tipo: "TODOS" } as const]))
+          .map((alcance) => resolverAlcance(alcance, onde, linha.motivos))
+          .filter((alcance): alcance is AlcanceResolvido => alcance !== null)
+        // Restrito a Grupos sem nenhum vínculo não vale para ninguém; no destino viraria "todos os Grupos" (run-6 MG-02).
+        if (item.dados.alcances && item.dados.alcances.length === 0) linha.motivos.push("na origem está restrito a Grupos sem nenhum Grupo vinculado (não vale para ninguém): ajuste o alcance na origem antes de transferir")
         if (!item.dados.publicado) linha.avisos.push("na origem nunca foi publicado: vai como rascunho")
         break
       case "AGENTE": {

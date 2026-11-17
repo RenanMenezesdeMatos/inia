@@ -57,6 +57,19 @@ export function SectionLabel({ children, className, as: Tag = "h2", ...props }: 
   )
 }
 
+/**
+ * Bloco da lateral de configurações de um editor (Publicações, Base de conhecimento): título em caixa alta com ícone e o conteúdo,
+ * separado do próximo por linha — sem cartão dentro de cartão.
+ */
+export function SettingsSection({ title, icon: Icon, children, className }: { title: string; icon: LucideIcon; children: ReactNode; className?: string }) {
+  return (
+    <section className={cn("space-y-3 border-b border-border py-4 first:pt-0 last:border-b-0", className)} aria-label={title}>
+      <SectionLabel as="h3" className="flex items-center gap-1.5"><Icon className="size-3.5" aria-hidden />{title}</SectionLabel>
+      {children}
+    </section>
+  )
+}
+
 /** Selo de estado: texto e ícone sobre o tom. */
 export function StatusChip({ tone, icon: Icon, children, className, ...props }: ComponentProps<"span"> & { tone: Tone; icon?: LucideIcon }) {
   return (

@@ -1,13 +1,11 @@
-import type { KnowledgeChunk } from "../../knowledge/domain/knowledge-chunking.js"
-import { rankChunks } from "../../knowledge/domain/lexical-retrieval.js"
 import { structureLabelOf, type LeaderStructureScope } from "./leader-structure.js"
 
 /**
  * COMUNICADOS NO CHAT (`COMMUNICATION_CONVERSATION_V2`, 17/11/2026). Regra pura (sem banco):
  *   1. Candidatos = só os comunicados NO AR que a pessoa da conversa enxerga (o mesmo fragmento do Acompanhamento:
  *      `communicationVisibleToSql`) — rascunho, agendado, encerrado, arquivado e retirado nunca chegam aqui.
- *   2. Relação com a pergunta = a busca da base (BM25 com o mesmo tokenizador, título conta como assunto). Nenhum comunicado
- *      relacionado = nada entra no prompt (não se "preenche" com o mais recente).
+ *   2. Relação com a pergunta = decidida pela IA sobre o catálogo curto (`PUBLICATION_RELEVANCE_V1`, `publication-relevance.ts`; antes
+ *      da V4, a busca de palavras da base). Nenhum comunicado relacionado = nada entra no prompt (não se "preenche" com o mais recente).
  *   3. No máximo `MAX_CONVERSATION_COMMUNICATIONS`, com teto de texto por comunicado.
  * O texto entra como DADO de referência, com autoria, cargo, datas e link, e a instrução de que comunicado NUNCA é orientação de conduta
  * (V2): só informação; a conduta vem de bases, alinhamentos e argumentários. Não fica acima de assunto proibido nem de limite de atuação.
@@ -16,11 +14,13 @@ import { structureLabelOf, type LeaderStructureScope } from "./leader-structure.
  * V2 (17/11/2026, decisão do usuário): comunicado nunca é orientação de conduta — só informação; a conduta vem de bases, alinhamentos e argumentários.
  * V3 (17/11/2026, auditoria run-5 PUB-03): o texto do autor não forja bloco do prompt — título, resumo e autoria em uma linha só, marcas
  * de título (#) do conteúdo neutralizadas e o conteúdo entre marcas com o id do comunicado.
+ * V4 (17/11/2026, pedido do usuário — "comunicado de natal" não achava "É NATAL!!!"): quais comunicados entram deixa de ser a busca de
+ * palavras e passa a ser a decisão da IA (`PUBLICATION_RELEVANCE_V1`), tomada junto do esclarecimento pelas bases; o texto do bloco é o mesmo.
  */
-export const COMMUNICATION_CONVERSATION_VERSION = "COMMUNICATION_CONVERSATION_V3"
+export const COMMUNICATION_CONVERSATION_VERSION = "COMMUNICATION_CONVERSATION_V4"
 export const MAX_CONVERSATION_COMMUNICATIONS = 3
 export const MAX_CONVERSATION_COMMUNICATION_CHARS = 2_500
-/** Quantos candidatos (os no ar mais recentes, destaque primeiro) a busca considera. */
+/** Quantos candidatos (os no ar mais recentes, destaque primeiro) o catálogo da decisão considera. */
 export const CONVERSATION_COMMUNICATION_CANDIDATES = 60
 
 export type ConversationCommunication = {
@@ -38,27 +38,6 @@ export type ConversationCommunication = {
 }
 
 export type CommunicationSnapshot = { id: string; title: string; publishedAt: string; version: typeof COMMUNICATION_CONVERSATION_VERSION }
-
-/** Os comunicados relacionados à pergunta, do mais relacionado ao menos. Sem pergunta = nenhum. */
-export function selectCommunicationsForQuestion(question: string, candidates: readonly ConversationCommunication[], max = MAX_CONVERSATION_COMMUNICATIONS): ConversationCommunication[] {
-  if (question.trim() === "" || candidates.length === 0) return []
-  const chunks: KnowledgeChunk[] = candidates.map((item, index) => ({
-    documentId: item.id,
-    documentTitle: item.title,
-    heading: item.productName ?? "",
-    index,
-    text: [item.summary ?? "", item.plainText].filter(Boolean).join("\n"),
-  }))
-  const byId = new Map(candidates.map((item) => [item.id, item]))
-  const picked: ConversationCommunication[] = []
-  for (const ranked of rankChunks(question, chunks)) {
-    const item = byId.get(ranked.documentId)
-    if (!item || picked.includes(item)) continue
-    picked.push(item)
-    if (picked.length >= max) break
-  }
-  return picked
-}
 
 const dateLabel = (value: Date, timeZone: string) => new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone }).format(value)
 

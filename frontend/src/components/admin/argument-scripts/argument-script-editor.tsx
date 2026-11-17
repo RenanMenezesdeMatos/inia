@@ -19,8 +19,9 @@ import { ErrorState } from "@/components/ui/states"
 import { ProductScopeCard, ProductScopeField, productsCompatibleWith, useSourceProductScope } from "@/components/admin/product-catalog/product-scope-field"
 import { UniverseSelect } from "@/components/operating-universe/universe-select"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
-import { OrgScopeSelect, orgScopeValueAfterUniverseChange, type OrgScopeValue } from "@/components/admin/shared/org-scope-select"
-import { filterByUniverse, fitsUniverse, teamScopeFitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { filterByUniverse, fitsUniverse, unitFitsUniverse } from "@/lib/operating-universe/hierarchy"
+import { linksFromScopeValue, scopeValueAfterUniverseChange, scopeValueFromLinks, scopeValueIssue, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 import { AdminApiError } from "@/lib/admin/admin-api"
 import {
   useArgumentScriptQuery,
@@ -45,25 +46,19 @@ import type { ArgumentScriptScopeInput } from "@/services/admin/argument-script-
 
 import { ArgumentScriptLifecycleDialog, type ArgumentScriptLifecycleAction } from "./argument-script-lifecycle"
 import { ArgumentScriptContentFields, ArgumentScriptContentView, contentToForm, EMPTY_CONTENT_FORM, formSource, formToContent, type ContentFormState } from "./argument-script-form"
-import { defaultScopeType, formatDateTime, scopeLabel, teamsForScope, validityLabel, versionSituation } from "./argument-script-format"
+import { formatDateTime, scopeLabel, teamsForScope, validityLabel, versionSituation } from "./argument-script-format"
 
 // ---------------------------------------------------------------------------------------------
 // Cabeçalho: nome, área responsável (domínio de negócio) e escopo
 // ---------------------------------------------------------------------------------------------
 
-type HeaderState = { name: string; businessDomainId: string | null; scope: OrgScopeValue }
+type HeaderState = { name: string; businessDomainId: string | null; scope: ScopeLinksValue }
 
-function toScopeInput(scope: OrgScopeValue): ArgumentScriptScopeInput {
-  if (scope.scopeType === "ALL_TEAMS") return { scopeType: "ALL_TEAMS" }
-  if (scope.scopeType === "TEAM") return { scopeType: "TEAM", teamId: scope.teamId }
-  return { scopeType: "SUBTEAM", teamId: scope.teamId, subteamId: scope.subteamId }
+function toScopeInput(scope: ScopeLinksValue): ArgumentScriptScopeInput {
+  return scope.global ? { scopeType: "ALL_TEAMS", links: [] } : { scopeType: "GROUPS", links: linksFromScopeValue(scope) }
 }
 
-function scopeIsComplete(scope: OrgScopeValue) {
-  if (scope.scopeType === "TEAM") return Boolean(scope.teamId)
-  if (scope.scopeType === "SUBTEAM") return Boolean(scope.subteamId)
-  return true
-}
+const scopeIsComplete = (scope: ScopeLinksValue) => scopeValueIssue(scope) === null
 
 /**
  * Área responsável (domínio de negócio). Com o universo do argumentário, só oferece domínios dele (ou ainda sem universo) — o backend
@@ -96,33 +91,21 @@ function AreaSelect({ value, onChange, currentName, universe }: { value: string 
   )
 }
 
-function ScopeField({ value, onChange, teams, scopeOptions, lockedLabel, universe }: { value: OrgScopeValue; onChange: (value: OrgScopeValue) => void; teams: Team[] | undefined; scopeOptions: ArgumentScriptScopeOptions | undefined; lockedLabel?: string | null; universe: OperatingUniverse | null }) {
-  if (lockedLabel) {
-    return (
-      <div className="space-y-1">
-        <p className="text-sm font-medium">Escopo</p>
-        <p className="text-sm">{lockedLabel}</p>
-        <p className="text-xs text-muted-foreground">O escopo não muda depois da primeira publicação. Para outro escopo, desative este argumentário e crie outro.</p>
-        {/* Escopo travado e de outro universo (Grupo classificado depois): não há o que escolher aqui — o aviso diz como resolver
-            (achado do QA de 17/11; antes nada indicava a incoerência). */}
-        {teams && value.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teams, value, universe) ? (
-          <p role="status" data-testid="argument-script-locked-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
-            Este escopo é de um Grupo/Subgrupo fora do universo {universe} do argumentário. Para usá-lo em {universe}, desative este argumentário e crie outro com um escopo de {universe}.
-          </p>
-        ) : null}
-      </div>
-    )
-  }
+function ScopeField({ value, onChange, teams, scopeOptions, universe, published }: { value: ScopeLinksValue; onChange: (value: ScopeLinksValue) => void; teams: Team[] | undefined; scopeOptions: ArgumentScriptScopeOptions | undefined; universe: OperatingUniverse | null; published?: boolean }) {
   if (!teams || !scopeOptions) return <Skeleton className="h-16 w-full" />
   return (
     <div className="space-y-1.5" data-testid="argument-script-scope">
-      <OrgScopeSelect teams={teamsForScope(teams, scopeOptions, value.scopeType)} value={value} onChange={onChange} allowAllTeams={scopeOptions.allTeams} universe={universe} />
-      <p className="text-xs text-muted-foreground">Para quem o argumentário vale. Você só escolhe grupos e subgrupos que administra{universe ? `, do universo ${universe}` : ""}.</p>
-      {value.scopeType !== "ALL_TEAMS" && !teamScopeFitsUniverse(teams, value, universe) ? (
-        <p role="status" data-testid="argument-script-scope-outside-universe" className="text-xs text-amber-700 dark:text-amber-300">
-          O escopo salvo é de outro universo. Escolha um Grupo ou Subgrupo de {universe}.
-        </p>
-      ) : null}
+      <MultiOrgScopeField
+        teams={teamsForScope(teams, scopeOptions)}
+        value={value}
+        onChange={onChange}
+        allowGlobal={scopeOptions.allTeams || value.global}
+        globalLabel="Todos os grupos"
+        universe={universe}
+        label="Escopo"
+        hint={`Para quem o argumentário vale — vários Grupos, inteiros ou só alguns Subgrupos. Você só escolhe Grupos e Subgrupos que administra${universe ? `, do universo ${universe}` : ""}.`}
+      />
+      {published ? <p className="text-xs text-muted-foreground">Mudar o escopo vai para o rascunho e vale a partir da publicação dele; as chamadas anteriores continuam avaliadas pelo escopo da versão da época.</p> : null}
     </div>
   )
 }
@@ -133,7 +116,7 @@ function HeaderFields({
   teams,
   scopeOptions,
   currentAreaName,
-  scopeLockedLabel,
+  scopePublished,
   universe,
   savedUniverse,
 }: {
@@ -142,7 +125,7 @@ function HeaderFields({
   teams: Team[] | undefined
   scopeOptions: ArgumentScriptScopeOptions | undefined
   currentAreaName: string | null
-  scopeLockedLabel?: string | null
+  scopePublished?: boolean
   /** Só na criação: o universo de atuação (o existente muda pela classificação do universo). */
   universe?: { value: OperatingUniverse | null; onChange: (value: OperatingUniverse | null) => void }
   /** Na edição: o universo já classificado do argumentário — só para encadear área e escopo. */
@@ -166,7 +149,7 @@ function HeaderFields({
         </div>
         <AreaSelect value={value.businessDomainId} onChange={(businessDomainId) => onChange({ ...value, businessDomainId })} currentName={currentAreaName} universe={effectiveUniverse} />
       </div>
-      <ScopeField value={value.scope} onChange={(scope) => onChange({ ...value, scope })} teams={teams} scopeOptions={scopeOptions} lockedLabel={scopeLockedLabel} universe={effectiveUniverse} />
+      <ScopeField value={value.scope} onChange={(scope) => onChange({ ...value, scope })} teams={teams} scopeOptions={scopeOptions} published={scopePublished} universe={effectiveUniverse} />
     </div>
   )
 }
@@ -191,7 +174,7 @@ export function ArgumentScriptCreateForm({ onCreated, onCancel }: { onCreated: (
 
 function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions: ArgumentScriptScopeOptions; teams: Team[]; onCreated: (id: string) => void; onCancel: () => void }) {
   const createMutation = useCreateArgumentScriptMutation()
-  const [header, setHeader] = useState<HeaderState>(() => ({ name: "", businessDomainId: null, scope: { scopeType: defaultScopeType(scopeOptions) } }))
+  const [header, setHeader] = useState<HeaderState>(() => ({ name: "", businessDomainId: null, scope: { global: scopeOptions.allTeams, groups: [] } }))
   const [content, setContent] = useState<ContentFormState>(EMPTY_CONTENT_FORM)
   const productScope = useSourceProductScope("ARGUMENT_SCRIPT", null)
   const [operatingUniverse, setOperatingUniverse] = useState<OperatingUniverse | null>(null)
@@ -208,7 +191,7 @@ function CreateForm({ scopeOptions, teams, onCreated, onCancel }: { scopeOptions
       return {
         ...current,
         businessDomainId: domain && !fitsUniverse(domain.operatingUniverse, next) ? null : current.businessDomainId,
-        scope: orgScopeValueAfterUniverseChange(current.scope, teams, next),
+        scope: scopeValueAfterUniverseChange(current.scope, teamsForScope(teams, scopeOptions), (unit) => unitFitsUniverse(unit, next)),
       }
     })
     const source = (allKnowledge ?? []).find((document) => document.id === content.sourceDocumentId)
@@ -313,7 +296,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
   const base: ArgumentScriptVersion | null = detail.draft ?? detail.current
   const viewVersion: ArgumentScriptVersion | null = detail.current ?? detail.draft
   const [initial] = useState(() => {
-    const header: HeaderState = { name: detail.name, businessDomainId: detail.businessDomainId, scope: { scopeType: detail.scopeType, teamId: detail.teamId ?? undefined, subteamId: detail.subteamId ?? undefined } }
+    const header: HeaderState = { name: detail.name, businessDomainId: detail.businessDomainId, scope: scopeValueFromLinks((detail.draftScope ?? { scopeType: detail.scopeType, links: detail.scopeLinks }).links, (detail.draftScope ?? detail).scopeType === "ALL_TEAMS") }
     const content = contentToForm(base?.content ?? null, { sourceDocumentId: base?.sourceDocumentId ?? null, sourceReference: base?.sourceReference ?? null })
     return { header, content, snapshot: snapshotOf(header, content), now: Date.now() }
   })
@@ -345,7 +328,8 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
         input: {
           name: header.name.trim(),
           businessDomainId: header.businessDomainId,
-          ...(detail.everPublished ? {} : { scope: toScopeInput(header.scope) }),
+          // Escopo (223) também depois de publicado: vai para o rascunho e vale a partir da publicação dele.
+          ...(JSON.stringify(toScopeInput(header.scope)) === JSON.stringify(toScopeInput(initial.header.scope)) ? {} : { scope: toScopeInput(header.scope) }),
           content: formToContent(content),
           ...formSource(content),
         },
@@ -411,7 +395,7 @@ function ArgumentScriptEditor({ detail, onBack, onDeleted }: { detail: ArgumentS
             teams={teamsQuery.data}
             scopeOptions={scopeOptionsQuery.data}
             currentAreaName={detail.businessDomainName}
-            scopeLockedLabel={detail.everPublished ? scopeLabel(detail) : null}
+            scopePublished={detail.everPublished}
             savedUniverse={detail.operatingUniverse ?? null}
           />
           <ArgumentScriptContentFields value={content} onChange={setContent} knowledgeDocuments={knowledge.documents} knowledgeUnavailable={knowledge.unavailable} currentSourceTitle={base?.sourceDocumentTitle ?? null} />

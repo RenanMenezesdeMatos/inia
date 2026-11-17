@@ -305,7 +305,7 @@ export function ListSubjectScopeFilter({
 }: {
   value: SubjectScopeFilter
   onChange: (value: SubjectScopeFilter) => void
-  subjects: Subject[] | undefined
+  subjects: readonly Pick<Subject, "id" | "name">[] | undefined
 }) {
   const encoded = value.subjectId ? `subject:${value.subjectId}` : value.subjectScopeType === "ALL_SUBJECTS" ? "global" : ALL
   return (

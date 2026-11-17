@@ -1,3 +1,5 @@
+import { scopeLinksInputSchema } from "../../../shared/presentation/scope-links-schema.js"
+import type { ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import { z } from "zod"
 
 /**
@@ -50,12 +52,29 @@ export const COMMUNICATION_EXCERPT_LENGTH = 280
 
 const uuid = z.string().uuid()
 
-export const communicationSegmentSchema = z.object({
-  universe: z.enum(COMMUNICATION_UNIVERSES).nullable().default(null),
-  teamIds: z.array(uuid).max(100).default([]),
-  subteamIds: z.array(uuid).max(300).default([]),
-}).strict()
-export type CommunicationSegment = z.infer<typeof communicationSegmentSchema>
+/**
+ * Público por recorte (SEGMENT): universo (opcional) E algum VÍNCULO (223) — Grupo inteiro (`subteamId` vazio) ou um Subgrupo daquele
+ * Grupo; sem vínculo = o universo inteiro. A forma anterior (`teamIds`/`subteamIds`, uma UNIÃO) continua aceita e vira vínculos com o
+ * mesmo alcance.
+ */
+export const communicationSegmentSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object" || "links" in value) return value
+    const legacy = value as { universe?: unknown; teamIds?: unknown; subteamIds?: unknown }
+    if (!("teamIds" in legacy) && !("subteamIds" in legacy)) return value
+    const teamIds = Array.isArray(legacy.teamIds) ? legacy.teamIds : []
+    const subteamIds = Array.isArray(legacy.subteamIds) ? legacy.subteamIds : []
+    return { universe: legacy.universe ?? null, links: [...teamIds.map((teamId) => ({ teamId })), ...subteamIds.map((subteamId) => ({ subteamId }))] }
+  },
+  z.object({
+    universe: z.enum(COMMUNICATION_UNIVERSES).nullable().default(null),
+    links: scopeLinksInputSchema.default([]),
+  }).strict(),
+)
+export type CommunicationSegmentInput = z.infer<typeof communicationSegmentSchema>
+/** Recorte gravado/normalizado: vínculos com o Grupo-pai real (e os nomes, na leitura). */
+export type CommunicationSegmentLink = ScopeLink & { teamName?: string | null; subteamName?: string | null }
+export type CommunicationSegment = { universe: CommunicationUniverse | null; links: CommunicationSegmentLink[] }
 
 const isoInstant = z.string().datetime({ offset: true })
 

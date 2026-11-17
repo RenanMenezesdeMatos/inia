@@ -13,7 +13,7 @@ import {
   type KnowledgeDocument,
 } from "@/schemas/admin/knowledge.schema"
 
-import { SOURCE_TYPE_ICONS, SOURCE_TYPE_TONE, hasMeaningfulUpdate, orgScopeLabel, subjectScopeLabel, versionLabel } from "./knowledge-visuals"
+import { SOURCE_TYPE_ICONS, SOURCE_TYPE_TONE, hasMeaningfulUpdate, orgScopesLabel, subjectScopesLabel, versionLabel } from "./knowledge-visuals"
 
 export function SourceTypeIcon({ sourceType, className }: { sourceType: KnowledgeDocument["sourceType"]; className?: string }) {
   const Icon = SOURCE_TYPE_ICONS[sourceType]
@@ -72,11 +72,11 @@ export function ScopeTags({ document, products, className }: { document: Pick<Kn
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
       <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
         <Users className="size-3 shrink-0" />
-        <span className="truncate">{orgScopeLabel(document.orgScopes[0])}</span>
+        <span className="truncate">{orgScopesLabel(document.orgScopes)}</span>
       </span>
       <span className="inline-flex max-w-full items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
         <Tag className="size-3 shrink-0" />
-        <span className="truncate">{subjectScopeLabel(document.subjectScopes[0])}</span>
+        <span className="truncate" title={subjectScopesLabel(document.subjectScopes)}>{subjectScopesLabel(document.subjectScopes)}</span>
       </span>
       {/* Só quando a base vale para alguns produtos (sem marca = todos os produtos). */}
       {products && products.length > 0 ? (

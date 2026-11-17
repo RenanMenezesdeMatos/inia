@@ -1,5 +1,6 @@
 import type pg from "pg"
 import { addDaysToDate } from "../../../modules/people/domain/employment-status.js"
+import type { ScheduleActivityType } from "../../../modules/people/domain/schedule-activity.js"
 import type { ScheduleExceptionCode } from "../../../modules/people/domain/schedule-exception.js"
 import { weekdayOf, type ScheduleType } from "../../../modules/people/domain/work-schedule.js"
 import { DEMO_ORGANIZATION_ID, DEMO_SOURCE } from "./demo-constants.js"
@@ -28,6 +29,9 @@ import type { DemoPerson } from "./structure-generator.js"
  *                  (ZERO_CONTRIBUTION) recebe 0 lógico, TMA (NO_SAMPLE) fica sem amostra — nenhuma medição sintética;
  *   operador0030 — 5x2 explícito seg–sex: FALTA INJUSTIFICADA classificada em D-3 e depois CONTRARIADA por evidência
  *                  real (a produção do dia existe): dia trabalhado, classificação preservada no histórico como superada.
+ *   operador0001 — Larissa Monteiro (persona narrativa): 5x2 explícito seg–sex no horário da jornada dela (14h00–20h00) com
+ *                  ATIVIDADES ESCALADAS em todo dia de trabalho — login, duas pausas NR17, lanche e, às quartas, feedback
+ *                  (vitrine da "Minha jornada"). Mesmos dias do fallback seg–sex: nenhum cálculo dela muda.
  * Capital operacional (jurisdição de feriados): fixtures em Fortaleza (0023 Recife, 0024 Salvador) —
  * o 6x1 de Fortaleza (0021) tem escala explícita "trabalha" no 7 de setembro: feriado NÃO vence escala.
  * Calendário explícito: D-21 até D+14 (snapshot de horizonte). Idempotente (ids determinísticos, upsert).
@@ -36,9 +40,40 @@ import type { DemoPerson } from "./structure-generator.js"
 export type DemoScheduleException = { offset: number; code: ScheduleExceptionCode; reason: string; origin: "CENTRAL_DATA" | "SUPERVISOR_MANUAL"; production: boolean }
 /** Classificação humana já registrada na massa (revisável; `supersededReason` = já superada por fato posterior). */
 export type DemoClassification = { offset: number; classification: "UNJUSTIFIED_ABSENCE" | "JUSTIFIED_ABSENCE" | "WORKED_DATA_MISSING"; reasonCode?: "ATESTADO" | "DAY_OFF" | "BANCO_HORAS" | "FOLGA_EXTRAORDINARIA" | "OTHER_JUSTIFIED"; supersededReason?: "CONTRADICTED_BY_WORK_EVIDENCE" | "SUPERSEDED_BY_AUTHORITATIVE_STATUS" }
-export type DemoScheduleFixture = { operatorOrdinal: number; scheduleType: ScheduleType | null; daysOff: number[] | null; scenario: string; capital: string | null; exceptions?: DemoScheduleException[]; /** Dias programados (offset) em que a massa NÃO gera produção — pendência de reconciliação. */ missingProductionOffsets?: number[]; classifications?: DemoClassification[] }
+/** Atividade escalada de cada dia de trabalho (`weekdays` = só nesses dias da semana, 0 = domingo). */
+export type DemoScheduleActivity = { type: ScheduleActivityType; name: string; start: string; end: string; weekdays?: number[] }
+export type DemoScheduleFixture = {
+  operatorOrdinal: number
+  scheduleType: ScheduleType | null
+  daysOff: number[] | null
+  scenario: string
+  capital: string | null
+  exceptions?: DemoScheduleException[]
+  /** Dias programados (offset) em que a massa NÃO gera produção — pendência de reconciliação. */
+  missingProductionOffsets?: number[]
+  classifications?: DemoClassification[]
+  /** Turno dos dias de trabalho (padrão 08:00–14:20). */
+  shift?: { start: string; end: string }
+  /** Login, pausas e outras atividades de cada dia de trabalho do calendário explícito (contrato Atividades escaladas). */
+  activities?: DemoScheduleActivity[]
+}
 
 export const DEMO_SCHEDULE_FIXTURES: DemoScheduleFixture[] = [
+  {
+    operatorOrdinal: 1,
+    scheduleType: "FIVE_BY_TWO",
+    daysOff: [0, 6],
+    scenario: "5x2 seg–sex 14h00–20h00 com login e pausas escaladas (Minha jornada)",
+    capital: null,
+    shift: { start: "14:00", end: "20:00" },
+    activities: [
+      { type: "LOGGED_IN", name: "Logado", start: "14:00", end: "20:00" },
+      { type: "BREAK", name: "Pausa NR17", start: "15:30", end: "15:40" },
+      { type: "OTHER", name: "Feedback com a supervisão", start: "16:00", end: "16:20", weekdays: [3] },
+      { type: "BREAK", name: "Lanche", start: "17:00", end: "17:20" },
+      { type: "BREAK", name: "Pausa NR17", start: "18:40", end: "18:50" },
+    ],
+  },
   { operatorOrdinal: 21, scheduleType: "SIX_BY_ONE", daysOff: [3], scenario: "6x1 com folga na quarta; trabalha sábado e domingo", capital: "FORTALEZA" },
   { operatorOrdinal: 22, scheduleType: "SIX_BY_ONE", daysOff: [0], scenario: "6x1 com folga no domingo; trabalha sábado", capital: "FORTALEZA" },
   { operatorOrdinal: 23, scheduleType: "FIVE_BY_TWO", daysOff: [0, 6], scenario: "5x2 explícito segunda–sexta", capital: "RECIFE" },
@@ -106,7 +141,18 @@ export function demoScheduledWorkDates(person: Pick<DemoPerson, "role" | "ordina
   return new Set(days.filter((day) => day.scheduledToWork && !skipped.has(day.date)).map((day) => day.date))
 }
 
-export async function persistDemoWorkSchedules(client: pg.PoolClient, people: DemoPerson[], referenceDate: string): Promise<{ regimes: number; days: number; exceptions: number; capitals: number; classifications: number }> {
+/** Atividades escaladas da fixture nos dias de trabalho do calendário explícito (sem exceção do dia). */
+export function demoScheduleActivities(fixture: DemoScheduleFixture, referenceDate: string): { date: string; activity: DemoScheduleActivity }[] {
+  const calendar = demoScheduleDays(fixture, referenceDate)
+  if (!calendar || !fixture.activities) return []
+  const exceptionDates = new Set((fixture.exceptions ?? []).map((exception) => demoExceptionDate(referenceDate, exception)))
+  return calendar
+    .filter((day) => day.scheduledToWork && !exceptionDates.has(day.date))
+    .flatMap((day) => fixture.activities!.filter((activity) => !activity.weekdays || activity.weekdays.includes(weekdayOf(day.date))).map((activity) => ({ date: day.date, activity })))
+}
+
+export async function persistDemoWorkSchedules(client: pg.PoolClient, people: DemoPerson[], referenceDate: string): Promise<{ regimes: number; days: number; exceptions: number; capitals: number; classifications: number; activities: number }> {
+  let activities = 0
   let regimes = 0
   let days = 0
   let exceptions = 0
@@ -159,14 +205,28 @@ export async function persistDemoWorkSchedules(client: pg.PoolClient, people: De
     if (!calendar) continue
     await client.query(
       `insert into employee_schedule_days (id, organization_id, person_id, schedule_date, scheduled_to_work, shift_start, shift_end, schedule_type, source, source_reference, observed_at)
-       select id, $1, $2, schedule_date::date, scheduled_to_work, case when scheduled_to_work then '08:00'::time end, case when scheduled_to_work then '14:20'::time end, $3::text, $4, source_reference, $5::timestamptz
+       select id, $1, $2, schedule_date::date, scheduled_to_work, case when scheduled_to_work then $10::time end, case when scheduled_to_work then $11::time end, $3::text, $4, source_reference, $5::timestamptz
        from unnest($6::uuid[], $7::text[], $8::boolean[], $9::text[]) as t(id, schedule_date, scheduled_to_work, source_reference)
        on conflict (person_id, schedule_date) do update set scheduled_to_work = excluded.scheduled_to_work, shift_start = excluded.shift_start, shift_end = excluded.shift_end,
          schedule_type = excluded.schedule_type, source = excluded.source, source_reference = excluded.source_reference, updated_at = now()
-       where employee_schedule_days.scheduled_to_work is distinct from excluded.scheduled_to_work or employee_schedule_days.schedule_type is distinct from excluded.schedule_type`,
-      [DEMO_ORGANIZATION_ID, person.id, fixture.scheduleType, DEMO_SOURCE, observedAt, calendar.map((day) => demoId(`schedule:${person.key}:${day.date}`)), calendar.map((day) => day.date), calendar.map((day) => day.scheduledToWork), calendar.map(() => fixture.scenario)],
+       where employee_schedule_days.scheduled_to_work is distinct from excluded.scheduled_to_work or employee_schedule_days.schedule_type is distinct from excluded.schedule_type
+          or employee_schedule_days.shift_start is distinct from excluded.shift_start or employee_schedule_days.shift_end is distinct from excluded.shift_end`,
+      [DEMO_ORGANIZATION_ID, person.id, fixture.scheduleType, DEMO_SOURCE, observedAt, calendar.map((day) => demoId(`schedule:${person.key}:${day.date}`)), calendar.map((day) => day.date), calendar.map((day) => day.scheduledToWork), calendar.map(() => fixture.scenario), fixture.shift?.start ?? "08:00", fixture.shift?.end ?? "14:20"],
     )
     days += calendar.length
+    // Atividades escaladas (login, pausas, outras) — o mesmo destino do contrato WORK_SCHEDULE_ACTIVITIES, origem DEMO_SEED.
+    const scheduled = demoScheduleActivities(fixture, referenceDate)
+    if (scheduled.length > 0) {
+      await client.query(
+        `insert into employee_schedule_activities (id, organization_id, person_id, schedule_date, activity_type, activity_name, start_time, end_time, source, source_reference, observed_at)
+         select id, $1, $2, schedule_date::date, activity_type, activity_name, start_time::time, end_time::time, $3, $4, $5::timestamptz
+         from unnest($6::uuid[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[]) as t(id, schedule_date, activity_type, activity_name, start_time, end_time)
+         on conflict (person_id, schedule_date, start_time, activity_name) do update set activity_type = excluded.activity_type, end_time = excluded.end_time, active = true, superseded_at = null, updated_at = now()
+         where employee_schedule_activities.activity_type is distinct from excluded.activity_type or employee_schedule_activities.end_time is distinct from excluded.end_time or not employee_schedule_activities.active`,
+        [DEMO_ORGANIZATION_ID, person.id, DEMO_SOURCE, fixture.scenario, observedAt, scheduled.map((item) => demoId(`schedule-activity:${person.key}:${item.date}:${item.activity.start}:${item.activity.name}`)), scheduled.map((item) => item.date), scheduled.map((item) => item.activity.type), scheduled.map((item) => item.activity.name), scheduled.map((item) => item.activity.start), scheduled.map((item) => item.activity.end)],
+      )
+      activities += scheduled.length
+    }
     // Consistência da própria massa demo: uma medição DEMO_SEED gerada por um seed anterior (sem
     // calendário) num dia que agora é folga programada não seria gerada hoje — some. Só dados
     // DEMO_SEED deste operador; medição real de cliente nunca é apagada por causa de escala.
@@ -180,5 +240,5 @@ export async function persistDemoWorkSchedules(client: pg.PoolClient, people: De
       )
     }
   }
-  return { regimes, days, exceptions, capitals, classifications }
+  return { regimes, days, exceptions, capitals, classifications, activities }
 }

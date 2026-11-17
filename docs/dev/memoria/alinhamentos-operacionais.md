@@ -217,6 +217,16 @@ Resultado final: 12/12.
   continua (decisão do usuário: "deixa como está").
 - Prova: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run operational-alignments-responsible-proof`.
 
+## Esclarecimento pelas bases × alinhamento no chat (17/11/2026, `PUBLICATION_RELEVANCE_V1`)
+
+Achado: no chat real (texto e voz) uma pergunta NOVA passa antes pelo esclarecimento pelas bases, que só lê as bases — com ANSWERED ou
+INSUFFICIENT ele encerrava o turno e o alinhamento em vigor (que só está no prompt do agente) nunca era aplicado. A bateria paga de
+17/11 chamava o agente direto e não passou por esse caminho. Agora (`communications/domain/publication-relevance.ts` →
+`clarificationYieldsTo`, no `realtime-router`): se a resposta das bases se apoiou num processo que um alinhamento EM VIGOR para a
+pessoa muda (`ALIGNED_PROCESS`), ou se a IA decidiu que a pergunta trata um alinhamento/comunicado (`PUBLICATION_SELECTED`, ex.:
+"quais alinhamentos estão valendo?"), quem responde é o agente. Detalhes no item "Quando comunicado e alinhamento entram na conversa"
+de [experiencia-do-colaborador.md](experiencia-do-colaborador.md).
+
 ## Limitações conhecidas
 
 - Nenhuma chamada real de modelo foi feita: a qualidade da leitura do conflito pelo modelo (sourceConflicts) não foi medida.
@@ -227,3 +237,9 @@ Resultado final: 12/12.
 - Feedback composto a partir de critério do alinhamento cita o título da seção ("Alinhamento operacional temporário AO-… (vigente …)"),
   mas a tela do feedback não tem selo próprio.
 - Dev: migrations 209–212 aplicadas em `inia` e `inia_test` em 17/11/2026; nenhum alinhamento cadastrado no `inia`.
+
+## Público por vários Grupos (17/11/2026, migration 223)
+
+O público passa a ter vínculos (`operational_alignment_version_scopes`, da versão): o universo inteiro OU vários Grupos inteiros e/ou
+Subgrupos de Grupos diferentes. A precedência usa o vínculo que alcança cada pessoa; conflito = vínculo idêntico. Detalhes em
+[alcance-multigrupo.md](alcance-multigrupo.md).

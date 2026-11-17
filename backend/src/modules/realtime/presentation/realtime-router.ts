@@ -50,6 +50,8 @@ import type { LeadershipCard } from "../../leadership-analytics/domain/view-mode
 import { loadReadableKnowledge, postgresReadableKnowledgePorts } from "../../knowledge/application/knowledge-catalog.js"
 import { resolveAccessibleKnowledgeMaterials } from "../../knowledge/application/knowledge-material-access.js"
 import { knowledgeScaleRetrievalEnabled, sharedKnowledgeRecall } from "../../knowledge/application/knowledge-recall.js"
+import { conversationPublicationsFor, loadAlignmentsInForceFor } from "../../communications/infrastructure/conversation-publications.js"
+import { clarificationYieldsTo } from "../../communications/domain/publication-relevance.js"
 import { createKnowledgeClarification, knowledgeClarificationEnabled, type ClarificationOutcome, type ClarificationRequest, type ClarificationStream } from "../../knowledge-clarification/application/knowledge-clarification-service.js"
 import { gatewayClarificationModel } from "../../knowledge-clarification/application/clarification-model.js"
 import { loadClarificationGuardrails, loadSpecialistInstructions } from "../../knowledge-clarification/application/clarification-context.js"
@@ -223,6 +225,7 @@ export async function leaderStructureInstruction(db: Database, organizationId: s
 }
 
 const lastUserText = (history: readonly { role: string; text: string }[]) => [...history].reverse().find((turn) => turn.role === "user")?.text ?? ""
+
 
 export function leadershipOnlyOrchestrator(organizationId: string, systemPrompt: string): ResolvedOrchestrator {
   return { organizationId, orchestratorId: "", orchestratorName: "INIA", orchestratorAgentId: "", systemPrompt, specialists: [], tools: [], outputInstructions: null, structuredOutput: null, recommendSupportMaterials: false }
@@ -719,6 +722,9 @@ export function createRealtimeRouter(
 
   /** O esclarecimento vale na conversa da própria pessoa (nunca na de um Workflow ou de uma aplicação de feedback), com o serviço
    * e o interruptor `INIA_KNOWLEDGE_CLARIFICATION` ligados. */
+  /** Alinhamentos em vigor para a pessoa, só quando o esclarecimento RESPONDEU pela base (sem IA; consulta ao banco) — continuação do funil. */
+  const alignmentsWhenAnswered = async (organizationId: string, personId: string, outcome: ClarificationOutcome) =>
+    outcome.kind === "REPLY" && outcome.state.status === "ANSWERED" ? { alignmentsInForce: await loadAlignmentsInForceFor(db, organizationId, personId, now()).catch(() => []) } : null
   const clarificationOn = (origin: string | null | undefined) => knowledgeClarification !== null && (origin ?? "USER") === "USER" && knowledgeClarificationEnabled()
 
   /** O esclarecimento mais recente desta conversa (lido do BANCO, nunca do navegador), se ele é a última resposta da INIA e onde
@@ -874,6 +880,8 @@ export function createRealtimeRouter(
       const stored = await latestClarificationOf(scope, writable.conversationId)
       const previous = stored && !stored.scope && !stored.feedbackScope ? { state: stored.state, isLatestAssistantMessage: stored.isLatestAssistantMessage } : null
       const continuing = Boolean(input.clarification) || Boolean(previous?.isLatestAssistantMessage && openStepOf(previous.state))
+      // Pergunta nova: comunicados e alinhamentos decididos junto do esclarecimento (`PUBLICATION_RELEVANCE_V1`, como no texto).
+      const publications = continuing ? null : conversationPublicationsFor(db, { organizationId: scope.organizationId, personId, question: spoken, recentTurns: history.slice(0, -1) }).catch(() => null)
       const speculation = continuing ? null : createSpeculation({ text: () => {}, retract: () => {}, progress: () => {} })
       const speculative = new AbortController()
       if (speculation) {
@@ -898,7 +906,8 @@ export function createRealtimeRouter(
         speculative.abort()
         throw error
       }
-      if (outcome.kind === "REPLY") {
+      const yielded = outcome.kind === "REPLY" ? clarificationYieldsTo(outcome, publications ? await publications : await alignmentsWhenAnswered(scope.organizationId, personId, outcome)) : null
+      if (outcome.kind === "REPLY" && !yielded) {
         speculation?.discard()
         speculative.abort()
         trace?.setPath("VOICE_CLARIFICATION")
@@ -912,7 +921,7 @@ export function createRealtimeRouter(
         return { text: outcome.content, modelText: `${outcome.content}${renderClarificationVoiceInstruction(outcome.state, { tool: input.toolName })}`, supportMaterials: [], analytics: [], interactionId: saved.id, clarification: view, ...(await conversationPayload(request, writable)) }
       }
       speculation?.release()
-      console.info(JSON.stringify({ event: "knowledge_clarification_pass", conversationId: writable.conversationId, reason: outcome.reason, mode: outcome.trace.mode, channel: "voice" }))
+      console.info(JSON.stringify({ event: yielded ? "knowledge_clarification_yielded" : "knowledge_clarification_pass", conversationId: writable.conversationId, reason: yielded ?? (outcome.kind === "PASS" ? outcome.reason : null), mode: outcome.trace.mode, channel: "voice" }))
     }
     if (ask.leadership && input.clarification && clarifies) {
       // Escolha no formulário de um esclarecimento da consulta de processo, com a voz aberta: segue no Orquestrador do Grupo em que
@@ -1759,12 +1768,19 @@ export function createRealtimeRouter(
             dropClarificationStream()
             throw error
           })
-          if (decision.kind === "REPLY") {
+          // Fim do funil (a escolha fechou a resposta pela base): se o processo que a sustentou tem alinhamento em vigor para a pessoa,
+          // quem responde é o agente, que tem o alinhamento no prompt. Em aberto (o funil continua) nunca cede.
+          const aligned = decision.kind === "REPLY" ? clarificationYieldsTo(decision, await alignmentsWhenAnswered(scope.organizationId, operatorId, decision)) : null
+          if (decision.kind === "REPLY" && !aligned) {
             trace.setPath("CLARIFICATION")
             await sendClarification(decision)
             return
           }
-          passed(decision)
+          if (aligned) {
+            dropClarificationStream()
+            trace.note("clarificationYielded", aligned)
+            console.info(JSON.stringify({ event: "knowledge_clarification_yielded", conversationId: resolved.conversationId, reason: aligned }))
+          } else passed(decision)
           await sendOrchestrated(await orchestrate({ stream: liveStream }), orchestrator.orchestratorId)
           send("done", {})
           return
@@ -1774,6 +1790,9 @@ export function createRealtimeRouter(
         // 21/10) decidia sozinho antes de o roteamento começar. Agora o roteamento corre junto; nada dele aparece nem roda ferramenta
         // até o esclarecimento decidir: PASS → o que o roteamento já fez segue (texto guardado sai na hora); REPLY → a orquestração é
         // cancelada (no máximo uma chamada de roteamento descartada — nenhum especialista roda) e a resposta é a do esclarecimento.
+        // Comunicados e alinhamentos (`PUBLICATION_RELEVANCE_V1`): a IA decide, junto do esclarecimento, se a pergunta pede ou trata
+        // algum dos que valem para a pessoa — antes da orquestração, para os prompts dos agentes reaproveitarem a mesma decisão.
+        const publications = conversationPublicationsFor(db, { organizationId: scope.organizationId, personId: operatorId, question: lastUserText(history), recentTurns: history.slice(0, -1) }).catch(() => null)
         const speculation = createSpeculation(liveStream)
         const speculative = new AbortController()
         const orchestration = runWithAiCancellation(AbortSignal.any([cancellation.signal, speculative.signal]), () => orchestrate({ stream: speculation.stream, proceed: speculation.decided }))
@@ -1788,7 +1807,8 @@ export function createRealtimeRouter(
           speculative.abort()
           throw error
         }
-        if (decision.kind === "REPLY") {
+        const yielded = decision.kind === "REPLY" ? clarificationYieldsTo(decision, await publications) : null
+        if (decision.kind === "REPLY" && !yielded) {
           trace.setPath("CLARIFICATION")
           trace.note("speculativeRoutingDiscarded", true)
           speculation.discard()
@@ -1796,7 +1816,13 @@ export function createRealtimeRouter(
           await sendClarification(decision)
           return
         }
-        passed(decision)
+        if (yielded) {
+          // As bases não decidem sozinhas: a pergunta trata um comunicado/alinhamento (ou um processo que um alinhamento em vigor muda) —
+          // quem responde é o agente, que os tem no prompt.
+          dropClarificationStream()
+          trace.note("clarificationYielded", yielded)
+          console.info(JSON.stringify({ event: "knowledge_clarification_yielded", conversationId: resolved.conversationId, reason: yielded }))
+        } else passed(decision)
         speculation.release()
         await sendOrchestrated(await orchestration, orchestrator.orchestratorId)
         send("done", {})

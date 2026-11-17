@@ -11,6 +11,8 @@ describe("signalsOf", () => {
   it("KNOWLEDGE_NOT_FOUND: houve especialista consultado, nenhum resultado tem conteúdo e nenhum falhou", () => {
     expect(signalsOf({ specialists: [{ knowledge: { mode: "NO_MATCH" } }] })).toEqual(["KNOWLEDGE_NOT_FOUND"])
     expect(signalsOf({ specialists: [{ knowledge: { mode: "NONE" } }, {}] })).toEqual(["KNOWLEDGE_NOT_FOUND"])
+    // Respondida por um comunicado escolhido para a pergunta (sem trecho de base): tem conteúdo, não sugere Anjo.
+    expect(signalsOf({ specialists: [{ knowledge: { mode: "NO_MATCH", communications: [{ id: "c-natal" }] } }] })).toEqual([])
     // Investigação que não terminou não é conteúdo.
     expect(signalsOf({ specialists: [{ knowledge: { mode: "NO_MATCH" }, toolTrace: [{ status: "FAILED" }, { status: "SKIPPED" }] }] })).toEqual(["KNOWLEDGE_NOT_FOUND"])
     // Resultado direto sem cartão (pedido que a ferramenta não resolveu) não conta como conteúdo.

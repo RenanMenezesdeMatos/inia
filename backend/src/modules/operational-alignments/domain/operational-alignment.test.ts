@@ -28,11 +28,8 @@ const candidate = (overrides: Partial<AlignmentCandidate> = {}): AlignmentCandid
   affectedDocuments: [{ id: PROCEDIMENTO_FATURA, title: "PR — Envio de fatura" }],
   affectedTopic: "Envio da fatura quando o cliente solicita",
   operatingUniverse: "B2C",
-  scopeType: "TEAM",
-  teamId: OUVIDORIA,
-  teamName: "Ouvidoria",
-  subteamId: null,
-  subteamName: null,
+  scopeType: "GROUPS",
+  links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }],
   productId: null,
   productName: null,
   startsOn: "2026-11-10",
@@ -90,7 +87,7 @@ describe("regra única dos alinhamentos operacionais", () => {
     const at = new Date("2026-11-15T14:00:00Z")
     expect(resolveOperationalAlignments([candidate()], { ...pending, universeEnforced: false }, at, docs).applied).toHaveLength(1)
     expect(resolveOperationalAlignments([candidate()], { ...pending, universeEnforced: true }, at, docs).applied).toHaveLength(0)
-    expect(resolveOperationalAlignments([candidate({ scopeType: "UNIVERSE", teamId: null })], { ...pending, universeEnforced: false }, at, docs).applied).toHaveLength(0)
+    expect(resolveOperationalAlignments([candidate({ scopeType: "UNIVERSE", links: [] })], { ...pending, universeEnforced: false }, at, docs).applied).toHaveLength(0)
   })
 
   it("só vale para procedimento autorizado ao agente/avaliador do fluxo", () => {
@@ -99,9 +96,9 @@ describe("regra única dos alinhamentos operacionais", () => {
   })
 
   it("precedência determinística: no mesmo ponto, o recorte mais específico prevalece (Subgrupo > Grupo > universo)", () => {
-    const universo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000a", versionId: "v-u", scopeType: "UNIVERSE", teamId: null, title: "Universo" })
+    const universo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000a", versionId: "v-u", scopeType: "UNIVERSE", links: [], title: "Universo" })
     const grupo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000b", versionId: "v-g", title: "Grupo" })
-    const subgrupo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000c", versionId: "v-s", scopeType: "SUBTEAM", subteamId: OUVIDORIA_NIVEL_2, title: "Subgrupo" })
+    const subgrupo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000c", versionId: "v-s", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: OUVIDORIA_NIVEL_2, subteamName: "Nível 2" }], title: "Subgrupo" })
     const at = new Date("2026-11-15T14:00:00Z")
     const nivel2 = resolveOperationalAlignments([universo, grupo, subgrupo], { ...ouvidoria, subteamId: OUVIDORIA_NIVEL_2 }, at, docs)
     expect(nivel2.applied.map((entry) => entry.title)).toEqual(["Subgrupo"])
@@ -113,7 +110,7 @@ describe("regra única dos alinhamentos operacionais", () => {
 
   it("declarados INDEPENDENTES na publicação: os dois valem; recorte com produto nunca derruba o geral", () => {
     const at = new Date("2026-11-15T14:00:00Z")
-    const outro = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000d", versionId: "v-d", scopeType: "UNIVERSE", teamId: null, title: "Outro ponto", relations: [{ otherAlignmentId: candidate().alignmentId, relation: "INDEPENDENT" }] })
+    const outro = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000d", versionId: "v-d", scopeType: "UNIVERSE", links: [], title: "Outro ponto", relations: [{ otherAlignmentId: candidate().alignmentId, relation: "INDEPENDENT" }] })
     expect(resolveOperationalAlignments([candidate(), outro], ouvidoria, at, docs).applied).toHaveLength(2)
     const porProduto = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000e", versionId: "v-e", productId: "prod-1", productName: "Banda Larga", title: "Banda Larga" })
     const resolution = resolveOperationalAlignments([candidate(), porProduto], ouvidoria, at, docs)
@@ -123,14 +120,41 @@ describe("regra única dos alinhamentos operacionais", () => {
   })
 
   it("conflito sem precedência (mesmo ponto, mesmo recorte) é o que a publicação recusa", () => {
-    expect(isUnresolvableConflict({ scopeType: "TEAM", productId: null }, { scopeType: "TEAM", productId: null }, "SAME_TOPIC")).toBe(true)
-    expect(isUnresolvableConflict({ scopeType: "SUBTEAM", productId: null }, { scopeType: "TEAM", productId: null }, "SAME_TOPIC")).toBe(false)
-    expect(isUnresolvableConflict({ scopeType: "TEAM", productId: null }, { scopeType: "TEAM", productId: null }, "INDEPENDENT")).toBe(false)
-    const base = { operatingUniverse: "B2C" as const, scopeType: "TEAM" as const, teamId: OUVIDORIA, subteamId: null, productId: null }
-    expect(audiencesOverlap(base, { ...base, scopeType: "UNIVERSE", teamId: null })).toBe(true)
+    const team = (teamId: string) => ({ teamId, subteamId: null })
+    const sub = (teamId: string, subteamId: string) => ({ teamId, subteamId })
+    const groups = (...links: { teamId: string; subteamId: string | null }[]) => ({ scopeType: "GROUPS" as const, links, productId: null })
+    expect(isUnresolvableConflict(groups(team(OUVIDORIA)), groups(team(OUVIDORIA)), "SAME_TOPIC")).toBe(true)
+    expect(isUnresolvableConflict(groups(sub(OUVIDORIA, OUVIDORIA_NIVEL_2)), groups(team(OUVIDORIA)), "SAME_TOPIC")).toBe(false)
+    expect(isUnresolvableConflict(groups(team(OUVIDORIA)), groups(team(OUVIDORIA)), "INDEPENDENT")).toBe(false)
+    expect(isUnresolvableConflict({ scopeType: "UNIVERSE", links: [], productId: null }, { scopeType: "UNIVERSE", links: [], productId: null }, "SAME_TOPIC")).toBe(true)
+    expect(isUnresolvableConflict({ scopeType: "UNIVERSE", links: [], productId: null }, groups(team(OUVIDORIA)), "SAME_TOPIC")).toBe(false)
+    // Multi-grupo (223): conflito quando QUALQUER vínculo é idêntico (o mesmo Grupo inteiro ou o mesmo Subgrupo) — mesmas pessoas, mesmo recorte.
+    expect(isUnresolvableConflict(groups(team(OUVIDORIA), sub(OUTRO_GRUPO, "sub-x")), groups(sub(OUTRO_GRUPO, "sub-x")), "SAME_TOPIC")).toBe(true)
+    expect(isUnresolvableConflict(groups(team(OUVIDORIA), sub(OUTRO_GRUPO, "sub-x")), groups(sub(OUTRO_GRUPO, "sub-y")), "SAME_TOPIC")).toBe(false)
+    const base = { operatingUniverse: "B2C" as const, scopeType: "GROUPS" as const, links: [team(OUVIDORIA)], productId: null }
+    expect(audiencesOverlap(base, { ...base, scopeType: "UNIVERSE", links: [] })).toBe(true)
     expect(audiencesOverlap(base, { ...base, operatingUniverse: "B2B" })).toBe(false)
-    expect(audiencesOverlap(base, { ...base, teamId: OUTRO_GRUPO })).toBe(false)
+    expect(audiencesOverlap(base, { ...base, links: [team(OUTRO_GRUPO)] })).toBe(false)
+    expect(audiencesOverlap(base, { ...base, links: [team(OUTRO_GRUPO), sub(OUVIDORIA, OUVIDORIA_NIVEL_2)] })).toBe(true)
+    expect(audiencesOverlap({ ...base, links: [sub(OUVIDORIA, OUVIDORIA_NIVEL_2)] }, { ...base, links: [sub(OUVIDORIA, "outro-sub")] })).toBe(false)
     expect(audiencesOverlap({ ...base, productId: "p1" }, { ...base, productId: "p2" })).toBe(false)
+  })
+
+  it("multi-grupo (223): a precedência usa o vínculo que alcança CADA colaborador; quem não é alcançado continua no oficial", () => {
+    const at = new Date("2026-11-15T14:00:00Z")
+    const B1 = "77777777-7777-4777-8777-777777777771"
+    const B2 = "77777777-7777-4777-8777-777777777772"
+    // Mesmo alinhamento: Ouvidoria inteira + só o Subgrupo B1 do Outro Grupo.
+    const compartilhado = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-000000000010", versionId: "v-m", title: "Compartilhado", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }, { teamId: OUTRO_GRUPO, teamName: "Outro", subteamId: B1, subteamName: "B1" }] })
+    // Outro do mesmo ponto: o Outro Grupo inteiro.
+    const doGrupo = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-000000000011", versionId: "v-g", title: "Grupo inteiro", links: [{ teamId: OUTRO_GRUPO, teamName: "Outro", subteamId: null, subteamName: null }] })
+    const applied = (subject: AlignmentSubject) => resolveOperationalAlignments([compartilhado, doGrupo], subject, at, docs).applied.map((entry) => entry.title)
+    expect(applied({ ...ouvidoria, subteamId: OUVIDORIA_NIVEL_2 })).toEqual(["Compartilhado"])
+    // Em B1, o compartilhado é de SUBGRUPO: prevalece sobre o do Grupo inteiro.
+    expect(applied({ ...ouvidoria, teamId: OUTRO_GRUPO, subteamId: B1 })).toEqual(["Compartilhado"])
+    // Em B2 (irmão), só o do Grupo inteiro alcança.
+    expect(applied({ ...ouvidoria, teamId: OUTRO_GRUPO, subteamId: B2 })).toEqual(["Grupo inteiro"])
+    expect(applied({ ...ouvidoria, teamId: "99999999-9999-4999-8999-999999999999", subteamId: null })).toEqual([])
   })
 
   it("texto da conversa: identifica a orientação como temporária, com referência e vigência, e mantém as restrições acima", () => {
@@ -151,8 +175,10 @@ describe("regra única dos alinhamentos operacionais", () => {
     expect(alignmentInputSchema.parse(valid).requestSubjectIds).toEqual([]) // motivo do pedido do cliente é opcional
     expect(alignmentInputSchema.safeParse({ ...valid, endsOn: "2026-11-09" }).success).toBe(false)
     expect(alignmentInputSchema.safeParse({ ...valid, startsOn: "2026-02-30" }).success).toBe(false)
+    // Forma antiga (um Grupo) continua aceita e vira um vínculo; GROUPS sem vínculo é recusado.
     expect(alignmentInputSchema.safeParse({ ...valid, teamId: null }).success).toBe(false)
     expect(alignmentInputSchema.safeParse({ ...valid, scopeType: "SUBTEAM" }).success).toBe(false)
+    expect(alignmentInputSchema.safeParse({ ...valid, scopeType: "GROUPS", teamId: undefined, links: [] }).success).toBe(false)
     // Sempre de um processo (1 ou mais, sem repetir); o trecho afetado é opcional (orientação nova).
     expect(alignmentInputSchema.safeParse({ ...valid, affectedDocumentIds: [] }).success).toBe(false)
     expect(alignmentInputSchema.parse({ ...valid, affectedDocumentIds: [PROCEDIMENTO_FATURA, PROCEDIMENTO_FATURA] }).affectedDocumentIds).toEqual([PROCEDIMENTO_FATURA])
@@ -165,7 +191,7 @@ describe("regra única dos alinhamentos operacionais", () => {
     const at = new Date("2026-11-15T14:00:00Z")
     const amplo = candidate({ affectedDocuments: [{ id: PROCEDIMENTO_FATURA, title: "PR — Envio de fatura" }, { id: outroProcesso, title: "IT — Segunda via" }] })
     expect(resolveOperationalAlignments([amplo], ouvidoria, at, new Set([outroProcesso])).applied).toHaveLength(1)
-    const subgrupoOutroProcesso = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000f", versionId: "v-f", scopeType: "SUBTEAM", subteamId: OUVIDORIA_NIVEL_2, title: "Outro processo", affectedDocuments: [{ id: "66666666-6666-4666-8666-666666666666", title: "PR — Cadastro" }] })
+    const subgrupoOutroProcesso = candidate({ alignmentId: "aaaaaaaa-0000-4000-8000-00000000000f", versionId: "v-f", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: OUVIDORIA_NIVEL_2, subteamName: "Nível 2" }], title: "Outro processo", affectedDocuments: [{ id: "66666666-6666-4666-8666-666666666666", title: "PR — Cadastro" }] })
     // Sem processo em comum: o mais específico não derruba o outro.
     expect(resolveOperationalAlignments([candidate(), subgrupoOutroProcesso], { ...ouvidoria, subteamId: OUVIDORIA_NIVEL_2 }, at, null).applied).toHaveLength(2)
   })

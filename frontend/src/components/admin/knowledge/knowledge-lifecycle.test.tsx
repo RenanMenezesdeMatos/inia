@@ -37,6 +37,8 @@ const service = vi.hoisted(() => ({
   retryKnowledgeVersion: vi.fn(),
   revertKnowledgeVersion: vi.fn(),
   deleteKnowledgeDocument: vi.fn(),
+  fetchKnowledgeSubjects: vi.fn(async () => ({ items: [{ id: "s1", code: "fatura", name: "Faturas", active: true }, { id: "s2", code: "reparo", name: "Reparo", active: true }, { id: "s3", code: "antigo", name: "Antigo", active: false }], canCreate: true })),
+  createKnowledgeSubject: vi.fn(),
 }))
 vi.mock("@/services/admin/knowledge-service", () => service)
 vi.mock("@/services/admin/org-structure-service", () => ({
@@ -50,7 +52,8 @@ vi.mock("@/queries/admin/use-product-catalog-queries", () => ({
 vi.mock("@/components/admin/product-catalog/product-scope-field", () => ({
   ProductScopeCard: () => null,
   ProductScopeField: () => null,
-  useProductScopeLabels: () => ({ available: false, labelsOf: () => [] }),
+  productsCompatibleWith: () => [],
+  useProductScopeLabels: () => ({ available: false, labelsOf: () => [], pendingOf: () => null }),
   useSourceProductScope: () => ({ available: false, nodes: [], value: [], setValue: vi.fn(), changed: false, save: vi.fn(async () => undefined), saving: false }),
 }))
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
@@ -839,11 +842,11 @@ describe("reverter", () => {
   })
 })
 
-describe("formulário de edição", () => {
+describe("editor da base (moldes de Publicações)", () => {
   async function renderForm(document: KnowledgeDocumentDetail) {
     service.fetchKnowledgeDocument.mockResolvedValue(document)
     renderWithQuery(<EditKnowledgePage documentId={document.id} />)
-    return screen.findByLabelText("Título")
+    return screen.findByLabelText("Título da base")
   }
 
   it("abre o que está em edição, sem seletor de status, e deixa claro que a IA continua na versão em uso", async () => {
@@ -851,12 +854,15 @@ describe("formulário de edição", () => {
     expect(title).toHaveValue("Segunda via (rascunho)")
     expect(screen.getByLabelText("Conteúdo")).toHaveValue(DRAFT.content)
     expect(screen.queryByLabelText("Status")).not.toBeInTheDocument()
-    expect(screen.getByText(/A IA continua usando a V4/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Salvar rascunho" })).toBeInTheDocument()
+    expect(screen.getByText(/não muda o que a IA consulta: ela continua usando a V4/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Salvar rascunho" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Publicar" })).toBeEnabled()
     expect(screen.getByLabelText("Resumo da alteração (opcional)")).toHaveValue("Resumo já gravado")
+    expect(within(screen.getByTestId("knowledge-editor-status")).getByText("Em uso pela IA: V4")).toBeInTheDocument()
+    expect(within(screen.getByTestId("knowledge-editor-status")).getByText("Rascunho: V5")).toBeInTheDocument()
   })
 
-  it("salvar envia o rascunho, sem status; texto igual fica de fora para não criar versão sem mudança", async () => {
+  it("salvar envia o rascunho, sem status; o que não mudou fica de fora e a pessoa continua no editor", async () => {
     const title = await renderForm(detail())
     service.updateKnowledgeDocument.mockResolvedValue(detail())
     fireEvent.change(title, { target: { value: "Segunda via nova" } })
@@ -866,16 +872,16 @@ describe("formulário de edição", () => {
     const [id, input] = service.updateKnowledgeDocument.mock.calls[0]!
     expect(id).toBe("kb-1")
     expect(input).toEqual({ title: "Segunda via nova", documentType: "PROCEDURE", changeSummary: "Novo título" })
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/admin/knowledge/kb-1"))
-    expect(toast.success).toHaveBeenCalledWith("Nada mudou em relação à versão atual: nenhum rascunho foi criado.")
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Nada mudou em relação à versão atual: nenhum rascunho foi criado."))
+    expect(router.push).not.toHaveBeenCalled()
   })
 
   it("oferece IT - Instrução de trabalho como tipo de documento e salva o tipo escolhido", async () => {
     await renderForm(detail())
     service.updateKnowledgeDocument.mockResolvedValue(detail())
-    fireEvent.click(screen.getByLabelText("Tipo de documento"))
+    fireEvent.click(screen.getByRole("combobox", { name: "Tipo" }))
     fireEvent.click(await screen.findByRole("option", { name: "IT - Instrução de trabalho" }))
-    expect(screen.getByLabelText("Tipo de documento")).toHaveTextContent("IT - Instrução de trabalho")
+    expect(screen.getByRole("combobox", { name: "Tipo" })).toHaveTextContent("IT - Instrução de trabalho")
     fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
     await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
     expect(service.updateKnowledgeDocument.mock.calls[0]![1]).toMatchObject({ documentType: "WORK_INSTRUCTION" })
@@ -890,7 +896,18 @@ describe("formulário de edição", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Rascunho V5 salvo. A IA continua usando a V4."))
   })
 
-  it("trocar arquivo sem texto extraído avisa; dá para salvar sem texto ou digitar", async () => {
+  it("Markdown: a barra só insere a marcação e Visualizar mostra a leitura formatada", async () => {
+    await renderForm(detail())
+    const content = screen.getByLabelText("Conteúdo") as HTMLTextAreaElement
+    fireEvent.change(content, { target: { value: "Prazo" } })
+    content.setSelectionRange(0, 5)
+    fireEvent.click(screen.getByRole("button", { name: "Título de seção" }))
+    expect(content).toHaveValue("## Prazo")
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Visualizar" }), { button: 0, ctrlKey: false })
+    expect(within(await screen.findByTestId("knowledge-markdown-preview")).getByRole("heading", { name: "Prazo" })).toBeInTheDocument()
+  })
+
+  it("trocar arquivo sem texto extraído avisa; texto curto não é salvo e o vazio continua fora do envio", async () => {
     await renderForm(withDraft())
     const fileConfig: KnowledgeVersionConfig = { ...CONFIG, sourceType: "PDF", file: { id: "f9", filename: "escaneado.pdf", mimeType: "application/pdf", sizeBytes: 2048, checksum: "abc" } }
     service.replaceKnowledgeDraftFile.mockResolvedValue(withDraft({ draft: { ...DRAFT, content: "", textAvailable: false, config: fileConfig }, editable: { versionId: "v5", version: 5, status: "DRAFT", content: "", config: fileConfig, textAvailable: false, restricted: false } }))
@@ -901,24 +918,89 @@ describe("formulário de edição", () => {
     expect(screen.getByText(/escaneado\.pdf/)).toBeInTheDocument()
     const content = screen.getByLabelText("Texto extraído do arquivo")
     expect(content).toHaveValue("")
-    const save = screen.getByRole("button", { name: "Salvar rascunho" })
-    expect(save).toBeEnabled()
     fireEvent.change(content, { target: { value: "curto" } })
-    expect(save).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
+    expect(await screen.findByText(/Escreva o conteúdo \(pelo menos 10 caracteres\)/)).toBeInTheDocument()
+    expect(service.updateKnowledgeDocument).not.toHaveBeenCalled()
     fireEvent.change(content, { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText("Resumo da alteração (opcional)"), { target: { value: "Arquivo novo" } })
     service.updateKnowledgeDocument.mockResolvedValue(withDraft())
-    fireEvent.click(save)
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
     await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
     expect(service.updateKnowledgeDocument.mock.calls[0]?.[1]).not.toHaveProperty("content")
   })
 
+  it("assuntos: abre os da base, troca por vários e envia só quando mudou", async () => {
+    await renderForm(detail())
+    expect(await screen.findByRole("radio", { name: "Assuntos específicos" })).toBeChecked()
+    expect(screen.getByRole("button", { name: "Faturas" })).toHaveAttribute("aria-pressed", "true")
+    // Desativado que a base não tinha não é oferecido.
+    expect(screen.queryByRole("button", { name: /Antigo/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Reparo" }))
+    service.updateKnowledgeDocument.mockResolvedValue(withDraft())
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
+    await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
+    expect(service.updateKnowledgeDocument.mock.calls[0]![1].subjectScopes).toEqual([{ scopeType: "SUBJECT", subjectId: "s1" }, { scopeType: "SUBJECT", subjectId: "s2" }])
+  })
+
+  it("assuntos: incluir um assunto pela tela já o marca na base", async () => {
+    await renderForm(detail())
+    service.createKnowledgeSubject.mockResolvedValue({ id: "s9", code: "mudanca_de_endereco", name: "Mudança de endereço", active: true })
+    fireEvent.click(await screen.findByRole("button", { name: "Incluir assunto" }))
+    fireEvent.change(await screen.findByLabelText("Novo assunto"), { target: { value: "Mudança de endereço" } })
+    fireEvent.click(screen.getByRole("button", { name: "Incluir" }))
+    await waitFor(() => expect(service.createKnowledgeSubject).toHaveBeenCalledWith("Mudança de endereço"))
+    service.updateKnowledgeDocument.mockResolvedValue(withDraft())
+    fireEvent.click(screen.getByRole("button", { name: "Salvar rascunho" }))
+    await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
+    expect(service.updateKnowledgeDocument.mock.calls[0]![1].subjectScopes).toEqual([{ scopeType: "SUBJECT", subjectId: "s1" }, { scopeType: "SUBJECT", subjectId: "s9" }])
+  })
+
+  it("assuntos: base sem nenhum assunto continua sem — ausência nunca vira \"todos\"", async () => {
+    await renderForm(detail({ editable: { versionId: "v4", version: 4, status: "PUBLISHED", content: IN_USE.content, config: { ...CONFIG, subjectScopes: [] }, textAvailable: true, restricted: false } }))
+    expect(await screen.findByRole("radio", { name: "Nenhum assunto (como está hoje)" })).toBeChecked()
+    expect(screen.getByRole("radio", { name: "Todos os assuntos" })).not.toBeChecked()
+  })
+
+  it("publicar com alteração salva o rascunho antes e abre a confirmação; publicar leva para a base", async () => {
+    await renderForm(detail())
+    service.updateKnowledgeDocument.mockResolvedValue(withDraft())
+    service.fetchKnowledgeDocument.mockResolvedValue(withDraft())
+    service.publishKnowledgeDocument.mockResolvedValue(detail({ updates: [{ id: "v5", version: 5, status: "PROCESSING", requestedAt: "2026-11-03T10:00:00.000Z", requestedByName: "Caio Alves", errorCode: null, errorMessage: null }] }))
+    fireEvent.change(screen.getByLabelText("Conteúdo"), { target: { value: "Texto novo do procedimento." } })
+    fireEvent.click(screen.getByRole("button", { name: "Publicar" }))
+    await waitFor(() => expect(service.updateKnowledgeDocument).toHaveBeenCalledTimes(1))
+    const dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).getByText("Publicar o rascunho V5?")).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publicar V5" }))
+    // O resumo já gravado no rascunho vem preenchido na confirmação.
+    await waitFor(() => expect(service.publishKnowledgeDocument).toHaveBeenCalledWith("kb-1", { changeSummary: "Resumo já gravado" }))
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/admin/knowledge/kb-1"))
+  })
+
+  it("lateral de configurações recolhe e abre com a transição de coluna; recolhida não recebe foco", async () => {
+    await renderForm(detail())
+    const columns = screen.getByTestId("knowledge-editor-columns")
+    expect(columns.className).toContain("lg:grid-cols-[minmax(0,1fr)_22rem]")
+    expect(columns.className).toContain("lg:transition-[grid-template-columns]")
+    expect(columns.className).toContain("motion-reduce:lg:transition-none")
+    fireEvent.click(screen.getByRole("button", { name: "Recolher configurações" }))
+    expect(columns.className).toContain("lg:grid-cols-[minmax(0,1fr)_3.25rem]")
+    expect(screen.getByTestId("knowledge-editor-settings-body").className).toContain("lg:invisible")
+    const show = screen.getByRole("button", { name: "Mostrar configurações" })
+    expect(show).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(show)
+    expect(columns.className).toContain("lg:grid-cols-[minmax(0,1fr)_22rem]")
+    expect(screen.getByRole("button", { name: "Recolher configurações" })).toHaveAttribute("aria-expanded", "true")
+  })
+
   it("base sem versão em uso: avisa que salvar não a disponibiliza para a IA", async () => {
     await renderForm(noVersionReady())
-    expect(screen.getByText(/esta base ainda não tem versão em uso/)).toBeInTheDocument()
+    expect(screen.getByText(/ainda não tem versão em uso: salvar não a disponibiliza/)).toBeInTheDocument()
   })
 
   it("base arquivada: avisa que salvar não reativa", async () => {
     await renderForm(detail({ status: "ARCHIVED", inUseVersion: null, inUse: null, archived: { id: "v4", version: 4 } }))
-    expect(screen.getByText(/salvar não reativa a base/)).toBeInTheDocument()
+    expect(screen.getByText(/salvar grava o rascunho e não reativa a base/i)).toBeInTheDocument()
   })
 })

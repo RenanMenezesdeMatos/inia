@@ -119,7 +119,10 @@ export type DadosItem = {
   ARGUMENTARIO: {
     name: string
     dominio: string
-    alcance: Alcance
+    /** Vínculos do argumentário (223: vários Grupos/Subgrupos). Pacotes antigos têm só `alcance` (um). */
+    alcances?: Alcance[]
+    /** Legado (pacote exportado antes da 223): o alcance único. */
+    alcance?: Alcance
     publicado: { content: unknown; base: string | null; sourceReference: string | null } | null
     rascunho: { content: unknown; base: string | null; sourceReference: string | null } | null
     arquivado: boolean

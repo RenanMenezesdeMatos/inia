@@ -173,8 +173,8 @@ function ProductTree({ nodes, criteria, sources, term, selectedId, onSelect }: {
               <span className="min-w-0 flex-1">
                 <span className={cn("block truncate", category ? "text-sm font-medium" : "text-[13px]", !node.active && "text-muted-foreground line-through")}>{node.name}</span>
                 <span className={cn("block text-muted-foreground", category ? "text-xs" : "text-[11px]")}>{meta.join(" · ")}</span>
+                {category ? null : <UniverseBadge universe={node.operatingUniverse} className="mt-1" />}
               </span>
-              {category ? null : <UniverseBadge universe={node.operatingUniverse} className="mt-0.5 shrink-0" />}
             </button>
           </li>
         )

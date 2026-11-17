@@ -19,6 +19,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { createApp } from "../../../main/app.js"
 import { hashPassword } from "../../auth/infrastructure/password-hasher.js"
 import { loadCommunicationsForConversation } from "../infrastructure/communication-conversation-loader.js"
+import { fakePublicationRelevanceModel } from "./fake-publication-relevance-model.js"
 import { loadLeaderStructureBlock, loadStructureSubjects } from "../infrastructure/leader-structure-context.js"
 
 const ENABLED = process.env.INIA_DB_PROOF === "1"
@@ -32,6 +33,7 @@ const ids: Record<string, string> = {}
 async function cleanup() {
   await db.query(`delete from communication_recipients where organization_id = $1`, [ORG])
   await db.query(`delete from communication_revisions where organization_id = $1`, [ORG])
+  await db.query(`delete from communication_segment_scopes where organization_id = $1`, [ORG])
   await db.query(`delete from communications where organization_id = $1`, [ORG])
   await db.query(`delete from audit_logs where organization_id = $1`, [ORG])
   await db.query(`delete from access_role_assignments where organization_id = $1`, [ORG])
@@ -85,7 +87,9 @@ describe.skipIf(!ENABLED)("Publicações — prova Postgres (migration 220) e co
   }
   const received = async (agent: request.Agent) => ((await agent.get("/api/v1/communications/received")).body.data.items as { title: string }[]).map((item) => item.title)
   const QUESTION = "O cliente pediu a segunda via da fatura, onde fica no app?"
-  const chat = async (personKey: string) => (await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids[personKey]!, question: QUESTION })).items.map((item) => item.title)
+  // A decisão de relevância é da IA (`PUBLICATION_RELEVANCE_V1`); aqui um modelo falso — a prova é de visibilidade, não de relevância.
+  const model = fakePublicationRelevanceModel([{ whenQuestionIncludes: "segunda via", titleIncludes: "segunda via" }, { whenQuestionIncludes: "segunda via", titleIncludes: "fatura" }])
+  const chat = async (personKey: string) => (await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids[personKey]!, question: QUESTION, model })).items.map((item) => item.title)
   const TITLE = "Segunda via da fatura no App Meu Vivo"
   const BODY = `<h2>Onde fica</h2><p>No App Meu Vivo: Conta &gt; Faturas &gt; Segunda via. Veja <a href="https://www.vivo.com.br/meuvivo">o Meu Vivo</a>.</p>`
 
@@ -120,13 +124,13 @@ describe.skipIf(!ENABLED)("Publicações — prova Postgres (migration 220) e co
     expect(await received(ouvidoria)).toEqual([TITLE])
     expect(await received(vendas)).toEqual([])
     expect((await vendas.get(`/api/v1/communications/${id}`)).status).toBe(404)
-    const loaded = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.ouvidoria!, question: QUESTION })
+    const loaded = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.ouvidoria!, question: QUESTION, model })
     expect(loaded.items.map((item) => item.title)).toEqual([TITLE])
     expect(loaded.promptBlock).toContain("Publicado por: Mariana Souza (Gerente de Operações)")
     expect(loaded.promptBlock).toContain(`Link: /publicacoes/${id}`)
     expect(await chat("vendas")).toEqual([])
     // Pergunta sem relação: nada entra.
-    expect((await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.ouvidoria!, question: "Qual o horário da confraternização?" })).items).toEqual([])
+    expect((await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.ouvidoria!, question: "Qual o horário da confraternização?", model })).items).toEqual([])
 
     // Já no ar: público travado; o texto muda com versão guardada.
     expect((await diretora.patch(`/api/v1/communications/${id}`).send({ audience: "ORGANIZATION" })).body.error.code).toBe("COMMUNICATION_AUDIENCE_LOCKED")
@@ -193,15 +197,74 @@ describe.skipIf(!ENABLED)("Publicações — prova Postgres (migration 220) e co
     expect(created.status).toBe(201)
     const subjects = await loadStructureSubjects(db, ORG, { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: null })
     expect(subjects.map((subject) => subject.teamId).sort()).toEqual([ids.teamOuvidoria, ids.teamVendas].sort())
-    const own = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION })
+    const own = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION, model })
     expect(own.items.map((item) => item.title)).not.toContain("Segunda via no app para a Ouvidoria")
-    const ouvidoria = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION, structure: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: [ids.teamOuvidoria!], groupNames: ["Ouvidoria Prova"] } })
+    const ouvidoria = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION, model, structure: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: [ids.teamOuvidoria!], groupNames: ["Ouvidoria Prova"] } })
     expect(ouvidoria.items.map((item) => item.title)).toContain("Segunda via no app para a Ouvidoria")
     expect(ouvidoria.promptBlock).toContain("COMUNICADOS PUBLICADOS PARA PESSOAS DO GRUPO OUVIDORIA PROVA")
-    const vendas = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION, structure: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: [ids.teamVendas!], groupNames: ["Vendas Prova"] } })
+    const vendas = await loadCommunicationsForConversation(db, { organizationId: ORG, personId: ids.director!, question: QUESTION, model, structure: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: [ids.teamVendas!], groupNames: ["Vendas Prova"] } })
     expect(vendas.items.map((item) => item.title)).not.toContain("Segunda via no app para a Ouvidoria")
-    const whole = await loadLeaderStructureBlock(db, { organizationId: ORG, scope: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: null }, question: QUESTION })
+    const whole = await loadLeaderStructureBlock(db, { organizationId: ORG, scope: { kind: "LEADER_STRUCTURE", leaderPersonId: ids.director!, teamIds: null }, question: QUESTION, model })
     expect(whole.communicationIds).toContain(created.body.data.id)
+  })
+  it("recorte multi-grupo (223): Grupo inteiro + um Subgrupo de outro Grupo; irmão e terceiro Grupo de fora, também na API e no chat; uma vez por pessoa", async () => {
+    const diretora = await login("pub.diretora@proof.inia.local")
+    const operation = (await db.query<{ id: string }>(`select id from operations where organization_id = $1 limit 1`, [ORG])).rows[0]!.id
+    const teamB = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name) values ($1, $2, 'Retenção Prova MG') returning id`, [ORG, operation])).rows[0]!.id
+    const teamC = (await db.query<{ id: string }>(`insert into teams (organization_id, operation_id, name) values ($1, $2, 'Terceiro Prova MG') returning id`, [ORG, operation])).rows[0]!.id
+    const subB1 = (await db.query<{ id: string }>(`insert into subteams (organization_id, team_id, name) values ($1, $2, 'B1 Prova MG') returning id`, [ORG, teamB])).rows[0]!.id
+    const subB2 = (await db.query<{ id: string }>(`insert into subteams (organization_id, team_id, name) values ($1, $2, 'B2 Prova MG') returning id`, [ORG, teamB])).rows[0]!.id
+    const member = async (key: string, teamId: string, subteamId: string | null) => {
+      const id = await person(key, `Pessoa ${key}`, "OPERATOR", ids.director!, { teamId, email: `pub.mg.${key}@proof.inia.local` })
+      if (subteamId) await db.query(`update people set subteam_id = $2 where id = $1`, [id, subteamId])
+      return login(`pub.mg.${key}@proof.inia.local`)
+    }
+    const inB1 = await member("b1", teamB, subB1)
+    const inB2 = await member("b2", teamB, subB2)
+    const inC = await member("c", teamC, null)
+    const inA = await login("pub.ouv@proof.inia.local")
+    const segment = { universe: null, links: [{ teamId: ids.teamOuvidoria }, { subteamId: subB1 }] }
+
+    // Validação: Subgrupo de outro Grupo, Subgrupo junto do próprio Grupo inteiro, repetido.
+    const send = (links: unknown[]) => diretora.post("/api/v1/communications/audience-preview").send({ audience: "SEGMENT", segment: { universe: null, links } })
+    expect((await send([{ teamId: ids.teamOuvidoria, subteamId: subB1 }])).body.error.code).toBe("COMMUNICATION_REFERENCE_INVALID")
+    expect((await send([{ teamId: teamB }, { subteamId: subB1 }])).body.error.code).toBe("COMMUNICATION_SEGMENT_INVALID")
+    expect((await send([{ teamId: teamB }, { teamId: teamB }])).body.error.code).toBe("COMMUNICATION_SEGMENT_INVALID")
+    // Prévia: Ouvidoria (1) + B1 (1) — cada pessoa uma vez.
+    expect((await diretora.post("/api/v1/communications/audience-preview").send({ audience: "SEGMENT", segment })).body.data.recipientCount).toBe(2)
+
+    const title = "Segunda via — Ouvidoria e B1"
+    const created = await diretora.post("/api/v1/communications").send({ title, contentHtml: "<p>A segunda via da fatura fica em Conta &gt; Faturas no app.</p>", tags: ["Aviso"], audience: "SEGMENT", segment })
+    expect(created.status).toBe(201)
+    const id: string = created.body.data.id
+    const editorial = (await diretora.get(`/api/v1/communications/mine/${id}`))
+    expect(editorial.body.data.segment.links).toEqual([expect.objectContaining({ teamId: ids.teamOuvidoria, subteamId: null }), expect.objectContaining({ teamId: teamB, subteamId: subB1 })])
+    const sees = async (agent: request.Agent) => (await received(agent)).filter((item) => item === title).length
+    expect(await sees(inA)).toBe(1)
+    expect(await sees(inB1)).toBe(1)
+    expect(await sees(inB2)).toBe(0)
+    expect(await sees(inC)).toBe(0)
+    // Chamada direta pelo id: fora do recorte = 404.
+    expect((await inB2.get(`/api/v1/communications/${id}`)).status).toBe(404)
+    expect((await inC.get(`/api/v1/communications/${id}`)).status).toBe(404)
+    expect((await inB1.get(`/api/v1/communications/${id}`)).status).toBe(200)
+    // Chat: o mesmo público.
+    expect(await chat("b1")).toContain(title)
+    expect(await chat("b2")).not.toContain(title)
+    // Público fixo depois que saiu.
+    expect((await diretora.patch(`/api/v1/communications/${id}`).send({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: ids.teamOuvidoria }] } })).body.error.code).toBe("COMMUNICATION_AUDIENCE_LOCKED")
+
+    // Agendado (ainda não saiu): tirar o B1 tira o acesso dele quando entrar no ar; Ouvidoria continua.
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString()
+    const scheduled = await diretora.post("/api/v1/communications").send({ title: "Agendado MG", contentHtml: "<p>Aviso de amanhã.</p>", tags: ["Aviso"], audience: "SEGMENT", segment, publishAt: tomorrow })
+    expect(scheduled.body.data.recipientCount).toBe(2)
+    const narrowed = await diretora.patch(`/api/v1/communications/${scheduled.body.data.id}`).send({ audience: "SEGMENT", segment: { universe: null, links: [{ teamId: ids.teamOuvidoria }] } })
+    expect(narrowed.status).toBe(200)
+    const stored = (await db.query<{ n: number }>(`select count(*)::int n from communication_segment_scopes where communication_id = $1`, [scheduled.body.data.id])).rows[0]!.n
+    expect(stored).toBe(1)
+    await db.query(`update communications set published_at = now() - interval '1 minute' where id = $1`, [scheduled.body.data.id])
+    expect((await received(inB1)).includes("Agendado MG")).toBe(false)
+    expect((await received(inA)).includes("Agendado MG")).toBe(true)
   })
 })
 

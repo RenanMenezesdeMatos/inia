@@ -113,7 +113,7 @@ describe("knowledge-service", () => {
 
   it("salvar o rascunho nunca envia status e só manda o que foi informado", async () => {
     api.adminSend.mockResolvedValue(DETAIL)
-    await updateKnowledgeDocument("kb-1", { title: "T", documentType: "FAQ", orgScope: { scopeType: "ALL_TEAMS" }, subjectScope: { scopeType: "ALL_SUBJECTS" } })
+    await updateKnowledgeDocument("kb-1", { title: "T", documentType: "FAQ", orgScopes: [{ scopeType: "ALL_TEAMS" }], subjectScopes: [{ scopeType: "ALL_SUBJECTS" }] })
     expect(api.adminSend).toHaveBeenCalledWith("/api/v1/admin/knowledge/kb-1", "PATCH", { title: "T", documentType: "FAQ", orgScopes: [{ scopeType: "ALL_TEAMS" }], subjectScopes: [{ scopeType: "ALL_SUBJECTS" }] })
   })
 

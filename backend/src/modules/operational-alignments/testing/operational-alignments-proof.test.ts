@@ -341,4 +341,97 @@ describe.skipIf(!ENABLED)("Alinhamentos operacionais — prova Postgres (cadastr
     const status = (await client.query<{ status: string }>("select status from operational_alignment_versions where alignment_id = $1", [created.id])).rows.map((row) => row.status)
     expect(status).toEqual(["DRAFT"])
   })
+  it("multi-grupo (223): um cadastro para o Grupo A inteiro e só o Subgrupo B1; B2 e o Grupo C de fora; gestor parcial; conflito, precedência e remoção de vínculo", async () => {
+    await client.query("update prohibited_topics set active = false where organization_id = $1", [ORG])
+    const operation = (await client.query<{ id: string }>("select id from operations where organization_id = $1 order by created_at limit 1", [ORG])).rows[0]!.id
+    const team = async (name: string) => (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name, operating_universe) values ($1, $2, $3, 'B2C') returning id", [ORG, operation, name])).rows[0]!.id
+    const subteam = async (teamId: string, name: string) => (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, $3) returning id", [ORG, teamId, name])).rows[0]!.id
+    const teamA = await team("Proof MG Grupo A")
+    const teamB = await team("Proof MG Grupo B")
+    const teamC = await team("Proof MG Grupo C")
+    const subB1 = await subteam(teamB, "Proof MG B1")
+    const subB2 = await subteam(teamB, "Proof MG B2")
+    const doc = (await client.query<{ id: string }>("insert into knowledge_documents (organization_id, title, document_type, operating_universe) values ($1, 'Proof MG — PR Fatura', 'PROCEDURE', 'B2C') returning id", [ORG])).rows[0]!.id
+    await client.query("insert into knowledge_versions (organization_id, document_id, version, content, status, content_hash) values ($1, $2, 1, 'Conteúdo', 'PUBLISHED', md5($3))", [ORG, doc, doc])
+    const hash = await hashPassword("Proof@12345")
+    let n = 0
+    const person = async (teamId: string | null, subteamId: string | null, roleCode?: string, scope?: { type: string; teamId?: string }) => {
+      n += 1
+      const id = (await client.query<{ id: string }>("insert into people (organization_id, name, role, team_id, subteam_id) values ($1, $2, 'OPERATOR', $3, $4) returning id", [ORG, `Proof MG ${n}`, teamId, subteamId])).rows[0]!.id
+      const email = `proof-mg-${n}-${Date.now()}@proof.inia.local`
+      const accountId = (await client.query<{ id: string }>("insert into user_accounts (organization_id, person_id, email, password_hash) values ($1, $2, $3, $4) returning id", [ORG, id, email, hash])).rows[0]!.id
+      if (roleCode && scope) await client.query("insert into access_role_assignments (organization_id, user_account_id, role_code, scope_type, team_id, granted_at) values ($1, $2, $3, $4, $5, now())", [ORG, accountId, roleCode, scope.type, scope.teamId ?? null])
+      return { id, email }
+    }
+    const geral = await person(null, null, "ADMINISTRADOR_GERAL", { type: "ORGANIZATION" })
+    const gestorA = await person(teamA, null, "GESTOR_DE_ALINHAMENTOS", { type: "GROUP", teamId: teamA })
+    const opA = await person(teamA, null)
+    const opB1 = await person(teamB, subB1)
+    const opB2 = await person(teamB, subB2)
+    const opC = await person(teamC, null)
+    const opInconsistent = await person(teamA, subB1)
+    const app = createApp(client as never)
+    const login = async (email: string) => {
+      const http = request.agent(app)
+      expect((await http.post("/api/v1/auth/login").send({ email, password: "Proof@12345" })).status).toBe(200)
+      return http
+    }
+    const org = await login(geral.email)
+    const gestor = await login(gestorA.email)
+    const base = "/api/v1/admin/operational-alignments"
+    const reasonId = (await client.query<{ id: string }>("select id from operational_alignment_reasons where organization_id = $1 and name = 'Contingência'", [ORG])).rows[0]!.id
+    const body = { reasonId, title: "Proof MG — compartilhado", guidance: "Oriente o cliente a acessar a fatura pelo app.", affectedDocumentIds: [doc], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "GROUPS", links: [{ teamId: teamA }, { subteamId: subB1 }], startsOn: "2026-11-10", endsOn: "2026-11-30" }
+
+    // Validação dos vínculos no backend: Subgrupo de outro Grupo, duplicado, Subgrupo junto do próprio Grupo inteiro.
+    expect((await org.post(base).send({ ...body, links: [{ teamId: teamA, subteamId: subB1 }] })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_SCOPE_INVALID")
+    expect((await org.post(base).send({ ...body, links: [{ teamId: teamA }, { teamId: teamA }] })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_SCOPE_INVALID")
+    expect((await org.post(base).send({ ...body, links: [{ teamId: teamB }, { subteamId: subB1 }] })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_SCOPE_INVALID")
+    // Gestor só do Grupo A não cria para o Subgrupo B1 (fora do escopo).
+    expect((await gestor.post(base).send(body)).status).toBe(403)
+
+    const created = await org.post(base).send(body)
+    expect(created.status).toBe(201)
+    const shared = created.body.data.id as string
+    expect(created.body.data.draft.links).toEqual([expect.objectContaining({ teamId: teamA, subteamId: null }), expect.objectContaining({ teamId: teamB, subteamId: subB1 })])
+    expect((await org.post(`${base}/${shared}/publish`).send({})).status).toBe(200)
+
+    const at = (iso: string) => new Date(iso)
+    const titles = async (personId: string, iso: string) => (await resolveOperationalAlignmentsFor(client, { organizationId: ORG, personId, at: at(iso), documentIds: [doc] })).applied.map((entry) => `${entry.title}@v${entry.version}`)
+    expect(await titles(opA.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — compartilhado@v1"])
+    expect(await titles(opB1.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — compartilhado@v1"])
+    expect(await titles(opB2.id, "2026-11-15T15:00:00Z")).toEqual([])
+    expect(await titles(opC.id, "2026-11-15T15:00:00Z")).toEqual([])
+    // Alcançado pelos dois vínculos (cadastro inconsistente Grupo A + Subgrupo B1): uma vez só.
+    expect(await titles(opInconsistent.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — compartilhado@v1"])
+
+    // Gestor parcial (só o Grupo A): o alinhamento também vale para B1, que ele não administra — fica fora da lista e do detalhe
+    // (política anterior: ver = administrar), e ele não edita nem publica.
+    const gestorList = (await gestor.get(`${base}?page=1&pageSize=50&search=Proof MG`)).body.data.items as { id: string }[]
+    expect(gestorList.some((item) => item.id === shared)).toBe(false)
+    expect((await gestor.get(`${base}/${shared}`)).status).toBe(404)
+    expect((await gestor.put(`${base}/${shared}/draft`).send({ ...body, links: [{ teamId: teamA }], changeReason: "Tirar o B1" })).status).toBe(404)
+    // Lista do administrador: filtro pelo Grupo B acha pelo vínculo do Subgrupo; uma linha só.
+    expect(((await org.get(`${base}?page=1&pageSize=50&teamId=${teamB}`)).body.data.items as { id: string }[]).filter((item) => item.id === shared)).toHaveLength(1)
+
+    // Conflito: outro alinhamento do mesmo ponto com vínculo IDÊNTICO (Subgrupo B1) é recusado; com o Grupo B inteiro, há precedência.
+    const other = (await org.post(base).send({ ...body, title: "Proof MG — Grupo B", links: [{ subteamId: subB1 }] })).body.data.id as string
+    const preview = await org.get(`${base}/${other}/publication-preview`)
+    expect(preview.body.data.overlaps).toEqual([expect.objectContaining({ alignmentId: shared, sameScopeLevel: true, moreSpecific: null })])
+    expect((await org.post(`${base}/${other}/publish`).send({ relations: [{ alignmentId: shared, relation: "SAME_TOPIC" }] })).body.error.code).toBe("OPERATIONAL_ALIGNMENT_CONFLICT")
+    expect((await org.put(`${base}/${other}/draft`).send({ ...body, title: "Proof MG — Grupo B", links: [{ teamId: teamB }] })).status).toBe(200)
+    expect((await org.post(`${base}/${other}/publish`).send({ relations: [{ alignmentId: shared, relation: "SAME_TOPIC" }] })).status).toBe(200)
+    // Em B1 o compartilhado é de Subgrupo (mais específico); em B2 só o do Grupo B inteiro alcança.
+    expect(await titles(opB1.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — compartilhado@v1"])
+    expect(await titles(opB2.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — Grupo B@v1"])
+
+    // Remover o vínculo do B1 (nova versão a partir de 20/11): B1 perde o compartilhado dali em diante; A continua; a história fica.
+    expect((await org.put(`${base}/${shared}/draft`).send({ ...body, links: [{ teamId: teamA }], startsOn: "2026-11-20", changeReason: "B1 voltou ao procedimento do Grupo B" })).status).toBe(200)
+    expect((await org.post(`${base}/${shared}/publish`).send({})).status).toBe(200)
+    expect(await titles(opB1.id, "2026-11-25T15:00:00Z")).toEqual(["Proof MG — Grupo B@v1"])
+    expect(await titles(opA.id, "2026-11-25T15:00:00Z")).toEqual(["Proof MG — compartilhado@v2"])
+    expect(await titles(opB1.id, "2026-11-15T15:00:00Z")).toEqual(["Proof MG — compartilhado@v1"])
+    // A versão publicada guardou os vínculos dela (v1 com B1, v2 sem).
+    const linksByVersion = (await client.query<{ version: number; n: number }>("select v.version, count(l.*)::int n from operational_alignment_versions v left join operational_alignment_version_scopes l on l.version_id = v.id where v.alignment_id = $1 group by v.version order by v.version", [shared])).rows
+    expect(linksByVersion).toEqual([{ version: 1, n: 2 }, { version: 2, n: 1 }])
+  })
 })

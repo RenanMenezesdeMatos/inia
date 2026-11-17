@@ -1,3 +1,4 @@
+import { linksFromScopeValue } from "@/lib/scope-links/scope-links"
 import { z } from "zod"
 
 
@@ -66,9 +67,8 @@ export function alignmentPayloadOf(values: AlignmentFormValues) {
     affectedTopic: values.affectedTopic.trim() ? values.affectedTopic.trim() : null,
     justification: values.justification,
     operatingUniverse: values.operatingUniverse,
-    scopeType: values.scopeType,
-    teamId: values.scopeType === "UNIVERSE" ? null : values.teamId,
-    subteamId: values.scopeType === "SUBTEAM" ? values.subteamId : null,
+    scopeType: values.scope.global ? "UNIVERSE" : "GROUPS",
+    links: linksFromScopeValue(values.scope),
     productId: values.productId,
     startsOn: values.startsOn,
     endsOn: values.endsOn,

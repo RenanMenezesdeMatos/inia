@@ -1,7 +1,7 @@
 import type { Database } from "../../../infrastructure/database/pool.js"
 import type { FunctionDeclaration } from "../../assistant/infrastructure/gemini-function-calling-client.js"
 import { alignmentReferenceOf, audienceReasonOf, periodLabelOf } from "../domain/operational-alignment.js"
-import { loadAlignmentSubject } from "../infrastructure/operational-alignment-loaders.js"
+import { alignmentLinksSql, loadAlignmentSubject } from "../infrastructure/operational-alignment-loaders.js"
 
 type Queryable = Pick<Database, "query">
 
@@ -35,9 +35,8 @@ type HistoryRow = {
   guidance: string
   affected_topic: string | null
   operating_universe: string
-  scope_type: "UNIVERSE" | "TEAM" | "SUBTEAM"
-  team_id: string | null
-  subteam_id: string | null
+  scope_type: "UNIVERSE" | "GROUPS"
+  links: { teamId: string; teamName: string | null; subteamId: string | null; subteamName: string | null }[] | null
   product_name: string | null
   starts_on: string
   ends_on: string
@@ -55,7 +54,7 @@ export async function loadAlignmentHistory(db: Queryable, input: { organizationI
   const subject = await loadAlignmentSubject(db, input.organizationId, input.personId, now)
   if (!subject) return []
   const rows = (await db.query<HistoryRow>(
-    `select v.alignment_id, v.version, v.title, v.guidance, v.affected_topic, v.operating_universe, v.scope_type, v.team_id, v.subteam_id, pn.name product_name,
+    `select v.alignment_id, v.version, v.title, v.guidance, v.affected_topic, v.operating_universe, v.scope_type, ${alignmentLinksSql("v")} links, pn.name product_name,
             v.starts_on::text starts_on, v.ends_on::text ends_on, v.time_zone, v.effective_until, v.status, v.ended_at, v.end_reason,
             (select n.version from operational_alignment_versions n where n.id = v.superseded_by_version_id) superseded_by_version,
             (select array_agg(kd.title order by kd.title) from operational_alignment_version_documents vd join knowledge_documents kd on kd.id = vd.document_id where vd.version_id = v.id) processes
@@ -69,7 +68,7 @@ export async function loadAlignmentHistory(db: Queryable, input: { organizationI
     [input.organizationId, now, ALIGNMENT_HISTORY_MONTHS],
   )).rows
   return rows
-    .filter((row) => audienceReasonOf({ operatingUniverse: row.operating_universe as never, scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id }, subject) === null)
+    .filter((row) => audienceReasonOf({ operatingUniverse: row.operating_universe as never, scopeType: row.scope_type, links: row.links ?? [] }, subject) === null)
     .slice(0, ALIGNMENT_HISTORY_LIMIT)
     .map((row) => ({
       reference: alignmentReferenceOf(row.alignment_id, row.version),

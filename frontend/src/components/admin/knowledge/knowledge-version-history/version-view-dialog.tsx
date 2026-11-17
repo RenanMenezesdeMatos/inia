@@ -8,9 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { nodeLabel } from "@/components/admin/product-catalog/node-picker"
 import { formatShortDateTime } from "@/lib/format/date"
-import { useKnowledgeVersionQuery } from "@/queries/admin/use-knowledge-queries"
+import { useKnowledgeSubjectsQuery, useKnowledgeVersionQuery } from "@/queries/admin/use-knowledge-queries"
 import { useProductNodesQuery } from "@/queries/admin/use-product-catalog-queries"
-import { useSubjectsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import {
   DOCUMENT_TYPE_LABELS,
   KNOWLEDGE_SITUATION_LABELS,
@@ -26,7 +26,7 @@ import { formatFileSize, NOT_RECORDED, versionLabel } from "../knowledge-visuals
 
 function useConfigLabels() {
   const teams = useTeamsQuery().data ?? []
-  const subjects = useSubjectsQuery().data ?? []
+  const subjects = useKnowledgeSubjectsQuery().data?.items ?? []
   const productsQuery = useProductNodesQuery()
   return {
     org: (scope: KnowledgeVersionConfig["orgScopes"][number]) => {

@@ -71,7 +71,7 @@ const secondCopyScript = argumentScriptSourceOf({
   version: 1,
   name: "Segunda via",
   areaName: "Atendimento",
-  scope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null },
+  scope: { scopeType: "ALL_TEAMS", links: [] },
   subjectName: null,
   conversion: "NATIVE",
   content: normalizeArgumentScriptContent({

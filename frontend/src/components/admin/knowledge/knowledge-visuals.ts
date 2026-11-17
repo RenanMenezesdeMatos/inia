@@ -1,3 +1,4 @@
+import { linksLabel } from "@/lib/scope-links/scope-links"
 import { Braces, FileText, FileType2, Notebook, ScrollText, type LucideIcon } from "lucide-react"
 
 import { formatShortDateTime } from "@/lib/format/date"
@@ -48,9 +49,18 @@ export function orgScopeLabel(scope: { scopeType: string; teamName: string | nul
   return scope.subteamName ?? scope.teamName ?? "Grupo não informado"
 }
 
-export function subjectScopeLabel(scope: { scopeType: string; subjectName: string | null } | undefined) {
-  if (!scope || scope.scopeType === "ALL_SUBJECTS") return "Todos os assuntos"
-  return scope.subjectName ?? "Assunto não informado"
+/** Todos os alcances da base (223: vários Grupos/Subgrupos), nunca só o primeiro: "Grupo A · Grupo B › B1". */
+export function orgScopesLabel(scopes: readonly { scopeType: string; teamId?: string | null; teamName: string | null; subteamId?: string | null; subteamName: string | null }[]) {
+  if (scopes.length === 0) return "Nenhum grupo"
+  if (scopes.some((scope) => scope.scopeType === "ALL_TEAMS")) return "Todos os grupos"
+  return linksLabel(scopes.map((scope) => ({ teamId: scope.teamId ?? scope.teamName ?? "?", teamName: scope.teamName, subteamId: scope.scopeType === "SUBTEAM" ? (scope.subteamId ?? scope.subteamName ?? "?") : null, subteamName: scope.subteamName })))
+}
+
+/** Todos os assuntos da base (1..N desde a 224), nunca só o primeiro. Sem nenhum = "Nenhum assunto": ausência nunca vira "todos". */
+export function subjectScopesLabel(scopes: readonly { scopeType: string; subjectName: string | null; subjectActive?: boolean | null }[]) {
+  if (scopes.some((scope) => scope.scopeType === "ALL_SUBJECTS")) return "Todos os assuntos"
+  if (scopes.length === 0) return "Nenhum assunto"
+  return scopes.map((scope) => `${scope.subjectName ?? "Assunto removido"}${scope.subjectActive === false ? " (desativado)" : ""}`).join(" · ")
 }
 
 // "Atualizado em" só faz sentido se houver uma data, ela for posterior à publicação e ainda por

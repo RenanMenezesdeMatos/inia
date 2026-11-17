@@ -73,8 +73,11 @@ export function PublishKnowledgeDialog({
   document,
   open,
   onOpenChange,
+  onPublished,
 }: DialogProps & {
   document: { id: string; draftVersion: number; inUseVersion: number | null; archived: boolean; changeSummary?: string | null; productsChanged?: boolean }
+  /** Depois de pedida a publicação (ex.: o editor volta para a página da base, onde o processamento aparece). */
+  onPublished?: () => void
 }) {
   const [changeSummary, setChangeSummary] = useState(document.changeSummary ?? "")
   const [reactivate, setReactivate] = useState(false)
@@ -97,6 +100,7 @@ export function PublishKnowledgeDialog({
       const summary = changeSummary.trim()
       await publishMutation.mutateAsync({ id: document.id, input: { ...(summary ? { changeSummary: summary } : {}), ...(reactivate ? { reactivate: true } : {}) } })
       handleOpenChange(false)
+      onPublished?.()
     } catch (error) {
       if (errorCodeOf(error) === "KNOWLEDGE_ARCHIVED_REACTIVATION_REQUIRED") setArchivedMeanwhile(true)
     }
@@ -240,7 +244,7 @@ export function ReactivateKnowledgeDialog({ document, open, onOpenChange }: Dial
   )
 }
 
-export function DiscardKnowledgeDraftDialog({ document, open, onOpenChange }: DialogProps & { document: { id: string; draftVersion: number } }) {
+export function DiscardKnowledgeDraftDialog({ document, open, onOpenChange, onDiscarded }: DialogProps & { document: { id: string; draftVersion: number }; onDiscarded?: () => void }) {
   const discardMutation = useDiscardKnowledgeDraftMutation()
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -257,7 +261,10 @@ export function DiscardKnowledgeDraftDialog({ document, open, onOpenChange }: Di
             disabled={discardMutation.isPending}
             onClick={() => {
               discardMutation.mutateAsync(document.id).then(
-                () => onOpenChange(false),
+                () => {
+                  onOpenChange(false)
+                  onDiscarded?.()
+                },
                 () => undefined,
               )
             }}

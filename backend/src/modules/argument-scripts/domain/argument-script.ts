@@ -1,3 +1,4 @@
+import { linksReach, reachingSpecificity, type ScopeLink, type ScopePosition } from "../../../shared/domain/scope-links/scope-links.js"
 import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { normalizeForLiteralQuote } from "../../knowledge/domain/knowledge-match.js"
@@ -202,15 +203,34 @@ export function argumentIdentityOf(scriptId: string, item: ArgumentCriterionItem
 // ---------------------------------------------------------------------------------------------
 // Escopo e vigência
 // ---------------------------------------------------------------------------------------------
-export type ScriptScope = { scopeType: "ALL_TEAMS" | "TEAM" | "SUBTEAM"; teamId: string | null; subteamId: string | null }
-/** O argumentário vale para um colaborador deste Grupo/Subgrupo? (todos → sim; Grupo → o Grupo e seus Subgrupos; Subgrupo → só ele) */
-export function scopeAppliesTo(scope: ScriptScope, person: { teamId: string | null; subteamId: string | null }): boolean {
+/**
+ * Escopo do argumentário (223): para TODOS os Grupos (`ALL_TEAMS`) ou para os Grupos/Subgrupos dos VÍNCULOS (`GROUPS`, 1..N — ver
+ * `shared/domain/scope-links`). Grupo inteiro = o Grupo e seus Subgrupos; Subgrupo = só ele. `GROUPS` sem vínculo (legado com Grupo que
+ * deixou de existir) não vale para ninguém — nunca vira "todos".
+ */
+export type ScriptScopeLink = ScopeLink & { teamName: string | null; subteamName: string | null }
+export type ScriptScope = { scopeType: "ALL_TEAMS" | "GROUPS"; links: ScriptScopeLink[] }
+/** O argumentário vale para um colaborador deste Grupo/Subgrupo? (todos → sim; senão, algum vínculo o alcança) */
+export function scopeAppliesTo(scope: Pick<ScriptScope, "scopeType" | "links">, person: ScopePosition): boolean {
   if (scope.scopeType === "ALL_TEAMS") return true
-  if (scope.scopeType === "TEAM") return scope.teamId !== null && scope.teamId === person.teamId
-  return scope.subteamId !== null && scope.subteamId === person.subteamId
+  return linksReach(scope.links, person)
 }
-/** Especificidade (Subgrupo > Grupo > todos): só ORDENA a apresentação; nunca é precedência entre regras. */
-export const scopeSpecificity = (scope: ScriptScope) => (scope.scopeType === "SUBTEAM" ? 0 : scope.scopeType === "TEAM" ? 1 : 2)
+/**
+ * Especificidade (Subgrupo > Grupo > todos): só ORDENA a apresentação; nunca é precedência entre regras. Com vários vínculos, conta o
+ * vínculo que alcança a pessoa (sem pessoa, o mais específico do argumentário).
+ */
+export function scopeSpecificity(scope: Pick<ScriptScope, "scopeType" | "links">, person?: ScopePosition): number {
+  if (scope.scopeType === "ALL_TEAMS") return 2
+  const reaching = person ? reachingSpecificity(scope.links, person) : scope.links.some((link) => link.subteamId !== null) ? 2 : 1
+  return reaching === 2 ? 0 : 1
+}
+
+/** Texto do alcance (tela, prompt, proveniência): "todos os grupos" ou "grupo A; subgrupo B1 (B)". */
+export function scopeLinksLabel(scope: Pick<ScriptScope, "scopeType" | "links">): string {
+  if (scope.scopeType === "ALL_TEAMS") return "todos os grupos"
+  if (scope.links.length === 0) return "nenhum grupo (vínculo removido)"
+  return scope.links.map((link) => (link.subteamId ? `subgrupo ${link.subteamName ?? link.subteamId} (${link.teamName ?? link.teamId})` : `grupo ${link.teamName ?? link.teamId}`)).join("; ")
+}
 
 /** Vigência na data: início ≤ data < fim. Publicada depois da chamada nunca vale para ela. */
 export function inForceAt(version: { effectiveFrom: Date | null; effectiveUntil: Date | null }, at: Date): boolean {
@@ -234,7 +254,7 @@ export type ArgumentScriptSource = {
   version: number
   name: string
   areaName: string | null
-  scope: ScriptScope & { teamName: string | null; subteamName: string | null }
+  scope: ScriptScope
   subjectName: string | null
   conversion: "NATIVE" | "LEGACY_UNSTRUCTURED"
   content: ArgumentScriptContent

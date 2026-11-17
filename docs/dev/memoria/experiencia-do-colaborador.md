@@ -213,11 +213,51 @@ que estava reescrevendo o modelo deles (migrations 210/211) — nesta rodada, s�
 - **Chat (`COMMUNICATION_CONVERSATION_V3`; V3 = texto do autor em uma linha, sem marcas de título e entre marcas com o id — run-5 PUB-03)** — `communications/domain/communication-conversation.ts` +
   `infrastructure/communication-conversation-loader.ts`, chamado em `build-system-prompt.ts` só na CONVERSA (`collaboratorConversation`)
   com pessoa conhecida (coordenador do Orquestrador e especialistas do chat/voz). Candidatos = os 60 no ar que a pessoa enxerga
-  (destaque primeiro); relação com a pergunta = `rankChunks` da base (BM25, título como assunto); até 3, 2.500 caracteres cada; sem
-  relação = nada entra. Lido do banco a cada pergunta (sem cache nem índice): publicar, agendar chegar, editar, arquivar, retirar e
-  encerrar valem na próxima mensagem. O bloco vem depois dos alinhamentos e ANTES das restrições; diz que comunicado é informativo
+  (destaque primeiro); relação com a pergunta = decisão da IA (V4, ver o item abaixo); até 3, 2.500 caracteres cada; sem
+  relação = nada entra. Lido do banco a cada pergunta (memória curta de 30 s só para a mesma pergunta da mesma pessoa): publicar,
+  agendar chegar, editar, arquivar, retirar e encerrar valem na próxima mensagem. O bloco vem depois dos alinhamentos e ANTES das restrições; diz que comunicado é informativo
   (não muda o procedimento), que o texto é dado, e manda citar título, autor (cargo só se houver em `people.job_title`), data e link
   `[título](/publicacoes/<id>)`. `KnowledgeTrace.communications` guarda o que sustentou a resposta.
+- **Quando comunicado e alinhamento entram na conversa (`PUBLICATION_RELEVANCE_V1` + `COMMUNICATION_CONVERSATION_V4`, 17/11/2026)** —
+  problema: "E sobre o comunicado de natal?" não achava o comunicado "É NATAL!!!" por dois motivos: (1) o esclarecimento pelas bases
+  (que só conhece as bases) respondia "Não encontrei nas bases consultadas…" e encerrava o turno antes de o agente — o único que via
+  comunicados e alinhamentos — rodar; (2) a escolha era a BM25 com 2 termos em comum e o título fora do texto (0 selecionados nas três
+  perguntas da conversa). Decisão do usuário: não "cair no agente e listar comunicados" sempre que as bases não acham; comunicado e
+  alinhamento entram só quando a pergunta faz sentido para isso; sem nada, não busca. Como ficou:
+  - `communications/domain/publication-relevance.ts` (regra pura: catálogo curto C-n/A-n, contrato, `clarificationYieldsTo`),
+    `application/publication-relevance-model.ts` (gateway, Use Case `KNOWLEDGE_CLARIFICATION`, tag `stage:PUBLICATIONS`, 20 s) e
+    `infrastructure/conversation-publications.ts` (`conversationPublicationsFor`: comunicados no ar que a pessoa enxerga + alinhamentos
+    EM VIGOR para ela em qualquer processo; sem candidato = nenhuma chamada; falha do modelo = nada escolhido; memória de 30 s por
+    pessoa + pergunta, para os prompts dos agentes da mesma resposta reaproveitarem a decisão).
+  - `realtime-router.ts`, pergunta NOVA no texto e na voz: a decisão corre junto do esclarecimento; se o esclarecimento devolve REPLY e
+    `clarificationYieldsTo` dá `PUBLICATION_SELECTED` (a IA escolheu comunicado/alinhamento) ou `ALIGNED_PROCESS` (a resposta das bases
+    se apoiou num processo que um alinhamento em vigor muda — antes o esclarecimento respondia pela base ignorando o alinhamento), o turno
+    segue para a orquestração já especulada (evento `knowledge_clarification_yielded`). Continuação de esclarecimento: como antes.
+  - FUNIL preservado: pergunta em aberto do esclarecimento (status OPEN — "Reparo" → "qual reparo?") NUNCA cede ao agente, nem com
+    comunicado/alinhamento escolhido; no FIM do funil (continuação que responde pela base), se a resposta se apoiou num processo com
+    alinhamento em vigor para a pessoa (só fontes/conflitos da resposta; consulta ao banco, sem IA), responde o agente. Bateria: A-F1
+    "Reparo" com o modelo real = funil mantido, também com escolha forçada (US$ 0,04).
+  - ANJO: sem comunicado/alinhamento relacionado nada muda (INSUFFICIENT → `KNOWLEDGE_INSUFFICIENT` → sugere Anjo, como antes).
+    Quando o agente responde pelo comunicado, `specialistHasContent` (`assistant/domain/reply-signals.ts`) conta
+    `knowledge.communications` como conteúdo — senão a resposta certa sairia com `KNOWLEDGE_NOT_FOUND` e sugeriria Anjo à toa.
+  - Interruptor `INIA_PUBLICATION_RELEVANCE` (`off` = sem decisão da IA, nada escolhido); `off` nos testes (`vitest.config.ts`) —
+    quem testa passa `model` (`communications/testing/fake-publication-relevance-model.ts`).
+  - Não mudou: chat só de liderança (`loadLeaderStructureBlock`) continua escolhendo os ALINHAMENTOS da estrutura por `rankChunks`
+    (os comunicados dele já passam pela IA).
+  - Bateria paga: `scripts/dev/communications/paid-relevance-battery.ts --pessoa <id>` (A ponta a ponta no banco dev; B só a decisão,
+    com catálogo maior). Rodada de 17/11: 20/20 — positivas (natal, festa de fim de ano, "quais os comunicados?", "o que a liderança
+    avisou?", sistema parado no fim de semana, fatura por e-mail → alinhamento, "quais alinhamentos valem?") escolheram o certo e o agente
+    respondeu com 23/11 e Santa Praia; negativas ("e aí?", "me ajuda", "obrigado!", portabilidade, TMA, cancelamento, segunda via e
+    cadastro do gestor sem comunicado do assunto) não escolheram nada; "tem novidade?" = pedido de avisos (escolhe os recentes). Custo:
+    a 1ª rodada não mediu (o uso só é registrado dentro do servidor; ~US$ 0,65 estimado) — o script passou a medir pela telemetria;
+    uma resposta completa de ponta a ponta = US$ 0,13 (7 chamadas). Total ≈ US$ 0,82 (com o caso do funil).
+    Gerente sênior ("Reparo", `scripts/dev/communications/leadership-funnel-battery.ts`, rota real, conversa em memória; US$ 0,28 com
+    autorização do usuário para passar do teto): um Orquestrador para a estrutura → funil direto ("reparo de banda larga?", 3 opções);
+    Grupos em Orquestradores diferentes (simulados em memória: no dev todos caem no de "Todos os grupos") → texto fixo "De qual Grupo é
+    a sua dúvida…" sem consultar nada; com o Grupo dito → Orquestrador do Grupo. No teste, o Orquestrador emprestado tinha 5 bases que
+    o gerente não pode ler: o funil (filtro de leitura estrito) ficou sem base e passou, e o caminho de sempre respondeu pelas bases do
+    agente (diferença de filtro já documentada em agentes-e-conhecimento.md). Turno da liderança ≈ US$ 0,14 (várias rodadas). Dev: comunicado bem redigido "Festa de fim de ano: 23/11 em Fortaleza e Curitiba" (`df8b021b…`, publicado
+    pelo serviço com a mesma conta do original `3d9cf7bb…`, que ficou como estava).
 - **Testes**: `communications-editorial.test.ts` (rascunho, agendar, exibição, arquivar, recorte, links, estado), router/store
   atualizados, `build-system-prompt-communications.test.ts` (exemplo da fatura com alinhamento + comunicado, sem relação, sem pessoa,
   monitoria, texto hostil), frontend `publications.test.tsx`, `admin-area-access.test.tsx`, `sanitize-rich-text.test.ts`,
@@ -273,3 +313,59 @@ que estava reescrevendo o modelo deles (migrations 210/211) — nesta rodada, s�
 - **Integração com alinhamentos (17/11)**: Publicações tem as abas Comunicados × Alinhamentos operacionais (a tela de alinhamentos por
   dentro, mesma fonte); responsável e cargo no alinhamento (221) e a resposta do chat começando pela conduta e atribuindo a quem definiu
   — ver [alinhamentos-operacionais.md](alinhamentos-operacionais.md) › "Responsável, autoria no chat e Publicações".
+
+## Minha jornada — a escala do próprio operador (17/11/2026, não commitado, migration 222 aplicada em inia e inia_test)
+
+Aba "Minha jornada" no perfil do Operador (capability `JOURNEY` em `view-capabilities.ts`, só para `OPERATOR`; `?tab=journey`).
+Somente leitura: `GET /api/v1/my-journey?week=AAAA-MM-DD` (`people/presentation/my-journey-router.ts`) resolve a pessoa SÓ pela sessão
+(`user.personId`) — sem parâmetro de pessoa, matrícula ou id; parâmetros extras são descartados (teste `my-journey-router.test.ts`).
+Não depende de `calendar.manage`; o Calendário da equipe ficou intocado.
+
+- **Mesma regra do supervisor**: `application/my-journey.ts` usa o resolvedor único do dia (`resolveWorkdaysBySubject`), a listagem
+  de exceções do Calendário da equipe e as tabelas da Central (Escalas de trabalho, Jornadas de trabalho, Exceções de calendário).
+  O recorte do operador (`domain/my-journey.ts`, puro) mostra o PLANO: antes da admissão → situação não produtiva → exceção vigente
+  (dia inteiro) → escala explícita (trabalha/folga) → feriado do fallback → "Sem escala publicada". Nunca produção observada,
+  pendência ou classificação da gestão. Diferença intencional: o fallback seg–sex e o 6x1 sem calendário aparecem ao supervisor como
+  "Trabalha (planejado)/Escala desconhecida" e ao operador como "Sem escala publicada" (com a jornada cadastrada só como referência).
+- **Horários**: os do dia na escala vencem; sem eles, num dia de trabalho explícito, a jornada vigente (entrada + carga). Fim ≤ início =
+  cruza a meia-noite; a parte da madrugada abre a linha do tempo do dia seguinte (a semana carrega a véspera da segunda para isso).
+- **Atividades escaladas (login e pausas, 17/11)**: contrato da Central `WORK_SCHEDULE_ACTIVITIES` "Atividades escaladas" (migration 222,
+  `employee_schedule_activities`, writer `data-hub/application/writers/schedule-activity-writer.ts`, domínio
+  `people/domain/schedule-activity.ts`): matrícula × data × atividade com início/fim, tipo `LOGGED_IN | BREAK | OTHER` (aceita LOGADO/PAUSA/
+  OUTRA). Quando a fonte só tem o nome (MIS: `SNOATIVIDADE`), a mesma coluna vai no nome e no tipo, com "Mapear códigos" (CODE_MAP) dando
+  o tipo de cada nome; nome sem tipo vai para a quarentena (`DATA_INVALID_ENUM`). A carga de uma data traz o DIA INTEIRO: atividade que não
+  veio numa carga mais nova do mesmo dia vira `active = false` + `superseded_at` (por `last_run_id`; lotes da mesma carga não se
+  desativam). Sugestão de mapeamento reconhece SNOMAMATRCOMPL, DDTDATA_ESCALADA, SNOATIVIDADE, SNOINICIO e SNOFIM. Entrou na Wiki
+  (catálogo, banco do cliente — tabela `atividades_escaladas` — e DER), no mapa de dados da Central e em Consultar dados. Na "Minha jornada":
+  linha do tempo por minuto com prioridade pausa > outra > logado > jornada prevista (sem login informado, o resto da jornada fica
+  "Jornada prevista"); fora da jornada NÃO vira bloco (pedido do responsável, 17/11: só o fundo da barra); entrada/saída = escala do dia > envelope das atividades > jornada cadastrada; "Próxima pausa" com
+  horário e quanto falta; `pauses.available` = existe feed do contrato ou atividade gravada. Atividades só valem em dia de trabalho.
+  Prova real: `INIA_DB_PROOF=1 NODE_ENV=test npx vitest run schedule-activities-proof` (colunas MIS, quarentena, pausa remarcada,
+  recarga igual, jornada). Ainda falta: o time de dados confirmar os nomes de `SNOATIVIDADE` (para o "Mapear códigos") e o formato de
+  SNOINICIO/SNOFIM (o contrato espera HH:mm ou HH:mm:ss).
+- **Desenho da linha do tempo (17/11, pesquisa de UX)**: padrão das ferramentas de escala (UKG Gantt com linha vermelha do agora,
+  When I Work com a pausa em tom próprio) e dos calendários: barra proporcional + lista de horários para a própria pessoa; tooltip só
+  complementa. Implementado em `components/my-journey/`: `journey-moments.ts` (puro: `journeyMilestones` = Login/Entrada, Pausa (duração e
+  volta), Retorno, outra atividade, Logout/Saída, "começou ontem"/"segue depois da meia-noite"; `timelineWindow` = jornada ±30 min em horas
+  cheias; `momentAt` = o que vale no minuto + próxima pausa ou retorno), `journey-timeline.tsx` (barra focada, legenda, linha vermelha
+  "Agora", linha tracejada + tooltip que seguem o mouse; toque = arrastar o dedo; teclado = `role="slider"`, setas 5 min, Shift 30 min,
+  Home/End, Esc) e `journey-agenda.tsx` (marcos com hora, passados com ✓, próximo com "Próximo · em X"). Resumo: "Login"/"Logout" quando
+  há login informado, senão "Entrada prevista"/"Fim da jornada". A lista antiga de blocos ("Logado para atendimento" repetido) saiu.
+- **Massa demo (17/11)**: Larissa Monteiro (operador0001, `operador0001.demo@inia.local`) virou fixture de escala em
+  `demo-mass/demo-work-schedules.ts`: 5x2 seg–sex 14h00–20h00 (a jornada dela) com atividades em todo dia de trabalho — Logado,
+  Pausa NR17 15h30 e 18h40, Lanche 17h00 e, às quartas, "Feedback com a supervisão" 16h00. Mesmos dias do fallback: medições e
+  indicadores dela não mudam. Entra por `npm run db:seed:demo`; no dev foi aplicada só a parte dela (36 dias, 109 atividades,
+  referência 17/11) pelo próprio `persistDemoWorkSchedules`.
+- **Só a escala enviada (17/11, fim do 6x1)**: o regime não diz mais os dias. Na "Minha jornada" dia sem escala do cliente é "Sem escala
+  publicada" sem horário nenhum (saiu a "jornada cadastrada" como referência). No Calendário da equipe, `isUnpublishedScheduleDay`
+  (`team-calendar-view.tsx`) mostra "Sem escala" (tracejado, legenda própria) nos dias PLANNED_WORK/PLANNED_NON_WORKING/INDETERMINATE sem
+  escala explícita, sem exceção e sem feriado; o detalhe diz que o cliente não enviou e o que o cálculo ainda usa. Decisão do responsável
+  (17/11): SÓ EXIBIÇÃO — o cálculo (elegibilidade, pendência "Sem produção", aguardando dados, filtro "escalados hoje") continua com o
+  fallback seg–sex (`LEGACY_WEEKDAY_FALLBACK`); esses estados seguem aparecendo como são.
+- **Limitações**: exceções são só de dia inteiro (`NON_WORKING`), então exceção parcial não existe; não há status pendente × confirmado
+  na origem (só vigente/cancelada — o operador vê só as vigentes); Day Off de aniversário e folga de mesário não existem no catálogo
+  (`SCHEDULE_EXCEPTION_CODES`) — hoje entram como DAY_OFF/FOLGA_EXTRAORDINARIA via "Mapear códigos".
+- **Validação**: `my-journey.test.ts` (dia normal, escala sem horário, folga, exceção, férias, sem escala, meia-noite),
+  `my-journey-router.test.ts`, `my-journey-view.test.tsx`; comparação pela API com o Calendário da supervisora 02 para a operadora
+  0026 (semana de 14/09 com day off da Central e banco de horas, e uma semana temporária `QA_MINHA_JORNADA`, já apagada). Conferida em
+  127.0.0.1 (cookie separado do localhost das outras sessões) no desktop e em 375 px.

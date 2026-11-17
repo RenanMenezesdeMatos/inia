@@ -30,6 +30,14 @@ export const TeamCalendarView = dynamic(() => import("@/components/team-calendar
   ),
 })
 
+export const MyJourneyView = dynamic(() => import("@/components/my-journey/my-journey-view").then((module) => module.MyJourneyView), {
+  loading: () => (
+    <AnalyticsCard>
+      <TableSkeleton rows={4} />
+    </AnalyticsCard>
+  ),
+})
+
 export const PersonStructureView = dynamic(() => import("@/components/structure/person-structure-view").then((module) => module.PersonStructureView), {
   loading: () => <StructureTreeSkeleton />,
 })

@@ -1,10 +1,11 @@
-import type { ArgumentScriptScopeOptions, ArgumentScriptScopeType, ArgumentScriptVersion } from "@/schemas/admin/argument-script.schema"
+import { scopeTeamOptionsOf } from "@/components/admin/shared/multi-org-scope-field"
+import { linksLabel, type ScopeTeamOption } from "@/lib/scope-links/scope-links"
+import type { ArgumentScriptScope, ArgumentScriptScopeOptions, ArgumentScriptScopeType, ArgumentScriptVersion } from "@/schemas/admin/argument-script.schema"
 import type { Team } from "@/schemas/admin/org-structure.schema"
 
-export function scopeLabel(item: { scopeType: ArgumentScriptScopeType; teamName: string | null; subteamName: string | null }) {
+export function scopeLabel(item: { scopeType: ArgumentScriptScopeType; scopeLinks?: ArgumentScriptScope["links"]; links?: ArgumentScriptScope["links"] }) {
   if (item.scopeType === "ALL_TEAMS") return "Todos os grupos"
-  if (item.scopeType === "SUBTEAM") return [item.teamName, item.subteamName].filter(Boolean).join(" › ") || "—"
-  return item.teamName ?? "—"
+  return linksLabel(item.scopeLinks ?? item.links ?? [])
 }
 
 const DAY = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
@@ -52,19 +53,14 @@ export function versionSituation(version: ArgumentScriptVersion, now: number = D
  * só alguns grupos/subgrupos vê só os seus. "Um grupo específico" lista só grupos inteiros administrados; "Um subgrupo específico"
  * lista os subgrupos administrados (diretamente ou pelo grupo). O backend continua sendo a autoridade (403).
  */
-export function teamsForScope(teams: Team[], options: ArgumentScriptScopeOptions, scopeType: ArgumentScriptScopeType): Team[] {
-  if (options.allTeams) return teams
+export function teamsForScope(teams: Team[], options: ArgumentScriptScopeOptions): ScopeTeamOption[] {
+  if (options.allTeams) return scopeTeamOptionsOf(teams)
   const teamIds = new Set(options.teamIds)
   const subteamIds = new Set(options.subteamIds)
-  if (scopeType === "TEAM") return teams.filter((team) => teamIds.has(team.id))
-  return teams.flatMap((team) => {
-    if (teamIds.has(team.id)) return [team]
+  // Grupo administrado: inteiro ou qualquer Subgrupo; senão, só os Subgrupos administrados dele (o Grupo inteiro não é oferecido).
+  return scopeTeamOptionsOf(teams.flatMap((team): (Team & { selectable: boolean })[] => {
+    if (teamIds.has(team.id)) return [{ ...team, selectable: true }]
     const subteams = team.subteams.filter((subteam) => subteamIds.has(subteam.id))
-    return subteams.length > 0 ? [{ ...team, subteams }] : []
-  })
-}
-
-export function defaultScopeType(options: ArgumentScriptScopeOptions): ArgumentScriptScopeType {
-  if (options.allTeams) return "ALL_TEAMS"
-  return options.teamIds.length > 0 ? "TEAM" : "SUBTEAM"
+    return subteams.length > 0 ? [{ ...team, subteams, selectable: false }] : []
+  }))
 }

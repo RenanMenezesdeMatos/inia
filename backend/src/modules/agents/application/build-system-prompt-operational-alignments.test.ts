@@ -17,8 +17,8 @@ const OUVIDORIA = "11111111-1111-4111-8111-111111111111"
 const ROW = {
   alignment_id: "aaaaaaaa-0000-4000-8000-000000000001", version_id: "bbbbbbbb-0000-4000-8000-000000000001", version: 1, title: "Fatura pelo App Meu Vivo ou site",
   guidance: "Oriente o cliente a acessar a fatura pelo App Meu Vivo ou pelo site. Não envie a fatura.", justification: "Envio suspenso durante a troca do sistema.",
-  documents: [{ id: DOC, title: "PR — Envio de fatura" }], affected_topic: "Envio da fatura quando o cliente solicita", operating_universe: "B2C", scope_type: "TEAM",
-  team_id: OUVIDORIA, team_name: "Ouvidoria", subteam_id: null, subteam_name: null, product_id: null, product_name: null, starts_on: "2026-11-10", ends_on: "2026-11-30", time_zone: "America/Sao_Paulo",
+  documents: [{ id: DOC, title: "PR — Envio de fatura" }], affected_topic: "Envio da fatura quando o cliente solicita", operating_universe: "B2C", scope_type: "GROUPS",
+  links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], product_id: null, product_name: null, starts_on: "2026-11-10", ends_on: "2026-11-30", time_zone: "America/Sao_Paulo",
   effective_from: new Date("2026-11-10T03:00:00Z"), effective_until: new Date("2026-12-01T03:00:00Z"), ended_at: null, content_hash: "h", published_at: new Date("2026-11-09T18:00:00Z"), relations: [],
 }
 

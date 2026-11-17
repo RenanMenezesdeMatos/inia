@@ -105,6 +105,13 @@ describe("plano da importação", () => {
     expect(situacaoDe(plano, "WORKFLOW:Usa NPS")).toMatchObject({ situacao: "BLOQUEADO", motivos: ['precisa de indicador "NPS", que não vai junto nem existe no destino'] })
   })
 
+  it("argumentário restrito a Grupos sem nenhum vínculo bloqueia (não vira 'todos os Grupos' no destino — run-6 MG-02)", () => {
+    const itens = [item("ARGUMENTARIO", "Sem grupo", { alcances: [], publicado: true } as unknown as DadosItem["ARGUMENTARIO"]), item("ARGUMENTARIO", "Todos", { alcances: [{ tipo: "TODOS" }], publicado: true } as unknown as DadosItem["ARGUMENTARIO"])]
+    const plano = montarPlano(itens, new Map([["ARGUMENTARIO:Sem grupo", true], ["ARGUMENTARIO:Todos", true]]), destinoVazio(), [])
+    expect(situacaoDe(plano, "ARGUMENTARIO:Sem grupo")?.situacao).toBe("BLOQUEADO")
+    expect(situacaoDe(plano, "ARGUMENTARIO:Todos")?.situacao).toBe("CRIAR")
+  })
+
   it("ligação opcional que falta vira aviso, não bloqueio", () => {
     const itens = [agente("Com base", { bases: ["Manual"] }), item("BASE", "Manual", {})]
     itens[0]!.opcionais = ["BASE:Manual"]

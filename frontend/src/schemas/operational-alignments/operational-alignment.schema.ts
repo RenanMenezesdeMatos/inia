@@ -1,3 +1,4 @@
+import { scopeValueIssue } from "@/lib/scope-links/scope-links"
 import { z } from "zod"
 
 import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-universe.schema"
@@ -5,7 +6,10 @@ import { operatingUniverseSchema } from "@/schemas/operating-universe/operating-
 /** Alinhamento operacional (`/api/v1/admin/operational-alignments`): orientação temporária que se sobrepõe ao trecho de um procedimento. */
 export const alignmentStateSchema = z.enum(["DRAFT", "SCHEDULED", "IN_FORCE", "ENDED", "CANCELLED"])
 export type AlignmentState = z.infer<typeof alignmentStateSchema>
-export const alignmentScopeTypeSchema = z.enum(["UNIVERSE", "TEAM", "SUBTEAM"])
+export const alignmentScopeTypeSchema = z.enum(["UNIVERSE", "GROUPS"])
+/** Vínculo do público (223): Grupo inteiro (`subteamId` nulo) ou um Subgrupo daquele Grupo. */
+export const alignmentLinkSchema = z.object({ teamId: z.string(), teamName: z.string().nullable().catch(null), subteamId: z.string().nullable().catch(null), subteamName: z.string().nullable().catch(null) })
+export type AlignmentLink = z.infer<typeof alignmentLinkSchema>
 export type AlignmentScopeType = z.infer<typeof alignmentScopeTypeSchema>
 export const alignmentRelationSchema = z.enum(["SAME_TOPIC", "INDEPENDENT"])
 export type AlignmentRelation = z.infer<typeof alignmentRelationSchema>
@@ -26,8 +30,7 @@ export const alignmentVersionSchema = z.object({
   justification: z.string(),
   operatingUniverse: operatingUniverseSchema,
   scopeType: alignmentScopeTypeSchema,
-  team: named.nullable(),
-  subteam: named.nullable(),
+  links: z.array(alignmentLinkSchema).catch([]),
   product: named.nullable(),
   startsOn: z.string(),
   endsOn: z.string(),
@@ -73,8 +76,7 @@ export const alignmentListItemSchema = z.object({
   hasDraft: z.boolean(),
   operatingUniverse: operatingUniverseSchema,
   scopeType: alignmentScopeTypeSchema,
-  teamName: z.string().nullable(),
-  subteamName: z.string().nullable(),
+  links: z.array(alignmentLinkSchema).catch([]),
   productName: z.string().nullable(),
   startsOn: z.string(),
   endsOn: z.string(),
@@ -101,7 +103,7 @@ export const alignmentScopeOptionsSchema = z.object({
 })
 export type AlignmentScopeOptions = z.infer<typeof alignmentScopeOptionsSchema>
 
-export const alignmentOverlapSchema = z.object({ alignmentId: z.string(), version: alignmentVersionSchema, sharedProcesses: z.array(z.object({ id: z.string(), title: z.string() })).default([]), sameScopeLevel: z.boolean(), moreSpecific: z.enum(["THIS", "OTHER"]).nullable() })
+export const alignmentOverlapSchema = z.object({ alignmentId: z.string(), version: alignmentVersionSchema, sharedProcesses: z.array(z.object({ id: z.string(), title: z.string() })).default([]), sameScopeLevel: z.boolean(), moreSpecific: z.enum(["THIS", "OTHER", "MIXED"]).nullable().catch(null) })
 export type AlignmentOverlap = z.infer<typeof alignmentOverlapSchema>
 export const alignmentPublicationPreviewSchema = z.object({ draft: alignmentVersionSchema, overlaps: z.array(alignmentOverlapSchema) })
 export type AlignmentPublicationPreview = z.infer<typeof alignmentPublicationPreviewSchema>
@@ -125,9 +127,8 @@ export const alignmentFormSchema = z
     requestSubjectIds: z.array(z.string()).max(30),
     justification: z.string().trim().min(10, "A justificativa é obrigatória: explique o motivo do alinhamento (mínimo de 10 caracteres).").max(4000),
     operatingUniverse: operatingUniverseSchema.nullable().refine((value) => value !== null, "Escolha o universo."),
-    scopeType: alignmentScopeTypeSchema,
-    teamId: z.string().nullable(),
-    subteamId: z.string().nullable(),
+    /** Público (223): o universo inteiro (`global`) ou os Grupos escolhidos, cada um inteiro ou só alguns Subgrupos. */
+    scope: z.object({ global: z.boolean(), groups: z.array(z.object({ teamId: z.string(), subteamIds: z.array(z.string()), mode: z.enum(["WHOLE", "SUBTEAMS"]) })) }),
     productId: z.string().nullable(),
     startsOn: z.string().min(1, "Escolha o início."),
     endsOn: z.string().min(1, "Escolha o término."),
@@ -137,8 +138,8 @@ export const alignmentFormSchema = z
   })
   .superRefine((value, context) => {
     if (value.startsOn && value.endsOn && value.endsOn < value.startsOn) context.addIssue({ code: "custom", path: ["endsOn"], message: "O término não pode ser antes do início." })
-    if (value.scopeType !== "UNIVERSE" && !value.teamId) context.addIssue({ code: "custom", path: ["teamId"], message: "Escolha o Grupo." })
-    if (value.scopeType === "SUBTEAM" && !value.subteamId) context.addIssue({ code: "custom", path: ["subteamId"], message: "Escolha o Subgrupo." })
+    const scopeIssue = scopeValueIssue(value.scope)
+    if (scopeIssue) context.addIssue({ code: "custom", path: ["scope"], message: scopeIssue })
   })
 // Estado do formulário (entrada: universo ainda pode estar vazio); o envio só acontece depois de validado.
 export type AlignmentFormValues = z.input<typeof alignmentFormSchema>

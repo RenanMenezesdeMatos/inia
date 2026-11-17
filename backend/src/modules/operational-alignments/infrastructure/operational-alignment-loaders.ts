@@ -16,10 +16,7 @@ type CandidateRow = {
   affected_topic: string | null
   operating_universe: string
   scope_type: AlignmentCandidate["scopeType"]
-  team_id: string | null
-  team_name: string | null
-  subteam_id: string | null
-  subteam_name: string | null
+  links: AlignmentCandidate["links"] | null
   product_id: string | null
   product_name: string | null
   starts_on: string
@@ -37,19 +34,21 @@ type CandidateRow = {
   relations: { otherAlignmentId: string; relation: "SAME_TOPIC" | "INDEPENDENT" }[] | null
 }
 
+/** Vínculos do público de uma versão (223), com os nomes, em ordem estável. Vazio = universo inteiro (ou vínculo removido). */
+export const alignmentLinksSql = (versionAlias: string) => `(select coalesce(json_agg(json_build_object('teamId', l.team_id, 'teamName', lt.name, 'subteamId', l.subteam_id, 'subteamName', lst.name) order by lt.name, l.team_id, lst.name nulls first), '[]'::json)
+     from operational_alignment_version_scopes l join teams lt on lt.id = l.team_id left join subteams lst on lst.id = l.subteam_id where l.version_id = ${versionAlias}.id)`
+
 /** Versões publicadas (vigentes ou substituídas — a substituída continua cobrindo o intervalo dela) que cobrem `at`. */
 const SELECT_CANDIDATES = `
   select v.alignment_id, v.id version_id, v.version, v.title, v.guidance, v.justification,
          (select json_agg(json_build_object('id', kd.id, 'title', kd.title) order by kd.title) from operational_alignment_version_documents vd join knowledge_documents kd on kd.id = vd.document_id where vd.version_id = v.id) documents,
-         v.affected_topic, v.operating_universe, v.scope_type, v.team_id, t.name team_name, v.subteam_id, st.name subteam_name, v.product_id, pn.name product_name,
+         v.affected_topic, v.operating_universe, v.scope_type, ${alignmentLinksSql("v")} links, v.product_id, pn.name product_name,
          v.starts_on::text starts_on, v.ends_on::text ends_on, v.time_zone, v.effective_from, v.effective_until, v.ended_at, v.content_hash, v.published_at,
          pr.name responsible_name, v.responsible_job_title, pp.name published_by_name, pp.job_title published_by_job_title,
          (select coalesce(json_agg(json_build_object('otherAlignmentId', r.other_alignment_id, 'relation', r.relation)), '[]'::json) from operational_alignment_relations r where r.version_id = v.id) relations
   from operational_alignment_versions v
   -- Exclusão NÃO entra aqui: excluir encurta o intervalo para "até agora", então o que já passou continua coberto (avaliação ou
   -- reprocessamento de chamada anterior à exclusão) e o que vem depois não.
-  left join teams t on t.id = v.team_id
-  left join subteams st on st.id = v.subteam_id
   left join product_catalog_nodes_all pn on pn.id = v.product_id
   left join people pr on pr.id = v.responsible_person_id
   left join people pp on pp.id = v.published_by
@@ -68,10 +67,7 @@ const toCandidate = (row: CandidateRow): AlignmentCandidate | null => {
     affectedTopic: row.affected_topic,
     operatingUniverse: row.operating_universe,
     scopeType: row.scope_type,
-    teamId: row.team_id,
-    teamName: row.team_name,
-    subteamId: row.subteam_id,
-    subteamName: row.subteam_name,
+    links: row.links ?? [],
     productId: row.product_id,
     productName: row.product_name,
     startsOn: row.starts_on,

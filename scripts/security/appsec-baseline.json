@@ -10,6 +10,7 @@
   "detect-non-literal-regexp|backend/scripts/poc-tools/holdout-v2/holdout-v149f-writer-gate2-r2-lib.ts|05d8e818e94644f8",
   "detect-non-literal-regexp|backend/src/modules/ai-management/domain/ai-usage-ranking.ts|b79d801682a64d0a",
   "detect-non-literal-regexp|backend/src/modules/communications/domain/communication-content.ts|4593f03210989090",
+  "detect-non-literal-regexp|backend/src/modules/communications/domain/publication-relevance.ts|164771fc27b36f89",
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|13e00279875c3050",
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|4ad39ab4f68e5c00",
   "detect-non-literal-regexp|backend/src/modules/investigation/domain/peer-privacy-projection.ts|54b9609ea9592b9b",
@@ -116,6 +117,11 @@
   "generic-api-key|backend/scripts/dev/recognition-validation.ts|ef7ed2e61c3d1ec0",
   "generic-api-key|backend/scripts/dev/recognition-validation.ts|f58aedeb84d2cb45"
  ],
- "osv": [],
+ "osv": [
+  "backend|picomatch@4.0.7|GHSA-fc5q-39xc-vjpf",
+  "frontend|picomatch@2.3.2|GHSA-fc5q-39xc-vjpf",
+  "frontend|picomatch@4.0.4|GHSA-fc5q-39xc-vjpf",
+  "frontend|picomatch@4.0.7|GHSA-fc5q-39xc-vjpf"
+ ],
  "geradoEm": "2026-11-17"
 }

@@ -40,13 +40,14 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const version = (overrides: Partial<AlignmentVersion> = {}): AlignmentVersion => ({
   id: "v1", version: 1, reference: "AO-AAAAAAAA v1", status: "DRAFT", title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o App Meu Vivo ou o site.",
-  processes: [{ id: "doc-1", title: "PR — Envio de fatura", documentType: "PROCEDURE" }], reason: { id: "r1", name: "Contingência" }, requestReasons: [{ id: "s1", name: "Fatura" }], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "TEAM",
-  team: { id: "t-ouv", name: "Ouvidoria" }, subteam: null, product: null, startsOn: "2026-11-10", endsOn: "2026-11-30", timeZone: "America/Sao_Paulo", effectiveFrom: "2026-11-10T03:00:00.000Z", effectiveUntil: "2026-12-01T03:00:00.000Z",
+  processes: [{ id: "doc-1", title: "PR — Envio de fatura", documentType: "PROCEDURE" }], reason: { id: "r1", name: "Contingência" }, requestReasons: [{ id: "s1", name: "Fatura" }], affectedTopic: "Envio da fatura", justification: "Sistema de envio em substituição.", operatingUniverse: "B2C", scopeType: "GROUPS",
+  links: [{ teamId: "t-ouv", teamName: "Ouvidoria", subteamId: null, subteamName: null }], product: null, startsOn: "2026-11-10", endsOn: "2026-11-30", timeZone: "America/Sao_Paulo", effectiveFrom: "2026-11-10T03:00:00.000Z", effectiveUntil: "2026-12-01T03:00:00.000Z",
   contentHash: "h", changeReason: null, createdBy: "Gerente Ouvidoria", createdAt: "2026-11-09T12:00:00.000Z", updatedBy: null, updatedAt: null, publishedBy: null, publishedAt: null, supersededAt: null, endedBy: null, endedAt: null, endReason: null, relations: [],
   ...overrides,
 })
 const listItem = (overrides: Partial<AlignmentListItem> = {}): AlignmentListItem => ({
-  id: "a1", reference: "AO-AAAAAAAA v1", version: 1, title: "Fatura pelo App Meu Vivo ou site", reasonName: "Contingência", state: "IN_FORCE", hasDraft: false, operatingUniverse: "B2C", scopeType: "TEAM", teamName: "Ouvidoria", subteamName: null, productName: null,
+  id: "a1", reference: "AO-AAAAAAAA v1", version: 1, title: "Fatura pelo App Meu Vivo ou site", reasonName: "Contingência", state: "IN_FORCE", hasDraft: false, operatingUniverse: "B2C", scopeType: "GROUPS",
+  links: [{ teamId: "t-ouv", teamName: "Ouvidoria", subteamId: null, subteamName: null }], productName: null,
   startsOn: "2026-11-10", endsOn: "2026-11-30", affectedTopic: null, processCount: 5, processTitles: ["IT — Segunda via", "PR — Envio de fatura", "PR — Ouvidoria"], updatedAt: "2026-11-09T12:00:00.000Z",
   ...overrides,
 })
@@ -65,9 +66,20 @@ describe("Alinhamentos operacionais — tela", () => {
     renderWithQuery(<OperationalAlignmentsPage />)
     expect(await screen.findByRole("button", { name: "Fatura pelo App Meu Vivo ou site" })).toBeInTheDocument()
     expect(screen.getByText("IT — Segunda via, PR — Envio de fatura, PR — Ouvidoria e mais 2")).toBeInTheDocument()
-    expect(screen.getByText("Grupo Ouvidoria")).toBeInTheDocument()
+    expect(screen.getByText("Ouvidoria")).toBeInTheDocument()
     expect(screen.getByText("10/11/2026 a 30/11/2026")).toBeInTheDocument()
     expect(service.fetchAlignmentsPage).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }))
+  })
+
+  it("lista: público em vários Grupos mostra cada um (inteiro ou só os Subgrupos marcados)", async () => {
+    service.fetchAlignmentsPage.mockResolvedValue(page([listItem({ links: [
+      { teamId: "t-ouv", teamName: "Ouvidoria", subteamId: null, subteamName: null },
+      { teamId: "t-out", teamName: "Vendas", subteamId: "s-v1", subteamName: "Vendas Tarde" },
+      { teamId: "t-out", teamName: "Vendas", subteamId: "s-v2", subteamName: "Vendas Noite" },
+    ] }), listItem({ id: "a2", title: "Universo inteiro", scopeType: "UNIVERSE", links: [] })]))
+    renderWithQuery(<OperationalAlignmentsPage />)
+    expect(await screen.findByText("Ouvidoria · Vendas › Vendas Tarde, Vendas Noite")).toBeInTheDocument()
+    expect(screen.getByText("Todo o universo")).toBeInTheDocument()
   })
 
   it("cadastro NA PÁGINA (sem painel nem diálogo): exige justificativa e ao menos um processo", async () => {

@@ -149,6 +149,14 @@ describe("Base de Conhecimento — escopo do administrador", () => {
     expect((await request(app).delete(`/${DOC_TEAM_B}`)).status).toBe(404)
     const forbiddenCreate = await request(app).post("/").field("title", "Global").field("documentType", "FAQ").field("content", "Conteúdo de uma base global").field("orgScopes", JSON.stringify([{ scopeType: "ALL_TEAMS" }]))
     expect(forbiddenCreate.status).toBe(403)
+    // Corpo JSON com a lista (não string): o alcance é lido, não ignorado — antes a base virava global e dava 403 (run-6 F-1).
+    const jsonGlobal = await request(app).post("/").send({ title: "Global por JSON", documentType: "FAQ", content: "Conteúdo de uma base global", orgScopes: [{ scopeType: "ALL_TEAMS" }] })
+    expect(jsonGlobal.status).toBe(403)
+    // Alcance inválido por JSON é recusado como inválido (antes era ignorado e a base caía no padrão "todos os Grupos").
+    const jsonInvalid = await request(app).post("/").send({ title: "Alcance inválido por JSON", documentType: "FAQ", content: "Conteúdo qualquer da base", orgScopes: [{ scopeType: "INEXISTENTE" }] })
+    // A recusa é o ZodError (400 na API real; este tratador só conhece DomainError). Antes: alcance ignorado → base global → 403.
+    expect(jsonInvalid.status).not.toBe(201)
+    expect(jsonInvalid.status).not.toBe(403)
     expect(writes.filter((write) => write.startsWith("delete"))).toEqual([])
   })
 

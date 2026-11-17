@@ -27,8 +27,8 @@ import {
 } from "@/components/admin/shared/list/list-filters"
 import { ListCardGrid } from "@/components/admin/shared/list/list-states"
 import { ListViewToggle } from "@/components/admin/shared/list/list-view-toggle"
-import { useKnowledgeDocumentsPageQuery } from "@/queries/admin/use-knowledge-queries"
-import { useSubjectsQuery, useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
+import { useKnowledgeDocumentsPageQuery, useKnowledgeSubjectsQuery } from "@/queries/admin/use-knowledge-queries"
+import { useTeamsQuery } from "@/queries/admin/use-org-structure-queries"
 import { orgScopeAfterUniverseChange, orgScopePatch } from "@/lib/operating-universe/hierarchy"
 import type { KnowledgeListParams } from "@/services/admin/knowledge-service"
 import {
@@ -42,7 +42,7 @@ import { useProductScopeLabels } from "@/components/admin/product-catalog/produc
 
 import { KnowledgeDocumentMenu } from "./knowledge-document-actions"
 import { AuthorLine, DocumentTypeLabel, KnowledgeVersionBadges, ScopeTags, SourceTypeIcon, formatDateOnly } from "./knowledge-meta"
-import { orgScopeLabel, subjectScopeLabel } from "./knowledge-visuals"
+import { orgScopesLabel, subjectScopesLabel } from "./knowledge-visuals"
 import { UniverseBadge } from "@/components/operating-universe/universe-badge"
 
 // O resumo vem do texto bruto (que pode ter markdown leve) — tira os marcadores para o card não
@@ -139,11 +139,11 @@ function KnowledgeTable({ documents }: { documents: KnowledgeDocument[] }) {
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {orgScopeLabel(document.orgScopes[0])}
+                  {orgScopesLabel(document.orgScopes)}
                   <UniverseBadge universe={document.operatingUniverse} />
                 </div>
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{subjectScopeLabel(document.subjectScopes[0])}</TableCell>
+              <TableCell className="text-sm text-muted-foreground"><span className="block max-w-56 truncate" title={subjectScopesLabel(document.subjectScopes)}>{subjectScopesLabel(document.subjectScopes)}</span></TableCell>
               {productScope.available ? (
                 <TableCell className="text-sm text-muted-foreground">
                   {productScope.labelsOf(document.id).join(", ") || "Todos"}
@@ -187,7 +187,7 @@ export function KnowledgePage() {
   const productScope = useProductScopeLabels("KNOWLEDGE_DOCUMENT")
   const [autoOpen] = useAutoOpenFromQuery("new")
   const teamsQuery = useTeamsQuery()
-  const subjectsQuery = useSubjectsQuery()
+  const subjectsQuery = useKnowledgeSubjectsQuery()
 
   // A biblioteca nasceu em cards — continua sendo o padrão desta tela.
   const list = useAdminListState({ storageKey: "knowledge", defaultFilters: DEFAULT_FILTERS, defaultView: "cards" })
@@ -244,7 +244,7 @@ export function KnowledgePage() {
               onChange={(scope) => list.patchFilters(orgScopePatch(scope))}
             />
             <ListSubjectScopeFilter
-              subjects={subjectsQuery.data}
+              subjects={subjectsQuery.data?.items}
               value={{ subjectScopeType: list.filters.subjectScopeType, subjectId: list.filters.subjectId }}
               onChange={(scope) => list.patchFilters({ subjectScopeType: scope.subjectScopeType, subjectId: scope.subjectId })}
             />

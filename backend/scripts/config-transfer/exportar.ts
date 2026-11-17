@@ -58,8 +58,12 @@ try {
   }
   const itens: Item[] = []
 
-  // ── Assuntos das bases (catálogo `subjects`) ──
-  for (const row of await q<{ id: string; name: string; description: string | null; active: boolean }>(`select id, name, description, active from subjects where organization_id = $1 order by name`)) {
+  // ── Assuntos das bases: o catálogo canônico das chamadas (migration 224) — só os usados por alguma base ──
+  for (const row of await q<{ id: string; name: string; description: string | null; active: boolean }>(
+    `select d.id, d.name, d.description, d.active from interaction_subject_definitions d
+      where d.organization_id = $1 and exists (select 1 from knowledge_document_subject_scopes ss join knowledge_documents kd on kd.id = ss.knowledge_document_id and kd.deleted_at is null where ss.subject_id = d.id)
+      order by d.name`,
+  )) {
     itens.push({ tipo: "ASSUNTO", chave: row.name, nome: row.name, idOrigem: row.id, dependencias: [], opcionais: [], sugestao: sugerirInclusao(row.name), dados: { name: row.name, description: row.description, active: row.active } })
   }
 
@@ -173,8 +177,8 @@ try {
   }
 
   // ── Argumentários ──
-  const argumentarios = await q<{ id: string; name: string; business_domain_id: string | null; scope_type: string; team_id: string | null; subteam_id: string | null; status: string; conversion: string }>(
-    `select id, name, business_domain_id, scope_type, team_id, subteam_id, status, conversion from argument_scripts where organization_id = $1 order by created_at`,
+  const argumentarios = await q<{ id: string; name: string; business_domain_id: string | null; status: string; conversion: string }>(
+    `select id, name, business_domain_id, status, conversion from argument_scripts where organization_id = $1 order by created_at`,
   )
   for (const row of argumentarios) {
     const versoes = (await client.query<{ status: string; content: unknown; source_document_id: string | null; source_reference: string | null }>(
@@ -188,13 +192,19 @@ try {
     const publicado = versao("PUBLISHED")
     const rascunho = versao("DRAFT")
     const dominio = row.business_domain_id ? (codigoDoDominio.get(row.business_domain_id) ?? "?") : ""
-    const alcance = alcanceDe(row)
+    // Vínculos da versão que governa (publicada; sem publicada, o rascunho) — 223: o escopo é da versão.
+    const escopo = (await client.query<{ scope_type: string; links: { team_id: string; subteam_id: string | null }[] }>(
+      `select v.scope_type, coalesce((select json_agg(json_build_object('team_id', l.team_id, 'subteam_id', l.subteam_id)) from argument_script_version_scopes l where l.version_id = v.id), '[]') links
+         from argument_script_versions v where v.script_id = $1 and v.status in ('PUBLISHED', 'DRAFT') order by (v.status = 'PUBLISHED') desc limit 1`,
+      [row.id],
+    )).rows[0]
+    const alcances: Alcance[] = !escopo || escopo.scope_type === "ALL_TEAMS" ? [{ tipo: "TODOS" }] : escopo.links.map((link) => alcanceDe({ scope_type: link.subteam_id ? "SUBTEAM" : "TEAM", team_id: link.team_id, subteam_id: link.subteam_id }))
     const bases = [publicado?.base, rascunho?.base].filter((base): base is string => Boolean(base))
     itens.push({
       tipo: "ARGUMENTARIO", chave: row.name, nome: row.name, idOrigem: row.id,
       dependencias: dominio ? [chaveDe("DOMINIO", dominio)] : [], opcionais: [...new Set(bases)].map((base) => chaveDe("BASE", base)),
-      sugestao: sugerirInclusao(row.name, { alcances: [alcance], motivoFixo: row.conversion === "LEGACY_UNSTRUCTURED" ? "convertido de uma regra antiga, sem estrutura" : !dominio ? "sem domínio de negócio" : null }),
-      dados: { name: row.name, dominio, alcance, publicado, rascunho, arquivado: row.status === "ARCHIVED" },
+      sugestao: sugerirInclusao(row.name, { alcances, motivoFixo: row.conversion === "LEGACY_UNSTRUCTURED" ? "convertido de uma regra antiga, sem estrutura" : !dominio ? "sem domínio de negócio" : null }),
+      dados: { name: row.name, dominio, alcances, publicado, rascunho, arquivado: row.status === "ARCHIVED" },
     })
   }
 

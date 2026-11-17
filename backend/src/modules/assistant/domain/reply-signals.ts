@@ -25,7 +25,8 @@ type KnowledgeMode = "NONE" | "FULL" | "RETRIEVAL" | "NO_MATCH" | (string & {})
 
 /** Resultado de um especialista no turno (só os campos que decidem o sinal). */
 export type SpecialistSignalInput = {
-  knowledge?: { mode: KnowledgeMode } | undefined
+  /** `communications`: comunicados que entraram no prompt do especialista (`PUBLICATION_RELEVANCE_V1`) — também são conteúdo. */
+  knowledge?: { mode: KnowledgeMode; communications?: readonly unknown[] | undefined } | undefined
   toolTrace?: readonly { status: string }[] | undefined
   /** Chamada que falhou e virou "consulta não concluída" (`runOrchestratedReply` com `toleratesToolFailure`). */
   failed?: boolean | undefined
@@ -48,8 +49,10 @@ export type ReplySignalInput = {
 
 const INVESTIGATION_WITH_DATA = new Set(["COMPLETED", "CACHED"])
 
+// Comunicado escolhido para a pergunta também é conteúdo (17/11/2026): "E sobre o comunicado de natal?" respondida pelo comunicado não
+// é "nada encontrado" e não sugere Anjo. Alinhamento só conta junto de busca na base (ele muda um processo, não responde sozinho).
 const specialistHasContent = (result: SpecialistSignalInput) =>
-  result.knowledge?.mode === "RETRIEVAL" || result.knowledge?.mode === "FULL" || (result.toolTrace ?? []).some((step) => INVESTIGATION_WITH_DATA.has(step.status))
+  result.knowledge?.mode === "RETRIEVAL" || result.knowledge?.mode === "FULL" || (result.knowledge?.communications?.length ?? 0) > 0 || (result.toolTrace ?? []).some((step) => INVESTIGATION_WITH_DATA.has(step.status))
 
 const directHasContent = (result: DirectSignalInput) => !result.failed && result.card !== null && result.card !== undefined
 

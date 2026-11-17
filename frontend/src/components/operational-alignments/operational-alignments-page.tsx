@@ -1,5 +1,7 @@
 "use client"
 
+import { linksLabel } from "@/lib/scope-links/scope-links"
+
 import { useState } from "react"
 import { CalendarClock, FileText, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react"
 
@@ -31,7 +33,7 @@ const STATE_OPTIONS = (Object.keys(ALIGNMENT_STATE_LABELS) as AlignmentState[]).
 const UNIVERSE_OPTIONS = (["B2B", "B2C", "B2X"] as const).map((value) => ({ value, label: value }))
 
 const audienceOf = (item: AlignmentListItem) => {
-  const scope = item.scopeType === "UNIVERSE" ? "Todo o universo" : item.scopeType === "TEAM" ? `Grupo ${item.teamName ?? ""}` : `${item.teamName ?? ""} › ${item.subteamName ?? ""}`
+  const scope = item.scopeType === "UNIVERSE" ? "Todo o universo" : linksLabel(item.links)
   return item.productName ? `${scope} · ${item.productName}` : scope
 }
 const processesOf = (item: AlignmentListItem) => (item.processCount <= item.processTitles.length ? item.processTitles.join(", ") : `${item.processTitles.join(", ")} e mais ${item.processCount - item.processTitles.length}`)

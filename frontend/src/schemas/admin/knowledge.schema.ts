@@ -31,7 +31,38 @@ const subjectScopeSchema = z.object({
   scopeType: z.string(),
   subjectId: z.string().nullable(),
   subjectName: z.string().nullable(),
+  /** Assunto desativado no catálogo continua na base que já o tinha, marcado. */
+  subjectActive: z.boolean().nullable().optional(),
 })
+
+/**
+ * Assunto da base = assunto canônico das chamadas (migration 224), o mesmo catálogo dos "Pedidos do cliente relacionados" dos
+ * Alinhamentos operacionais. `canCreate`: o servidor diz se quem vê pode incluir um assunto (vale para a organização inteira).
+ */
+export const knowledgeSubjectSchema = z.object({ id: z.string(), code: z.string(), name: z.string(), active: z.boolean() })
+export type KnowledgeSubject = z.infer<typeof knowledgeSubjectSchema>
+export const knowledgeSubjectCatalogSchema = z.object({ items: z.array(knowledgeSubjectSchema), canCreate: z.boolean() })
+export type KnowledgeSubjectCatalog = z.infer<typeof knowledgeSubjectCatalogSchema>
+export const knowledgeSubjectNameSchema = z.string().trim().min(2, "Use ao menos 2 caracteres.").max(80, "Use até 80 caracteres.")
+
+/** Para quais assuntos a base vale: todos, alguns (1..N) ou nenhum (só base antiga que já estava assim: ausência nunca vira "todos"). */
+export type KnowledgeSubjectSelection = { mode: "ALL" | "SPECIFIC" | "NONE"; subjectIds: string[] }
+export type KnowledgeSubjectScopePayload = { scopeType: "ALL_SUBJECTS" | "SUBJECT"; subjectId?: string }
+
+export function subjectSelectionOf(scopes: readonly { scopeType: string; subjectId?: string | null }[]): KnowledgeSubjectSelection {
+  if (scopes.some((scope) => scope.scopeType === "ALL_SUBJECTS")) return { mode: "ALL", subjectIds: [] }
+  const subjectIds = [...new Set(scopes.flatMap((scope) => (scope.scopeType === "SUBJECT" && scope.subjectId ? [scope.subjectId] : [])))]
+  return subjectIds.length > 0 ? { mode: "SPECIFIC", subjectIds } : { mode: "NONE", subjectIds: [] }
+}
+
+export function subjectScopesOf(selection: KnowledgeSubjectSelection): KnowledgeSubjectScopePayload[] {
+  if (selection.mode === "ALL") return [{ scopeType: "ALL_SUBJECTS" }]
+  if (selection.mode === "NONE") return []
+  return selection.subjectIds.map((subjectId) => ({ scopeType: "SUBJECT" as const, subjectId }))
+}
+
+/** O que falta para salvar a escolha: "Assuntos específicos" pede ao menos um. */
+export const subjectSelectionIssue = (selection: KnowledgeSubjectSelection): string | null => (selection.mode === "SPECIFIC" && selection.subjectIds.length === 0 ? "Escolha ao menos um assunto ou marque \"Todos os assuntos\"." : null)
 
 export const knowledgeDocumentSchema = z.object({
   id: z.string(),

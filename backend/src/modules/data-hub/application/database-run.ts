@@ -232,7 +232,7 @@ export async function runDatabasePages(ctx: DataHubContext, loaded: LoadedRun, b
           } else if (chunk) rawChunks.push(chunk)
         }
         const mapped = mapAll(contract, feed.mapping, records, timeZone, keyField, offset)
-        const prepared = await writer.prepare(writeContext, mapped.valid)
+        const prepared = await writer.prepare({ ...writeContext, rejectedValues: mapped.rejectedValues }, mapped.valid)
         const rejections = [...mapped.rejections, ...prepared.rejections]
         const rejectedRecords = mapped.rejectedRecords + prepared.rejections.length
         metrics.recordsReceived += rows.length

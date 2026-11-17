@@ -1,3 +1,4 @@
+import { scopeLinkProblems } from "../../../shared/domain/scope-links/scope-links.js"
 import { createHash } from "node:crypto"
 import { Router } from "express"
 import multer from "multer"
@@ -17,7 +18,8 @@ import { knowledgeFileContentType, sendKnowledgeFile, sendKnowledgeImage } from 
 import { loadKnowledgeFileImage, saveKnowledgeFileImages } from "../application/knowledge-file-images.js"
 import { multerLimits } from "../../../shared/infrastructure/zip-guard.js"
 import { IsolatedParserError } from "../../../shared/infrastructure/isolated-parser/isolated-parser.js"
-import { canManageScope, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { canManageScope, coversOrganization, getManageableScopes, normalizeScopedTarget, type ManageableScopes, type ScopedTarget } from "../../auth/application/manageable-scopes.js"
+import { createKnowledgeSubject, listKnowledgeSubjects, normalizeKnowledgeSubjectScopes, withCanonicalSubjects } from "../application/knowledge-subjects.js"
 import { createLogger } from "../../../shared/infrastructure/logging/logger.js"
 import { sessionUser } from "../../auth/presentation/session-user.js"
 import { LIVE_FILE_QUERY, type LiveFileRow } from "../application/live-knowledge-version.js"
@@ -112,6 +114,7 @@ const revertSchema = publishSchema.extend({ discardDraft: z.boolean().optional()
 const retrySchema = z.object({ reactivate: z.boolean().optional() })
 const reprocessSchema = z.object({ overwriteDraft: z.boolean().optional() })
 const compareSchema = z.object({ from: z.string().uuid(), to: z.string().uuid() })
+const knowledgeSubjectCreateSchema = z.object({ name: z.string().trim().min(2, "Mínimo de 2 caracteres.").max(80, "Máximo de 80 caracteres.") }).strict()
 
 /**
  * Texto do arquivo lido no processo filho do parser (R-24). Estouro de memória/tempo ou morte do filho = arquivo recusado como
@@ -134,6 +137,8 @@ async function extractUploadedFile(buffer: Buffer, sourceType: KnowledgeSourceTy
 }
 
 function parseJsonField(value: unknown) {
+  // Corpo JSON já traz a lista: antes era ignorada em silêncio e a base nascia para todos os Grupos e assuntos (run-6 F-1).
+  if (Array.isArray(value)) return value
   if (typeof value !== "string" || value.length === 0) return undefined
   try {
     return JSON.parse(value)
@@ -167,9 +172,9 @@ const KNOWLEDGE_SELECT = `
       where os.knowledge_document_id = d.id
     ), '[]') "orgScopes",
     coalesce((
-      select json_agg(json_build_object('id', ss.id, 'scopeType', ss.scope_type, 'subjectId', ss.subject_id, 'subjectName', sub.name))
+      select json_agg(json_build_object('id', ss.id, 'scopeType', ss.scope_type, 'subjectId', ss.subject_id, 'subjectName', sub.name, 'subjectActive', sub.active) order by sub.name nulls first)
       from knowledge_document_subject_scopes ss
-      left join subjects sub on sub.id = ss.subject_id
+      left join interaction_subject_definitions sub on sub.id = ss.subject_id
       where ss.knowledge_document_id = d.id
     ), '[]') "subjectScopes"
   from knowledge_documents d
@@ -234,7 +239,10 @@ async function fetchDocumentDetail(db: Database, organizationId: string, id: str
   const contents = new Map(wanted.length === 0 ? [] : (await db.query<{ id: string; content: string; extraction: unknown }>(`select id, content, extraction from knowledge_versions where id = any($1::uuid[])`, [wanted])).rows.map((row) => [row.id, row]))
   const contentOf = (row: { id: string } | null) => (row ? (contents.get(row.id)?.content ?? "") : "")
   const extractionOf = (row: { id: string } | null) => (row ? parseKnowledgeExtraction(contents.get(row.id)?.extraction) : null)
-  const configOf = (row: { id: string; config: unknown } | null) => (row && restricted.has(row.id) ? null : parseKnowledgeVersionConfig(row?.config))
+  // Assuntos no catálogo canônico (224): a versão anterior cita o id antigo, e o formulário abre com o canônico correspondente.
+  const configs = new Map<string, KnowledgeVersionConfig | null>()
+  for (const row of new Set([draft, editableRow])) if (row && !restricted.has(row.id)) configs.set(row.id, await withCanonicalSubjects(db, parseKnowledgeVersionConfig(row.config)))
+  const configOf = (row: { id: string; config: unknown } | null) => (row && !restricted.has(row.id) ? (configs.get(row.id) ?? null) : null)
   const isRestricted = (row: { id: string }) => restricted.has(row.id)
   return {
     ...document.rows[0],
@@ -340,8 +348,14 @@ async function normalizeOrgScopes(db: Pick<Database, "query">, organizationId: s
   for (const scope of toTargets(orgScopes)) {
     const target = await normalizeScopedTarget(db, organizationId, scope)
     if (!target) throw new DomainError("O Subgrupo informado não existe neste Grupo.", "KNOWLEDGE_SCOPE_INVALID", 422)
+    if (target.scopeType === "TEAM" && !(target.teamId && (await db.query(`select 1 from teams where id = $1 and organization_id = $2`, [target.teamId, organizationId])).rowCount)) throw new DomainError("Grupo não encontrado nesta organização.", "KNOWLEDGE_SCOPE_INVALID", 422)
     normalized.push({ scopeType: target.scopeType as z.infer<typeof orgScopeSchema>["scopeType"], ...(target.teamId ? { teamId: target.teamId } : {}), ...(target.subteamId ? { subteamId: target.subteamId } : {}) })
   }
+  // Multi-grupo (223): ao menos um alcance; "todos os Grupos" sozinho; sem vínculo repetido nem Subgrupo junto do próprio Grupo inteiro.
+  if (normalized.length === 0) throw new DomainError("Escolha ao menos um Grupo (ou todos os Grupos).", "KNOWLEDGE_SCOPE_INVALID", 422)
+  if (normalized.some((scope) => scope.scopeType === "ALL_TEAMS") && normalized.length > 1) throw new DomainError("Base para todos os Grupos não leva Grupos específicos junto.", "KNOWLEDGE_SCOPE_INVALID", 422)
+  const problems = scopeLinkProblems(normalized.filter((scope) => scope.teamId).map((scope) => ({ teamId: scope.teamId!, subteamId: scope.subteamId ?? null })))
+  if (problems.length > 0) throw new DomainError(problems[0]!.code === "DUPLICATE" ? "O mesmo Grupo/Subgrupo foi informado mais de uma vez." : "Um Subgrupo foi informado junto com o Grupo inteiro dele: escolha o Grupo inteiro OU os Subgrupos.", "KNOWLEDGE_SCOPE_INVALID", 422)
   return normalized
 }
 
@@ -413,6 +427,20 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     response.json({ data })
   })
 
+  /**
+   * Assuntos da base = assuntos canônicos das chamadas (224), o mesmo catálogo dos Alinhamentos. Listar: quem gere bases. Incluir: só quem
+   * gere bases na organização inteira, porque o assunto vale para todas as telas que usam o catálogo.
+   */
+  router.get("/subjects", async (request, response) => {
+    // `canCreate`: o servidor diz se quem pede pode incluir (a tela só mostra o botão; o POST confere de novo).
+    response.json({ data: { items: await listKnowledgeSubjects(db, sessionUser(request).organizationId), canCreate: coversOrganization(await scopesOf(request)) } })
+  })
+  router.post("/subjects", async (request, response) => {
+    const { name } = knowledgeSubjectCreateSchema.parse(request.body ?? {})
+    if (!coversOrganization(await scopesOf(request))) throw new DomainError("O catálogo de assuntos vale para a organização inteira: só quem administra as bases de toda a organização inclui assuntos.", "ORGANIZATION_SCOPE_REQUIRED", 403)
+    response.status(201).json({ data: await createKnowledgeSubject(db, { organizationId: sessionUser(request).organizationId, personId: sessionUser(request).personId ?? null }, name) })
+  })
+
   router.get("/:id", async (request, response) => {
     if (!(await readable(request, request.params.id))) return response.status(404).json(NOT_FOUND)
     const detail = await fetchDocumentDetail(db, sessionUser(request).organizationId, request.params.id, await versionReaderOf(request))
@@ -473,6 +501,7 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     }
     input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (!canWriteDocument(await scopesOf(request), toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
+    input.subjectScopes = await normalizeKnowledgeSubjectScopes(db, organizationId, input.subjectScopes)
 
     const sourceType = file ? resolveSourceType(file.mimetype, file.originalname) : "TEXT"
     if (file && !(await fileContentAccepted(file.buffer, sourceType))) {
@@ -581,6 +610,8 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     }
     if (input.orgScopes) input.orgScopes = await normalizeOrgScopes(db, organizationId, input.orgScopes)
     if (input.orgScopes && !canWriteDocument(scopes, toTargets(input.orgScopes))) throw SCOPE_FORBIDDEN()
+    // Assunto desativado só continua se a base (em uso ou no rascunho) já o tinha.
+    if (input.subjectScopes) input.subjectScopes = await normalizeKnowledgeSubjectScopes(db, organizationId, input.subjectScopes, await knowledgeSubjectScopesOf(documentId))
 
     const actor = await actorOf(request)
     const outcome = await inTransaction(db, async (client) => {
@@ -643,6 +674,12 @@ export function createKnowledgeRouter(db: Database, options: { inlineProcessing?
     const { live, latest, draft, updates } = lifecycleOf(rows)
     const base = draft ?? updates.find((row) => row.status === "FAILED") ?? (live ? null : latest)
     return toTargets(parseKnowledgeVersionConfig(base?.config)?.orgScopes ?? [])
+  }
+  /** Assuntos que a base já tem — em uso e nas versões ainda não decididas (rascunho, atualização) — para não arrancar um assunto desativado. */
+  const knowledgeSubjectScopesOf = async (documentId: string) => {
+    const inUse = (await db.query<{ scopeType: string; subjectId: string | null }>(`select scope_type "scopeType", subject_id "subjectId" from knowledge_document_subject_scopes where knowledge_document_id = $1`, [documentId])).rows
+    const pending = (await db.query<{ config: unknown }>(`select config from knowledge_versions where document_id = $1 and status in ('DRAFT', 'APPROVED', 'PROCESSING', 'FAILED')`, [documentId])).rows
+    return [...inUse, ...pending.flatMap((row) => parseKnowledgeVersionConfig(row.config)?.subjectScopes ?? [])]
   }
   /**
    * Com a base já travada (`lockKnowledgeDocument`): o alcance em uso e o do rascunho relidos na mesma transação da escrita. A conferência

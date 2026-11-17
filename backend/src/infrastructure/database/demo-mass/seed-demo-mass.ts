@@ -68,7 +68,7 @@ export async function seedDemoMass(client: pg.PoolClient, log: Log, demoPassword
   const schedules = await persistDemoWorkSchedules(client, mass.structure.people, mass.referenceDate)
   const evidenceIndicators = await ensureWorkActivityEvidenceIndicators(client)
   const touchedFeeds = await touchDemoAvailabilityFeeds(client, mass.referenceDate)
-  log(`escalas: ${schedules.regimes} regime(s) 5x2/6x1, ${schedules.days} dia(s) de calendário explícito e ${schedules.exceptions} exceção(ões) e ${schedules.classifications} classificação(ões) (operadores 0021–0030); ${evidenceIndicators} indicador(es) de eficiência marcado(s) como evidência de produção; ${touchedFeeds} feed(s) da Central com carga registrada (disponibilidade D-1/D-2) — ${elapsed()}`)
+  log(`escalas: ${schedules.regimes} regime(s) 5x2/6x1, ${schedules.days} dia(s) de calendário explícito e ${schedules.exceptions} exceção(ões) e ${schedules.classifications} classificação(ões) (operadores 0021–0030), ${schedules.activities} atividade(s) escalada(s) (Larissa Monteiro); ${evidenceIndicators} indicador(es) de eficiência marcado(s) como evidência de produção; ${touchedFeeds} feed(s) da Central com carga registrada (disponibilidade D-1/D-2) — ${elapsed()}`)
 
   const official = await persistPerformance(client, mass)
   log(`metas persistidas; fechamentos oficiais (snapshot as-supplied, insert-only): ${official.indicatorRowsInserted} indicador criado(s) / ${official.indicatorRowsKept} já existente(s) mantido(s), ${official.prvRowsInserted} PRV criado(s) / ${official.prvRowsKept} mantido(s) — ${elapsed()}`)

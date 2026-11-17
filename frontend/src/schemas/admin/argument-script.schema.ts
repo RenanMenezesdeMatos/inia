@@ -19,8 +19,18 @@ export type ArgumentScriptStatus = z.infer<typeof argumentScriptStatusSchema>
 export const argumentScriptConversionSchema = z.enum(["NATIVE", "LEGACY_UNSTRUCTURED"])
 export type ArgumentScriptConversion = z.infer<typeof argumentScriptConversionSchema>
 
-export const argumentScriptScopeTypeSchema = z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"])
+/** Todos os Grupos, ou os Grupos/Subgrupos dos vínculos (223). */
+export const argumentScriptScopeTypeSchema = z.enum(["ALL_TEAMS", "GROUPS"])
 export type ArgumentScriptScopeType = z.infer<typeof argumentScriptScopeTypeSchema>
+
+export const argumentScriptScopeLinkSchema = z.object({
+  teamId: z.string(),
+  teamName: z.string().nullable().catch(null),
+  subteamId: z.string().nullable().catch(null),
+  subteamName: z.string().nullable().catch(null),
+})
+export const argumentScriptScopeSchema = z.object({ scopeType: argumentScriptScopeTypeSchema, links: z.array(argumentScriptScopeLinkSchema).catch([]) })
+export type ArgumentScriptScope = z.infer<typeof argumentScriptScopeSchema>
 
 const nullableText = z.string().nullable().catch(null)
 
@@ -88,10 +98,10 @@ export const argumentScriptSchema = z.object({
   scopeType: argumentScriptScopeTypeSchema,
   /** Universo de atuação (nulo = pendente). Opcional: os seletores encadeiam por ele (lib/operating-universe/hierarchy.ts). */
   operatingUniverse: operatingUniverseSchema.nullable().optional().catch(null),
-  teamId: nullableText,
-  teamName: nullableText,
-  subteamId: nullableText,
-  subteamName: nullableText,
+  /** Vínculos da versão que governa (vigente; nunca publicado, o rascunho). */
+  scopeLinks: z.array(argumentScriptScopeLinkSchema).catch([]),
+  /** Escopo do rascunho (null = sem rascunho): vale a partir da publicação dele. */
+  draftScope: argumentScriptScopeSchema.nullable().catch(null),
   subjectName: nullableText,
   status: argumentScriptStatusSchema,
   conversion: argumentScriptConversionSchema,

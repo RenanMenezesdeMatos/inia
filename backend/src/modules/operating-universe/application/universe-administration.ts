@@ -1,3 +1,4 @@
+import { argumentScriptGoverningVersionIdsSql } from "../../argument-scripts/infrastructure/argument-script-loaders.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
@@ -136,14 +137,27 @@ function scopeSql(kind: UniverseResourceKind, teams: string, subteams: string): 
     return `(exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = r.id)
       and not exists (select 1 from knowledge_document_org_scopes os where os.knowledge_document_id = r.id and not ${reach("os")}))`
   }
-  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR" || kind === "ARGUMENT_SCRIPT") return reach("r")
+  if (kind === "ARGUMENT_SCRIPT") {
+    // Vínculos da versão (223): todos os vínculos das versões que governam (vigente e rascunho) no escopo; "todos os grupos" nunca.
+    const governing = argumentScriptGoverningVersionIdsSql("r.id")
+    return `(not exists (select 1 from argument_script_versions gv where gv.id in ${governing} and gv.scope_type = 'ALL_TEAMS')
+      and exists (select 1 from argument_script_version_scopes l where l.version_id in ${governing})
+      and not exists (select 1 from argument_script_version_scopes l where l.version_id in ${governing}
+        and not coalesce((l.subteam_id is null and l.team_id = any(${teams}::uuid[])) or l.subteam_id = any(${subteams}::uuid[]), false)))`
+  }
+  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") return reach("r")
   return "false"
 }
 
 type ScopeColumns = { scope_type: string | null; team_id: string | null; subteam_id: string | null; scopes: { scopeType: string; teamId: string | null; subteamId: string | null }[] | null }
 
 function scopeSelect(kind: UniverseResourceKind): string {
-  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR" || kind === "ARGUMENT_SCRIPT") return `r.scope_type, r.team_id, r.subteam_id, null::json scopes`
+  if (kind === "WORKFLOW" || kind === "AGENT" || kind === "ORCHESTRATOR") return `r.scope_type, r.team_id, r.subteam_id, null::json scopes`
+  if (kind === "ARGUMENT_SCRIPT") {
+    const governing = argumentScriptGoverningVersionIdsSql("r.id")
+    return `case when exists (select 1 from argument_script_versions gv where gv.id in ${governing} and gv.scope_type = 'ALL_TEAMS') then 'ALL_TEAMS' end scope_type, null::uuid team_id, null::uuid subteam_id,
+      (select json_agg(json_build_object('scopeType', case when l.subteam_id is null then 'TEAM' else 'SUBTEAM' end, 'teamId', l.team_id, 'subteamId', l.subteam_id)) from argument_script_version_scopes l where l.version_id in ${governing}) scopes`
+  }
   if (kind === "KNOWLEDGE_DOCUMENT") return `null::text scope_type, null::uuid team_id, null::uuid subteam_id, (select json_agg(json_build_object('scopeType', os.scope_type, 'teamId', os.team_id, 'subteamId', os.subteam_id)) from knowledge_document_org_scopes os where os.knowledge_document_id = r.id) scopes`
   return `null::text scope_type, null::uuid team_id, null::uuid subteam_id, null::json scopes`
 }
@@ -151,7 +165,8 @@ function scopeSelect(kind: UniverseResourceKind): string {
 function canTouch(scopes: ManageableScopes, kind: UniverseResourceKind, row: ScopeColumns): boolean {
   if (scopes.unrestricted || scopes.allTeams) return true
   if (UNIVERSE_RESOURCES[kind].organizationWide) return false
-  if (kind === "KNOWLEDGE_DOCUMENT") return (row.scopes ?? []).length > 0 && (row.scopes ?? []).every((scope) => canManageScope(scopes, { scopeType: scope.scopeType as never, teamId: scope.teamId, subteamId: scope.subteamId }))
+  if (kind === "ARGUMENT_SCRIPT" && row.scope_type === "ALL_TEAMS") return false
+  if (kind === "KNOWLEDGE_DOCUMENT" || kind === "ARGUMENT_SCRIPT") return (row.scopes ?? []).length > 0 && (row.scopes ?? []).every((scope) => canManageScope(scopes, { scopeType: scope.scopeType as never, teamId: scope.teamId, subteamId: scope.subteamId }))
   return row.scope_type !== null && canManageScope(scopes, { scopeType: row.scope_type as never, teamId: row.team_id, subteamId: row.subteam_id })
 }
 

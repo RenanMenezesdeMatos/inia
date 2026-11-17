@@ -73,7 +73,7 @@ export const capabilitiesSchema = z.object({
   canDrillDown: z.boolean(),
   groupingOptions: z.array(groupingDimensionSchema),
   peopleTabLabel: z.enum(["Equipe", "Estrutura"]).nullable(),
-  tabs: z.array(z.enum(["FOLLOW_UP", "INDICATORS", "PEOPLE", "PENDING", "STRUCTURE", "CALENDAR"])),
+  tabs: z.array(z.enum(["FOLLOW_UP", "JOURNEY", "INDICATORS", "PEOPLE", "PENDING", "STRUCTURE", "CALENDAR"])),
 })
 export type IndicatorViewCapabilities = z.infer<typeof capabilitiesSchema>
 

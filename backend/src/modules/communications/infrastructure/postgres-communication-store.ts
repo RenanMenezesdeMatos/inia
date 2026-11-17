@@ -1,3 +1,4 @@
+import { normalizeScopeLinks } from "../../auth/application/manageable-scopes.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { canAnywhere, canOrganizationWide } from "../../access/domain/access-decision.js"
@@ -25,10 +26,29 @@ type Queryable = Pick<Database, "query">
  * dos Grupos/Subgrupos (quando escolhidos). Sem Grupo e sem Subgrupo = o universo inteiro.
  */
 function segmentMatchSql(alias: string, personParam: string): string {
-  return `exists (select 1 from people sp where sp.id = ${personParam} and sp.organization_id = ${alias}.organization_id and sp.active
-      and (${alias}.segment_universe is null or sp.operating_universe = ${alias}.segment_universe)
-      and ((cardinality(${alias}.segment_team_ids) = 0 and cardinality(${alias}.segment_subteam_ids) = 0)
-        or sp.team_id = any(${alias}.segment_team_ids) or sp.subteam_id = any(${alias}.segment_subteam_ids)))`
+  return `exists (select 1 from people sp where sp.id = ${personParam} and sp.organization_id = ${alias}.organization_id and sp.active and ${segmentPersonSql(alias, "sp")})`
+}
+
+/**
+ * A pessoa `person` (alias de `people`) está no recorte do comunicado `alias` (223): universo (quando escolhido) E — sem vínculo, o
+ * universo inteiro — algum vínculo a alcança (Grupo inteiro = `team_id`; Subgrupo = `subteam_id`). FRAGMENTO ÚNICO: leitura (feed, por
+ * id, recebidos), chat da pessoa e chat da estrutura do gestor.
+ */
+export function segmentPersonSql(alias: string, person: string): string {
+  return `(${alias}.segment_universe is null or ${person}.operating_universe = ${alias}.segment_universe)
+      and (not exists (select 1 from communication_segment_scopes ls where ls.communication_id = ${alias}.id)
+        or exists (select 1 from communication_segment_scopes ls where ls.communication_id = ${alias}.id
+          and ((ls.subteam_id is null and ls.team_id = ${person}.team_id) or ls.subteam_id = ${person}.subteam_id)))`
+}
+
+/** Grava os vínculos do recorte (substituídos inteiros, na transação da gravação do comunicado). */
+async function writeSegmentLinks(db: Queryable, organizationId: string, communicationId: string, segment: CommunicationSegment) {
+  await db.query(`delete from communication_segment_scopes where communication_id = $1`, [communicationId])
+  if (segment.links.length === 0) return
+  await db.query(
+    `insert into communication_segment_scopes (communication_id, organization_id, team_id, subteam_id) select $1, $2, t, s from unnest($3::uuid[], $4::uuid[]) as u(t, s)`,
+    [communicationId, organizationId, segment.links.map((link) => link.teamId), segment.links.map((link) => link.subteamId)],
+  )
 }
 
 /** Publicado, já no ar e dentro do período de exibição (fragmento único: feed, leitura por id, recebidos e chat). */
@@ -108,12 +128,14 @@ export async function loadCommunicationViews(db: Queryable, organizationId: stri
 
 type EditorialRow = {
   id: string; status: CommunicationStatus; title: string; tags: string[]; summary: string | null; featured: boolean; audience: CommunicationAudience
-  segmentUniverse: string | null; segmentTeamIds: string[]; segmentSubteamIds: string[]; productNodeId: string | null; productName: string | null
+  segmentUniverse: string | null; segmentLinks: CommunicationSegment["links"] | null; productNodeId: string | null; productName: string | null
   publishedAt: Date | null; displayUntil: Date | null; recipientCount: number; createdAt: Date; updatedAt: Date | null; editedAt: Date | null; archivedAt: Date | null
   authorPersonId: string; authorName: string; authorJobTitle: string | null
 }
 const EDITORIAL_SELECT = `n.id::text id, n.status, n.title, n.tags, n.summary, n.featured, n.audience, n.segment_universe "segmentUniverse",
-  n.segment_team_ids::text[] "segmentTeamIds", n.segment_subteam_ids::text[] "segmentSubteamIds", n.product_node_id::text "productNodeId", pn.name "productName",
+  (select coalesce(json_agg(json_build_object('teamId', ls.team_id, 'teamName', lt.name, 'subteamId', ls.subteam_id, 'subteamName', lst.name) order by lt.name, ls.team_id, lst.name nulls first), '[]'::json)
+     from communication_segment_scopes ls join teams lt on lt.id = ls.team_id left join subteams lst on lst.id = ls.subteam_id where ls.communication_id = n.id) "segmentLinks",
+  n.product_node_id::text "productNodeId", pn.name "productName",
   n.published_at "publishedAt", n.display_until "displayUntil", n.recipient_count "recipientCount", n.created_at "createdAt", n.updated_at "updatedAt",
   n.edited_at "editedAt", n.archived_at "archivedAt", n.author_person_id::text "authorPersonId", p.name "authorName", p.job_title "authorJobTitle"`
 const EDITORIAL_JOINS = `${JOINS} left join product_catalog_nodes_all pn on pn.id = n.product_node_id`
@@ -128,7 +150,7 @@ function editorialBase(row: EditorialRow): Omit<EditorialCommunication, "content
     summary: row.summary,
     featured: row.featured,
     audience: row.audience,
-    segment: { universe: (row.segmentUniverse as CommunicationUniverse | null) ?? null, teamIds: row.segmentTeamIds ?? [], subteamIds: row.segmentSubteamIds ?? [] },
+    segment: { universe: (row.segmentUniverse as CommunicationUniverse | null) ?? null, links: row.segmentLinks ?? [] },
     productNodeId: row.productNodeId,
     productName: row.productName,
     publishedAt: iso(row.publishedAt),
@@ -161,11 +183,14 @@ async function resolveAudience(db: Queryable, input: { organizationId: string; a
     const all = await db.query<{ count: number }>(`select count(*)::int count from people where organization_id = $1 and active and id <> $2`, [input.organizationId, input.authorPersonId])
     return { count: all.rows[0]?.count ?? 0, recipientIds: [] }
   }
+  // Recorte ainda não gravado (prévia, publicação): o mesmo predicado de `segmentPersonSql`, com os vínculos em parâmetro. Uma pessoa
+  // conta uma vez, mesmo alcançada por mais de um vínculo.
   const segment = await db.query<{ count: number }>(
     `select count(*)::int count from people sp where sp.organization_id = $1 and sp.active and sp.id <> $2
        and ($3::text is null or sp.operating_universe = $3)
-       and ((cardinality($4::uuid[]) = 0 and cardinality($5::uuid[]) = 0) or sp.team_id = any($4::uuid[]) or sp.subteam_id = any($5::uuid[]))`,
-    [input.organizationId, input.authorPersonId, input.segment.universe, input.segment.teamIds, input.segment.subteamIds],
+       and (cardinality($4::uuid[]) = 0 or exists (select 1 from unnest($4::uuid[], $5::uuid[]) as l(team_id, subteam_id)
+         where (l.subteam_id is null and l.team_id = sp.team_id) or l.subteam_id = sp.subteam_id))`,
+    [input.organizationId, input.authorPersonId, input.segment.universe, input.segment.links.map((link) => link.teamId), input.segment.links.map((link) => link.subteamId)],
   )
   return { count: segment.rows[0]?.count ?? 0, recipientIds: [] }
 }
@@ -204,12 +229,13 @@ export function createPostgresCommunicationStore(db: Database): CommunicationSto
         if (publishing && audience.count === 0) return null
         const created = await client.query<{ id: string }>(
           `insert into communications (organization_id, author_person_id, author_account_id, audience, title, content_html, plain_text, tags, recipient_count,
-             status, published_at, summary, featured, display_until, segment_universe, segment_team_ids, segment_subteam_ids, product_node_id)
-           values ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11, $12, $13, $14, $15, $16::uuid[], $17::uuid[], $18) returning id::text id`,
+             status, published_at, summary, featured, display_until, segment_universe, product_node_id)
+           values ($1, $2, $3, $4, $5, $6, $7, $8::text[], $9, $10, $11, $12, $13, $14, $15, $16) returning id::text id`,
           [input.organizationId, input.authorPersonId, input.authorAccountId, input.audience, input.title, input.contentHtml, input.plainText, input.tags, audience.count,
-            input.status, input.publishedAt, input.summary, input.featured, input.displayUntil, input.segment.universe, input.segment.teamIds, input.segment.subteamIds, input.productNodeId],
+            input.status, input.publishedAt, input.summary, input.featured, input.displayUntil, input.segment.universe, input.productNodeId],
         )
         const id = created.rows[0]!.id
+        await writeSegmentLinks(client, input.organizationId, id, input.segment)
         if (publishing && input.audience === "TEAM") {
           await client.query(`insert into communication_recipients (communication_id, person_id, organization_id) select $1, unnest($2::uuid[]), $3`, [id, audience.recipientIds, input.organizationId])
         }
@@ -256,13 +282,15 @@ export function createPostgresCommunicationStore(db: Database): CommunicationSto
         }
         await client.query(
           `update communications set status = $2, published_at = $3, title = $4, content_html = $5, plain_text = $6, tags = $7::text[], summary = $8, featured = $9,
-             display_until = $10, audience = $11, segment_universe = $12, segment_team_ids = $13::uuid[], segment_subteam_ids = $14::uuid[], product_node_id = $15,
-             recipient_count = $16, updated_at = now(),
-             edited_at = case when $17::boolean then now() else edited_at end, edited_by = case when $17::boolean then $18::uuid else edited_by end
+             display_until = $10, audience = $11, segment_universe = $12, product_node_id = $13,
+             recipient_count = $14, updated_at = now(),
+             edited_at = case when $15::boolean then now() else edited_at end, edited_by = case when $15::boolean then $16::uuid else edited_by end
            where id = $1`,
           [input.id, input.status, input.publishedAt, input.title, input.contentHtml, input.plainText, input.tags, input.summary, input.featured, input.displayUntil,
-            input.audience, input.segment.universe, input.segment.teamIds, input.segment.subteamIds, input.productNodeId, recipientCount, wentOut, input.authorPersonId],
+            input.audience, input.segment.universe, input.productNodeId, recipientCount, wentOut, input.authorPersonId],
         )
+        // Público fixo depois que saiu (o serviço já devolve o recorte atual); antes disso, os vínculos acompanham a gravação.
+        if (!wentOut) await writeSegmentLinks(client, input.organizationId, input.id, input.segment)
         const scheduled = publishing && input.publishedAt !== null && input.publishedAt.getTime() > now
         const action = wentOut ? "COMMUNICATION_EDITED" : publishing ? (scheduled ? "COMMUNICATION_SCHEDULED" : "COMMUNICATION_PUBLISHED") : previous.status === "DRAFT" ? "COMMUNICATION_DRAFT_SAVED" : "COMMUNICATION_UNSCHEDULED"
         await audit(client, input.organizationId, input.authorPersonId, action, input.id, {
@@ -374,14 +402,13 @@ export function createPostgresCommunicationStore(db: Database): CommunicationSto
       }
     },
 
-    async validReferences(organizationId, input) {
-      const result = await db.query<{ ok: boolean }>(
-        `select (select count(*) from teams where organization_id = $1 and id = any($2::uuid[])) = cardinality($2::uuid[])
-            and (select count(*) from subteams where organization_id = $1 and id = any($3::uuid[])) = cardinality($3::uuid[])
-            and ($4::uuid is null or exists (select 1 from product_catalog_nodes where organization_id = $1 and id = $4)) ok`,
-        [organizationId, input.teamIds, input.subteamIds, input.productNodeId],
-      )
-      return result.rows[0]?.ok ?? false
+    async resolveReferences(organizationId, input) {
+      if (input.productNodeId) {
+        const product = await db.query(`select 1 from product_catalog_nodes where organization_id = $1 and id = $2`, [organizationId, input.productNodeId])
+        if (!product.rowCount) return null
+      }
+      const links = await normalizeScopeLinks(db, organizationId, input.links)
+      return links ? { links } : null
     },
 
     async findVisible(organizationId, viewerPersonId, id) {

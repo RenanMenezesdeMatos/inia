@@ -31,6 +31,8 @@ export type WriteContext = {
   runId: string
   /** Namespace de origem para dados de evento/medição (coluna `source`). */
   sourceNamespace: string
+  /** O que deu para mapear das linhas recusadas na validação do contrato (antes do `prepare`). */
+  rejectedValues?: readonly Record<string, unknown>[]
 }
 
 export interface DomainWriter<TPrepared = unknown> {

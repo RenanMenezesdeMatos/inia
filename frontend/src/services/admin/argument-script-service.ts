@@ -40,7 +40,8 @@ export async function fetchArgumentScriptScopeOptions(): Promise<ArgumentScriptS
   return argumentScriptScopeOptionsSchema.parse(await adminGet(`${BASE}/scope-options`))
 }
 
-export type ArgumentScriptScopeInput = { scopeType: ArgumentScriptScopeType; teamId?: string; subteamId?: string }
+/** Escopo enviado (223): todos os Grupos, ou vínculos (Grupo inteiro ou um Subgrupo daquele Grupo). */
+export type ArgumentScriptScopeInput = { scopeType: ArgumentScriptScopeType; links: { teamId: string; subteamId: string | null }[] }
 
 export type CreateArgumentScriptInput = {
   name: string

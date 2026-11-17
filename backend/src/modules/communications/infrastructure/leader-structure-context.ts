@@ -6,6 +6,7 @@ import { renderAlignmentsForConversation, resolveOperationalAlignments, type Ali
 import { loadAlignmentCandidatesAt } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
 import { recordAlignmentUsage } from "../../operational-alignments/application/alignment-audit.js"
 import { structureAlignmentHeader, type LeaderStructureScope } from "../domain/leader-structure.js"
+import type { PublicationRelevanceModel } from "../application/publication-relevance-model.js"
 import { loadCommunicationsForConversation } from "./communication-conversation-loader.js"
 import { structurePeopleCte } from "./structure-people-sql.js"
 
@@ -85,13 +86,13 @@ export function alignmentsRelatedTo(question: string, candidates: readonly Align
  * Chat só de liderança (sem Orquestrador do Grupo de quem lidera): alinhamentos vigentes da estrutura e comunicados que chegam a ela,
  * os dois só quando relacionados à pergunta. Texto pronto para somar às instruções da liderança ("" = nada relacionado).
  */
-export async function loadLeaderStructureBlock(db: Queryable, input: { organizationId: string; scope: LeaderStructureScope; question: string; at?: Date }): Promise<{ text: string; alignments: AlignmentCandidate[]; communicationIds: string[] }> {
+export async function loadLeaderStructureBlock(db: Queryable, input: { organizationId: string; scope: LeaderStructureScope; question: string; at?: Date; model?: PublicationRelevanceModel }): Promise<{ text: string; alignments: AlignmentCandidate[]; communicationIds: string[] }> {
   const question = input.question.trim()
   if (!question) return { text: "", alignments: [], communicationIds: [] }
   const at = input.at ?? new Date()
   const [resolution, communications] = await Promise.all([
     resolveAlignmentsForStructure(db, { organizationId: input.organizationId, scope: input.scope, at, documentIds: null }),
-    loadCommunicationsForConversation(db, { organizationId: input.organizationId, personId: input.scope.leaderPersonId, question, structure: input.scope }),
+    loadCommunicationsForConversation(db, { organizationId: input.organizationId, personId: input.scope.leaderPersonId, question, structure: input.scope, ...(input.model ? { model: input.model } : {}) }),
   ])
   const related = resolution ? alignmentsRelatedTo(question, resolution.applied) : []
   // Rastro só do que entrou de fato (os relacionados à pergunta).

@@ -9,6 +9,7 @@ import {
   archiveKnowledgeDocument,
   compareKnowledgeVersions,
   createKnowledgeDocument,
+  createKnowledgeSubject,
   deleteKnowledgeDocument,
   discardKnowledgeDraft,
   fetchKnowledgeAiPreview,
@@ -17,6 +18,7 @@ import {
   fetchKnowledgeDocuments,
   fetchKnowledgeDocumentsPage,
   fetchKnowledgeFile,
+  fetchKnowledgeSubjects,
   fetchKnowledgeVersion,
   fetchKnowledgeVersionFile,
   fetchKnowledgeVersionPreview,
@@ -130,6 +132,23 @@ export function useKnowledgeVersionComparisonQuery(documentId: string, fromVersi
     queryKey: [...adminQueryKeys.knowledge(), documentId, "compare", fromVersionId, toVersionId],
     queryFn: () => compareKnowledgeVersions(documentId, fromVersionId, toVersionId),
     retry: false,
+  })
+}
+
+const subjectsKey = () => [...adminQueryKeys.knowledge(), "subjects"] as const
+
+/** Assuntos oferecidos (ativos) e se quem vê pode incluir. Incluir também aparece nos Alinhamentos (mesmo catálogo). */
+export function useKnowledgeSubjectsQuery() {
+  return useQuery({ queryKey: subjectsKey(), queryFn: fetchKnowledgeSubjects, staleTime: 60_000 })
+}
+
+export function useCreateKnowledgeSubjectMutation() {
+  return useAdminMutation({
+    mutationFn: (name: string) => createKnowledgeSubject(name),
+    invalidateKey: subjectsKey(),
+    successMessage: "Assunto incluído no catálogo.",
+    // O próprio campo mostra estes motivos ao lado do nome digitado.
+    silentErrorCodes: ["KNOWLEDGE_SUBJECT_DUPLICATED", "KNOWLEDGE_SUBJECT_INVALID", "VALIDATION_ERROR"],
   })
 }
 

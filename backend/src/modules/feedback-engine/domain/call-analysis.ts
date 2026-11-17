@@ -557,7 +557,7 @@ export function verifyCallAnalysis(input: VerificationInput): VerifiedCallAnalys
   const argumentOf = (line: ProcedureLine): NonNullable<AssessedCriterion["argument"]> | null => {
     if (!line.argument) return null
     const meta = context.documents.find((document) => document.handle === line.documentHandle)?.argument
-    return { ...line.argument, trigger: meta?.trigger ?? null, notApplicableWhen: meta?.notApplicableWhen ?? null, scopeLabel: meta?.scopeLabel ?? "", scope: meta?.scope ?? { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null }, perspective: meta?.perspective ?? "RULE_IN_FORCE_AT_CALL" }
+    return { ...line.argument, trigger: meta?.trigger ?? null, notApplicableWhen: meta?.notApplicableWhen ?? null, scopeLabel: meta?.scopeLabel ?? "", scope: meta?.scope ?? { scopeType: "ALL_TEAMS", links: [] }, perspective: meta?.perspective ?? "RULE_IN_FORCE_AT_CALL" }
   }
   const baseOf = (line: ProcedureLine) => ({ lineHandle: line.handle, lineKey: line.lineKey, documentId: line.documentId, documentHandle: line.documentHandle, sectionHandle: line.sectionHandle, heading: line.heading, text: line.text, leadIn: line.leadIn, onPath: pathSectionHandles.has(line.sectionHandle), argument: argumentOf(line), obligation: null })
   // DUPLICIDADE POR SENTIDO (`DUPLICATE_BY_MEANING_V1`): texto igual nunca elimina uma exigência. Só vale a leitura semântica que

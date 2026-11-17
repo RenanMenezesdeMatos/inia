@@ -83,7 +83,7 @@ async function lerDestino(cliente: ClienteInia, itens: Item[]): Promise<Destino>
         nome: nome(linha),
       })
   }
-  registrar("ASSUNTO", lista(await cliente.get("/api/v1/admin/org-structure/subjects")), (linha) => texto(linha.name))
+  registrar("ASSUNTO", lista(await cliente.get("/api/v1/admin/knowledge/subjects")), (linha) => texto(linha.name))
   registrar(
     "DOMINIO",
     lista(await cliente.get("/api/v1/admin/business-domains?includeInactive=true")),
@@ -204,6 +204,12 @@ function semVazios<T extends Record<string, unknown>>(objeto: T): Partial<T> {
   return Object.fromEntries(Object.entries(objeto).filter(([, valor]) => valor !== null && valor !== undefined)) as Partial<T>
 }
 
+/** Escopo multi-grupo (223) do argumentário: algum TODOS = todos os Grupos; senão, um vínculo por alcance resolvido. */
+const escopoMultiNoCorpo = (alcances: readonly AlcanceResolvido[]) =>
+  alcances.length === 0 || alcances.some((alcance) => alcance.scopeType === "ALL_TEAMS")
+    ? { scopeType: "ALL_TEAMS", links: [] }
+    : { scopeType: "GROUPS", links: alcances.map((alcance) => (alcance.scopeType === "SUBTEAM" ? { teamId: alcance.teamId, subteamId: alcance.subteamId } : { teamId: (alcance as { teamId: string }).teamId })) }
+
 const alcanceNoCorpo = (alcance: AlcanceResolvido | null) =>
   !alcance || alcance.scopeType === "ALL_TEAMS"
     ? { scopeType: "ALL_TEAMS" }
@@ -299,11 +305,9 @@ async function criar(cliente: ClienteInia, linha: LinhaDoPlano, idDe: IdDe, regi
     case "ASSUNTO":
       return (
         await cliente.post<{ id: string }>(
-          "/api/v1/admin/org-structure/subjects",
-          semVazios({
-            name: item.dados.name,
-            description: item.dados.description,
-          }),
+          // Assunto canônico (224): incluído pela rota da Base; a descrição de origem não é levada (a rota grava a sua).
+          "/api/v1/admin/knowledge/subjects",
+          semVazios({ name: item.dados.name }),
         )
       ).id
     case "DOMINIO":
@@ -543,7 +547,7 @@ async function criarArgumentario(cliente: ClienteInia, linha: LinhaDoPlano, item
   const corpo = {
     name: dados.name,
     businessDomainId: idDe("DOMINIO", dados.dominio),
-    scope: alcanceNoCorpo(linha.alcance),
+    scope: escopoMultiNoCorpo(linha.alcances),
     ...(primeira ? versao(primeira) : {}),
   }
   const id = (await cliente.post<{ id: string }>("/api/v1/admin/argument-scripts", corpo)).id

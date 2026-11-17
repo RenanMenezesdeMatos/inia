@@ -53,6 +53,7 @@ import { createOperationalCalendarRouter } from "../modules/people/presentation/
 import { createOrgStructureRouter } from "../modules/org-structure/presentation/org-structure-router.js"
 import { createPersonOrganizationStructureRouter } from "../modules/org-structure/presentation/person-organization-structure-router.js"
 import { createTeamCalendarRouter } from "../modules/people/presentation/team-calendar-router.js"
+import { createMyJourneyRouter } from "../modules/people/presentation/my-journey-router.js"
 import { createIndicatorRuleRouter } from "../modules/indicator-rules/presentation/indicator-rule-router.js"
 import { createDiagnosticStrategyRouter } from "../modules/indicator-diagnosis/presentation/diagnostic-strategy-router.js"
 import { createEmployeePerformanceRouter } from "../modules/indicators/presentation/employee-performance-router.js"
@@ -543,6 +544,7 @@ export function createApp(database: Database = pool, options: CreateAppOptions =
   // Pendências (ação requerida) e Sino (algo novo aconteceu) — sempre do viewer da sessão.
   app.use("/api/v1/pending-actions", requireAuth, createPendingActionsRouter(database))
   app.use("/api/v1/team-calendar", requireAuth, createTeamCalendarRouter(database))
+  app.use("/api/v1/my-journey", requireAuth, createMyJourneyRouter(database))
   app.use("/api/v1/notifications", requireAuth, createNotificationsRouter(database))
   // QA de feedback (QA Lab › Feedbacks) + concessão da capability FEEDBACK_QUALITY_REVIEW — só com a flag do pipeline ligada;
   // sem entrega ao colaborador. Avaliar exige o papel QA_DE_FEEDBACK (modelo geral de acesso, V1.5.7).

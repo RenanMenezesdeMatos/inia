@@ -351,7 +351,7 @@ export function verifyObligationAnalysis(input: ObligationVerificationInput): Ve
   const argumentOf = (line: ProcedureLine): NonNullable<AssessedCriterion["argument"]> | null => {
     if (!line.argument) return null
     const meta = context.documents.find((document) => document.handle === line.documentHandle)?.argument
-    return { ...line.argument, trigger: meta?.trigger ?? null, notApplicableWhen: meta?.notApplicableWhen ?? null, scopeLabel: meta?.scopeLabel ?? "", scope: meta?.scope ?? { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null }, perspective: meta?.perspective ?? "RULE_IN_FORCE_AT_CALL" }
+    return { ...line.argument, trigger: meta?.trigger ?? null, notApplicableWhen: meta?.notApplicableWhen ?? null, scopeLabel: meta?.scopeLabel ?? "", scope: meta?.scope ?? { scopeType: "ALL_TEAMS", links: [] }, perspective: meta?.perspective ?? "RULE_IN_FORCE_AT_CALL" }
   }
   const identities = new Set<string>()
   const criteria: AssessedCriterion[] = []

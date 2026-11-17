@@ -1,3 +1,4 @@
+import { scopeValueIssue } from "@/lib/scope-links/scope-links"
 import { z } from "zod"
 
 /**
@@ -67,12 +68,20 @@ export type PublishedCommunication = z.infer<typeof publishedCommunicationSchema
 // ------------------------------------------------------------------------------------------------------------------------------
 // Área editorial (Administração › Publicações, migration 220)
 
+/** Recorte salvo (223): universo (opcional) E algum vínculo — Grupo inteiro (`subteamId` nulo) ou um Subgrupo daquele Grupo. */
 export const communicationSegmentSchema = z.object({
   universe: z.enum(COMMUNICATION_UNIVERSES).nullable(),
-  teamIds: z.array(z.string()),
-  subteamIds: z.array(z.string()),
+  links: z.array(z.object({ teamId: z.string(), teamName: z.string().nullable().optional(), subteamId: z.string().nullable(), subteamName: z.string().nullable().optional() })).catch([]),
 })
 export type CommunicationSegment = z.infer<typeof communicationSegmentSchema>
+/** Recorte no formulário: o universo e a escolha do seletor multi-grupo (Grupo inteiro ou só alguns Subgrupos). */
+export const segmentFormSchema = z.object({
+  universe: z.enum(COMMUNICATION_UNIVERSES).nullable(),
+  scope: z.object({ global: z.boolean(), groups: z.array(z.object({ teamId: z.string(), subteamIds: z.array(z.string()), mode: z.enum(["WHOLE", "SUBTEAMS"]) })) }),
+})
+export type SegmentForm = z.infer<typeof segmentFormSchema>
+/** Recorte enviado ao servidor. */
+export type SegmentPayload = { universe: (typeof COMMUNICATION_UNIVERSES)[number] | null; links: { teamId: string; subteamId: string | null }[] }
 
 const editorialBase = z.object({
   id: z.string(),
@@ -103,7 +112,7 @@ export const editorialCommunicationsSchema = z.object({ items: z.array(editorial
 
 export const audienceOptionsSchema = z.object({
   audiences: z.array(z.enum(COMMUNICATION_AUDIENCES)),
-  teams: z.array(z.object({ id: z.string(), name: z.string(), universe: z.string().nullable(), subteams: z.array(z.object({ id: z.string(), name: z.string() })) })),
+  teams: z.array(z.object({ id: z.string(), name: z.string(), universe: z.string().nullable(), subteams: z.array(z.object({ id: z.string(), name: z.string(), universe: z.string().nullable().optional() })) })),
   universes: z.array(z.string()),
   products: z.array(z.object({ id: z.string(), name: z.string(), familyName: z.string().nullable() })),
 })
@@ -122,7 +131,7 @@ export const editorialFormSchema = z.object({
   summary: z.string().trim().max(COMMUNICATION_MAX_SUMMARY, `O resumo deve ter no máximo ${COMMUNICATION_MAX_SUMMARY} caracteres.`),
   featured: z.boolean(),
   audience: z.enum(COMMUNICATION_AUDIENCES),
-  segment: communicationSegmentSchema,
+  segment: segmentFormSchema,
   productNodeId: z.string().nullable(),
   publishAt: z.string().nullable(),
   displayUntil: z.string().nullable(),
@@ -136,7 +145,8 @@ export function publishBlockers(form: EditorialForm): string[] {
   if (form.plainText.trim().length === 0 && images === 0) problems.push("Escreva o conteúdo da publicação.")
   if (images > COMMUNICATION_MAX_IMAGES) problems.push(`A publicação pode ter no máximo ${COMMUNICATION_MAX_IMAGES} imagens.`)
   if (form.tags.length === 0) problems.push("Escolha ao menos uma categoria.")
-  if (form.audience === "SEGMENT" && !form.segment.universe && form.segment.teamIds.length === 0 && form.segment.subteamIds.length === 0) problems.push("Escolha o universo, um Grupo ou um Subgrupo para o público.")
+  if (form.audience === "SEGMENT" && !form.segment.universe && form.segment.scope.groups.length === 0) problems.push("Escolha o universo, um Grupo ou um Subgrupo para o público.")
+  if (form.audience === "SEGMENT" && form.segment.scope.groups.length > 0 && scopeValueIssue(form.segment.scope)) problems.push(scopeValueIssue(form.segment.scope)!)
   if (form.publishAt && form.displayUntil && new Date(form.displayUntil) <= new Date(form.publishAt)) problems.push("O fim da exibição precisa ser depois do início.")
   return problems
 }
@@ -149,7 +159,7 @@ export type EditorialPayload = {
   summary: string | null
   featured: boolean
   audience?: (typeof COMMUNICATION_AUDIENCES)[number]
-  segment?: CommunicationSegment | null
+  segment?: SegmentPayload | null
   productNodeId: string | null
   publishAt?: string | null
   displayUntil: string | null

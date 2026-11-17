@@ -50,7 +50,7 @@ const BASE: AlignmentCandidate = {
   title: "Fatura pelo App Meu Vivo ou site", guidance: "Oriente o cliente a acessar e baixar a segunda via da fatura pelo App Meu Vivo ou pelo site da Vivo.\nNão envie a fatura por e-mail enquanto este alinhamento valer.",
   justification: "O envio por e-mail está suspenso enquanto o sistema de envio é substituído.",
   affectedDocuments: [{ id: DOC, title: PR_TITLE }], affectedTopic: "Envio da fatura quando o cliente solicita",
-  operatingUniverse: "B2C", scopeType: "TEAM", teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null, productId: null, productName: null,
+  operatingUniverse: "B2C", scopeType: "GROUPS", links: [{ teamId: OUVIDORIA, teamName: "Ouvidoria", subteamId: null, subteamName: null }], productId: null, productName: null,
   startsOn: "2026-11-10", endsOn: "2026-11-30", timeZone: "America/Sao_Paulo",
   effectiveFrom: new Date("2026-11-10T03:00:00Z"), effectiveUntil: new Date("2026-12-01T03:00:00Z"), endedEarlyAt: null, contentHash: "h1", publishedAt: new Date("2026-11-09T18:00:00Z"), relations: [],
 }

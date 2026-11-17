@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { diffConfigField, diffText, diffWords, type ConfigDiffRow, type TextDiff, type WordDiff } from "../domain/knowledge-version-diff.js"
 import type { PdfExtraction } from "../domain/pdf-markdown/layout.js"
 import { lifecycleOf, parseKnowledgeExtraction, parseKnowledgeVersionConfig, type KnowledgeVersionConfig } from "./knowledge-versions.js"
+import { knowledgeSubjectNames, withCanonicalSubjects } from "./knowledge-subjects.js"
 
 /**
  * Histórico e comparação das versões da base (PEN-008). Só leitura. A permissão é decidida no router: esta camada recebe o que a pessoa
@@ -119,7 +120,7 @@ export async function loadKnowledgeVersion(db: Queryable, organizationId: string
     [versionId, documentId, organizationId],
   )).rows[0]
   if (!row) return null
-  return { id: row.id, number: row.version, status: row.status, content: row.content, textAvailable: row.text_status === "AVAILABLE", config: parseKnowledgeVersionConfig(row.config), fileId: row.file_id, changeSummary: row.change_summary, publishedAt: row.published_at, extraction: parseKnowledgeExtraction(row.extraction) }
+  return { id: row.id, number: row.version, status: row.status, content: row.content, textAvailable: row.text_status === "AVAILABLE", config: await withCanonicalSubjects(db, parseKnowledgeVersionConfig(row.config)), fileId: row.file_id, changeSummary: row.change_summary, publishedAt: row.published_at, extraction: parseKnowledgeExtraction(row.extraction) }
 }
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = { PROCEDURE: "Procedimento", MANUAL: "Manual", FAQ: "Perguntas frequentes", RULE: "Regra", FLOW: "Fluxo", WORK_INSTRUCTION: "IT - Instrução de trabalho" }
@@ -132,7 +133,7 @@ async function loadConfigNames(db: Queryable, organizationId: string, configs: r
   const subjectIds = unique(configs.flatMap((config) => config.subjectScopes.map((scope) => scope.subjectId)))
   const nodeIds = unique(configs.flatMap((config) => config.productNodeIds))
   const names = async (table: string, ids: string[]) => new Map(ids.length === 0 ? [] : (await db.query<{ id: string; name: string }>(`select id, name from ${table} where organization_id = $1 and id = any($2::uuid[])`, [organizationId, ids])).rows.map((row) => [row.id, row.name]))
-  return { teams: await names("teams", teamIds), subteams: await names("subteams", subteamIds), subjects: await names("subjects", subjectIds), products: await names("product_catalog_nodes", nodeIds) }
+  return { teams: await names("teams", teamIds), subteams: await names("subteams", subteamIds), subjects: await knowledgeSubjectNames(db, organizationId, subjectIds), products: await names("product_catalog_nodes", nodeIds) }
 }
 
 export type KnowledgeFileComparison = {

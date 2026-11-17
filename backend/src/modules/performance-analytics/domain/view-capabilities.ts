@@ -25,11 +25,12 @@ export type IndicatorViewCapabilities = {
    * (cargos da cadeia hierárquica) e, para os demais, só enquanto houver pendência real.
    * STRUCTURE ("Minha estrutura": onde estou na hierarquia real) existe para todo papel — é
    * visualização organizacional, nunca performance nem gestão. CALENDAR ("Calendário da equipe":
-   * provisionar/corrigir exceções, ver planejado × observado) existe para quem lidera estrutura ou tem `calendar.manage`. */
+   * provisionar/corrigir exceções, ver planejado × observado) existe para quem lidera estrutura ou tem `calendar.manage`.
+   * JOURNEY ("Minha jornada": a própria escala, só leitura) existe para o Operador — a rota resolve a pessoa pela sessão. */
   tabs: ProfileTab[]
 }
 
-export type ProfileTab = "FOLLOW_UP" | "INDICATORS" | "PEOPLE" | "PENDING" | "STRUCTURE" | "CALENDAR"
+export type ProfileTab = "FOLLOW_UP" | "JOURNEY" | "INDICATORS" | "PEOPLE" | "PENDING" | "STRUCTURE" | "CALENDAR"
 
 /**
  * `canManageCalendar` = a CONTA tem `calendar.manage` em algum escopo (atribuição de papel). V1.5.8: o nível hierárquico
@@ -42,7 +43,7 @@ export function buildIndicatorViewCapabilities(viewerRole: PlatformRole, subject
   const peopleTabLabel: IndicatorViewCapabilities["peopleTabLabel"] = !viewerLeadsStructure ? null : viewerRole === "SUPERVISOR" ? "Equipe" : "Estrutura"
   const canReceivePendingActions = viewerLeadsStructure || context.hasPendingActions === true
   const canManageCalendar = viewerLeadsStructure || context.canManageCalendar === true
-  const tabs: ProfileTab[] = ["FOLLOW_UP", "INDICATORS", ...(peopleTabLabel ? ["PEOPLE" as const] : []), ...(canManageCalendar ? ["CALENDAR" as const] : []), ...(canReceivePendingActions ? ["PENDING" as const] : []), "STRUCTURE"]
+  const tabs: ProfileTab[] = ["FOLLOW_UP", "INDICATORS", ...(viewerRole === "OPERATOR" ? ["JOURNEY" as const] : []), ...(peopleTabLabel ? ["PEOPLE" as const] : []), ...(canManageCalendar ? ["CALENDAR" as const] : []), ...(canReceivePendingActions ? ["PENDING" as const] : []), "STRUCTURE"]
 
   if (subjectKind === "EMPLOYEE") {
     return {

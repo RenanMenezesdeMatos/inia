@@ -8,6 +8,7 @@ import { loadDemoMass } from "./seed-demo-mass.js"
 import { DIAGNOSTIC_LEGACY_OPERATORS } from "./legacy-adoption.js"
 import { DIAGNOSTIC_SUBGROUP } from "./structure-generator.js"
 import { computeDiagnosticDatasetFingerprint, DIAGNOSTIC_DATASET } from "./diagnostic-dataset.js"
+import { DEMO_SUBJECT_DEFINITIONS } from "./subject-catalog.js"
 import { persistPerformance, persistStructure } from "./persist-demo-mass.js"
 import { resolveWorkdaysBySubject } from "../../../modules/indicators/application/operational-measurement-resolver.js"
 import { HandleRegistry } from "../../../modules/investigation/domain/handle-registry.js"
@@ -208,7 +209,9 @@ describe.skipIf(!ENABLED)("chamadas de diagnóstico — prova no banco demo", ()
   })
 
   it("assunto canônico: catálogo demo gravado (17 códigos), bruto preservado, mapeados/não mapeados contados; ambíguo fica sem canônico", async () => {
-    const defs = await client.query<{ n: string }>(`select count(*)::text n from interaction_subject_definitions where organization_id = $1 and active`, [DEMO_ORGANIZATION_ID])
+    // Os 17 do catálogo demo. Numa instalação nova a 224 também traz para o catálogo canônico os assuntos já usados pelas bases
+    // (ex.: "reparo"), por isso a contagem é pelos códigos do catálogo demo e não pelo total.
+    const defs = await client.query<{ n: string }>(`select count(*)::text n from interaction_subject_definitions where organization_id = $1 and active and code = any($2::text[])`, [DEMO_ORGANIZATION_ID, DEMO_SUBJECT_DEFINITIONS.map((definition) => definition.code)])
     expect(Number(defs.rows[0]!.n)).toBe(17)
     const coverage = await client.query<{ total: string; mapped: string; raw_subjects: string; canonical_subjects: string }>(
       `select count(*)::text total, count(cs.code)::text mapped, count(distinct i.reason)::text raw_subjects, count(distinct cs.code)::text canonical_subjects
@@ -393,7 +396,7 @@ describe.skipIf(!ENABLED)("chamadas de diagnóstico — prova no banco demo", ()
     expect(first.fingerprint).toMatch(/^[0-9a-f]{64}$/)
     expect(first.components.structure.memberCount).toBeGreaterThanOrEqual(25)
     expect(first.components.interactions.count).toBeGreaterThanOrEqual(90)
-    expect(first.components.subjects.definitions).toBe(17)
+    expect(first.components.subjects.definitions).toBeGreaterThanOrEqual(DEMO_SUBJECT_DEFINITIONS.length) // + os da Base trazidos pela 224
     expect(JSON.stringify(first)).not.toContain("OPERADOR:")
   })
 

@@ -35,7 +35,8 @@ describe("Argumentários do prompt do Agent — público avaliado (D3)", () => {
     const { db, scriptQueries } = fakeDb({ person: { team_id: "team-a", subteam_id: "sub-a1" }, agent: { team_id: null, subteam_id: null } })
     await buildSystemPromptWithTrace(db, "agent-1", AGENT, { query: "transcrição", governanceSubjectPersonId: "operator-1" })
     expect(scriptQueries).toHaveLength(1)
-    expect(scriptQueries[0]!.sql).toMatch(/s\.scope_type = 'ALL_TEAMS' or \(s\.scope_type = 'TEAM' and s\.team_id = \$3\) or \(s\.scope_type = 'SUBTEAM' and s\.subteam_id = \$4\)/)
+    // Escopo da VERSÃO vigente (223): todos os Grupos, ou algum vínculo (Grupo inteiro = $3, ou o Subgrupo = $4).
+    expect(scriptQueries[0]!.sql).toMatch(/v\.scope_type = 'ALL_TEAMS' or exists \(select 1 from argument_script_version_scopes l where l\.version_id = v\.id and \(\(l\.subteam_id is null and l\.team_id = \$3::uuid\) or l\.subteam_id = \$4::uuid\)\)/)
     expect(scriptQueries[0]!.params.slice(2)).toEqual(["team-a", "sub-a1"])
   })
 

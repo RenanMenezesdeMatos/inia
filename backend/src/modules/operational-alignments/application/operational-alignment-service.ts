@@ -3,7 +3,9 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { inTransaction } from "../../../shared/infrastructure/database/transaction.js"
 import { respondList, searchParam, SqlFilter, type PageResult } from "../../../shared/presentation/list-query.js"
-import { canManageScope, coversOrganization, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { canManageAllLinks, coversOrganization, resolveScopeLinksForWrite, SCOPE_LINK_FAILURE_MESSAGE, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { linkKey } from "../../../shared/domain/scope-links/scope-links.js"
+import { alignmentLinksSql } from "../infrastructure/operational-alignment-loaders.js"
 import { checkResponse, type ResponseCheckResult } from "../../governance/application/response-compliance.js"
 import { loadUniverseAccess, universeForbidden } from "../../operating-universe/application/universe-access.js"
 import type { OperatingUniverse } from "../../operating-universe/domain/operating-universe.js"
@@ -18,13 +20,15 @@ import {
   MAX_ALIGNMENT_DAYS,
   normalizedScope,
   periodsOverlap,
-  scopeSpecificityOf,
+  moreSpecificBetween,
+  type AlignmentLink,
   type AlignmentInput,
   type AlignmentRelation,
   type AlignmentScopeType,
   type AlignmentStatus,
 } from "../domain/operational-alignment.js"
 import { alignmentChangesOf, recordAlignmentEvent } from "./alignment-audit.js"
+import { canonicalSubjectCodeOf, insertCanonicalSubject, listActiveCanonicalSubjects } from "../../interactions/application/interaction-subject-catalog.js"
 
 /**
  * CADASTRO DOS ALINHAMENTOS OPERACIONAIS (`/api/v1/admin/operational-alignments`, permissão `operational_alignments.manage` — papel
@@ -68,10 +72,7 @@ type VersionRow = {
   justification: string
   operating_universe: OperatingUniverse
   scope_type: AlignmentScopeType
-  team_id: string | null
-  team_name: string | null
-  subteam_id: string | null
-  subteam_name: string | null
+  links: AlignmentLink[] | null
   product_id: string | null
   product_name: string | null
   starts_on: string
@@ -103,14 +104,12 @@ const VERSION_SELECT = `
   select v.id, v.alignment_id, v.version, v.status, v.title, v.guidance, ${DOCUMENTS_OF_VERSION("v")} documents, v.reason_id, rr.name reason_name,
          (select json_agg(json_build_object('id', sd.id, 'name', sd.name) order by sd.name) from operational_alignment_version_subjects vs join interaction_subject_definitions sd on sd.id = vs.subject_id where vs.version_id = v.id) request_subjects,
          v.affected_topic, v.justification,
-         v.operating_universe, v.scope_type, v.team_id, t.name team_name, v.subteam_id, st.name subteam_name, v.product_id, pn.name product_name,
+         v.operating_universe, v.scope_type, ${alignmentLinksSql("v")} links, v.product_id, pn.name product_name,
          v.starts_on::text starts_on, v.ends_on::text ends_on, v.time_zone, v.effective_from, v.effective_until, v.content_hash, v.change_reason,
          pc.name created_by_name, v.responsible_person_id, pr.name responsible_name, v.responsible_job_title, v.created_at, pu.name updated_by_name, v.updated_at, pp.name published_by_name, v.published_at, v.superseded_at,
          pe.name ended_by_name, v.ended_at, v.end_reason
   from operational_alignment_versions v
   left join operational_alignment_reasons rr on rr.id = v.reason_id
-  left join teams t on t.id = v.team_id
-  left join subteams st on st.id = v.subteam_id
   left join product_catalog_nodes_all pn on pn.id = v.product_id
   left join people pc on pc.id = v.created_by
   left join people pr on pr.id = v.responsible_person_id
@@ -142,8 +141,8 @@ const versionView = (row: VersionRow) => ({
   justification: row.justification,
   operatingUniverse: row.operating_universe,
   scopeType: row.scope_type,
-  team: row.team_id ? { id: row.team_id, name: row.team_name ?? "" } : null,
-  subteam: row.subteam_id ? { id: row.subteam_id, name: row.subteam_name ?? "" } : null,
+  // Público (223): vínculos (Grupo inteiro ou Subgrupo daquele Grupo); vazio no universo inteiro.
+  links: row.links ?? [],
   product: row.product_id ? { id: row.product_id, name: row.product_name ?? "" } : null,
   startsOn: row.starts_on,
   endsOn: row.ends_on,
@@ -173,9 +172,14 @@ export type AlignmentVersionView = ReturnType<typeof versionView>
  */
 export type AlignmentScopes = ManageableScopes & { universes?: readonly OperatingUniverse[] | null }
 
-const canSee = (scopes: AlignmentScopes, row: Pick<VersionRow, "scope_type" | "team_id" | "subteam_id" | "operating_universe">) =>
+/**
+ * Política preservada (anterior à 223): ver = administrar. Com vários vínculos, TODOS precisam estar no escopo (universo inteiro só com
+ * alcance da organização); um alinhamento que também vale para Grupos que a pessoa não administra fica fora da lista dela e o detalhe é
+ * 404 — ela não edita o texto, não publica e não tira vínculos de Grupos alheios.
+ */
+const canSee = (scopes: AlignmentScopes, row: Pick<VersionRow, "scope_type" | "links" | "operating_universe">) =>
   (!scopes.universes || scopes.universes.includes(row.operating_universe)) &&
-  canManageScope(scopes, { scopeType: row.scope_type === "UNIVERSE" ? "ALL_TEAMS" : row.scope_type, teamId: row.team_id, subteamId: row.subteam_id })
+  (row.scope_type === "UNIVERSE" ? coversOrganization(scopes) : canManageAllLinks(scopes, row.links ?? []))
 
 /** Versões que DECIDEM o alinhamento hoje: a publicada/cancelada e o rascunho (as substituídas ficam só no histórico). */
 const governingVersions = (versions: readonly VersionRow[]) => versions.filter((version) => version.status !== "SUPERSEDED")
@@ -225,8 +229,9 @@ const listQuerySchema = z
  * processos dela (contagem + os primeiros títulos para a tabela). A busca cobre título, processos, Grupo/Subgrupo e produto.
  */
 const LIST_SELECT = `
-  select a.id, s.id "versionId", s.version, s.title, s.operating_universe "operatingUniverse", s.scope_type "scopeType", s.team_id "teamId", t.name "teamName",
-         s.subteam_id "subteamId", st.name "subteamName", pn.name "productName", rr.name "reasonName", s.starts_on::text "startsOn", s.ends_on::text "endsOn", s.affected_topic "affectedTopic",
+  select a.id, s.id "versionId", s.version, s.title, s.operating_universe "operatingUniverse", s.scope_type "scopeType", ${alignmentLinksSql("s")} links,
+         (select string_agg(concat_ws(' ', lt.name, lst.name), ' ') from operational_alignment_version_scopes l join teams lt on lt.id = l.team_id left join subteams lst on lst.id = l.subteam_id where l.version_id = s.id) "searchScope",
+         pn.name "productName", rr.name "reasonName", s.starts_on::text "startsOn", s.ends_on::text "endsOn", s.affected_topic "affectedTopic",
          exists (select 1 from operational_alignment_versions d where d.alignment_id = a.id and d.status = 'DRAFT') "hasDraft",
          case when s.status = 'DRAFT' then 'DRAFT' when s.status = 'CANCELLED' then 'CANCELLED' when now() < s.effective_from then 'SCHEDULED' when now() < s.effective_until then 'IN_FORCE' else 'ENDED' end state,
          (select count(*)::int from operational_alignment_version_documents vd where vd.version_id = s.id) "processCount",
@@ -239,30 +244,34 @@ const LIST_SELECT = `
     select v.* from operational_alignment_versions v where v.alignment_id = a.id
     order by case v.status when 'PUBLISHED' then 0 when 'CANCELLED' then 1 when 'DRAFT' then 2 else 3 end, v.version desc limit 1
   ) s on true
-  left join teams t on t.id = s.team_id
-  left join subteams st on st.id = s.subteam_id
   left join product_catalog_nodes_all pn on pn.id = s.product_id
   left join operational_alignment_reasons rr on rr.id = s.reason_id
   where a.organization_id = $1 and a.deleted_at is null`
 
-type ListRow = { id: string; versionId: string; version: number; title: string; reasonName: string | null; operatingUniverse: OperatingUniverse; scopeType: AlignmentScopeType; teamId: string | null; teamName: string | null; subteamId: string | null; subteamName: string | null; productName: string | null; startsOn: string; endsOn: string; affectedTopic: string | null; hasDraft: boolean; state: AlignmentState; processCount: number; processTitles: string[]; searchProcesses: string | null; documentIds: string[] | null; updatedAt: Date }
+type ListRow = { id: string; versionId: string; version: number; title: string; reasonName: string | null; operatingUniverse: OperatingUniverse; scopeType: AlignmentScopeType; links: AlignmentLink[]; searchScope: string | null; productName: string | null; startsOn: string; endsOn: string; affectedTopic: string | null; hasDraft: boolean; state: AlignmentState; processCount: number; processTitles: string[]; searchProcesses: string | null; documentIds: string[] | null; updatedAt: Date }
 
 export async function listAlignments(db: Database, organizationId: string, scopes: AlignmentScopes, query: Record<string, unknown>) {
   const input = listQuerySchema.parse(query ?? {})
   const filter = new SqlFilter([organizationId])
-    .search(input.search, ["q.title", 'q."searchProcesses"', 'q."teamName"', 'q."subteamName"', 'q."productName"', 'q."affectedTopic"', 'q."reasonName"'])
+    .search(input.search, ["q.title", 'q."searchProcesses"', 'q."searchScope"', 'q."productName"', 'q."affectedTopic"', 'q."reasonName"'])
     .equals("q.state", input.state)
     .equals('q."operatingUniverse"', input.operatingUniverse)
   if (input.hasDraft !== undefined) filter.add(input.hasDraft ? `q."hasDraft"` : `not q."hasDraft"`)
   if (input.documentId) filter.add(`${filter.param(input.documentId)}::uuid = any(q."documentIds")`)
-  if (input.subteamId) filter.add(`q."subteamId" = ${filter.param(input.subteamId)}::uuid`)
-  else if (input.teamId) filter.add(`q."teamId" = ${filter.param(input.teamId)}::uuid`)
+  // Grupo/Subgrupo: alinhamentos com algum vínculo (da versão mostrada) naquele Grupo/Subgrupo — o mesmo alinhamento uma vez só.
+  if (input.subteamId) filter.add(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = q."versionId" and l.subteam_id = ${filter.param(input.subteamId)}::uuid)`)
+  else if (input.teamId) filter.add(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = q."versionId" and l.team_id = ${filter.param(input.teamId)}::uuid)`)
   else if (input.scopeType === "ALL_TEAMS") filter.add(`q."scopeType" = 'UNIVERSE'`)
   // Visibilidade = o que a pessoa administra (o mesmo de `canManageScope`): universo inteiro só com alcance da organização.
   // A mesma regra do detalhe (`loadAlignmentOrThrow`): toda versão que decide o alinhamento (publicada/cancelada e rascunho) no alcance.
   const outside: string[] = []
   if (!scopes.unrestricted && !scopes.allTeams) {
-    outside.push(`not ((g.scope_type = 'TEAM' and g.team_id = any(${filter.param([...scopes.teamIds])}::uuid[])) or (g.scope_type = 'SUBTEAM' and g.subteam_id = any(${filter.param([...scopes.subteamIds])}::uuid[])))`)
+    // Fora do alcance: universo inteiro, GROUPS sem vínculo, ou algum vínculo fora (Grupo inteiro não administrado; Subgrupo não administrado).
+    const teams = filter.param([...scopes.teamIds])
+    const subteams = filter.param([...scopes.subteamIds])
+    outside.push(`g.scope_type = 'UNIVERSE'`)
+    outside.push(`not exists (select 1 from operational_alignment_version_scopes l where l.version_id = g.id)`)
+    outside.push(`exists (select 1 from operational_alignment_version_scopes l where l.version_id = g.id and not ((l.subteam_id is null and l.team_id = any(${teams}::uuid[])) or l.subteam_id = any(${subteams}::uuid[])))`)
   }
   if (scopes.universes) outside.push(`not (g.operating_universe = any(${filter.param([...scopes.universes])}::text[]))`)
   if (outside.length > 0) {
@@ -271,7 +280,8 @@ export async function listAlignments(db: Database, organizationId: string, scope
   const data = await respondList<ListRow>(db, query, { select: LIST_SELECT, filter, orderBy: `case q.state when 'IN_FORCE' then 0 when 'SCHEDULED' then 1 when 'DRAFT' then 2 else 3 end, q."updatedAt" desc, q.id` })
   // Colunas só de filtro (busca pelos títulos, ids dos processos) não saem na resposta.
   const decorate = (row: ListRow) => {
-    const { searchProcesses, documentIds, ...visible } = row
+    const { searchProcesses, documentIds, searchScope, ...visible } = row
+    void searchScope
     void searchProcesses
     void documentIds
     return { ...visible, reference: alignmentReferenceOf(row.id, row.version), updatedAt: new Date(row.updatedAt).toISOString() }
@@ -350,23 +360,26 @@ export async function getAlignment(db: Queryable, organizationId: string, scopes
 async function assertInputAllowed(db: Queryable, actor: AlignmentActor & { sub: string }, scopes: AlignmentScopes, input: AlignmentInput): Promise<AlignmentInput & { responsibleJobTitle: string | null }> {
   const scope = normalizedScope(input)
   if (scope.scopeType === "UNIVERSE" && !coversOrganization(scopes)) throw new DomainError("Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo.", "OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN", 403)
-  let teamId = scope.teamId
-  let groupUniverse: string | null = null
-  if (scope.scopeType === "SUBTEAM") {
-    const subteam = (await db.query<{ team_id: string; universe: string | null }>(`select st.team_id, coalesce(st.operating_universe, t.operating_universe) universe from subteams st join teams t on t.id = st.team_id where st.id = $1 and st.organization_id = $2`, [scope.subteamId, actor.organizationId])).rows[0]
-    if (!subteam || (scope.teamId !== null && scope.teamId !== subteam.team_id)) throw new DomainError("Subgrupo não encontrado nesta organização.", "OPERATIONAL_ALIGNMENT_SCOPE_INVALID", 422)
-    teamId = subteam.team_id
-    groupUniverse = subteam.universe
-  } else if (scope.scopeType === "TEAM") {
-    const team = (await db.query<{ universe: string | null }>(`select operating_universe universe from teams where id = $1 and organization_id = $2`, [scope.teamId, actor.organizationId])).rows[0]
-    if (!team) throw new DomainError("Grupo não encontrado nesta organização.", "OPERATIONAL_ALIGNMENT_SCOPE_INVALID", 422)
-    groupUniverse = team.universe
+  let links = scope.links
+  const groupUniverses = new Map<string, string | null>()
+  if (scope.scopeType === "GROUPS") {
+    // Vínculos (223): Grupo-pai real de cada Subgrupo, sem duplicata nem Subgrupo junto do próprio Grupo inteiro, todos administrados.
+    const resolved = await resolveScopeLinksForWrite(db, actor.organizationId, scopes, input.links)
+    if (!resolved.ok) throw new DomainError(SCOPE_LINK_FAILURE_MESSAGE[resolved.reason], resolved.reason === "FORBIDDEN" ? "OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN" : "OPERATIONAL_ALIGNMENT_SCOPE_INVALID", resolved.reason === "FORBIDDEN" ? 403 : 422)
+    links = resolved.links
+    const universes = (await db.query<{ team_id: string; subteam_id: string | null; universe: string | null }>(
+      `select l.team_id, l.subteam_id, case when l.subteam_id is null then t.operating_universe else coalesce(st.operating_universe, t.operating_universe) end universe
+         from unnest($1::uuid[], $2::uuid[]) as l(team_id, subteam_id) join teams t on t.id = l.team_id left join subteams st on st.id = l.subteam_id`,
+      [links.map((link) => link.teamId), links.map((link) => link.subteamId)],
+    )).rows
+    for (const row of universes) groupUniverses.set(row.subteam_id ?? row.team_id, row.universe)
   }
-  if (!canManageScope(scopes, { scopeType: scope.scopeType === "UNIVERSE" ? "ALL_TEAMS" : scope.scopeType, teamId, subteamId: scope.subteamId })) throw new DomainError("Você não administra este Grupo/Subgrupo.", "OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN", 403)
+  const groupUniverse = [...groupUniverses.values()].find((universe) => universe && universe !== input.operatingUniverse) ?? null
   // Público por Grupo/Subgrupo exige o universo classificado: sem ele, os operadores podem ficar sem universo e o filtro da tela não
   // consegue garantir que o Grupo é do universo escolhido.
-  if (scope.scopeType !== "UNIVERSE" && !groupUniverse) throw new DomainError("Este Grupo/Subgrupo ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele.", "OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED", 422)
-  if (groupUniverse && groupUniverse !== input.operatingUniverse) throw new DomainError(`O público escolhido é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.`, "OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT", 409)
+  // Vale para CADA vínculo: multi-grupo nunca mistura universos (todos os Grupos/Subgrupos são do universo do alinhamento).
+  if (scope.scopeType !== "UNIVERSE" && [...groupUniverses.values()].some((universe) => !universe)) throw new DomainError("Algum Grupo/Subgrupo escolhido ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele.", "OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED", 422)
+  if (groupUniverse) throw new DomainError(`Um dos Grupos/Subgrupos escolhidos é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.`, "OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT", 409)
   const access = await loadUniverseAccess(db, { organizationId: actor.organizationId, sub: actor.sub, personId: actor.personId ?? "00000000-0000-0000-0000-000000000000" })
   if (access.enforced && !access.universes.includes(input.operatingUniverse)) throw universeForbidden()
   const documents = (await db.query<{ id: string; title: string; operating_universe: string | null }>(`select id, title, operating_universe from knowledge_documents where id = any($1::uuid[]) and organization_id = $2 and deleted_at is null`, [input.affectedDocumentIds, actor.organizationId])).rows
@@ -386,7 +399,7 @@ async function assertInputAllowed(db: Queryable, actor: AlignmentActor & { sub: 
   }
   if (daysBetween(input.startsOn, input.endsOn) > MAX_ALIGNMENT_DAYS) throw new DomainError(`Um alinhamento é temporário: a vigência vai até ${MAX_ALIGNMENT_DAYS} dias. Para uma mudança permanente, atualize a base oficial.`, "OPERATIONAL_ALIGNMENT_PERIOD_TOO_LONG", 422)
   const responsible = await responsibleOf(db, actor, input.responsiblePersonId)
-  return { ...input, ...scope, teamId, responsiblePersonId: responsible.id, responsibleJobTitle: responsible.jobTitle }
+  return { ...input, scopeType: scope.scopeType, links, responsiblePersonId: responsible.id, responsibleJobTitle: responsible.jobTitle }
 }
 
 /**
@@ -428,13 +441,25 @@ async function intervalOf(db: Queryable, organizationId: string, startsOn: strin
 /** Imagem comparável de um rascunho/versão (para o rastro: o que mudou e quais processos entraram/saíram). */
 const imageOfInput = (input: AlignmentInput) => {
   const scope = normalizedScope(input)
-  return { fields: { title: input.title, guidance: input.guidance, responsiblePersonId: input.responsiblePersonId, reasonId: input.reasonId, requestSubjectIds: [...input.requestSubjectIds].sort(), affectedTopic: input.affectedTopic, justification: input.justification, operatingUniverse: input.operatingUniverse, scopeType: scope.scopeType, teamId: scope.teamId, subteamId: scope.subteamId, productId: input.productId, startsOn: input.startsOn, endsOn: input.endsOn, changeReason: input.changeReason }, processes: [...input.affectedDocumentIds].sort() }
+  return { fields: { title: input.title, guidance: input.guidance, responsiblePersonId: input.responsiblePersonId, reasonId: input.reasonId, requestSubjectIds: [...input.requestSubjectIds].sort(), affectedTopic: input.affectedTopic, justification: input.justification, operatingUniverse: input.operatingUniverse, scopeType: scope.scopeType, links: scope.links.map(linkKey).join(", "), productId: input.productId, startsOn: input.startsOn, endsOn: input.endsOn, changeReason: input.changeReason }, processes: [...input.affectedDocumentIds].sort() }
 }
-const imageOfRow = (row: VersionRow) => ({ fields: { title: row.title, guidance: row.guidance, responsiblePersonId: row.responsible_person_id, reasonId: row.reason_id, requestSubjectIds: (row.request_subjects ?? []).map((subject) => subject.id).sort(), affectedTopic: row.affected_topic, justification: row.justification, operatingUniverse: row.operating_universe, scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id, productId: row.product_id, startsOn: row.starts_on, endsOn: row.ends_on, changeReason: row.change_reason }, processes: (row.documents ?? []).map((document) => document.id).sort() })
+const imageOfRow = (row: VersionRow) => ({ fields: { title: row.title, guidance: row.guidance, responsiblePersonId: row.responsible_person_id, reasonId: row.reason_id, requestSubjectIds: (row.request_subjects ?? []).map((subject) => subject.id).sort(), affectedTopic: row.affected_topic, justification: row.justification, operatingUniverse: row.operating_universe, scopeType: row.scope_type, links: normalizedScope({ scopeType: row.scope_type, links: row.links ?? [] }).links.map(linkKey).join(", "), productId: row.product_id, startsOn: row.starts_on, endsOn: row.ends_on, changeReason: row.change_reason }, processes: (row.documents ?? []).map((document) => document.id).sort() })
 
 async function replaceDocuments(db: Queryable, organizationId: string, versionId: string, documentIds: readonly string[]) {
   await db.query(`delete from operational_alignment_version_documents where version_id = $1`, [versionId])
   await db.query(`insert into operational_alignment_version_documents (version_id, document_id, organization_id) select $1, unnest($2::uuid[]), $3`, [versionId, [...documentIds], organizationId])
+}
+
+/** Vínculos do público do RASCUNHO (substituídos inteiros, na mesma transação do rascunho). Versão publicada nunca passa por aqui. */
+async function replaceScopeLinks(db: Queryable, organizationId: string, versionId: string, input: Pick<AlignmentInput, "scopeType" | "links">) {
+  await db.query(`delete from operational_alignment_version_scopes where version_id = $1`, [versionId])
+  const { links } = normalizedScope(input)
+  if (links.length > 0) {
+    await db.query(
+      `insert into operational_alignment_version_scopes (version_id, organization_id, team_id, subteam_id) select $1, $2, t, s from unnest($3::uuid[], $4::uuid[]) as u(t, s)`,
+      [versionId, organizationId, links.map((link) => link.teamId), links.map((link) => link.subteamId)],
+    )
+  }
 }
 
 async function replaceSubjects(db: Queryable, organizationId: string, versionId: string, subjectIds: readonly string[]) {
@@ -448,12 +473,13 @@ async function insertDraft(db: Queryable, actor: AlignmentActor, alignmentId: st
   const interval = await intervalOf(db, actor.organizationId, input.startsOn, input.endsOn)
   const scope = normalizedScope(input)
   const row = (await db.query<{ id: string }>(
-    `insert into operational_alignment_versions (organization_id, alignment_id, version, status, title, guidance, affected_topic, justification, operating_universe, scope_type, team_id, subteam_id, product_id, starts_on, ends_on, time_zone, effective_from, effective_until, content_hash, change_reason, created_by, reason_id, responsible_person_id, responsible_job_title)
-     values ($1,$2,$3,'DRAFT',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning id`,
-    [actor.organizationId, alignmentId, version, input.title, input.guidance, input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, scope.teamId, scope.subteamId, input.productId, input.startsOn, input.endsOn, interval.timeZone, interval.effectiveFrom, interval.effectiveUntil, contentHashOf(input), input.changeReason, requirePerson(actor), input.reasonId, input.responsiblePersonId ?? actor.personId, input.responsibleJobTitle ?? null],
+    `insert into operational_alignment_versions (organization_id, alignment_id, version, status, title, guidance, affected_topic, justification, operating_universe, scope_type, product_id, starts_on, ends_on, time_zone, effective_from, effective_until, content_hash, change_reason, created_by, reason_id, responsible_person_id, responsible_job_title)
+     values ($1,$2,$3,'DRAFT',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning id`,
+    [actor.organizationId, alignmentId, version, input.title, input.guidance, input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, input.productId, input.startsOn, input.endsOn, interval.timeZone, interval.effectiveFrom, interval.effectiveUntil, contentHashOf(input), input.changeReason, requirePerson(actor), input.reasonId, input.responsiblePersonId ?? actor.personId, input.responsibleJobTitle ?? null],
   )).rows[0]!
   await replaceDocuments(db, actor.organizationId, row.id, input.affectedDocumentIds)
   await replaceSubjects(db, actor.organizationId, row.id, input.requestSubjectIds)
+  await replaceScopeLinks(db, actor.organizationId, row.id, input)
   return row.id
 }
 
@@ -464,7 +490,7 @@ export async function createAlignment(db: Database, actor: AlignmentActor & { su
     const alignment = (await client.query<{ id: string }>(`insert into operational_alignments (organization_id, created_by) values ($1, $2) returning id`, [actor.organizationId, actor.personId])).rows[0]!
     const versionId = await insertDraft(client, actor, alignment.id, 1, { ...input, changeReason: null })
     await recordAlignmentEvent(client, { organizationId: actor.organizationId, alignmentId: alignment.id, versionId, version: 1, type: "CREATED", actorPersonId: actor.personId, details: alignmentChangesOf(null, imageOfInput({ ...input, changeReason: null })) })
-    await audit(client, actor, "OPERATIONAL_ALIGNMENT_CREATED", alignment.id, { title: input.title, processes: input.affectedDocumentIds, scopeType: input.scopeType, teamId: input.teamId, subteamId: input.subteamId, operatingUniverse: input.operatingUniverse, startsOn: input.startsOn, endsOn: input.endsOn })
+    await audit(client, actor, "OPERATIONAL_ALIGNMENT_CREATED", alignment.id, { title: input.title, processes: input.affectedDocumentIds, scopeType: input.scopeType, links: input.links, operatingUniverse: input.operatingUniverse, startsOn: input.startsOn, endsOn: input.endsOn })
     return alignment.id
   })
   return getAlignment(db, actor.organizationId, scopes, id)
@@ -490,14 +516,15 @@ export async function updateAlignment(db: Database, actor: AlignmentActor & { su
       const interval = await intervalOf(client, actor.organizationId, input.startsOn, input.endsOn)
       const scope = normalizedScope(input)
       await client.query(
-        `update operational_alignment_versions set title = $2, guidance = $3, affected_topic = $4, justification = $5, operating_universe = $6, scope_type = $7, team_id = $8, subteam_id = $9, product_id = $10,
-                starts_on = $11, ends_on = $12, time_zone = $13, effective_from = $14, effective_until = $15, content_hash = $16, change_reason = $17, updated_by = $18, updated_at = now(), reason_id = $19,
-                responsible_person_id = $20, responsible_job_title = $21
+        `update operational_alignment_versions set title = $2, guidance = $3, affected_topic = $4, justification = $5, operating_universe = $6, scope_type = $7, product_id = $8,
+                starts_on = $9, ends_on = $10, time_zone = $11, effective_from = $12, effective_until = $13, content_hash = $14, change_reason = $15, updated_by = $16, updated_at = now(), reason_id = $17,
+                responsible_person_id = $18, responsible_job_title = $19
          where id = $1`,
-        [draft.id, input.title, input.guidance, input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, scope.teamId, scope.subteamId, input.productId, input.startsOn, input.endsOn, interval.timeZone, interval.effectiveFrom, interval.effectiveUntil, contentHashOf(input), input.changeReason, actor.personId, input.reasonId, input.responsiblePersonId ?? actor.personId, input.responsibleJobTitle ?? null],
+        [draft.id, input.title, input.guidance, input.affectedTopic, input.justification, input.operatingUniverse, scope.scopeType, input.productId, input.startsOn, input.endsOn, interval.timeZone, interval.effectiveFrom, interval.effectiveUntil, contentHashOf(input), input.changeReason, actor.personId, input.reasonId, input.responsiblePersonId ?? actor.personId, input.responsibleJobTitle ?? null],
       )
       await replaceDocuments(client, actor.organizationId, draft.id, input.affectedDocumentIds)
       await replaceSubjects(client, actor.organizationId, draft.id, input.requestSubjectIds)
+      await replaceScopeLinks(client, actor.organizationId, draft.id, input)
     } else {
       const next = (await client.query<{ next: number }>(`select coalesce(max(version), 0) + 1 next from operational_alignment_versions where alignment_id = $1`, [id])).rows[0]!.next
       savedVersionId = await insertDraft(client, actor, id, next, input)
@@ -536,11 +563,12 @@ export async function overlappingAlignments(db: Queryable, organizationId: strin
        and exists (select 1 from operational_alignments a where a.id = v.alignment_id and a.deleted_at is null)`,
     [organizationId, draft.alignment_id, draftDocuments, draft.effective_from, draft.effective_until],
   )).rows
-  const draftAudience = { operatingUniverse: draft.operating_universe, scopeType: draft.scope_type, teamId: draft.team_id, subteamId: draft.subteam_id, productId: draft.product_id }
+  const audienceOf = (row: VersionRow) => ({ operatingUniverse: row.operating_universe, scopeType: row.scope_type, links: row.links ?? [], productId: row.product_id })
+  const draftAudience = audienceOf(draft)
   // Uma linha por alinhamento (a versão mais recente que cruza o período).
   const byAlignment = new Map<string, VersionRow>()
   for (const row of rows) {
-    if (!audiencesOverlap(draftAudience, { operatingUniverse: row.operating_universe, scopeType: row.scope_type, teamId: row.team_id, subteamId: row.subteam_id, productId: row.product_id })) continue
+    if (!audiencesOverlap(draftAudience, audienceOf(row))) continue
     if (!periodsOverlap({ startsOn: draft.starts_on, endsOn: draft.ends_on }, { startsOn: row.starts_on, endsOn: row.ends_on })) continue
     const kept = byAlignment.get(row.alignment_id)
     if (!kept || kept.version < row.version) byAlignment.set(row.alignment_id, row)
@@ -549,8 +577,10 @@ export async function overlappingAlignments(db: Queryable, organizationId: strin
     alignmentId: row.alignment_id,
     version: versionView(row),
     sharedProcesses: (row.documents ?? []).filter((document) => draftDocuments.includes(document.id)),
-    sameScopeLevel: scopeSpecificityOf(row.scope_type) === scopeSpecificityOf(draft.scope_type) && row.product_id === draft.product_id,
-    moreSpecific: scopeSpecificityOf(draft.scope_type) > scopeSpecificityOf(row.scope_type) ? "THIS" as const : scopeSpecificityOf(draft.scope_type) < scopeSpecificityOf(row.scope_type) ? "OTHER" as const : null,
+    // Mesmo recorte para as mesmas pessoas (vínculo idêntico, ou os dois do universo inteiro) e o mesmo produto: sem precedência.
+    sameScopeLevel: isUnresolvableConflict(draftAudience, audienceOf(row), "SAME_TOPIC"),
+    // Onde os públicos se cruzam, quem é mais específico: este, o outro, depende do Subgrupo (MIXED) ou ninguém (mesmo recorte).
+    moreSpecific: moreSpecificBetween(draftAudience, audienceOf(row)),
   }))
 }
 
@@ -563,7 +593,7 @@ export async function previewPublication(db: Database, organizationId: string, s
 
 const publishSchema = z.object({ relations: z.array(z.object({ alignmentId: z.string().uuid(), relation: z.enum(["SAME_TOPIC", "INDEPENDENT"]) })).max(200).default([]) }).strict()
 
-const inputOfDraft = (draft: VersionRow) => alignmentInputSchema.parse({ title: draft.title, guidance: draft.guidance, responsiblePersonId: draft.responsible_person_id, affectedDocumentIds: (draft.documents ?? []).map((document) => document.id), reasonId: draft.reason_id, requestSubjectIds: (draft.request_subjects ?? []).map((subject) => subject.id), affectedTopic: draft.affected_topic, justification: draft.justification, operatingUniverse: draft.operating_universe, scopeType: draft.scope_type, teamId: draft.team_id, subteamId: draft.subteam_id, productId: draft.product_id, startsOn: draft.starts_on, endsOn: draft.ends_on, changeReason: draft.change_reason })
+const inputOfDraft = (draft: VersionRow) => alignmentInputSchema.parse({ title: draft.title, guidance: draft.guidance, responsiblePersonId: draft.responsible_person_id, affectedDocumentIds: (draft.documents ?? []).map((document) => document.id), reasonId: draft.reason_id, requestSubjectIds: (draft.request_subjects ?? []).map((subject) => subject.id), affectedTopic: draft.affected_topic, justification: draft.justification, operatingUniverse: draft.operating_universe, scopeType: draft.scope_type, links: (draft.links ?? []).map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })), productId: draft.product_id, startsOn: draft.starts_on, endsOn: draft.ends_on, changeReason: draft.change_reason })
 
 /**
  * PUBLICAR o rascunho. Ordem: escopo e vínculos de novo (podem ter mudado desde o rascunho) → assunto proibido (falha da conferência =
@@ -589,7 +619,7 @@ export async function publishAlignment(db: Database, actor: AlignmentActor & { s
   const declared = new Map(relations.map((entry) => [entry.alignmentId, entry.relation]))
   const missing = overlaps.filter((overlap) => !declared.has(overlap.alignmentId))
   if (missing.length > 0) throw new DomainError("Outros alinhamentos alcançam o mesmo público, algum processo em comum e o mesmo período. Diga, para cada um, se tratam do mesmo ponto ou de pontos diferentes.", "OPERATIONAL_ALIGNMENT_RELATION_REQUIRED", 409, { overlaps: missing })
-  const conflicts = overlaps.filter((overlap) => isUnresolvableConflict({ scopeType: draft.scope_type, productId: draft.product_id }, { scopeType: overlap.version.scopeType, productId: overlap.version.product?.id ?? null }, declared.get(overlap.alignmentId)!))
+  const conflicts = overlaps.filter((overlap) => isUnresolvableConflict({ scopeType: draft.scope_type, links: draft.links ?? [], productId: draft.product_id }, { scopeType: overlap.version.scopeType, links: overlap.version.links, productId: overlap.version.product?.id ?? null }, declared.get(overlap.alignmentId)!))
   if (conflicts.length > 0) throw new DomainError("Há alinhamento do MESMO ponto com o MESMO público no mesmo período, sem precedência entre eles. Encerre o outro, ajuste o período ou use um recorte mais específico.", "OPERATIONAL_ALIGNMENT_CONFLICT", 409, { conflicts })
 
   await inTransaction(db, async (client) => {
@@ -729,7 +759,7 @@ export async function affectedAssessments(db: Queryable, organizationId: string,
      join call_criterion_assessments c on c.call_assessment_id = a.id and c.is_current
      join operational_alignment_version_documents vd on vd.version_id = v.id and vd.document_id = c.document_id
      where v.id = any($2::uuid[]) and v.organization_id = $1
-       and (v.scope_type = 'UNIVERSE' or (v.scope_type = 'TEAM' and a.team_id = v.team_id) or (v.scope_type = 'SUBTEAM' and a.subteam_id = v.subteam_id))
+       and (v.scope_type = 'UNIVERSE' or exists (select 1 from operational_alignment_version_scopes l where l.version_id = v.id and ((l.subteam_id is null and l.team_id = a.team_id) or l.subteam_id = a.subteam_id)))
        and coalesce((select h.operating_universe from person_operating_universe_history h where h.person_id = a.person_id and h.valid_from <= a.occurred_at and (h.valid_until is null or h.valid_until > a.occurred_at) order by h.valid_from desc limit 1), p.operating_universe, case when v.scope_type = 'UNIVERSE' then null else v.operating_universe end) = v.operating_universe
        and not exists (select 1 from jsonb_array_elements(a.operational_alignments) used where used->>'versionId' = v.id::text)
      group by a.id, r.agent_id, p.name, v.id
@@ -798,13 +828,13 @@ export async function updateReason(db: Database, actor: AlignmentActor, scopes: 
   return { id }
 }
 
-/** Motivos do pedido do cliente = assuntos canônicos ativos da organização (o mesmo catálogo das chamadas). */
+/** Motivos do pedido do cliente = assuntos canônicos ativos da organização (o mesmo catálogo das chamadas e da Base de conhecimento). */
 export async function listRequestReasons(db: Queryable, organizationId: string) {
-  return (await db.query<{ id: string; code: string; name: string }>(`select id, code, name from interaction_subject_definitions where organization_id = $1 and active order by name`, [organizationId])).rows
+  return (await listActiveCanonicalSubjects(db, organizationId)).map(({ id, code, name }) => ({ id, code, name }))
 }
 
-/** Código do assunto a partir do nome (sem acento, minúsculo, com `_`) — o formato dos códigos que o catálogo já usa. */
-export const subjectCodeOf = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60)
+/** Código do assunto a partir do nome — o formato dos códigos que o catálogo já usa (`canonicalSubjectCodeOf`). */
+export const subjectCodeOf = canonicalSubjectCodeOf
 
 /**
  * Inclui um assunto novo no catálogo canônico (ex.: "Mudança de endereço"). Sem apelidos: nenhuma chamada passa a ser classificada nele
@@ -813,11 +843,10 @@ export const subjectCodeOf = (name: string) => name.normalize("NFD").replace(/[\
 export async function createRequestReason(db: Database, actor: AlignmentActor, scopes: AlignmentScopes, body: unknown) {
   requireOrganizationWide(scopes)
   const { name } = reasonSchema.parse(body)
-  const code = subjectCodeOf(name)
-  if (code.length < 2) throw new DomainError("Nome inválido para um motivo do pedido.", "OPERATIONAL_ALIGNMENT_REQUEST_REASON_INVALID", 422)
-  const existing = (await db.query<{ id: string; name: string; active: boolean }>(`select id, name, active from interaction_subject_definitions where organization_id = $1 and (code = $2 or lower(btrim(name)) = lower(btrim($3)))`, [actor.organizationId, code, name])).rows[0]
-  if (existing) throw new DomainError(`Já existe o motivo do pedido "${existing.name}"${existing.active ? "" : " (desativado)"}.`, "OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED", 409)
-  const row = (await db.query<{ id: string }>(`insert into interaction_subject_definitions (organization_id, code, name, description) values ($1, $2, $3, 'Incluído pela tela de Alinhamentos operacionais.') returning id`, [actor.organizationId, code, name])).rows[0]!
-  await audit(db, actor, "OPERATIONAL_ALIGNMENT_REQUEST_REASON_CREATED", row.id, { name, code })
-  return { id: row.id, code, name }
+  const result = await insertCanonicalSubject(db, actor.organizationId, { name, description: "Incluído pela tela de Alinhamentos operacionais." })
+  if (result.outcome === "invalid") throw new DomainError("Nome inválido para um motivo do pedido.", "OPERATIONAL_ALIGNMENT_REQUEST_REASON_INVALID", 422)
+  if (result.outcome === "existing") throw new DomainError(`Já existe o motivo do pedido "${result.subject.name}"${result.subject.active ? "" : " (desativado)"}.`, "OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED", 409)
+  const { id, code } = result.subject
+  await audit(db, actor, "OPERATIONAL_ALIGNMENT_REQUEST_REASON_CREATED", id, { name: result.subject.name, code })
+  return { id, code, name: result.subject.name }
 }

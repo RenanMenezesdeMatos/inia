@@ -415,7 +415,15 @@ export default function DataHubPage() {
 ├── Ausências                (EMPLOYEE_ABSENCES)    períodos explícitos: férias, INSS, maternidade…
 ├── Jornadas de trabalho     (WORK_SCHEDULES)       horário, carga horária e regime 5x2/6x1
 ├── Escalas de trabalho      (WORK_SCHEDULE_DAYS)   trabalha/folga por data (snapshot de horizonte)
-└── Exceções de calendário   (WORK_SCHEDULE_EXCEPTIONS) day off, banco de horas, folga extraordinária`}</pre>
+├── Exceções de calendário   (WORK_SCHEDULE_EXCEPTIONS) day off, banco de horas, folga extraordinária
+└── Atividades escaladas     (WORK_SCHEDULE_ACTIVITIES) login, pausas e outras atividades por horário`}</pre>
+        <p>
+          <strong>Atividades escaladas</strong> detalha o dia de trabalho: o horário de login para atendimento, as pausas programadas e outras atividades (treinamento, feedback), com início e fim. É o que o operador vê em
+          &quot;Minha jornada&quot; (próxima pausa e linha do tempo do dia); não muda elegibilidade nem cálculo. A carga de uma data traz o dia inteiro da pessoa: a atividade que não vier numa carga mais nova daquele dia fica desativada no
+          histórico. Quando a fonte só tem o nome da atividade, a mesma coluna alimenta o nome e o tipo (login, pausa ou outra), e cada nome ganha o seu tipo em &quot;Mapear códigos&quot; — nome sem tipo vai para a quarentena, nunca vira
+          pausa por palpite. Exemplo de origem: a tabela <code>MIS_FAT_ATIVIDADE_ESCALADO</code>, com <code>SNOMAMATRCOMPL</code> (matrícula), <code>DDTDATA_ESCALADA</code> (data), <code>SNOATIVIDADE</code> (atividade e tipo),{" "}
+          <code>SNOINICIO</code> (início) e <code>SNOFIM</code> (fim), lida pelo conector de banco com a matrícula e o período como filtro.
+        </p>
         <p>
           <strong>Freshness da escala</strong> segue a mesma filosofia da situação funcional: o mapa de dados mostra &quot;Escalas de trabalho · Atualizado há 2h · API RH › Work Schedules&quot; ou &quot;⚠ Fonte atrasada&quot; — com a conexão
           podendo continuar OK. Dias depois da última carga são &quot;escala presumida&quot;; ausência de produção em dia de escala desconhecida ou atrasada nunca vira feedback negativo (<code>WORK_SCHEDULE_STALE</code> /{" "}

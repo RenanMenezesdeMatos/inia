@@ -1,6 +1,9 @@
 "use client"
 
-import type { ReactNode } from "react"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+
+import { scopeValueAfterUniverseChange, scopeValueIssue } from "@/lib/scope-links/scope-links"
+
 import { Building2, CalendarClock, Globe2, Info, Lock, Star, Tags, Users } from "lucide-react"
 
 import { Label } from "@/components/ui/label"
@@ -11,27 +14,19 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { DatePicker } from "@/components/ui/date-picker"
-import { SectionLabel } from "@/components/ui/surface"
+import { SettingsSection } from "@/components/ui/surface"
 import { Skeleton } from "@/components/ui/skeleton"
-import { cn } from "@/lib/utils"
 import { useAudiencePreviewQuery } from "@/queries/communications/use-communications"
 import { COMMUNICATION_MAX_SUMMARY, COMMUNICATION_TAGS, COMMUNICATION_UNIVERSES, type AudienceOptions, type EditorialForm } from "@/schemas/communications/communication.schema"
 
-import { audienceDescription, civilPartsOf, instantOf } from "../publication-form"
+import { audienceDescription, civilPartsOf, instantOf, segmentPayloadOf, segmentTeamOptions } from "../publication-form"
 import { SearchablePicker } from "./searchable-picker"
 
 type Patch = (patch: Partial<EditorialForm>) => void
 const ANY_UNIVERSE = "__any__"
 
-/** Bloco da lateral: título em caixa alta e o conteúdo; separado por linha (sem cartão dentro de cartão). */
-export function SettingsSection({ title, icon: Icon, children, className }: { title: string; icon: typeof Info; children: ReactNode; className?: string }) {
-  return (
-    <section className={cn("space-y-3 border-b border-border py-4 first:pt-0 last:border-b-0", className)} aria-label={title}>
-      <SectionLabel as="h3" className="flex items-center gap-1.5"><Icon className="size-3.5" aria-hidden />{title}</SectionLabel>
-      {children}
-    </section>
-  )
-}
+/** Bloco da lateral: a peça do kit (`SettingsSection` em `components/ui/surface.tsx`), compartilhada com o editor da Base. */
+export { SettingsSection }
 
 /** Data (calendário do kit) + hora (nativa — o kit ainda não tem seletor de hora; exceção registrada no catálogo de UI). */
 function DateTimeField({ id, label, value, onChange, disabled, defaultTime }: { id: string; label: string; value: string | null; onChange: (value: string | null) => void; disabled?: boolean; defaultTime: string }) {
@@ -73,10 +68,9 @@ export function PublicationScheduleSettings({ form, patch, locked, publishedAtLa
 
 export function PublicationAudienceSettings({ form, patch, locked, options, optionsLoading }: { form: EditorialForm; patch: Patch; locked: boolean; options: AudienceOptions | undefined; optionsLoading: boolean }) {
   const allowed = options?.audiences ?? ["TEAM"]
-  const segmentReady = form.audience !== "SEGMENT" || Boolean(form.segment.universe || form.segment.teamIds.length || form.segment.subteamIds.length)
-  const preview = useAudiencePreviewQuery({ audience: form.audience, segment: form.audience === "SEGMENT" ? form.segment : null }, !locked && segmentReady && Boolean(options))
-  const teamOptions = (options?.teams ?? []).filter((team) => !form.segment.universe || !team.universe || team.universe === form.segment.universe).map((team) => ({ value: team.id, label: team.name, hint: team.universe }))
-  const subteamOptions = (options?.teams ?? []).flatMap((team) => team.subteams.map((subteam) => ({ value: subteam.id, label: subteam.name, hint: team.name })))
+  const segmentReady = form.audience !== "SEGMENT" || Boolean(form.segment.universe || (form.segment.scope.groups.length > 0 && !scopeValueIssue(form.segment.scope)))
+  const preview = useAudiencePreviewQuery({ audience: form.audience, segment: form.audience === "SEGMENT" ? segmentPayloadOf(form.segment) : null }, !locked && segmentReady && Boolean(options))
+  const teamOptions = segmentTeamOptions(options)
 
   return (
     <SettingsSection title="Público" icon={Users}>
@@ -96,7 +90,11 @@ export function PublicationAudienceSettings({ form, patch, locked, options, opti
               {options && options.universes.length > 0 ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="publication-universe">Universo de atuação</Label>
-                  <Select value={form.segment.universe ?? ANY_UNIVERSE} onValueChange={(value) => patch({ segment: { ...form.segment, universe: value === ANY_UNIVERSE ? null : (value as (typeof COMMUNICATION_UNIVERSES)[number]) } })}>
+                  <Select value={form.segment.universe ?? ANY_UNIVERSE} onValueChange={(value) => {
+                    const universe = value === ANY_UNIVERSE ? null : (value as (typeof COMMUNICATION_UNIVERSES)[number])
+                    // Trocar o universo tira do recorte os Grupos/Subgrupos que não são dele (Grupo sem universo continua: pendente).
+                    patch({ segment: { universe, scope: scopeValueAfterUniverseChange(form.segment.scope, teamOptions, (unit) => !universe || !unit || unit === universe) } })
+                  }}>
                     <SelectTrigger id="publication-universe" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ANY_UNIVERSE}>Qualquer universo</SelectItem>
@@ -105,15 +103,14 @@ export function PublicationAudienceSettings({ form, patch, locked, options, opti
                   </Select>
                 </div>
               ) : null}
-              <div className="space-y-1.5">
-                <Label htmlFor="publication-teams">Grupos</Label>
-                <SearchablePicker id="publication-teams" label="Grupos" placeholder="Todos os Grupos" multiple options={teamOptions} values={form.segment.teamIds} onChange={(teamIds) => patch({ segment: { ...form.segment, teamIds } })} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="publication-subteams">Subgrupos</Label>
-                <SearchablePicker id="publication-subteams" label="Subgrupos" placeholder="Nenhum Subgrupo" multiple options={subteamOptions} values={form.segment.subteamIds} onChange={(subteamIds) => patch({ segment: { ...form.segment, subteamIds } })} />
-              </div>
-              <p className="text-xs text-muted-foreground">Recebe quem está, no cadastro de hoje, no universo escolhido e em um dos Grupos ou Subgrupos. Quem mudar de Grupo passa a ver ou deixa de ver.</p>
+              <MultiOrgScopeField
+                teams={teamOptions.filter((team) => !form.segment.universe || !team.operatingUniverse || team.operatingUniverse === form.segment.universe || team.subteams.some((subteam) => subteam.operatingUniverse === form.segment.universe))}
+                value={form.segment.scope}
+                onChange={(scope) => patch({ segment: { ...form.segment, scope } })}
+                label="Grupos"
+                hint="Sem Grupo escolhido, vale para todo o universo. Para cada Grupo: o Grupo inteiro ou só alguns Subgrupos."
+              />
+              <p className="text-xs text-muted-foreground">Recebe quem está, no cadastro de hoje, no universo escolhido e em um dos Grupos (inteiro) ou Subgrupos marcados. Quem mudar de Grupo passa a ver ou deixa de ver.</p>
             </div>
           ) : null}
           <p className="text-sm text-muted-foreground" aria-live="polite">

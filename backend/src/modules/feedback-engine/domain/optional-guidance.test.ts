@@ -22,7 +22,7 @@ import { sourceDocuments, TRANSCRIPT } from "../testing/fixtures.js"
 const projection = projectTranscript(TRANSCRIPT)
 const script = argumentScriptSourceOf({
   scriptId: "00000000-0000-4000-8000-00000000c601", versionId: "v1", version: 1, name: "Segunda via (teste)", areaName: "Faturamento",
-  scope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null }, subjectName: null, conversion: "NATIVE",
+  scope: { scopeType: "ALL_TEAMS", links: [] }, subjectName: null, conversion: "NATIVE",
   content: normalizeArgumentScriptContent({ trigger: "O cliente pede a segunda via da conta.", notApplicableWhen: null, operatorGuidance: [
     { key: "g-app", text: "Orientar a consulta pelo aplicativo.", modality: "MUST" },
     { key: "g-email", text: "Oferecer o envio da conta também por e-mail.", modality: "MAY" },

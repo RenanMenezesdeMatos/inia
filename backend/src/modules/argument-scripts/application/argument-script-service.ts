@@ -3,7 +3,10 @@ import { universeFromBody } from "../../operating-universe/application/universe-
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import { SqlFilter, booleanParam, respondList, searchParam, type PageResult } from "../../../shared/presentation/list-query.js"
-import { canManageScope, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { canManageAllLinks, canSeeAnyLink, resolveScopeLinksForWrite, SCOPE_LINK_FAILURE_MESSAGE, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
+import { scopeLinksInputSchema } from "../../../shared/presentation/scope-links-schema.js"
+import { linkKey, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
+import { argumentScriptLinksSql } from "../infrastructure/argument-script-loaders.js"
 import {
   contentHashOf,
   normalizeArgumentScriptContent,
@@ -30,7 +33,25 @@ import { transactionRunner } from "../../../shared/infrastructure/database/trans
  */
 export type ArgumentScriptActor = { organizationId: string; personId: string | null }
 
-const scopeInputSchema = z.object({ scopeType: z.enum(["ALL_TEAMS", "TEAM", "SUBTEAM"]), teamId: z.string().uuid().nullish(), subteamId: z.string().uuid().nullish() })
+/**
+ * Escopo pedido (223): todos os Grupos, ou os Grupos/Subgrupos dos vínculos. Aceita também a forma antiga de escopo único
+ * (`TEAM`/`SUBTEAM` + `teamId`/`subteamId`, ex.: importação de configuração e roteiros de dev) — convertida em um vínculo.
+ */
+const scopeInputSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object") return value
+    const legacy = value as { scopeType?: unknown; teamId?: unknown; subteamId?: unknown }
+    if (legacy.scopeType === "TEAM") return { scopeType: "GROUPS", links: [{ teamId: legacy.teamId ?? null }] }
+    if (legacy.scopeType === "SUBTEAM") return { scopeType: "GROUPS", links: [{ teamId: legacy.teamId ?? null, subteamId: legacy.subteamId ?? null }] }
+    // Forma antiga sem `links`; com `links`, vale a forma nova (e "todos" com Grupos é recusado abaixo, nunca descartado em silêncio).
+    if (legacy.scopeType === "ALL_TEAMS" && !("links" in legacy)) return { scopeType: "ALL_TEAMS", links: [] }
+    return value
+  },
+  z
+    .object({ scopeType: z.enum(["ALL_TEAMS", "GROUPS"]), links: scopeLinksInputSchema.default([]) })
+    .strict()
+    .refine((scope) => scope.scopeType !== "ALL_TEAMS" || scope.links.length === 0, { message: "Todos os Grupos não leva Grupos vinculados.", path: ["links"] }),
+)
 export const createInputSchema = z.object({
   name: z.string().trim().min(3).max(160),
   businessDomainId: z.string().uuid().nullish(),
@@ -65,11 +86,11 @@ type ScriptRow = {
   name: string
   businessDomainId: string | null
   businessDomainName: string | null
+  /** Escopo da versão que governa (publicada; sem publicada, a última que valeu; nunca publicado, o rascunho). */
   scopeType: ScriptScope["scopeType"]
-  teamId: string | null
-  teamName: string | null
-  subteamId: string | null
-  subteamName: string | null
+  scopeLinks: ScriptScope["links"]
+  /** Escopo do rascunho (null = sem rascunho). Muda a partir da publicação dele. */
+  draftScope: ScriptScope | null
   subjectName: string | null
   status: "ACTIVE" | "ARCHIVED"
   conversion: "NATIVE" | "LEGACY_UNSTRUCTURED"
@@ -84,20 +105,33 @@ type ScriptRow = {
 
 const SELECT_SCRIPTS = `
   select s.id, s.name, s.business_domain_id "businessDomainId", bd.name "businessDomainName",
-         s.scope_type "scopeType", s.team_id "teamId", t.name "teamName", s.subteam_id "subteamId", st.name "subteamName", sub.name "subjectName",
+         coalesce(gov.scope_type, dr.scope_type) "scopeType", coalesce(gov.links, dr.links) "scopeLinks",
+         case when dr.id is null then null else json_build_object('scopeType', dr.scope_type, 'links', dr.links) end "draftScope",
+         (select string_agg(concat_ws(' ', lt.name, lst.name), ' ') from argument_script_version_scopes l join teams lt on lt.id = l.team_id left join subteams lst on lst.id = l.subteam_id
+           where l.version_id in (gov.id, dr.id)) "scopeSearch",
+         sub.name "subjectName",
          s.status, s.conversion, cur.version "currentVersion", cur.effective_from "currentEffectiveFrom", cur.effective_until "currentEffectiveUntil",
          dr.version "draftVersion", s.operating_universe "operatingUniverse", s.updated_at "updatedAt", s.created_at "createdAt"
   from argument_scripts s
   left join business_domains bd on bd.id = s.business_domain_id
-  left join teams t on t.id = s.team_id
-  left join subteams st on st.id = s.subteam_id
   left join subjects sub on sub.id = s.subject_id
   left join lateral (select version, effective_from, effective_until from argument_script_versions v where v.script_id = s.id and v.status = 'PUBLISHED' limit 1) cur on true
-  left join lateral (select version from argument_script_versions v where v.script_id = s.id and v.status = 'DRAFT' limit 1) dr on true
+  left join lateral (select v.id, v.scope_type, ${argumentScriptLinksSql("v")} links from argument_script_versions v where v.script_id = s.id and v.status <> 'DRAFT' order by (v.status = 'PUBLISHED') desc, v.version desc limit 1) gov on true
+  left join lateral (select v.id, v.version, v.scope_type, ${argumentScriptLinksSql("v")} links from argument_script_versions v where v.script_id = s.id and v.status = 'DRAFT' limit 1) dr on true
   where s.organization_id = $1
 `
 
-const scopeOf = (row: Pick<ScriptRow, "scopeType" | "teamId" | "subteamId">): ScriptScope => ({ scopeType: row.scopeType, teamId: row.teamId, subteamId: row.subteamId })
+/** Escopos que governam o argumentário agora: o vigente e o do rascunho (os dois contam para quem pode alterá-lo). */
+const governingScopesOf = (row: Pick<ScriptRow, "scopeType" | "scopeLinks" | "draftScope">): ScriptScope[] => [{ scopeType: row.scopeType, links: row.scopeLinks ?? [] }, ...(row.draftScope ? [row.draftScope] : [])]
+
+/**
+ * Política de ESCRITA (a mesma da Base de Conhecimento): alterar texto, vínculos, publicar ou encerrar exige que TODOS os vínculos —
+ * do vigente e do rascunho — estejam no escopo de quem altera; "todos os grupos" só com escopo de organização. Um gestor de parte dos
+ * Grupos de um argumentário compartilhado o VÊ (somente leitura), mas não o altera.
+ */
+const canEditScopes = (scopes: ManageableScopes, governing: readonly ScriptScope[]) =>
+  governing.every((scope) => (scope.scopeType === "ALL_TEAMS" ? scopes.unrestricted || scopes.allTeams : canManageAllLinks(scopes, scope.links)))
+const canEditRow = (scopes: ManageableScopes, row: Pick<ScriptRow, "scopeType" | "scopeLinks" | "draftScope">) => canEditScopes(scopes, governingScopesOf(row))
 
 async function audit(db: Pick<Database, "query">, actor: ArgumentScriptActor, action: string, entityId: string, payload: Record<string, unknown>) {
   await db.query(`insert into audit_logs (organization_id, actor_id, action, entity_type, entity_id, payload) values ($1, $2, $3, 'argument_script', $4, $5)`, [actor.organizationId, actor.personId, action, entityId, JSON.stringify(payload)])
@@ -109,34 +143,48 @@ async function parentTeamsOf(db: Pick<Database, "query">, scopes: ManageableScop
   return (await db.query<{ team_id: string }>(`select distinct team_id from subteams where id = any($1::uuid[])`, [[...scopes.subteamIds]])).rows.map((row) => row.team_id)
 }
 
+/** Vê: "todos os grupos" (vigente ou rascunho), ou ALGUM vínculo no escopo (Grupo inteiro do Subgrupo administrado incluído). */
 function visibilityClause(filter: SqlFilter, scopes: ManageableScopes, parentTeams: readonly string[]) {
   if (scopes.unrestricted || scopes.allTeams) return
-  const teams = filter.param([...scopes.teamIds, ...parentTeams])
+  const teams = filter.param([...scopes.teamIds])
   const subteams = filter.param([...scopes.subteamIds])
-  filter.add(`(q."scopeType" = 'ALL_TEAMS' or (q."scopeType" = 'TEAM' and q."teamId" = any(${teams}::uuid[])) or (q."scopeType" = 'SUBTEAM' and q."subteamId" = any(${subteams}::uuid[])))`)
+  const parents = filter.param([...parentTeams])
+  filter.add(`(q."scopeType" = 'ALL_TEAMS' or (q."draftScope"->>'scopeType') = 'ALL_TEAMS' or exists (select 1 from argument_script_versions vv join argument_script_version_scopes l on l.version_id = vv.id
+    where vv.script_id = q.id and (vv.status = 'DRAFT' or vv.id = (select g.id from argument_script_versions g where g.script_id = q.id and g.status <> 'DRAFT' order by (g.status = 'PUBLISHED') desc, g.version desc limit 1))
+      and (l.team_id = any(${teams}::uuid[]) or l.subteam_id = any(${subteams}::uuid[]) or (l.subteam_id is null and l.team_id = any(${parents}::uuid[])))))`)
+}
+
+/** Filtro de Grupo/Subgrupo da lista: argumentários com algum vínculo (vigente ou rascunho) naquele Grupo/Subgrupo; "todos os grupos" à parte. */
+function linkFilterClause(filter: SqlFilter, input: { scopeType?: "ALL_TEAMS" | undefined; teamId?: string | undefined; subteamId?: string | undefined }) {
+  if (input.scopeType === "ALL_TEAMS") return void filter.add(`q."scopeType" = 'ALL_TEAMS'`)
+  if (!input.teamId && !input.subteamId) return
+  const column = input.subteamId ? "l.subteam_id" : "l.team_id"
+  const value = filter.param(input.subteamId ?? input.teamId)
+  filter.add(`exists (select 1 from argument_script_versions vv join argument_script_version_scopes l on l.version_id = vv.id where vv.script_id = q.id and vv.status in ('DRAFT', 'PUBLISHED') and ${column} = ${value}::uuid)`)
 }
 
 export async function listArgumentScripts(db: Database, organizationId: string, scopes: ManageableScopes, query: Record<string, unknown>) {
   const input = listQuerySchema.parse(query)
   const filter = new SqlFilter([organizationId])
-    .search(input.search, ["q.name", 'q."businessDomainName"', 'q."teamName"', 'q."subteamName"'])
+    .search(input.search, ["q.name", 'q."businessDomainName"', 'q."scopeSearch"'])
     .equals("q.status", input.status)
     .equals('q."businessDomainId"', input.businessDomainId)
     .equals("q.conversion", input.conversion)
-    .orgScope("q", input)
   applyUniverseListFilter(filter, 'q."operatingUniverse"', input.operatingUniverse)
+  linkFilterClause(filter, input)
   if (input.hasDraft !== undefined) filter.add(input.hasDraft ? `q."draftVersion" is not null` : `q."draftVersion" is null`)
   visibilityClause(filter, scopes, await parentTeamsOf(db, scopes))
   const data = await respondList<ScriptRow>(db, query, { select: SELECT_SCRIPTS, filter, orderBy: `q.status, q."updatedAt" desc, q.id` })
-  const decorate = (row: ScriptRow) => ({ ...row, canEdit: canManageScope(scopes, scopeOf(row)) })
+  const decorate = (row: ScriptRow) => ({ ...publicRow(row), canEdit: canEditRow(scopes, row) })
   return Array.isArray(data) ? data.map(decorate) : ({ ...data, items: data.items.map(decorate) } satisfies PageResult<ReturnType<typeof decorate>>)
 }
 
-type VersionRow = { id: string; version: number; status: "DRAFT" | "PUBLISHED" | "SUPERSEDED"; content: unknown; content_hash: string; source_document_id: string | null; source_document_title: string | null; source_reference: string | null; effective_from: Date | null; effective_until: Date | null; published_at: Date | null; published_by_name: string | null; created_at: Date; updated_at: Date }
+type VersionRow = { id: string; version: number; status: "DRAFT" | "PUBLISHED" | "SUPERSEDED"; scope_type: ScriptScope["scopeType"]; scope_links: ScriptScope["links"]; content: unknown; content_hash: string; source_document_id: string | null; source_document_title: string | null; source_reference: string | null; effective_from: Date | null; effective_until: Date | null; published_at: Date | null; published_by_name: string | null; created_at: Date; updated_at: Date }
 const toVersion = (row: VersionRow) => ({
   id: row.id,
   version: row.version,
   status: row.status,
+  scope: { scopeType: row.scope_type, links: row.scope_links ?? [] } satisfies ScriptScope,
   content: readStoredContent(row.content),
   contentHash: row.content_hash,
   sourceDocumentId: row.source_document_id,
@@ -158,22 +206,22 @@ async function loadRow(db: Pick<Database, "query">, organizationId: string, id: 
 async function requireVisible(db: Database, organizationId: string, scopes: ManageableScopes, id: string): Promise<ScriptRow> {
   const row = await loadRow(db, organizationId, id)
   if (!row) throw new DomainError("Argumentário não encontrado.", "ARGUMENT_SCRIPT_NOT_FOUND", 404)
-  if (canManageScope(scopes, scopeOf(row))) return row
-  const parentTeams = await parentTeamsOf(db, scopes)
-  const visible = !scopes.unrestricted && (row.scopeType === "ALL_TEAMS" || (row.scopeType === "TEAM" && row.teamId !== null && (scopes.teamIds.has(row.teamId) || parentTeams.includes(row.teamId))) || (row.scopeType === "SUBTEAM" && row.subteamId !== null && scopes.subteamIds.has(row.subteamId)))
+  if (canEditRow(scopes, row)) return row
+  const parentTeams = new Set(await parentTeamsOf(db, scopes))
+  const visible = !scopes.unrestricted && governingScopesOf(row).some((scope) => scope.scopeType === "ALL_TEAMS" || canSeeAnyLink(scopes, scope.links, parentTeams))
   if (!visible) throw new DomainError("Argumentário não encontrado.", "ARGUMENT_SCRIPT_NOT_FOUND", 404)
   return row
 }
 async function requireEditable(db: Database, organizationId: string, scopes: ManageableScopes, id: string): Promise<ScriptRow> {
   const row = await requireVisible(db, organizationId, scopes, id)
-  if (!canManageScope(scopes, scopeOf(row))) throw new DomainError("Seu escopo de administração não cobre o escopo deste argumentário.", "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN", 403)
+  if (!canEditRow(scopes, row)) throw new DomainError("Este argumentário vale para Grupos fora do seu escopo de administração: só quem administra todos eles pode alterá-lo.", "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN", 403)
   return row
 }
 
 export async function getArgumentScript(db: Database, organizationId: string, scopes: ManageableScopes, id: string) {
   const row = await requireVisible(db, organizationId, scopes, id)
   const versions = (await db.query<VersionRow>(
-    `select v.id, v.version, v.status, v.content, v.content_hash, v.source_document_id, kd.title source_document_title, v.source_reference, v.effective_from, v.effective_until, v.published_at, p.name published_by_name, v.created_at, v.updated_at
+    `select v.id, v.version, v.status, v.scope_type, ${argumentScriptLinksSql("v")} scope_links, v.content, v.content_hash, v.source_document_id, kd.title source_document_title, v.source_reference, v.effective_from, v.effective_until, v.published_at, p.name published_by_name, v.created_at, v.updated_at
      from argument_script_versions v
      left join knowledge_documents kd on kd.id = v.source_document_id
      left join people p on p.id = v.published_by
@@ -183,8 +231,8 @@ export async function getArgumentScript(db: Database, organizationId: string, sc
   const draft = versions.find((version) => version.status === "DRAFT") ?? null
   const current = versions.find((version) => version.status === "PUBLISHED") ?? null
   return {
-    ...row,
-    canEdit: canManageScope(scopes, scopeOf(row)),
+    ...publicRow(row),
+    canEdit: canEditRow(scopes, row),
     current,
     draft,
     history: versions.filter((version) => version.status !== "DRAFT"),
@@ -193,24 +241,41 @@ export async function getArgumentScript(db: Database, organizationId: string, sc
   }
 }
 
-/** Escopo pedido: Grupo/Subgrupo da organização (Subgrupo grava o Grupo dele) e coberto pelo escopo de quem administra. */
+/** Escopo pedido: todos os Grupos (só com escopo de organização) ou vínculos válidos da organização, todos no escopo de quem administra. */
 async function resolveScope(db: Pick<Database, "query">, organizationId: string, scopes: ManageableScopes, input: z.infer<typeof scopeInputSchema>): Promise<ScriptScope> {
-  let scope: ScriptScope
-  if (input.scopeType === "ALL_TEAMS") scope = { scopeType: "ALL_TEAMS", teamId: null, subteamId: null }
-  else if (input.scopeType === "TEAM") {
-    if (!input.teamId) throw new DomainError("Escolha o grupo.", "ARGUMENT_SCRIPT_SCOPE_INVALID")
-    const team = (await db.query(`select 1 from teams where id = $1 and organization_id = $2`, [input.teamId, organizationId])).rows[0]
-    if (!team) throw new DomainError("Grupo não encontrado.", "ARGUMENT_SCRIPT_SCOPE_INVALID")
-    scope = { scopeType: "TEAM", teamId: input.teamId, subteamId: null }
-  } else {
-    if (!input.subteamId) throw new DomainError("Escolha o subgrupo.", "ARGUMENT_SCRIPT_SCOPE_INVALID")
-    const subteam = (await db.query<{ team_id: string }>(`select st.team_id from subteams st join teams t on t.id = st.team_id where st.id = $1 and t.organization_id = $2`, [input.subteamId, organizationId])).rows[0]
-    if (!subteam || (input.teamId && input.teamId !== subteam.team_id)) throw new DomainError("Subgrupo não encontrado neste grupo.", "ARGUMENT_SCRIPT_SCOPE_INVALID")
-    scope = { scopeType: "SUBTEAM", teamId: subteam.team_id, subteamId: input.subteamId }
+  if (input.scopeType === "ALL_TEAMS") {
+    if (!(scopes.unrestricted || scopes.allTeams)) throw new DomainError("Só quem administra a organização inteira pode criar um argumentário para todos os grupos.", "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN", 403)
+    return { scopeType: "ALL_TEAMS", links: [] }
   }
-  // A restrição vale inclusive para "todos": só quem administra a organização inteira escolhe todos os grupos.
-  if (!canManageScope(scopes, scope)) throw new DomainError(scope.scopeType === "ALL_TEAMS" ? "Só quem administra a organização inteira pode criar um argumentário para todos os grupos." : "Seu escopo de administração não cobre este grupo/subgrupo.", "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN", 403)
-  return scope
+  const resolved = await resolveScopeLinksForWrite(db, organizationId, scopes, input.links)
+  if (!resolved.ok) throw new DomainError(SCOPE_LINK_FAILURE_MESSAGE[resolved.reason], resolved.reason === "FORBIDDEN" ? "ARGUMENT_SCRIPT_SCOPE_FORBIDDEN" : "ARGUMENT_SCRIPT_SCOPE_INVALID", resolved.reason === "FORBIDDEN" ? 403 : 422)
+  return { scopeType: "GROUPS", links: resolved.links.map((link) => ({ ...link, teamName: null, subteamName: null })) }
+}
+
+const sameScope = (a: Pick<ScriptScope, "scopeType" | "links">, b: Pick<ScriptScope, "scopeType" | "links">) =>
+  a.scopeType === b.scopeType && a.links.length === b.links.length && a.links.map(linkKey).sort().join("|") === b.links.map(linkKey).sort().join("|")
+
+/** Grava o escopo de uma versão em RASCUNHO (vínculos substituídos inteiros, na mesma transação do rascunho). */
+async function writeVersionScope(db: Pick<Database, "query">, organizationId: string, versionId: string, scope: Pick<ScriptScope, "scopeType" | "links">) {
+  await db.query(`update argument_script_versions set scope_type = $2 where id = $1`, [versionId, scope.scopeType])
+  await db.query(`delete from argument_script_version_scopes where version_id = $1`, [versionId])
+  const links: ScopeLink[] = scope.scopeType === "ALL_TEAMS" ? [] : scope.links
+  if (links.length > 0) {
+    await db.query(
+      `insert into argument_script_version_scopes (version_id, organization_id, team_id, subteam_id) select $1, $2, t, s from unnest($3::uuid[], $4::uuid[]) as u(t, s)`,
+      [versionId, organizationId, links.map((link) => link.teamId), links.map((link) => link.subteamId)],
+    )
+  }
+}
+
+/** Escopo no `audit_logs`: tipo + vínculos (ids), sem nomes. */
+const auditScope = (scope: Pick<ScriptScope, "scopeType" | "links">) => ({ scopeType: scope.scopeType, links: scope.links.map((link) => ({ teamId: link.teamId, subteamId: link.subteamId })) })
+
+/** Resposta sem o campo interno de busca. */
+function publicRow(row: ScriptRow) {
+  const { scopeSearch, ...rest } = row as ScriptRow & { scopeSearch?: string | null }
+  void scopeSearch
+  return rest
 }
 
 async function requireBusinessDomain(db: Pick<Database, "query">, organizationId: string, id: string | null | undefined, previous: string | null) {
@@ -238,34 +303,33 @@ export async function createArgumentScript(db: Database, actor: ArgumentScriptAc
   const universe = await universeFromBody(db, actor.organizationId, body, "do argumentário")
   const domainUniverse = (await db.query<{ operating_universe: string | null }>(`select operating_universe from business_domains where id = $1`, [businessDomainId])).rows[0]?.operating_universe ?? null
   if (universe && domainUniverse && universe !== domainUniverse) throw new DomainError(`A área escolhida é do universo ${domainUniverse}; o argumentário é ${universe}. Universos não se misturam.`, "OPERATING_UNIVERSE_LINK_CONFLICT", 409)
-  const id = (await db.query<{ id: string }>(
-    `insert into argument_scripts (organization_id, name, business_domain_id, scope_type, team_id, subteam_id, created_by, updated_by, operating_universe) values ($1,$2,$3,$4,$5,$6,$7,$7,$8) returning id`,
-    [actor.organizationId, input.name, businessDomainId, scope.scopeType, scope.teamId, scope.subteamId, actor.personId, universe],
-  )).rows[0]!.id
-  await db.query(
-    `insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by) values ($1,$2,1,'DRAFT',$3,$4,$5,$6,$7)`,
-    [actor.organizationId, id, JSON.stringify(content), contentHashOf(content), sourceDocumentId, input.sourceReference ?? null, actor.personId],
-  )
-  await audit(db, actor, "ARGUMENT_SCRIPT_CREATED", id, { name: input.name, scope })
+  const id = await inTransaction(db, async (client) => {
+    const scriptId = (await client.query<{ id: string }>(
+      `insert into argument_scripts (organization_id, name, business_domain_id, created_by, updated_by, operating_universe) values ($1,$2,$3,$4,$4,$5) returning id`,
+      [actor.organizationId, input.name, businessDomainId, actor.personId, universe],
+    )).rows[0]!.id
+    const versionId = (await client.query<{ id: string }>(
+      `insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by, scope_type) values ($1,$2,1,'DRAFT',$3,$4,$5,$6,$7,$8) returning id`,
+      [actor.organizationId, scriptId, JSON.stringify(content), contentHashOf(content), sourceDocumentId, input.sourceReference ?? null, actor.personId, scope.scopeType],
+    )).rows[0]!.id
+    await writeVersionScope(client, actor.organizationId, versionId, scope)
+    await audit(client, actor, "ARGUMENT_SCRIPT_CREATED", scriptId, { name: input.name, scope: auditScope(scope) })
+    return scriptId
+  })
   return getArgumentScript(db, actor.organizationId, scopes, id)
 }
 
-/** Edição: nome e área a qualquer momento; escopo só antes da primeira publicação (a história de quem a regra valia não muda);
- * conteúdo e fonte sempre num RASCUNHO (criado a partir da versão vigente quando não existe). */
+/** Edição: nome e área a qualquer momento; conteúdo, fonte e ESCOPO (vínculos) sempre num RASCUNHO (criado a partir da versão vigente
+ * quando não existe) — valem a partir da publicação; a história de a quem a regra valia nunca muda (o escopo é da versão, 223). */
 export async function updateArgumentScript(db: Database, actor: ArgumentScriptActor, scopes: ManageableScopes, id: string, body: unknown) {
   const input = updateInputSchema.parse(body)
   const row = await requireEditable(db, actor.organizationId, scopes, id)
-  const everPublished = Boolean((await db.query(`select 1 from argument_script_versions where script_id = $1 and status <> 'DRAFT' limit 1`, [id])).rows[0])
   const changes: Record<string, unknown> = {}
-  if (input.scope) {
-    const scope = await resolveScope(db, actor.organizationId, scopes, input.scope)
-    const same = scope.scopeType === row.scopeType && scope.teamId === row.teamId && scope.subteamId === row.subteamId
-    if (!same) {
-      if (everPublished) throw new DomainError("O escopo de um argumentário já publicado não muda (preserva a quem a regra valia). Encerre este e crie outro.", "ARGUMENT_SCRIPT_SCOPE_LOCKED", 409)
-      await db.query(`update argument_scripts set scope_type = $2, team_id = $3, subteam_id = $4 where id = $1`, [id, scope.scopeType, scope.teamId, scope.subteamId])
-      changes.scope = scope
-    }
-  }
+  // Vínculos novos: TODOS no escopo de quem altera (e os atuais já passaram em `requireEditable`). Mudam no RASCUNHO e valem a partir da
+  // publicação dele — a versão publicada (e a quem ela valeu) nunca muda.
+  const requestedScope = input.scope ? await resolveScope(db, actor.organizationId, scopes, input.scope) : null
+  const draftTarget = row.draftScope ?? { scopeType: row.scopeType, links: row.scopeLinks ?? [] }
+  const scopeChanged = requestedScope !== null && !sameScope(requestedScope, draftTarget)
   if (input.name !== undefined && input.name !== row.name) {
     await db.query(`update argument_scripts set name = $2 where id = $1`, [id, input.name])
     changes.name = input.name
@@ -276,7 +340,7 @@ export async function updateArgumentScript(db: Database, actor: ArgumentScriptAc
     await db.query(`update argument_scripts set business_domain_id = $2 where id = $1`, [id, businessDomainId])
     changes.businessDomainId = businessDomainId
   }
-  if (input.content !== undefined || input.sourceDocumentId !== undefined || input.sourceReference !== undefined) {
+  if (scopeChanged || input.content !== undefined || input.sourceDocumentId !== undefined || input.sourceReference !== undefined) {
     const draft = (await db.query<{ id: string; content: unknown; source_document_id: string | null; source_reference: string | null }>(`select id, content, source_document_id, source_reference from argument_script_versions where script_id = $1 and status = 'DRAFT'`, [id])).rows[0]
     const base = draft ?? (await db.query<{ id: string; content: unknown; source_document_id: string | null; source_reference: string | null }>(`select id, content, source_document_id, source_reference from argument_script_versions where script_id = $1 and status in ('PUBLISHED','SUPERSEDED') order by version desc limit 1`, [id])).rows[0]
     const content = input.content !== undefined ? normalizeArgumentScriptContent(input.content) : readStoredContent(base?.content)
@@ -285,12 +349,19 @@ export async function updateArgumentScript(db: Database, actor: ArgumentScriptAc
     // O texto do cadastro antigo nunca se perde ao estruturar: continua guardado na versão (auditoria da conversão).
     const legacy = readStoredContent(base?.content).legacyExpectation
     const finalContent: ArgumentScriptContent = legacy && !content.legacyExpectation ? { ...content, legacyExpectation: legacy } : content
-    if (draft) await db.query(`update argument_script_versions set content = $2, content_hash = $3, source_document_id = $4, source_reference = $5, updated_at = now() where id = $1`, [draft.id, JSON.stringify(finalContent), contentHashOf(finalContent), sourceDocumentId, sourceReference])
-    else {
-      const next = (await db.query<{ next: number }>(`select coalesce(max(version), 0) + 1 next from argument_script_versions where script_id = $1`, [id])).rows[0]!.next
-      await db.query(`insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by) values ($1,$2,$3,'DRAFT',$4,$5,$6,$7,$8)`, [actor.organizationId, id, next, JSON.stringify(finalContent), contentHashOf(finalContent), sourceDocumentId, sourceReference, actor.personId])
-    }
+    const scope = scopeChanged ? requestedScope! : draftTarget
+    await inTransaction(db, async (client) => {
+      let draftId = draft?.id
+      if (draftId) await client.query(`update argument_script_versions set content = $2, content_hash = $3, source_document_id = $4, source_reference = $5, updated_at = now() where id = $1`, [draftId, JSON.stringify(finalContent), contentHashOf(finalContent), sourceDocumentId, sourceReference])
+      else {
+        const next = (await client.query<{ next: number }>(`select coalesce(max(version), 0) + 1 next from argument_script_versions where script_id = $1`, [id])).rows[0]!.next
+        draftId = (await client.query<{ id: string }>(`insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by, scope_type) values ($1,$2,$3,'DRAFT',$4,$5,$6,$7,$8,$9) returning id`, [actor.organizationId, id, next, JSON.stringify(finalContent), contentHashOf(finalContent), sourceDocumentId, sourceReference, actor.personId, scope.scopeType])).rows[0]!.id
+      }
+      // Rascunho novo herda o escopo vigente; pedido de mudança substitui os vínculos do rascunho.
+      if (scopeChanged || !draft) await writeVersionScope(client, actor.organizationId, draftId, scope)
+    })
     changes.draft = true
+    if (scopeChanged) changes.scope = { before: auditScope(draftTarget), after: auditScope(requestedScope!) }
   }
   if (Object.keys(changes).length > 0) {
     await db.query(`update argument_scripts set updated_by = $2, updated_at = now() where id = $1`, [id, actor.personId])
@@ -371,16 +442,19 @@ export async function reactivateArgumentScript(db: Database, actor: ArgumentScri
   const row = await requireEditable(db, actor.organizationId, scopes, id)
   if (row.status === "ACTIVE") return getArgumentScript(db, actor.organizationId, scopes, id)
   await inTransaction(db, async (client) => {
-    const last = (await client.query<{ id: string; content: unknown; content_hash: string; source_document_id: string | null; source_reference: string | null }>(`select id, content, content_hash, source_document_id, source_reference from argument_script_versions where script_id = $1 and status in ('PUBLISHED','SUPERSEDED') order by version desc limit 1`, [id])).rows[0]
+    const last = (await client.query<{ id: string; content: unknown; content_hash: string; source_document_id: string | null; source_reference: string | null; scope_type: string }>(`select id, content, content_hash, source_document_id, source_reference, scope_type from argument_script_versions where script_id = $1 and status in ('PUBLISHED','SUPERSEDED') order by version desc limit 1`, [id])).rows[0]
     await client.query(`update argument_scripts set status = 'ACTIVE', updated_by = $2, updated_at = now() where id = $1`, [id, actor.personId])
     if (last) {
       await client.query(`delete from argument_script_versions where script_id = $1 and status = 'DRAFT'`, [id])
       await client.query(`update argument_script_versions set status = 'SUPERSEDED', updated_at = now() where id = $1 and status = 'PUBLISHED'`, [last.id])
       const next = (await client.query<{ next: number }>(`select coalesce(max(version), 0) + 1 next from argument_script_versions where script_id = $1`, [id])).rows[0]!.next
-      await client.query(
-        `insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, effective_from, published_at, published_by, created_by) values ($1,$2,$3,'PUBLISHED',$4,$5,$6,$7,$8,$8,$9,$9)`,
-        [actor.organizationId, id, next, JSON.stringify(last.content), last.content_hash, last.source_document_id, last.source_reference, now, actor.personId],
-      )
+      // Nasce como rascunho para receber os vínculos da última versão (vínculo de versão publicada é imutável) e é publicada em seguida.
+      const reborn = (await client.query<{ id: string }>(
+        `insert into argument_script_versions (organization_id, script_id, version, status, content, content_hash, source_document_id, source_reference, created_by, scope_type) values ($1,$2,$3,'DRAFT',$4,$5,$6,$7,$8,$9) returning id`,
+        [actor.organizationId, id, next, JSON.stringify(last.content), last.content_hash, last.source_document_id, last.source_reference, actor.personId, last.scope_type],
+      )).rows[0]!.id
+      await client.query(`insert into argument_script_version_scopes (version_id, organization_id, team_id, subteam_id) select $1, organization_id, team_id, subteam_id from argument_script_version_scopes where version_id = $2`, [reborn, last.id])
+      await client.query(`update argument_script_versions set status = 'PUBLISHED', effective_from = $2, published_at = $2, published_by = $3 where id = $1`, [reborn, now, actor.personId])
     }
     await audit(client, actor, "ARGUMENT_SCRIPT_REACTIVATED", id, { at: now.toISOString() })
   })

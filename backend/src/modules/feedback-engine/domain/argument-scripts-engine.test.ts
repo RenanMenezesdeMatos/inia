@@ -32,7 +32,7 @@ const overdue = (version = 1, previous: ArgumentScriptSource["content"] | null =
     version,
     name: "Contas em atraso",
     areaName: "Cobrança",
-    scope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null },
+    scope: { scopeType: "ALL_TEAMS", links: [] },
     subjectName: null,
     conversion: "NATIVE",
     content: normalizeArgumentScriptContent({
@@ -57,7 +57,7 @@ const paymentOptions = argumentScriptSourceOf({
   version: 1,
   name: "Bloqueio por falta de pagamento",
   areaName: "Cobrança",
-  scope: { scopeType: "TEAM", teamId: "team-1", subteamId: null, teamName: "Retenção", subteamName: null },
+  scope: { scopeType: "GROUPS", links: [{ teamId: "team-1", subteamId: null, teamName: "Retenção", subteamName: null }] },
   subjectName: null,
   conversion: "NATIVE",
   content: normalizeArgumentScriptContent({
@@ -290,7 +290,7 @@ Quando o cliente pedir a segunda via da conta:
 `
   const unblock = (items: { key: string; text: string }[]) => argumentScriptSourceOf({
     scriptId: UNBLOCK, versionId: "u1", version: 1, name: "Desbloqueio após pagamento", areaName: "Cobrança",
-    scope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null }, subjectName: null, conversion: "NATIVE",
+    scope: { scopeType: "ALL_TEAMS", links: [] }, subjectName: null, conversion: "NATIVE",
     content: normalizeArgumentScriptContent({ trigger: "O cliente pagou a conta em atraso e quer saber quando a linha volta a funcionar.", requiredPoints: [{ key: "rp", mode: "ALL", items: items.map((item) => ({ ...item, condition: null })) }] }),
     contentHash: "u1", effectiveFrom: new Date("2026-09-01T00:00:00Z"), effectiveUntil: null, sourceDocumentId: null, sourceDocumentTitle: null, sourceReference: null,
   }, null)

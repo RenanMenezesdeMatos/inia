@@ -51,7 +51,7 @@ describe("hierarquia dinâmica → Agrupar por", () => {
 
 describe("capabilities centralizadas", () => {
   it("Operador: PRV sim, estrutura não, sem aba de pessoas", () => {
-    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE")).toMatchObject({ mode: "EMPLOYEE", canSeePrv: true, canDrillDown: false, peopleTabLabel: null, tabs: ["FOLLOW_UP", "INDICATORS", "STRUCTURE"] })
+    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE")).toMatchObject({ mode: "EMPLOYEE", canSeePrv: true, canDrillDown: false, peopleTabLabel: null, tabs: ["FOLLOW_UP", "INDICATORS", "JOURNEY", "STRUCTURE"] })
   })
 
   it("Supervisor: aba Equipe, sem PRV na estrutura, sem agrupamento; Gerente+: aba Estrutura com agrupamentos", () => {
@@ -72,8 +72,8 @@ describe("capabilities centralizadas", () => {
     expect(buildIndicatorViewCapabilities("ADMIN", "EMPLOYEE").tabs).toEqual(["FOLLOW_UP", "INDICATORS", "STRUCTURE"])
     expect(buildIndicatorViewCapabilities("ADMIN", "EMPLOYEE", { canManageCalendar: true }).tabs).toEqual(["FOLLOW_UP", "INDICATORS", "CALENDAR", "STRUCTURE"])
     expect(buildIndicatorViewCapabilities("ADMIN", "EMPLOYEE", { hasPendingActions: true }).tabs).toEqual(["FOLLOW_UP", "INDICATORS", "PENDING", "STRUCTURE"])
-    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE").tabs).toEqual(["FOLLOW_UP", "INDICATORS", "STRUCTURE"])
-    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE", { hasPendingActions: true }).tabs).toEqual(["FOLLOW_UP", "INDICATORS", "PENDING", "STRUCTURE"])
+    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE").tabs).toEqual(["FOLLOW_UP", "INDICATORS", "JOURNEY", "STRUCTURE"])
+    expect(buildIndicatorViewCapabilities("OPERATOR", "EMPLOYEE", { hasPendingActions: true }).tabs).toEqual(["FOLLOW_UP", "INDICATORS", "JOURNEY", "PENDING", "STRUCTURE"])
   })
 })
 

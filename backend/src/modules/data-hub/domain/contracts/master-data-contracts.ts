@@ -1,6 +1,7 @@
 import { BRAZILIAN_CAPITALS, capitalLabel, normalizeCapitalCode } from "../../../people/domain/brazilian-capitals.js"
 import { EMPLOYMENT_STATUS_LABELS, normalizeEmploymentStatus } from "../../../people/domain/employment-status.js"
 import { normalizeScheduleExceptionCode, SCHEDULE_EXCEPTION_CODES, SCHEDULE_EXCEPTION_LABELS } from "../../../people/domain/schedule-exception.js"
+import { normalizeScheduleActivityType, SCHEDULE_ACTIVITY_TYPE_LABELS, SCHEDULE_ACTIVITY_TYPES } from "../../../people/domain/schedule-activity.js"
 import { normalizeScheduleType, SCHEDULE_TYPE_LABELS } from "../../../people/domain/work-schedule.js"
 import type { DataContract, DataContractField } from "../data-contract.js"
 
@@ -24,6 +25,11 @@ const capitalDisplay = (value: unknown): string | null => (typeof value === "str
 const exceptionCodeDisplay = (value: unknown): string | null => {
   const code = typeof value === "string" ? normalizeScheduleExceptionCode(value) : null
   return code ? SCHEDULE_EXCEPTION_LABELS[code] : null
+}
+
+const activityTypeDisplay = (value: unknown): string | null => {
+  const type = typeof value === "string" ? normalizeScheduleActivityType(value) : null
+  return type ? SCHEDULE_ACTIVITY_TYPE_LABELS[type] : null
 }
 
 export const OPERATIONAL_CAPITAL_HELP = `Capital brasileira cuja jurisdição de FERIADOS vale para o colaborador (não é endereço, residência nem lotação). Só os códigos do catálogo das 27 capitais (${BRAZILIAN_CAPITALS.map((capital) => capital.code).join(", ")}) ou o nome oficial; abreviações da empresa ("FOR", "CE-FOR") entram por 'Mapear códigos'. A UF é derivada — não envie UF. Ausente = mantém a atual.`
@@ -259,6 +265,54 @@ export const WORK_SCHEDULE_EXCEPTIONS_CONTRACT: DataContract = {
   examples: [
     { externalEmployeeId: "OP-10234", date: "2026-09-16", exceptionCode: "DAY_OFF", reason: "Day off concedido pela supervisão", active: true, sourceUpdatedAt: null, externalExceptionId: "EXC-2026-09-16-10234" },
     { externalEmployeeId: "OP-10234", date: "2026-09-23", exceptionCode: "BANCO_HORAS", reason: "Compensação de horas do sábado 12/09", active: true, sourceUpdatedAt: null, externalExceptionId: "EXC-2026-09-23-10234" },
+  ],
+}
+
+/**
+ * ATIVIDADES ESCALADAS — o que a escala prevê para cada horário do dia: horário de LOGIN para atendimento, PAUSAS programadas e
+ * OUTRAS atividades (treinamento, feedback…). Uma linha por colaborador × data × atividade, com início e fim. Alimenta a "Minha
+ * jornada" do operador. A carga de uma data traz o DIA INTEIRO da pessoa: atividade que ficou de fora de uma carga mais nova daquele
+ * dia é desativada (nunca apagada). Exemplo de origem: `MIS_FAT_ATIVIDADE_ESCALADO` (SNOMAMATRCOMPL, DDTDATA_ESCALADA, SNOATIVIDADE,
+ * SNOINICIO, SNOFIM). Destino: `employee_schedule_activities`.
+ */
+export const WORK_SCHEDULE_ACTIVITIES_CONTRACT: DataContract = {
+  key: "WORK_SCHEDULE_ACTIVITIES",
+  version: 1,
+  label: "Atividades escaladas",
+  description: "Horário de login para atendimento, pausas programadas e outras atividades previstas na escala, por colaborador e data, com início e fim. A carga de uma data traz o dia inteiro da pessoa: atividade que não vier numa carga mais nova daquele dia deixa de valer (fica no histórico, desativada). O tipo (login, pausa, outra) vem do nome da atividade na fonte por 'Mapear códigos' — atividade sem tipo vai para a quarentena, nunca vira pausa por palpite. Exemplo de origem: tabela MIS_FAT_ATIVIDADE_ESCALADO (SNOMAMATRCOMPL, DDTDATA_ESCALADA, SNOATIVIDADE, SNOINICIO, SNOFIM). Destino: `employee_schedule_activities`.",
+  category: "MASTER",
+  targetEntity: "employee_schedule_activities",
+  fields: [
+    { key: "externalEmployeeId", label: "Matrícula / ID externo", type: "STRING", required: true, identity: true, maxLength: 64, description: "Matrícula do colaborador (precisa existir). Ex.: SNOMAMATRCOMPL.", example: "OP-10234" },
+    { key: "scheduleDate", label: "Data", type: "DATE", required: true, description: "Dia da escala a que a atividade pertence (AAAA-MM-DD ou formato configurado no mapeamento). Ex.: DDTDATA_ESCALADA.", example: "2026-11-17" },
+    { key: "activityName", label: "Atividade", type: "STRING", required: true, maxLength: 120, description: "Nome da atividade como a fonte escreve, preservado (é o que o operador lê). Ex.: SNOATIVIDADE.", example: "Pausa NR17" },
+    { key: "activityType", label: "Tipo da atividade", type: "STRING", required: true, maxLength: 40, description: `${SCHEDULE_ACTIVITY_TYPES.map((type) => `${type} (${SCHEDULE_ACTIVITY_TYPE_LABELS[type]})`).join(", ")} — também aceita LOGADO, PAUSA e OUTRA. Quando a fonte só tem o nome da atividade (ex.: SNOATIVIDADE), mapeie a MESMA coluna aqui e use 'Mapear códigos' para dar um tipo a cada nome. Nome sem tipo vai para a quarentena.`, example: "PAUSA" },
+    { key: "startTime", label: "Início", type: "TIME", required: true, description: "HH:mm no fuso da operação. Ex.: SNOINICIO.", example: "10:20" },
+    { key: "endTime", label: "Fim", type: "TIME", required: true, description: "HH:mm no fuso da operação. Fim menor que o início = termina no dia seguinte. Ex.: SNOFIM.", example: "10:30" },
+    { key: "sourceUpdatedAt", label: "Atualizado na fonte em", type: "DATETIME", required: false, description: "Quando a fonte diz que a escala desse dia mudou, se confiável.", example: "2026-11-16T18:00:00-03:00" },
+    { key: "externalActivityId", label: "ID da atividade na fonte", type: "STRING", required: false, maxLength: 64, description: "Identificador do registro no sistema de escala (rastreabilidade).", example: "ATV-2026-11-17-10234-3" },
+  ],
+  naturalKey: ["externalEmployeeId", "scheduleDate", "startTime", "activityName"],
+  dependencies: ["EMPLOYEES"],
+  writeSemantics: "UPSERT",
+  writePolicy: "PARTIAL_ALLOWED",
+  businessTimeField: "scheduleDate",
+  displayNormalizers: { activityType: activityTypeDisplay },
+  validateRecord: (record) => {
+    const errors = []
+    if (typeof record.activityType === "string" && !normalizeScheduleActivityType(record.activityType)) {
+      errors.push({ code: "DATA_INVALID_ENUM" as const, field: "activityType", message: `Tipo de atividade "${record.activityType}" não é reconhecido — use LOGADO, PAUSA ou OUTRA, ou classifique o nome da fonte em 'Mapear códigos'.` })
+    }
+    if (typeof record.startTime === "string" && record.startTime === record.endTime) {
+      errors.push({ code: "DATA_CONTRACT_VIOLATION" as const, field: "endTime", message: "Início e fim da atividade são iguais." })
+    }
+    return errors
+  },
+  examples: [
+    { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Logado", activityType: "LOGADO", startTime: "08:00", endTime: "14:20", sourceUpdatedAt: null, externalActivityId: null },
+    { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Pausa NR17", activityType: "PAUSA", startTime: "10:20", endTime: "10:30", sourceUpdatedAt: null, externalActivityId: null },
+    { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Lanche", activityType: "PAUSA", startTime: "11:40", endTime: "12:00", sourceUpdatedAt: null, externalActivityId: null },
+    { externalEmployeeId: "OP-10234", scheduleDate: "2026-11-17", activityName: "Feedback", activityType: "OUTRA", startTime: "13:00", endTime: "13:20", sourceUpdatedAt: null, externalActivityId: null },
   ],
 }
 

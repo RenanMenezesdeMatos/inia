@@ -44,20 +44,22 @@ import {
   type AlignmentVersion, type ResponsibleOption } from "@/schemas/operational-alignments/operational-alignment.schema"
 
 import { ProcessPicker, type PickedProcess } from "./process-picker"
-import { keepCompatibleScope, subteamsOf, teamsForUniverse } from "./scope-hierarchy"
+import { teamsForUniverse } from "./scope-hierarchy"
+import { MultiOrgScopeField } from "@/components/admin/shared/multi-org-scope-field"
+import { linksLabel, scopeValueAfterUniverseChange, scopeValueFromLinks, type ScopeLinksValue } from "@/lib/scope-links/scope-links"
 
 const NONE = "__none__"
 export const STATE_TONE: Record<AlignmentState, Tone> = { DRAFT: "neutral", SCHEDULED: "info", IN_FORCE: "success", ENDED: "neutral", CANCELLED: "warning" }
 
-export const audienceOf = (version: Pick<AlignmentVersion, "scopeType" | "team" | "subteam" | "product">) => {
-  const scope = version.scopeType === "UNIVERSE" ? "Todo o universo" : version.scopeType === "TEAM" ? `Grupo ${version.team?.name ?? ""}` : `${version.team?.name ?? ""} › ${version.subteam?.name ?? ""}`
+export const audienceOf = (version: Pick<AlignmentVersion, "scopeType" | "links" | "product">) => {
+  const scope = version.scopeType === "UNIVERSE" ? "Todo o universo" : linksLabel(version.links)
   return version.product ? `${scope} · ${version.product.name}` : scope
 }
 export const periodOf = (version: Pick<AlignmentVersion, "startsOn" | "endsOn">) => `${formatCivilDate(version.startsOn)} a ${formatCivilDate(version.endsOn)}`
 
-const EMPTY: AlignmentFormValues = { title: "", guidance: "", affectedDocumentIds: [], reasonId: "", requestSubjectIds: [], affectedTopic: "", justification: "", operatingUniverse: null, scopeType: "TEAM", teamId: null, subteamId: null, productId: null, startsOn: "", endsOn: "", changeReason: null, responsiblePersonId: null }
+const EMPTY: AlignmentFormValues = { title: "", guidance: "", affectedDocumentIds: [], reasonId: "", requestSubjectIds: [], affectedTopic: "", justification: "", operatingUniverse: null, scope: { global: false, groups: [] }, productId: null, startsOn: "", endsOn: "", changeReason: null, responsiblePersonId: null }
 
-const valuesOf = (version: AlignmentVersion): AlignmentFormValues => ({ title: version.title, guidance: version.guidance, affectedDocumentIds: version.processes.map((process) => process.id), reasonId: version.reason?.id ?? "", requestSubjectIds: version.requestReasons.map((reason) => reason.id), affectedTopic: version.affectedTopic ?? "", justification: version.justification, operatingUniverse: version.operatingUniverse, scopeType: version.scopeType, teamId: version.team?.id ?? null, subteamId: version.subteam?.id ?? null, productId: version.product?.id ?? null, startsOn: version.startsOn, endsOn: version.endsOn, changeReason: null, responsiblePersonId: version.responsible?.id ?? null })
+const valuesOf = (version: AlignmentVersion): AlignmentFormValues => ({ title: version.title, guidance: version.guidance, affectedDocumentIds: version.processes.map((process) => process.id), reasonId: version.reason?.id ?? "", requestSubjectIds: version.requestReasons.map((reason) => reason.id), affectedTopic: version.affectedTopic ?? "", justification: version.justification, operatingUniverse: version.operatingUniverse, scope: scopeValueFromLinks(version.links, version.scopeType === "UNIVERSE"), productId: version.product?.id ?? null, startsOn: version.startsOn, endsOn: version.endsOn, changeReason: null, responsiblePersonId: version.responsible?.id ?? null })
 
 function FieldError({ message }: { message: string | undefined }) {
   return message ? <p className="text-xs text-destructive">{message}</p> : null
@@ -90,17 +92,19 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
   const scopeTeams = useMemo(() => scopeOptions.data?.teams ?? [], [scopeOptions.data])
   // Só Grupo/Subgrupo classificado em algum universo (o backend recusa alinhamento para quem ainda não tem universo).
   const allowedTeams = useMemo(() => teamsForUniverse(scopeTeams, values.operatingUniverse).map((team) => ({ ...team, subteams: team.subteams.filter((subteam) => subteam.operatingUniverse !== null) })).filter((team) => team.operatingUniverse !== null || team.subteams.length > 0), [scopeTeams, values.operatingUniverse])
-  const allowedSubteams = subteamsOf(allowedTeams, values.teamId)
+  // Opções do seletor multi-grupo: Grupo inteiro só se administrado; Subgrupos administrados (o backend confere de novo).
+  const teamOptions = useMemo(() => allowedTeams.map((team) => ({ id: team.id, name: team.name, operatingUniverse: team.operatingUniverse, selectable: team.manageable && team.operatingUniverse !== null, subteams: team.subteams.map((subteam) => ({ id: subteam.id, name: subteam.name, operatingUniverse: subteam.operatingUniverse })) })), [allowedTeams])
   const changeUniverse = (universe: AlignmentFormValues["operatingUniverse"]) => {
-    setValues((previous) => ({ ...previous, operatingUniverse: universe, ...keepCompatibleScope(scopeTeams, universe, previous.teamId, previous.subteamId), productId: null }))
+    setValues((previous) => ({ ...previous, operatingUniverse: universe, scope: scopeValueAfterUniverseChange(previous.scope, teamOptions, (unit) => !universe || unit === universe), productId: null }))
     // Processo de outro universo deixa de caber (os ainda sem universo continuam).
     setProcesses((previous) => previous.filter((process) => !universe || !process.operatingUniverse || process.operatingUniverse === universe))
   }
-  const changeTeam = (teamId: string) => {
-    const team = scopeTeams.find((entry) => entry.id === teamId)
+  const changeScope = (scope: ScopeLinksValue) => {
+    const added = scope.groups.find((group) => !values.scope.groups.some((entry) => entry.teamId === group.teamId))
+    const team = added ? scopeTeams.find((entry) => entry.id === added.teamId) : undefined
     // Grupo escolhido antes do universo: o universo vem dele (o nível de cima acompanha o de baixo, nunca o contrário fica incoerente).
-    if (!values.operatingUniverse && team?.operatingUniverse) changeUniverse(team.operatingUniverse)
-    setValues((previous) => ({ ...previous, teamId, subteamId: null }))
+    if (!values.operatingUniverse && team?.operatingUniverse) setValues((previous) => ({ ...previous, operatingUniverse: team.operatingUniverse, scope }))
+    else set("scope", scope)
   }
   const allowedProducts = (products.data ?? []).filter((node) => node.kind === "PRODUCT" && node.active && (!values.operatingUniverse || node.operatingUniverse === null || node.operatingUniverse === values.operatingUniverse))
 
@@ -202,37 +206,19 @@ export function AlignmentForm({ editing, onSaved, onCancel }: { editing: Alignme
                 <UniverseSelect id="alignment-universe" value={values.operatingUniverse} onChange={changeUniverse} />
                 <FieldError message={errors.operatingUniverse} />
               </div>
-              <div className="grid content-start gap-1.5">
-                <Label htmlFor="alignment-scope">Público</Label>
-                <Select value={values.scopeType} onValueChange={(scopeType) => setValues((previous) => ({ ...previous, scopeType: scopeType as AlignmentFormValues["scopeType"], subteamId: scopeType === "SUBTEAM" ? previous.subteamId : null }))}>
-                  <SelectTrigger id="alignment-scope" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {scopeOptions.data?.universe ? <SelectItem value="UNIVERSE">Todo o universo</SelectItem> : null}
-                    <SelectItem value="TEAM">Um Grupo</SelectItem>
-                    <SelectItem value="SUBTEAM">Um Subgrupo</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid content-start gap-1.5 sm:col-span-2 xl:col-span-1 2xl:col-span-2" data-testid="alignment-scope">
+                <MultiOrgScopeField
+                  teams={teamOptions}
+                  value={values.scope}
+                  onChange={changeScope}
+                  allowGlobal={Boolean(scopeOptions.data?.universe) || values.scope.global}
+                  globalLabel={values.operatingUniverse ? `Todo o universo ${values.operatingUniverse}` : "Todo o universo"}
+                  universe={values.operatingUniverse}
+                  label="Público"
+                  hint="O mesmo alinhamento pode valer para vários Grupos — inteiros ou só alguns Subgrupos de cada um. Onde dois alinhamentos do mesmo ponto se cruzam, prevalece o recorte mais específico para cada pessoa."
+                />
+                <FieldError message={errors.scope} />
               </div>
-              {values.scopeType !== "UNIVERSE" ? (
-                <div className="grid content-start gap-1.5">
-                  <Label htmlFor="alignment-team">Grupo</Label>
-                  <Select value={values.teamId ?? ""} onValueChange={changeTeam}>
-                    <SelectTrigger id="alignment-team" className="w-full"><SelectValue placeholder="Escolha o Grupo" /></SelectTrigger>
-                    <SelectContent>{allowedTeams.map((team) => <SelectItem key={team.id} value={team.id} disabled={!team.manageable && values.scopeType === "TEAM"}>{team.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FieldError message={errors.teamId} />
-                </div>
-              ) : null}
-              {values.scopeType === "SUBTEAM" ? (
-                <div className="grid content-start gap-1.5">
-                  <Label htmlFor="alignment-subteam">Subgrupo</Label>
-                  <Select value={values.subteamId ?? ""} onValueChange={(subteamId) => set("subteamId", subteamId)}>
-                    <SelectTrigger id="alignment-subteam" className="w-full"><SelectValue placeholder="Escolha o Subgrupo" /></SelectTrigger>
-                    <SelectContent>{allowedSubteams.map((subteam) => <SelectItem key={subteam.id} value={subteam.id}>{subteam.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FieldError message={errors.subteamId} />
-                </div>
-              ) : null}
               <div className="grid content-start gap-1.5">
                 <Label htmlFor="alignment-period">Vigência</Label>
                 <DateRangePicker id="alignment-period" className="w-full" value={{ from: values.startsOn || undefined, to: values.endsOn || undefined }} onChange={(range) => setValues((previous) => ({ ...previous, startsOn: range.from ?? "", endsOn: range.to ?? "" }))} presets={false} placeholder="Início e término" />
@@ -402,7 +388,7 @@ function PublishConfirm({ detail, onClose }: { detail: AlignmentDetail; onClose:
                 <div className="font-medium">{overlap.version.title} <span className="text-muted-foreground">({overlap.version.reference} · {audienceOf(overlap.version)} · {periodOf(overlap.version)})</span></div>
                 {overlap.sharedProcesses.length > 0 ? <div className="text-xs text-muted-foreground">Em comum: {overlap.sharedProcesses.map((process) => process.title).join(", ")}</div> : null}
                 <RadioGroup value={relations[overlap.alignmentId] ?? ""} onValueChange={(value) => setRelations((previous) => ({ ...previous, [overlap.alignmentId]: value as AlignmentRelation }))}>
-                  <div className="flex items-center gap-2"><RadioGroupItem id={`same-${overlap.alignmentId}`} value="SAME_TOPIC" /><Label htmlFor={`same-${overlap.alignmentId}`}>Mesmo ponto {overlap.sameScopeLevel ? "(mesmo recorte: conflito, não publica)" : overlap.moreSpecific === "THIS" ? "(este, mais específico, prevalece)" : "(o outro, mais específico, prevalece)"}</Label></div>
+                  <div className="flex items-center gap-2"><RadioGroupItem id={`same-${overlap.alignmentId}`} value="SAME_TOPIC" /><Label htmlFor={`same-${overlap.alignmentId}`}>Mesmo ponto {overlap.sameScopeLevel ? "(mesmo recorte para as mesmas pessoas: conflito, não publica)" : overlap.moreSpecific === "THIS" ? "(este, mais específico, prevalece)" : overlap.moreSpecific === "OTHER" ? "(o outro, mais específico, prevalece)" : overlap.moreSpecific === "MIXED" ? "(depende do Subgrupo: em cada um prevalece o recorte mais específico)" : "(os dois valem; para o produto indicado, o específico prevalece)"}</Label></div>
                   <div className="flex items-center gap-2"><RadioGroupItem id={`independent-${overlap.alignmentId}`} value="INDEPENDENT" /><Label htmlFor={`independent-${overlap.alignmentId}`}>Pontos diferentes (os dois valem)</Label></div>
                 </RadioGroup>
               </div>

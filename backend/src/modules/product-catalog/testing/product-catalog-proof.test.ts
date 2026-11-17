@@ -129,7 +129,7 @@ describe.skipIf(!ENABLED)("Produtos e aplicabilidade — prova Postgres (cadastr
     const secondScope = (await org.get(`${base}/sources/KNOWLEDGE_DOCUMENT/${documentId}/scope`)).body.data
     expect(secondScope.history.map((entry: { nodeIds: string[]; effectiveUntil: string | null }) => [entry.nodeIds, entry.effectiveUntil === null])).toEqual([[[product.id], true], [[family.id], false]])
     // Argumentário continua com a regra própria: vale a partir de agora, sem rascunho.
-    const scriptId = (await client.query<{ id: string }>("insert into argument_scripts (organization_id, name, scope_type) values ($1, $2, 'ALL_TEAMS') returning id", [ORG, `Argumentário de prova ${suffix}`])).rows[0]!.id
+    const scriptId = (await client.query<{ id: string }>("insert into argument_scripts (organization_id, name) values ($1, $2) returning id", [ORG, `Argumentário de prova ${suffix}`])).rows[0]!.id
     const scriptScope = (await org.put(`${base}/sources/ARGUMENT_SCRIPT/${scriptId}/scope`).send({ nodeIds: [product.id] })).body.data
     expect(scriptScope.pending).toBeNull()
     expect(scriptScope.history.map((entry: { nodeIds: string[]; effectiveUntil: string | null }) => [entry.nodeIds, entry.effectiveUntil === null])).toEqual([[[product.id], true]])

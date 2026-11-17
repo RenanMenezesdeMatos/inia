@@ -62,7 +62,7 @@ describe("GET /analytics — autenticação e escopo via API", () => {
   it("Operador só recebe a própria visão EMPLOYEE; a aba de estrutura não existe pra ele", async () => {
     const app = appAs(user(IDS.op1, "OPERATOR"))
     const context = await request(app).get("/analytics/context")
-    expect(context.body.data.capabilities).toMatchObject({ mode: "EMPLOYEE", canSeePrv: true, tabs: ["FOLLOW_UP", "INDICATORS", "STRUCTURE"] })
+    expect(context.body.data.capabilities).toMatchObject({ mode: "EMPLOYEE", canSeePrv: true, tabs: ["FOLLOW_UP", "INDICATORS", "JOURNEY", "STRUCTURE"] })
     const own = await request(app).get("/analytics/indicators?period=2026-09")
     expect(own.status).toBe(200)
     expect(own.body.data.prv.achievementPercent).toBe(105)

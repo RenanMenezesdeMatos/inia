@@ -1,15 +1,27 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const DOC = "44444444-4444-4444-8444-444444444444"
 vi.mock("../../knowledge/application/retrieve-knowledge.js", () => ({
   retrieveKnowledgeForAgent: async () => ({ trace: { mode: "RETRIEVED", authorizedDocuments: [{ id: DOC, title: "PR — Envio de fatura", chars: 100, versionId: "kv", version: 3 }], retrieved: [], injectedChars: 0 }, promptBlock: "### PR — Envio de fatura\nEnviar a fatura ao cliente pelo e-mail cadastrado quando ele solicitar." }),
 }))
 
+// Quem escolhe o comunicado é a IA (`PUBLICATION_RELEVANCE_V1`); aqui, um modelo falso no lugar do gateway (nunca chamada real).
+vi.mock("../../communications/application/publication-relevance-model.js", async () => {
+  const { fakePublicationRelevanceModel } = await import("../../communications/testing/fake-publication-relevance-model.js")
+  return { gatewayPublicationRelevanceModel: fakePublicationRelevanceModel([{ whenQuestionIncludes: "segunda via", titleIncludes: "segunda via" }]), PUBLICATION_RELEVANCE_TIMEOUT_MS: 1 }
+})
+
 import { buildSystemPromptWithTrace } from "./build-system-prompt.js"
+import { clearConversationPublicationsMemo } from "../../communications/infrastructure/conversation-publications.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 
+beforeEach(() => {
+  vi.stubEnv("INIA_PUBLICATION_RELEVANCE", "ON")
+  clearConversationPublicationsMemo()
+})
+
 /**
- * COMUNICADOS NO CHAT (`COMMUNICATION_CONVERSATION_V2`) — exemplo da fatura: o PR manda enviar a fatura; o alinhamento da Ouvidoria
+ * COMUNICADOS NO CHAT (`COMMUNICATION_CONVERSATION_V4`) — exemplo da fatura: o PR manda enviar a fatura; o alinhamento da Ouvidoria
  * (10/11 a 30/11) manda orientar o App Meu Vivo ou o site; um comunicado explica onde fica a segunda via no app. O comunicado
  * relacionado entra DEPOIS do alinhamento e ANTES das restrições, com autoria, cargo, data e link; o não relacionado não entra; sem
  * pessoa ou fora da conversa, nada entra. Quem escolhe os candidatos é o fragmento único de visibilidade (rascunho, agendado,

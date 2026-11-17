@@ -1,3 +1,4 @@
+import { alignmentLinksSql } from "../../operational-alignments/infrastructure/operational-alignment-loaders.js"
 import type { Database } from "../../../infrastructure/database/pool.js"
 import { getManageableScopes, type ManageableScopes } from "../../auth/application/manageable-scopes.js"
 import { alignmentReferenceOf } from "../../operational-alignments/domain/operational-alignment.js"
@@ -27,7 +28,7 @@ export type AlignmentsSummary = {
   withoutRequestReason: number
 }
 
-type Row = { alignment_id: string; version: number; title: string; operating_universe: string; scope_type: string; team_id: string | null; team_name: string | null; subteam_name: string | null; reason_name: string | null; subjects: string[] | null; processes: { id: string; title: string }[] | null; starts_on: string; ends_on: string; effective_from: Date; in_force_now: boolean }
+type Row = { alignment_id: string; version: number; title: string; operating_universe: string; scope_type: string; links: { teamId: string; teamName: string | null; subteamId: string | null; subteamName: string | null }[] | null; reason_name: string | null; subjects: string[] | null; processes: { id: string; title: string }[] | null; starts_on: string; ends_on: string; effective_from: Date; in_force_now: boolean }
 
 const TOP = 10
 const ranked = (counts: Map<string, { label: string; count: number }>, base: number): Ranked[] =>
@@ -42,23 +43,27 @@ const bump = (counts: Map<string, { label: string; count: number }>, key: string
 function visibility(scopes: ManageableScopes, alias: string, params: unknown[]): string {
   if (scopes.unrestricted || scopes.allTeams) return "true"
   params.push([...scopes.teamIds], [...scopes.subteamIds])
-  return `((${alias}.scope_type = 'TEAM' and ${alias}.team_id = any($${params.length - 1}::uuid[])) or (${alias}.scope_type = 'SUBTEAM' and ${alias}.subteam_id = any($${params.length}::uuid[])))`
+  // Mesma regra da lista (223): GROUPS com vínculos e TODOS eles no alcance; universo inteiro só com alcance da organização.
+  const teams = `$${params.length - 1}::uuid[]`
+  const subteams = `$${params.length}::uuid[]`
+  return `(${alias}.scope_type = 'GROUPS' and exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id)
+    and not exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and not ((l.subteam_id is null and l.team_id = any(${teams})) or l.subteam_id = any(${subteams}))))`
 }
 
 function audienceFilter(query: SuccessQuery, alias: string, params: unknown[]): string {
   if (query.subteamId) {
     params.push(query.subteamId)
-    return `${alias}.subteam_id = $${params.length}::uuid`
+    return `exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and l.subteam_id = $${params.length}::uuid)`
   }
   if (query.teamId) {
     params.push(query.teamId)
-    return `${alias}.team_id = $${params.length}::uuid`
+    return `exists (select 1 from operational_alignment_version_scopes l where l.version_id = ${alias}.id and l.team_id = $${params.length}::uuid)`
   }
   return "true"
 }
 
-const audienceLabel = (row: Pick<Row, "scope_type" | "team_name" | "subteam_name" | "operating_universe">) =>
-  row.scope_type === "UNIVERSE" ? `Todo o universo ${row.operating_universe}` : row.scope_type === "SUBTEAM" ? `${row.team_name ?? "—"} › ${row.subteam_name ?? "—"}` : (row.team_name ?? "—")
+const audienceLabel = (row: Pick<Row, "scope_type" | "links" | "operating_universe">) =>
+  row.scope_type === "UNIVERSE" ? `Todo o universo ${row.operating_universe}` : (row.links ?? []).map((link) => (link.subteamId ? `${link.teamName ?? "—"} › ${link.subteamName ?? "—"}` : (link.teamName ?? "—"))).join("; ") || "—"
 
 export async function alignmentsSummary(db: Queryable, viewer: SuccessViewer, query: SuccessQuery): Promise<AlignmentsSummary> {
   const scopes = await getManageableScopes(db as Database, { organizationId: viewer.organizationId, sub: viewer.accountId ?? "" }, "operational_alignments.manage")
@@ -78,15 +83,13 @@ export async function alignmentsSummary(db: Queryable, viewer: SuccessViewer, qu
          and ${vis} and ${audience}
        order by v.alignment_id, v.version desc
      )
-     select v.alignment_id, v.version, v.title, v.operating_universe, v.scope_type, v.team_id, t.name team_name, st.name subteam_name, r.name reason_name,
+     select v.alignment_id, v.version, v.title, v.operating_universe, v.scope_type, ${alignmentLinksSql("v")} links, r.name reason_name,
             (select array_agg(sd.name order by sd.name) from operational_alignment_version_subjects vs join interaction_subject_definitions sd on sd.id = vs.subject_id where vs.version_id = v.id) subjects,
             (select json_agg(json_build_object('id', kd.id, 'title', kd.title)) from operational_alignment_version_documents vd join knowledge_documents kd on kd.id = vd.document_id where vd.version_id = v.id) processes,
             v.starts_on::text starts_on, v.ends_on::text ends_on, v.effective_from,
             (v.effective_from <= now() and v.effective_until > now()) in_force_now,
             (v.effective_from < b.ends and v.effective_until > b.starts) in_period
      from latest v cross join bounds b
-     left join teams t on t.id = v.team_id
-     left join subteams st on st.id = v.subteam_id
      left join operational_alignment_reasons r on r.id = v.reason_id`,
     params,
   )).rows as (Row & { in_period: boolean })[]
@@ -98,7 +101,9 @@ export async function alignmentsSummary(db: Queryable, viewer: SuccessViewer, qu
   let withoutReason = 0
   let withoutRequestReason = 0
   for (const row of inPeriod) {
-    bump(byArea, row.scope_type === "UNIVERSE" ? `UNIVERSE:${row.operating_universe}` : row.team_id ?? "—", row.scope_type === "UNIVERSE" ? `Todo o universo ${row.operating_universe}` : row.team_name ?? "—")
+    // Por área: um alinhamento de vários Grupos conta uma vez em CADA Grupo que alcança (Subgrupo conta no Grupo dele), nunca duas no mesmo.
+    if (row.scope_type === "UNIVERSE") bump(byArea, `UNIVERSE:${row.operating_universe}`, `Todo o universo ${row.operating_universe}`)
+    else for (const [teamId, teamName] of new Map((row.links ?? []).map((link) => [link.teamId, link.teamName ?? "—"]))) bump(byArea, teamId, teamName)
     if (row.reason_name) bump(byReason, row.reason_name, row.reason_name)
     else withoutReason += 1
     if ((row.subjects ?? []).length === 0) withoutRequestReason += 1

@@ -27,7 +27,7 @@ import { WhereToActCard } from "@/components/leadership/where-to-act-card"
 import { PublishButton } from "@/components/publications/publish-button"
 // Abas fora da entrada (Indicadores, Equipe, Calendário, Estrutura) chegam sob demanda; o Acompanhamento — aba de entrada, com o
 // avatar — continua importado direto.
-import { IndicatorsView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
+import { IndicatorsView, MyJourneyView, PersonStructureView, TeamCalendarView, TeamView } from "./profile-tab-views"
 import { ProfileTabsList, profileTabsFor } from "./profile-tabs"
 import { AnjoWorkspace } from "@/components/human-support/anjo/anjo-workspace"
 import { useAnjoWorkspace } from "@/queries/human-support/anjo-workspace-provider"
@@ -134,6 +134,12 @@ function ProfileWorkspaceContent({ profile: baseProfile, initialMyProfile, initi
               {context.capabilities.tabs.includes("PEOPLE") ? (
                 <TabsContent value="people" className="mt-4 pb-8">
                   {context.defaultSubject ? <TeamView context={context} state={{ subject: state.subject, period: state.period, situation: state.situation, attention: state.attention }} onStateChange={update} employeeHref={(personId) => employeeProfileHref(personId, "indicators")} /> : <NoStructureState />}
+                </TabsContent>
+              ) : null}
+              {context.capabilities.tabs.includes("JOURNEY") ? (
+                <TabsContent value="journey" className="mt-4 pb-8">
+                  {/* Só monta quando ativa: a consulta da escala não dispara ao abrir o perfil. */}
+                  {activeTab === "journey" ? <MyJourneyView /> : null}
                 </TabsContent>
               ) : null}
               {context.capabilities.tabs.includes("CALENDAR") ? (

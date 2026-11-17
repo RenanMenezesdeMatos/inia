@@ -111,6 +111,7 @@ const DATA_MAP_RELATIONS: Record<string, DataMapRelation> = {
   WORK_SCHEDULES: { kind: "COMPLEMENTED_BY", contractKey: "WORK_SCHEDULE_DAYS", note: "Jornada e regime (5x2/6x1) com vigência — metadata. Quem diz se a pessoa trabalha em cada data é Escalas de trabalho." },
   WORK_SCHEDULE_DAYS: { kind: "COMPLEMENTS", contractKey: "WORK_SCHEDULES", note: "Calendário programado por dia (trabalha/folga): a evidência da elegibilidade operacional junto com a situação funcional. Ausência de linha não é folga; a folga normal do 6x1 chega aqui." },
   WORK_SCHEDULE_EXCEPTIONS: { kind: "COMPLEMENTS", contractKey: "WORK_SCHEDULE_DAYS", note: "Exceções individuais (banco de horas, day off, folga extraordinária): vencem a escala naquele dia sem reescrever o calendário programado. Medição do dia fica preservada e fora do cálculo." },
+  WORK_SCHEDULE_ACTIVITIES: { kind: "COMPLEMENTS", contractKey: "WORK_SCHEDULE_DAYS", note: "Detalha o dia de trabalho da escala: horário de login, pausas programadas e outras atividades, com início e fim. Alimenta a \"Minha jornada\" do operador; não muda elegibilidade nem cálculo." },
 }
 
 export type DataMapEntry = {
@@ -287,6 +288,7 @@ const ENTITY_COUNT_SQL: Record<string, string> = {
   employee_status_periods: "select count(*)::int c from employee_status_periods p join people pe on pe.id = p.person_id where pe.organization_id = $1",
   employee_schedule_days: "select count(*)::int c from employee_schedule_days where organization_id = $1",
   employee_schedule_exceptions: "select count(*)::int c from employee_schedule_exceptions where organization_id = $1",
+  employee_schedule_activities: "select count(*)::int c from employee_schedule_activities where organization_id = $1 and active",
   goals: "select count(*)::int c from goals where organization_id = $1",
   indicator_measurements: "select count(*)::int c from indicator_measurements where organization_id = $1",
   employee_indicator_performance: "select count(*)::int c from employee_indicator_performance where organization_id = $1",

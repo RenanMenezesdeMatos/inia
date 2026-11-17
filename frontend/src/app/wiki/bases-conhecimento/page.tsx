@@ -73,7 +73,7 @@ export default function KnowledgeBasesPage() {
             { title: "Abra Admin › Base de conhecimento e clique em “Nova base”", detail: "Também disponível no atalho da sidebar." },
             { title: "Título e Tipo de documento", detail: <>Informe o <strong>Título</strong> (é o nome exato que a IA cita como evidência) e escolha o <strong>Tipo de documento</strong>: {Object.values(DOCUMENT_TYPE_LABELS).join(", ")}.</> },
             { title: "Conteúdo: Colar texto ou Enviar arquivo", detail: <>Na aba <strong>Colar texto</strong>, cole o procedimento, manual, FAQ ou fluxo — títulos com <code>#</code>, listas, negrito e tabelas são exibidos formatados e os títulos definem as seções do retrieval. Na aba <strong>Enviar arquivo</strong>, envie PDF, DOCX, TXT ou JSON — o texto é extraído (na edição aparece como “Texto extraído do arquivo”).</> },
-            { title: "Alcance por grupo e Alcance por assunto", detail: "Defina em quais Grupos/Subgrupos a base vale (entra pré-selecionada nos Agents daquele grupo) e, opcionalmente, o Assunto." },
+            { title: "Alcance por grupo e Alcance por assunto", detail: <>Escolha “Todos os grupos” ou os Grupos em que a base vale — vários, cada um inteiro ou só alguns Subgrupos — e confira o resumo “Vale para” (a base entra pré-selecionada nos Agents de cada Grupo do alcance). Opcionalmente, o Assunto. Ver <WikiLink href="/wiki/administracao/alcance-por-grupos">Alcance por vários Grupos</WikiLink>.</> },
             { title: "Salvar", detail: "A base nasce como Rascunho (V1). A página mostra “Em uso pela IA: nenhuma versão pronta”." },
             { title: "Publicar", detail: <>Na página da base, clique em <strong>Publicar</strong> na linha do rascunho. A versão passa pelo processamento e só entra em uso quando fica pronta. Para tirar de circulação, <strong>Arquivar</strong>. Ver <WikiLink href="/wiki/bases-conhecimento#status">Em uso, rascunho e atualização</WikiLink>.</> },
             { title: "Vincular a um Agent", detail: <>Em <strong>Admin › Agentes</strong>, abra o Agent do domínio e mova a base para “Selecionadas” em <strong>Bases de conhecimento consultadas</strong>. Ver <WikiLink href="/wiki/agents#como-criar">Como criar um Agent</WikiLink>.</> },
@@ -87,7 +87,7 @@ export default function KnowledgeBasesPage() {
         <FieldRow label="Conteúdo" value="Texto colado (formatação leve) ou texto extraído de PDF/DOCX/TXT/JSON. Na edição, fica no rascunho até ele ser publicado e ficar pronto." />
         <FieldRow label="Arquivo do rascunho (edição)" value="“Trocar arquivo” envia outro PDF/DOCX/TXT/JSON para o rascunho, e o texto passa a ser o extraído dele; a versão anterior continua com o arquivo dela. Se não der para extrair o texto, a tela avisa: dá para digitar o texto, e publicar sem texto falha no processamento, sem tirar do ar a versão em uso." />
         <FieldRow label="Resumo da alteração (edição e Publicar)" value="Opcional. O que mudou e por quê, mostrado no histórico de versões." />
-        <FieldRow label="Alcance por grupo" value="Todos os grupos, Grupo ou Subgrupo — governa a pré-seleção nos Agents e o escopo administrativo." />
+        <FieldRow label="Alcance por grupo" value={<>“Todos os grupos” ou uma lista de Grupos: para cada um, “Grupo inteiro” (inclusive Subgrupos criados depois) ou “Só alguns Subgrupos”. O resumo “Vale para” aparece antes de salvar. Exemplo: Grupo A inteiro e só o Subgrupo B1 do Grupo B — quem está em A ou em B1 usa a base; B2 e o Grupo C não. Governa quem lê a base, a pré-seleção nos Agents e quem a administra: alterar exige administrar todos os Grupos do alcance; quem administra só parte deles vê a base sem alterar. Na edição, incluir ou tirar um Grupo vale quando o rascunho for publicado. Ver <WikiLink href="/wiki/administracao/alcance-por-grupos">Alcance por vários Grupos</WikiLink>.</>} />
         <FieldRow label="Alcance por assunto" value="Assunto opcional, para organizar o catálogo." />
         <FieldRow label="Vale para (produtos)" value="Todos os produtos ou só alguns. Faz parte da versão: fica no rascunho e só vale quando a versão entrar em uso, sem mudar nada antes disso. Mudar exige alcance de organização, para salvar e para publicar. Chamadas já analisadas continuam com o que valia na época." />
         <FieldRow label="Status" value="Não é um campo: vem do ciclo de vida da versão. O formulário de edição não tem seletor de status." />
@@ -182,6 +182,11 @@ export default function KnowledgeBasesPage() {
           Agentes. <strong className="font-medium text-foreground">Conteúdo do prompt</strong> é o que entra numa request específica: só os trechos
           pertinentes àquela transcrição/pergunta. Ao salvar um Agent, o backend recusa ids de base inexistentes ou excluídos — nunca confia no id
           enviado pelo frontend. Orchestrators não têm base própria: quem consulta são os especialistas.
+        </p>
+        <p>
+          O alcance por grupo e o vínculo com o Agent são coisas separadas. Pôr a base em mais um Grupo não a liga a nenhum Agent — o vínculo
+          continua sendo feito aqui, Agent por Agent. Uma base com alcance em um Subgrupo conta para o Agent do Grupo daquele Subgrupo, e tirar um
+          Grupo do alcance tira a base da busca dos Agents daquele Grupo já na consulta seguinte.
         </p>
       </WikiSection>
 
@@ -301,7 +306,7 @@ export default function KnowledgeBasesPage() {
           exibir o material (Acompanhamento e feed da estrutura também).
         </p>
         <FieldRow label="Página do material" value="Cada base publicada tem uma página de leitura para quem pode acessá-la (o mesmo documento que o Admin mantém em Base de conhecimento, sem ações de edição): texto formatado, PDF, DOCX ou texto do arquivo, com download do original." />
-        <FieldRow label="Quem pode abrir" value="O alcance da base decide: “Todos os grupos” abre para a organização inteira; Grupo/Subgrupo abre para quem está neles e para a gestão que lidera alguém deles. Rascunho, Arquivado, base excluída ou sem alcance cadastrado não abrem para ninguém além de quem administra bases (papel com “Administrar bases de conhecimento” no escopo da base; base sem alcance, só na organização inteira) — e nunca viram link num feedback." />
+        <FieldRow label="Quem pode abrir" value="O alcance da base decide: “Todos os grupos” abre para a organização inteira; com Grupos, abre para quem está em algum Grupo inteiro ou Subgrupo do alcance e para a gestão que lidera alguém deles. Rascunho, Arquivado, base excluída ou sem alcance cadastrado não abrem para ninguém além de quem administra bases (papel com “Administrar bases de conhecimento” no escopo da base; base sem alcance, só na organização inteira) — e nunca viram link num feedback." />
         <FieldRow label="Arquivar depois" value="O feedback histórico continua íntegro; a recomendação passa a aparecer como “não está mais disponível”, sem título e sem link." />
       </WikiSection>
 
@@ -535,6 +540,7 @@ export default function KnowledgeBasesPage() {
         <SeeAlso
           links={[
             { href: "/wiki/agents", label: "Agents", hint: "quem consulta a base" },
+            { href: "/wiki/administracao/alcance-por-grupos", label: "Alcance por vários Grupos", hint: "Grupo inteiro ou só alguns Subgrupos" },
             { href: "/wiki/qa-lab#knowledge-trace", label: "Rastro de conhecimento no QA Lab", hint: "bases autorizadas × trechos recuperados" },
             { href: "/wiki/casos-praticos#guia-kb", label: "Guia: vincular uma Base de Conhecimento" },
             { href: "/wiki/casos-praticos#guia-auditoria", label: "Guia: auditar uma chamada contra um processo" },

@@ -354,7 +354,7 @@ export function validateMapping(contract: DataContract, mapping: FeedMapping): s
 // Sugestão automática (determinística, por nome — o usuário confirma)
 // ---------------------------------------------------------------------------------------------
 const SYNONYMS: Record<string, string[]> = {
-  externalEmployeeId: ["matricula", "matriculacolaborador", "idcolaborador", "employeeid", "idfuncionario", "funcionario", "operador", "idoperador", "colaboradorid", "login", "re"],
+  externalEmployeeId: ["matricula", "matriculacolaborador", "idcolaborador", "employeeid", "idfuncionario", "funcionario", "operador", "idoperador", "colaboradorid", "login", "re", "snomamatrcompl"],
   name: ["nome", "nomecolaborador", "nomecompleto", "colaborador", "fullname"],
   role: ["nivel", "nivelhierarquico", "papel", "perfil", "funcao", "cargo_plataforma", "platformrole"],
   jobTitle: ["cargo", "titulo", "jobtitle", "posicao"],
@@ -366,7 +366,11 @@ const SYNONYMS: Record<string, string[]> = {
   email: ["email", "emailacesso", "usuario"],
   externalCode: ["codigo", "cod", "code", "id", "externalcode"],
   operationName: ["operacao", "operation"],
-  startTime: ["entrada", "horaentrada", "inicio", "horainicio", "starttime"],
+  startTime: ["entrada", "horaentrada", "inicio", "horainicio", "starttime", "snoinicio"],
+  endTime: ["fim", "horafim", "termino", "endtime", "snofim"],
+  scheduleDate: ["data", "dataescala", "dataescalada", "ddtdataescalada"],
+  activityName: ["atividade", "nomeatividade", "atividadeescalada", "snoatividade", "activity"],
+  activityType: ["tipodaatividade", "tipoatividade", "activitytype"],
   workMinutes: ["cargahoraria", "minutos", "jornada", "workminutes", "cargaminutos"],
   effectiveFrom: ["vigenciainicio", "iniciovigencia", "effectivefrom", "de"],
   effectiveTo: ["vigenciafim", "fimvigencia", "effectiveto", "ate"],

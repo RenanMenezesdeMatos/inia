@@ -221,6 +221,20 @@ const STATE_STYLE: Record<ResolvedWorkdayState, { label: string; className: stri
   BEFORE_HIRE: { label: "—", className: "text-muted-foreground" },
 }
 
+/**
+ * SÓ A ESCALA QUE O CLIENTE ENVIOU (decisão de 17/11/2026, fim do 6x1): dia sem escala explícita da fonte — fallback seg–sex ou
+ * regime sem calendário — aparece como "Sem escala", nunca "Trabalha"/"Folga" por suposição. É só EXIBIÇÃO: o cálculo (elegibilidade,
+ * pendência "Sem produção", aguardando dados) continua no resolvedor do backend, e esses estados seguem aparecendo como são.
+ * Exceção, situação funcional e feriado da organização são fatos registrados e continuam com o próprio rótulo.
+ */
+export function isUnpublishedScheduleDay(day: TeamCalendarDay): boolean {
+  if (day.plannedBasis === "EXPLICIT_SCHEDULE" || day.exception || day.holiday) return false
+  return day.state === "PLANNED_WORK" || day.state === "PLANNED_NON_WORKING" || day.state === "INDETERMINATE"
+}
+
+const UNPUBLISHED_STYLE = { label: "Sem escala", className: "bg-muted/40 text-muted-foreground border border-dashed border-border" }
+const UNPUBLISHED_LABEL = "Sem escala publicada"
+
 const REASON_LABELS: Record<JustifiedAbsenceReason, string> = { ATESTADO: "Atestado", DAY_OFF: "Day off", BANCO_HORAS: "Banco de horas", FOLGA_EXTRAORDINARIA: "Folga extraordinária", OTHER_JUSTIFIED: "Outro motivo" }
 
 function formatExpected(iso: string | null): string {
@@ -237,6 +251,7 @@ function waitingDetail(day: TeamCalendarDay): string {
 }
 
 function cellLabel(day: TeamCalendarDay): string {
+  if (isUnpublishedScheduleDay(day)) return UNPUBLISHED_STYLE.label
   if (day.state === "NON_ELIGIBLE_EMPLOYMENT_STATUS" && day.status) return day.status.label
   if (day.state === "PLANNED_NON_WORKING" && day.exception) return day.exception.label
   if (day.state === "PLANNED_NON_WORKING" && day.holiday) return "Feriado"
@@ -253,7 +268,8 @@ function cellSublabel(day: TeamCalendarDay): string | null {
 }
 
 function DayCell({ day, onClick }: { day: TeamCalendarDay; onClick: () => void }) {
-  const style = STATE_STYLE[day.state]
+  const unpublished = isUnpublishedScheduleDay(day)
+  const style = unpublished ? UNPUBLISHED_STYLE : STATE_STYLE[day.state]
   const pending = day.reconciliation?.kind === "MISSING_EXPECTED_PRODUCTION" && day.reconciliation.status === "OPEN"
   return (
     <button
@@ -261,7 +277,8 @@ function DayCell({ day, onClick }: { day: TeamCalendarDay; onClick: () => void }
       onClick={onClick}
       data-testid={`calendar-day-${day.state}`}
       data-date={day.date}
-      title={`${formatCivilDate(day.date)} · ${day.stateLabel}`}
+      data-unpublished={unpublished || undefined}
+      title={`${formatCivilDate(day.date)} · ${unpublished ? UNPUBLISHED_LABEL : day.stateLabel}`}
       className={cn("flex w-full min-w-16 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[11px] leading-tight transition hover:ring-2 hover:ring-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60", style.className)}
     >
       <span className="font-medium">{cellLabel(day)}</span>
@@ -278,12 +295,16 @@ function DayCell({ day, onClick }: { day: TeamCalendarDay; onClick: () => void }
 function Legend() {
   return (
     <ul className="flex flex-wrap gap-2 text-xs text-muted-foreground" aria-label="Legenda">
-      {(["WORKED_OBSERVED", "PLANNED_WORK", "WAITING_FOR_SOURCES", "DATA_SOURCE_DELAY", "MISSING_EXPECTED_PRODUCTION", "CLASSIFIED_UNJUSTIFIED_ABSENCE", "CLASSIFIED_JUSTIFIED_ABSENCE", "CLASSIFIED_WORKED_DATA_MISSING", "PLANNED_NON_WORKING", "NON_ELIGIBLE_EMPLOYMENT_STATUS", "INDETERMINATE"] as const).map((state) => (
+      {(["WORKED_OBSERVED", "PLANNED_WORK", "WAITING_FOR_SOURCES", "DATA_SOURCE_DELAY", "MISSING_EXPECTED_PRODUCTION", "CLASSIFIED_UNJUSTIFIED_ABSENCE", "CLASSIFIED_JUSTIFIED_ABSENCE", "CLASSIFIED_WORKED_DATA_MISSING", "PLANNED_NON_WORKING", "NON_ELIGIBLE_EMPLOYMENT_STATUS"] as const).map((state) => (
         <li key={state} className="flex items-center gap-1.5">
           <span className={cn("inline-block h-3 w-5 rounded", STATE_STYLE[state].className)} aria-hidden />
-          {state === "PLANNED_NON_WORKING" ? "Folga / day off / banco / atestado / feriado" : state === "NON_ELIGIBLE_EMPLOYMENT_STATUS" ? "Férias / INSS / outras situações" : state === "INDETERMINATE" ? "Escala 6x1 sem calendário" : state === "WAITING_FOR_SOURCES" ? "Aguardando dados (D-1/D-2) ou RH" : state === "CLASSIFIED_JUSTIFIED_ABSENCE" ? "Ausência justificada (classificada)" : STATE_STYLE[state].label}
+          {state === "PLANNED_NON_WORKING" ? "Folga / day off / banco / atestado / feriado" : state === "NON_ELIGIBLE_EMPLOYMENT_STATUS" ? "Férias / INSS / outras situações" : state === "WAITING_FOR_SOURCES" ? "Aguardando dados (D-1/D-2) ou RH" : state === "CLASSIFIED_JUSTIFIED_ABSENCE" ? "Ausência justificada (classificada)" : STATE_STYLE[state].label}
         </li>
       ))}
+      <li className="flex items-center gap-1.5">
+        <span className={cn("inline-block h-3 w-5 rounded", UNPUBLISHED_STYLE.className)} aria-hidden />
+        Sem escala publicada (o cliente não enviou)
+      </li>
       <li className="flex items-center gap-1.5"><span className="rounded-full bg-amber-600 px-1.5 text-[10px] font-semibold text-white">!</span> pendência aberta</li>
       <li className="flex items-center gap-1.5"><span className="rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">produção</span> produção com situação não produtiva</li>
     </ul>
@@ -307,7 +328,7 @@ function DayDetailSheet({ selection, onOpenChange, onProvision, onClassify, pend
           <>
             <SheetHeader className="border-b">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className={cn("border-0", STATE_STYLE[day.state].className)}>{day.stateLabel}</Badge>
+                {isUnpublishedScheduleDay(day) ? <Badge variant="outline" className={cn("border-0", UNPUBLISHED_STYLE.className)}>{UNPUBLISHED_LABEL}</Badge> : <Badge variant="outline" className={cn("border-0", STATE_STYLE[day.state].className)}>{day.stateLabel}</Badge>}
                 {day.overridesPlan ? <Badge variant="outline" className="border-0 bg-amber-500/15 text-amber-900 dark:text-amber-100">Divergência plano × realidade</Badge> : null}
                 {day.conflict ? <Badge variant="outline" className="border-0 bg-red-500/15 text-red-800 dark:text-red-200">Inconsistência de dados</Badge> : null}
               </div>
@@ -319,8 +340,8 @@ function DayDetailSheet({ selection, onOpenChange, onProvision, onClassify, pend
                 <div>
                   <dt className="text-xs text-muted-foreground">Planejado</dt>
                   <dd className="mt-0.5 font-medium" data-testid="day-planned">
-                    {day.status ? day.status.label : day.exception ? `${day.exception.label} (${day.exception.originLabel})` : day.plannedToWork ? `Trabalha${day.shiftStart && day.shiftEnd ? ` · ${day.shiftStart.slice(0, 5)}–${day.shiftEnd.slice(0, 5)}` : ""}` : day.holiday ? "Feriado aplicável (política de feriados)" : day.plannedCause === "UNKNOWN_SCHEDULE" ? "Escala desconhecida (6x1 sem calendário)" : "Folga"}
-                    <span className="block text-xs font-normal text-muted-foreground">{day.plannedBasisLabel}</span>
+                    {isUnpublishedScheduleDay(day) ? UNPUBLISHED_LABEL : day.status ? day.status.label : day.exception ? `${day.exception.label} (${day.exception.originLabel})` : day.plannedToWork ? `Trabalha${day.shiftStart && day.shiftEnd ? ` · ${day.shiftStart.slice(0, 5)}–${day.shiftEnd.slice(0, 5)}` : ""}` : day.holiday ? "Feriado aplicável (política de feriados)" : day.plannedCause === "UNKNOWN_SCHEDULE" ? "Escala desconhecida (6x1 sem calendário)" : "Folga"}
+                    <span className="block text-xs font-normal text-muted-foreground">{isUnpublishedScheduleDay(day) ? `O cliente não enviou a escala deste dia. Para os indicadores, a INIA ainda usa: ${day.plannedBasisLabel.toLowerCase()}.` : day.plannedBasisLabel}</span>
                   </dd>
                 </div>
                 <div>

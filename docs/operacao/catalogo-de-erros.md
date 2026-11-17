@@ -1624,7 +1624,7 @@ já diz a regra; a família do status diz como investigar.
 
 **Recuperação:** Restabelecer a dependência; repetir a ação. **Escalar para:** Infraestrutura da VM (servidor, IIS, PostgreSQL). Sem solução em 30 min: equipe de desenvolvimento da INIA com a referência, o horário UTC e as linhas do log.
 
-## Códigos dos módulos (942)
+## Códigos dos módulos (943)
 
 ### Módulo `access`
 
@@ -1643,8 +1643,7 @@ já diz a regra; a família do status diz como investigar.
 | `ACCESS_ROLE_ALREADY_ASSIGNED` | 409 | FAMILIA-CONFLITO | Esta conta já tem este papel com o mesmo escopo. | `backend/src/modules/access/application/access-service.ts` |
 | `ACCESS_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escopo inválido para esta organização. | `backend/src/modules/access/application/access-service.ts` |
 | `ACCESS_TARGET_LEADS_OUTSIDE_SCOPE` | 403 | FAMILIA-ACESSO | (mensagem montada no código) | `backend/src/modules/access/application/account-access-service.ts` |
-| `FORBIDDEN` | 403 | FAMILIA-ACESSO | Você não tem permissão para esta ação. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/ai-management/application/ai-usage-ranking-service.ts`<br>`backend/src/modules/ai-management/presentation/ai-management-router.ts`<br>`backend/src/modules/checkpoint-registry/presentation/checkpoint-registry-router.ts` |
-| `ORGANIZATION_SCOPE_REQUIRED` | 403 | FAMILIA-ACESSO | Esta configuração vale para a organização inteira: só quem a administra em toda a organização pode alterá-la. | `backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/governance/presentation/governance-router.ts`<br>`backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts`<br>`backend/src/modules/interventions/presentation/intervention-admin-router.ts`<br>`backend/src/modules/knowledge/application/knowledge-versions.ts`<br>`backend/src/modules/org-structure/presentation/org-structure-router.ts` |
+| `FORBIDDEN` | 403, 422 | FAMILIA-ACESSO | Você não tem permissão para esta ação. | `backend/src/modules/access/application/access-service.ts`<br>`backend/src/modules/access/application/account-access-service.ts`<br>`backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/ai-management/application/ai-usage-ranking-service.ts`<br>`backend/src/modules/ai-management/presentation/ai-management-router.ts`<br>`backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `UNKNOWN_ROLE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/access/application/access-service.ts` |
 
 ### Módulo `auth`
@@ -1922,7 +1921,6 @@ já diz a regra; a família do status diz como investigar.
 
 | Código | Status | Família | Mensagem | Onde |
 | --- | --- | --- | --- | --- |
-| `ALL_TEAMS` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_ALTERNATIVES_NEED_TWO` | — | FAMILIA-DEPENDENCIA | Um grupo de alternativas precisa de pelo menos duas opções. | `backend/src/modules/argument-scripts/domain/argument-script.ts` |
 | `ARGUMENT_SCRIPT_ARCHIVED` | 409 | FAMILIA-CONFLITO | Argumentário encerrado: reative-o para publicar. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_AREA_REQUIRED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Informe a área responsável. | `backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/argument-scripts/domain/argument-script.ts` |
@@ -1934,9 +1932,7 @@ já diz a regra; a família do status diz como investigar.
 | `ARGUMENT_SCRIPT_NOT_READY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O rascunho ainda não pode ser publicado. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_NOT_STARTED` | 409 | FAMILIA-CONFLITO | A versão publicada ainda não começou a valer: publique outra data ou aguarde o início para encerrar. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_RETROACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A vigência não pode começar antes da publicação: uma regra publicada agora nunca vale para chamadas anteriores. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
-| `ARGUMENT_SCRIPT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Seu escopo de administração não cobre o escopo deste argumentário. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
-| `ARGUMENT_SCRIPT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o grupo. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
-| `ARGUMENT_SCRIPT_SCOPE_LOCKED` | 409 | FAMILIA-CONFLITO | O escopo de um argumentário já publicado não muda (preserva a quem a regra valia). Encerre este e crie outro. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
+| `ARGUMENT_SCRIPT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Este argumentário vale para Grupos fora do seu escopo de administração: só quem administra todos eles pode alterá-lo. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_SOURCE_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Documento de origem não encontrado. | `backend/src/modules/argument-scripts/application/argument-script-service.ts` |
 | `ARGUMENT_SCRIPT_TRIGGER_REQUIRED` | — | FAMILIA-DEPENDENCIA | Informe a condição ou gatilho: sem ela não há como saber quando o argumentário vale. | `backend/src/modules/argument-scripts/domain/argument-script.ts` |
 | `BUSINESS_DOMAIN_INACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Área responsável inativa. | `backend/src/modules/argument-scripts/application/argument-script-service.ts`<br>`backend/src/modules/business-domains/application/business-domain-lookup.ts` |
@@ -2273,7 +2269,7 @@ já diz a regra; a família do status diz como investigar.
 | `COMMUNICATION_NO_AUDIENCE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Não há ninguém neste público para receber o comunicado. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Comunicado não encontrado. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_PUBLISHED_AT_LOCKED` | 409 | FAMILIA-CONFLITO | O comunicado já foi publicado; o instante da publicação não muda. | `backend/src/modules/communications/application/communication-service.ts` |
-| `COMMUNICATION_REFERENCE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um Grupo, Subgrupo ou produto escolhido não existe nesta organização. | `backend/src/modules/communications/application/communication-service.ts` |
+| `COMMUNICATION_REFERENCE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Um Grupo, Subgrupo ou produto escolhido não existe nesta organização (o Subgrupo precisa ser do Grupo informado). | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_SCHEDULE_IN_PAST` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A data de publicação já passou. Escolha agora ou um horário futuro. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_SCHEDULE_TOO_FAR` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O agendamento pode ser de no máximo um ano. | `backend/src/modules/communications/application/communication-service.ts` |
 | `COMMUNICATION_SEGMENT_EMPTY` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Escolha o universo, ao menos um Grupo ou ao menos um Subgrupo para o público. | `backend/src/modules/communications/application/communication-service.ts` |
@@ -2281,6 +2277,7 @@ já diz a regra; a família do status diz como investigar.
 | `COMMUNICATION_TEXT_TOO_LONG` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O texto deve ter no máximo ${COMMUNICATION_MAX_PLAIN_TEXT.toLocaleString("pt-BR")} caracteres. | `backend/src/modules/communications/application/communication-images.ts` |
 | `COMMUNICATION_TOO_LARGE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado passou de 2 MB. Use imagens menores ou em menor número. | `backend/src/modules/communications/application/communication-images.ts` |
 | `COMMUNICATION_TOO_MANY_IMAGES` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O comunicado pode ter no máximo ${COMMUNICATION_MAX_IMAGES} imagens. | `backend/src/modules/communications/application/communication-images.ts` |
+| `DUPLICATE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/communications/application/communication-service.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 
 ### Módulo `feedback-application`
 
@@ -2668,11 +2665,16 @@ já diz a regra; a família do status diz como investigar.
 | `KNOWLEDGE_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Esta base vale para Grupos fora do seu escopo: só quem administra todos eles pode alterá-la. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O Subgrupo informado não existe neste Grupo. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_SOURCE_REQUIRED` | 400 | FAMILIA-REGRA-DE-NEGOCIO | Informe um texto ou envie um arquivo. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
+| `KNOWLEDGE_SUBJECT_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o assunto "${result.subject.name}"${result.subject.active ? "" : " (desativado)"}. | `backend/src/modules/knowledge/application/knowledge-subjects.ts` |
+| `KNOWLEDGE_SUBJECT_INACTIVE` | 422 | FAMILIA-REGRA-DE-NEGOCIO | O assunto "${subject.name}" está desativado e não pode ser incluído. | `backend/src/modules/knowledge/application/knowledge-subjects.ts` |
+| `KNOWLEDGE_SUBJECT_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | \"Todos os assuntos\" não leva assuntos específicos junto. | `backend/src/modules/knowledge/application/knowledge-subjects.ts` |
+| `KNOWLEDGE_SUBJECT_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Assunto não encontrado nesta organização. | `backend/src/modules/knowledge/application/knowledge-subjects.ts` |
 | `KNOWLEDGE_VERSION_ALREADY_CURRENT` | 409 | FAMILIA-CONFLITO | Esta já é a versão em uso. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_VERSION_NOT_FAILED` | 409 | FAMILIA-CONFLITO | Só uma atualização com falha pode ser processada de novo. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_VERSION_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Versão não encontrada. | `backend/src/modules/knowledge/application/knowledge-versions.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `KNOWLEDGE_VERSION_NOT_REVERTIBLE` | 409 | FAMILIA-CONFLITO | Só é possível reverter para uma versão que já ficou pronta. | `backend/src/modules/knowledge/application/knowledge-versions.ts` |
 | `KNOWLEDGE_VERSION_RESTRICTED` | 403 | FAMILIA-ACESSO | Esta versão valia para Grupos fora do seu escopo. | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
+| `ORGANIZATION_SCOPE_REQUIRED` | 403 | FAMILIA-ACESSO | Esta configuração vale para a organização inteira: só quem a administra em toda a organização pode alterá-la. | `backend/src/modules/access/presentation/require-permission.ts`<br>`backend/src/modules/governance/presentation/governance-router.ts`<br>`backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts`<br>`backend/src/modules/interventions/presentation/intervention-admin-router.ts`<br>`backend/src/modules/knowledge/application/knowledge-versions.ts`<br>`backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 | `PDF` | 422 | FAMILIA-REGRA-DE-NEGOCIO | (mensagem montada no código) | `backend/src/modules/knowledge/presentation/knowledge-router.ts` |
 
 ### Módulo `notifications`
@@ -2730,7 +2732,7 @@ já diz a regra; a família do status diz como investigar.
 | `OPERATIONAL_ALIGNMENT_CONFLICT` | 409 | FAMILIA-CONFLITO | Há alinhamento do MESMO ponto com o MESMO público no mesmo período, sem precedência entre eles. Encerre o outro, ajuste o período ou use um recorte mais específico. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_DOCUMENT_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Algum processo escolhido não foi encontrado nas bases desta organização. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_DRAFT_CHANGED` | 409 | FAMILIA-CONFLITO | O rascunho mudou enquanto você publicava. Confira e publique de novo. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
-| `OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Este Grupo/Subgrupo ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_GROUP_UNCLASSIFIED` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Algum Grupo/Subgrupo escolhido ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_NO_DRAFT` | 409 | FAMILIA-CONFLITO | Não há rascunho para descartar. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_NOT_FOUND` | 404 | FAMILIA-NAO-ENCONTRADO | Alinhamento não encontrado. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_NOT_PUBLISHED` | 409 | FAMILIA-CONFLITO | Não há versão publicada para encerrar. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
@@ -2740,14 +2742,13 @@ já diz a regra; a família do status diz como investigar.
 | `OPERATIONAL_ALIGNMENT_REASON_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o motivo "${name}". | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_REASON_NOT_FOUND` | 404, 422 | FAMILIA-NAO-ENCONTRADO | Motivo do alinhamento não encontrado ou desativado. Escolha outro. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_RELATION_REQUIRED` | 409 | FAMILIA-CONFLITO | Outros alinhamentos alcançam o mesmo público, algum processo em comum e o mesmo período. Diga, para cada um, se tratam do mesmo ponto ou de pontos diferentes. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
-| `OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o motivo do pedido "${existing.name}"${existing.active ? "" : " (desativado)"}. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_REQUEST_REASON_DUPLICATED` | 409 | FAMILIA-CONFLITO | Já existe o motivo do pedido "${result.subject.name}"${result.subject.active ? "" : " (desativado)"}. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_REQUEST_REASON_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Nome inválido para um motivo do pedido. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_REQUEST_REASON_NOT_FOUND` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Algum motivo do pedido do cliente não foi encontrado ou está desativado. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_RESPONSIBLE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Responsável inválido: escolha uma liderança ativa da organização (ou deixe você mesmo). | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_RETROACTIVE_VERSION` | 422 | FAMILIA-REGRA-DE-NEGOCIO | A nova versão não pode começar antes da versão publicada (${previous.starts_on}): o que já valia não é reescrito. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 | `OPERATIONAL_ALIGNMENT_SCOPE_FORBIDDEN` | 403 | FAMILIA-ACESSO | Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
-| `OPERATIONAL_ALIGNMENT_SCOPE_INVALID` | 422 | FAMILIA-REGRA-DE-NEGOCIO | Subgrupo não encontrado nesta organização. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
-| `OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT` | 409 | FAMILIA-CONFLITO | O público escolhido é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
+| `OPERATIONAL_ALIGNMENT_UNIVERSE_CONFLICT` | 409 | FAMILIA-CONFLITO | Um dos Grupos/Subgrupos escolhidos é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados. | `backend/src/modules/operational-alignments/application/operational-alignment-service.ts` |
 
 ### Módulo `reporting`
 

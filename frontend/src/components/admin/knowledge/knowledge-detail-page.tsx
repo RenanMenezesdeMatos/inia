@@ -4,7 +4,7 @@ import { useCallback, useState } from "react"
 import Link from "next/link"
 
 import { BackLink as KitBackLink } from "@/components/ui/back-link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Download, FileWarning, Paperclip } from "lucide-react"
 
 import { KnowledgeReadingView, READING_VIEW_NOTE, ReadingModeSwitch, type ReadingMode } from "@/components/knowledge-reading/knowledge-reading-view"
@@ -231,10 +231,14 @@ function DocumentContent({ displayed, title, jump, onOpenPage }: { displayed: Di
   )
 }
 
+const tabFromSearch = (params: URLSearchParams | null) => (params?.get("aba") === "versoes" ? "versions" : null)
+
 export function KnowledgeDetailPage({ documentId }: { documentId: string }) {
   const detailQuery = useKnowledgeDocumentQuery(documentId)
+  const searchParams = useSearchParams()
   useRefreshKnowledgeWhenProcessingEnds(detailQuery.data)
-  const [tab, setTab] = useState("content")
+  // `?aba=versoes` (link "Histórico de versões" do editor) abre direto no histórico.
+  const [tab, setTab] = useState(() => (tabFromSearch(searchParams) ?? "content"))
   const [pdfJump, setPdfJump] = useState<{ page: number; id: number } | null>(null)
   // De um trecho ou de um aviso de cobertura para a página no PDF.
   const openPage = (page: number) => {

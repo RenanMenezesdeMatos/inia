@@ -75,3 +75,48 @@ export async function resolveCanonicalSubject(db: Database, organizationId: stri
   if (byAlias.rows[0]) return { requested, canonical: byAlias.rows[0], mode: "CANONICAL" }
   return { requested, canonical: null, mode: "RAW_EXACT" }
 }
+
+/** Assunto do catálogo canônico como as telas o mostram (Alinhamentos › pedidos do cliente; Base de conhecimento › assuntos). */
+export type CanonicalSubjectOption = { id: string; code: string; name: string; active: boolean }
+
+/** Assuntos canônicos ativos da organização, por nome. */
+export async function listActiveCanonicalSubjects(db: Pick<Database, "query">, organizationId: string): Promise<CanonicalSubjectOption[]> {
+  return (await db.query<CanonicalSubjectOption>(`select id, code, name, active from interaction_subject_definitions where organization_id = $1 and active order by name`, [organizationId])).rows
+}
+
+/**
+ * Código do assunto a partir do nome: sem acento, minúsculo, com `_`, no formato do catálogo (`INTERACTION_SUBJECT_CODE_PATTERN`, até 40
+ * caracteres; nome que começa por número ganha o prefixo `assunto_`). Vazio = nome sem nenhuma letra ou número.
+ */
+export function canonicalSubjectCodeOf(name: string): string {
+  const base = name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40).replace(/_+$/, "")
+  if (!base) return ""
+  const code = /^[a-z]/.test(base) ? base : `assunto_${base}`.slice(0, 40).replace(/_+$/, "")
+  return INTERACTION_SUBJECT_CODE_PATTERN.test(code) ? code : ""
+}
+
+/**
+ * Inclui um assunto no catálogo canônico pelo nome (ex.: "Mudança de endereço"). Sem apelidos: nenhuma chamada passa a ser classificada
+ * nele até a carga de assuntos trazer o de-para. Quem chama confere a permissão (catálogo da organização inteira) e transforma o
+ * resultado em erro da própria tela: `invalid` = nome sem letras/números; `existing` = já há um de mesmo código ou nome (ativo ou não).
+ */
+export async function insertCanonicalSubject(
+  db: Pick<Database, "query">,
+  organizationId: string,
+  input: { name: string; description: string },
+): Promise<{ outcome: "created"; subject: CanonicalSubjectOption } | { outcome: "existing"; subject: CanonicalSubjectOption } | { outcome: "invalid" }> {
+  const name = input.name.trim().replace(/\s+/g, " ")
+  const code = canonicalSubjectCodeOf(name)
+  if (!code) return { outcome: "invalid" }
+  const existing = (await db.query<CanonicalSubjectOption>(`select id, code, name, active from interaction_subject_definitions where organization_id = $1 and (code = $2 or lower(btrim(name)) = lower($3)) order by (code = $2) desc limit 1`, [organizationId, code, name])).rows[0]
+  if (existing) return { outcome: "existing", subject: existing }
+  const created = (await db.query<CanonicalSubjectOption>(
+    `insert into interaction_subject_definitions (organization_id, code, name, description) values ($1, $2, $3, $4)
+     on conflict (organization_id, code) do nothing returning id, code, name, active`,
+    [organizationId, code, name, input.description],
+  )).rows[0]
+  if (created) return { outcome: "created", subject: created }
+  // Corrida: outra gravação incluiu o mesmo código entre a leitura e a escrita.
+  const raced = (await db.query<CanonicalSubjectOption>(`select id, code, name, active from interaction_subject_definitions where organization_id = $1 and code = $2`, [organizationId, code])).rows[0]!
+  return { outcome: "existing", subject: raced }
+}

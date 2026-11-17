@@ -45,14 +45,18 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
   })
 
   it("cadastro antigo convertido sem inventar campos; a rota antiga só lê", async () => {
-    const legacy = (await client.query<{ name: string; conversion: string; status: string; content: Record<string, unknown>; expectation: string; active: boolean; scope_type: string; ce_scope: string }>(
-      `select s.name, s.conversion, s.status, v.content, ce.expectation, ce.active, s.scope_type, ce.scope_type ce_scope from argument_scripts s join call_expectations ce on ce.id = s.legacy_call_expectation_id join argument_script_versions v on v.script_id = s.id where s.organization_id = $1`,
+    // 223: o escopo é da versão; o do cadastro antigo vira "todos" ou um vínculo (Grupo inteiro ou Subgrupo com o Grupo-pai real).
+    const legacy = (await client.query<{ name: string; conversion: string; status: string; content: Record<string, unknown>; expectation: string; active: boolean; scope_type: string; ce_scope: string; same_link: boolean }>(
+      `select s.name, s.conversion, s.status, v.content, ce.expectation, ce.active, v.scope_type, case when ce.scope_type = 'ALL_TEAMS' then 'ALL_TEAMS' else 'GROUPS' end ce_scope,
+              (ce.scope_type = 'ALL_TEAMS' and not exists (select 1 from argument_script_version_scopes l where l.version_id = v.id))
+              or exists (select 1 from argument_script_version_scopes l where l.version_id = v.id and ((ce.scope_type = 'TEAM' and l.team_id = ce.team_id and l.subteam_id is null) or (ce.scope_type = 'SUBTEAM' and l.subteam_id = ce.subteam_id))) same_link
+         from argument_scripts s join call_expectations ce on ce.id = s.legacy_call_expectation_id join argument_script_versions v on v.script_id = s.id where s.organization_id = $1`,
       [ORG],
     )).rows
     const converted = (await client.query<{ n: number }>("select count(*)::int n from call_expectations where organization_id = $1", [ORG])).rows[0]!.n
     expect(legacy).toHaveLength(converted)
     for (const row of legacy) {
-      expect(row).toMatchObject({ conversion: "LEGACY_UNSTRUCTURED", status: row.active ? "ACTIVE" : "ARCHIVED", scope_type: row.ce_scope })
+      expect(row).toMatchObject({ conversion: "LEGACY_UNSTRUCTURED", status: row.active ? "ACTIVE" : "ARCHIVED", scope_type: row.ce_scope, same_link: true })
       expect(row.content).toMatchObject({ trigger: null, requiredPoints: [], avoid: [], legacyExpectation: row.expectation, operatorGuidance: [expect.objectContaining({ modality: "UNSPECIFIED", text: row.expectation.trim() })] })
     }
   })
@@ -128,6 +132,46 @@ describe.skipIf(!ENABLED)("Argumentários — prova Postgres (conversão, escopo
     expect(await inForce(new Date(), { teamId: teamB, subteamId: null })).toEqual([])
     const [source] = (await loadArgumentScriptsInForce(client, ORG, { teamId: teamA, subteamId: subA }, new Date(start.getTime() + 60_000))).filter((script) => script.scriptId === id)
     expect(source!.identities.get(keys[0])).toMatchObject({ basis: "MODIFIED" })
+
+    // MULTI-GRUPO (223): o mesmo argumentário para o Grupo A inteiro e só o Subgrupo B1 do Grupo B; B2 e o Grupo C ficam de fora.
+    const subB1 = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof AG Sub B1') returning id", [ORG, teamB])).rows[0]!.id
+    const subB2 = (await client.query<{ id: string }>("insert into subteams (organization_id, team_id, name) values ($1, $2, 'Proof AG Sub B2') returning id", [ORG, teamB])).rows[0]!.id
+    const teamC = (await client.query<{ id: string }>("insert into teams (organization_id, operation_id, name) values ($1, $2, 'Proof AG Grupo C') returning id", [ORG, operation])).rows[0]!.id
+    expect((await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA }, { teamId: teamA, subteamId: subA }] }, content })).body.error.code).toBe("ARGUMENT_SCRIPT_SCOPE_INVALID")
+    expect((await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA, subteamId: subB1 }] }, content })).body.error.code).toBe("ARGUMENT_SCRIPT_SCOPE_INVALID")
+    const multi = await org.post(base).send({ name: "Multi (prova)", businessDomainId: domain, scope: { scopeType: "GROUPS", links: [{ teamId: teamA }, { subteamId: subB1 }] }, content })
+    expect(multi.status).toBe(201)
+    const multiId = multi.body.data.id as string
+    expect(multi.body.data.scopeLinks).toEqual([expect.objectContaining({ teamId: teamA, subteamId: null }), expect.objectContaining({ teamId: teamB, subteamId: subB1 })])
+    const multiPublishedAt = new Date()
+    expect((await org.post(`${base}/${multiId}/publish`).send({})).status).toBe(200)
+    const reaches = async (person: { teamId: string | null; subteamId: string | null }, at = new Date()) => (await loadArgumentScriptsInForce(client, ORG, person, at)).filter((script) => script.scriptId === multiId).length
+    expect(await reaches({ teamId: teamA, subteamId: subA })).toBe(1)
+    expect(await reaches({ teamId: teamA, subteamId: null })).toBe(1)
+    expect(await reaches({ teamId: teamB, subteamId: subB1 })).toBe(1)
+    expect(await reaches({ teamId: teamB, subteamId: subB2 })).toBe(0)
+    expect(await reaches({ teamId: teamC, subteamId: null })).toBe(0)
+    // Cadastro inconsistente (Grupo A + Subgrupo B1): alcançado pelos dois vínculos, aparece UMA vez.
+    expect(await reaches({ teamId: teamA, subteamId: subB1 })).toBe(1)
+    // Lista: filtro pelo Grupo B acha pelo vínculo do Subgrupo; o gestor do Grupo A o vê, mas não altera (vale também para B1).
+    expect(((await org.get(`${base}?page=1&pageSize=50&teamId=${teamB}`)).body.data.items as { id: string }[]).filter((item) => item.id === multiId)).toHaveLength(1)
+    expect(((await area.get(`${base}?page=1&pageSize=50`)).body.data.items as { id: string; canEdit: boolean }[]).find((item) => item.id === multiId)).toMatchObject({ canEdit: false })
+    expect((await area.patch(`${base}/${multiId}`).send({ scope: { scopeType: "GROUPS", links: [{ teamId: teamA }] } })).status).toBe(403)
+    expect((await area.post(`${base}/${multiId}/archive`)).status).toBe(403)
+    // Tirar o Subgrupo B1: vai para o rascunho; a versão publicada continua valendo para B1 até a nova começar.
+    const unlinked = await org.patch(`${base}/${multiId}`).send({ scope: { scopeType: "GROUPS", links: [{ teamId: teamA }] } })
+    expect(unlinked.body.data).toMatchObject({ draftScope: { scopeType: "GROUPS", links: [expect.objectContaining({ teamId: teamA, subteamId: null })] }, scopeLinks: [expect.anything(), expect.anything()] })
+    expect(await reaches({ teamId: teamB, subteamId: subB1 })).toBe(1)
+    await client.query("savepoint links_immutable")
+    await expect(client.query(`delete from argument_script_version_scopes where version_id = (select id from argument_script_versions where script_id = $1 and status = 'PUBLISHED')`, [multiId])).rejects.toThrow(/imutáveis/)
+    await client.query("rollback to savepoint links_immutable")
+    const removalStart = new Date(Date.now() + 1_000)
+    expect((await org.post(`${base}/${multiId}/publish`).send({ effectiveFrom: removalStart.toISOString() })).status).toBe(200)
+    const afterRemoval = new Date(removalStart.getTime() + 1_000)
+    expect(await reaches({ teamId: teamB, subteamId: subB1 }, afterRemoval)).toBe(0)
+    expect(await reaches({ teamId: teamA, subteamId: subA }, afterRemoval)).toBe(1)
+    // História: a chamada de B1 feita antes da remoção continua avaliada pela versão que valia para ela.
+    expect(await reaches({ teamId: teamB, subteamId: subB1 }, new Date(multiPublishedAt.getTime() + 500))).toBe(1)
 
     // Regra da organização inteira: o admin de Grupo VÊ (vale para ele), mas não administra.
     const global = await org.post(base).send({ name: "Bloqueio após pagamento (prova)", businessDomainId: domain, scope: { scopeType: "ALL_TEAMS" }, content: { trigger: "O cliente diz que pagou e o serviço continua bloqueado.", requiredPoints: [{ mode: "ALL", items: [{ text: "Condicionar a orientação à disponibilidade da funcionalidade.", condition: null }] }] } })

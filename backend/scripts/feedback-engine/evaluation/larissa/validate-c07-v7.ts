@@ -65,7 +65,7 @@ const injectedScripts = (callAt: Date): ArgumentScriptSource[] => SCENARIOS.map(
   version: 1,
   name: scenario.name,
   areaName: "Atendimento ao Cliente",
-  scope: { scopeType: "ALL_TEAMS", teamId: null, subteamId: null, teamName: null, subteamName: null },
+  scope: { scopeType: "ALL_TEAMS", links: [] },
   subjectName: null,
   conversion: "NATIVE",
   content: normalizeArgumentScriptContent(scenario.content),

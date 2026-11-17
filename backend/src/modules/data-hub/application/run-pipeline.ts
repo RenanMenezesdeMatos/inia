@@ -213,7 +213,8 @@ async function fetchBatch(ctx: DataHubContext, loaded: LoadedRun, stages: RunSta
   throw new DataRunError("DATA_INTERNAL_ERROR", "Run sem conteúdo bruto e sem conector remoto.")
 }
 
-export type MappingOutcome = { valid: ValidRecord[]; rejections: Rejection[]; rejectedRecords: number }
+/** `rejectedValues`: o que deu para mapear das linhas recusadas — o writer que substitui um conjunto (ex.: o dia da escala) sabe que ele veio incompleto. */
+export type MappingOutcome = { valid: ValidRecord[]; rejections: Rejection[]; rejectedRecords: number; rejectedValues: Record<string, unknown>[] }
 
 /** Mapeia + valida estruturalmente todos os registros (puro; usado também pelo preview). */
 export function mapAll(contract: DataContract, mappingInput: unknown, records: SourceRecord[], timeZone: string, keyField: string | undefined, recordOffset = 0): MappingOutcome {
@@ -221,6 +222,7 @@ export function mapAll(contract: DataContract, mappingInput: unknown, records: S
   const context = { timeZone: mapping.timeZone ?? timeZone }
   const valid: ValidRecord[] = []
   const rejections: Rejection[] = []
+  const rejectedValues: Record<string, unknown>[] = []
   let rejectedRecords = 0
   records.forEach((source, index) => {
     const recordNumber = recordOffset + index + 1
@@ -231,9 +233,10 @@ export function mapAll(contract: DataContract, mappingInput: unknown, records: S
       return
     }
     rejectedRecords += 1
+    rejectedValues.push(record)
     for (const error of errors as RecordError[]) rejections.push({ recordNumber, sourceRecordKey: key, error })
   })
-  return { valid, rejections, rejectedRecords }
+  return { valid, rejections, rejectedRecords, rejectedValues }
 }
 
 export async function finishRun(ctx: DataHubContext, loaded: LoadedRun, status: RunStatus, stages: RunStage[], metrics: RunMetrics, error: { code: string; message: string } | null, checkpointAfter: Record<string, unknown> | null | undefined): Promise<void> {
@@ -363,7 +366,7 @@ export async function executeRun(ctx: DataHubContext, runId: string): Promise<Da
     stages = await transition(ctx.db, run.id, "VALIDATING", stages, `${mapped.valid.length} válido(s) na estrutura, ${mapped.rejectedRecords} rejeitado(s)`)
     const writer = requireWriter(contract.key)
     const writeContext: WriteContext = { ctx, organizationId: run.organizationId, timeZone, feed, runId: run.id, sourceNamespace: feed.sourceNamespace ?? source.publicId }
-    const prepared = await writer.prepare(writeContext, mapped.valid)
+    const prepared = await writer.prepare({ ...writeContext, rejectedValues: mapped.rejectedValues }, mapped.valid)
     const rejections = [...mapped.rejections, ...prepared.rejections]
     const rejectedRecords = mapped.rejectedRecords + prepared.rejections.length
     metrics.recordsRejected = rejectedRecords

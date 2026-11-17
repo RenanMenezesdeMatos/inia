@@ -1,3 +1,4 @@
+import { linksReach, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import type { AudienceOptions, CommunicationRights, CommunicationStore, CommunicationUpdate, NewCommunication, SavedCommunication } from "../application/communication-service.js"
 import {
   communicationExcerpt,
@@ -65,8 +66,8 @@ export class InMemoryCommunicationStore implements CommunicationStore {
   private inSegment(person: Person | undefined, segment: CommunicationSegment): boolean {
     if (!person || person.active === false) return false
     if (segment.universe && person.universe !== segment.universe) return false
-    if (segment.teamIds.length === 0 && segment.subteamIds.length === 0) return true
-    return (person.teamId != null && segment.teamIds.includes(person.teamId)) || (person.subteamId != null && segment.subteamIds.includes(person.subteamId))
+    if (segment.links.length === 0) return true
+    return linksReach(segment.links, { teamId: person.teamId ?? null, subteamId: person.subteamId ?? null })
   }
 
   private audienceOf(input: { organizationId: string; authorPersonId: string; audience: CommunicationAudience; segment: CommunicationSegment }): { count: number; recipients: string[] } {
@@ -265,9 +266,21 @@ export class InMemoryCommunicationStore implements CommunicationStore {
     return { teams: (this.catalog.teams ?? []).map((team) => ({ id: team.id, name: team.id, universe: null, subteams: (team.subteams ?? []).map((id) => ({ id, name: id })) })), universes: ["B2B", "B2C"], products: (this.catalog.products ?? []).map((id) => ({ id, name: id, familyName: null })) }
   }
 
-  async validReferences(_organizationId: string, input: { teamIds: string[]; subteamIds: string[]; productNodeId: string | null }): Promise<boolean> {
-    const teams = new Set((this.catalog.teams ?? []).map((team) => team.id))
-    const subteams = new Set((this.catalog.teams ?? []).flatMap((team) => team.subteams ?? []))
-    return input.teamIds.every((id) => teams.has(id)) && input.subteamIds.every((id) => subteams.has(id)) && (!input.productNodeId || (this.catalog.products ?? []).includes(input.productNodeId))
+  /** Mesma regra do Postgres (`normalizeScopeLinks`): Subgrupo ganha o Grupo-pai do catálogo; `teamId` divergente = inválido. */
+  async resolveReferences(_organizationId: string, input: { links: { teamId: string | null; subteamId: string | null }[]; productNodeId: string | null }): Promise<{ links: ScopeLink[] } | null> {
+    if (input.productNodeId && !(this.catalog.products ?? []).includes(input.productNodeId)) return null
+    const teams = this.catalog.teams ?? []
+    const links: ScopeLink[] = []
+    for (const link of input.links) {
+      if (link.subteamId) {
+        const parent = teams.find((team) => (team.subteams ?? []).includes(link.subteamId!))
+        if (!parent || (link.teamId && link.teamId !== parent.id)) return null
+        links.push({ teamId: parent.id, subteamId: link.subteamId })
+      } else {
+        if (!link.teamId || !teams.some((team) => team.id === link.teamId)) return null
+        links.push({ teamId: link.teamId, subteamId: null })
+      }
+    }
+    return { links }
   }
 }

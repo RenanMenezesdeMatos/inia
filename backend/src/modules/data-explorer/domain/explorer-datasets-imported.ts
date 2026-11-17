@@ -1,5 +1,6 @@
 import { SENSITIVE_LEAVE_STATUSES } from "../../org-structure/domain/management-metrics.js"
 import { EMPLOYMENT_STATUS_LABELS, LEGACY_EMPLOYMENT_STATUS_MAP, type EmploymentStatus } from "../../people/domain/employment-status.js"
+import { SCHEDULE_ACTIVITY_TYPE_LABELS, SCHEDULE_ACTIVITY_TYPES } from "../../people/domain/schedule-activity.js"
 import { SCHEDULE_EXCEPTION_CODES, type ScheduleExceptionCode } from "../../people/domain/schedule-exception.js"
 import type { ExplorerColumn, ExplorerDataset } from "./explorer-catalog-types.js"
 
@@ -365,6 +366,28 @@ export const IMPORTED_DATASETS: readonly ExplorerDataset[] = [
       { key: "source", label: "Origem", type: "TEXT", sql: "t.source", nullable: false, filterable: true, hiddenByDefault: true },
       { key: "cancelled_at", label: "Cancelada em", type: "DATETIME", sql: "t.cancelled_at", nullable: true, filterable: true, hiddenByDefault: true },
       createdAt(),
+    ],
+  },
+  {
+    code: "schedule_activities",
+    label: "Atividades escaladas",
+    description: "Horário de login, pausas e outras atividades previstas na escala, por pessoa e dia. Desativada = substituída por uma carga mais nova do mesmo dia.",
+    origin: "IMPORTED",
+    volume: "LARGE",
+    from: `employee_schedule_activities t ${person("p", "person_id")}`,
+    key: { sql: "t.id", cast: "uuid" },
+    defaultSort: { column: "schedule_date", direction: "DESC" },
+    columns: [
+      { key: "schedule_date", label: "Dia", type: "DATE", sql: "t.schedule_date", nullable: false, filterable: true, sortable: true },
+      matricula("matricula", "Matrícula", "p.matricula"),
+      { key: "activity_type", label: "Tipo", type: "ENUM", sql: "t.activity_type", nullable: false, filterable: true, options: SCHEDULE_ACTIVITY_TYPES.map((type) => ({ value: type, label: SCHEDULE_ACTIVITY_TYPE_LABELS[type] })) },
+      { key: "activity_name", label: "Atividade", type: "TEXT", sql: "t.activity_name", nullable: false, filterable: true },
+      // Sem `sortable`: conjunto grande só ordena por coluna com índice (prova da Consulta) — a ordem é pelo dia.
+      { key: "start_time", label: "Início", type: "TIME", sql: "t.start_time", nullable: false, filterable: true },
+      { key: "end_time", label: "Fim", type: "TIME", sql: "t.end_time", nullable: false, filterable: true },
+      { key: "active", label: "Vigente", type: "BOOLEAN", sql: "t.active", nullable: false, filterable: true },
+      { key: "source", label: "Origem", type: "TEXT", sql: "t.source", nullable: false, filterable: true, hiddenByDefault: true },
+      { key: "updated_at", label: "Atualizado em", type: "DATETIME", sql: "t.updated_at", nullable: false, filterable: true, hiddenByDefault: true },
     ],
   },
   {

@@ -1,3 +1,4 @@
+import type { OrgScopeEntry } from "@/lib/scope-links/scope-links"
 import type { UniverseFilterValue } from "@/lib/operating-universe/hierarchy"
 import { z } from "zod"
 
@@ -8,6 +9,8 @@ import {
   knowledgeDocumentDetailSchema,
   knowledgeDocumentPreviewSchema,
   knowledgeDocumentSchema,
+  knowledgeSubjectCatalogSchema,
+  knowledgeSubjectSchema,
   knowledgeVersionComparisonSchema,
   knowledgeVersionDetailSchema,
   knowledgeVersionRowSchema,
@@ -17,13 +20,14 @@ import {
   type KnowledgeDocumentPreview,
   type KnowledgeDocumentType,
   type KnowledgeSourceType,
+  type KnowledgeSubject,
+  type KnowledgeSubjectCatalog,
+  type KnowledgeSubjectScopePayload,
   type KnowledgeStatus,
   type KnowledgeVersionComparison,
   type KnowledgeVersionDetail,
   type KnowledgeVersionRow,
 } from "@/schemas/admin/knowledge.schema"
-import type { OrgScopeValue } from "@/components/admin/shared/org-scope-select"
-import type { SubjectScopeValue } from "@/components/admin/shared/subject-scope-select"
 import type { OperatingUniverse } from "@/schemas/operating-universe/operating-universe.schema"
 
 const BASE_PATH = "/api/v1/admin/knowledge"
@@ -51,6 +55,15 @@ export async function fetchKnowledgeDocumentsPage(params: KnowledgeListParams): 
   return pageResultSchema(knowledgeDocumentSchema).parse(await adminGet(`${BASE_PATH}${toQueryString({ ...rest, status: statuses, createdFrom: createdAt.from, createdTo: createdAt.to })}`))
 }
 
+/** Assuntos da base: o catálogo canônico das chamadas (o mesmo dos Alinhamentos), com a permissão de incluir. */
+export async function fetchKnowledgeSubjects(): Promise<KnowledgeSubjectCatalog> {
+  return knowledgeSubjectCatalogSchema.parse(await adminGet(`${BASE_PATH}/subjects`))
+}
+
+export async function createKnowledgeSubject(name: string): Promise<KnowledgeSubject> {
+  return knowledgeSubjectSchema.parse(await adminSend(`${BASE_PATH}/subjects`, "POST", { name }))
+}
+
 export async function fetchKnowledgeDocument(id: string): Promise<KnowledgeDocumentDetail> {
   return knowledgeDocumentDetailSchema.parse(await adminGet(`${BASE_PATH}/${id}`))
 }
@@ -73,8 +86,10 @@ export type CreateKnowledgeInput = {
   documentType: string
   content?: string
   file?: File
-  orgScope: OrgScopeValue
-  subjectScope: SubjectScopeValue
+  /** Alcance completo (223: vários Grupos/Subgrupos) — nunca só o primeiro. */
+  orgScopes: OrgScopeEntry[]
+  /** Todos os assuntos, 1..N assuntos canônicos ou nenhum (lista vazia). */
+  subjectScopes: KnowledgeSubjectScopePayload[]
   operatingUniverse?: OperatingUniverse | null
 }
 
@@ -84,8 +99,8 @@ export async function createKnowledgeDocument(input: CreateKnowledgeInput) {
   formData.set("documentType", input.documentType)
   if (input.content) formData.set("content", input.content)
   if (input.file) formData.set("file", input.file)
-  formData.set("orgScopes", JSON.stringify([input.orgScope]))
-  formData.set("subjectScopes", JSON.stringify([input.subjectScope]))
+  formData.set("orgScopes", JSON.stringify(input.orgScopes))
+  formData.set("subjectScopes", JSON.stringify(input.subjectScopes))
   if (input.operatingUniverse) formData.set("operatingUniverse", input.operatingUniverse)
   return adminUpload<{ id: string }>(BASE_PATH, formData)
 }
@@ -95,8 +110,8 @@ export type UpdateKnowledgeInput = {
   documentType: string
   /** Só quando o texto mudou: a API normaliza o que recebe, e reenviar o mesmo texto criaria um rascunho sem mudança nenhuma. */
   content?: string
-  orgScope?: OrgScopeValue
-  subjectScope?: SubjectScopeValue
+  orgScopes?: OrgScopeEntry[]
+  subjectScopes?: KnowledgeSubjectScopePayload[]
   changeSummary?: string
 }
 
@@ -107,8 +122,8 @@ export async function updateKnowledgeDocument(id: string, input: UpdateKnowledge
       title: input.title,
       documentType: input.documentType,
       ...(input.content !== undefined ? { content: input.content } : {}),
-      ...(input.orgScope ? { orgScopes: [input.orgScope] } : {}),
-      ...(input.subjectScope ? { subjectScopes: [input.subjectScope] } : {}),
+      ...(input.orgScopes ? { orgScopes: input.orgScopes } : {}),
+      ...(input.subjectScopes ? { subjectScopes: input.subjectScopes } : {}),
       ...(input.changeSummary ? { changeSummary: input.changeSummary } : {}),
     }),
   )

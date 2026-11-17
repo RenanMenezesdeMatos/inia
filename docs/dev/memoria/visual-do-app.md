@@ -130,6 +130,12 @@ levantamento, 10/11). Regra geral: o elemento repetido mora no kit (`components/
   cima limpa o de baixo que deixou de caber, nunca opção incompatível (em edição, o já salvo incompatível fica visível e marcado).
   Peças: `ListUniverseFilter` + `ListOrgScopeFilter universe=…` (listas), `OrgScopeSelect universe=…` (formulários), regra em
   `lib/operating-universe/hierarchy.ts`. Inventário em `universo-de-atuacao.md` › "Filtros e seletores encadeados".
+- **Editor com lateral de configurações** (17/11/2026) — criar/editar um conteúdo que se publica: título grande e conteúdo num
+  `SURFACE_CARD` à esquerda; à direita (no celular, aba "Configurações") seções separadas por linha com `SettingsSection`
+  (`components/ui/surface.tsx`, título em caixa alta com ícone, sem cartão dentro de cartão); barra acima com `StatusChip` da situação,
+  o estado do salvamento ("Alterações não salvas") e as ações Pré-visualizar · Salvar rascunho · Publicar (+ menu "⋮"); Ctrl/Cmd+S salva;
+  sair com alteração pendente confirma em `AlertDialog`. Em uso: Publicações (`publications/publication-editor-page.tsx`) e Base de
+  conhecimento (`admin/knowledge/knowledge-editor/`).
 - **Confirmação** — `AlertDialog` (50 telas; nenhum `window.confirm`). Dialog só quando a confirmação pede campos (motivo,
   digitar o código).
 - **Lista/Cards** — `ListViewToggle` (13 telas, já uniforme).

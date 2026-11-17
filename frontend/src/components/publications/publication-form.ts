@@ -1,3 +1,4 @@
+import { linksFromScopeValue, scopeReachSummary, scopeValueFromLinks, type ScopeTeamOption } from "@/lib/scope-links/scope-links"
 import { format } from "date-fns"
 
 import type { Tone } from "@/components/ui/surface"
@@ -9,6 +10,7 @@ import {
   type EditorialCommunication,
   type EditorialForm,
   type EditorialPayload,
+  type SegmentPayload,
 } from "@/schemas/communications/communication.schema"
 
 export { newPublicationPath, publicationPath, publicationReadingPath, PUBLICATIONS_PATH } from "./publications-route"
@@ -19,7 +21,7 @@ type Tag = (typeof COMMUNICATION_TAGS)[number]
 const isTag = (value: string): value is Tag => (COMMUNICATION_TAGS as readonly string[]).includes(value)
 
 export function emptyForm(): EditorialForm {
-  return { title: "", contentHtml: "", plainText: "", tags: ["Aviso"], summary: "", featured: false, audience: "TEAM", segment: { universe: null, teamIds: [], subteamIds: [] }, productNodeId: null, publishAt: null, displayUntil: null }
+  return { title: "", contentHtml: "", plainText: "", tags: ["Aviso"], summary: "", featured: false, audience: "TEAM", segment: { universe: null, scope: { global: false, groups: [] } }, productNodeId: null, publishAt: null, displayUntil: null }
 }
 
 /** Formulário a partir do que está salvo. O agendamento só volta ao formulário se ainda não chegou a hora. */
@@ -32,7 +34,7 @@ export function formOf(saved: EditorialCommunication, now: Date = new Date()): E
     summary: saved.summary ?? "",
     featured: saved.featured,
     audience: saved.audience,
-    segment: saved.segment,
+    segment: { universe: saved.segment.universe, scope: scopeValueFromLinks(saved.segment.links) },
     productNodeId: saved.productNodeId,
     publishAt: saved.publishedAt && new Date(saved.publishedAt).getTime() > now.getTime() ? saved.publishedAt : null,
     displayUntil: saved.displayUntil,
@@ -55,7 +57,7 @@ export function payloadOf(form: EditorialForm, mode: "DRAFT" | "PUBLISH", locked
     productNodeId: form.productNodeId,
     displayUntil: form.displayUntil,
     mode,
-    ...(locked ? {} : { audience: form.audience, segment: form.audience === "SEGMENT" ? form.segment : null, publishAt: mode === "PUBLISH" ? form.publishAt : null }),
+    ...(locked ? {} : { audience: form.audience, segment: form.audience === "SEGMENT" ? segmentPayloadOf(form.segment) : null, publishAt: mode === "PUBLISH" ? form.publishAt : null }),
   }
 }
 
@@ -72,11 +74,19 @@ export function audienceDescription(form: Pick<EditorialForm, "audience" | "segm
   if (form.audience === "ORGANIZATION") return "Toda a empresa"
   const parts: string[] = []
   if (form.segment.universe) parts.push(`universo ${form.segment.universe}`)
-  const teams = form.segment.teamIds.map((id) => options?.teams.find((team) => team.id === id)?.name ?? "Grupo")
-  const subteams = form.segment.subteamIds.map((id) => options?.teams.flatMap((team) => team.subteams).find((subteam) => subteam.id === id)?.name ?? "Subgrupo")
-  if (teams.length) parts.push(`${teams.length === 1 ? "Grupo" : "Grupos"} ${teams.join(", ")}`)
-  if (subteams.length) parts.push(`${subteams.length === 1 ? "Subgrupo" : "Subgrupos"} ${subteams.join(", ")}`)
+  // Mesmo resumo do seletor: "Grupo A (Grupo inteiro) · Grupo B: só B1".
+  if (form.segment.scope.groups.length) parts.push(scopeReachSummary(form.segment.scope, segmentTeamOptions(options), "Todos os Grupos"))
   return parts.length ? `Público específico: ${parts.join(" · ")}` : "Público específico (escolha o recorte)"
+}
+
+/** Recorte do formulário → corpo da API (vínculos). */
+export function segmentPayloadOf(segment: EditorialForm["segment"]): SegmentPayload {
+  return { universe: segment.universe, links: linksFromScopeValue(segment.scope) }
+}
+
+/** Grupos/Subgrupos das opções de público → opções do seletor multi-grupo (Subgrupo herda o universo do Grupo). */
+export function segmentTeamOptions(options: AudienceOptions | undefined): ScopeTeamOption[] {
+  return (options?.teams ?? []).map((team) => ({ id: team.id, name: team.name, operatingUniverse: team.universe, subteams: team.subteams.map((subteam) => ({ id: subteam.id, name: subteam.name, operatingUniverse: subteam.universe ?? team.universe })) }))
 }
 
 export function scheduleDescription(form: Pick<EditorialForm, "publishAt" | "displayUntil">, saved: Pick<EditorialCommunication, "status" | "publishedAt"> | null): string {

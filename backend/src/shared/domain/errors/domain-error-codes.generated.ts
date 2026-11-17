@@ -1151,17 +1151,6 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
-    "code": "ALL_TEAMS",
-    "module": "argument-scripts",
-    "statuses": [
-      422
-    ],
-    "messages": [],
-    "refs": [
-      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
-    ]
-  },
-  {
     "code": "APPLICABILITY_INVALID",
     "module": "agents",
     "statuses": [],
@@ -1318,35 +1307,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       403
     ],
     "messages": [
-      "Seu escopo de administração não cobre o escopo deste argumentário."
-    ],
-    "refs": [
-      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
-    ]
-  },
-  {
-    "code": "ARGUMENT_SCRIPT_SCOPE_INVALID",
-    "module": "argument-scripts",
-    "statuses": [
-      422
-    ],
-    "messages": [
-      "Escolha o grupo.",
-      "Grupo não encontrado.",
-      "Escolha o subgrupo."
-    ],
-    "refs": [
-      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
-    ]
-  },
-  {
-    "code": "ARGUMENT_SCRIPT_SCOPE_LOCKED",
-    "module": "argument-scripts",
-    "statuses": [
-      409
-    ],
-    "messages": [
-      "O escopo de um argumentário já publicado não muda (preserva a quem a regra valia). Encerre este e crie outro."
+      "Este argumentário vale para Grupos fora do seu escopo de administração: só quem administra todos eles pode alterá-lo.",
+      "Só quem administra a organização inteira pode criar um argumentário para todos os grupos."
     ],
     "refs": [
       "backend/src/modules/argument-scripts/application/argument-script-service.ts"
@@ -2519,7 +2481,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "Um Grupo, Subgrupo ou produto escolhido não existe nesta organização."
+      "Um Grupo, Subgrupo ou produto escolhido não existe nesta organização (o Subgrupo precisa ser do Grupo informado)."
     ],
     "refs": [
       "backend/src/modules/communications/application/communication-service.ts"
@@ -4307,6 +4269,18 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ]
   },
   {
+    "code": "DUPLICATE",
+    "module": "communications",
+    "statuses": [
+      422
+    ],
+    "messages": [],
+    "refs": [
+      "backend/src/modules/communications/application/communication-service.ts",
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
     "code": "DUPLICATE_RECORD",
     "module": "main",
     "statuses": [
@@ -4949,7 +4923,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     "code": "FORBIDDEN",
     "module": "access",
     "statuses": [
-      403
+      403,
+      422
     ],
     "messages": [
       "Você não tem permissão para esta ação.",
@@ -4962,7 +4937,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/modules/access/presentation/require-permission.ts",
       "backend/src/modules/ai-management/application/ai-usage-ranking-service.ts",
       "backend/src/modules/ai-management/presentation/ai-management-router.ts",
-      "backend/src/modules/checkpoint-registry/presentation/checkpoint-registry-router.ts"
+      "backend/src/modules/argument-scripts/application/argument-script-service.ts"
     ]
   },
   {
@@ -6921,7 +6896,9 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "O Subgrupo informado não existe neste Grupo."
+      "O Subgrupo informado não existe neste Grupo.",
+      "Grupo não encontrado nesta organização.",
+      "Escolha ao menos um Grupo (ou todos os Grupos)."
     ],
     "refs": [
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
@@ -6939,6 +6916,60 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "refs": [
       "backend/src/modules/knowledge/presentation/knowledge-router.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SUBJECT_DUPLICATED",
+    "module": "knowledge",
+    "statuses": [
+      409
+    ],
+    "messages": [
+      "Já existe o assunto \"${result.subject.name}\"${result.subject.active ? \"\" : \" (desativado)\"}."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-subjects.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SUBJECT_INACTIVE",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "O assunto \"${subject.name}\" está desativado e não pode ser incluído."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-subjects.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SUBJECT_INVALID",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "\\\"Todos os assuntos\\\" não leva assuntos específicos junto.",
+      "Assunto inválido.",
+      "Use um nome com letras ou números."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-subjects.ts"
+    ]
+  },
+  {
+    "code": "KNOWLEDGE_SUBJECT_NOT_FOUND",
+    "module": "knowledge",
+    "statuses": [
+      422
+    ],
+    "messages": [
+      "Assunto não encontrado nesta organização."
+    ],
+    "refs": [
+      "backend/src/modules/knowledge/application/knowledge-subjects.ts"
     ]
   },
   {
@@ -7416,7 +7447,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       422
     ],
     "messages": [
-      "Este Grupo/Subgrupo ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele."
+      "Algum Grupo/Subgrupo escolhido ainda não tem universo de atuação. Classifique-o em Administração › Universo de atuação antes de publicar um alinhamento para ele."
     ],
     "refs": [
       "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
@@ -7550,7 +7581,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
-      "Já existe o motivo do pedido \"${existing.name}\"${existing.active ? \"\" : \" (desativado)\"}."
+      "Já existe o motivo do pedido \"${result.subject.name}\"${result.subject.active ? \"\" : \" (desativado)\"}."
     ],
     "refs": [
       "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
@@ -7616,22 +7647,8 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
     ],
     "messages": [
       "Só quem administra a organização inteira publica um alinhamento para todo o universo. Escolha um Grupo ou Subgrupo.",
-      "Você não administra este Grupo/Subgrupo.",
-      "Você não administra o público deste alinhamento."
-    ],
-    "refs": [
-      "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
-    ]
-  },
-  {
-    "code": "OPERATIONAL_ALIGNMENT_SCOPE_INVALID",
-    "module": "operational-alignments",
-    "statuses": [
-      422
-    ],
-    "messages": [
-      "Subgrupo não encontrado nesta organização.",
-      "Grupo não encontrado nesta organização."
+      "Você não administra o público deste alinhamento.",
+      "Você não administra o público de todas as versões deste alinhamento."
     ],
     "refs": [
       "backend/src/modules/operational-alignments/application/operational-alignment-service.ts"
@@ -7644,7 +7661,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       409
     ],
     "messages": [
-      "O público escolhido é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.",
+      "Um dos Grupos/Subgrupos escolhidos é do universo ${groupUniverse}; o alinhamento está marcado como ${input.operatingUniverse}. Universos são separados.",
       "Processo de outro universo: ${otherUniverse.map((document) => ",
       "O produto é do universo ${product.operating_universe}; o alinhamento está marcado como ${input.operatingUniverse}."
     ],
@@ -7851,7 +7868,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
   },
   {
     "code": "ORGANIZATION_SCOPE_REQUIRED",
-    "module": "access",
+    "module": "knowledge",
     "statuses": [
       403
     ],
@@ -7866,7 +7883,7 @@ export const DOMAIN_ERROR_CODES: readonly InventoriedDomainCode[] = [
       "backend/src/modules/indicator-rules/presentation/indicator-rule-router.ts",
       "backend/src/modules/interventions/presentation/intervention-admin-router.ts",
       "backend/src/modules/knowledge/application/knowledge-versions.ts",
-      "backend/src/modules/org-structure/presentation/org-structure-router.ts"
+      "backend/src/modules/knowledge/presentation/knowledge-router.ts"
     ]
   },
   {

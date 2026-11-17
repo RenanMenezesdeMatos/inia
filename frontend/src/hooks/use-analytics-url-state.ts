@@ -11,7 +11,7 @@ import { analyticsSubjectKindSchema, groupingDimensionSchema, memberSituationSch
  * preservado na query string — o padrão já usado pelo projeto para abrir itens por URL
  * (`use-auto-open-from-query`). Deep link e botão "voltar" funcionam sem roteamento novo.
  */
-export type ProfileTab = "followup" | "apoio" | "indicators" | "people" | "pending" | "structure" | "calendar"
+export type ProfileTab = "followup" | "journey" | "apoio" | "indicators" | "people" | "pending" | "structure" | "calendar"
 
 export type AnalyticsUrlState = {
   tab: ProfileTab
@@ -49,7 +49,7 @@ const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 function parseTab(value: string | null): ProfileTab {
-  return value === "apoio" || value === "indicators" || value === "people" || value === "pending" || value === "structure" || value === "calendar" ? value : "followup"
+  return value === "journey" || value === "apoio" || value === "indicators" || value === "people" || value === "pending" || value === "structure" || value === "calendar" ? value : "followup"
 }
 
 export function useAnalyticsUrlState() {

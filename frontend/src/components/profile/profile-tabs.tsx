@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { CalendarDays, ChartNoAxesCombined, ClipboardCheck, HeartHandshake, Headset, MessagesSquare, Network, UsersRound, type LucideIcon } from "lucide-react"
+import { CalendarClock, CalendarDays, ChartNoAxesCombined, ClipboardCheck, HeartHandshake, Headset, MessagesSquare, Network, UsersRound, type LucideIcon } from "lucide-react"
 
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -110,6 +110,7 @@ export function profileTabsFor(capabilities: IndicatorViewCapabilities, pendingA
     : null
   for (const tab of capabilities.tabs) {
     if (tab === "FOLLOW_UP") tabs.push({ value: "followup", label: "Acompanhamento", icon: MessagesSquare })
+    if (tab === "JOURNEY") tabs.push({ value: "journey", label: "Minha jornada", icon: CalendarClock })
     if (tab === "INDICATORS") tabs.push({ value: "indicators", label: "Indicadores", icon: ChartNoAxesCombined })
     if (tab === "PEOPLE") tabs.push({ value: "people", label: capabilities.peopleTabLabel ?? "Equipe", icon: UsersRound })
     if (tab === "CALENDAR") tabs.push({ value: "calendar", label: "Calendário", icon: CalendarDays })

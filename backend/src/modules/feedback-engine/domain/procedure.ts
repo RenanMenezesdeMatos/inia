@@ -5,7 +5,7 @@ import { inlineEnumerationOf, isListLine } from "../../knowledge/domain/knowledg
 import { normalizeForLiteralQuote } from "../../knowledge/domain/knowledge-match.js"
 import { closingSectionRoleOf, isExecutableSectionRole, sectionProcessRoleOf, type SectionProcessRole } from "../../knowledge/domain/section-roles.js"
 import type { TranscriptProjection } from "../../investigation/domain/transcript-projection.js"
-import { criterionItemsOf, FIELD_LABEL, isUnstructuredLegacy, scopeSpecificity, type ArgumentItemField, type ArgumentScriptSource, type GuidanceModality, type PointGroupMode } from "../../argument-scripts/domain/argument-script.js"
+import { criterionItemsOf, FIELD_LABEL, isUnstructuredLegacy, scopeLinksLabel, scopeSpecificity, type ArgumentItemField, type ArgumentScriptSource, type GuidanceModality, type PointGroupMode } from "../../argument-scripts/domain/argument-script.js"
 
 /**
  * PROCEDIMENTO COMPLETO DO CENÁRIO (domínio puro, determinístico, sem LLM).
@@ -271,7 +271,8 @@ export function buildProcedureContext(documents: readonly SourceDocument[], scri
  * todos os vigentes no escopo entram (36 ≈ 81 mil caracteres). */
 export const ARGUMENT_SCRIPTS_BUDGET_CHARS = 100_000
 const foldText = (text: string) => normalizeForLiteralQuote(text)
-const scopeLabelOf = (scope: ArgumentScriptSource["scope"]) => (scope.scopeType === "ALL_TEAMS" ? "todos os grupos" : scope.scopeType === "TEAM" ? `grupo ${scope.teamName ?? "—"}` : `subgrupo ${scope.subteamName ?? "—"}${scope.teamName ? ` (${scope.teamName})` : ""}`)
+/** Mesmo texto de antes para um vínculo ("grupo X" / "subgrupo Y (X)"); vários vínculos separados por "; " (223). */
+const scopeLabelOf = (scope: ArgumentScriptSource["scope"]) => scopeLinksLabel(scope)
 
 /**
  * ARGUMENTÁRIOS como fonte estruturada (G-n): seções por CAMPO (orientação, pontos obrigatórios por grupo, evitar) com handles nas

@@ -2,6 +2,7 @@ import { DataRunError } from "../../domain/error-codes.js"
 import type { DomainWriter } from "./domain-writer.js"
 import { interactionFlagsWriter, interactionsWriter, transcriptsWriter } from "./interaction-writers.js"
 import { employeeAbsencesWriter, employeesWriter, goalsWriter, groupsWriter, organizationalStructureWriter, subgroupsWriter, workScheduleDaysWriter, workScheduleExceptionsWriter, workSchedulesWriter } from "./master-data-writers.js"
+import { workScheduleActivitiesWriter } from "./schedule-activity-writer.js"
 import { indicatorMeasurementsWriter, officialIndicatorPerformanceWriter, prvPerformanceWriter } from "./performance-writers.js"
 
 /** Writer por contrato — um lugar só. Contrato sem writer é bug de registro, não de runtime. */
@@ -14,6 +15,7 @@ const WRITERS: readonly DomainWriter[] = [
   workSchedulesWriter,
   workScheduleDaysWriter,
   workScheduleExceptionsWriter,
+  workScheduleActivitiesWriter,
   goalsWriter,
   indicatorMeasurementsWriter,
   officialIndicatorPerformanceWriter,

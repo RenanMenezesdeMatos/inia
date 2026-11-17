@@ -2,6 +2,7 @@ import type { Database } from "../../../infrastructure/database/pool.js"
 import type { SqlFilter } from "../../../shared/presentation/list-query.js"
 import { scopesWithPermission } from "../../access/domain/access-decision.js"
 import type { Permission } from "../../access/domain/permissions.js"
+import { scopeLinkProblems, sortLinks, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import { createPostgresAccessRepository } from "../../access/infrastructure/postgres-access-repository.js"
 
 export type ManageableScopes =
@@ -93,4 +94,93 @@ export function applyManageableScopeFilter(scopes: ManageableScopes, filter: Sql
   filter.add(
     `((${alias}."scopeType" = 'TEAM' and ${alias}."teamId" = any(${teamIds}::uuid[])) or (${alias}."scopeType" = 'SUBTEAM' and ${alias}."subteamId" = any(${subteamIds}::uuid[])))`,
   )
+}
+
+/**
+ * VÍNCULOS DE ALCANCE (multi-grupo, `shared/domain/scope-links`) recebidos numa ESCRITA: cada Subgrupo ganha o Grupo-pai REAL (na
+ * organização); Grupo inexistente na organização, Subgrupo inexistente ou `teamId` enviado que não é o pai = `null` (422 no chamador).
+ * Uma consulta só, qualquer que seja o número de vínculos.
+ */
+export async function normalizeScopeLinks(
+  db: Pick<Database, "query">,
+  organizationId: string,
+  links: readonly { teamId?: string | null; subteamId?: string | null }[],
+): Promise<{ teamId: string; subteamId: string | null }[] | null> {
+  if (links.length === 0) return []
+  const teamIds = [...new Set(links.flatMap((link) => (link.teamId ? [link.teamId] : [])))]
+  const subteamIds = [...new Set(links.flatMap((link) => (link.subteamId ? [link.subteamId] : [])))]
+  const [teams, subteams] = await Promise.all([
+    db.query<{ id: string }>(`select id from teams where id = any($1::uuid[]) and organization_id = $2`, [teamIds, organizationId]),
+    db.query<{ id: string; team_id: string }>(`select st.id, st.team_id from subteams st join teams t on t.id = st.team_id where st.id = any($1::uuid[]) and t.organization_id = $2`, [subteamIds, organizationId]),
+  ])
+  const knownTeams = new Set(teams.rows.map((row) => row.id))
+  const parentOf = new Map(subteams.rows.map((row) => [row.id, row.team_id]))
+  const normalized: { teamId: string; subteamId: string | null }[] = []
+  for (const link of links) {
+    if (link.subteamId) {
+      const parent = parentOf.get(link.subteamId)
+      if (!parent || (link.teamId && link.teamId !== parent)) return null
+      normalized.push({ teamId: parent, subteamId: link.subteamId })
+    } else {
+      if (!link.teamId || !knownTeams.has(link.teamId)) return null
+      normalized.push({ teamId: link.teamId, subteamId: null })
+    }
+  }
+  return normalized
+}
+
+/** O vínculo está no escopo de gestão? Grupo inteiro exige o Grupo; Subgrupo exige o Subgrupo (ou o Grupo dele, que já o inclui). */
+export function canManageLink(scopes: ManageableScopes, link: { teamId: string; subteamId: string | null }): boolean {
+  return canManageScope(scopes, link.subteamId ? { scopeType: "SUBTEAM", teamId: link.teamId, subteamId: link.subteamId } : { scopeType: "TEAM", teamId: link.teamId, subteamId: null })
+}
+
+/**
+ * Política de ESCRITA de conteúdo compartilhado (a mesma que a Base de Conhecimento já aplicava — A-F02): alterar texto, publicar ou
+ * mexer nos vínculos exige que TODOS os vínculos — os atuais e os novos — estejam no escopo de quem altera. Um gestor de parte dos
+ * Grupos não altera conteúdo que também vale para Grupos que ele não administra (nem remove esses vínculos). Sem vínculo nenhum
+ * (conteúdo global) = só escopo de organização.
+ */
+export function canManageAllLinks(scopes: ManageableScopes, links: readonly { teamId: string; subteamId: string | null }[]): boolean {
+  if (scopes.unrestricted || scopes.allTeams) return true
+  return links.length > 0 && links.every((link) => canManageLink(scopes, link))
+}
+
+/**
+ * Algum vínculo no escopo (para LER/listar o que também vale para os Grupos de quem administra). `parentTeams` = Grupos-pai dos
+ * Subgrupos administrados: o vínculo de Grupo inteiro também vale para eles, então quem administra só o Subgrupo o enxerga (sem editar).
+ */
+export function canSeeAnyLink(scopes: ManageableScopes, links: readonly { teamId: string; subteamId: string | null }[], parentTeams: ReadonlySet<string> = new Set()): boolean {
+  if (scopes.unrestricted || scopes.allTeams) return true
+  return links.some((link) => canManageLink(scopes, link) || (link.subteamId === null && parentTeams.has(link.teamId)))
+}
+
+export type ScopeLinkWriteFailure = "INVALID" | "DUPLICATE" | "REDUNDANT" | "EMPTY" | "FORBIDDEN"
+
+/**
+ * Vínculos de uma ESCRITA, prontos para gravar: Grupo-pai real de cada Subgrupo, sem duplicata, sem Subgrupo de um Grupo que já está
+ * inteiro, ao menos um, e todos no escopo de gestão de quem escreve. Mesma validação nas quatro entidades (cada uma traduz a falha no
+ * próprio código de erro). Ordem estável (`sortLinks`).
+ */
+export async function resolveScopeLinksForWrite(
+  db: Pick<Database, "query">,
+  organizationId: string,
+  scopes: ManageableScopes,
+  links: readonly { teamId?: string | null; subteamId?: string | null }[],
+): Promise<{ ok: true; links: ScopeLink[] } | { ok: false; reason: ScopeLinkWriteFailure }> {
+  if (links.length === 0) return { ok: false, reason: "EMPTY" }
+  const normalized = await normalizeScopeLinks(db, organizationId, links)
+  if (!normalized) return { ok: false, reason: "INVALID" }
+  const problems = scopeLinkProblems(normalized)
+  if (problems.some((problem) => problem.code === "DUPLICATE")) return { ok: false, reason: "DUPLICATE" }
+  if (problems.length > 0) return { ok: false, reason: "REDUNDANT" }
+  if (!normalized.every((link) => canManageLink(scopes, link))) return { ok: false, reason: "FORBIDDEN" }
+  return { ok: true, links: sortLinks(normalized) }
+}
+
+export const SCOPE_LINK_FAILURE_MESSAGE: Record<ScopeLinkWriteFailure, string> = {
+  INVALID: "Grupo ou Subgrupo não encontrado (o Subgrupo precisa pertencer ao Grupo informado).",
+  DUPLICATE: "O mesmo Grupo/Subgrupo foi informado mais de uma vez.",
+  REDUNDANT: "Um Subgrupo foi informado junto com o Grupo inteiro dele: escolha o Grupo inteiro OU os Subgrupos.",
+  EMPTY: "Escolha ao menos um Grupo.",
+  FORBIDDEN: "Seu escopo de administração não cobre todos os Grupos/Subgrupos escolhidos.",
 }

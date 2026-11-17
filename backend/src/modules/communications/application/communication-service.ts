@@ -1,3 +1,4 @@
+import { linkKey, scopeLinkProblems, sortLinks, type ScopeLink } from "../../../shared/domain/scope-links/scope-links.js"
 import { DomainError } from "../../../shared/domain/domain-error.js"
 import type { AuthTokenPayload } from "../../auth/infrastructure/jwt.js"
 import {
@@ -9,6 +10,7 @@ import {
   publishCommunicationSchema,
   type CommunicationAudience,
   type CommunicationSegment,
+  type CommunicationSegmentInput,
   type CommunicationStatus,
   moderationRetireSchema,
   type CommunicationTag,
@@ -91,8 +93,11 @@ export type CommunicationStore = {
   countAudience(input: { organizationId: string; authorPersonId: string; audience: CommunicationAudience; segment: CommunicationSegment }): Promise<number>
   /** Grupos/Subgrupos, universos em uso e produtos ativos da organização (opções do público e do produto relacionado). */
   audienceOptions(organizationId: string): Promise<AudienceOptions>
-  /** Confere se Grupos, Subgrupos e produto pertencem à organização (e o Subgrupo ao Grupo, quando os dois vêm). */
-  validReferences(organizationId: string, input: { teamIds: string[]; subteamIds: string[]; productNodeId: string | null }): Promise<boolean>
+  /**
+   * Confere vínculos e produto na organização: cada Subgrupo ganha o Grupo-pai REAL (e um `teamId` enviado que não é o pai é recusado).
+   * `null` = algum Grupo, Subgrupo ou o produto não existe nela.
+   */
+  resolveReferences(organizationId: string, input: { links: { teamId: string | null; subteamId: string | null }[]; productNodeId: string | null }): Promise<{ links: ScopeLink[] } | null>
 }
 
 const notFound = () => new DomainError("Comunicado não encontrado.", "COMMUNICATION_NOT_FOUND", 404)
@@ -111,16 +116,26 @@ async function requirePublisher(store: CommunicationStore, user: AuthTokenPayloa
   return allowed
 }
 
-const EMPTY_SEGMENT: CommunicationSegment = { universe: null, teamIds: [], subteamIds: [] }
+const EMPTY_SEGMENT: CommunicationSegment = { universe: null, links: [] }
 
-function normalizeSegment(audience: CommunicationAudience, segment: CommunicationSegment | null | undefined): CommunicationSegment {
-  if (audience !== "SEGMENT") return EMPTY_SEGMENT
-  const value = segment ?? EMPTY_SEGMENT
-  const normalized = { universe: value.universe ?? null, teamIds: [...new Set(value.teamIds)], subteamIds: [...new Set(value.subteamIds)] }
-  if (!normalized.universe && normalized.teamIds.length === 0 && normalized.subteamIds.length === 0) {
+/** Mesmo recorte? (universo + o conjunto de vínculos, sem depender da ordem nem dos nomes). */
+const segmentKey = (segment: Pick<CommunicationSegment, "universe" | "links">) => `${segment.universe ?? ""}|${segment.links.map(linkKey).sort().join(",")}`
+
+/**
+ * Recorte validado no servidor (223): fora de SEGMENT, vazio; universo ou ao menos um vínculo; cada vínculo com o Grupo-pai real; sem
+ * vínculo repetido nem Subgrupo junto do próprio Grupo inteiro. O produto relacionado é conferido junto.
+ */
+async function resolveSegment(store: CommunicationStore, organizationId: string, audience: CommunicationAudience, segment: CommunicationSegmentInput | CommunicationSegment | null | undefined, productNodeId: string | null): Promise<CommunicationSegment> {
+  const value = audience === "SEGMENT" ? (segment ?? EMPTY_SEGMENT) : EMPTY_SEGMENT
+  if (audience === "SEGMENT" && !value.universe && value.links.length === 0) {
     throw new DomainError("Escolha o universo, ao menos um Grupo ou ao menos um Subgrupo para o público.", "COMMUNICATION_SEGMENT_EMPTY", 422)
   }
-  return normalized
+  if (value.links.length === 0 && !productNodeId) return { universe: value.universe ?? null, links: [] }
+  const resolved = await store.resolveReferences(organizationId, { links: value.links.map((link) => ({ teamId: link.teamId ?? null, subteamId: link.subteamId ?? null })), productNodeId })
+  if (!resolved) throw new DomainError("Um Grupo, Subgrupo ou produto escolhido não existe nesta organização (o Subgrupo precisa ser do Grupo informado).", "COMMUNICATION_REFERENCE_INVALID", 422)
+  const problems = scopeLinkProblems(resolved.links)
+  if (problems.length > 0) throw new DomainError(problems[0]!.code === "DUPLICATE" ? "O mesmo Grupo/Subgrupo foi escolhido mais de uma vez." : "Um Subgrupo foi escolhido junto com o Grupo inteiro dele: escolha o Grupo inteiro OU os Subgrupos.", "COMMUNICATION_SEGMENT_INVALID", 422)
+  return { universe: value.universe ?? null, links: sortLinks(resolved.links) }
 }
 
 /** Instante da publicação: ausente = agora; um pouco no passado (relógio do navegador) = agora; até um ano à frente. */
@@ -151,12 +166,7 @@ function requireComplete(fields: { tags: CommunicationTag[] }) {
   if (fields.tags.length === 0) throw new DomainError("Selecione ao menos uma categoria.", "COMMUNICATION_TAGS_REQUIRED", 422)
 }
 
-async function assertReferences(store: CommunicationStore, organizationId: string, segment: CommunicationSegment, productNodeId: string | null) {
-  if (segment.teamIds.length === 0 && segment.subteamIds.length === 0 && !productNodeId) return
-  if (!(await store.validReferences(organizationId, { teamIds: segment.teamIds, subteamIds: segment.subteamIds, productNodeId }))) {
-    throw new DomainError("Um Grupo, Subgrupo ou produto escolhido não existe nesta organização.", "COMMUNICATION_REFERENCE_INVALID", 422)
-  }
-}
+
 
 /**
  * Criar: rascunho (`mode: "DRAFT"`) ou publicação (agora ou agendada). Sem `mode` = publicar agora — o corpo de antes continua
@@ -168,9 +178,8 @@ export async function publishCommunication(store: CommunicationStore, user: Auth
   const publishing = (input.mode ?? "PUBLISH") === "PUBLISH"
   const audience = input.audience ?? "TEAM"
   if (!allowed.includes(audience)) throw new DomainError("Você não tem permissão para publicar para este público.", "COMMUNICATION_AUDIENCE_FORBIDDEN", 403)
-  const segment = normalizeSegment(audience, input.segment)
   const productNodeId = input.productNodeId ?? null
-  await assertReferences(store, user.organizationId, segment, productNodeId)
+  const segment = await resolveSegment(store, user.organizationId, audience, input.segment, productNodeId)
   const tags = [...new Set(input.tags)]
   if (publishing) requireComplete({ tags })
   const content = prepareContent(input.contentHtml, publishing)
@@ -213,16 +222,19 @@ export async function editCommunication(store: CommunicationStore, user: AuthTok
   const wentOut = communicationWentOut(current, now)
 
   const requestedAudience = input.audience ?? current.audience
-  const audienceChanged = requestedAudience !== current.audience || (input.segment !== undefined && JSON.stringify(normalizeSegment(requestedAudience, input.segment)) !== JSON.stringify(current.segment))
+  const productNodeId = input.productNodeId === undefined ? current.productNodeId : input.productNodeId
+  const requestedSegment = input.segment !== undefined || input.audience !== undefined
+    ? await resolveSegment(store, user.organizationId, requestedAudience, input.segment ?? (requestedAudience === current.audience ? current.segment : null), productNodeId)
+    : current.segment
+  const audienceChanged = requestedAudience !== current.audience || (input.segment !== undefined && segmentKey(requestedSegment) !== segmentKey(current.segment))
   if (wentOut && audienceChanged) throw new DomainError("O público não muda depois que o comunicado saiu. Arquive e crie outro, se precisar.", "COMMUNICATION_AUDIENCE_LOCKED", 409)
   if (wentOut && input.publishAt) throw new DomainError("O comunicado já foi publicado; o instante da publicação não muda.", "COMMUNICATION_PUBLISHED_AT_LOCKED", 409)
   if (wentOut && input.mode === "DRAFT") throw new DomainError("Um comunicado que já saiu não volta a rascunho. Arquive-o para tirá-lo de circulação.", "COMMUNICATION_ALREADY_OUT", 409)
   if (!allowed.includes(requestedAudience)) throw new DomainError("Você não tem permissão para publicar para este público.", "COMMUNICATION_AUDIENCE_FORBIDDEN", 403)
 
   const audience = wentOut ? current.audience : requestedAudience
-  const segment = wentOut ? current.segment : input.segment !== undefined || input.audience !== undefined ? normalizeSegment(audience, input.segment ?? (audience === current.audience ? current.segment : null)) : current.segment
-  const productNodeId = input.productNodeId === undefined ? current.productNodeId : input.productNodeId
-  await assertReferences(store, user.organizationId, segment, productNodeId)
+  // Depois que saiu, o público fica fixo (alguém pode já ter lido); antes, vale o recorte validado acima.
+  const segment = wentOut ? current.segment : requestedSegment
 
   const status: "DRAFT" | "PUBLISHED" = wentOut ? "PUBLISHED" : input.mode === "PUBLISH" ? "PUBLISHED" : input.mode === "DRAFT" ? "DRAFT" : current.status === "DRAFT" ? "DRAFT" : "PUBLISHED"
   const publishing = status === "PUBLISHED"
@@ -309,8 +321,7 @@ export async function previewCommunicationAudience(store: CommunicationStore, us
   const allowed = await requirePublisher(store, user)
   const input = audiencePreviewSchema.parse(body)
   if (!allowed.includes(input.audience)) throw new DomainError("Você não tem permissão para publicar para este público.", "COMMUNICATION_AUDIENCE_FORBIDDEN", 403)
-  const segment = normalizeSegment(input.audience, input.segment)
-  await assertReferences(store, user.organizationId, segment, null)
+  const segment = await resolveSegment(store, user.organizationId, input.audience, input.segment, null)
   return { recipientCount: await store.countAudience({ organizationId: user.organizationId, authorPersonId: user.personId, audience: input.audience, segment }) }
 }
 

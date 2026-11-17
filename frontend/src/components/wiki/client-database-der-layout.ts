@@ -18,7 +18,7 @@ export const DER_WIDTH = 1010
 
 const COLUMNS: { x: number; tables: string[] }[] = [
   { x: COLUMN_A, tables: ["grupos", "subgrupos", "metas", "fechamentos_mensais", "prv_mensal"] },
-  { x: COLUMN_B, tables: ["colaboradores", "indicadores_diarios", "ausencias", "jornadas"] },
+  { x: COLUMN_B, tables: ["colaboradores", "indicadores_diarios", "ausencias", "jornadas", "atividades_escaladas"] },
   { x: COLUMN_C, tables: ["chamadas", "transcricoes", "flags_chamada", "escalas", "excecoes_calendario"] },
 ]
 
@@ -62,6 +62,7 @@ const ROUTES: Record<string, Route> = {
   "escalas.matricula>colaboradores": { from: "L", to: "R", lane: LANE.toEmployeeRight, entry: ENTRY_OFFSET },
   "excecoes_calendario.matricula>colaboradores": { from: "L", to: "R", lane: LANE.toEmployeeRight, entry: ENTRY_OFFSET },
   "jornadas.matricula>colaboradores": { from: "L", to: "L", lane: LANE.toEmployeeLeft, entry: -ENTRY_OFFSET },
+  "atividades_escaladas.matricula>colaboradores": { from: "L", to: "L", lane: LANE.toEmployeeLeft, entry: -ENTRY_OFFSET },
 }
 
 /** Cor da linha conforme o cadastro apontado, para o olho seguir cada família de relações. */
